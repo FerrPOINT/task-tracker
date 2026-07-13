@@ -213,6 +213,7 @@ export const issueFixture = (override?: Partial<Issue>): Issue => ({
 ## References
 
 - `docs/ARCHITECTURE.md`
+- `docs/API_EDGE_CASES.md`
 - `docs/CI_CD.md`
 - `docs/CODE_STYLE.md`
 - `docs/DEPLOYMENT.md`

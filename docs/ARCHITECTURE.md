@@ -77,37 +77,46 @@ task-tracker/
     ├── ADR.md
     ├── AGENTS.md
     ├── API.md
+    ├── API_EDGE_CASES.md
     ├── API_VERSIONING.md
     ├── ARCHITECTURE.md
+    ├── AUTH_ADVANCED.md
     ├── CACHING.md
     ├── CI_CD.md
     ├── CLI.md
     ├── CODE_STYLE.md
     ├── DATABASE_INDEXES.md
     ├── DATA_MODEL.md
+    ├── DATA_RETENTION.md
     ├── DEPLOYMENT.md
     ├── DESIGN_TOKENS.md
     ├── ERROR_HANDLING.md
     ├── EVENTS.md
+    ├── FEATURE_FLAGS.md
     ├── FRONTEND_ARCHITECTURE.md
     ├── GLOSSARY.md
     ├── I18N.md
     ├── JIRA_UI_CAPTURE.md
     ├── JQL.md
     ├── LIBRARIES.md
+    ├── LOAD_BALANCING.md
     ├── MIGRATIONS.md
     ├── MONITORING.md
     ├── NOTIFICATIONS.md
     ├── ONBOARDING.md
     ├── OPS_RUNBOOK.md
+    ├── PAGINATION.md
     ├── PERFORMANCE.md
     ├── PROJECT_ADMIN.md
     ├── REACT_STYLING.md
     ├── RELEASE.md
     ├── REPORTS.md
+    ├── RESILIENCE.md
     ├── ROADMAP.md
     ├── ROUTING.md
+    ├── RUNTIME.md
     ├── SECURITY.md
+    ├── SECURITY_INCIDENT_RESPONSE.md
     ├── STORAGE.md
     ├── SYSTEM_ADMIN.md
     ├── TESTING.md
@@ -115,21 +124,11 @@ task-tracker/
     ├── UI_LIBRARIES.md
     ├── UI_UX.md
     ├── USER_STORIES.md
+    ├── UX_PRODUCT.md
     ├── VIKUNJA_GAP_ANALYSIS.md
     ├── WEBSOCKET_EVENTS.md
     ├── WORKFLOW.md
     └── adr/
-task-tracker/
-├── backend/
-│   ├── Cargo.toml
-│   ├── crates/
-│   │   ├── api/
-│   │   ├── app/
-│   │   ├── domain/
-│   │   ├── infra/
-│   │   ├── shared/
-│   │   └── server/
-│   └── migrations/
 ├── frontend/
 │   ├── src/
 │   │   ├── api/
