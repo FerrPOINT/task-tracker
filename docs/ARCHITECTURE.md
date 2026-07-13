@@ -298,7 +298,7 @@ let app = Router::new()
     .layer(PropagateRequestIdLayer::new(x_request_id()));
 ```
 
-## 8. Безопасность
+## 8. Security
 
 - **AuthN**: JWT access token (15 min) + httpOnly refresh cookie (7 дней)
 - **AuthZ**: permission matrix + project roles
@@ -308,7 +308,38 @@ let app = Router::new()
 - **CORS**: строгий whitelist
 - **CSP**: через reverse proxy
 
-## 9. API, Workflow, JQL, UI, Deployment, and Operations
+Политика безопасности детально — `docs/SECURITY.md`.
+
+## 9. Logging, Observability, Scalability
+
+### 9.1 Logging
+
+- JSON structured logs.
+- Request ID correlation.
+- Levels: ERROR, WARN, INFO, DEBUG, TRACE.
+- No sensitive data in logs.
+- Local: pretty output. Production: JSON to stdout → Loki.
+
+### 9.2 Observability
+
+- Prometheus metrics: `http_requests_total`, `http_request_duration_seconds`, `db_pool_connections`, `cache_hit_total`, etc.
+- Grafana dashboards: API, DB, Cache, Infrastructure, Business.
+- OpenTelemetry traces.
+- Loki log aggregation.
+- Alertmanager rules.
+
+Подробнее — `docs/MONITORING.md`.
+
+### 9.3 Scalability
+
+- API instances are stateless.
+- Horizontal scaling via container orchestration.
+- WebSocket multi-instance sync via Redis pub/sub.
+- DB read replicas for heavy JQL/reports.
+- Cache offloading via Redis.
+- Async processing via `apalis` workers.
+
+## 10. API, Workflow, JQL, UI, Deployment, and Operations
 
 - REST API specification — `docs/API.md`.
 - OpenAPI generation — `utoipa-axum`.
@@ -342,4 +373,17 @@ let app = Router::new()
 
 ## 10. Testing
 
-Подробнее в `TESTING.md`.
+Подробнее в `docs/TESTING.md`.
+
+## 11. Deployment
+
+Подробнее в `docs/DEPLOYMENT.md`.
+
+## 12. Security
+
+Подробнее в `docs/SECURITY.md`.
+
+## 13. Monitoring
+
+Подробнее в `docs/MONITORING.md`.
+

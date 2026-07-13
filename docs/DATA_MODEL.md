@@ -73,13 +73,13 @@
 48. `issue_link_types`
 49. `issue_links`
 
-### Комментарии и активность
-50. `comments`
-51. `comment_mentions`
-52. `activity_log`
+### Аудит и история изменений
+
+73. `changelog`
+74. `audit_log`
 
 ### Вложения
-53. `attachments`
+75. `attachments`
 
 ### Time tracking
 54. `worklogs`
@@ -919,6 +919,43 @@ CREATE TABLE activity_log (
 ```
 
 ---
+
+### 4.50a. changelog
+
+```sql
+CREATE TABLE changelog (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    author_id UUID NOT NULL REFERENCES users(id),
+    field_name TEXT NOT NULL,
+    old_value JSONB,
+    new_value JSONB,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_changelog_issue_id ON changelog(issue_id);
+CREATE INDEX idx_changelog_created_at ON changelog(created_at DESC);
+```
+
+### 4.50b. audit_log
+
+```sql
+CREATE TABLE audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_id UUID REFERENCES users(id),
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id UUID,
+    metadata JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_audit_log_actor_id ON audit_log(actor_id);
+CREATE INDEX idx_audit_log_entity ON audit_log(entity_type, entity_id);
+CREATE INDEX idx_audit_log_created_at ON audit_log(created_at DESC);
+```
 
 ### 4.51. attachments
 
