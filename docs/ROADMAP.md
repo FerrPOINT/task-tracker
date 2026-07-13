@@ -136,4 +136,6 @@
 - `docs/DATA_MODEL.md` — дата-модель.
 - `docs/DEPLOYMENT.md` — деплой.
 - `docs/TESTING.md` — стратегия тестирования.
+- `docs/RUNTIME.md` — health probes и graceful shutdown.
+- `docs/RESILIENCE.md` — отказоустойчивость.
 - `docs/CI_CD.md` — CI/CD pipeline.

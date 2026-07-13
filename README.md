@@ -59,6 +59,16 @@ Documentation-first: перед кодом фиксируем функциона
 - [OPS RUNBOOK](docs/OPS_RUNBOOK.md)
 - [RELEASE](docs/RELEASE.md)
 - [ONBOARDING](docs/ONBOARDING.md)
+- [RUNTIME](docs/RUNTIME.md)
+- [RESILIENCE](docs/RESILIENCE.md)
+- [AUTH ADVANCED](docs/AUTH_ADVANCED.md)
+- [PAGINATION](docs/PAGINATION.md)
+- [DATA RETENTION](docs/DATA_RETENTION.md)
+- [FEATURE FLAGS](docs/FEATURE_FLAGS.md)
+- [LOAD BALANCING](docs/LOAD_BALANCING.md)
+- [UX PRODUCT](docs/UX_PRODUCT.md)
+- [API EDGE CASES](docs/API_EDGE_CASES.md)
+- [SECURITY INCIDENT RESPONSE](docs/SECURITY_INCIDENT_RESPONSE.md)
 
 ## Быстрый старт
 

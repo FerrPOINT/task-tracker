@@ -96,5 +96,7 @@ pnpm test:e2e
 - `CONTRIBUTING.md` (корень репозитория)
 - `docs/DEPLOYMENT.md`
 - `docs/CI_CD.md`
+- `docs/RUNTIME.md`
+- `docs/RESILIENCE.md`
 - `docs/TESTING.md`
 - `docs/AGENTS.md`

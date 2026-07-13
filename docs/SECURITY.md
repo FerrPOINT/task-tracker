@@ -158,6 +158,9 @@ Content-Security-Policy: ...
 - `docs/SYSTEM_ADMIN.md` — users/groups/permissions.
 - `docs/STORAGE.md` — attachment security.
 - `docs/ERROR_HANDLING.md` — error disclosure.
+- `docs/AUTH_ADVANCED.md` — детали refresh rotation, reuse detection, rate limits.
+- `docs/SECURITY_INCIDENT_RESPONSE.md` — план реагирования на инциденты.
+
 ## References
 
 - `docs/ARCHITECTURE.md`
