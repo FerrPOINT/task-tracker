@@ -103,7 +103,7 @@
 					</dl>
 					<p class="admin-overview__card-action">
 						<a
-							href="https://console.vikunja.io"
+							href="https://console.task-tracker.io"
 							target="_blank"
 							rel="noopener noreferrer"
 						>

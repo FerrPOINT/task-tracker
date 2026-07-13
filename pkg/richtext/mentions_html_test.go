@@ -19,7 +19,7 @@ package richtext
 import (
 	"testing"
 
-	"code.vikunja.io/api/pkg/db"
+	"github.com/FerrPOINT/task-tracker/pkg/db"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -145,7 +145,7 @@ test.describe('Project View Kanban', () => {
 	})
 
 	test('Recurring task dropped on done bucket moves back to the default bucket', async ({authenticatedPage: page}) => {
-		// Reproduces https://github.com/go-vikunja/vikunja/issues/2618
+		// Reproduces https://github.com/go-task-tracker/task-tracker/issues/2618
 		const projects = await ProjectFactory.create(1)
 		await ProjectViewFactory.create(1, {
 			id: 10,

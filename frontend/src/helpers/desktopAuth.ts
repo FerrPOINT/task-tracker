@@ -1,21 +1,21 @@
 import type {OAuthTokens} from '@/types/desktop'
 
 export function isDesktopApp(): boolean {
-	return !!window.vikunjaDesktop?.isDesktop
+	return !!window.task-trackerDesktop?.isDesktop
 }
 
 export function startDesktopOAuthLogin(apiUrl: string): Promise<void> {
-	return window.vikunjaDesktop!.startOAuthLogin(apiUrl)
+	return window.task-trackerDesktop!.startOAuthLogin(apiUrl)
 }
 
 export function listenForDesktopOAuthTokens(callback: (tokens: OAuthTokens) => void): void {
-	window.vikunjaDesktop!.onOAuthTokens(callback)
+	window.task-trackerDesktop!.onOAuthTokens(callback)
 }
 
 export function listenForDesktopOAuthError(callback: (error: string) => void): void {
-	window.vikunjaDesktop!.onOAuthError(callback)
+	window.task-trackerDesktop!.onOAuthError(callback)
 }
 
 export function refreshDesktopToken(apiUrl: string, refreshToken: string): Promise<OAuthTokens> {
-	return window.vikunjaDesktop!.refreshToken(apiUrl, refreshToken)
+	return window.task-trackerDesktop!.refreshToken(apiUrl, refreshToken)
 }

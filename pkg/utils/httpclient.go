@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -23,8 +23,8 @@ import (
 	"net/url"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/version"
 
 	"code.dny.dev/ssrf"
 )
@@ -58,7 +58,7 @@ func NewSSRFSafeHTTPClient() *http.Client {
 		transport.Proxy = http.ProxyURL(parsedURL)
 		transport.ProxyConnectHeader = http.Header{
 			"Proxy-Authorization": []string{"Basic " + base64.StdEncoding.EncodeToString([]byte("vikunja:"+proxyPassword))},
-			"User-Agent":          []string{"Vikunja/" + version.Version},
+			"User-Agent":          []string{"TaskTracker/" + version.Version},
 		}
 	}
 

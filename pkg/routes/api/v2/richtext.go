@@ -19,10 +19,10 @@ package apiv2
 import (
 	"context"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/humaecho5"
-	"code.vikunja.io/api/pkg/richtext"
+	"github.com/FerrPOINT/task-tracker/pkg/db"
+	"github.com/FerrPOINT/task-tracker/pkg/models"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/humaecho5"
+	"github.com/FerrPOINT/task-tracker/pkg/richtext"
 
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/labstack/echo/v5"

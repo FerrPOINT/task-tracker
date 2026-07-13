@@ -6,7 +6,6 @@ import { useConfigStore } from '@/stores/config'
 import { useColorScheme } from '@/composables/useColorScheme'
 
 import LogoFull from '@/assets/logo-full.svg?component'
-import LogoFullPride from '@/assets/logo-full-pride.svg?component'
 import {MILLISECONDS_A_HOUR} from '@/constants/date'
 
 const now = useNow({
@@ -17,11 +16,7 @@ const authStore = useAuthStore()
 const configStore = useConfigStore()
 const { isDark } = useColorScheme()
 
-const Logo = computed(() => configStore.allowIconChanges
-	&& authStore.settings.frontendSettings.allowIconChanges
-	&& now.value.getMonth() === 5
-	? LogoFullPride
-	: LogoFull)
+const Logo = LogoFull
 
 const CustomLogo = computed(() => {
 	const lightLogo = window.CUSTOM_LOGO_URL
@@ -39,13 +34,13 @@ const CustomLogo = computed(() => {
 	<div>
 		<Logo
 			v-if="!CustomLogo"
-			alt="Vikunja"
+			alt="Task Tracker"
 			class="logo"
 		/>
 		<img
 			v-show="CustomLogo"
 			:src="CustomLogo"
-			alt="Vikunja"
+			alt="Task Tracker"
 			class="logo"
 		>
 	</div>

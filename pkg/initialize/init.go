@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -19,27 +19,26 @@ package initialize
 import (
 	"time"
 
-	"code.vikunja.io/api/pkg/audit"
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/cron"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/i18n"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/mail"
-	"code.vikunja.io/api/pkg/migration"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth/ldap"
-	"code.vikunja.io/api/pkg/modules/auth/openid"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	migrationHandler "code.vikunja.io/api/pkg/modules/migration/handler"
-	"code.vikunja.io/api/pkg/plugins"
-	_ "code.vikunja.io/api/pkg/plugins/yaegi" // register yaegi plugin loader
-	"code.vikunja.io/api/pkg/red"
-	"code.vikunja.io/api/pkg/user"
-	ws "code.vikunja.io/api/pkg/websocket"
+	"github.com/FerrPOINT/task-tracker/pkg/audit"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/cron"
+	"github.com/FerrPOINT/task-tracker/pkg/db"
+	"github.com/FerrPOINT/task-tracker/pkg/events"
+	"github.com/FerrPOINT/task-tracker/pkg/files"
+	"github.com/FerrPOINT/task-tracker/pkg/i18n"
+	"github.com/FerrPOINT/task-tracker/pkg/license"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/mail"
+	"github.com/FerrPOINT/task-tracker/pkg/migration"
+	"github.com/FerrPOINT/task-tracker/pkg/models"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/auth/ldap"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/auth/openid"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/keyvalue"
+	migrationHandler "github.com/FerrPOINT/task-tracker/pkg/modules/migration/handler"
+	"github.com/FerrPOINT/task-tracker/pkg/plugins"
+	"github.com/FerrPOINT/task-tracker/pkg/red"
+	"github.com/FerrPOINT/task-tracker/pkg/user"
+	ws "github.com/FerrPOINT/task-tracker/pkg/websocket"
 )
 
 // LightInit will only init config, redis, logger but no db connection.

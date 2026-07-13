@@ -14,7 +14,7 @@ docs/themes/
 Run
 dist/
 cover.*
-/vikunja
+/task-tracker
 Test_*
 bin/
 secrets
@@ -27,7 +27,7 @@ pkg/static/templates_vfsdata.go
 files/
 !pkg/files/
 !pkg/web/files/
-vikunja-dump*
+task-tracker-dump*
 vendor/
 os-packages/
 mage_output_file.go

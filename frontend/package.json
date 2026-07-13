@@ -1,18 +1,17 @@
 {
-  "name": "vikunja-frontend",
-  "description": "The todo app to organize your life.",
+  "name": "task-tracker-frontend",
+  "description": "Self-hosted task and kanban board.",
   "private": true,
   "version": "2.3.0",
   "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
-    "url": "https://code.vikunja.io/vikunja"
+    "url": "https://github.com/FerrPOINT/task-tracker"
   },
   "bugs": {
-    "url": "https://code.vikunja.io/vikunja/issues"
+    "url": "https://github.com/FerrPOINT/task-tracker/issues"
   },
-  "homepage": "https://vikunja.io/",
-  "funding": "https://opencollective.com/vikunja",
+  "homepage": "https://github.com/FerrPOINT/task-tracker",
   "packageManager": "pnpm@11.10.0",
   "engines": {
     "node": ">=24.0.0"
@@ -31,7 +30,7 @@
     "serve": "pnpm run dev",
     "preview": "vite preview --port 4173",
     "preview:dev": "vite preview --outDir dist-dev --mode development --port 4173",
-    "preview:vikunja": "../vikunja",
+    "preview:task-tracker": "../task-tracker",
     "build": "vite build && workbox copyLibraries dist/",
     "build:dev": "vite build --mode development --outDir dist-dev/",
     "lint": "eslint 'src/**/*.{js,ts,vue}'",

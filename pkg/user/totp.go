@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -24,11 +24,11 @@ import (
 	"strconv"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/notifications"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/db"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/keyvalue"
+	"github.com/FerrPOINT/task-tracker/pkg/notifications"
 
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
@@ -92,7 +92,7 @@ func EnrollTOTP(s *xorm.Session, user *User) (t *TOTP, err error) {
 	}
 
 	key, err := totp.Generate(totp.GenerateOpts{
-		Issuer:      "Vikunja",
+		Issuer:      "Task Tracker",
 		AccountName: user.Username,
 	})
 	if err != nil {

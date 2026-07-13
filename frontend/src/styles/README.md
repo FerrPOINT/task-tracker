@@ -1,6 +1,6 @@
 # Frontend Styles
 
-This directory contains all global styling for the Vikunja web client. Component-scoped
+This directory contains all global styling for the Task Tracker web client. Component-scoped
 styles live next to their `.vue` file; what lives here is the material every component
 relies on: the Bulma base, the design-token system (CSS custom properties), typography,
 and a handful of cross-cutting theme overrides.
@@ -24,7 +24,7 @@ styles/
 │
 ├── theme/                  Global theme rules — selectors that style the whole app
 │   ├── theme.scss          Base resets, focus-visible ring, .box / .is-fullwidth / etc.
-│   ├── typography.scss     Heading styles using $vikunja-font
+│   ├── typography.scss     Heading styles using $task-tracker-font
 │   ├── navigation.scss     .menu / .menu-list styling used by the sidebar
 │   ├── form.scss           Field / control / button add-on tweaks
 │   ├── scrollbars.scss     Custom scrollbar colors
@@ -66,7 +66,7 @@ css: {
 ```
 
 **Because of that, `common-imports.scss` must produce zero CSS output.** It only defines
-SCSS variables (`$vikunja-font`, `$navbar-height`, `$transition`, …) and imports Bulma's
+SCSS variables (`$task-tracker-font`, `$navbar-height`, `$transition`, …) and imports Bulma's
 utilities partial — pure functions, mixins, and variables with no selectors. If you
 accidentally add a selector here, its rules will be duplicated into every compiled
 stylesheet. The file has a prominent header comment calling this out; keep it that way.
@@ -76,7 +76,7 @@ Add a variable to `common-imports.scss` when you need it available in multiple c
 
 ## Bulma: which variant and why
 
-Vikunja uses [`bulma-css-variables`](https://www.npmjs.com/package/bulma-css-variables), a
+Task Tracker uses [`bulma-css-variables`](https://www.npmjs.com/package/bulma-css-variables), a
 fork of Bulma that emits CSS custom properties (`--primary`, `--text`, `--scheme-main`, …)
 instead of inlining SCSS variables. This is what makes runtime theming (including dark
 mode) possible without recompiling SCSS.
@@ -136,11 +136,11 @@ light-mode `--grey-50` value, and so on down the ladder.
 
 The `--scheme-main`, `--scheme-main-bis`, `--scheme-invert`, … block at the top of
 `colors.scss` mirrors Bulma's own defaults and exists as a workaround for a
-`bulma-css-variables` scoping bug (see [vikunja/frontend#1064][1]). Don't touch those
-lines except to update Bulma. The Vikunja-specific tokens and overrides start below the
-`// Vikunja specific variables` comment.
+`bulma-css-variables` scoping bug (see [task-tracker/frontend#1064][1]). Don't touch those
+lines except to update Bulma. The Task Tracker-specific tokens and overrides start below the
+`// Task Tracker specific variables` comment.
 
-[1]: https://kolaente.dev/vikunja/frontend/issues/1064
+[1]: https://kolaente.dev/task-tracker/frontend/issues/1064
 
 ### Adding a new token
 

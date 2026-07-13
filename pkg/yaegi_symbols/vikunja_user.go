@@ -1,14 +1,14 @@
 package yaegi_symbols
 
 import (
-	"code.vikunja.io/api/pkg/user"
+	"github.com/FerrPOINT/task-tracker/pkg/user"
 	"go/constant"
 	"go/token"
 	"reflect"
 )
 
 func init() {
-	Symbols["code.vikunja.io/api/pkg/user/user"] = map[string]reflect.Value{
+	Symbols["github.com/FerrPOINT/task-tracker/pkg/user/user"] = map[string]reflect.Value{
 		// function, constant and variable definitions
 		"CancelDeletion":                       reflect.ValueOf(user.CancelDeletion),
 		"CheckUserCredentials":                 reflect.ValueOf(user.CheckUserCredentials),

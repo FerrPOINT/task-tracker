@@ -102,7 +102,7 @@ const projects = computed(() => {
 	color: $grey !important;
 	padding: 2px 4px;
 	border-radius: 3px;
-	font-family: $vikunja-font;
+	font-family: $task-tracker-font;
 	background: var(--white-translucent);
 	margin-inline-start: .5rem;
 }

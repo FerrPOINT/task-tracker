@@ -1,9 +1,9 @@
-# Vikunja Web Handler
+# Task Tracker Web Handler
 
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/code.vikunja.io/web)](https://goreportcard.com/report/code.vikunja.io/web)
+[![Go Report Card](https://goreportcard.com/badge/code.task-tracker.io/web)](https://goreportcard.com/report/code.task-tracker.io/web)
 
-> When I started Vikunja, I started like everyone else, by writing a bunch of functions to do the logic and then a bunch of
+> When I started Task Tracker, I started like everyone else, by writing a bunch of functions to do the logic and then a bunch of
 handler functions to parse the request data and call the implemented functions to do the logic and eventually return a dataset.
 After I implemented some functions, I've decided to save me a lot of hassle and put most of that "parse the request and call a 
 processing function"-logic to a general interface to facilitate development and not having to have a lot of similar code all over the place.
@@ -39,7 +39,7 @@ other handler implementations, enabling a lot of flexibility while developing.
 
 ### TODOs
 
-* [x] Improve docs/Merge with the ones of Vikunja
+* [x] Improve docs/Merge with the ones of Task Tracker
 * [x] Description of web.HTTPError
 * [x] Permissions methods should return errors (I know, this will break a lot of existing stuff)
 * [ ] optional Before- and after-{load|update|create} methods which do some preprocessing/after processing like making human-readable names from automatically up counting consts
@@ -47,7 +47,7 @@ other handler implementations, enabling a lot of flexibility while developing.
 
 ## Installation
 
-Using the web handler in your application is pretty straight forward, simply run `go get -u code.vikunja.io/web` and start using it. 
+Using the web handler in your application is pretty straight forward, simply run `go get -u code.task-tracker.io/web` and start using it. 
 
 In order to use the common web handler, the struct must implement the `web.CRUDable` and `web.Permissions` interface.
 
@@ -92,7 +92,7 @@ In that case, it takes the `ID` saved in the struct instance, gets the full list
 All functions should behave like this, if they create or update something, the struct instance they are called on should 
 contain the created/updated struct instance. The only exception is `ReadAll()` which returns an interface. 
 Usually this method returns a slice of results because you cannot make an array of a set type (If you know a 
-way to do this, don't hesitate to [drop me a message](https://vikunja.io/en/contact/)).
+way to do this, don't hesitate to [drop me a message](https://task-tracker.io/en/contact/)).
 
 ## Permissions
 
@@ -242,7 +242,7 @@ type HTTPError struct {
 }
 ```
 
-You can learn more about how exactly custom error types are created in the [vikunja docs](https://vikunja.io/docs/custom-errors/).
+You can learn more about how exactly custom error types are created in the [task-tracker docs](https://task-tracker.io/docs/custom-errors/).
 
 ## How the url param binder works
 

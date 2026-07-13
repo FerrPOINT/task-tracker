@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -29,7 +29,7 @@ import (
 	"time"
 	_ "time/tzdata" // Imports time zone data instead of relying on the os
 
-	"code.vikunja.io/api/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
 
 	"github.com/c2h5oh/datasize"
 	"github.com/spf13/viper"
@@ -239,7 +239,7 @@ const (
 	PluginsDir     Key = `plugins.dir`
 	PluginsLoader  Key = `plugins.loader`
 
-	// LicenseKey gates optional paid features and funds Vikunja's development.
+	// LicenseKey gates optional paid features and funds Task Tracker's development.
 	// See the package comment in pkg/license/license.go before removing.
 	LicenseKey Key = `license.key`
 )
@@ -307,7 +307,7 @@ func (k Key) setDefault(i interface{}) {
 	viper.SetDefault(string(k), i)
 }
 
-// getRootpathLocation determines the default root path for Vikunja data.
+// getRootpathLocation determines the default root path for Task Tracker data.
 // It prefers the current working directory, which respects systemd's
 // WorkingDirectory= setting and is the most intuitive default.
 // Falls back to the binary's directory if Getwd fails.
@@ -578,8 +578,8 @@ func setConfigFromEnv() error {
 		}
 		key, value := keyValue[0], keyValue[1]
 
-		if strings.HasPrefix(key, "VIKUNJA_") {
-			formattedKey := strings.ToLower(strings.TrimPrefix(key, "VIKUNJA_"))
+		if strings.HasPrefix(key, "TASKTRACKER_") {
+			formattedKey := strings.ToLower(strings.TrimPrefix(key, "TASKTRACKER_"))
 			keys := strings.Split(formattedKey, "_")
 			currentMap := configMap
 

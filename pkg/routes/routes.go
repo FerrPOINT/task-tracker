@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -36,7 +36,7 @@
 // @description <!-- ReDoc-Inject: <security-definitions> -->
 // @BasePath /api/v1
 
-// @license.url https://code.vikunja.io/api/src/branch/main/LICENSE
+// @license.url https://github.com/FerrPOINT/task-tracker/src/branch/main/LICENSE
 // @license.name AGPL-3.0-or-later
 
 // @contact.url https://vikunja.io/contact/
@@ -58,35 +58,35 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth/oauth2server"
-	"code.vikunja.io/api/pkg/modules/auth/openid"
-	"code.vikunja.io/api/pkg/modules/background"
-	backgroundHandler "code.vikunja.io/api/pkg/modules/background/handler"
-	"code.vikunja.io/api/pkg/modules/background/unsplash"
-	"code.vikunja.io/api/pkg/modules/background/upload"
-	"code.vikunja.io/api/pkg/modules/migration"
-	csvmigrator "code.vikunja.io/api/pkg/modules/migration/csv"
-	migrationHandler "code.vikunja.io/api/pkg/modules/migration/handler"
-	microsofttodo "code.vikunja.io/api/pkg/modules/migration/microsoft-todo"
-	"code.vikunja.io/api/pkg/modules/migration/ticktick"
-	"code.vikunja.io/api/pkg/modules/migration/todoist"
-	"code.vikunja.io/api/pkg/modules/migration/trello"
-	vikunja_file "code.vikunja.io/api/pkg/modules/migration/vikunja-file"
-	"code.vikunja.io/api/pkg/modules/migration/wekan"
-	"code.vikunja.io/api/pkg/plugins"
-	apiv1 "code.vikunja.io/api/pkg/routes/api/v1"
-	adminapi "code.vikunja.io/api/pkg/routes/api/v1/admin"
-	apiv2 "code.vikunja.io/api/pkg/routes/api/v2"
-	"code.vikunja.io/api/pkg/routes/caldav"
-	"code.vikunja.io/api/pkg/routes/feeds"
-	vmiddleware "code.vikunja.io/api/pkg/routes/middleware"
-	"code.vikunja.io/api/pkg/version"
-	"code.vikunja.io/api/pkg/web/handler"
-	ws "code.vikunja.io/api/pkg/websocket"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/license"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/models"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/auth/oauth2server"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/auth/openid"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/background"
+	backgroundHandler "github.com/FerrPOINT/task-tracker/pkg/modules/background/handler"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/background/unsplash"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/background/upload"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration"
+	csvmigrator "github.com/FerrPOINT/task-tracker/pkg/modules/migration/csv"
+	migrationHandler "github.com/FerrPOINT/task-tracker/pkg/modules/migration/handler"
+	microsofttodo "github.com/FerrPOINT/task-tracker/pkg/modules/migration/microsoft-todo"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration/ticktick"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration/todoist"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration/trello"
+	vikunja_file "github.com/FerrPOINT/task-tracker/pkg/modules/migration/vikunja-file"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration/wekan"
+	"github.com/FerrPOINT/task-tracker/pkg/plugins"
+	apiv1 "github.com/FerrPOINT/task-tracker/pkg/routes/api/v1"
+	adminapi "github.com/FerrPOINT/task-tracker/pkg/routes/api/v1/admin"
+	apiv2 "github.com/FerrPOINT/task-tracker/pkg/routes/api/v2"
+	"github.com/FerrPOINT/task-tracker/pkg/routes/caldav"
+	"github.com/FerrPOINT/task-tracker/pkg/routes/feeds"
+	vmiddleware "github.com/FerrPOINT/task-tracker/pkg/routes/middleware"
+	"github.com/FerrPOINT/task-tracker/pkg/version"
+	"github.com/FerrPOINT/task-tracker/pkg/web/handler"
+	ws "github.com/FerrPOINT/task-tracker/pkg/websocket"
 
 	"github.com/getsentry/sentry-go"
 	"github.com/labstack/echo/v5"

@@ -24,8 +24,8 @@ test.describe('OAuth 2.0 Authorization Flow', () => {
 		// The OAuthAuthorize.vue component reads these and POSTs to the API.
 		const authorizeParams = new URLSearchParams({
 			response_type: 'code',
-			client_id: 'vikunja',
-			redirect_uri: 'vikunja-flutter://callback',
+			client_id: 'task-tracker',
+			redirect_uri: 'task-tracker-flutter://callback',
 			code_challenge: codeChallenge,
 			code_challenge_method: 'S256',
 			state,
@@ -43,7 +43,7 @@ test.describe('OAuth 2.0 Authorization Flow', () => {
 		const redirectHash = decodeURIComponent(new URL(page.url()).hash)
 		expect(redirectHash).toContain('/oauth/authorize')
 		expect(redirectHash).toContain('response_type=code')
-		expect(redirectHash).toContain('client_id=vikunja')
+		expect(redirectHash).toContain('client_id=task-tracker')
 		expect(redirectHash).toContain(`code_challenge=${codeChallenge}`)
 		expect(redirectHash).toContain(`state=${state}`)
 
@@ -64,7 +64,7 @@ test.describe('OAuth 2.0 Authorization Flow', () => {
 		const authorizeResponse = await authorizeResponsePromise
 		const authorizeBody = await authorizeResponse.json()
 		expect(authorizeBody.code).toBeTruthy()
-		expect(authorizeBody.redirect_uri).toBe('vikunja-flutter://callback')
+		expect(authorizeBody.redirect_uri).toBe('task-tracker-flutter://callback')
 		expect(authorizeBody.state).toBe(state)
 
 		const code = authorizeBody.code
@@ -74,8 +74,8 @@ test.describe('OAuth 2.0 Authorization Flow', () => {
 			data: {
 				grant_type: 'authorization_code',
 				code,
-				client_id: 'vikunja',
-				redirect_uri: 'vikunja-flutter://callback',
+				client_id: 'task-tracker',
+				redirect_uri: 'task-tracker-flutter://callback',
 				code_verifier: codeVerifier,
 			},
 		})
@@ -89,7 +89,7 @@ test.describe('OAuth 2.0 Authorization Flow', () => {
 	})
 
 	// The primary #2654 scenario: the native client opened a different default browser that is
-	// already signed in to Vikunja. Opening the copied /login#redirect=<oauth.authorize> URL must
+	// already signed in to Task Tracker. Opening the copied /login#redirect=<oauth.authorize> URL must
 	// run the OAuth flow with the existing session instead of short-circuiting to home.
 	test('Already-authenticated browser opening the copied login redirect runs the authorize flow', async ({authenticatedPage, apiContext, currentUser}) => {
 		const page = authenticatedPage
@@ -100,8 +100,8 @@ test.describe('OAuth 2.0 Authorization Flow', () => {
 
 		const authorizeParams = new URLSearchParams({
 			response_type: 'code',
-			client_id: 'vikunja',
-			redirect_uri: 'vikunja-flutter://callback',
+			client_id: 'task-tracker',
+			redirect_uri: 'task-tracker-flutter://callback',
 			code_challenge: codeChallenge,
 			code_challenge_method: 'S256',
 			state,
@@ -125,7 +125,7 @@ test.describe('OAuth 2.0 Authorization Flow', () => {
 		const landed = new URL(page.url())
 		expect(landed.pathname).toBe('/oauth/authorize')
 		expect(landed.searchParams.get('response_type')).toBe('code')
-		expect(landed.searchParams.get('client_id')).toBe('vikunja')
+		expect(landed.searchParams.get('client_id')).toBe('task-tracker')
 		expect(landed.searchParams.get('code_challenge')).toBe(codeChallenge)
 		expect(landed.searchParams.get('state')).toBe(state)
 
@@ -133,15 +133,15 @@ test.describe('OAuth 2.0 Authorization Flow', () => {
 		const authorizeResponse = await authorizeResponsePromise
 		const authorizeBody = await authorizeResponse.json()
 		expect(authorizeBody.code).toBeTruthy()
-		expect(authorizeBody.redirect_uri).toBe('vikunja-flutter://callback')
+		expect(authorizeBody.redirect_uri).toBe('task-tracker-flutter://callback')
 		expect(authorizeBody.state).toBe(state)
 
 		const tokenResponse = await apiContext.post('oauth/token', {
 			data: {
 				grant_type: 'authorization_code',
 				code: authorizeBody.code,
-				client_id: 'vikunja',
-				redirect_uri: 'vikunja-flutter://callback',
+				client_id: 'task-tracker',
+				redirect_uri: 'task-tracker-flutter://callback',
 				code_verifier: codeVerifier,
 			},
 		})

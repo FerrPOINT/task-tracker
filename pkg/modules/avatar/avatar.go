@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -22,17 +22,17 @@ import (
 	"io"
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/avatar/botmarble"
-	"code.vikunja.io/api/pkg/modules/avatar/empty"
-	"code.vikunja.io/api/pkg/modules/avatar/gravatar"
-	"code.vikunja.io/api/pkg/modules/avatar/initials"
-	"code.vikunja.io/api/pkg/modules/avatar/ldap"
-	"code.vikunja.io/api/pkg/modules/avatar/marble"
-	"code.vikunja.io/api/pkg/modules/avatar/openid"
-	"code.vikunja.io/api/pkg/modules/avatar/upload"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/avatar/botmarble"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/avatar/empty"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/avatar/gravatar"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/avatar/initials"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/avatar/ldap"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/avatar/marble"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/avatar/openid"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/avatar/upload"
+	"github.com/FerrPOINT/task-tracker/pkg/user"
 
 	"github.com/gabriel-vasile/mimetype"
 	"xorm.io/xorm"

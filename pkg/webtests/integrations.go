@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -25,19 +25,19 @@ import (
 	"strings"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/files"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/modules/auth"
-	"code.vikunja.io/api/pkg/modules/keyvalue"
-	"code.vikunja.io/api/pkg/routes"
-	"code.vikunja.io/api/pkg/routes/caldav"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/web"
-	"code.vikunja.io/api/pkg/web/handler"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/db"
+	"github.com/FerrPOINT/task-tracker/pkg/events"
+	"github.com/FerrPOINT/task-tracker/pkg/files"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/models"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/auth"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/keyvalue"
+	"github.com/FerrPOINT/task-tracker/pkg/routes"
+	"github.com/FerrPOINT/task-tracker/pkg/routes/caldav"
+	"github.com/FerrPOINT/task-tracker/pkg/user"
+	"github.com/FerrPOINT/task-tracker/pkg/web"
+	"github.com/FerrPOINT/task-tracker/pkg/web/handler"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v5"
