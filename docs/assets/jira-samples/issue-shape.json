@@ -1,0 +1,98 @@
+{
+  "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+  "id": "100001",
+  "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/issue/100001",
+  "key": "PROJ-1",
+  "fields": {
+    "summary": "[REDACTED]",
+    "status": {
+      "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/status/10000",
+      "description": "[REDACTED]",
+      "iconUrl": "https://[REDACTED-JIRA-INSTANCE]/images/icons/statuses/open.png",
+      "name": "To Do",
+      "id": "10000",
+      "statusCategory": {
+        "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/statuscategory/2",
+        "id": 2,
+        "key": "new",
+        "colorName": "blue-gray",
+        "name": "To Do"
+      }
+    },
+    "priority": {
+      "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/priority/3",
+      "iconUrl": "https://[REDACTED-JIRA-INSTANCE]/images/icons/priorities/medium.png",
+      "name": "Medium",
+      "id": "3"
+    },
+    "issuetype": {
+      "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/issuetype/10001",
+      "id": "10001",
+      "description": "A small, distinct piece of work.",
+      "iconUrl": "https://[REDACTED-JIRA-INSTANCE]/images/icons/issuetypes/task.png",
+      "name": "Task",
+      "subtask": false,
+      "avatarId": 10001
+    },
+    "assignee": {
+      "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/user?accountId=[REDACTED]",
+      "accountId": "[REDACTED]",
+      "avatarUrls": {},
+      "displayName": "[REDACTED]",
+      "active": true
+    },
+    "reporter": {
+      "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/user?accountId=[REDACTED]",
+      "accountId": "[DACTED]",
+      "displayName": "[REDACTED]",
+      "active": true
+    },
+    "labels": ["sample", "template"],
+    "components": [{"id": "10000", "name": "Backend"}],
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [{"type": "paragraph", "content": [{"type": "text", "text": "[REDACTED]"}]}]
+    },
+    "created": "2026-01-01T00:00:00.000+0000",
+    "updated": "2026-01-01T00:00:00.000+0000",
+    "comment": {
+      "comments": [],
+      "maxResults": 0,
+      "total": 0,
+      "startAt": 0
+    },
+    "attachment": [],
+    "issuelinks": [],
+    "subtasks": [],
+    "worklog": {
+      "startAt": 0,
+      "maxResults": 20,
+      "total": 0,
+      "worklogs": []
+    },
+    "timetracking": {
+      "originalEstimate": "1h",
+      "remainingEstimate": "30m",
+      "timeSpent": "30m"
+    },
+    "fixVersions": [{"id": "10000", "name": "1.0.0", "released": false, "archived": false}],
+    "versions": [{"id": "10000", "name": "1.0.0", "released": false, "archived": false}],
+    "watches": {
+      "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/issue/PROJ-1/watchers",
+      "watchCount": 1,
+      "isWatching": false
+    },
+    "votes": {
+      "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/issue/PROJ-1/votes",
+      "votes": 0,
+      "hasVoted": false
+    }
+  },
+  "changelog": {
+    "startAt": 0,
+    "maxResults": 20,
+    "total": 0,
+    "histories": []
+  }
+}

@@ -86,10 +86,30 @@ task-tracker/
     │   └── ui-mockups/
     │       ├── issue-detail.html
     │       ├── kanban-board.html
-    │       └── project-list.html
+    ├── UI_UX.md
+    ├── DESIGN_TOKENS.md
+    ├── REACT_STYLING.md
+    ├── UI_LIBRARIES.md
+    ├── PROJECT_ADMIN.md
+    ├── SYSTEM_ADMIN.md
+    ├── NOTIFICATIONS.md
+    ├── REPORTS.md
+    ├── CLI.md
+    ├── AGENTS.md
     ├── LIBRARIES.md
     ├── PERFORMANCE.md
-    └── TESTING.md
+    ├── TESTING.md
+    ├── JIRA_UI_CAPTURE.md
+    ├── VIKUNJA_GAP_ANALYSIS.md
+    └── assets/
+        ├── ui-mockups/
+        │   ├── issue-detail.html
+        │   ├── kanban-board.html
+        │   └── project-list.html
+        └── jira-samples/
+            ├── issue-shape.json
+            ├── custom-field-shape.json
+            └── board-config-shape.json
 ```
 
 ## 4. Backend: чёткие слои
@@ -291,7 +311,17 @@ let app = Router::new()
 - JQL grammar, operators, functions, примеры — в `docs/JQL.md`.
 - User stories / use cases — в `docs/USER_STORIES.md`.
 - UI/UX specification, компоненты, роуты, макеты — в `docs/UI_UX.md`.
-- Визуальные мокапы: `docs/assets/ui-mockups/` (issue-detail.html, kanban-board.html, project-list.html).
+- Design tokens и CSS variables — в `docs/DESIGN_TOKENS.md`.
+- React styling guide и шаблонизация стилей — в `docs/REACT_STYLING.md`.
+- Frontend UI/UX libraries — в `docs/UI_LIBRARIES.md`.
+- Project administration — в `docs/PROJECT_ADMIN.md`.
+- System administration — в `docs/SYSTEM_ADMIN.md`.
+- Notifications — в `docs/NOTIFICATIONS.md`.
+- Reports — в `docs/REPORTS.md`.
+- CLI spec — в `docs/CLI.md`.
+- Правила работы агентов — в `docs/AGENTS.md`.
+- Визуальные мокапы: `docs/assets/ui-mockups/`.
+- Обезличенные структурные примеры Jira: `docs/assets/jira-samples/`.
 
 ## 12. Тестирование
 

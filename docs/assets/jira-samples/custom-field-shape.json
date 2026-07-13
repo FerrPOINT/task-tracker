@@ -1,0 +1,16 @@
+{
+  "id": 10000,
+  "self": "https://[REDACTED-JIRA-INSTANCE]/rest/api/2/field/10000",
+  "name": "Epic Link",
+  "schema": {
+    "type": "any",
+    "custom": "com.pyxis.greenhopper.jira:gh-epic-link",
+    "customId": 10000
+  },
+  "description": "Choose an epic to assign this issue to.",
+  "key": "customfield_10000",
+  "custom": true,
+  "navigable": true,
+  "searchable": true,
+  "clauseNames": ["cf[10000]", "Epic Link"]
+}

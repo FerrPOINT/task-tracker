@@ -81,11 +81,43 @@ Refresh token — httpOnly cookie.
 
 ### POST /auth/refresh
 
-Refresh из cookie. Возвращает новый access token.
+Refresh из `httpOnly` cookie. Возвращает новый access token и обновляет refresh cookie.
+
+**Response 200:**
+```json
+{
+  "accessToken": "jwt",
+  "expiresIn": 900,
+  "tokenType": "Bearer"
+}
+```
 
 ### POST /auth/logout
 
-Инвалидирует refresh token.
+Инвалидирует refresh token и очищает cookie.
+
+**Response 204:** No content.
+
+## Auth Flow
+
+```
+Client                          Server
+  |                               |
+  |--- POST /auth/login --------->|
+  |                               | argon2id verify
+  |<-- accessToken + Set-Cookie --|
+  |                               |
+  |--- GET /api/v1/... Bearer --->|
+  |<-- 401 expired                |
+  |                               |
+  |--- POST /auth/refresh Cookie->|
+  |<-- new accessToken + cookie --|
+```
+
+- Access token TTL: 15 минут.
+- Refresh token TTL: 7 дней.
+- Refresh cookie: `httpOnly`, `Secure`, `SameSite=Lax`, path `/api/v1/auth`.
+- Access token хранится в memory; не в localStorage.
 
 ### POST /auth/forgot-password
 
@@ -743,26 +775,184 @@ Query: `?actorId=uuid&entityType=issue&from=...&to=...`
 
 ### Subscribe
 
+После установления соединения клиент отправляет сообщение с подпиской:
+
 ```json
 {
   "type": "subscribe",
-  "topics": ["project:uuid", "board:uuid", "user:uuid:notifications"]
+  "topics": ["project:{project_id}", "board:{board_id}", "user:{user_id}:notifications", "issue:{issue_id}"]
+}
+```
+
+Ответ подтверждения:
+
+```json
+{
+  "type": "subscribed",
+  "topics": ["project:{project_id}", "board:{board_id}", "user:{user_id}:notifications", "issue:{issue_id}"]
+}
+```
+
+### Отписка
+
+```json
+{
+  "type": "unsubscribe",
+  "topics": ["board:{board_id}"]
+}
+```
+
+### Heartbeat
+
+```json
+{
+  "type": "ping",
+  "timestamp": "2026-07-13T12:00:00Z"
+}
+```
+
+Сервер отвечает:
+
+```json
+{
+  "type": "pong",
+  "timestamp": "2026-07-13T12:00:00Z"
 }
 ```
 
 ### События от сервера
 
+#### issue_created
 ```json
 {
-  "type": "issue_updated",
-  "topic": "project:uuid",
+  "type": "issue_created",
+  "topic": "project:{project_id}",
   "payload": {
-    "issueId": "uuid",
-    "changedFields": ["status", "assignee"],
-    "newStatus": { "id": "uuid", "name": "In Progress" }
+    "id": "uuid",
+    "key": "PROJ-123",
+    "summary": "[REDACTED]",
+    "projectId": "uuid",
+    "issueType": { "id": "uuid", "name": "Task" },
+    "status": { "id": "uuid", "name": "To Do" },
+    "priority": { "id": "uuid", "name": "Medium" },
+    "assigneeId": "uuid",
+    "reporterId": "uuid",
+    "createdAt": "2026-07-13T12:00:00Z"
   }
 }
 ```
+
+#### issue_updated
+```json
+{
+  "type": "issue_updated",
+  "topic": "issue:{issue_id}",
+  "payload": {
+    "id": "uuid",
+    "key": "PROJ-123",
+    "changedFields": ["status", "assignee"],
+    "changelog": [
+      { "field": "status", "from": "To Do", "to": "In Progress", "actorId": "uuid", "at": "2026-07-13T12:00:00Z" },
+      { "field": "assignee", "from": "uuid", "to": "uuid", "actorId": "uuid", "at": "2026-07-13T12:00:01Z" }
+    ]
+  }
+}
+```
+
+#### issue_deleted
+```json
+{
+  "type": "issue_deleted",
+  "topic": "project:{project_id}",
+  "payload": { "id": "uuid", "key": "PROJ-123" }
+}
+```
+
+#### issue_commented
+```json
+{
+  "type": "issue_commented",
+  "topic": "issue:{issue_id}",
+  "payload": {
+    "commentId": "uuid",
+    "issueId": "uuid",
+    "issueKey": "PROJ-123",
+    "authorId": "uuid",
+    "body": "[REDACTED]",
+    "createdAt": "2026-07-13T12:00:00Z"
+  }
+}
+```
+
+#### board_updated
+```json
+{
+  "type": "board_updated",
+  "topic": "board:{board_id}",
+  "payload": {
+    "boardId": "uuid",
+    "changed": ["columns", "wip_limits"],
+    "byUserId": "uuid"
+  }
+}
+```
+
+#### sprint_started / sprint_completed
+```json
+{
+  "type": "sprint_started",
+  "topic": "project:{project_id}",
+  "payload": {
+    "sprintId": "uuid",
+    "name": "Sprint 8",
+    "startDate": "2026-07-13",
+    "endDate": "2026-07-27"
+  }
+}
+```
+
+#### notification
+```json
+{
+  "type": "notification",
+  "topic": "user:{user_id}:notifications",
+  "payload": {
+    "notificationId": "uuid",
+    "event": "issue_assigned",
+    "title": "Задача PROJ-123 назначена вам",
+    "body": "...",
+    "link": "/issues/PROJ-123",
+    "read": false,
+    "createdAt": "2026-07-13T12:00:00Z"
+  }
+}
+```
+
+### Ошибки WebSocket
+
+```json
+{
+  "type": "error",
+  "code": "AUTH_REQUIRED",
+  "message": "Access token missing or expired"
+}
+```
+
+Коды ошибок:
+
+| Код | Описание |
+|-----|----------|
+| `AUTH_REQUIRED` | Токен отсутствует/истёк |
+| `TOPIC_NOT_FOUND` | Топик не существует или нет доступа |
+| `RATE_LIMITED` | Слишком много сообщений |
+| `INVALID_MESSAGE` | Невалидный формат сообщения |
+
+### Client-Side Handling
+
+- Подключение к `/ws/v1/connect` с access token в query `?token=...` или header `Authorization: Bearer`.
+- Автоматическое переподключение с exponential backoff (max 30s).
+- Повторная подписка на сохранённые топики после reconnect.
+- `ping` каждые 30 секунд для keepalive.
 
 ---
 

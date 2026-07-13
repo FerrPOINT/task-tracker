@@ -1,0 +1,62 @@
+{
+  "id": 10,
+  "self": "https://[REDACTED-JIRA-INSTANCE]/rest/agile/1.0/board/10",
+  "name": "[BOARD-10]",
+  "type": "scrum",
+  "location": {
+    "type": "project",
+    "key": "PROJ",
+    "id": "10000",
+    "name": "[PROJECT-10000]"
+  },
+  "sprintSupportEnabled": true,
+  "columns": {
+    "maxResults": 50,
+    "total": 4,
+    "values": [
+      {
+        "name": "To Do",
+        "mappedStatuses": [
+          {"id": "10000", "name": "To Do", "statusCategory": "To Do"}
+        ],
+        "min": 0,
+        "max": null
+      },
+      {
+        "name": "In Progress",
+        "mappedStatuses": [
+          {"id": "10001", "name": "In Progress", "statusCategory": "In Progress"}
+        ],
+        "min": 0,
+        "max": null
+      },
+      {
+        "name": "Review",
+        "mappedStatuses": [
+          {"id": "10002", "name": "Review", "statusCategory": "In Progress"},
+          {"id": "10003", "name": "Ready for Testing", "statusCategory": "In Progress"}
+        ],
+        "min": 0,
+        "max": 5
+      },
+      {
+        "name": "Done",
+        "mappedStatuses": [
+          {"id": "10004", "name": "Done", "statusCategory": "Done"}
+        ],
+        "min": 0,
+        "max": null
+      }
+    ]
+  },
+  "estimation": {
+    "type": "field",
+    "field": {
+      "fieldId": "customfield_10016",
+      "displayName": "Story Points"
+    }
+  },
+  "swimlaneStrategy": {
+    "type": "assignee"
+  }
+}
