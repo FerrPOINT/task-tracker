@@ -174,3 +174,8 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 - Не логировать персональные данные.
 - Не логировать пароли, токены, cookies.
 - Маскировать email в логах.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/DEPLOYMENT.md`
+- `docs/PERFORMANCE.md`

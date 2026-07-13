@@ -163,3 +163,8 @@ fn signed_url(&self, key: &str, expires_in: Duration) -> String
 - S3 bucket с versioning + lifecycle policy.
 - Filesystem — rsync к backup volume.
 - Restore: sync из backup + проверка consistency с `attachments` таблицей.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/DATA_MODEL.md`
+- `docs/SECURITY.md`

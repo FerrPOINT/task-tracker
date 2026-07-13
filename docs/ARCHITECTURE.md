@@ -376,6 +376,15 @@ let app = Router::new()
 - ADR — `docs/ADR.md`.
 - Security — `docs/SECURITY.md`.
 - Monitoring — `docs/MONITORING.md`.
+- Roadmap — `docs/ROADMAP.md`.
+- Database indexes — `docs/DATABASE_INDEXES.md`.
+- Glossary — `docs/GLOSSARY.md`.
+- API versioning — `docs/API_VERSIONING.md`.
+- WebSocket events — `docs/WEBSOCKET_EVENTS.md`.
+- Event catalog — `docs/EVENTS.md`.
+- Operations runbook — `docs/OPS_RUNBOOK.md`.
+- Release process — `docs/RELEASE.md`.
+- Onboarding — `docs/ONBOARDING.md`.
 - UI mockups — `docs/assets/ui-mockups/`.
 - Jira structural samples — `docs/assets/jira-samples/`.
 
@@ -395,3 +404,9 @@ let app = Router::new()
 
 Подробнее в `docs/MONITORING.md`.
 
+## References
+
+- `README.md`
+- `docs/TZ.md`
+- `docs/ROADMAP.md`
+- `docs/CONTRIBUTING.md`

@@ -184,3 +184,8 @@ task-tracker completions bash > /etc/bash_completion.d/task-tracker
 task-tracker completions zsh > /usr/local/share/zsh/site-functions/_task-tracker
 task-tracker completions fish > ~/.config/fish/completions/task-tracker.fish
 ```
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/API.md`
+- `docs/DEPLOYMENT.md`

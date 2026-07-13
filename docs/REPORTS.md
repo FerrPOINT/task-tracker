@@ -177,3 +177,8 @@
 - `recharts` — графики.
 - `@tanstack/react-table` — табличные отчёты.
 - `date-fns` — date math.
+## References
+
+- `docs/PROJECT_ADMIN.md`
+- `docs/DATA_MODEL.md`
+- `docs/USER_STORIES.md`

@@ -300,3 +300,8 @@ doc-markdown = true
 - Semantic HTML.
 - ARIA labels where text label отсутствует.
 - Color contrast ≥ 4.5:1.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/AGENTS.md`
+- `docs/TESTING.md`

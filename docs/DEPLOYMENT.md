@@ -180,31 +180,39 @@ TASKTRACKER_LOG_LEVEL=info
 TASKTRACKER_DB_USER=tasktracker
 TASKTRACKER_DB_PASSWORD=change_me_in_production
 TASKTRACKER_DB_NAME=tasktracker
-TASKTRACKER_DATABASE_URL=postgres://tasktracker:change_me_in_production@postgres:5432/tasktracker
+TASKTRACKER_DATABASE_URL=postgres://tasktracker:${TASKTRACKER_DB_PASSWORD}@postgres:5432/tasktracker
 
 # Redis
-TASKTRACKER_REDIS_URL=redis://redis:6379
+TASKTRACKER_REDIS_URL=redis://redis:redis_password@redis:6379
 
-# Security
-TASKTRACKER_JWT_SECRET=generate_random_32_bytes
-TASKTRACKER_REFRESH_SECRET=generate_different_random_32_bytes
+# Auth
+TASKTRACKER_JWT_SECRET=change_me_in_production_32bytes_min
+TASKTRACKER_REFRESH_SECRET=change_me_in_production_32bytes_min
+TASKTRACKER_ADMIN_EMAIL=admin@example.com
+TASKTRACKER_ADMIN_PASSWORD=change_me_in_production
+
+# Argon2id
 TASKTRACKER_ARGON2_MEMORY_COST=65536
 TASKTRACKER_ARGON2_TIME_COST=3
+
+# CORS
+TASKTRACKER_CORS_ALLOWED_ORIGINS=http://localhost:19876,http://127.0.0.1:19876
 
 # SMTP (optional)
 TASKTRACKER_SMTP_HOST=
 TASKTRACKER_SMTP_PORT=587
 TASKTRACKER_SMTP_USERNAME=
-TASKTRACKER_SMTP_PASSWORD=
+TASKTRACKER_SMTP_PASSWORD=***
 TASKTRACKER_SMTP_FROM_ADDRESS=noreply@example.com
 
 # File storage
 TASKTRACKER_FILE_STORAGE_BACKEND=filesystem
 TASKTRACKER_FILE_STORAGE_PATH=/data/attachments
-# TASKTRACKER_S3_ENDPOINT=
-# TASKTRACKER_S3_BUCKET=
-# TASKTRACKER_S3_ACCESS_KEY=
-# TASKTRACKER_S3_SECRET_KEY=
+# TASKTRACKER_FILE_STORAGE_ENDPOINT=
+# TASKTRACKER_FILE_STORAGE_BUCKET=
+# TASKTRACKER_FILE_STORAGE_ACCESS_KEY=
+# TASKTRACKER_FILE_STORAGE_SECRET_KEY=
+# TASKTRACKER_FILE_STORAGE_REGION=
 
 # Frontend
 VITE_API_URL=/api/v1
@@ -340,3 +348,9 @@ server {
 | local | `docker-compose.yml` + `docker-compose.override.yml` |
 | staging | `docker-compose.yml` + `docker-compose.staging.yml` |
 | production | `docker-compose.yml` + `docker-compose.prod.yml` |
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/SECURITY.md`
+- `docs/MONITORING.md`
+- `docs/MIGRATIONS.md`

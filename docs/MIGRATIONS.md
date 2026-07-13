@@ -191,3 +191,8 @@ migrate:
 | test | fresh DB + all migrations перед каждым прогоном |
 | staging | same as production |
 | production | separate migrator job, migrations before app deploy |
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/DATA_MODEL.md`
+- `docs/DEPLOYMENT.md`

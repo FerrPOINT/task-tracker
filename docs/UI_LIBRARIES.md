@@ -244,3 +244,7 @@
 - Не используем `@atlaskit/*` — это проприетарные компоненты Atlassian.
 - Для accessibility полагаемся на Radix (под капотом shadcn) и `@dnd-kit` (keyboard/sensor support).
 - Анимации drag-and-drop — через CSS transforms + `@dnd-kit`.
+## References
+
+- `docs/FRONTEND_ARCHITECTURE.md`
+- `docs/REACT_STYLING.md`

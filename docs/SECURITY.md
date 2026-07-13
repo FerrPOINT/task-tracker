@@ -158,3 +158,8 @@ Content-Security-Policy: ...
 - `docs/SYSTEM_ADMIN.md` — users/groups/permissions.
 - `docs/STORAGE.md` — attachment security.
 - `docs/ERROR_HANDLING.md` — error disclosure.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/DEPLOYMENT.md`
+- `docs/API.md`

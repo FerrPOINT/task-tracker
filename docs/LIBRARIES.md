@@ -367,3 +367,7 @@ rstest = "0.25.0"
 - **Infra:** Docker Compose, PostgreSQL 17.6, Redis 8.0, MinIO, Prometheus/Grafana.
 
 Этот набор покрывает все слои Controller → Mapper → Service → Repository + realtime, кэш, очереди, метрики, тесты.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/FRONTEND_ARCHITECTURE.md`

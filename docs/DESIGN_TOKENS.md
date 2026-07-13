@@ -253,3 +253,8 @@ export const theme = {
 ```
 
 По умолчанию тема `dark`. Переключение через `document.documentElement.classList.add('dark')`.
+## References
+
+- `docs/REACT_STYLING.md`
+- `docs/UI_UX.md`
+- `docs/FRONTEND_ARCHITECTURE.md`

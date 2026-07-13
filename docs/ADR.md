@@ -63,3 +63,7 @@ Positive and negative.
 - Keep ADRs concise (1-2 pages).
 - Link to related docs.
 - Russian or English? English for consistency with code/docs codebase.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/CONTRIBUTING.md`

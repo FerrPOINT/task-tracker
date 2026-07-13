@@ -248,3 +248,7 @@ const AdminPage = lazy(() => import("@/pages/admin"))
 - Unknown API routes → 404 JSON.
 - Project not found → 404 page с сообщением.
 - Issue not found → 404 page.
+## References
+
+- `docs/FRONTEND_ARCHITECTURE.md`
+- `docs/UI_UX.md`

@@ -298,3 +298,8 @@ frontend/src/
 └── lib/
     └── utils.ts            # cn() helper
 ```
+## References
+
+- `docs/DESIGN_TOKENS.md`
+- `docs/FRONTEND_ARCHITECTURE.md`
+- `docs/UI_LIBRARIES.md`

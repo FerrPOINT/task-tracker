@@ -221,3 +221,8 @@ Draft → Pending Approval → Approved / Rejected
 - При изменении active workflow создаётся draft, который нужно опубликовать.
 - Переход должен вести к статусу, входящему в workflow.
 - Запрещены переходы, приводящие к бесконечному циклу (проверка DAG при сохранении).
+## References
+
+- `docs/DATA_MODEL.md`
+- `docs/PROJECT_ADMIN.md`
+- `docs/API.md`

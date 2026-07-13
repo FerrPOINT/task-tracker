@@ -1,5 +1,9 @@
 # API v1 Specification — Task Tracker
 
+## Overview
+
+REST API первой версии Task Tracker. Все endpoint возвращают JSON и используют единую модель пагинации, ошибок и webhook-событий. WebSocket live-updates описаны в разделе 7.
+
 ## Базовая информация
 
 - Base URL: `https://{host}:19876/api/v1`
@@ -1001,3 +1005,13 @@ Hard delete.
 | 422 | Business rule violation (workflow) |
 | 429 | Rate limit |
 | 500 | Internal error |
+## 11. References
+
+- `docs/ARCHITECTURE.md` — общая архитектура backend/frontend.
+- `docs/ERROR_HANDLING.md` — формат ошибок и retry-политика.
+- `docs/AUTH.md` — подробная спецификация аутентификации (при наличии).
+- `docs/DATA_MODEL.md` — структура базы данных.
+- `docs/JQL.md` — синтаксис поиска.
+- `docs/WORKFLOW.md` — workflow engine.
+- `docs/NOTIFICATIONS.md` — события и шаблоны уведомлений.
+- `docs/SECURITY.md` — headers, CORS, CSRF.

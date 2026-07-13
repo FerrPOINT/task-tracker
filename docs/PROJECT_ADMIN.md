@@ -262,3 +262,8 @@ columns:
 
 - CSV import с маппингом колонок.
 - JSON restore (только для System Admin).
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/DATA_MODEL.md`
+- `docs/WORKFLOW.md`

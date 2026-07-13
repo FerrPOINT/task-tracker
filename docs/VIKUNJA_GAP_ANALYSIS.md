@@ -179,3 +179,7 @@ task-tracker-next (по документам) — более Jira-oriented:
 **task-tracker-next сейчас не может запускаться и не имеет кода.** У Vikunja есть полный production-ready код для todo/kanban-функционала, но он на Go/Vue и сильно отличается от желаемого Rust/React Jira-like стека.
 
 Для запуска и работы проектов/задач в task-tracker-next нужно с нуля реализовать backend/frontend/инфраструктуру. Стартовать стоит с Phase 1–4 (инфраструктура, auth, проекты, задачи, kanban) — это даст минимально рабочий продукт.
+## References
+
+- `docs/TZ.md`
+- `docs/ARCHITECTURE.md`

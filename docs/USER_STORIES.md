@@ -151,3 +151,8 @@ graph LR
 | UC-8 | GET /projects/{id}/roadmap |
 | UC-9 | POST /projects/{id}/versions, PUT /versions/{id}/release |
 | UC-10 | DELETE /issues/{id} (soft), GET /trash, POST /trash/{id}/restore |
+## References
+
+- `docs/TZ.md`
+- `docs/UI_UX.md`
+- `docs/PROJECT_ADMIN.md`
