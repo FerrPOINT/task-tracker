@@ -7,7 +7,7 @@ Self-hosted таск-трекер, аналог Jira. Backend — Rust, frontend
 - `backend/` — Rust workspace (Axum + SeaORM + PostgreSQL)
 - `frontend/` — React 19 + Vite 6
 - `cli/` — CLI-утилита (Rust)
-- `docs/` — архитектура, ТЗ, дата-модель, API, workflow, JQL, user stories, UI/UX, frontend-библиотеки, design tokens, React styling guide, project admin, system admin, notifications, reports, CLI spec, AGENTS.md, производительность, тестирование, библиотеки, отчёт по Vikunja, Jira structural samples
+- `docs/` — архитектура, ТЗ, дата-модель, API, workflow, JQL, user stories, UI/UX, frontend-библиотеки, design tokens, React styling guide, frontend architecture, project admin, system admin, notifications, reports, CLI spec, AGENTS.md, deployment, migrations, file storage, caching, routing, error handling, i18n, code style, ADR, производительность, тестирование, библиотеки, отчёт по Vikunja, Jira structural samples
 
 ## Документы
 
@@ -22,12 +22,22 @@ Self-hosted таск-трекер, аналог Jira. Backend — Rust, frontend
 - [Frontend UI/UX Libraries](docs/UI_LIBRARIES.md)
 - [Design Tokens](docs/DESIGN_TOKENS.md)
 - [React Styling Guide](docs/REACT_STYLING.md)
+- [Frontend Architecture](docs/FRONTEND_ARCHITECTURE.md)
 - [Project Admin](docs/PROJECT_ADMIN.md)
 - [System Admin](docs/SYSTEM_ADMIN.md)
 - [Notifications](docs/NOTIFICATIONS.md)
 - [Reports](docs/REPORTS.md)
 - [CLI Spec](docs/CLI.md)
 - [AGENTS.md](docs/AGENTS.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Migrations](docs/MIGRATIONS.md)
+- [File Storage](docs/STORAGE.md)
+- [Caching](docs/CACHING.md)
+- [Routing](docs/ROUTING.md)
+- [Error Handling](docs/ERROR_HANDLING.md)
+- [i18n](docs/I18N.md)
+- [Code Style](docs/CODE_STYLE.md)
+- [ADR](docs/ADR.md)
 - [Производительность](docs/PERFORMANCE.md)
 - [Тестирование](docs/TESTING.md)
 - [Библиотеки](docs/LIBRARIES.md)

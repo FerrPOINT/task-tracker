@@ -79,30 +79,40 @@ task-tracker/
     ├── DATA_MODEL.md
     ├── API.md
     ├── WORKFLOW.md
+    ├── ARCHITECTURE.md
+    ├── TZ.md
+    ├── DATA_MODEL.md
+    ├── API.md
+    ├── WORKFLOW.md
     ├── JQL.md
     ├── USER_STORIES.md
-    ├── UI_UX.md
-    ├── assets/
-    │   └── ui-mockups/
-    │       ├── issue-detail.html
-    │       ├── kanban-board.html
     ├── UI_UX.md
     ├── DESIGN_TOKENS.md
     ├── REACT_STYLING.md
     ├── UI_LIBRARIES.md
+    ├── FRONTEND_ARCHITECTURE.md
     ├── PROJECT_ADMIN.md
     ├── SYSTEM_ADMIN.md
     ├── NOTIFICATIONS.md
     ├── REPORTS.md
     ├── CLI.md
     ├── AGENTS.md
+    ├── DEPLOYMENT.md
+    ├── MIGRATIONS.md
+    ├── STORAGE.md
+    ├── CACHING.md
+    ├── ROUTING.md
+    ├── ERROR_HANDLING.md
+    ├── I18N.md
+    ├── CODE_STYLE.md
+    ├── ADR.md
     ├── LIBRARIES.md
     ├── PERFORMANCE.md
     ├── TESTING.md
     ├── JIRA_UI_CAPTURE.md
     ├── VIKUNJA_GAP_ANALYSIS.md
     └── assets/
-        ├── ui-mockups/
+
         │   ├── issue-detail.html
         │   ├── kanban-board.html
         │   └── project-list.html
@@ -298,31 +308,38 @@ let app = Router::new()
 - **CORS**: строгий whitelist
 - **CSP**: через reverse proxy
 
-## 9. API
+## 9. API, Workflow, JQL, UI, Deployment, and Operations
 
-- **REST**: основной протокол, спецификация в `docs/API.md`
-- **OpenAPI**: генерируется из axum-роутов через `utoipa-axum`
-- **WebSocket**: live updates kanban / issue page, топики в `docs/API.md`
-- **Real-time**: redis pub/sub + WS broadcast
+- REST API specification — `docs/API.md`.
+- OpenAPI generation — `utoipa-axum`.
+- WebSocket — live updates kanban / issue page, payloads в `docs/API.md`.
+- Real-time — redis pub/sub + WS broadcast.
+- Workflow engine — `docs/WORKFLOW.md`.
+- JQL grammar — `docs/JQL.md`.
+- User stories — `docs/USER_STORIES.md`.
+- UI/UX specification — `docs/UI_UX.md`.
+- Frontend architecture — `docs/FRONTEND_ARCHITECTURE.md`.
+- Design tokens — `docs/DESIGN_TOKENS.md`.
+- React styling guide — `docs/REACT_STYLING.md`.
+- Frontend libraries — `docs/UI_LIBRARIES.md`.
+- Project administration — `docs/PROJECT_ADMIN.md`.
+- System administration — `docs/SYSTEM_ADMIN.md`.
+- Notifications — `docs/NOTIFICATIONS.md`.
+- Reports — `docs/REPORTS.md`.
+- CLI specification — `docs/CLI.md`.
+- AGENTS.md rules — `docs/AGENTS.md`.
+- Deployment and Docker Compose — `docs/DEPLOYMENT.md`.
+- Database migrations — `docs/MIGRATIONS.md`.
+- File storage — `docs/STORAGE.md`.
+- Caching strategy — `docs/CACHING.md`.
+- Routing — `docs/ROUTING.md`.
+- Error handling — `docs/ERROR_HANDLING.md`.
+- i18n — `docs/I18N.md`.
+- Code style — `docs/CODE_STYLE.md`.
+- ADR — `docs/ADR.md`.
+- UI mockups — `docs/assets/ui-mockups/`.
+- Jira structural samples — `docs/assets/jira-samples/`.
 
-## 9. Workflow / JQL / UI
-
-- Workflow engine: статусы, transitions, conditions, validators, post-functions — в `docs/WORKFLOW.md`.
-- JQL grammar, operators, functions, примеры — в `docs/JQL.md`.
-- User stories / use cases — в `docs/USER_STORIES.md`.
-- UI/UX specification, компоненты, роуты, макеты — в `docs/UI_UX.md`.
-- Design tokens и CSS variables — в `docs/DESIGN_TOKENS.md`.
-- React styling guide и шаблонизация стилей — в `docs/REACT_STYLING.md`.
-- Frontend UI/UX libraries — в `docs/UI_LIBRARIES.md`.
-- Project administration — в `docs/PROJECT_ADMIN.md`.
-- System administration — в `docs/SYSTEM_ADMIN.md`.
-- Notifications — в `docs/NOTIFICATIONS.md`.
-- Reports — в `docs/REPORTS.md`.
-- CLI spec — в `docs/CLI.md`.
-- Правила работы агентов — в `docs/AGENTS.md`.
-- Визуальные мокапы: `docs/assets/ui-mockups/`.
-- Обезличенные структурные примеры Jira: `docs/assets/jira-samples/`.
-
-## 12. Тестирование
+## 10. Testing
 
 Подробнее в `TESTING.md`.
