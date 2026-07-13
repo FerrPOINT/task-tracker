@@ -1,0 +1,3062 @@
+{
+  "projects": {
+    "status": 200,
+    "data": [
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10102",
+        "id": "10102",
+        "key": "ED",
+        "name": " Education",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+        },
+        "projectTypeKey": "software",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10103",
+        "id": "10103",
+        "key": "AAT",
+        "name": "AZHUKOV Azhukov Test",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+        },
+        "projectTypeKey": "software",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10001",
+        "id": "10001",
+        "key": "PRES",
+        "name": "Presale",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+        },
+        "projectTypeKey": "business",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10100",
+        "id": "10100",
+        "key": "PT",
+        "name": "Product team",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?pid=10100&avatarId=10011",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&pid=10100&avatarId=10011",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&pid=10100&avatarId=10011",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&pid=10100&avatarId=10011"
+        },
+        "projectTypeKey": "business",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10105",
+        "id": "10105",
+        "key": "ATS",
+        "name": "АТС Релевантер",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+        },
+        "projectTypeKey": "software",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10002",
+        "id": "10002",
+        "key": "AIPROJ",
+        "name": "ИИ-проекты",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+        },
+        "projectTypeKey": "software",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10000",
+        "id": "10000",
+        "key": "NEUROKEY",
+        "name": "Нейроключ",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+        },
+        "projectTypeKey": "software",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10106",
+        "id": "10106",
+        "key": "EDU",
+        "name": "Обучения ",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+        },
+        "projectTypeKey": "software",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10104",
+        "id": "10104",
+        "key": "REL",
+        "name": "Релевантер",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?pid=10104&avatarId=10814",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&pid=10104&avatarId=10814",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&pid=10104&avatarId=10814",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&pid=10104&avatarId=10814"
+        },
+        "projectTypeKey": "software",
+        "archived": false
+      },
+      {
+        "expand": "description,lead,url,projectKeys",
+        "self": "https://task.wemakedev.ru/rest/api/2/project/10101",
+        "id": "10101",
+        "key": "NKTIME",
+        "name": "Учет рабочего времени",
+        "avatarUrls": {
+          "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+          "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+          "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+          "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+        },
+        "projectTypeKey": "business",
+        "archived": false
+      }
+    ]
+  },
+  "issue_types": {
+    "status": 200,
+    "data": [
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10100",
+        "id": "10100",
+        "description": "Задание для выполнения.",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10318&avatarType=issuetype",
+        "name": "Задача",
+        "subtask": false,
+        "avatarId": 10318
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10101",
+        "id": "10101",
+        "description": "Подзадача запроса.",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10316&avatarType=issuetype",
+        "name": "Подзадача",
+        "subtask": true,
+        "avatarId": 10316
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+        "id": "10001",
+        "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+        "name": "История",
+        "subtask": false
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10102",
+        "id": "10102",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10303&avatarType=issuetype",
+        "name": "Ошибка",
+        "subtask": false,
+        "avatarId": 10303
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10000",
+        "id": "10000",
+        "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для большой пользовательской истории, требующей декомпозиции.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/epic.svg",
+        "name": "Epic",
+        "subtask": false
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10200",
+        "id": "10200",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10309&avatarType=issuetype",
+        "name": "Маркетинг",
+        "subtask": false,
+        "avatarId": 10309
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10202",
+        "id": "10202",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10322&avatarType=issuetype",
+        "name": "Продукт",
+        "subtask": false,
+        "avatarId": 10322
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10201",
+        "id": "10201",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10314&avatarType=issuetype",
+        "name": "Продажи",
+        "subtask": false,
+        "avatarId": 10314
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10203",
+        "id": "10203",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10304&avatarType=issuetype",
+        "name": "Администрирование",
+        "subtask": false,
+        "avatarId": 10304
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10204",
+        "id": "10204",
+        "description": "Задача на анализ и исследование",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10322&avatarType=issuetype",
+        "name": "Анализ",
+        "subtask": false,
+        "avatarId": 10322
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10205",
+        "id": "10205",
+        "description": "Техническая задача (инфраструктура, рефакторинг, devops)",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10300&avatarType=issuetype",
+        "name": "Техническая",
+        "subtask": false,
+        "avatarId": 10300
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10206",
+        "id": "10206",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10300&avatarType=issuetype",
+        "name": "Таймшит",
+        "subtask": false,
+        "avatarId": 10300
+      }
+    ]
+  },
+  "statuses": {
+    "status": 200,
+    "data": [
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/1",
+        "description": "Проблема открыта. Ответственное лицо может начать работу по нему.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/open.png",
+        "name": "Открытый",
+        "id": "1",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "default",
+          "name": "К выполнению"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/3",
+        "description": "В данный момент по этой проблеме ведется активная работа назначенным лицом.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/inprogress.png",
+        "name": "В работе",
+        "id": "3",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Сделать",
+        "id": "10000",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "default",
+          "name": "К выполнению"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10001",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Готово",
+        "id": "10001",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+          "id": 3,
+          "key": "done",
+          "colorName": "success",
+          "name": "Выполнено"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10002",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Backlog",
+        "id": "10002",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "default",
+          "name": "К выполнению"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10003",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Selected for Development",
+        "id": "10003",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "default",
+          "name": "К выполнению"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10100",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Тестирование",
+        "id": "10100",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10201",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Review",
+        "id": "10201",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10202",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Canceled",
+        "id": "10202",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+          "id": 3,
+          "key": "done",
+          "colorName": "success",
+          "name": "Выполнено"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10203",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Готово к тестированию",
+        "id": "10203",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "default",
+          "name": "К выполнению"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10204",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Готово к Релизу",
+        "id": "10204",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "default",
+          "name": "К выполнению"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10206",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Ревью",
+        "id": "10206",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "default",
+          "name": "К выполнению"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10207",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "В доработку",
+        "id": "10207",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+          "id": 2,
+          "key": "new",
+          "colorName": "default",
+          "name": "К выполнению"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10208",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/generic.png",
+        "name": "Готовится КП (без маржи)",
+        "id": "10208",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10209",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/generic.png",
+        "name": "КП готово (без маржи)",
+        "id": "10209",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10210",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/generic.png",
+        "name": "Ожидает ОС (от клиента)",
+        "id": "10210",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10211",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/generic.png",
+        "name": "Согласовано",
+        "id": "10211",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10212",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/generic.png",
+        "name": "Пилот",
+        "id": "10212",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10213",
+        "description": "",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/generic.png",
+        "name": "Вопросы к заказчику",
+        "id": "10213",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10214",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Выполнено",
+        "id": "10214",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+          "id": 3,
+          "key": "done",
+          "colorName": "success",
+          "name": "Выполнено"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10215",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "КП готово( без маржи)",
+        "id": "10215",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10216",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Ожидает ОС(от клиента)",
+        "id": "10216",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/status/10217",
+        "description": "Этот статус управляется Jira Software на внутреннем уровне",
+        "iconUrl": "https://task.wemakedev.ru/",
+        "name": "Согласовано(с заказчиком)",
+        "id": "10217",
+        "statusCategory": {
+          "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+          "id": 4,
+          "key": "indeterminate",
+          "colorName": "inprogress",
+          "name": "В работе"
+        }
+      }
+    ]
+  },
+  "priorities": {
+    "status": 200,
+    "data": [
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/priority/1",
+        "statusColor": "#ff7452",
+        "description": "This problem will block progress.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/highest.svg",
+        "name": "Highest",
+        "id": "1"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/priority/2",
+        "statusColor": "#ff8f73",
+        "description": "Serious problem that could block progress.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/high.svg",
+        "name": "High",
+        "id": "2"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/priority/3",
+        "statusColor": "#ffab00",
+        "description": "Has the potential to affect progress.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/medium.svg",
+        "name": "Medium",
+        "id": "3"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/priority/4",
+        "statusColor": "#0065ff",
+        "description": "Minor problem or easily worked around.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/low.svg",
+        "name": "Low",
+        "id": "4"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+        "statusColor": "#2684ff",
+        "description": "Trivial problem with little or no impact on progress.",
+        "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+        "name": "Lowest",
+        "id": "5"
+      }
+    ]
+  },
+  "resolutions": {
+    "status": 200,
+    "data": [
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/resolution/10000",
+        "id": "10000",
+        "description": "Для этой проблемы работа завершена.",
+        "name": "Готово"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/resolution/10001",
+        "id": "10001",
+        "description": "Данная проблема не будет выполняться.",
+        "name": "Не получится"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/resolution/10002",
+        "id": "10002",
+        "description": "Задача идентична существующей.",
+        "name": "Дубликат"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/resolution/10003",
+        "id": "10003",
+        "description": "Не удалась ни одна попытка воспроизведения этой проблемы; возможно, было недостаточно информации. Чтение кода не дает какой-либо информации о причинах такого поведения. Если впоследствии появятся новые данные, откройте эту проблему заново.",
+        "name": "Не воспроизводится"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/resolution/10004",
+        "id": "10004",
+        "description": "GreenHopper Managed Resolution",
+        "name": "Готово"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/resolution/10005",
+        "id": "10005",
+        "description": "Эта проблема не будет выполнена.",
+        "name": "Не будет выполнено"
+      }
+    ]
+  },
+  "fields": {
+    "status": 200,
+    "data": [
+      {
+        "id": "issuetype",
+        "name": "Тип задачи",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "issuetype",
+          "type"
+        ],
+        "schema": {
+          "type": "issuetype",
+          "system": "issuetype"
+        }
+      },
+      {
+        "id": "timespent",
+        "name": "Затраченное время",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "timespent"
+        ],
+        "schema": {
+          "type": "number",
+          "system": "timespent"
+        }
+      },
+      {
+        "id": "project",
+        "name": "Проект",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "project"
+        ],
+        "schema": {
+          "type": "project",
+          "system": "project"
+        }
+      },
+      {
+        "id": "fixVersions",
+        "name": "Исправить в версиях",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "fixVersion"
+        ],
+        "schema": {
+          "type": "array",
+          "items": "version",
+          "system": "fixVersions"
+        }
+      },
+      {
+        "id": "customfield_10110",
+        "name": "Исторические точки",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10110]",
+          "Исторические точки"
+        ],
+        "schema": {
+          "type": "number",
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+          "customId": 10110
+        }
+      },
+      {
+        "id": "aggregatetimespent",
+        "name": "Суммарное затраченое время",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [],
+        "schema": {
+          "type": "number",
+          "system": "aggregatetimespent"
+        }
+      },
+      {
+        "id": "customfield_10111",
+        "name": "Команда",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10111]",
+          "Команда"
+        ],
+        "schema": {
+          "type": "any",
+          "custom": "com.atlassian.teams:rm-teams-custom-field-team",
+          "customId": 10111
+        }
+      },
+      {
+        "id": "resolution",
+        "name": "Решение",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "resolution"
+        ],
+        "schema": {
+          "type": "resolution",
+          "system": "resolution"
+        }
+      },
+      {
+        "id": "customfield_10104",
+        "name": "Имя эпика",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10104]",
+          "Имя эпика"
+        ],
+        "schema": {
+          "type": "string",
+          "custom": "com.pyxis.greenhopper.jira:gh-epic-label",
+          "customId": 10104
+        }
+      },
+      {
+        "id": "customfield_10105",
+        "name": "Статус эпика",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10105]",
+          "Статус эпика"
+        ],
+        "schema": {
+          "type": "option",
+          "custom": "com.pyxis.greenhopper.jira:gh-epic-status",
+          "customId": 10105
+        }
+      },
+      {
+        "id": "customfield_10106",
+        "name": "Цвет эпика",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10106]",
+          "Цвет эпика"
+        ],
+        "schema": {
+          "type": "string",
+          "custom": "com.pyxis.greenhopper.jira:gh-epic-color",
+          "customId": 10106
+        }
+      },
+      {
+        "id": "customfield_10107",
+        "name": "Ссылка на эпик",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10107]",
+          "Ссылка на эпик"
+        ],
+        "schema": {
+          "type": "any",
+          "custom": "com.pyxis.greenhopper.jira:gh-epic-link",
+          "customId": 10107
+        }
+      },
+      {
+        "id": "customfield_10108",
+        "name": "Спринт",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10108]",
+          "Спринт"
+        ],
+        "schema": {
+          "type": "array",
+          "items": "string",
+          "custom": "com.pyxis.greenhopper.jira:gh-sprint",
+          "customId": 10108
+        }
+      },
+      {
+        "id": "customfield_10109",
+        "name": "Рейтинг",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10109]",
+          "Рейтинг"
+        ],
+        "schema": {
+          "type": "any",
+          "custom": "com.pyxis.greenhopper.jira:gh-lexo-rank",
+          "customId": 10109
+        }
+      },
+      {
+        "id": "resolutiondate",
+        "name": "Дата решения",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "resolutiondate",
+          "resolved"
+        ],
+        "schema": {
+          "type": "datetime",
+          "system": "resolutiondate"
+        }
+      },
+      {
+        "id": "workratio",
+        "name": "КПД (полезная работа/затраченная работа)",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "workratio"
+        ],
+        "schema": {
+          "type": "number",
+          "system": "workratio"
+        }
+      },
+      {
+        "id": "lastViewed",
+        "name": "Последний просмотр",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "lastViewed"
+        ],
+        "schema": {
+          "type": "datetime",
+          "system": "lastViewed"
+        }
+      },
+      {
+        "id": "watches",
+        "name": "Наблюдатели",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "watchers"
+        ],
+        "schema": {
+          "type": "watches",
+          "system": "watches"
+        }
+      },
+      {
+        "id": "thumbnail",
+        "name": "Изображения",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": []
+      },
+      {
+        "id": "created",
+        "name": "Создано",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "created",
+          "createdDate"
+        ],
+        "schema": {
+          "type": "datetime",
+          "system": "created"
+        }
+      },
+      {
+        "id": "priority",
+        "name": "Приоритет",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "priority"
+        ],
+        "schema": {
+          "type": "priority",
+          "system": "priority"
+        }
+      },
+      {
+        "id": "customfield_10100",
+        "name": "Родительская ссылка",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10100]",
+          "Родительская ссылка"
+        ],
+        "schema": {
+          "type": "any",
+          "custom": "com.atlassian.jpo:jpo-custom-field-parent",
+          "customId": 10100
+        }
+      },
+      {
+        "id": "customfield_10101",
+        "name": "Целевая дата начала",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10101]",
+          "Целевая дата начала"
+        ],
+        "schema": {
+          "type": "date",
+          "custom": "com.atlassian.jpo:jpo-custom-field-baseline-start",
+          "customId": 10101
+        }
+      },
+      {
+        "id": "customfield_10102",
+        "name": "Целевая дата окончания",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10102]",
+          "Целевая дата окончания"
+        ],
+        "schema": {
+          "type": "date",
+          "custom": "com.atlassian.jpo:jpo-custom-field-baseline-end",
+          "customId": 10102
+        }
+      },
+      {
+        "id": "labels",
+        "name": "Метки",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "labels"
+        ],
+        "schema": {
+          "type": "array",
+          "items": "string",
+          "system": "labels"
+        }
+      },
+      {
+        "id": "customfield_10103",
+        "name": "Первоначальная оценка сложности",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10103]",
+          "Первоначальная оценка сложности"
+        ],
+        "schema": {
+          "type": "number",
+          "custom": "com.atlassian.jpo:jpo-custom-field-original-story-points",
+          "customId": 10103
+        }
+      },
+      {
+        "id": "timeestimate",
+        "name": "Оставшееся время",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "remainingEstimate",
+          "timeestimate"
+        ],
+        "schema": {
+          "type": "number",
+          "system": "timeestimate"
+        }
+      },
+      {
+        "id": "aggregatetimeoriginalestimate",
+        "name": "Суммарная первоначальная оценка",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [],
+        "schema": {
+          "type": "number",
+          "system": "aggregatetimeoriginalestimate"
+        }
+      },
+      {
+        "id": "versions",
+        "name": "Затронуты версии",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "affectedVersion"
+        ],
+        "schema": {
+          "type": "array",
+          "items": "version",
+          "system": "versions"
+        }
+      },
+      {
+        "id": "issuelinks",
+        "name": "Связанные задачи",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [],
+        "schema": {
+          "type": "array",
+          "items": "issuelinks",
+          "system": "issuelinks"
+        }
+      },
+      {
+        "id": "assignee",
+        "name": "Исполнитель",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "assignee"
+        ],
+        "schema": {
+          "type": "user",
+          "system": "assignee"
+        }
+      },
+      {
+        "id": "updated",
+        "name": "Обновленo",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "updated",
+          "updatedDate"
+        ],
+        "schema": {
+          "type": "datetime",
+          "system": "updated"
+        }
+      },
+      {
+        "id": "status",
+        "name": "Статус",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "status"
+        ],
+        "schema": {
+          "type": "status",
+          "system": "status"
+        }
+      },
+      {
+        "id": "components",
+        "name": "Компоненты",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "component"
+        ],
+        "schema": {
+          "type": "array",
+          "items": "component",
+          "system": "components"
+        }
+      },
+      {
+        "id": "issuekey",
+        "name": "Код",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "id",
+          "issue",
+          "issuekey",
+          "key"
+        ]
+      },
+      {
+        "id": "timeoriginalestimate",
+        "name": "Первоначальная оценка",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "originalEstimate",
+          "timeoriginalestimate"
+        ],
+        "schema": {
+          "type": "number",
+          "system": "timeoriginalestimate"
+        }
+      },
+      {
+        "id": "description",
+        "name": "Описание",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "description"
+        ],
+        "schema": {
+          "type": "string",
+          "system": "description"
+        }
+      },
+      {
+        "id": "archiveddate",
+        "name": "Дата добавления в архив",
+        "custom": false,
+        "orderable": true,
+        "navigable": false,
+        "searchable": true,
+        "clauseNames": [],
+        "schema": {
+          "type": "datetime",
+          "system": "archiveddate"
+        }
+      },
+      {
+        "id": "timetracking",
+        "name": "Учет времени",
+        "custom": false,
+        "orderable": true,
+        "navigable": false,
+        "searchable": true,
+        "clauseNames": [],
+        "schema": {
+          "type": "timetracking",
+          "system": "timetracking"
+        }
+      },
+      {
+        "id": "security",
+        "name": "Уровень безопасности",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "level"
+        ],
+        "schema": {
+          "type": "securitylevel",
+          "system": "security"
+        }
+      },
+      {
+        "id": "attachment",
+        "name": "Вложение",
+        "custom": false,
+        "orderable": true,
+        "navigable": false,
+        "searchable": true,
+        "clauseNames": [
+          "attachments"
+        ],
+        "schema": {
+          "type": "array",
+          "items": "attachment",
+          "system": "attachment"
+        }
+      },
+      {
+        "id": "aggregatetimeestimate",
+        "name": "Суммарное оставшееся время",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [],
+        "schema": {
+          "type": "number",
+          "system": "aggregatetimeestimate"
+        }
+      },
+      {
+        "id": "summary",
+        "name": "Тема",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "summary"
+        ],
+        "schema": {
+          "type": "string",
+          "system": "summary"
+        }
+      },
+      {
+        "id": "creator",
+        "name": "Создатель",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "creator"
+        ],
+        "schema": {
+          "type": "user",
+          "system": "creator"
+        }
+      },
+      {
+        "id": "subtasks",
+        "name": "Подзадачи",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "subtasks"
+        ],
+        "schema": {
+          "type": "array",
+          "items": "issuelinks",
+          "system": "subtasks"
+        }
+      },
+      {
+        "id": "reporter",
+        "name": "Автор",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "reporter"
+        ],
+        "schema": {
+          "type": "user",
+          "system": "reporter"
+        }
+      },
+      {
+        "id": "aggregateprogress",
+        "name": "Суммарный прогресс",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [],
+        "schema": {
+          "type": "progress",
+          "system": "aggregateprogress"
+        }
+      },
+      {
+        "id": "customfield_10000",
+        "name": "Development",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10000]",
+          "Development"
+        ],
+        "schema": {
+          "type": "any",
+          "custom": "com.atlassian.jira.plugins.jira-development-integration-plugin:devsummary",
+          "customId": 10000
+        }
+      },
+      {
+        "id": "customfield_10200",
+        "name": "Отмечено",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10200]",
+          "Отмечено"
+        ],
+        "schema": {
+          "type": "array",
+          "items": "option",
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes",
+          "customId": 10200
+        }
+      },
+      {
+        "id": "customfield_10201",
+        "name": "Пойнты",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10201]",
+          "Пойнты"
+        ],
+        "schema": {
+          "type": "number",
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+          "customId": 10201
+        }
+      },
+      {
+        "id": "customfield_10202",
+        "name": "Оценка",
+        "custom": true,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "cf[10202]",
+          "Оценка"
+        ],
+        "schema": {
+          "type": "number",
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+          "customId": 10202
+        }
+      },
+      {
+        "id": "environment",
+        "name": "Окружение",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "environment"
+        ],
+        "schema": {
+          "type": "string",
+          "system": "environment"
+        }
+      },
+      {
+        "id": "duedate",
+        "name": "Срок исполнения",
+        "custom": false,
+        "orderable": true,
+        "navigable": true,
+        "searchable": true,
+        "clauseNames": [
+          "due",
+          "duedate"
+        ],
+        "schema": {
+          "type": "date",
+          "system": "duedate"
+        }
+      },
+      {
+        "id": "progress",
+        "name": "Прогресс",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "progress"
+        ],
+        "schema": {
+          "type": "progress",
+          "system": "progress"
+        }
+      },
+      {
+        "id": "comment",
+        "name": "Комментарий",
+        "custom": false,
+        "orderable": true,
+        "navigable": false,
+        "searchable": true,
+        "clauseNames": [
+          "comment"
+        ],
+        "schema": {
+          "type": "comments-page",
+          "system": "comment"
+        }
+      },
+      {
+        "id": "votes",
+        "name": "Голоса",
+        "custom": false,
+        "orderable": false,
+        "navigable": true,
+        "searchable": false,
+        "clauseNames": [
+          "votes"
+        ],
+        "schema": {
+          "type": "votes",
+          "system": "votes"
+        }
+      },
+      {
+        "id": "worklog",
+        "name": "Сделать запись о работе",
+        "custom": false,
+        "orderable": true,
+        "navigable": false,
+        "searchable": true,
+        "clauseNames": [],
+        "schema": {
+          "type": "array",
+          "items": "worklog",
+          "system": "worklog"
+        }
+      },
+      {
+        "id": "archivedby",
+        "name": "Кто добавил в архив",
+        "custom": false,
+        "orderable": true,
+        "navigable": false,
+        "searchable": true,
+        "clauseNames": [],
+        "schema": {
+          "type": "user",
+          "system": "archivedby"
+        }
+      }
+    ]
+  },
+  "link_types": {
+    "status": 200,
+    "data": {
+      "issueLinkTypes": [
+        {
+          "id": "10000",
+          "name": "Blocks",
+          "inward": "is blocked by",
+          "outward": "blocks",
+          "self": "https://task.wemakedev.ru/rest/api/2/issueLinkType/10000"
+        },
+        {
+          "id": "10001",
+          "name": "Cloners",
+          "inward": "is cloned by",
+          "outward": "clones",
+          "self": "https://task.wemakedev.ru/rest/api/2/issueLinkType/10001"
+        },
+        {
+          "id": "10002",
+          "name": "Duplicate",
+          "inward": "is duplicated by",
+          "outward": "duplicates",
+          "self": "https://task.wemakedev.ru/rest/api/2/issueLinkType/10002"
+        },
+        {
+          "id": "10003",
+          "name": "Relates",
+          "inward": "relates to",
+          "outward": "relates to",
+          "self": "https://task.wemakedev.ru/rest/api/2/issueLinkType/10003"
+        }
+      ]
+    }
+  },
+  "mypermissions": {
+    "status": 200,
+    "data": {
+      "permissions": {
+        "ARCHIVE_ISSUES": {
+          "id": "-1",
+          "key": "ARCHIVE_ISSUES",
+          "name": "Добавить задачи в архив",
+          "type": "PROJECT",
+          "description": "Возможность добавлять в архив задачи из определенного проекта.",
+          "havePermission": false
+        },
+        "VIEW_WORKFLOW_READONLY": {
+          "id": "45",
+          "key": "VIEW_WORKFLOW_READONLY",
+          "name": "Посмотреть Workflow только для чтения",
+          "type": "PROJECT",
+          "description": "admin.permissions.descriptions.VIEW_WORKFLOW_READONLY",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "CREATE_ISSUES": {
+          "id": "11",
+          "key": "CREATE_ISSUES",
+          "name": "Создание запросов",
+          "type": "PROJECT",
+          "description": "Возможность создавать запросы.",
+          "havePermission": true
+        },
+        "VIEW_DEV_TOOLS": {
+          "id": "29",
+          "key": "VIEW_DEV_TOOLS",
+          "name": "Показать инструменты разработки",
+          "type": "PROJECT",
+          "description": "Позволяет пользователям проекта программного обеспечения просматривать информацию о разработке, которая ведется по проблеме, например, фиксации изменений кода, рассмотрения и информацию о сборках.",
+          "havePermission": true
+        },
+        "BULK_CHANGE": {
+          "id": "33",
+          "key": "BULK_CHANGE",
+          "name": "Массовое Изменение",
+          "type": "GLOBAL",
+          "description": "Возможность изменять несколько запросов сразу. Для примера, можно разршеить несколько запросов за один один шаг.",
+          "havePermission": true
+        },
+        "CREATE_ATTACHMENT": {
+          "id": "19",
+          "key": "CREATE_ATTACHMENT",
+          "name": "Создание вложений",
+          "type": "PROJECT",
+          "description": "Пользователи с этими правами доступа могут создавать вложения.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "DELETE_OWN_COMMENTS": {
+          "id": "37",
+          "key": "DELETE_OWN_COMMENTS",
+          "name": "Удаление собственных комментариев",
+          "type": "PROJECT",
+          "description": "Возможность удалять собственные комментарии по запросу.",
+          "havePermission": true
+        },
+        "WORK_ON_ISSUES": {
+          "id": "20",
+          "key": "WORK_ON_ISSUES",
+          "name": "Работа над запросами",
+          "type": "PROJECT",
+          "description": "Возможность журналирования работ по запросу. Полезно если функция учета времени активирована.",
+          "havePermission": true
+        },
+        "PROJECT_ADMIN": {
+          "id": "23",
+          "key": "PROJECT_ADMIN",
+          "name": "Администрирование проектов",
+          "type": "PROJECT",
+          "description": "Возможность администрировать проект в Jira.",
+          "havePermission": false,
+          "deprecatedKey": true
+        },
+        "COMMENT_EDIT_ALL": {
+          "id": "34",
+          "key": "COMMENT_EDIT_ALL",
+          "name": "Редактирование всех комментариев",
+          "type": "PROJECT",
+          "description": "Возможность редактировать все комментарии оставленные в запросе.",
+          "havePermission": false,
+          "deprecatedKey": true
+        },
+        "ATTACHMENT_DELETE_OWN": {
+          "id": "39",
+          "key": "ATTACHMENT_DELETE_OWN",
+          "name": "Удаление собственных вложений",
+          "type": "PROJECT",
+          "description": "Пользователи с этим правом могут удалять собственные вложения.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "WORKLOG_DELETE_OWN": {
+          "id": "42",
+          "key": "WORKLOG_DELETE_OWN",
+          "name": "Удаление персонального журнала работ",
+          "type": "PROJECT",
+          "description": "Возможность удалять собственные журналы работ по запросам.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "CLOSE_ISSUE": {
+          "id": "18",
+          "key": "CLOSE_ISSUE",
+          "name": "Закрытие запросов",
+          "type": "PROJECT",
+          "description": "Возможность закрывать запросы. Часто полезна, когда сотрудники разрешают зарпросы, а, например, отдел качества закрывает их.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "MANAGE_WATCHER_LIST": {
+          "id": "32",
+          "key": "MANAGE_WATCHER_LIST",
+          "name": "Управление списком наблюдателей",
+          "type": "PROJECT",
+          "description": "Возможность управления списком наблюдателей по запросу.",
+          "havePermission": false,
+          "deprecatedKey": true
+        },
+        "VIEW_VOTERS_AND_WATCHERS": {
+          "id": "31",
+          "key": "VIEW_VOTERS_AND_WATCHERS",
+          "name": "Просмотр наблюдателей и голосующих",
+          "type": "PROJECT",
+          "description": "Возможность просмотра списка голосующих и наблюдателей по запросу.",
+          "havePermission": true
+        },
+        "ADD_COMMENTS": {
+          "id": "15",
+          "key": "ADD_COMMENTS",
+          "name": "Добавление комментариев",
+          "type": "PROJECT",
+          "description": "Возможность комментировать запросы.",
+          "havePermission": true
+        },
+        "COMMENT_DELETE_ALL": {
+          "id": "36",
+          "key": "COMMENT_DELETE_ALL",
+          "name": "Удаление всех комментариев",
+          "type": "PROJECT",
+          "description": "Возможность удалять все комментарии сделанные в запросе.",
+          "havePermission": false,
+          "deprecatedKey": true
+        },
+        "CREATE_ISSUE": {
+          "id": "11",
+          "key": "CREATE_ISSUE",
+          "name": "Создание запросов",
+          "type": "PROJECT",
+          "description": "Возможность создавать запросы.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "DELETE_OWN_ATTACHMENTS": {
+          "id": "39",
+          "key": "DELETE_OWN_ATTACHMENTS",
+          "name": "Удаление собственных вложений",
+          "type": "PROJECT",
+          "description": "Пользователи с этим правом могут удалять собственные вложения.",
+          "havePermission": true
+        },
+        "DELETE_ALL_ATTACHMENTS": {
+          "id": "38",
+          "key": "DELETE_ALL_ATTACHMENTS",
+          "name": "Удаление всех вложений",
+          "type": "PROJECT",
+          "description": "Пользователи с этим правом могут удалять все вложения.",
+          "havePermission": false
+        },
+        "ASSIGN_ISSUE": {
+          "id": "13",
+          "key": "ASSIGN_ISSUE",
+          "name": "Назначение запросов",
+          "type": "PROJECT",
+          "description": "Возможность назначать запросы другим пользователям.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "LINK_ISSUE": {
+          "id": "21",
+          "key": "LINK_ISSUE",
+          "name": "Связь запросов",
+          "type": "PROJECT",
+          "description": "Возможность связывать запросы вместе и создавать связанные запросы. Полезно если функция связывания включена.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "EDIT_OWN_WORKLOGS": {
+          "id": "40",
+          "key": "EDIT_OWN_WORKLOGS",
+          "name": "Редактирование персонального журнала работ",
+          "type": "PROJECT",
+          "description": "Возможсть редактировать собственный журнал работ по запросам.",
+          "havePermission": true
+        },
+        "CREATE_ATTACHMENTS": {
+          "id": "19",
+          "key": "CREATE_ATTACHMENTS",
+          "name": "Создание вложений",
+          "type": "PROJECT",
+          "description": "Пользователи с этими правами доступа могут создавать вложения.",
+          "havePermission": true
+        },
+        "EDIT_ALL_WORKLOGS": {
+          "id": "41",
+          "key": "EDIT_ALL_WORKLOGS",
+          "name": "Редактирование всех журналов работ",
+          "type": "PROJECT",
+          "description": "Возможность редактировать все журналы работ по запросам.",
+          "havePermission": false
+        },
+        "SCHEDULE_ISSUE": {
+          "id": "28",
+          "key": "SCHEDULE_ISSUE",
+          "name": "Планирование запросов",
+          "type": "PROJECT",
+          "description": "Возможность просматривать или редактировать ожидаемый срок исполнения запроса",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "CLOSE_ISSUES": {
+          "id": "18",
+          "key": "CLOSE_ISSUES",
+          "name": "Закрытие запросов",
+          "type": "PROJECT",
+          "description": "Возможность закрывать запросы. Часто полезна, когда сотрудники разрешают зарпросы, а, например, отдел качества закрывает их.",
+          "havePermission": true
+        },
+        "SET_ISSUE_SECURITY": {
+          "id": "26",
+          "key": "SET_ISSUE_SECURITY",
+          "name": "Установка безопасности запросов",
+          "type": "PROJECT",
+          "description": "Возможность устанавливать уровень безопасности запроса, чтобы только пользователи с этим уровнем безопасности могли видеть этот запрос.",
+          "havePermission": false
+        },
+        "SCHEDULE_ISSUES": {
+          "id": "28",
+          "key": "SCHEDULE_ISSUES",
+          "name": "Планирование запросов",
+          "type": "PROJECT",
+          "description": "Возможность просматривать или редактировать ожидаемый срок исполнения запроса",
+          "havePermission": true
+        },
+        "WORKLOG_DELETE_ALL": {
+          "id": "43",
+          "key": "WORKLOG_DELETE_ALL",
+          "name": "Удаление всех журналов работ",
+          "type": "PROJECT",
+          "description": "Возможность удалять все журналы работ по запросам.",
+          "havePermission": false,
+          "deprecatedKey": true
+        },
+        "COMMENT_DELETE_OWN": {
+          "id": "37",
+          "key": "COMMENT_DELETE_OWN",
+          "name": "Удаление собственных комментариев",
+          "type": "PROJECT",
+          "description": "Возможность удалять собственные комментарии по запросу.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "ADMINISTER_PROJECTS": {
+          "id": "23",
+          "key": "ADMINISTER_PROJECTS",
+          "name": "Администрирование проектов",
+          "type": "PROJECT",
+          "description": "Возможность администрировать проект в Jira.",
+          "havePermission": false
+        },
+        "DELETE_ALL_COMMENTS": {
+          "id": "36",
+          "key": "DELETE_ALL_COMMENTS",
+          "name": "Удаление всех комментариев",
+          "type": "PROJECT",
+          "description": "Возможность удалять все комментарии сделанные в запросе.",
+          "havePermission": false
+        },
+        "RESOLVE_ISSUES": {
+          "id": "14",
+          "key": "RESOLVE_ISSUES",
+          "name": "Решение запросов",
+          "type": "PROJECT",
+          "description": "Возможность разрешать и открывать заново запросы. Так же включает возможность устанавливать версию в которой запрос должен быть решен.",
+          "havePermission": true
+        },
+        "VIEW_READONLY_WORKFLOW": {
+          "id": "45",
+          "key": "VIEW_READONLY_WORKFLOW",
+          "name": "Посмотреть Workflow только для чтения",
+          "type": "PROJECT",
+          "description": "Пользователи с указанными правами доступа могут только просматривать документооборот",
+          "havePermission": true
+        },
+        "ADMINISTER": {
+          "id": "0",
+          "key": "ADMINISTER",
+          "name": "Администраторы Jira",
+          "type": "GLOBAL",
+          "description": "Возможность исполнять большинство административных функций (исключая импорт и экпорт, настройку SMTP , проч.).",
+          "havePermission": false
+        },
+        "GLOBAL_BROWSE_ARCHIVE": {
+          "id": "-1",
+          "key": "GLOBAL_BROWSE_ARCHIVE",
+          "name": "Просмотр архива",
+          "type": "GLOBAL",
+          "description": "Возможность просматривать все архивированные задачи.",
+          "havePermission": false
+        },
+        "MOVE_ISSUES": {
+          "id": "25",
+          "key": "MOVE_ISSUES",
+          "name": "Перемещение запросов",
+          "type": "PROJECT",
+          "description": "Возможность перемещять запросы между проектами или между бизнес-процессами того же проекта. Учтите, что пользователь может перемещать запросы в проект, в котором у него есть права на создание.",
+          "havePermission": true
+        },
+        "TRANSITION_ISSUES": {
+          "id": "46",
+          "key": "TRANSITION_ISSUES",
+          "name": "Переходы запросов",
+          "type": "PROJECT",
+          "description": "Возможность перемещать задачи между статусами",
+          "havePermission": true
+        },
+        "EDIT_SPRINT_NAME_AND_GOAL_PERMISSION": {
+          "id": "-1",
+          "key": "EDIT_SPRINT_NAME_AND_GOAL_PERMISSION",
+          "name": "Редактирование спринтов",
+          "type": "PROJECT",
+          "description": "Возможность изменять название и цель спринта.",
+          "havePermission": true
+        },
+        "SYSTEM_ADMIN": {
+          "id": "44",
+          "key": "SYSTEM_ADMIN",
+          "name": "Системные Администраторы Jira",
+          "type": "GLOBAL",
+          "description": "Возможность исполнять все административные функции. Должна быть хотя бы одна группа с такими правами.",
+          "havePermission": false
+        },
+        "DELETE_OWN_WORKLOGS": {
+          "id": "42",
+          "key": "DELETE_OWN_WORKLOGS",
+          "name": "Удаление персонального журнала работ",
+          "type": "PROJECT",
+          "description": "Возможность удалять собственные журналы работ по запросам.",
+          "havePermission": true
+        },
+        "BROWSE": {
+          "id": "10",
+          "key": "BROWSE",
+          "name": "Просмотр проектов",
+          "type": "PROJECT",
+          "description": "Возможность просматривать проекты и запросы в них.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "EDIT_ISSUE": {
+          "id": "12",
+          "key": "EDIT_ISSUE",
+          "name": "Редактирование запросов",
+          "type": "PROJECT",
+          "description": "Возможность редактировать запросы.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "MODIFY_REPORTER": {
+          "id": "30",
+          "key": "MODIFY_REPORTER",
+          "name": "Изменения автора",
+          "type": "PROJECT",
+          "description": "Возможность изменять автора при создании и изменении запроса.",
+          "havePermission": false
+        },
+        "EDIT_ISSUES": {
+          "id": "12",
+          "key": "EDIT_ISSUES",
+          "name": "Редактирование запросов",
+          "type": "PROJECT",
+          "description": "Возможность редактировать запросы.",
+          "havePermission": true
+        },
+        "MANAGE_WATCHERS": {
+          "id": "32",
+          "key": "MANAGE_WATCHERS",
+          "name": "Управление списком наблюдателей",
+          "type": "PROJECT",
+          "description": "Возможность управления списком наблюдателей по запросу.",
+          "havePermission": false
+        },
+        "EDIT_OWN_COMMENTS": {
+          "id": "35",
+          "key": "EDIT_OWN_COMMENTS",
+          "name": "Редактирование собственных комментариев",
+          "type": "PROJECT",
+          "description": "Возможность редактировать собственные комментарии по запросу.",
+          "havePermission": true
+        },
+        "ASSIGN_ISSUES": {
+          "id": "13",
+          "key": "ASSIGN_ISSUES",
+          "name": "Назначение запросов",
+          "type": "PROJECT",
+          "description": "Возможность назначать запросы другим пользователям.",
+          "havePermission": true
+        },
+        "BROWSE_PROJECTS": {
+          "id": "10",
+          "key": "BROWSE_PROJECTS",
+          "name": "Просмотр проектов",
+          "type": "PROJECT",
+          "description": "Возможность просматривать проекты и запросы в них.",
+          "havePermission": true
+        },
+        "RESTORE_ISSUES": {
+          "id": "-1",
+          "key": "RESTORE_ISSUES",
+          "name": "Восстановить задачи",
+          "type": "PROJECT",
+          "description": "Возможность восстанавливать задачи из определенного проекта.",
+          "havePermission": false
+        },
+        "BROWSE_ARCHIVE": {
+          "id": "-1",
+          "key": "BROWSE_ARCHIVE",
+          "name": "Просмотр архива проекта",
+          "type": "PROJECT",
+          "description": "Возможность просматривать архивированные задачи из определенного проекта.",
+          "havePermission": false
+        },
+        "A4J_PERM_IMPERSONATE_ACTOR_GLOBAL": {
+          "id": "-1",
+          "key": "A4J_PERM_IMPERSONATE_ACTOR_GLOBAL",
+          "name": "Выдавать себя за других пользователей в глобальной области A4J",
+          "type": "GLOBAL",
+          "description": "Это право позволяет выбрать другого пользователя в качестве исполнителя правила автоматизации",
+          "havePermission": false
+        },
+        "VIEW_VERSION_CONTROL": {
+          "id": "29",
+          "key": "VIEW_VERSION_CONTROL",
+          "name": "Показать инструменты разработки",
+          "type": "PROJECT",
+          "description": "Позволяет пользователям просматривать сведения о разработке (например, коммиты, проверки и информацию о сборках) на экране просмотра задачи.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "START_STOP_SPRINTS_PERMISSION": {
+          "id": "-1",
+          "key": "START_STOP_SPRINTS_PERMISSION",
+          "name": "Запуск/завершение спринтов",
+          "type": "PROJECT",
+          "description": "Возможность начинать и завершать спринты.",
+          "havePermission": true
+        },
+        "WORK_ISSUE": {
+          "id": "20",
+          "key": "WORK_ISSUE",
+          "name": "Работа над запросами",
+          "type": "PROJECT",
+          "description": "Возможность журналирования работ по запросу. Полезно если функция учета времени активирована.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "COMMENT_ISSUE": {
+          "id": "15",
+          "key": "COMMENT_ISSUE",
+          "name": "Добавление комментариев",
+          "type": "PROJECT",
+          "description": "Возможность комментировать запросы.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "WORKLOG_EDIT_ALL": {
+          "id": "41",
+          "key": "WORKLOG_EDIT_ALL",
+          "name": "Редактирование всех журналов работ",
+          "type": "PROJECT",
+          "description": "Возможность редактировать все журналы работ по запросам.",
+          "havePermission": false,
+          "deprecatedKey": true
+        },
+        "EDIT_ALL_COMMENTS": {
+          "id": "34",
+          "key": "EDIT_ALL_COMMENTS",
+          "name": "Редактирование всех комментариев",
+          "type": "PROJECT",
+          "description": "Возможность редактировать все комментарии оставленные в запросе.",
+          "havePermission": false
+        },
+        "DELETE_ISSUE": {
+          "id": "16",
+          "key": "DELETE_ISSUE",
+          "name": "Удаление запросов",
+          "type": "PROJECT",
+          "description": "Возможность удалять запросы.",
+          "havePermission": false,
+          "deprecatedKey": true
+        },
+        "MANAGE_SPRINTS_PERMISSION": {
+          "id": "-1",
+          "key": "MANAGE_SPRINTS_PERMISSION",
+          "name": "Управление спринтами",
+          "type": "PROJECT",
+          "description": "Возможность управления спринтами.",
+          "havePermission": true
+        },
+        "USER_PICKER": {
+          "id": "27",
+          "key": "USER_PICKER",
+          "name": "Просмотр Пользователей",
+          "type": "GLOBAL",
+          "description": "Возможность выбора пользователя или группы из всплывающего окна, а также возможность использования установки общего доступа к задачам. Пользователи с этим разрешением смогут также увидеть имена всех пользователей и групп в системе.",
+          "havePermission": true
+        },
+        "CREATE_SHARED_OBJECTS": {
+          "id": "22",
+          "key": "CREATE_SHARED_OBJECTS",
+          "name": "Создание общих объектов",
+          "type": "GLOBAL",
+          "description": "Возможность предоставлять общий доступ к рабочим столам и фильтрам для других пользователей, групп и ролей.",
+          "havePermission": true
+        },
+        "ATTACHMENT_DELETE_ALL": {
+          "id": "38",
+          "key": "ATTACHMENT_DELETE_ALL",
+          "name": "Удаление всех вложений",
+          "type": "PROJECT",
+          "description": "Пользователи с этим правом могут удалять все вложения.",
+          "havePermission": false,
+          "deprecatedKey": true
+        },
+        "DELETE_ISSUES": {
+          "id": "16",
+          "key": "DELETE_ISSUES",
+          "name": "Удаление запросов",
+          "type": "PROJECT",
+          "description": "Возможность удалять запросы.",
+          "havePermission": false
+        },
+        "MANAGE_GROUP_FILTER_SUBSCRIPTIONS": {
+          "id": "24",
+          "key": "MANAGE_GROUP_FILTER_SUBSCRIPTIONS",
+          "name": "Управление подпиской на групповые фильтры",
+          "type": "GLOBAL",
+          "description": "Возможность управлять (создавать и удалять) описанием групповых фильтров.",
+          "havePermission": true
+        },
+        "RESOLVE_ISSUE": {
+          "id": "14",
+          "key": "RESOLVE_ISSUE",
+          "name": "Решение запросов",
+          "type": "PROJECT",
+          "description": "Возможность разрешать и открывать заново запросы. Так же включает возможность устанавливать версию в которой запрос должен быть решен.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "A4J_PERM_IMPERSONATE_ACTOR_PROJECT": {
+          "id": "-1",
+          "key": "A4J_PERM_IMPERSONATE_ACTOR_PROJECT",
+          "name": "Выдавать себя за других пользователей в области проекта A4J",
+          "type": "PROJECT",
+          "description": "Это право позволяет выбрать другого пользователя в качестве исполнителя правила автоматизации",
+          "havePermission": false
+        },
+        "ASSIGNABLE_USER": {
+          "id": "17",
+          "key": "ASSIGNABLE_USER",
+          "name": "Назначаемые пользователи",
+          "type": "PROJECT",
+          "description": "Пользователи с этими правами доступа могут быть назначены на запросы.",
+          "havePermission": true
+        },
+        "TRANSITION_ISSUE": {
+          "id": "46",
+          "key": "TRANSITION_ISSUE",
+          "name": "Переходы запросов",
+          "type": "PROJECT",
+          "description": "Возможность перемещать задачи между статусами",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "COMMENT_EDIT_OWN": {
+          "id": "35",
+          "key": "COMMENT_EDIT_OWN",
+          "name": "Редактирование собственных комментариев",
+          "type": "PROJECT",
+          "description": "Возможность редактировать собственные комментарии по запросу.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "MOVE_ISSUE": {
+          "id": "25",
+          "key": "MOVE_ISSUE",
+          "name": "Перемещение запросов",
+          "type": "PROJECT",
+          "description": "Возможность перемещять запросы между проектами или между бизнес-процессами того же проекта. Учтите, что пользователь может перемещать запросы в проект, в котором у него есть права на создание.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "WORKLOG_EDIT_OWN": {
+          "id": "40",
+          "key": "WORKLOG_EDIT_OWN",
+          "name": "Редактирование персонального журнала работ",
+          "type": "PROJECT",
+          "description": "Возможсть редактировать собственный журнал работ по запросам.",
+          "havePermission": true,
+          "deprecatedKey": true
+        },
+        "DELETE_ALL_WORKLOGS": {
+          "id": "43",
+          "key": "DELETE_ALL_WORKLOGS",
+          "name": "Удаление всех журналов работ",
+          "type": "PROJECT",
+          "description": "Возможность удалять все журналы работ по запросам.",
+          "havePermission": false
+        },
+        "LINK_ISSUES": {
+          "id": "21",
+          "key": "LINK_ISSUES",
+          "name": "Связь запросов",
+          "type": "PROJECT",
+          "description": "Возможность связывать запросы вместе и создавать связанные запросы. Полезно если функция связывания включена.",
+          "havePermission": true
+        }
+      }
+    }
+  },
+  "rapidviews": {
+    "status": 200,
+    "data": {
+      "views": [
+        {
+          "id": 1,
+          "name": "Доска NEUROKEY",
+          "canEdit": false,
+          "sprintSupportEnabled": true,
+          "showDaysInColumn": false,
+          "kanPlanEnabled": false,
+          "showEpicAsPanel": true,
+          "oldDoneIssuesCutoff": "NONE"
+        },
+        {
+          "id": 2,
+          "name": "Presale",
+          "canEdit": false,
+          "sprintSupportEnabled": false,
+          "showDaysInColumn": false,
+          "kanPlanEnabled": false,
+          "showEpicAsPanel": true,
+          "oldDoneIssuesCutoff": "-2w"
+        },
+        {
+          "id": 3,
+          "name": "Доска AIPROJ",
+          "canEdit": false,
+          "sprintSupportEnabled": false,
+          "showDaysInColumn": false,
+          "kanPlanEnabled": false,
+          "showEpicAsPanel": true,
+          "oldDoneIssuesCutoff": "-2w"
+        },
+        {
+          "id": 4,
+          "name": "Product Team",
+          "canEdit": false,
+          "sprintSupportEnabled": false,
+          "showDaysInColumn": false,
+          "kanPlanEnabled": false,
+          "showEpicAsPanel": true,
+          "oldDoneIssuesCutoff": "-2w"
+        },
+        {
+          "id": 10,
+          "name": "Paper1",
+          "canEdit": true,
+          "sprintSupportEnabled": false,
+          "showDaysInColumn": false,
+          "kanPlanEnabled": false,
+          "showEpicAsPanel": true,
+          "oldDoneIssuesCutoff": "-4w"
+        },
+        {
+          "id": 11,
+          "name": "Доска Релевантер",
+          "canEdit": false,
+          "sprintSupportEnabled": false,
+          "showDaysInColumn": true,
+          "kanPlanEnabled": false,
+          "showEpicAsPanel": true,
+          "oldDoneIssuesCutoff": "-2w"
+        },
+        {
+          "id": 12,
+          "name": "Доска ATS",
+          "canEdit": false,
+          "sprintSupportEnabled": false,
+          "showDaysInColumn": false,
+          "kanPlanEnabled": false,
+          "showEpicAsPanel": true,
+          "oldDoneIssuesCutoff": "-2w"
+        },
+        {
+          "id": 13,
+          "name": "Обучения",
+          "canEdit": false,
+          "sprintSupportEnabled": false,
+          "showDaysInColumn": false,
+          "kanPlanEnabled": false,
+          "showEpicAsPanel": true,
+          "oldDoneIssuesCutoff": "-2w"
+        }
+      ]
+    }
+  },
+  "agile_boards": {
+    "status": 200,
+    "data": {
+      "maxResults": 50,
+      "startAt": 0,
+      "total": 8,
+      "isLast": true,
+      "values": [
+        {
+          "id": 10,
+          "self": "https://task.wemakedev.ru/rest/agile/1.0/board/10",
+          "name": "Paper1",
+          "type": "kanban"
+        },
+        {
+          "id": 2,
+          "self": "https://task.wemakedev.ru/rest/agile/1.0/board/2",
+          "name": "Presale",
+          "type": "kanban"
+        },
+        {
+          "id": 4,
+          "self": "https://task.wemakedev.ru/rest/agile/1.0/board/4",
+          "name": "Product Team",
+          "type": "kanban"
+        },
+        {
+          "id": 3,
+          "self": "https://task.wemakedev.ru/rest/agile/1.0/board/3",
+          "name": "Доска AIPROJ",
+          "type": "kanban"
+        },
+        {
+          "id": 12,
+          "self": "https://task.wemakedev.ru/rest/agile/1.0/board/12",
+          "name": "Доска ATS",
+          "type": "kanban"
+        },
+        {
+          "id": 1,
+          "self": "https://task.wemakedev.ru/rest/agile/1.0/board/1",
+          "name": "Доска NEUROKEY",
+          "type": "scrum"
+        },
+        {
+          "id": 11,
+          "self": "https://task.wemakedev.ru/rest/agile/1.0/board/11",
+          "name": "Доска Релевантер",
+          "type": "kanban"
+        },
+        {
+          "id": 13,
+          "self": "https://task.wemakedev.ru/rest/agile/1.0/board/13",
+          "name": "Обучения",
+          "type": "kanban"
+        }
+      ]
+    }
+  },
+  "dashboards": {
+    "status": 200,
+    "data": {
+      "startAt": 0,
+      "maxResults": 20,
+      "total": 1,
+      "dashboards": [
+        {
+          "id": "10000",
+          "name": "System Dashboard",
+          "self": "https://task.wemakedev.ru/rest/api/2/dashboard/10000",
+          "view": "https://task.wemakedev.ru/secure/Dashboard.jspa?selectPageId=10000"
+        }
+      ]
+    }
+  },
+  "board_configs": {
+    "10": {
+      "status": 200,
+      "data": {
+        "id": 10,
+        "name": "Paper1",
+        "type": "kanban",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/board/10/configuration",
+        "filter": {
+          "id": "10110",
+          "self": "https://task.wemakedev.ru/rest/api/2/filter/10110"
+        },
+        "subQuery": {
+          "query": "fixVersion in unreleasedVersions() OR fixVersion is EMPTY"
+        },
+        "columnConfig": {
+          "columns": [
+            {
+              "name": "Список задач",
+              "statuses": []
+            },
+            {
+              "name": "Нужно сделать",
+              "statuses": [
+                {
+                  "id": "10000",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10000"
+                }
+              ]
+            },
+            {
+              "name": "В работе",
+              "statuses": [
+                {
+                  "id": "3",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/3"
+                }
+              ]
+            },
+            {
+              "name": "Выполнено",
+              "statuses": [
+                {
+                  "id": "10001",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10001"
+                }
+              ]
+            }
+          ],
+          "constraintType": "issueCount"
+        },
+        "ranking": {
+          "rankCustomFieldId": 10109
+        }
+      }
+    },
+    "2": {
+      "status": 200,
+      "data": {
+        "id": 2,
+        "name": "Presale",
+        "type": "kanban",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/board/2/configuration",
+        "filter": {
+          "id": "10003",
+          "self": "https://task.wemakedev.ru/rest/api/2/filter/10003"
+        },
+        "subQuery": {
+          "query": "fixVersion in unreleasedVersions() OR fixVersion is EMPTY"
+        },
+        "columnConfig": {
+          "columns": [
+            {
+              "name": "Список задач",
+              "statuses": []
+            },
+            {
+              "name": "Нужно сделать",
+              "statuses": [
+                {
+                  "id": "10000",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10000"
+                }
+              ]
+            },
+            {
+              "name": "Готовится КП (Без маржи)",
+              "statuses": [
+                {
+                  "id": "10208",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10208"
+                }
+              ]
+            },
+            {
+              "name": "Есть вопросы (к заказчику)",
+              "statuses": [
+                {
+                  "id": "10213",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10213"
+                }
+              ]
+            },
+            {
+              "name": "КП Готово (Без маржи)",
+              "statuses": [
+                {
+                  "id": "10209",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10209"
+                }
+              ]
+            },
+            {
+              "name": "Ожидает ОС (от клиента)",
+              "statuses": [
+                {
+                  "id": "10210",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10210"
+                }
+              ]
+            },
+            {
+              "name": "Согласовано (с заказчиком)",
+              "statuses": [
+                {
+                  "id": "10211",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10211"
+                }
+              ]
+            },
+            {
+              "name": "Пилот",
+              "statuses": [
+                {
+                  "id": "10212",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10212"
+                }
+              ]
+            },
+            {
+              "name": "Выполнено",
+              "statuses": [
+                {
+                  "id": "10001",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10001"
+                }
+              ]
+            }
+          ],
+          "constraintType": "issueCount"
+        },
+        "ranking": {
+          "rankCustomFieldId": 10109
+        }
+      }
+    },
+    "4": {
+      "status": 200,
+      "data": {
+        "id": 4,
+        "name": "Product Team",
+        "type": "kanban",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/board/4/configuration",
+        "filter": {
+          "id": "10100",
+          "self": "https://task.wemakedev.ru/rest/api/2/filter/10100"
+        },
+        "subQuery": {
+          "query": "fixVersion in unreleasedVersions() OR fixVersion is EMPTY"
+        },
+        "columnConfig": {
+          "columns": [
+            {
+              "name": "Список задач",
+              "statuses": []
+            },
+            {
+              "name": "Backlog / Ideas",
+              "statuses": [
+                {
+                  "id": "10002",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10002"
+                },
+                {
+                  "id": "1",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/1"
+                }
+              ]
+            },
+            {
+              "name": "To Do",
+              "statuses": [
+                {
+                  "id": "10000",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10000"
+                }
+              ]
+            },
+            {
+              "name": "In Progress",
+              "statuses": [
+                {
+                  "id": "3",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/3"
+                }
+              ]
+            },
+            {
+              "name": "Review",
+              "statuses": [
+                {
+                  "id": "10201",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10201"
+                }
+              ]
+            },
+            {
+              "name": "Done",
+              "statuses": [
+                {
+                  "id": "10001",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10001"
+                }
+              ]
+            },
+            {
+              "name": "Canceled",
+              "statuses": [
+                {
+                  "id": "10202",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10202"
+                }
+              ]
+            }
+          ],
+          "constraintType": "issueCountExclSubs"
+        },
+        "ranking": {
+          "rankCustomFieldId": 10109
+        }
+      }
+    },
+    "3": {
+      "status": 200,
+      "data": {
+        "id": 3,
+        "name": "Доска AIPROJ",
+        "type": "kanban",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/board/3/configuration",
+        "filter": {
+          "id": "10004",
+          "self": "https://task.wemakedev.ru/rest/api/2/filter/10004"
+        },
+        "subQuery": {
+          "query": "fixVersion in unreleasedVersions() OR fixVersion is EMPTY"
+        },
+        "columnConfig": {
+          "columns": [
+            {
+              "name": "Список задач",
+              "statuses": []
+            },
+            {
+              "name": "Список задач",
+              "statuses": [
+                {
+                  "id": "10002",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10002"
+                }
+              ]
+            },
+            {
+              "name": "Выбрано для разработки",
+              "statuses": [
+                {
+                  "id": "10003",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10003"
+                }
+              ]
+            },
+            {
+              "name": "В работе",
+              "statuses": [
+                {
+                  "id": "3",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/3"
+                }
+              ]
+            },
+            {
+              "name": "Выполнено",
+              "statuses": [
+                {
+                  "id": "10001",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10001"
+                }
+              ]
+            }
+          ],
+          "constraintType": "issueCount"
+        },
+        "ranking": {
+          "rankCustomFieldId": 10109
+        }
+      }
+    },
+    "12": {
+      "status": 200,
+      "data": {
+        "id": 12,
+        "name": "Доска ATS",
+        "type": "kanban",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/board/12/configuration",
+        "filter": {
+          "id": "10113",
+          "self": "https://task.wemakedev.ru/rest/api/2/filter/10113"
+        },
+        "subQuery": {
+          "query": "fixVersion in unreleasedVersions() OR fixVersion is EMPTY"
+        },
+        "columnConfig": {
+          "columns": [
+            {
+              "name": "Список задач",
+              "statuses": []
+            },
+            {
+              "name": "Список задач",
+              "statuses": [
+                {
+                  "id": "10002",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10002"
+                }
+              ]
+            },
+            {
+              "name": "Выбрано для разработки",
+              "statuses": [
+                {
+                  "id": "10003",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10003"
+                }
+              ]
+            },
+            {
+              "name": "В работе",
+              "statuses": [
+                {
+                  "id": "3",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/3"
+                }
+              ]
+            },
+            {
+              "name": "Ревью",
+              "statuses": [
+                {
+                  "id": "10206",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10206"
+                }
+              ]
+            },
+            {
+              "name": "Тестирование",
+              "statuses": [
+                {
+                  "id": "10100",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10100"
+                }
+              ]
+            },
+            {
+              "name": "Выполнено",
+              "statuses": [
+                {
+                  "id": "10001",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10001"
+                }
+              ]
+            }
+          ],
+          "constraintType": "issueCount"
+        },
+        "ranking": {
+          "rankCustomFieldId": 10109
+        }
+      }
+    },
+    "1": {
+      "status": 200,
+      "data": {
+        "id": 1,
+        "name": "Доска NEUROKEY",
+        "type": "scrum",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/board/1/configuration",
+        "filter": {
+          "id": "10000",
+          "self": "https://task.wemakedev.ru/rest/api/2/filter/10000"
+        },
+        "columnConfig": {
+          "columns": [
+            {
+              "name": "Нужно сделать",
+              "statuses": [
+                {
+                  "id": "10000",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10000"
+                }
+              ]
+            },
+            {
+              "name": "В работе",
+              "statuses": [
+                {
+                  "id": "3",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/3"
+                }
+              ]
+            },
+            {
+              "name": "Ревью",
+              "statuses": [
+                {
+                  "id": "10206",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10206"
+                }
+              ],
+              "max": 5
+            },
+            {
+              "name": "Готово к тестированию",
+              "statuses": [
+                {
+                  "id": "10203",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10203"
+                }
+              ],
+              "max": 5
+            },
+            {
+              "name": "Готово к Релизу",
+              "statuses": [
+                {
+                  "id": "10204",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10204"
+                }
+              ]
+            },
+            {
+              "name": "Выполнено",
+              "statuses": [
+                {
+                  "id": "10214",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10214"
+                }
+              ]
+            }
+          ],
+          "constraintType": "issueCountExclSubs"
+        },
+        "estimation": {
+          "type": "field",
+          "field": {
+            "fieldId": "customfield_10201",
+            "displayName": "Пойнты"
+          }
+        },
+        "ranking": {
+          "rankCustomFieldId": 10109
+        }
+      }
+    },
+    "11": {
+      "status": 200,
+      "data": {
+        "id": 11,
+        "name": "Доска Релевантер",
+        "type": "kanban",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/board/11/configuration",
+        "filter": {
+          "id": "10111",
+          "self": "https://task.wemakedev.ru/rest/api/2/filter/10111"
+        },
+        "subQuery": {
+          "query": "fixVersion in unreleasedVersions() OR fixVersion is EMPTY"
+        },
+        "columnConfig": {
+          "columns": [
+            {
+              "name": "Список задач",
+              "statuses": []
+            },
+            {
+              "name": "Список задач",
+              "statuses": [
+                {
+                  "id": "10002",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10002"
+                }
+              ]
+            },
+            {
+              "name": "Выбрано для разработки",
+              "statuses": [
+                {
+                  "id": "10003",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10003"
+                }
+              ]
+            },
+            {
+              "name": "В работе",
+              "statuses": [
+                {
+                  "id": "3",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/3"
+                }
+              ]
+            },
+            {
+              "name": "Ревью",
+              "statuses": [
+                {
+                  "id": "10206",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10206"
+                }
+              ]
+            },
+            {
+              "name": "Тестирование",
+              "statuses": [
+                {
+                  "id": "10100",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10100"
+                }
+              ]
+            },
+            {
+              "name": "Выполнено",
+              "statuses": [
+                {
+                  "id": "10001",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10001"
+                },
+                {
+                  "id": "10202",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10202"
+                }
+              ]
+            }
+          ],
+          "constraintType": "issueCount"
+        },
+        "ranking": {
+          "rankCustomFieldId": 10109
+        }
+      }
+    },
+    "13": {
+      "status": 200,
+      "data": {
+        "id": 13,
+        "name": "Обучения",
+        "type": "kanban",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/board/13/configuration",
+        "filter": {
+          "id": "10114",
+          "self": "https://task.wemakedev.ru/rest/api/2/filter/10114"
+        },
+        "subQuery": {
+          "query": "fixVersion in unreleasedVersions() OR fixVersion is EMPTY"
+        },
+        "columnConfig": {
+          "columns": [
+            {
+              "name": "Список задач",
+              "statuses": []
+            },
+            {
+              "name": "Идеи ",
+              "statuses": [
+                {
+                  "id": "10002",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10002"
+                }
+              ]
+            },
+            {
+              "name": "В разработке (Программа)",
+              "statuses": [
+                {
+                  "id": "10003",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10003"
+                }
+              ]
+            },
+            {
+              "name": "Согласование / Ревью ",
+              "statuses": [
+                {
+                  "id": "3",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/3"
+                }
+              ]
+            },
+            {
+              "name": "Готово к запуску",
+              "statuses": [
+                {
+                  "id": "10215",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10215"
+                }
+              ]
+            },
+            {
+              "name": "Набор / Маркетинг",
+              "statuses": [
+                {
+                  "id": "10216",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10216"
+                }
+              ]
+            },
+            {
+              "name": "В процессе (Обучение)",
+              "statuses": [
+                {
+                  "id": "10217",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10217"
+                }
+              ]
+            },
+            {
+              "name": "Завершено",
+              "statuses": [
+                {
+                  "id": "10214",
+                  "self": "https://task.wemakedev.ru/rest/api/2/status/10214"
+                }
+              ]
+            }
+          ],
+          "constraintType": "issueCount"
+        },
+        "ranking": {
+          "rankCustomFieldId": 10109
+        }
+      }
+    }
+  }
+}
