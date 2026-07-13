@@ -10,8 +10,8 @@ Self-hosted таск-трекер, полноценный аналог open-sour
 - **Rust**: 1.88.0+ (latest stable на июль 2026)
 - **Web framework**: `axum` 0.8.9
 - **Async runtime**: `tokio` 1.52.3 (`full`)
-- **DB access**: `sqlx` 0.9.0
-- **Migrations**: `refinery` 0.8.15
+- **DB access**: `sea-orm` 2.0.x + `sqlx` 0.9.0
+- **Migrations**: `refinery` 0.8.15 (или SeaORM Migrator)
 - **Config**: `figment` 0.10.19
 - **Validation**: `garde` 0.23.0
 - **Auth**: `argon2` 0.5.3, `jsonwebtoken` 10.4.0
@@ -38,7 +38,7 @@ Self-hosted таск-трекер, полноценный аналог open-sour
 - **Query**: `@tanstack/react-query` 5.74.4
 - **Router**: `react-router` 8.1.0
 - **Forms**: `react-hook-form` 7.55.0 + `zod` 4.4.3
-- **Utils**: `@tanstack/react-table`, `date-fns` 4.1.0
+- **Utils**: `@tanstack/react-table`, `date-fns` 4.1.0, `@dnd-kit/core`, `@dnd-kit/sortable`, `@tiptap/react`, `sonner`, `@tanstack/react-virtual`
 - **Testing**: `vitest` 4.1.10, `@testing-library/react` 16.3.0, `playwright` 1.51.1
 
 ### Infrastructure
@@ -76,6 +76,12 @@ task-tracker/
 └── docs/
     ├── ARCHITECTURE.md
     ├── TZ.md
+    ├── DATA_MODEL.md
+    ├── API.md
+    ├── WORKFLOW.md
+    ├── JQL.md
+    ├── USER_STORIES.md
+    ├── LIBRARIES.md
     ├── PERFORMANCE.md
     └── TESTING.md
 ```
@@ -178,7 +184,7 @@ pub trait IssueRepository: Send + Sync {
 
 ### 4.4 Infrastructure layer (`crates/infra`)
 
-**SQLx repositories** — реализации repository trait. Используют compile-time checked queries.
+**SQLx/SeaORM repositories** — реализации repository trait. SeaORM для стандартных CRUD, sqlx для сложных JQL-запросов и отчётов.
 
 **Unit of Work** — транзакционная обёртка:
 ```rust
@@ -268,30 +274,16 @@ let app = Router::new()
 
 ## 9. API
 
-- **REST**: основной протокол
+- **REST**: основной протокол, спецификация в `docs/API.md`
 - **OpenAPI**: генерируется из axum-роутов через `utoipa-axum`
-- **WebSocket**: live updates kanban / issue page
+- **WebSocket**: live updates kanban / issue page, топики в `docs/API.md`
 - **Real-time**: redis pub/sub + WS broadcast
 
-## 10. База данных
+## 9. Workflow / JQL
 
-PostgreSQL + refinery миграции. Основные таблицы:
-- `users`, `sessions`
-- `projects`, `project_roles`
-- `issue_types`, `issue_statuses`, `issue_priorities`, `workflows`
-- `issues`, `issue_fields`, `issue_custom_fields`
-- `comments`, `attachments`
-- `boards`, `board_columns`, `board_issues`
-- `filters`, `filter_shares`
-- `sprints`, `epics`, `epic_issues`
-- `notifications`, `notification_rules`
-- `audit_log`
-
-Полнотекстовый поиск: PostgreSQL `tsvector` + `GIN` индекс.
-
-## 11. Производительность
-
-Подробнее в `PERFORMANCE.md`.
+- Workflow engine: статусы, transitions, conditions, validators, post-functions — в `docs/WORKFLOW.md`.
+- JQL grammar, operators, functions, примеры — в `docs/JQL.md`.
+- User stories / use cases — в `docs/USER_STORIES.md`.
 
 ## 12. Тестирование
 

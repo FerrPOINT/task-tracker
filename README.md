@@ -7,15 +7,21 @@ Self-hosted таск-трекер, аналог Jira. Backend — Rust, frontend
 - `backend/` — Rust workspace (Axum + SeaORM + PostgreSQL)
 - `frontend/` — React 19 + Vite 6
 - `cli/` — CLI-утилита (Rust)
-- `docs/` — архитектура, ТЗ, производительность, тестирование, библиотеки
+- `docs/` — архитектура, ТЗ, дата-модель, API, workflow, JQL, user stories, производительность, тестирование, библиотеки, отчёт по Vikunja
 
 ## Документы
 
 - [Архитектура](docs/ARCHITECTURE.md)
 - [Техническое задание](docs/TZ.md)
+- [Дата-модель](docs/DATA_MODEL.md)
+- [API](docs/API.md)
+- [Workflow](docs/WORKFLOW.md)
+- [JQL](docs/JQL.md)
+- [User Stories](docs/USER_STORIES.md)
 - [Производительность](docs/PERFORMANCE.md)
 - [Тестирование](docs/TESTING.md)
 - [Библиотеки](docs/LIBRARIES.md)
+- [Отчёт по сравнению с Vikunja](docs/VIKUNJA_GAP_ANALYSIS.md)
 
 ## Запуск
 
