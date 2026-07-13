@@ -460,13 +460,12 @@
 ## 17. SVG-мокапы
 
 См. папки:
-- `docs/assets/jira-screenshots/` — реальные скриншоты UI из Jira
-- `docs/assets/jira-reference/` — JSON-схемы через Jira REST API
 - `docs/assets/ui-mockups/` — HTML-мокапы интерфейса Task Tracker
+- `docs/assets/jira-samples/` — обезличенные примеры структур Jira (только форматы, без персональных данных)
 
-## Appendix: Captured Jira Reference Data
+## Appendix: Jira Structural Samples
 
-Снято с реального инстанса https://task.wemakedev.ru (read-only, без изменений).
+Файлы с реальными данными удалены из репозитория. Структурные примеры (issue JSON shape, field schema, board config) будут добавлены в `docs/assets/jira-samples/` в обезличенном виде при необходимости.
 
 ### Issue Types
 - `Задача` (standard)
@@ -503,7 +502,7 @@
 
 ### Projects
 - `ED` —  Education (software)
-- `AAT` — AZHUKOV Azhukov Test (software)
+- `AAT` — [REDACTED] Test (software)
 - `PRES` — Presale (business)
 - `PT` — Product team (business)
 - `ATS` — АТС Релевантер (software)
