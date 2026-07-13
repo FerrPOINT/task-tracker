@@ -73,6 +73,11 @@
 48. `issue_link_types`
 49. `issue_links`
 
+### Комментарии и активность
+50. `comments`
+51. `comment_mentions`
+52. `activity_log`
+
 ### Аудит и история изменений
 
 73. `changelog`
@@ -228,6 +233,24 @@ CREATE TABLE user_sessions (
 );
 ```
 
+### 4.3. refresh_tokens
+
+Refresh токены для сессий.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUIDv7 | PK |
+| `user_id` | UUID | FK → users |
+| `token_hash` | VARCHAR(128) | Хеш refresh токена |
+| `expires_at` | timestamptz | Время истечения |
+| `created_at` | timestamptz | Создание |
+| `revoked_at` | timestamptz | Отзыв |
+
+Индексы:
+- `refresh_tokens_user_id_idx` на `(user_id)`.
+- `refresh_tokens_token_hash_idx` уникальный на `(token_hash)`.
+
+---
 ### 4.3. password_reset_tokens
 
 ```sql
@@ -642,6 +665,21 @@ CREATE TABLE project_scheme_bindings (
 );
 ```
 
+### 4.32. project_settings
+
+Настройки проекта (JSONB + typed flags).
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUIDv7 | PK |
+| `project_id` | UUID | FK → projects |
+| `key` | VARCHAR(64) | Название настройки |
+| `value` | JSONB | Значение |
+| `updated_at` | timestamptz | Обновление |
+
+Индекс: `project_settings_project_key_idx` уникальный на `(project_id, key)`.
+
+---
 ### 4.33. components
 
 ```sql
@@ -994,6 +1032,23 @@ CREATE TABLE worklogs (
 
 ---
 
+### 4.48. changelog
+
+История изменений полей задач.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUIDv7 | PK |
+| `issue_id` | UUID | FK → issues |
+| `field_name` | VARCHAR(64) | Изменённое поле |
+| `old_value` | JSONB | Старое значение |
+| `new_value` | JSONB | Новое значение |
+| `actor_id` | UUID | FK → users |
+| `created_at` | timestamptz | Время изменения |
+
+Индекс: `changelog_issue_created_idx` на `(issue_id, created_at DESC)`.
+
+---
 ### 4.53. boards
 
 ```sql
@@ -1071,6 +1126,24 @@ CREATE TABLE sprint_issues (
 
 ---
 
+### 4.58. sprint_reports
+
+Агрегированные метрики спринтов.
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUIDv7 | PK |
+| `sprint_id` | UUID | FK → sprints |
+| `completed_issues` | INT | Завершённые задачи |
+| `incomplete_issues` | INT | Незавершённые задачи |
+| `total_story_points` | INT | Всего story points |
+| `completed_story_points` | INT | Завершённые story points |
+| `report_data` | JSONB | Сырые данные отчёта |
+| `generated_at` | timestamptz | Время генерации |
+
+Индекс: `sprint_reports_sprint_idx` уникальный на `(sprint_id)`.
+
+---
 ### 4.58. custom_fields
 
 ```sql

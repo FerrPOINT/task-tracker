@@ -60,6 +60,28 @@ Documentation-first: перед кодом фиксируем функциона
 - [RELEASE](docs/RELEASE.md)
 - [ONBOARDING](docs/ONBOARDING.md)
 
+## Быстрый старт
+
+```bash
+cp .env.example .env
+# отредактируй .env
+docker compose up -d
+```
+
+Приложение доступно на `http://localhost:19876`.
+
+Локали: `ru` (по умолчанию), `en`.
+
+## Тесты
+
+```bash
+# Backend
+cd backend && cargo test
+
+# Frontend
+cd frontend && pnpm test && pnpm test:e2e
+```
+
 ## Разработка
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
