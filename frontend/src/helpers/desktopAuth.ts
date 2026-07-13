@@ -1,21 +1,21 @@
 import type {OAuthTokens} from '@/types/desktop'
 
 export function isDesktopApp(): boolean {
-	return !!window.task-trackerDesktop?.isDesktop
+	return false
 }
 
 export function startDesktopOAuthLogin(apiUrl: string): Promise<void> {
-	return window.task-trackerDesktop!.startOAuthLogin(apiUrl)
+	throw new Error('Desktop OAuth login is not available')
 }
 
 export function listenForDesktopOAuthTokens(callback: (tokens: OAuthTokens) => void): void {
-	window.task-trackerDesktop!.onOAuthTokens(callback)
+	// no-op
 }
 
 export function listenForDesktopOAuthError(callback: (error: string) => void): void {
-	window.task-trackerDesktop!.onOAuthError(callback)
+	// no-op
 }
 
 export function refreshDesktopToken(apiUrl: string, refreshToken: string): Promise<OAuthTokens> {
-	return window.task-trackerDesktop!.refreshToken(apiUrl, refreshToken)
+	throw new Error('Desktop token refresh is not available')
 }

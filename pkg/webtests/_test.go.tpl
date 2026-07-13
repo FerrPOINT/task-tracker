@@ -17,8 +17,8 @@
 package webtests
 
 import (
-	"code.vikunja.io/api/pkg/models"
-	"code.vikunja.io/api/pkg/web/handler"
+	"github.com/FerrPOINT/task-tracker/pkg/models"
+	"github.com/FerrPOINT/task-tracker/pkg/web/handler"
 
 	"github.com/labstack/echo"
 	"github.com/stretchr/testify/assert"
