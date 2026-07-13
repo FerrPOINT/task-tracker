@@ -303,6 +303,25 @@ CREATE TABLE issue_types (
 
 Seed: Task, Bug, Story, Epic, Sub-task.
 
+
+
+### 4.6a. priorities
+
+```sql
+CREATE TABLE priorities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    icon_url TEXT,
+    color TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    is_system BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+Seed: Highest, High, Medium, Low, Lowest.
 ### 4.6. statuses
 
 ```sql
@@ -727,7 +746,7 @@ CREATE TABLE issues (
     summary TEXT NOT NULL,
     description JSONB,
     environment TEXT,
-    priority TEXT NOT NULL DEFAULT 'medium',
+    priority_id UUID REFERENCES priorities(id),
     assignee_id UUID REFERENCES users(id),
     reporter_id UUID NOT NULL REFERENCES users(id),
     creator_id UUID NOT NULL REFERENCES users(id),
@@ -904,12 +923,13 @@ Seed: Blocks, Clones, Duplicates, Relates to, Epic link, Parent/Sub-task.
 ```sql
 CREATE TABLE issue_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    source_issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
-    target_issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     link_type_id UUID NOT NULL REFERENCES issue_link_types(id),
+    inward_issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    outward_issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
     created_by UUID REFERENCES users(id),
     created_at TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(source_issue_id, target_issue_id, link_type_id)
+    UNIQUE(inward_issue_id, outward_issue_id, link_type_id),
+    CHECK (inward_issue_id != outward_issue_id)
 );
 ```
 
@@ -1078,6 +1098,16 @@ CREATE TABLE board_columns (
     color TEXT,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+### 4.XX. board_column_statuses
+
+```sql
+CREATE TABLE board_column_statuses (
+    board_column_id UUID NOT NULL REFERENCES board_columns(id) ON DELETE CASCADE,
+    status_id UUID NOT NULL REFERENCES statuses(id) ON DELETE CASCADE,
+    PRIMARY KEY (board_column_id, status_id)
+);
+```
 ```
 
 ### 4.55. board_quick_filters

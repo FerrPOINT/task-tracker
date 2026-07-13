@@ -420,6 +420,18 @@ Toggle vote.
 
 ---
 
+## Issue Expandable Fields
+
+`GET /api/v1/issues/{id}?expand=changelog,renderedFields,operations,editmeta`
+
+| Expand | Included Data |
+|--------|---------------|
+| `renderedFields` | HTML/ADF rendered description and comments |
+| `operations` | Allowed workflow transitions |
+| `editmeta` | Metadata of editable fields per issue type |
+| `changelog` | Full history of field changes |
+| `versionedRepresentations` | Versioned content snapshots |
+
 ## Comments
 
 ### GET /issues/{id}/comments
