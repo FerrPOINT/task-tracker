@@ -52,27 +52,27 @@ Self-hosted таск-трекер, полноценный аналог open-sour
 ```
 task-tracker/
 ├── backend/
-│   ├── Cargo.toml              # workspace root
+│   ├── Cargo.toml
 │   ├── crates/
-│   │   ├── api/                # HTTP слой (controllers, middleware, routes)
-│   │   ├── app/                # application services + DTO + mappers
-│   │   ├── domain/             # entities, value objects, domain events, repository traits
-│   │   ├── infra/              # db, redis, email, metrics, events, cache
-│   │   ├── shared/             # kernel: errors, ids, tracing, utils
-│   │   └── server/             # binary: compose layers, start axum
-│   └── migrations/             # refinery SQL migrations
+│   │   ├── api/
+│   │   ├── app/
+│   │   ├── domain/
+│   │   ├── infra/
+│   │   ├── shared/
+│   │   └── server/
+│   └── migrations/
 ├── frontend/
 │   ├── src/
-│   │   ├── api/                # generated fetch-клиент по OpenAPI
-│   │   ├── app/                # routing, layouts, providers
-│   │   ├── entities/           # domain-модели, types
-│   │   ├── features/           # feature-sliced: kanban, issue, project, filter...
-│   │   ├── shared/             # ui-kit, lib, config, i18n
-│   │   └── widgets/            # композиционные блоки
+│   │   ├── api/
+│   │   ├── app/
+│   │   ├── entities/
+│   │   ├── features/
+│   │   ├── shared/
+│   │   └── widgets/
 │   ├── playwright/
 │   └── vitest/
 ├── cli/
-│   └── src/                    # Rust CLI для администратора: users, projects, reindex
+│   └── src/
 └── docs/
     ├── ARCHITECTURE.md
     ├── TZ.md
@@ -81,6 +81,12 @@ task-tracker/
     ├── WORKFLOW.md
     ├── JQL.md
     ├── USER_STORIES.md
+    ├── UI_UX.md
+    ├── assets/
+    │   └── ui-mockups/
+    │       ├── issue-detail.html
+    │       ├── kanban-board.html
+    │       └── project-list.html
     ├── LIBRARIES.md
     ├── PERFORMANCE.md
     └── TESTING.md
@@ -279,11 +285,13 @@ let app = Router::new()
 - **WebSocket**: live updates kanban / issue page, топики в `docs/API.md`
 - **Real-time**: redis pub/sub + WS broadcast
 
-## 9. Workflow / JQL
+## 9. Workflow / JQL / UI
 
 - Workflow engine: статусы, transitions, conditions, validators, post-functions — в `docs/WORKFLOW.md`.
 - JQL grammar, operators, functions, примеры — в `docs/JQL.md`.
 - User stories / use cases — в `docs/USER_STORIES.md`.
+- UI/UX specification, компоненты, роуты, макеты — в `docs/UI_UX.md`.
+- Визуальные мокапы: `docs/assets/ui-mockups/` (issue-detail.html, kanban-board.html, project-list.html).
 
 ## 12. Тестирование
 
