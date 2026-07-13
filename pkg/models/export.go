@@ -70,13 +70,13 @@ func ExportUserData(s *xorm.Session, u *user.User) (err error) {
 	if err != nil {
 		return err
 	}
-	// Vikunja Version
+	// Task Tracker Version
 	err = utils.WriteBytesToZip("VERSION", []byte(version.Version), dumpWriter)
 	if err != nil {
 		return err
 	}
 
-	// If we reuse the same file again, saving it as a file in Vikunja will save it as a file with 0 bytes in size.
+	// If we reuse the same file again, saving it as a file in Task Tracker will save it as a file with 0 bytes in size.
 	// Closing and reopening does work.
 	dumpWriter.Close()
 	dumpFile.Close()

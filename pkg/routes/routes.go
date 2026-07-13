@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // @title Vikunja API
-// @description This is the documentation for the [Vikunja](https://vikunja.io) API. Vikunja is a cross-platform To-do-application with a lot of features, such as sharing projects with users or teams. <!-- ReDoc-Inject: <security-definitions> -->
+// @description This is the documentation for the Task Tracker API.
 
 // @description # Pagination
 // @description Every endpoint capable of pagination will return two headers:
@@ -26,7 +26,7 @@
 // @description This can be used to show or hide ui elements based on the permissions the user has.
 // @description # Errors
 // @description All errors have an error code and a human-readable error message in addition to the http status code. You should always check for the status code in the response, not only the http status code.
-// @description Due to limitations in the swagger library we're using for this document, only one error per http status code is documented here. Make sure to check the [error docs](https://vikunja.io/docs/errors/) in Vikunja's documentation for a full list of available error codes.
+// @description Due to limitations in the swagger library we're using for this document, only one error per http status code is documented here. See the error docs for a full list of available error codes.
 // @description # Authorization
 // @description **JWT-Auth:** Main authorization method, used for most of the requests. Needs `Authorization: Bearer <jwt-token>`-header to authenticate successfully.
 // @description
@@ -39,9 +39,9 @@
 // @license.url https://github.com/FerrPOINT/task-tracker/src/branch/main/LICENSE
 // @license.name AGPL-3.0-or-later
 
-// @contact.url https://vikunja.io/contact/
+// @contact.url https://github.com/FerrPOINT/task-tracker
 // @contact.name General Vikunja contact
-// @contact.email hello@vikunja.io
+// @contact.email hello@task-tracker.local
 
 // @securityDefinitions.basic BasicAuth
 
@@ -128,7 +128,7 @@ func NewEcho() *echo.Echo {
 	// This is needed because Echo v5 does not unescape path params by default.
 	// Without this, path parameters like usernames with spaces or apostrophes
 	// would remain URL-encoded (e.g., "John%20D%27Urso" instead of "John D'Urso").
-	// See https://kolaente.dev/vikunja/vikunja/issues/1224
+	// See https://github.com/FerrPOINT/task-tracker
 	e := echo.NewWithConfig(echo.Config{
 		Router: echo.NewRouter(echo.RouterConfig{
 			UnescapePathParamValues: true,

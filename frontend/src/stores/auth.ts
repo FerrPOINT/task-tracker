@@ -164,10 +164,6 @@ export const useAuthStore = defineStore('auth', () => {
 			},
 		})
 
-		// Sync the quick entry shortcut to the desktop app when settings are loaded
-		window.task-trackerDesktop?.updateQuickEntryShortcut(
-			settings.value.frontendSettings.desktopQuickEntryShortcut || '',
-		)
 	}
 
 	function setAuthenticated(newAuthenticated: boolean) {
