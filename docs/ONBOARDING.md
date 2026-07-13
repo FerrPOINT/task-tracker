@@ -93,7 +93,7 @@ pnpm test:e2e
 
 ## References
 
-- `docs/CONTRIBUTING.md`
+- `CONTRIBUTING.md` (корень репозитория)
 - `docs/DEPLOYMENT.md`
 - `docs/TESTING.md`
 - `docs/AGENTS.md`

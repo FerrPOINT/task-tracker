@@ -66,4 +66,4 @@ Positive and negative.
 ## References
 
 - `docs/ARCHITECTURE.md`
-- `docs/CONTRIBUTING.md`
+- `CONTRIBUTING.md` (корень репозитория)

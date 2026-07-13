@@ -1009,7 +1009,8 @@ Hard delete.
 
 - `docs/ARCHITECTURE.md` — общая архитектура backend/frontend.
 - `docs/ERROR_HANDLING.md` — формат ошибок и retry-политика.
-- `docs/AUTH.md` — подробная спецификация аутентификации (при наличии).
+- `docs/SECURITY.md` — headers, CORS, CSRF, auth flow.
+- `docs/API.md` — детали endpoints аутентификации.
 - `docs/DATA_MODEL.md` — структура базы данных.
 - `docs/JQL.md` — синтаксис поиска.
 - `docs/WORKFLOW.md` — workflow engine.
