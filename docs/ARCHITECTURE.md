@@ -345,6 +345,12 @@ let app = Router::new()
 - OpenAPI generation — `utoipa-axum`.
 - WebSocket — live updates kanban / issue page, payloads в `docs/API.md`.
 - Real-time — redis pub/sub + WS broadcast.
+- Technical specification (TZ) — `docs/TZ.md`.
+- Data model — `docs/DATA_MODEL.md`.
+- Performance goals — `docs/PERFORMANCE.md`.
+- Libraries overview — `docs/LIBRARIES.md`.
+- Jira UI capture notes — `docs/JIRA_UI_CAPTURE.md`.
+- Vikunja gap analysis — `docs/VIKUNJA_GAP_ANALYSIS.md`.
 - Workflow engine — `docs/WORKFLOW.md`.
 - JQL grammar — `docs/JQL.md`.
 - User stories — `docs/USER_STORIES.md`.
@@ -368,6 +374,8 @@ let app = Router::new()
 - i18n — `docs/I18N.md`.
 - Code style — `docs/CODE_STYLE.md`.
 - ADR — `docs/ADR.md`.
+- Security — `docs/SECURITY.md`.
+- Monitoring — `docs/MONITORING.md`.
 - UI mockups — `docs/assets/ui-mockups/`.
 - Jira structural samples — `docs/assets/jira-samples/`.
 

@@ -1,6 +1,10 @@
 # Task Tracker
 
-Self-hosted таск-трекер, аналог Jira. Backend — Rust, frontend — React.
+Self-hosted таск-трекер, аналог Jira. Backend — Rust (Axum + SeaORM + PostgreSQL), frontend — React 19 + Vite 6 + Tailwind CSS v4. Порт по умолчанию `19876`, env-префикс `TASKTRACKER_`, локали `ru`/`en`.
+
+## Подход
+
+Documentation-first: перед кодом фиксируем функционал, дата-модель, API, UI/UX, деплой и безопасность. Код пишем поэтапно от MVP к полному функционалу Jira-like таск-трекера.
 
 ## Структура
 
