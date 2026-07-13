@@ -317,7 +317,44 @@ WHERE i.created_at >= date_trunc('week', now());
 | GET | /filters/{id}/execute | Выполнить сохранённый фильтр |
 | POST | /jql/validate | Проверить синтаксис |
 | POST | /jql/parse | Вернуть AST |
+
+## 8. Custom Fields in JQL
+
+### 8.1 Clause Names
+
+Каждый custom field регистрирует имена для JQL:
+
+- `cf[10000]` — canonical numeric clause.
+- `"Epic Link"` — display name.
+- `"Story Points"` — display name.
+
+### 8.2 Type-Specific Operators
+
+| Field Type | Supported Operators |
+|------------|---------------------|
+| string | `=`, `!=`, `~`, `!~`, `is empty`, `is not empty` |
+| number | `=`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `not in` |
+| date | `=`, `!=`, `<`, `>`, `on`, `before`, `after`, `during` |
+| user | `=`, `!=`, `in`, `not in`, `currentUser()` |
+| option | `=`, `!=`, `in`, `not in` |
+| array | `in`, `not in`, `is empty` |
+
+### 8.3 Epic Link
+
+```jql
+"Epic Link" = PROJ-42
+"Epic Link" is empty
+```
+
+### 8.4 Story Points
+
+```jql
+"Story Points" > 5
+"Story Points" is not empty
+```
+
 ## References
+
 
 - `docs/DATA_MODEL.md`
 - `docs/API.md`

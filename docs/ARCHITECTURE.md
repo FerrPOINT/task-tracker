@@ -96,6 +96,7 @@ task-tracker/
     ├── FRONTEND_ARCHITECTURE.md
     ├── GLOSSARY.md
     ├── I18N.md
+    ├── JIRA_GAP_DETAILS.md
     ├── JIRA_UI_CAPTURE.md
     ├── JQL.md
     ├── LIBRARIES.md

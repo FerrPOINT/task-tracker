@@ -69,6 +69,7 @@ Documentation-first: перед кодом фиксируем функциона
 - [UX PRODUCT](docs/UX_PRODUCT.md)
 - [API EDGE CASES](docs/API_EDGE_CASES.md)
 - [SECURITY INCIDENT RESPONSE](docs/SECURITY_INCIDENT_RESPONSE.md)
+- [JIRA GAP DETAILS](docs/JIRA_GAP_DETAILS.md)
 
 ## Быстрый старт
 
