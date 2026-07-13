@@ -80,6 +80,75 @@ task-tracker/
     ├── API_VERSIONING.md
     ├── ARCHITECTURE.md
     ├── CACHING.md
+    ├── CI_CD.md
+    ├── CLI.md
+    ├── CODE_STYLE.md
+    ├── DATABASE_INDEXES.md
+    ├── DATA_MODEL.md
+    ├── DEPLOYMENT.md
+    ├── DESIGN_TOKENS.md
+    ├── ERROR_HANDLING.md
+    ├── EVENTS.md
+    ├── FRONTEND_ARCHITECTURE.md
+    ├── GLOSSARY.md
+    ├── I18N.md
+    ├── JIRA_UI_CAPTURE.md
+    ├── JQL.md
+    ├── LIBRARIES.md
+    ├── MIGRATIONS.md
+    ├── MONITORING.md
+    ├── NOTIFICATIONS.md
+    ├── ONBOARDING.md
+    ├── OPS_RUNBOOK.md
+    ├── PERFORMANCE.md
+    ├── PROJECT_ADMIN.md
+    ├── REACT_STYLING.md
+    ├── RELEASE.md
+    ├── REPORTS.md
+    ├── ROADMAP.md
+    ├── ROUTING.md
+    ├── SECURITY.md
+    ├── STORAGE.md
+    ├── SYSTEM_ADMIN.md
+    ├── TESTING.md
+    ├── TZ.md
+    ├── UI_LIBRARIES.md
+    ├── UI_UX.md
+    ├── USER_STORIES.md
+    ├── VIKUNJA_GAP_ANALYSIS.md
+    ├── WEBSOCKET_EVENTS.md
+    ├── WORKFLOW.md
+    └── adr/
+task-tracker/
+├── backend/
+│   ├── Cargo.toml
+│   ├── crates/
+│   │   ├── api/
+│   │   ├── app/
+│   │   ├── domain/
+│   │   ├── infra/
+│   │   ├── shared/
+│   │   └── server/
+│   └── migrations/
+├── frontend/
+│   ├── src/
+│   │   ├── api/
+│   │   ├── app/
+│   │   ├── entities/
+│   │   ├── features/
+│   │   ├── shared/
+│   │   └── widgets/
+│   ├── playwright/
+│   └── vitest/
+├── cli/
+│   └── src/
+└── docs/
+    ├── ADR.md
+    ├── AGENTS.md
+    ├── API.md
+    ├── API_VERSIONING.md
+    ├── ARCHITECTURE.md
+    ├── CACHING.md
     ├── CLI.md
     ├── CODE_STYLE.md
     ├── DATABASE_INDEXES.md

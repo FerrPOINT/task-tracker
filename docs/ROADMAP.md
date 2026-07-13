@@ -123,7 +123,7 @@
 
 Каждая фаза считается завершённой, когда:
 
-- Код покрыт тестами (unit + integration + critical e2e).
+- Код покрыт тестами: unit + integration + critical e2e + coverage gates green.
 - Документация обновлена.
 - CI green.
 - Скриншоты UI (если применимо) приложены.
@@ -136,10 +136,4 @@
 - `docs/DATA_MODEL.md` — дата-модель.
 - `docs/DEPLOYMENT.md` — деплой.
 - `docs/TESTING.md` — стратегия тестирования.
-
-## References
-
-- `docs/TZ.md`
-- `docs/ARCHITECTURE.md`
-- `docs/TESTING.md`
-- `docs/DEPLOYMENT.md`
+- `docs/CI_CD.md` — CI/CD pipeline.

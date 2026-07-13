@@ -46,10 +46,10 @@ Documentation-first: перед кодом фиксируем функциона
 - [Monitoring](docs/MONITORING.md)
 - [Производительность](docs/PERFORMANCE.md)
 - [Тестирование](docs/TESTING.md)
+- [CI/CD](docs/CI_CD.md)
 - [Библиотеки](docs/LIBRARIES.md)
 - [Отчёт по сравнению с Vikunja](docs/VIKUNJA_GAP_ANALYSIS.md)
 - [Jira UI Capture (структурные заметки)](docs/JIRA_UI_CAPTURE.md)
-
 - [ROADMAP](docs/ROADMAP.md)
 - [DATABASE INDEXES](docs/DATABASE_INDEXES.md)
 - [GLOSSARY](docs/GLOSSARY.md)

@@ -51,16 +51,66 @@
 
 ## 4. CI/CD
 
-- GitHub Actions
-- Pipeline:
-  1. `cargo fmt --check`, `cargo clippy -- -D warnings`
-  2. `cargo test`
-  3. `pnpm lint`, `pnpm typecheck`, `vitest run`
-  4. `playwright test`
-  5. Docker build
-  6. Push image
+Краткий pipeline — детали в `docs/CI_CD.md`:
 
-## 5. Чек-лист перед merge
+- GitHub Actions.
+- Lint, unit, integration, E2E, coverage, security audit, Docker build.
+- Coverage gates block merge.
+
+## 5. Test Isolation
+
+### 5.1 Backend
+
+- Каждый integration test получает свежую логическую БД в одном PostgreSQL контейнере.
+- `testcontainers` поднимает Postgres/Redis один раз на suite.
+- Миграции применяются в `setup` hook.
+- Тесты внутри транзакции с откатом (`BEGIN ... ROLLBACK`).
+- Unit тесты параллельны; integration — последовательны внутри suite.
+
+### 5.2 Frontend
+
+- MSW мокает API.
+- LocalStorage/SessionStorage мокаются в `setupFiles`.
+- Zustand store сбрасывается в `beforeEach`.
+- TanStack Query cache — `queryClient.clear()`.
+
+### 5.3 E2E
+
+- Новый браузерный контекст на тест.
+- Seed БД через `/api/v1/test/seed`.
+- Deterministic fixtures.
+- Parallel workers = 4.
+
+## 6. Flaky Tests Strategy
+
+| Problem | Solution |
+|---------|----------|
+| Async race | `await expect(...).toPass({ timeout: 5000 })` |
+| DB ordering | deterministic `ORDER BY` по `created_at` |
+| Time-based | fake timers / `timekeeper` |
+| Network mocks | strict MSW matching |
+| Unstable selectors | `data-testid` |
+| Quarantine | flaky test → `@flaky` tag → отдельный CI job с retry |
+| Retry policy | Playwright retry=2, unit/integration retry=0 |
+
+## 7. Mutation Testing
+
+- Backend: `cargo-mutation-testing` / `mutagen` для domain/services.
+- Frontend: `stryker-js` для критичных pure functions.
+- Запускается раз в неделю scheduled job, не блокирует PR.
+- Target: mutation score >= 60%.
+
+## 8. Test Artifacts
+
+| Artifact | Path | Retention |
+|----------|------|-----------|
+| Coverage HTML | `target/tarpaulin/` / `coverage/` | 30 days |
+| Playwright report | `playwright-report/` | 14 days |
+| Playwright screenshots | `test-results/` | 14 days |
+| JUnit XML | `junit-*.xml` | 30 days |
+| OpenAPI diff | `openapi-diff.md` | 30 days |
+
+## 9. Чек-лист перед merge
 
 - [ ] Все unit-тесты проходят
 - [ ] Интеграционные тесты проходят
@@ -68,10 +118,11 @@
 - [ ] Скриншоты для трёх разрешений приложены
 - [ ] Performance budget не нарушен
 - [ ] OpenAPI spec не сломан
+- [ ] Coverage gates green
 
-## 6. Fixtures and Factories
+## 10. Fixtures and Factories
 
-### 6.1 Backend Fixtures
+### 10.1 Backend Fixtures
 
 ```
 backend/fixtures/
@@ -86,7 +137,7 @@ backend/fixtures/
     └── worklogs.rs
 ```
 
-### 6.2 Factory Example (Rust)
+### 10.2 Factory Example (Rust)
 
 ```rust
 pub fn issue_factory() -> IssueFactory {
@@ -97,7 +148,7 @@ pub fn issue_factory() -> IssueFactory {
 }
 ```
 
-### 6.3 Frontend Fixtures
+### 10.3 Frontend Fixtures
 
 ```ts
 // test/fixtures/issues.ts
@@ -110,14 +161,14 @@ export const issueFixture = (override?: Partial<Issue>): Issue => ({
 })
 ```
 
-### 6.4 Seed Scripts
+### 10.4 Seed Scripts
 
 - `seed_dev.ts` — admin, sample project, workflow, statuses, issue types, 50 задач.
 - `seed_e2e.ts` — deterministic dataset для Playwright.
 
-## 7. Coverage
+## 11. Coverage
 
-### 7.1 Targets
+### 11.1 Targets
 
 | Layer | Target |
 |-------|--------|
@@ -127,32 +178,33 @@ export const issueFixture = (override?: Partial<Issue>): Issue => ({
 | Frontend utilities / hooks | >= 70% |
 | Critical UI components | >= 60% |
 | E2E critical path | 100% |
+| Project total | >= 75% |
 
-### 7.2 Tools
+### 11.2 Tools
 
 - Backend: `cargo tarpaulin` (или `cargo-llvm-cov`).
 - Frontend: `vitest --coverage` + `@vitest/coverage-v8`.
 - CI gate: coverage не должно падать.
 
-### 7.3 Exclusions
+### 11.3 Exclusions
 
 - Generated code (DTOs from openapi-generator).
 - UI mockups.
 - Third-party vendored code.
 - Pure type definitions.
 
-## 8. Snapshot Tests
+## 12. Snapshot Tests
 
 - JQL parser AST snapshots.
 - API response DTO snapshots.
 - Frontend component snapshots для стабильных UI-элементов.
 
-## 9. Contract Tests
+## 13. Contract Tests
 
 - Pact / openapi-validator для backend-frontend API contract.
 - Run against generated `openapi.json`.
 
-## 10. Security Tests
+## 14. Security Tests
 
 - OWASP ZAP scan.
 - `cargo audit` / `pnpm audit`.
@@ -161,5 +213,6 @@ export const issueFixture = (override?: Partial<Issue>): Issue => ({
 ## References
 
 - `docs/ARCHITECTURE.md`
+- `docs/CI_CD.md`
 - `docs/CODE_STYLE.md`
 - `docs/DEPLOYMENT.md`
