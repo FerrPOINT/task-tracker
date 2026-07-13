@@ -14,7 +14,7 @@ Self-hosted таск-трекер, полноценный аналог open-sour
 - **Migrations**: `refinery` 0.8.15 (или SeaORM Migrator)
 - **Config**: `figment` 0.10.19
 - **Validation**: `garde` 0.23.0
-- **Auth**: `argon2` 0.5.3, `jsonwebtoken` 10.4.0
+- **Auth**: `argon2` 0.6.0-pre.1, `jsonwebtoken` 10.4.0
 - **Email**: `lettre` 0.11.22
 - **Queue/scheduler**: `apalis` 0.7.4
 - **Cache**: `moka` 0.12.15
@@ -39,7 +39,7 @@ Self-hosted таск-трекер, полноценный аналог open-sour
 - **Router**: `react-router` 8.1.0
 - **Forms**: `react-hook-form` 7.55.0 + `zod` 4.4.3
 - **Utils**: `@tanstack/react-table`, `date-fns` 4.1.0, `@dnd-kit/core`, `@dnd-kit/sortable`, `@tiptap/react`, `sonner`, `@tanstack/react-virtual`
-- **Testing**: `vitest` 4.1.10, `@testing-library/react` 16.3.0, `playwright` 1.51.1
+- **Testing**: `vitest` 4.1.10, `@testing-library/react` 16.3.0, `playwright` 1.61.1
 
 ### Infrastructure
 - **БД**: PostgreSQL 17.6
@@ -74,45 +74,52 @@ task-tracker/
 ├── cli/
 │   └── src/
 └── docs/
-    ├── ARCHITECTURE.md
-    ├── TZ.md
-    ├── DATA_MODEL.md
-    ├── API.md
-    ├── WORKFLOW.md
-    ├── ARCHITECTURE.md
-    ├── TZ.md
-    ├── DATA_MODEL.md
-    ├── API.md
-    ├── WORKFLOW.md
-    ├── JQL.md
-    ├── USER_STORIES.md
-    ├── UI_UX.md
-    ├── DESIGN_TOKENS.md
-    ├── REACT_STYLING.md
-    ├── UI_LIBRARIES.md
-    ├── FRONTEND_ARCHITECTURE.md
-    ├── PROJECT_ADMIN.md
-    ├── SYSTEM_ADMIN.md
-    ├── NOTIFICATIONS.md
-    ├── REPORTS.md
-    ├── CLI.md
-    ├── AGENTS.md
-    ├── DEPLOYMENT.md
-    ├── MIGRATIONS.md
-    ├── STORAGE.md
-    ├── CACHING.md
-    ├── ROUTING.md
-    ├── ERROR_HANDLING.md
-    ├── I18N.md
-    ├── CODE_STYLE.md
     ├── ADR.md
-    ├── LIBRARIES.md
-    ├── PERFORMANCE.md
-    ├── TESTING.md
+    ├── AGENTS.md
+    ├── API.md
+    ├── API_VERSIONING.md
+    ├── ARCHITECTURE.md
+    ├── CACHING.md
+    ├── CLI.md
+    ├── CODE_STYLE.md
+    ├── DATABASE_INDEXES.md
+    ├── DATA_MODEL.md
+    ├── DEPLOYMENT.md
+    ├── DESIGN_TOKENS.md
+    ├── ERROR_HANDLING.md
+    ├── EVENTS.md
+    ├── FRONTEND_ARCHITECTURE.md
+    ├── GLOSSARY.md
+    ├── I18N.md
     ├── JIRA_UI_CAPTURE.md
+    ├── JQL.md
+    ├── LIBRARIES.md
+    ├── MIGRATIONS.md
+    ├── MONITORING.md
+    ├── NOTIFICATIONS.md
+    ├── ONBOARDING.md
+    ├── OPS_RUNBOOK.md
+    ├── PERFORMANCE.md
+    ├── PROJECT_ADMIN.md
+    ├── REACT_STYLING.md
+    ├── RELEASE.md
+    ├── REPORTS.md
+    ├── ROADMAP.md
+    ├── ROUTING.md
+    ├── SECURITY.md
+    ├── STORAGE.md
+    ├── SYSTEM_ADMIN.md
+    ├── TESTING.md
+    ├── TZ.md
+    ├── UI_LIBRARIES.md
+    ├── UI_UX.md
+    ├── USER_STORIES.md
     ├── VIKUNJA_GAP_ANALYSIS.md
+    ├── WEBSOCKET_EVENTS.md
+    ├── WORKFLOW.md
+    ├── adr/
     └── assets/
-
+        ├── ui-mockups/
         │   ├── issue-detail.html
         │   ├── kanban-board.html
         │   └── project-list.html
@@ -409,4 +416,4 @@ let app = Router::new()
 - `README.md`
 - `docs/TZ.md`
 - `docs/ROADMAP.md`
-- `docs/CONTRIBUTING.md`
+- `CONTRIBUTING.md` (корень репозитория)

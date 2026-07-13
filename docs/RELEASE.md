@@ -79,7 +79,7 @@ git checkout v0.1.9
 
 ## References
 
-- `docs/CHANGELOG.md`
-- `docs/CONTRIBUTING.md`
+- `CHANGELOG.md` (корень репозитория)
+- `CONTRIBUTING.md` (корень репозитория)
 - `docs/DEPLOYMENT.md`
 - `docs/OPS_RUNBOOK.md`

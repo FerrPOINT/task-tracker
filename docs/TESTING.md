@@ -31,7 +31,7 @@
 - MSW для мока API
 
 ### E2E
-- `playwright` 1.51.1
+- `playwright` 1.61.1
 - Critical path:
   - регистрация / логин
   - создание проекта

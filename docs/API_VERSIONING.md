@@ -63,7 +63,7 @@ Response:
 
 При выпуске `v2`:
 
-- `docs/API_V2_MIGRATION.md` с mapping endpoint/field.
+- Создать `docs/API_V2_MIGRATION.md` с mapping endpoint/field.
 - Breaking changes changelog.
 - Script для проверки использования deprecated features.
 
@@ -71,4 +71,4 @@ Response:
 
 - `docs/API.md`
 - `docs/ARCHITECTURE.md`
-- `docs/CHANGELOG.md`
+- `CHANGELOG.md` (корень репозитория)

@@ -341,7 +341,33 @@ server {
 - Loki для логов.
 - Alertmanager.
 
-## 18. Multi-Environment
+## 18. Graceful Shutdown
+
+Backend завершает работу корректно:
+
+1. Получает `SIGTERM` / `SIGINT`.
+2. Перестаёт принимать новые HTTP/WebSocket соединения.
+3. Ждёт завершения активных запросов (` graceful shutdown timeout`, по умолчанию 30s).
+4. Закрывает пул PostgreSQL и Redis.
+5. Завершает фоновые задачи `apalis` (in-flight jobs завершаются, новые не берутся).
+6. Закрывает соединения WebSocket с broadcast сообщением `server:shutdown`.
+
+```yaml
+# docker-compose.yml (api service)
+stop_grace_period: 35s
+```
+
+```rust
+// backend/src/main.rs (pseudo)
+let server = axum::serve(listener, app);
+tokio::select! {
+    _ = server => {},
+    _ = shutdown_signal => {},
+}
+// cleanup: close pools, stop workers
+```
+
+## 19. Multi-Environment
 
 | Environment | Compose files |
 |-------------|---------------|
