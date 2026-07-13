@@ -2,7 +2,7 @@ import wunderlistIcon from './icons/wunderlist.jpg'
 import todoistIcon from './icons/todoist.svg?url'
 import trelloIcon from './icons/trello.svg?url'
 import microsoftTodoIcon from './icons/microsoft-todo.svg?url'
-import vikunjaFileIcon from './icons/vikunja-file.png?url'
+import taskTrackerFileIcon from './icons/task-tracker-file.png?url'
 import tickTickIcon from './icons/ticktick.svg?url'
 import wekanIcon from './icons/wekan.png?url'
 import csvIcon from './icons/csv.svg?url'
@@ -40,10 +40,10 @@ export const MIGRATORS = {
 		name: 'Microsoft Todo',
 		icon: microsoftTodoIcon as string,
 	},
-	'vikunja-file': {
-		id: 'vikunja-file',
-		name: 'Vikunja Export',
-		icon: vikunjaFileIcon,
+	'task-tracker-file': {
+		id: 'task-tracker-file',
+		name: 'Task Tracker Export',
+		icon: taskTrackerFileIcon,
 		isFileMigrator: true,
 	},
 	ticktick: {

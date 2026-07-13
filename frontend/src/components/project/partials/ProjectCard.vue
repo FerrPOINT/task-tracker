@@ -128,7 +128,7 @@ const textOnlyDescription = computed(() => {
 
 .project-title {
 	align-self: flex-end;
-	font-family: $vikunja-font;
+	font-family: $task-tracker-font;
 	font-weight: 400;
 	font-size: 1.5rem;
 	line-height: var(--title-line-height);

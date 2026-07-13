@@ -16,7 +16,7 @@ const docTemplate = `{
         },
         "license": {
             "name": "AGPL-3.0-or-later",
-            "url": "https://code.vikunja.io/api/src/branch/main/LICENSE"
+            "url": "https://github.com/FerrPOINT/task-tracker/src/branch/main/LICENSE"
         },
         "version": "{{.Version}}"
     },

@@ -1,0 +1,42 @@
+services:
+  app:
+    build: .
+    container_name: task-tracker-next-app-1
+    ports:
+      - "19875:19876"
+    environment:
+      TASKTRACKER_SERVICE_INTERFACE: ":19876"
+      TASKTRACKER_DATABASE_TYPE: postgres
+      TASKTRACKER_DATABASE_HOST: db
+      TASKTRACKER_DATABASE_PORT: 5432
+      TASKTRACKER_DATABASE_USER: tasktracker
+      TASKTRACKER_DATABASE_PASSWORD: tasktracker
+      TASKTRACKER_DATABASE_DATABASE: tasktracker
+      TASKTRACKER_SERVICE_PUBLICURL: http://192.168.1.135:19875/
+      TASKTRACKER_SERVICE_JWTSECRET: change-me-in-production
+      TASKTRACKER_LOG_LEVEL: INFO
+      TASKTRACKER_FILES_BASEPATH: /app/files
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - task-tracker-files:/app/files
+
+  db:
+    image: postgres:16-alpine
+    container_name: task-tracker-next-db-1
+    environment:
+      POSTGRES_USER: tasktracker
+      POSTGRES_PASSWORD: tasktracker
+      POSTGRES_DB: tasktracker
+    volumes:
+      - task-tracker-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasktracker -d tasktracker"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  task-tracker-files:
+  task-tracker-db:

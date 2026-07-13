@@ -50,7 +50,7 @@ const state = reactive({
 		</Variant>
 
 		<Variant title="external link">
-			<BaseButton href="https://vikunja.io">
+			<BaseButton href="https://task-tracker.io">
 				Hello!
 			</BaseButton>
 		</Variant>

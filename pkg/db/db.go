@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -26,8 +26,8 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"
@@ -47,16 +47,16 @@ var (
 	paradedbInstalled bool
 )
 
-// registeredTables holds all table beans registered by Vikunja packages.
+// registeredTables holds all table beans registered by Task Tracker packages.
 var registeredTables []interface{}
 
 // RegisterTables registers table beans so that Dump and WipeEverything
-// only operate on known Vikunja tables.
+// only operate on known Task Tracker tables.
 func RegisterTables(tables []interface{}) {
 	registeredTables = append(registeredTables, tables...)
 }
 
-// RegisteredTableNames returns the table names of all registered Vikunja tables.
+// RegisteredTableNames returns the table names of all registered Task Tracker tables.
 func RegisteredTableNames() []string {
 	tableNames := make([]string, 0, len(registeredTables)+1)
 	for _, bean := range registeredTables {
@@ -105,7 +105,7 @@ func CreateDBEngine() (engine *xorm.Engine, err error) {
 		log.Fatalf("Unknown database type %s", config.DatabaseType.GetString())
 	}
 
-	engine.SetTZLocation(config.GetTimeZone()) // Vikunja's timezone
+	engine.SetTZLocation(config.GetTimeZone()) // Task Tracker's timezone
 	loc, err := time.LoadLocation("GMT")       // The db data timezone
 	if err != nil {
 		log.Fatalf("Error parsing time zone: %s", err)
@@ -339,7 +339,7 @@ func getUserDataDir() (string, error) {
 
 	switch runtime.GOOS {
 	case "windows":
-		// On Windows, use %LOCALAPPDATA%\Vikunja
+		// On Windows, use %LOCALAPPDATA%\Task Tracker
 		localAppData := os.Getenv("LOCALAPPDATA")
 		if localAppData == "" {
 			// Fallback to %USERPROFILE%\AppData\Local if LOCALAPPDATA is not set
@@ -349,14 +349,14 @@ func getUserDataDir() (string, error) {
 			}
 			localAppData = filepath.Join(userProfile, "AppData", "Local")
 		}
-		dataDir = filepath.Join(localAppData, "Vikunja")
+		dataDir = filepath.Join(localAppData, "Task Tracker")
 	case "darwin":
-		// On macOS, use ~/Library/Application Support/Vikunja
+		// On macOS, use ~/Library/Application Support/Task Tracker
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", err
 		}
-		dataDir = filepath.Join(home, "Library", "Application Support", "Vikunja")
+		dataDir = filepath.Join(home, "Library", "Application Support", "Task Tracker")
 	default:
 		// On Linux and other Unix-like systems, use XDG_DATA_HOME or ~/.local/share/vikunja
 		xdgDataHome := os.Getenv("XDG_DATA_HOME")
@@ -440,7 +440,7 @@ func isSystemDirectory(path string) bool {
 	return false
 }
 
-// WipeEverything wipes all Vikunja tables and their data. Use with caution...
+// WipeEverything wipes all Task Tracker tables and their data. Use with caution...
 func WipeEverything() error {
 	for _, name := range RegisteredTableNames() {
 		if err := x.DropTables(name); err != nil {

@@ -321,7 +321,7 @@ $user-dropdown-width-mobile: 5rem;
 }
 
 .username {
-	font-family: $vikunja-font;
+	font-family: $task-tracker-font;
 
 	@media screen and (max-width: $tablet) {
 		display: none;

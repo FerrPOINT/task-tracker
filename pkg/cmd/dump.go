@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -21,10 +21,10 @@ import (
 	"strings"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/initialize"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/dump"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/initialize"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/dump"
 
 	"github.com/spf13/cobra"
 )
@@ -65,6 +65,6 @@ var dumpCmd = &cobra.Command{
 }
 
 func init() {
-	dumpCmd.Flags().StringVarP(&dumpPathFlag, "path", "p", "", "The folder path where the dump file should be saved. Vikunja will use the configured root path or the binary location if the flag is not provided.")
+	dumpCmd.Flags().StringVarP(&dumpPathFlag, "path", "p", "", "The folder path where the dump file should be saved. Task Tracker will use the configured root path or the binary location if the flag is not provided.")
 	dumpCmd.Flags().StringVarP(&dumpFilenameFlag, "filename", "f", "", "The filename of the dump file. If it does not end in '.zip', it will be added as a file extension. Defaults to 'vikunja-dump_YYYY-MM-DD_HH-II-SS.zip'.")
 }

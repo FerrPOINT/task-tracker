@@ -12,7 +12,7 @@ export class TotpFactory extends Factory {
 			user_id: 1,
 			secret: FIXED_TOTP_SECRET,
 			enabled: true,
-			url: `otpauth://totp/Vikunja:test?secret=${FIXED_TOTP_SECRET}&issuer=Vikunja`,
+			url: `otpauth://totp/Task Tracker:test?secret=${FIXED_TOTP_SECRET}&issuer=Task Tracker`,
 		}
 	}
 }

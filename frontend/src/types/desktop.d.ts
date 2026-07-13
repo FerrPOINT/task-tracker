@@ -4,7 +4,7 @@ export interface OAuthTokens {
 	expires_in: number
 }
 
-export interface VikunjaDesktop {
+export interface Task TrackerDesktop {
 	isDesktop: boolean
 	startOAuthLogin: (apiUrl: string) => Promise<void>
 	onOAuthTokens: (callback: (tokens: OAuthTokens) => void) => void
@@ -15,6 +15,6 @@ export interface VikunjaDesktop {
 
 declare global {
 	interface Window {
-		vikunjaDesktop?: VikunjaDesktop
+		task-trackerDesktop?: Task TrackerDesktop
 	}
 }

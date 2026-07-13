@@ -2,10 +2,10 @@
   user_id: 10
   secret: 'JBSWY3DPEHPK3PXP'
   enabled: true
-  url: 'otpauth://totp/Vikunja:user10?secret=JBSWY3DPEHPK3PXP&issuer=Vikunja'
+  url: 'otpauth://totp/Task Tracker:user10?secret=JBSWY3DPEHPK3PXP&issuer=Task Tracker'
 # user1 has TOTP enrolled but not yet enabled — used by existing TOTP enrollment tests
 - id: 2
   user_id: 1
   secret: 'HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ'
   enabled: false
-  url: 'otpauth://totp/Vikunja:user1?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&issuer=Vikunja'
+  url: 'otpauth://totp/Task Tracker:user1?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&issuer=Task Tracker'

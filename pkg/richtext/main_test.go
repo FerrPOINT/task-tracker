@@ -20,9 +20,9 @@ import (
 	"os"
 	"testing"
 
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/user"
+	"github.com/FerrPOINT/task-tracker/pkg/db"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/user"
 )
 
 // TestMain bootstraps a test DB with user fixtures so the mention-resolution

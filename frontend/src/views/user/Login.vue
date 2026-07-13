@@ -217,7 +217,7 @@ async function submit() {
 	errorMessage.value = ''
 	// Some browsers prevent Vue bindings from working with autofilled values.
 	// To work around this, we're manually getting the values here instead of relying on vue bindings.
-	// For more info, see https://kolaente.dev/vikunja/frontend/issues/78
+	// For more info, see https://kolaente.dev/task-tracker/frontend/issues/78
 	const credentials = {
 		username: usernameRef.value?.value,
 		password: password.value,

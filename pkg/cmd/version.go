@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"code.vikunja.io/api/pkg/version"
+	"github.com/FerrPOINT/task-tracker/pkg/version"
 	"github.com/spf13/cobra"
 )
 
@@ -30,9 +30,9 @@ func init() {
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "Print the version number of Vikunja",
+	Short: "Print the version number of Task Tracker",
 	Run: func(_ *cobra.Command, _ []string) {
-		fmt.Printf("Vikunja api version %s\n", version.Version)
+		fmt.Printf("Task Tracker api version %s\n", version.Version)
 		fmt.Printf("Built with %s\n", runtime.Version())
 	},
 }

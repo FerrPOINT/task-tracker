@@ -9,7 +9,7 @@ export default async function setupSentry(app: App, router: Router) {
 	Sentry.init({
 		app,
 		dsn: window.SENTRY_DSN ?? '',
-		release: `vikunja-frontend@${VERSION}`,
+		release: `task-tracker-frontend@${VERSION}`,
 
 		// cache offline errors
 		transport: Sentry.makeBrowserOfflineTransport(Sentry.makeFetchTransport),

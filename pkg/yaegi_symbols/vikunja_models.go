@@ -1,14 +1,14 @@
 package yaegi_symbols
 
 import (
-	"code.vikunja.io/api/pkg/models"
+	"github.com/FerrPOINT/task-tracker/pkg/models"
 	"go/constant"
 	"go/token"
 	"reflect"
 )
 
 func init() {
-	Symbols["code.vikunja.io/api/pkg/models/models"] = map[string]reflect.Value{
+	Symbols["github.com/FerrPOINT/task-tracker/pkg/models/models"] = map[string]reflect.Value{
 		// function, constant and variable definitions
 		"APITokenPrefix":                                   reflect.ValueOf(constant.MakeFromLiteral("\"tk_\"", token.STRING, 0)),
 		"BucketConfigurationModeFilter":                    reflect.ValueOf(models.BucketConfigurationModeFilter),

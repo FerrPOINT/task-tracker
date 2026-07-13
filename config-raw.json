@@ -6,7 +6,7 @@
         {
           "key": "secret",
           "default_value": "<a-secret>",
-          "comment": "This secret is used to sign JWT tokens and for other cryptographic operations.\nDefault is a random secret which will be generated at each startup of Vikunja.\n(This means all already issued tokens will be invalid once you restart Vikunja)"
+          "comment": "This secret is used to sign JWT tokens and for other cryptographic operations.\nDefault is a random secret which will be generated at each startup of Task Tracker.\n(This means all already issued tokens will be invalid once you restart Task Tracker)"
         },
         {
           "key": "JWTSecret",
@@ -46,12 +46,12 @@
         {
           "key": "publicurl",
           "default_value": "",
-          "comment": "The public facing URL where your users can reach Vikunja. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true."
+          "comment": "The public facing URL where your users can reach Task Tracker. Used in emails and for the communication between api and frontend. The url must be a valid http or https url. This setting is required when cors.enable is true."
         },
         {
           "key": "rootpath",
           "default_value": "<rootpath>",
-          "comment": "The base path on the file system where Vikunja stores its data (database, files, logs, plugins).\nDefaults to the current working directory. When running as a systemd service, this respects the WorkingDirectory= setting.\nVikunja will also look in this path for a config file, so you could provide only this variable to point to a folder\nwith a config file which will then be used."
+          "comment": "The base path on the file system where Task Tracker stores its data (database, files, logs, plugins).\nDefaults to the current working directory. When running as a systemd service, this respects the WorkingDirectory= setting.\nTask Tracker will also look in this path for a config file, so you could provide only this variable to point to a folder\nwith a config file which will then be used."
         },
         {
           "key": "maxitemsperpage",
@@ -106,7 +106,7 @@
         {
           "key": "enableemailreminders",
           "default_value": "false",
-          "comment": "If enabled, Vikunja will send an email to everyone who is either assigned to a task or created it when a task reminder\nis due."
+          "comment": "If enabled, Task Tracker will send an email to everyone who is either assigned to a task or created it when a task reminder\nis due."
         },
         {
           "key": "enableuserdeletion",
@@ -121,7 +121,7 @@
         {
           "key": "demomode",
           "default_value": "false",
-          "comment": "If set to true, the frontend will show a big red warning not to use this instance for real data as it will be cleared out.\nYou probably don't need to set this value, it was created specifically for usage on [try](https://try.vikunja.io)."
+          "comment": "If set to true, the frontend will show a big red warning not to use this instance for real data as it will be cleared out.\nYou probably don't need to set this value, it was created specifically for usage on [try](https://try.task-tracker.io)."
         },
         {
           "key": "allowiconchanges",
@@ -156,7 +156,7 @@
         {
           "key": "ipextractionmethod",
           "default_value": "direct",
-          "comment": "Method for extracting client IP addresses. 'direct' (default) uses the TCP remote address and ignores forwarding headers \u2014 use this when Vikunja faces the internet directly. 'xff' extracts from the X-Forwarded-For header \u2014 use this behind proxies like nginx, Traefik, or cloud load balancers. 'realip' extracts from the X-Real-IP header. When using 'xff' or 'realip', configure 'service.trustedproxies' with your proxy CIDR ranges."
+          "comment": "Method for extracting client IP addresses. 'direct' (default) uses the TCP remote address and ignores forwarding headers \u2014 use this when Task Tracker faces the internet directly. 'xff' extracts from the X-Forwarded-For header \u2014 use this behind proxies like nginx, Traefik, or cloud load balancers. 'realip' extracts from the X-Real-IP header. When using 'xff' or 'realip', configure 'service.trustedproxies' with your proxy CIDR ranges."
         },
         {
           "key": "trustedproxies",
@@ -196,11 +196,11 @@
         {
           "key": "type",
           "default_value": "sqlite",
-          "comment": "Database type to use. Supported values are mysql, postgres and sqlite. Vikunja is able to run with MySQL 8.0+, Mariadb 10.2+, PostgreSQL 12+, and sqlite."
+          "comment": "Database type to use. Supported values are mysql, postgres and sqlite. Task Tracker is able to run with MySQL 8.0+, Mariadb 10.2+, PostgreSQL 12+, and sqlite."
         },
         {
           "key": "user",
-          "default_value": "vikunja",
+          "default_value": "task-tracker",
           "comment": "Database user which is used to connect to the database."
         },
         {
@@ -215,13 +215,13 @@
         },
         {
           "key": "database",
-          "default_value": "vikunja",
+          "default_value": "task-tracker",
           "comment": "Database to use"
         },
         {
           "key": "path",
-          "default_value": "./vikunja.db",
-          "comment": "When using sqlite, this is the path where to store the database file. Can be an absolute path or relative path. <br/>\nRelative paths are resolved as follows: <br/>\n- If `service.rootpath` is explicitly configured (differs from the binary location), the database path is resolved relative to that directory. <br/>\n- Otherwise, relative paths are resolved to a platform-specific user data directory to prevent database files from being created in system directories (like `C:\\Windows\\System32` on Windows when running as a service): <br/>\n  - **Windows**: `%LOCALAPPDATA%\\Vikunja` (e.g., `C:\\Users\\username\\AppData\\Local\\Vikunja`) <br/>\n  - **macOS**: `~/Library/Application Support/Vikunja` <br/>\n  - **Linux**: `$XDG_DATA_HOME/vikunja` or `~/.local/share/vikunja` <br/>\n**Recommendation**: Use an absolute path for production deployments, especially when running Vikunja as a Windows service, to have full control over the database location."
+          "default_value": "./task-tracker.db",
+          "comment": "When using sqlite, this is the path where to store the database file. Can be an absolute path or relative path. <br/>\nRelative paths are resolved as follows: <br/>\n- If `service.rootpath` is explicitly configured (differs from the binary location), the database path is resolved relative to that directory. <br/>\n- Otherwise, relative paths are resolved to a platform-specific user data directory to prevent database files from being created in system directories (like `C:\\Windows\\System32` on Windows when running as a service): <br/>\n  - **Windows**: `%LOCALAPPDATA%\\Task Tracker` (e.g., `C:\\Users\\username\\AppData\\Local\\Task Tracker`) <br/>\n  - **macOS**: `~/Library/Application Support/Task Tracker` <br/>\n  - **Linux**: `$XDG_DATA_HOME/task-tracker` or `~/.local/share/task-tracker` <br/>\n**Recommendation**: Use an absolute path for production deployments, especially when running Task Tracker as a Windows service, to have full control over the database location."
         },
         {
           "key": "maxopenconnections",
@@ -266,7 +266,7 @@
         {
           "key": "schema",
           "default_value": "public",
-          "comment": "The PostgreSQL schema to use. Only used with postgres. If you have an existing Vikunja installation where the tables were created in a non-public schema (e.g. via the database user's search_path), you must set this to match that schema name. Vikunja pins the connection's search_path to this schema so that all statements resolve to it."
+          "comment": "The PostgreSQL schema to use. Only used with postgres. If you have an existing Task Tracker installation where the tables were created in a non-public schema (e.g. via the database user's search_path), you must set this to match that schema name. Task Tracker pins the connection's search_path to this schema so that all statements resolve to it."
         }
       ]
     },
@@ -362,7 +362,7 @@
         },
         {
           "key": "fromemail",
-          "default_value": "mail@vikunja",
+          "default_value": "mail@task-tracker",
           "comment": "The default from address when sending emails"
         },
         {
@@ -378,7 +378,7 @@
         {
           "key": "forcessl",
           "default_value": "false",
-          "comment": "By default, Vikunja will try to connect with starttls, use this option to force it to use ssl."
+          "comment": "By default, Task Tracker will try to connect with starttls, use this option to force it to use ssl."
         }
       ]
     },
@@ -558,17 +558,17 @@
             {
               "key": "clientid",
               "default_value": "",
-              "comment": "The client id, required for making requests to the Todoist api\nYou need to register your Vikunja instance at https://developer.todoist.com/appconsole.html to get this."
+              "comment": "The client id, required for making requests to the Todoist api\nYou need to register your Task Tracker instance at https://developer.todoist.com/appconsole.html to get this."
             },
             {
               "key": "clientsecret",
               "default_value": "",
-              "comment": "The client secret, also required for making requests to the Todoist api. Obtain it at https://developer.todoist.com/appconsole.html after registering your Vikunja instance."
+              "comment": "The client secret, also required for making requests to the Todoist api. Obtain it at https://developer.todoist.com/appconsole.html after registering your Task Tracker instance."
             },
             {
               "key": "redirecturl",
               "default_value": "<service.publicurl>/migrate/todoist",
-              "comment": "The url where clients are redirected after they authorized Vikunja to access their Todoist items.\nIn Todoist, this is called `OAuth redirect URL` and it needs to match the url you entered when registering\nyour Vikunja instance at the Todoist developer console.\nWhen using the official Vikunja frontend, set this to `<service.publicurl>/migrate/todoist` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/todoist/migrate\nwith the code obtained from the Todoist api."
+              "comment": "The url where clients are redirected after they authorized Task Tracker to access their Todoist items.\nIn Todoist, this is called `OAuth redirect URL` and it needs to match the url you entered when registering\nyour Task Tracker instance at the Todoist developer console.\nWhen using the official Task Tracker frontend, set this to `<service.publicurl>/migrate/todoist` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/todoist/migrate\nwith the code obtained from the Todoist api."
             }
           ]
         },
@@ -583,12 +583,12 @@
             {
               "key": "key",
               "default_value": "",
-              "comment": "The client id, required for making requests to the trello api.\nYou need to register your Vikunja instance at https://trello.com/app-key (log in before you visit that link) to get one. Copy the `Personal Key` and set it as the client id. Add your Vikunja domain to the Allowed Origins list."
+              "comment": "The client id, required for making requests to the trello api.\nYou need to register your Task Tracker instance at https://trello.com/app-key (log in before you visit that link) to get one. Copy the `Personal Key` and set it as the client id. Add your Task Tracker domain to the Allowed Origins list."
             },
             {
               "key": "redirecturl",
               "default_value": "<frontend url>/migrate/trello",
-              "comment": "The url where clients are redirected after they authorized Vikunja to access their trello cards.\nThis needs to match the url you entered when registering your Vikunja instance at trello.\nWhen using the official Vikunja frontend, set this to `<service.publicurl>/migrate/trello` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/trello/migrate\nwith the code obtained from the Trello api."
+              "comment": "The url where clients are redirected after they authorized Task Tracker to access their trello cards.\nThis needs to match the url you entered when registering your Task Tracker instance at trello.\nWhen using the official Task Tracker frontend, set this to `<service.publicurl>/migrate/trello` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/trello/migrate\nwith the code obtained from the Trello api."
             }
           ]
         },
@@ -603,7 +603,7 @@
             {
               "key": "clientid",
               "default_value": "",
-              "comment": "The client id, required for making requests to the Microsoft graph api.\nSee https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app#register-an-application\nfor information about how to register your Vikunja instance."
+              "comment": "The client id, required for making requests to the Microsoft graph api.\nSee https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app#register-an-application\nfor information about how to register your Task Tracker instance."
             },
             {
               "key": "clientsecret",
@@ -613,7 +613,7 @@
             {
               "key": "redirecturl",
               "default_value": "<frontend url>/migrate/microsoft-todo",
-              "comment": "The url where clients are redirected after they authorized Vikunja to access their Microsoft todo tasks.\nThis needs to match the url you entered when registering your Vikunja instance at Microsoft.\nWhen using the official Vikunja frontend, set this to `<service.publicurl>/migrate/microsoft-todo` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/microsoft-todo/migrate\nwith the code obtained from the Microsoft Todo api."
+              "comment": "The url where clients are redirected after they authorized Task Tracker to access their Microsoft todo tasks.\nThis needs to match the url you entered when registering your Task Tracker instance at Microsoft.\nWhen using the official Task Tracker frontend, set this to `<service.publicurl>/migrate/microsoft-todo` (the default value).\nOtherwise, set this to an url which then makes a request to /api/v1/migration/microsoft-todo/migrate\nwith the code obtained from the Microsoft Todo api."
             }
           ]
         }
@@ -720,7 +720,7 @@
         },
         {
           "key": "openid",
-          "comment": "OpenID configuration will allow users to authenticate through a third-party OpenID Connect compatible provider.<br/>\nThe provider needs to support the `openid`, `profile` and `email` scopes.<br/>\n**Note:** Some openid providers (like Gitlab) only make the email of the user available through OpenID if they have set it to be publicly visible.\nIf the email is not public in those cases, authenticating will fail.<br/>\n**Note 2:** The frontend expects the third party to redirect the user <frontend-url>/auth/openid/<auth key> after authentication. Please make sure to configure the redirect url in your third party auth service accordingly if you're using the default Vikunja frontend.\nThe frontend will automatically provide the API with the redirect url, composed from the current url where it's hosted.\nIf you want to use the desktop client with OpenID, make sure to allow redirects to `127.0.0.1`.",
+          "comment": "OpenID configuration will allow users to authenticate through a third-party OpenID Connect compatible provider.<br/>\nThe provider needs to support the `openid`, `profile` and `email` scopes.<br/>\n**Note:** Some openid providers (like Gitlab) only make the email of the user available through OpenID if they have set it to be publicly visible.\nIf the email is not public in those cases, authenticating will fail.<br/>\n**Note 2:** The frontend expects the third party to redirect the user <frontend-url>/auth/openid/<auth key> after authentication. Please make sure to configure the redirect url in your third party auth service accordingly if you're using the default Task Tracker frontend.\nThe frontend will automatically provide the API with the redirect url, composed from the current url where it's hosted.\nIf you want to use the desktop client with OpenID, make sure to allow redirects to `127.0.0.1`.",
           "children": [
             {
               "key": "enabled",
@@ -729,7 +729,7 @@
             },
             {
               "key": "providers",
-              "comment": "A list of enabled providers. You can freely choose the `<provider key>`. Note that you must add at least one key to a config file if you want to read values from an environment variable as the provider won't be known to Vikunja otherwise.",
+              "comment": "A list of enabled providers. You can freely choose the `<provider key>`. Note that you must add at least one key to a config file if you want to read values from an environment variable as the provider won't be known to Task Tracker otherwise.",
               "children": [
                 {
                   "key": "<provider key>",
@@ -752,27 +752,27 @@
                     {
                       "key": "clientid",
                       "default_value": "",
-                      "comment": "The client ID used to authenticate Vikunja at the OpenID Connect provider."
+                      "comment": "The client ID used to authenticate Task Tracker at the OpenID Connect provider."
                     },
                     {
                       "key": "clientsecret",
                       "default_value": "",
-                      "comment": "The client secret used to authenticate Vikunja at the OpenID Connect provider."
+                      "comment": "The client secret used to authenticate Task Tracker at the OpenID Connect provider."
                     },
                     {
                       "key": "scope",
                       "default_value": "openid email profile",
-                      "comment": "The scope necessary to use oidc.\nIf you want to use the Feature to create and assign to Vikunja teams via oidc, you have to add the custom \"vikunja_scope\" and check [openid.md](https://vikunja.io/docs/openid/).\ne.g. scope: openid email profile vikunja_scope"
+                      "comment": "The scope necessary to use oidc.\nIf you want to use the Feature to create and assign to Task Tracker teams via oidc, you have to add the custom \"task-tracker_scope\" and check [openid.md](https://task-tracker.io/docs/openid/).\ne.g. scope: openid email profile task-tracker_scope"
                     },
                     {
                       "key": "usernamefallback",
                       "default_value": "false",
-                      "comment": "This option allows to look for a local account where the OIDC Issuer match the Vikunja local username. Allowed value is either `true` or `false`. That option can be combined with `emailfallback`.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
+                      "comment": "This option allows to look for a local account where the OIDC Issuer match the Task Tracker local username. Allowed value is either `true` or `false`. That option can be combined with `emailfallback`.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
                     },
                     {
                       "key": "emailfallback",
                       "default_value": "false",
-                      "comment": "This option allows to look for a local account where the OIDC user's email match the Vikunja local email. Allowed value is either `true` or `false`. That option can be combined with `usernamefallback`.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
+                      "comment": "This option allows to look for a local account where the OIDC user's email match the Task Tracker local email. Allowed value is either `true` or `false`. That option can be combined with `usernamefallback`.\nUse with caution, this can allow the 3rd party provider to connect to *any* local account and therefore potential account hijaking."
                     },
                     {
                       "key": "forceuserinfo",
@@ -782,7 +782,7 @@
                     {
                       "key": "requireavailability",
                       "default_value": "false",
-                      "comment": "This option requires the OpenID Connect provider to be available during Vikunja startup. When set to `true`, Vikunja will crash if it cannot connect to the provider during initialization, allowing container orchestrators like Kubernetes to handle the failure by restarting the application. This is useful in environments where you want to ensure all authentication providers are available before the application starts serving requests. Allowed value is either `true` or `false`."
+                      "comment": "This option requires the OpenID Connect provider to be available during Task Tracker startup. When set to `true`, Task Tracker will crash if it cannot connect to the provider during initialization, allowing container orchestrators like Kubernetes to handle the failure by restarting the application. This is useful in environments where you want to ensure all authentication providers are available before the application starts serving requests. Allowed value is either `true` or `false`."
                     }
                   ]
                 }
@@ -842,7 +842,7 @@
             {
               "key": "groupsyncenabled",
               "default_value": "false",
-              "comment": "If enabled, Vikunja will automagically add users to teams in Vikunja matching `groupsyncfilter`. The teams will be automatically created and kept in sync by Vikunja."
+              "comment": "If enabled, Task Tracker will automagically add users to teams in Task Tracker matching `groupsyncfilter`. The teams will be automatically created and kept in sync by Task Tracker."
             },
             {
               "key": "groupsyncfilter",
@@ -852,37 +852,37 @@
             {
               "key": "groupsyncuseserviceaccount",
               "default_value": "false",
-              "comment": "If true, Vikunja re-binds as the service account (binddn/bindpassword) before searching for groups during group sync. Enable this when the authenticating user does not have sufficient rights to enumerate group membership in the directory."
+              "comment": "If true, Task Tracker re-binds as the service account (binddn/bindpassword) before searching for groups during group sync. Enable this when the authenticating user does not have sufficient rights to enumerate group membership in the directory."
             },
             {
               "key": "avatarsyncattribute",
               "default_value": "",
-              "comment": "The LDAP attribute where an image, decoded as raw bytes, can be found. If provided, Vikunja will use the value as avatar."
+              "comment": "The LDAP attribute where an image, decoded as raw bytes, can be found. If provided, Task Tracker will use the value as avatar."
             },
             {
               "key": "attribute",
               "default_value": "",
-              "comment": "The directory attributes that are used to create accounts in Vikunja.",
+              "comment": "The directory attributes that are used to create accounts in Task Tracker.",
               "children": [
                 {
                   "key": "username",
                   "default_value": "uid",
-                  "comment": "The LDAP attribute used to set the username in Vikunja."
+                  "comment": "The LDAP attribute used to set the username in Task Tracker."
                 },
                 {
                   "key": "email",
                   "default_value": "mail",
-                  "comment": "The LDAP attribute used to set the email in Vikunja."
+                  "comment": "The LDAP attribute used to set the email in Task Tracker."
                 },
                 {
                   "key": "displayname",
                   "default_value": "displayName",
-                  "comment": "The LDAP attribute used to set the displayed name in Vikunja."
+                  "comment": "The LDAP attribute used to set the displayed name in Task Tracker."
                 },
                 {
                   "key": "memberid",
                   "default_value": "member",
-                  "comment": "The LDAP attribute used to check group membership of a team in Vikunja. Only used when groups are synced to Vikunja."
+                  "comment": "The LDAP attribute used to check group membership of a team in Task Tracker. Only used when groups are synced to Task Tracker."
                 }
               ]
             }
@@ -897,7 +897,7 @@
         {
           "key": "enabled",
           "default_value": "false",
-          "comment": "If set to true, enables a /metrics endpoint for prometheus to collect metrics about Vikunja. You can query it from `/api/v1/metrics`."
+          "comment": "If set to true, enables a /metrics endpoint for prometheus to collect metrics about Task Tracker. You can query it from `/api/v1/metrics`."
         },
         {
           "key": "username",
@@ -963,7 +963,7 @@
         {
           "key": "language",
           "default_value": "<unset>",
-          "comment": "The language of the user interface. Must be an ISO 639-1 language code followed by an ISO 3166-1 alpha-2 country code. Check https://code.vikunja.io/vikunja/tree/main/frontend/src/i18n/lang for a list of possible languages. Will default to the browser language the user uses when signing up."
+          "comment": "The language of the user interface. Must be an ISO 639-1 language code followed by an ISO 3166-1 alpha-2 country code. Check https://code.task-tracker.io/task-tracker/tree/main/frontend/src/i18n/lang for a list of possible languages. Will default to the browser language the user uses when signing up."
         },
         {
           "key": "timezone",
@@ -988,7 +988,7 @@
         {
           "key": "proxyurl",
           "default_value": "",
-          "comment": "Deprecated: use outgoingrequests.proxyurl instead. The URL of [a mole instance](https://github.com/frain-dev/mole) to use to proxy outgoing webhook requests. You should use this and configure appropriately if you're not the only one using your Vikunja instance. More info about why: https://webhooks.fyi/best-practices/webhook-providers#implement-security-on-egress-communication. Must be used in combination with `webhooks.password` (see below)."
+          "comment": "Deprecated: use outgoingrequests.proxyurl instead. The URL of [a mole instance](https://github.com/frain-dev/mole) to use to proxy outgoing webhook requests. You should use this and configure appropriately if you're not the only one using your Task Tracker instance. More info about why: https://webhooks.fyi/best-practices/webhook-providers#implement-security-on-egress-communication. Must be used in combination with `webhooks.password` (see below)."
         },
         {
           "key": "proxypassword",
@@ -998,7 +998,7 @@
         {
           "key": "allownonroutableips",
           "default_value": "false",
-          "comment": "Deprecated: use outgoingrequests.allownonroutableips instead. If set to true, webhook target URLs may resolve to non-globally-routable IP addresses (private networks, loopback, link-local, etc). When false (the default), Vikunja blocks outgoing webhook requests to these addresses to prevent SSRF attacks. Set this to true if you need webhooks to reach services on your internal network."
+          "comment": "Deprecated: use outgoingrequests.allownonroutableips instead. If set to true, webhook target URLs may resolve to non-globally-routable IP addresses (private networks, loopback, link-local, etc). When false (the default), Task Tracker blocks outgoing webhook requests to these addresses to prevent SSRF attacks. Set this to true if you need webhooks to reach services on your internal network."
         }
       ]
     },
@@ -1039,12 +1039,12 @@
         {
           "key": "allownonroutableips",
           "default_value": "false",
-          "comment": "If set to true, outgoing HTTP requests (webhooks, avatar downloads, migration imports) may resolve to non-globally-routable IP addresses. When false (the default), Vikunja blocks these to prevent SSRF attacks. Set to true only if you need these to reach services on your internal network."
+          "comment": "If set to true, outgoing HTTP requests (webhooks, avatar downloads, migration imports) may resolve to non-globally-routable IP addresses. When false (the default), Task Tracker blocks these to prevent SSRF attacks. Set to true only if you need these to reach services on your internal network."
         },
         {
           "key": "proxyurl",
           "default_value": "",
-          "comment": "The URL of [a mole instance](https://github.com/frain-dev/mole) to use to proxy outgoing HTTP requests. Applies to webhooks, avatar downloads, and migration imports. You should use this and configure appropriately if you're not the only one using your Vikunja instance. More info about why: https://webhooks.fyi/best-practices/webhook-providers#implement-security-on-egress-communication. Must be used in combination with `outgoingrequests.proxypassword`."
+          "comment": "The URL of [a mole instance](https://github.com/frain-dev/mole) to use to proxy outgoing HTTP requests. Applies to webhooks, avatar downloads, and migration imports. You should use this and configure appropriately if you're not the only one using your Task Tracker instance. More info about why: https://webhooks.fyi/best-practices/webhook-providers#implement-security-on-egress-communication. Must be used in combination with `outgoingrequests.proxypassword`."
         },
         {
           "key": "proxypassword",
@@ -1059,7 +1059,7 @@
         {
           "key": "enabled",
           "default_value": "false",
-          "comment": "If set to true, Vikunja will automatically request a TLS certificate from Let's Encrypt and use it to serve Vikunja over TLS. By enabling this option, you agree to Let's Encrypt's TOS.\nYou must configure a `service.publicurl` with a valid TLD where Vikunja is reachable to make this work. Furthermore, it is recommended to set `service.interface` to `:443` if you're using this."
+          "comment": "If set to true, Task Tracker will automatically request a TLS certificate from Let's Encrypt and use it to serve Task Tracker over TLS. By enabling this option, you agree to Let's Encrypt's TOS.\nYou must configure a `service.publicurl` with a valid TLD where Task Tracker is reachable to make this work. Furthermore, it is recommended to set `service.interface` to `:443` if you're using this."
         },
         {
           "key": "email",
@@ -1099,7 +1099,7 @@
         {
           "key": "key",
           "default_value": "",
-          "comment": "The license key for Vikunja. If empty or absent, Vikunja runs in community mode with all non-licensed features available."
+          "comment": "The license key for Task Tracker. If empty or absent, Task Tracker runs in community mode with all non-licensed features available."
         }
       ]
     }

@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -31,8 +31,8 @@ import (
 	"sync"
 	"text/template"
 
-	"code.vikunja.io/api/frontend"
-	"code.vikunja.io/api/pkg/config"
+	"github.com/FerrPOINT/task-tracker/frontend"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
 
 	etaggenerator "github.com/hhsnopek/etag"
 	"github.com/labstack/echo/v5"
@@ -265,7 +265,7 @@ func getCacheControlHeader(info os.FileInfo, file io.ReadSeeker) (header string,
 
 func serveFile(c *echo.Context, file io.ReadSeeker, info os.FileInfo, etag string) error {
 
-	c.Response().Header().Set("Server", "Vikunja")
+	c.Response().Header().Set("Server", "Task Tracker")
 	c.Response().Header().Set("Vary", "Accept-Encoding")
 	if etag != "" {
 		c.Response().Header().Set("Etag", etag)

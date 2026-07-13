@@ -54,7 +54,7 @@ export function useRenewTokenOnFocus() {
 		}
 	})
 
-	// Try renewing the token every time vikunja is loaded initially
+	// Try renewing the token every time task-tracker is loaded initially
 	// (When opening the browser the focus event is not fired)
 	authStore.renewToken()
 

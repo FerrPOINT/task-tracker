@@ -1,62 +1,43 @@
-<img src="https://vikunja.io/images/vikunja-logo.svg" alt="" style="display: block;width: 50%;margin: 0 auto;" width="50%"/>
+# Task Tracker
 
-[![Build Status](https://github.com/go-vikunja/vikunja/actions/workflows/ci.yml/badge.svg)](https://github.com/go-vikunja/vikunja/actions/workflows/ci.yml)
-[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL--3.0--or--later-blue.svg)](LICENSE)
-[![Install](https://img.shields.io/badge/download-v2.3.0-brightgreen.svg)](https://vikunja.io/docs/installing)
-[![Docker Pulls](https://img.shields.io/docker/pulls/vikunja/vikunja.svg)](https://hub.docker.com/r/vikunja/vikunja/)
-[![Swagger Docs](https://img.shields.io/badge/swagger-docs-brightgreen.svg)](https://try.vikunja.io/api/v1/docs)
-[![Go Report Card](https://goreportcard.com/badge/code.vikunja.io/api)](https://goreportcard.com/report/code.vikunja.io/api)
+Самостоятельный таск-трекер с канбан-доской. Форк [Task Tracker](https://github.com/go-task-tracker/task-tracker), очищенный и урезанный до MVP.
 
-# Vikunja
+## Состояние
 
-> The Todo-app to organize your life.
+Работает: проекты, канбан, задачи, фильтры, уведомления.  
+Удалены: команды, OAuth/OpenID, CalDAV, вебхуки, тайм-трекинг, импорты из сторонних сервисов, Unsplash, Sentry, метрики.
 
-If Vikunja is useful to you, please consider [buying me a coffee](https://www.buymeacoffee.com/kolaente), [sponsoring me on GitHub](https://github.com/sponsors/kolaente) or buying [a sticker pack](https://vikunja.io/stickers).
-I'm also offering [a hosted version of Vikunja](https://vikunja.cloud/) if you want a hassle-free solution for yourself or your team.
+## Запуск
 
-## Table of contents
+```bash
+cd /opt/dev/task-tracker-next
+docker compose up -d
+```
 
-- [Security Reports](#security-reports)
-- [Features](#features)
-- [Docs](#docs)
-	- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [License](#license)
-	- [Unsplash Images](#unsplash-images)
+- API/UI: http://192.168.1.135:19875
+- Порт меняется в `docker-compose.yml` (хост) и `TASKTRACKER_SERVICE_INTERFACE` (контейнер).
 
-## Security Reports
+## Разработка
 
-If you find any security-related issues you don't want to disclose publicly, please use [the contact information on our website](https://vikunja.io/contact/#security).
+```bash
+# backend
+go build . ./pkg/... ./frontend/...
 
-## Features
+# frontend
+cd frontend
+pnpm install
+pnpm run build
+```
 
-See [the features page](https://vikunja.io/features/) on our website for a more exhaustive list or 
-try it on [try.vikunja.io](https://try.vikunja.io)!
+## Структура
 
-## Docs
+- `pkg/routes/api/v1/`, `pkg/routes/api/v2/` — REST API
+- `pkg/models/` — модели и бизнес-логика
+- `frontend/src/` — Vue + Vite SPA
+- `pkg/migration/` — миграции схемы PostgreSQL
 
-* [Installing](https://vikunja.io/docs/installing/)
-* [Build from source](https://vikunja.io/docs/build-from-sources/)
-* [Development setup](https://vikunja.io/docs/development/)
-* [Magefile](https://vikunja.io/docs/magefile/)
-* [Testing](https://vikunja.io/docs/testing/)
+## Примечания
 
-All docs can be found on [the Vikunja home page](https://vikunja.io/docs/).
-
-### Roadmap
-
-See [the roadmap](https://my.vikunja.cloud/share/QFyzYEmEYfSyQfTOmIRSwLUpkFjboaBqQCnaPmWd/auth) (hosted on Vikunja!) for more!
-
-## Contributing
-
-Please check out the contribution guidelines on [the website](https://vikunja.io/docs/development/).
-
-## License
-
-Most of this repository is licensed under [AGPL‑3.0‑or‑later](LICENSE).
-The contents of [`desktop/`](desktop/) are licensed under
-[GPL‑3.0‑or‑later](desktop/LICENSE).
-
-### Unsplash Images
-
-Background images from Unsplash are distributed under the [Unsplash License](https://unsplash.com/license). The license requires giving credit to the photographer and Unsplash. See [Unsplash’s terms](https://unsplash.com/terms) for more information.
+- Только PostgreSQL (SQLite/MySQL убраны).
+- Язык по умолчанию — русский, fallback — английский.
+- Все апстрим-ссылки и брендинг Task Tracker удалены из user-facing поверхности.

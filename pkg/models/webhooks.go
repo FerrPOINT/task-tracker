@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -32,13 +32,13 @@ import (
 	"sync"
 	"time"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/events"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/user"
-	"code.vikunja.io/api/pkg/utils"
-	"code.vikunja.io/api/pkg/version"
-	"code.vikunja.io/api/pkg/web"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/events"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/user"
+	"github.com/FerrPOINT/task-tracker/pkg/utils"
+	"github.com/FerrPOINT/task-tracker/pkg/version"
+	"github.com/FerrPOINT/task-tracker/pkg/web"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"
@@ -358,7 +358,7 @@ func (w *Webhook) sendWebhookPayload(p *WebhookPayload) (err error) {
 		req.Header.Add("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(w.BasicAuthUser+":"+w.BasicAuthPassword)))
 	}
 
-	req.Header.Add("User-Agent", "Vikunja/"+version.Version)
+	req.Header.Add("User-Agent", "TaskTracker/"+version.Version)
 	req.Header.Add("Content-Type", "application/json")
 
 	client := getWebhookHTTPClient()

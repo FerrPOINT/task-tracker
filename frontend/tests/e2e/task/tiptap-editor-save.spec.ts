@@ -8,7 +8,7 @@ test.describe('TipTap Editor Save', () => {
 	})
 
 	/**
-	 * Regression test for https://github.com/go-vikunja/vikunja/issues/1770
+	 * Regression test for https://github.com/go-task-tracker/task-tracker/issues/1770
 	 *
 	 * When saving the description editor, a race condition between Vue's DOM
 	 * reconciliation and tiptap's internal DOM manipulation during unmount

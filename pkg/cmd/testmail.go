@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -19,11 +19,11 @@ package cmd
 import (
 	"strings"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/initialize"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/mail"
-	"code.vikunja.io/api/pkg/notifications"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/initialize"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/mail"
+	"github.com/FerrPOINT/task-tracker/pkg/notifications"
 	"github.com/spf13/cobra"
 )
 
@@ -44,11 +44,11 @@ var testmailCmd = &cobra.Command{
 	Run: func(_ *cobra.Command, args []string) {
 		log.Info("Sending testmail...")
 		message := notifications.NewMail().
-			From("Vikunja <"+config.MailerFromEmail.GetString()+">").
+			From("Task Tracker <"+config.MailerFromEmail.GetString()+">").
 			To(args[0]).
-			Subject("Test from Vikunja").
+			Subject("Test from Task Tracker").
 			Line("This is a test mail!").
-			Line("If you received this, Vikunja is correctly set up to send emails.").
+			Line("If you received this, Task Tracker is correctly set up to send emails.").
 			Action("Go to your instance", config.ServicePublicURL.GetString())
 
 		opts, err := notifications.RenderMail(message, "en")

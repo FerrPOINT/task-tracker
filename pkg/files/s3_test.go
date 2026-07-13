@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -22,8 +22,8 @@ import (
 	"os"
 	"testing"
 
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/db"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/db"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,12 +35,12 @@ import (
 func TestFileStorageIntegration(t *testing.T) {
 	// Ensure S3 is configured for this test
 	if config.FilesType.GetString() != "s3" {
-		t.Skip("Skipping S3 integration tests - VIKUNJA_FILES_TYPE must be set to 's3'")
+		t.Skip("Skipping S3 integration tests - TASKTRACKER_FILES_TYPE must be set to 's3'")
 	}
 
 	// Validate S3 configuration is present
 	if config.FilesS3Endpoint.GetString() == "" {
-		t.Fatal("S3 integration test requires VIKUNJA_FILES_S3_ENDPOINT to be set")
+		t.Fatal("S3 integration test requires TASKTRACKER_FILES_S3_ENDPOINT to be set")
 	}
 
 	t.Run("Initialize file handler with s3", func(t *testing.T) {

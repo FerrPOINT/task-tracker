@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,11 +17,11 @@
 package models
 
 import (
-	_ "code.vikunja.io/api/pkg/config" // To trigger its init() which initializes the config
-	"code.vikunja.io/api/pkg/db"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/mail"
-	"code.vikunja.io/api/pkg/notifications"
+	_ "github.com/FerrPOINT/task-tracker/pkg/config" // To trigger its init() which initializes the config
+	"github.com/FerrPOINT/task-tracker/pkg/db"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/mail"
+	"github.com/FerrPOINT/task-tracker/pkg/notifications"
 )
 
 // SetupTests takes care of seting up the db, fixtures etc.

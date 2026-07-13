@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -46,7 +46,7 @@ import (
 )
 
 const (
-	PACKAGE = `code.vikunja.io/api`
+	PACKAGE = `github.com/FerrPOINT/task-tracker`
 	DIST    = `dist`
 )
 
@@ -436,25 +436,25 @@ func (Test) E2EApi(ctx context.Context) error {
 //	mage test:e2e "--headed tests/e2e/misc/menu.spec.ts" # combine flags
 //
 // Environment variable overrides:
-//   - VIKUNJA_E2E_API_PORT: API port (default: random)
-//   - VIKUNJA_E2E_FRONTEND_PORT: Frontend port (default: random)
-//   - VIKUNJA_E2E_TESTING_TOKEN: Testing token for seed endpoints (default: random)
-//   - VIKUNJA_E2E_SKIP_BUILD: Set to "true" to skip rebuilding the API binary (default: false)
+//   - TASKTRACKER_E2E_API_PORT: API port (default: random)
+//   - TASKTRACKER_E2E_FRONTEND_PORT: Frontend port (default: random)
+//   - TASKTRACKER_E2E_TESTING_TOKEN: Testing token for seed endpoints (default: random)
+//   - TASKTRACKER_E2E_SKIP_BUILD: Set to "true" to skip rebuilding the API binary (default: false)
 func (Test) E2E(ctx context.Context, args string) error {
 	mg.Deps(initVars)
 
 	// Determine ports
-	apiPort, err := getE2EPort(ctx, "VIKUNJA_E2E_API_PORT")
+	apiPort, err := getE2EPort(ctx, "TASKTRACKER_E2E_API_PORT")
 	if err != nil {
 		return fmt.Errorf("could not get API port: %w", err)
 	}
-	frontendPort, err := getE2EPort(ctx, "VIKUNJA_E2E_FRONTEND_PORT")
+	frontendPort, err := getE2EPort(ctx, "TASKTRACKER_E2E_FRONTEND_PORT")
 	if err != nil {
 		return fmt.Errorf("could not get frontend port: %w", err)
 	}
 
 	// Generate a random testing token
-	testingToken := os.Getenv("VIKUNJA_E2E_TESTING_TOKEN")
+	testingToken := os.Getenv("TASKTRACKER_E2E_TESTING_TOKEN")
 	if testingToken == "" {
 		testingToken = fmt.Sprintf("e2e-test-token-%d", time.Now().UnixNano())
 	}
@@ -465,7 +465,7 @@ func (Test) E2E(ctx context.Context, args string) error {
 	fmt.Printf("  Testing token: %s\n", testingToken)
 
 	// Build the API binary (unless skipped)
-	if os.Getenv("VIKUNJA_E2E_SKIP_BUILD") != "true" {
+	if os.Getenv("TASKTRACKER_E2E_SKIP_BUILD") != "true" {
 		fmt.Println("\n--- Building API binary ---")
 		if err := (Build{}).Build(ctx); err != nil {
 			return fmt.Errorf("failed to build API: %w", err)
@@ -491,18 +491,18 @@ func (Test) E2E(ctx context.Context, args string) error {
 	fmt.Println("\n--- Starting API server ---")
 	apiCmd := exec.CommandContext(ctx, "./vikunja", "web")
 	apiCmd.Env = append(os.Environ(),
-		fmt.Sprintf("VIKUNJA_SERVICE_INTERFACE=:%d", apiPort),
-		fmt.Sprintf("VIKUNJA_SERVICE_PUBLICURL=http://127.0.0.1:%d/", apiPort),
-		fmt.Sprintf("VIKUNJA_SERVICE_TESTINGTOKEN=%s", testingToken),
-		fmt.Sprintf("VIKUNJA_SERVICE_ROOTPATH=%s", tmpDir),
-		"VIKUNJA_SERVICE_JWTSECRET=e2e-test-jwt-secret-do-not-use-in-production",
-		"VIKUNJA_DATABASE_TYPE=sqlite",
-		"VIKUNJA_DATABASE_PATH=memory",
-		fmt.Sprintf("VIKUNJA_FILES_BASEPATH=%s", filepath.Join(tmpDir, "files")),
-		"VIKUNJA_LOG_LEVEL=WARNING",
-		"VIKUNJA_MAILER_ENABLED=false",
-		"VIKUNJA_REDIS_ENABLED=false",
-		"VIKUNJA_RATELIMIT_NOAUTHLIMIT=1000",
+		fmt.Sprintf("TASKTRACKER_SERVICE_INTERFACE=:%d", apiPort),
+		fmt.Sprintf("TASKTRACKER_SERVICE_PUBLICURL=http://127.0.0.1:%d/", apiPort),
+		fmt.Sprintf("TASKTRACKER_SERVICE_TESTINGTOKEN=%s", testingToken),
+		fmt.Sprintf("TASKTRACKER_SERVICE_ROOTPATH=%s", tmpDir),
+		"TASKTRACKER_SERVICE_JWTSECRET=e2e-test-jwt-secret-do-not-use-in-production",
+		"TASKTRACKER_DATABASE_TYPE=sqlite",
+		"TASKTRACKER_DATABASE_PATH=memory",
+		fmt.Sprintf("TASKTRACKER_FILES_BASEPATH=%s", filepath.Join(tmpDir, "files")),
+		"TASKTRACKER_LOG_LEVEL=WARNING",
+		"TASKTRACKER_MAILER_ENABLED=false",
+		"TASKTRACKER_REDIS_ENABLED=false",
+		"TASKTRACKER_RATELIMIT_NOAUTHLIMIT=1000",
 	)
 	apiCmd.Stdout = os.Stdout
 	apiCmd.Stderr = os.Stderr
@@ -572,7 +572,7 @@ func (Test) E2E(ctx context.Context, args string) error {
 	playwrightCmd.Env = append(os.Environ(),
 		fmt.Sprintf("API_URL=%s/", apiBase),
 		fmt.Sprintf("BASE_URL=%s", frontendBase),
-		fmt.Sprintf("VIKUNJA_SERVICE_TESTINGTOKEN=%s", testingToken),
+		fmt.Sprintf("TASKTRACKER_SERVICE_TESTINGTOKEN=%s", testingToken),
 		fmt.Sprintf("TEST_SECRET=%s", testingToken),
 	)
 	playwrightCmd.Stdout = os.Stdout
@@ -1149,8 +1149,8 @@ func (Dev) MakeMigration(name string) error {
 
 	date := time.Now().Format("20060102150405")
 
-	migration := `// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+	migration := `// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by

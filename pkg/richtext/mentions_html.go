@@ -22,7 +22,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"code.vikunja.io/api/pkg/user"
+	"github.com/FerrPOINT/task-tracker/pkg/user"
 
 	"golang.org/x/net/html"
 	"xorm.io/xorm"

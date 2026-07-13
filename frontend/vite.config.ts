@@ -108,7 +108,7 @@ function getBuildConfig(env: Record<string, string>) {
 	const workboxVersion = JSON.parse(readFileSync(workboxPkgPath, 'utf-8')).version
 
 	return {
-		base: env.VIKUNJA_FRONTEND_BASE,
+		base: env.TASKTRACKER_FRONTEND_BASE,
 		define: {
 			__WORKBOX_VERSION__: JSON.stringify(`v${workboxVersion}`),
 		},
@@ -170,8 +170,8 @@ function getBuildConfig(env: Record<string, string>) {
 				injectRegister: false,
 				useCredentials: true,
 				manifest: {
-					name: 'Vikunja',
-					short_name: 'Vikunja',
+					name: 'Task Tracker',
+					short_name: 'Task Tracker',
 					theme_color: '#1973ff',
 					icons: [
 						{
@@ -239,7 +239,7 @@ function getBuildConfig(env: Record<string, string>) {
 		},
 		server: {
 			host: '127.0.0.1', // see: https://github.com/vitejs/vite/pull/8543
-			port: parseInt(env.VIKUNJA_FRONTEND_PORT || '4173', 10),
+			port: parseInt(env.TASKTRACKER_FRONTEND_PORT || '4173', 10),
 			strictPort: true,
 		},
 		output: {
@@ -270,10 +270,10 @@ function getServeConfig(env: Record<string, string>) {
 	// get some default settings from prod mod
 	const buildConfig = getBuildConfig(env)
 
-	// Build the proxy pattern from VIKUNJA_FRONTEND_BASE so that custom base
-	// paths like /vikunja proxy /vikunja/api/* correctly.
+	// Build the proxy pattern from TASKTRACKER_FRONTEND_BASE so that custom base
+	// paths like /task-tracker proxy /task-tracker/api/* correctly.
 	// Falls back to /api.
-	const base = (env.VIKUNJA_FRONTEND_BASE || '/').replace(/\/+$/, '')
+	const base = (env.TASKTRACKER_FRONTEND_BASE || '/').replace(/\/+$/, '')
 	const proxyPath = `${base}/api`
 
 	// override prod settings with dev settings

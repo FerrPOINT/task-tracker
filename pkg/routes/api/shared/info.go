@@ -1,5 +1,5 @@
-// Vikunja is a to-do list application to facilitate your life.
-// Copyright 2018-present Vikunja and contributors. All rights reserved.
+// Task Tracker is a self-hosted task and kanban board application.
+// Copyright 2026-present Task Tracker and contributors. All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU Affero General Public License as published by
@@ -17,18 +17,18 @@
 package shared
 
 import (
-	"code.vikunja.io/api/pkg/config"
-	"code.vikunja.io/api/pkg/license"
-	"code.vikunja.io/api/pkg/log"
-	"code.vikunja.io/api/pkg/modules/auth/openid"
-	csvmigrator "code.vikunja.io/api/pkg/modules/migration/csv"
-	microsofttodo "code.vikunja.io/api/pkg/modules/migration/microsoft-todo"
-	"code.vikunja.io/api/pkg/modules/migration/ticktick"
-	"code.vikunja.io/api/pkg/modules/migration/todoist"
-	"code.vikunja.io/api/pkg/modules/migration/trello"
-	vikunja_file "code.vikunja.io/api/pkg/modules/migration/vikunja-file"
-	"code.vikunja.io/api/pkg/modules/migration/wekan"
-	"code.vikunja.io/api/pkg/version"
+	"github.com/FerrPOINT/task-tracker/pkg/config"
+	"github.com/FerrPOINT/task-tracker/pkg/license"
+	"github.com/FerrPOINT/task-tracker/pkg/log"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/auth/openid"
+	csvmigrator "github.com/FerrPOINT/task-tracker/pkg/modules/migration/csv"
+	microsofttodo "github.com/FerrPOINT/task-tracker/pkg/modules/migration/microsoft-todo"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration/ticktick"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration/todoist"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration/trello"
+	vikunja_file "github.com/FerrPOINT/task-tracker/pkg/modules/migration/vikunja-file"
+	"github.com/FerrPOINT/task-tracker/pkg/modules/migration/wekan"
+	"github.com/FerrPOINT/task-tracker/pkg/version"
 )
 
 // VikunjaInfos holds public information about this Vikunja instance.
