@@ -1,0 +1,248 @@
+{
+  "status": 200,
+  "data": {
+    "fields": {
+      "summary": {
+        "required": true,
+        "schema": {
+          "type": "string",
+          "system": "summary"
+        },
+        "name": "Тема",
+        "fieldId": "summary",
+        "operations": [
+          "set"
+        ]
+      },
+      "issuetype": {
+        "required": true,
+        "schema": {
+          "type": "issuetype",
+          "system": "issuetype"
+        },
+        "name": "Тип задачи",
+        "fieldId": "issuetype",
+        "operations": [],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10100",
+            "id": "10100",
+            "description": "Задание для выполнения.",
+            "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10318&avatarType=issuetype",
+            "name": "Задача",
+            "subtask": false,
+            "avatarId": 10318
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+            "id": "10001",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+            "name": "История",
+            "subtask": false
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10102",
+            "id": "10102",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10303&avatarType=issuetype",
+            "name": "Ошибка",
+            "subtask": false,
+            "avatarId": 10303
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10000",
+            "id": "10000",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для большой пользовательской истории, требующей декомпозиции.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/epic.svg",
+            "name": "Epic",
+            "subtask": false
+          }
+        ]
+      },
+      "components": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "component",
+          "system": "components"
+        },
+        "name": "Компоненты",
+        "fieldId": "components",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ],
+        "allowedValues": []
+      },
+      "description": {
+        "required": false,
+        "schema": {
+          "type": "string",
+          "system": "description"
+        },
+        "name": "Описание",
+        "fieldId": "description",
+        "operations": [
+          "set"
+        ]
+      },
+      "fixVersions": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "version",
+          "system": "fixVersions"
+        },
+        "name": "Исправить в версиях",
+        "fieldId": "fixVersions",
+        "operations": [
+          "set",
+          "add",
+          "remove"
+        ],
+        "allowedValues": []
+      },
+      "priority": {
+        "required": false,
+        "schema": {
+          "type": "priority",
+          "system": "priority"
+        },
+        "name": "Приоритет",
+        "fieldId": "priority",
+        "operations": [
+          "set"
+        ],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/1",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/highest.svg",
+            "name": "Highest",
+            "id": "1"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/2",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/high.svg",
+            "name": "High",
+            "id": "2"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/3",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/medium.svg",
+            "name": "Medium",
+            "id": "3"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/4",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/low.svg",
+            "name": "Low",
+            "id": "4"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+            "name": "Lowest",
+            "id": "5"
+          }
+        ]
+      },
+      "labels": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "string",
+          "system": "labels"
+        },
+        "name": "Метки",
+        "fieldId": "labels",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/1.0/labels/suggest?query=",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ]
+      },
+      "attachment": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "attachment",
+          "system": "attachment"
+        },
+        "name": "Вложение",
+        "fieldId": "attachment",
+        "operations": []
+      },
+      "issuelinks": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "issuelinks",
+          "system": "issuelinks"
+        },
+        "name": "Связанные задачи",
+        "fieldId": "issuelinks",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/2/issue/picker?currentProjectId=&showSubTaskParent=true&showSubTasks=true&currentIssueKey=AAT-1&query=",
+        "operations": [
+          "add"
+        ]
+      },
+      "customfield_10107": {
+        "required": false,
+        "schema": {
+          "type": "any",
+          "custom": "com.pyxis.greenhopper.jira:gh-epic-link",
+          "customId": 10107
+        },
+        "name": "Ссылка на эпик",
+        "fieldId": "customfield_10107",
+        "operations": [
+          "set"
+        ]
+      },
+      "customfield_10108": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "string",
+          "custom": "com.pyxis.greenhopper.jira:gh-sprint",
+          "customId": 10108
+        },
+        "name": "Спринт",
+        "fieldId": "customfield_10108",
+        "operations": [
+          "set"
+        ]
+      },
+      "assignee": {
+        "required": false,
+        "schema": {
+          "type": "user",
+          "system": "assignee"
+        },
+        "name": "Исполнитель",
+        "fieldId": "assignee",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/latest/user/assignable/search?issueKey=AAT-1&username=",
+        "operations": [
+          "set"
+        ]
+      },
+      "comment": {
+        "required": false,
+        "schema": {
+          "type": "comments-page",
+          "system": "comment"
+        },
+        "name": "Комментарий",
+        "fieldId": "comment",
+        "operations": [
+          "add",
+          "edit",
+          "remove"
+        ]
+      }
+    }
+  }
+}

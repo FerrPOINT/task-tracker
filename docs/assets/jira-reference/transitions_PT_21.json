@@ -1,0 +1,128 @@
+{
+  "status": 200,
+  "data": {
+    "expand": "transitions",
+    "transitions": [
+      {
+        "id": "11",
+        "name": "Backlog",
+        "description": "",
+        "opsbarSequence": 2147483647,
+        "to": {
+          "self": "https://task.wemakedev.ru/rest/api/2/status/10002",
+          "description": "",
+          "iconUrl": "https://task.wemakedev.ru/",
+          "name": "Backlog",
+          "id": "10002",
+          "statusCategory": {
+            "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "default",
+            "name": "К выполнению"
+          }
+        }
+      },
+      {
+        "id": "21",
+        "name": "To Do",
+        "description": "",
+        "opsbarSequence": 2147483647,
+        "to": {
+          "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+          "description": "",
+          "iconUrl": "https://task.wemakedev.ru/",
+          "name": "Сделать",
+          "id": "10000",
+          "statusCategory": {
+            "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+            "id": 2,
+            "key": "new",
+            "colorName": "default",
+            "name": "К выполнению"
+          }
+        }
+      },
+      {
+        "id": "31",
+        "name": "In Progress",
+        "description": "",
+        "opsbarSequence": 2147483647,
+        "to": {
+          "self": "https://task.wemakedev.ru/rest/api/2/status/3",
+          "description": "В данный момент по этой проблеме ведется активная работа назначенным лицом.",
+          "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/inprogress.png",
+          "name": "В работе",
+          "id": "3",
+          "statusCategory": {
+            "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+            "id": 4,
+            "key": "indeterminate",
+            "colorName": "inprogress",
+            "name": "В работе"
+          }
+        }
+      },
+      {
+        "id": "41",
+        "name": "Review",
+        "description": "",
+        "opsbarSequence": 2147483647,
+        "to": {
+          "self": "https://task.wemakedev.ru/rest/api/2/status/10201",
+          "description": "Этот статус управляется Jira Software на внутреннем уровне",
+          "iconUrl": "https://task.wemakedev.ru/",
+          "name": "Review",
+          "id": "10201",
+          "statusCategory": {
+            "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+            "id": 4,
+            "key": "indeterminate",
+            "colorName": "inprogress",
+            "name": "В работе"
+          }
+        }
+      },
+      {
+        "id": "51",
+        "name": "Done",
+        "description": "",
+        "opsbarSequence": 2147483647,
+        "to": {
+          "self": "https://task.wemakedev.ru/rest/api/2/status/10001",
+          "description": "",
+          "iconUrl": "https://task.wemakedev.ru/",
+          "name": "Готово",
+          "id": "10001",
+          "statusCategory": {
+            "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+            "id": 3,
+            "key": "done",
+            "colorName": "success",
+            "name": "Выполнено"
+          }
+        }
+      },
+      {
+        "id": "61",
+        "name": "Canceled",
+        "description": "",
+        "opsbarSequence": 2147483647,
+        "to": {
+          "self": "https://task.wemakedev.ru/rest/api/2/status/10202",
+          "description": "Этот статус управляется Jira Software на внутреннем уровне",
+          "iconUrl": "https://task.wemakedev.ru/",
+          "name": "Canceled",
+          "id": "10202",
+          "statusCategory": {
+            "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+            "id": 3,
+            "key": "done",
+            "colorName": "success",
+            "name": "Выполнено"
+          }
+        }
+      }
+    ]
+  }
+}

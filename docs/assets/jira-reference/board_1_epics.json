@@ -1,0 +1,208 @@
+{
+  "status": 200,
+  "data": {
+    "maxResults": 50,
+    "startAt": 0,
+    "isLast": true,
+    "values": [
+      {
+        "id": 11439,
+        "key": "NEUROKEY-660",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11439",
+        "name": "Биллинг кредитов",
+        "summary": "Переделка биллинга и кредитных лимитов",
+        "color": {
+          "key": "color_9"
+        },
+        "done": false
+      },
+      {
+        "id": 11442,
+        "key": "NEUROKEY-663",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11442",
+        "name": "Управление моделями",
+        "summary": "Связующий эпик: управление моделями",
+        "color": {
+          "key": "color_12"
+        },
+        "done": false
+      },
+      {
+        "id": 11417,
+        "key": "NEUROKEY-641",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11417",
+        "name": "Улучшение оркестратора",
+        "summary": "Связующий эпик: улучшение и оптимизация оркестратора",
+        "color": {
+          "key": "color_13"
+        },
+        "done": false
+      },
+      {
+        "id": 10465,
+        "key": "NEUROKEY-202",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/10465",
+        "name": "Админ панель",
+        "summary": "Админка",
+        "color": {
+          "key": "color_8"
+        },
+        "done": false
+      },
+      {
+        "id": 11408,
+        "key": "NEUROKEY-636",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11408",
+        "name": "MCP подключения",
+        "summary": "MCP подключения и стабильность агентных интеграций",
+        "color": {
+          "key": "color_10"
+        },
+        "done": false
+      },
+      {
+        "id": 11422,
+        "key": "NEUROKEY-646",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11422",
+        "name": "Skills",
+        "summary": "Связующий эпик: Anthropic Skills",
+        "color": {
+          "key": "color_14"
+        },
+        "done": false
+      },
+      {
+        "id": 10872,
+        "key": "NEUROKEY-488",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/10872",
+        "name": "API ключи",
+        "summary": "API-доступ к моделям: динамические ключи, биллинг организации и прокси провайдеров",
+        "color": {
+          "key": "color_5"
+        },
+        "done": false
+      },
+      {
+        "id": 11425,
+        "key": "NEUROKEY-649",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11425",
+        "name": "Редизайн интерфейса",
+        "summary": "Связующий эпик: редизайн интерфейса",
+        "color": {
+          "key": "color_6"
+        },
+        "done": false
+      },
+      {
+        "id": 11420,
+        "key": "NEUROKEY-644",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11420",
+        "name": "ИИ-агенты",
+        "summary": "Связующий эпик: подключение ИИ-агентов",
+        "color": {
+          "key": "color_8"
+        },
+        "done": false
+      },
+      {
+        "id": 11421,
+        "key": "NEUROKEY-645",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11421",
+        "name": "Проекты ",
+        "summary": "Проекты в стиле ChatGPT Projects",
+        "color": {
+          "key": "color_11"
+        },
+        "done": false
+      },
+      {
+        "id": 11423,
+        "key": "NEUROKEY-647",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11423",
+        "name": "Telegram боты",
+        "summary": "Связующий эпик: интеграция с Telegram-ботами и оповещениями",
+        "color": {
+          "key": "color_3"
+        },
+        "done": false
+      },
+      {
+        "id": 10781,
+        "key": "NEUROKEY-438",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/10781",
+        "name": "Безопасность",
+        "summary": "Безопасность",
+        "color": {
+          "key": "color_6"
+        },
+        "done": false
+      },
+      {
+        "id": 11419,
+        "key": "NEUROKEY-643",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11419",
+        "name": "DevOps ",
+        "summary": "DevOps и инфраструктурные задачи",
+        "color": {
+          "key": "color_5"
+        },
+        "done": false
+      },
+      {
+        "id": 10423,
+        "key": "NEUROKEY-165",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/10423",
+        "name": "Оптимизация BE",
+        "summary": "Оптимизация BE",
+        "color": {
+          "key": "color_4"
+        },
+        "done": false
+      },
+      {
+        "id": 10464,
+        "key": "NEUROKEY-201",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/10464",
+        "name": "Оптимизация FE",
+        "summary": "Оптимизация FE",
+        "color": {
+          "key": "color_3"
+        },
+        "done": false
+      },
+      {
+        "id": 11418,
+        "key": "NEUROKEY-642",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/11418",
+        "name": "Систем маскирования",
+        "summary": "Улучшение системы маскирования",
+        "color": {
+          "key": "color_11"
+        },
+        "done": false
+      },
+      {
+        "id": 10310,
+        "key": "NEUROKEY-94",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/10310",
+        "name": "[RAG] RAG-система",
+        "summary": "RAG и база знаний",
+        "color": {
+          "key": "color_1"
+        },
+        "done": false
+      },
+      {
+        "id": 10476,
+        "key": "NEUROKEY-210",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/epic/10476",
+        "name": "n8n",
+        "summary": "Workflow-автоматизации",
+        "color": {
+          "key": "color_14"
+        },
+        "done": false
+      }
+    ]
+  }
+}

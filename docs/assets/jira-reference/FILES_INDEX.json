@@ -1,0 +1,485 @@
+{
+  "admin_schemes.json": {
+    "status": "—",
+    "keys": [
+      "permissions",
+      "application-properties",
+      "serverInfo",
+      "issuePicker",
+      "reindex",
+      "myself",
+      "dashboards",
+      "workflowscheme",
+      "notificationscheme",
+      "permissionscheme"
+    ]
+  },
+  "board_10_issues.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "startAt",
+      "maxResults",
+      "total",
+      "issues"
+    ]
+  },
+  "board_1_epics.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "isLast",
+      "values"
+    ]
+  },
+  "board_2_epics.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "isLast",
+      "values"
+    ]
+  },
+  "board_3_epics.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "isLast",
+      "values"
+    ]
+  },
+  "board_4_epics.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "isLast",
+      "values"
+    ]
+  },
+  "comments_PRES_99.json": {
+    "status": 200,
+    "keys": [
+      "startAt",
+      "maxResults",
+      "total",
+      "comments"
+    ]
+  },
+  "comments_PT_21.json": {
+    "status": 401,
+    "type": "str"
+  },
+  "comments_REL_335.json": {
+    "status": 200,
+    "keys": [
+      "startAt",
+      "maxResults",
+      "total",
+      "comments"
+    ]
+  },
+  "createmeta_10103_issuetype_10000_fields.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "total",
+      "isLast",
+      "values"
+    ]
+  },
+  "createmeta_10103_issuetype_10001_fields.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "total",
+      "isLast",
+      "values"
+    ]
+  },
+  "createmeta_10103_issuetype_10100_fields.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "total",
+      "isLast",
+      "values"
+    ]
+  },
+  "createmeta_10103_issuetypes.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "total",
+      "isLast",
+      "values"
+    ]
+  },
+  "dashboards.json": {
+    "status": 200,
+    "keys": [
+      "startAt",
+      "maxResults",
+      "total",
+      "dashboards"
+    ]
+  },
+  "editmeta_AAT_1.json": {
+    "status": 200,
+    "keys": [
+      "fields"
+    ]
+  },
+  "editmeta_PRES_99.json": {
+    "status": 200,
+    "keys": [
+      "fields"
+    ]
+  },
+  "editmeta_PT_21.json": {
+    "status": 200,
+    "keys": [
+      "fields"
+    ]
+  },
+  "editmeta_REL_335.json": {
+    "status": 200,
+    "keys": [
+      "fields"
+    ]
+  },
+  "editmeta_pres99.json": {
+    "status": 200,
+    "keys": [
+      "fields"
+    ]
+  },
+  "epics_sample.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "startAt",
+      "maxResults",
+      "total",
+      "issues"
+    ]
+  },
+  "filters_favourite.json": {
+    "status": 200,
+    "count": 0
+  },
+  "filters_search.json": {
+    "status": 404,
+    "type": "str"
+  },
+  "groups.json": {
+    "status": 200,
+    "keys": [
+      "header",
+      "total",
+      "groups"
+    ]
+  },
+  "issuePicker.json": {
+    "status": 200,
+    "keys": [
+      "sections"
+    ]
+  },
+  "issue_rendered_pres99.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "id",
+      "self",
+      "key",
+      "fields",
+      "renderedFields"
+    ]
+  },
+  "issues_full_100.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "startAt",
+      "maxResults",
+      "total",
+      "issues"
+    ]
+  },
+  "issues_with_worklogs.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "startAt",
+      "maxResults",
+      "total",
+      "issues"
+    ]
+  },
+  "issuesecurityschemes.json": {
+    "status": 403,
+    "type": "str"
+  },
+  "jira-reference-data.json": {
+    "status": "—",
+    "keys": [
+      "projects",
+      "issue_types",
+      "statuses",
+      "priorities",
+      "resolutions",
+      "fields",
+      "link_types",
+      "mypermissions",
+      "rapidviews",
+      "agile_boards"
+    ]
+  },
+  "jira-ui-ux-summary.json": {
+    "status": "—",
+    "keys": [
+      "projects",
+      "issue_types",
+      "statuses",
+      "priorities",
+      "resolutions",
+      "link_types",
+      "custom_field_types",
+      "system_field_names",
+      "boards",
+      "board_columns"
+    ]
+  },
+  "jira_issue_PT_21.json": {
+    "status": "—",
+    "keys": [
+      "expand",
+      "id",
+      "self",
+      "key",
+      "fields",
+      "renderedFields",
+      "names",
+      "schema",
+      "operations",
+      "editmeta"
+    ]
+  },
+  "jira_issue_REL_335.json": {
+    "status": "—",
+    "keys": [
+      "expand",
+      "id",
+      "self",
+      "key",
+      "fields",
+      "renderedFields",
+      "names",
+      "schema",
+      "operations",
+      "editmeta"
+    ]
+  },
+  "jira_issue_pres99.json": {
+    "status": "—",
+    "keys": [
+      "expand",
+      "id",
+      "self",
+      "key",
+      "fields",
+      "renderedFields",
+      "names",
+      "schema",
+      "operations",
+      "editmeta"
+    ]
+  },
+  "priorities.json": {
+    "status": 401,
+    "type": "str"
+  },
+  "project_AAT_details.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "self",
+      "id",
+      "key",
+      "description",
+      "lead",
+      "components",
+      "issueTypes",
+      "assigneeType",
+      "versions"
+    ]
+  },
+  "project_components.json": {
+    "status": "—",
+    "keys": [
+      "10102",
+      "10103",
+      "10001",
+      "10100",
+      "10105",
+      "10002",
+      "10000",
+      "10106",
+      "10104",
+      "10101"
+    ]
+  },
+  "project_details.json": {
+    "status": "—",
+    "keys": [
+      "10102",
+      "10103",
+      "10001",
+      "10100",
+      "10105",
+      "10002",
+      "10000",
+      "10106",
+      "10104",
+      "10101"
+    ]
+  },
+  "project_roles.json": {
+    "status": "—",
+    "keys": [
+      "10102",
+      "10103",
+      "10001",
+      "10100",
+      "10105",
+      "10002",
+      "10000",
+      "10106",
+      "10104",
+      "10101"
+    ]
+  },
+  "project_versions.json": {
+    "status": "—",
+    "keys": [
+      "10102",
+      "10103",
+      "10001",
+      "10100",
+      "10105",
+      "10002",
+      "10000",
+      "10106",
+      "10104",
+      "10101"
+    ]
+  },
+  "rapidview_backlogs.json": {
+    "status": "—",
+    "keys": [
+      "1",
+      "2",
+      "3",
+      "4",
+      "10",
+      "11",
+      "12",
+      "13"
+    ]
+  },
+  "rapidviews.json": {
+    "status": 200,
+    "keys": [
+      "views"
+    ]
+  },
+  "serverInfo.json": {
+    "status": 200,
+    "keys": [
+      "baseUrl",
+      "version",
+      "versionNumbers",
+      "deploymentType",
+      "buildNumber",
+      "buildDate",
+      "databaseBuildNumber",
+      "scmInfo",
+      "serverTitle"
+    ]
+  },
+  "sprints_board_1.json": {
+    "status": 200,
+    "keys": [
+      "maxResults",
+      "startAt",
+      "isLast",
+      "values"
+    ]
+  },
+  "subtasks_sample.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "startAt",
+      "maxResults",
+      "total",
+      "issues"
+    ]
+  },
+  "transitions_PT_21.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "transitions"
+    ]
+  },
+  "user_azhukov.json": {
+    "status": 200,
+    "keys": [
+      "self",
+      "key",
+      "name",
+      "emailAddress",
+      "avatarUrls",
+      "displayName",
+      "active",
+      "deleted",
+      "timeZone",
+      "locale"
+    ]
+  },
+  "users.json": {
+    "status": 200,
+    "count": 61
+  },
+  "votes_PT_21.json": {
+    "status": 200,
+    "keys": [
+      "self",
+      "votes",
+      "hasVoted",
+      "voters"
+    ]
+  },
+  "watchers_PT_21.json": {
+    "status": 200,
+    "keys": [
+      "self",
+      "isWatching",
+      "watchCount",
+      "watchers"
+    ]
+  },
+  "worklog_PT_21.json": {
+    "status": 401,
+    "type": "str"
+  }
+}

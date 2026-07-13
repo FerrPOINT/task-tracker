@@ -1,0 +1,18 @@
+{
+  "status": 200,
+  "data": {
+    "baseUrl": "https://task.wemakedev.ru",
+    "version": "9.17.5",
+    "versionNumbers": [
+      9,
+      17,
+      5
+    ],
+    "deploymentType": "Server",
+    "buildNumber": 9170005,
+    "buildDate": "2024-11-14T00:00:00.000+0300",
+    "databaseBuildNumber": 9170005,
+    "scmInfo": "a31f12538a5bc5fbd519064b86500f26fb9312c1",
+    "serverTitle": "Task WMT"
+  }
+}

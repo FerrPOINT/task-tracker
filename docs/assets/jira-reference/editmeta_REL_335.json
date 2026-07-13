@@ -1,0 +1,362 @@
+{
+  "status": 200,
+  "data": {
+    "fields": {
+      "summary": {
+        "required": true,
+        "schema": {
+          "type": "string",
+          "system": "summary"
+        },
+        "name": "Тема",
+        "fieldId": "summary",
+        "operations": [
+          "set"
+        ]
+      },
+      "issuetype": {
+        "required": true,
+        "schema": {
+          "type": "issuetype",
+          "system": "issuetype"
+        },
+        "name": "Тип задачи",
+        "fieldId": "issuetype",
+        "operations": [],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10100",
+            "id": "10100",
+            "description": "Задание для выполнения.",
+            "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10318&avatarType=issuetype",
+            "name": "Задача",
+            "subtask": false,
+            "avatarId": 10318
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+            "id": "10001",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+            "name": "История",
+            "subtask": false
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10102",
+            "id": "10102",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10303&avatarType=issuetype",
+            "name": "Ошибка",
+            "subtask": false,
+            "avatarId": 10303
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10000",
+            "id": "10000",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для большой пользовательской истории, требующей декомпозиции.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/epic.svg",
+            "name": "Epic",
+            "subtask": false
+          }
+        ]
+      },
+      "components": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "component",
+          "system": "components"
+        },
+        "name": "Компоненты",
+        "fieldId": "components",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ],
+        "allowedValues": []
+      },
+      "description": {
+        "required": false,
+        "schema": {
+          "type": "string",
+          "system": "description"
+        },
+        "name": "Описание",
+        "fieldId": "description",
+        "operations": [
+          "set"
+        ]
+      },
+      "fixVersions": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "version",
+          "system": "fixVersions"
+        },
+        "name": "Исправить в версиях",
+        "fieldId": "fixVersions",
+        "operations": [
+          "set",
+          "add",
+          "remove"
+        ],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10000",
+            "id": "10000",
+            "name": "Релевантер",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-06-17",
+            "userReleaseDate": "17/июн/26",
+            "projectId": 10104
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10001",
+            "id": "10001",
+            "name": "Релевантер_25.06.2026",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-06-25",
+            "userReleaseDate": "25/июн/26",
+            "projectId": 10104
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10002",
+            "id": "10002",
+            "name": "Релевантер_02.07.2026",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-07-03",
+            "userReleaseDate": "03/июл/26",
+            "projectId": 10104
+          }
+        ]
+      },
+      "priority": {
+        "required": false,
+        "schema": {
+          "type": "priority",
+          "system": "priority"
+        },
+        "name": "Приоритет",
+        "fieldId": "priority",
+        "operations": [
+          "set"
+        ],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/1",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/highest.svg",
+            "name": "Highest",
+            "id": "1"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/2",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/high.svg",
+            "name": "High",
+            "id": "2"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/3",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/medium.svg",
+            "name": "Medium",
+            "id": "3"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/4",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/low.svg",
+            "name": "Low",
+            "id": "4"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+            "name": "Lowest",
+            "id": "5"
+          }
+        ]
+      },
+      "labels": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "string",
+          "system": "labels"
+        },
+        "name": "Метки",
+        "fieldId": "labels",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/1.0/labels/suggest?query=",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ]
+      },
+      "environment": {
+        "required": false,
+        "schema": {
+          "type": "string",
+          "system": "environment"
+        },
+        "name": "Окружение",
+        "fieldId": "environment",
+        "operations": [
+          "set"
+        ]
+      },
+      "attachment": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "attachment",
+          "system": "attachment"
+        },
+        "name": "Вложение",
+        "fieldId": "attachment",
+        "operations": []
+      },
+      "versions": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "version",
+          "system": "versions"
+        },
+        "name": "Затронуты версии",
+        "fieldId": "versions",
+        "operations": [
+          "set",
+          "add",
+          "remove"
+        ],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10000",
+            "id": "10000",
+            "name": "Релевантер",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-06-17",
+            "userReleaseDate": "17/июн/26",
+            "projectId": 10104
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10001",
+            "id": "10001",
+            "name": "Релевантер_25.06.2026",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-06-25",
+            "userReleaseDate": "25/июн/26",
+            "projectId": 10104
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10002",
+            "id": "10002",
+            "name": "Релевантер_02.07.2026",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-07-03",
+            "userReleaseDate": "03/июл/26",
+            "projectId": 10104
+          }
+        ]
+      },
+      "issuelinks": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "issuelinks",
+          "system": "issuelinks"
+        },
+        "name": "Связанные задачи",
+        "fieldId": "issuelinks",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/2/issue/picker?currentProjectId=&showSubTaskParent=true&showSubTasks=true&currentIssueKey=REL-335&query=",
+        "operations": [
+          "add"
+        ]
+      },
+      "customfield_10107": {
+        "required": false,
+        "schema": {
+          "type": "any",
+          "custom": "com.pyxis.greenhopper.jira:gh-epic-link",
+          "customId": 10107
+        },
+        "name": "Ссылка на эпик",
+        "fieldId": "customfield_10107",
+        "operations": [
+          "set"
+        ]
+      },
+      "customfield_10202": {
+        "required": false,
+        "schema": {
+          "type": "number",
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+          "customId": 10202
+        },
+        "name": "Оценка",
+        "fieldId": "customfield_10202",
+        "operations": [
+          "set"
+        ]
+      },
+      "duedate": {
+        "required": false,
+        "schema": {
+          "type": "date",
+          "system": "duedate"
+        },
+        "name": "Срок исполнения",
+        "fieldId": "duedate",
+        "operations": [
+          "set"
+        ]
+      },
+      "timetracking": {
+        "required": false,
+        "schema": {
+          "type": "timetracking",
+          "system": "timetracking"
+        },
+        "name": "Учет времени",
+        "fieldId": "timetracking",
+        "operations": [
+          "set",
+          "edit"
+        ]
+      },
+      "assignee": {
+        "required": false,
+        "schema": {
+          "type": "user",
+          "system": "assignee"
+        },
+        "name": "Исполнитель",
+        "fieldId": "assignee",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/latest/user/assignable/search?issueKey=REL-335&username=",
+        "operations": [
+          "set"
+        ]
+      },
+      "comment": {
+        "required": false,
+        "schema": {
+          "type": "comments-page",
+          "system": "comment"
+        },
+        "name": "Комментарий",
+        "fieldId": "comment",
+        "operations": [
+          "add",
+          "edit",
+          "remove"
+        ]
+      }
+    }
+  }
+}
