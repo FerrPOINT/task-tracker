@@ -2,747 +2,297 @@
 
 ## 1. Контекст
 
-Self-hosted таск-трекер, полноценный аналог open-source Jira. Покрывает полный жизненный цикл задач: проекты, типы задач, workflow, kanban/scrum-доски, фильтры, поиск, комментарии, вложения, уведомления, роли/разрешения, спринты, эпики, метрики.
+Self-hosted таск-трекер, полноценный аналог open-source Jira. Покрывает полный жизненный цикл задач: проекты, типы задач, workflow, kanban/scrum-доски, эпики, спринты, фильтры, поиск (JQL), комментарии, вложения, уведомления, роли и разрешения.
 
-## 2. Структура репозитория (monorepo)
+## 2. Технологический стек (актуальные версии)
+
+### Backend
+- **Rust**: 1.88.0+ (latest stable на июль 2026)
+- **Web framework**: `axum` 0.8.9
+- **Async runtime**: `tokio` 1.52.3 (`full`)
+- **DB access**: `sqlx` 0.9.0
+- **Migrations**: `refinery` 0.8.15
+- **Config**: `figment` 0.10.19
+- **Validation**: `garde` 0.23.0
+- **Auth**: `argon2` 0.5.3, `jsonwebtoken` 10.4.0
+- **Email**: `lettre` 0.11.22
+- **Queue/scheduler**: `apalis` 0.7.4
+- **Cache**: `moka` 0.12.15
+- **Redis**: `redis` 1.3.0
+- **HTTP client**: `reqwest` 0.13.4
+- **Metrics**: `metrics` 0.24.6 + `metrics-exporter-prometheus`
+- **Tracing**: `tracing` 0.1.44
+- **OpenAPI**: `utoipa` 5.5.0
+- **DI**: ручной `AppContext` (`Arc<dyn Trait>`); опционально `shaku` 0.6.2
+- **Testing**: `mockall` 0.15.0, `testcontainers` 0.27.3
+- **Rate limiting**: `tower_governor` 0.8.0
+- **HTTP middleware**: `tower-http` 0.7.0
+
+### Frontend
+- **React**: 19.1.0
+- **Build**: `vite` 6.2.0
+- **TypeScript**: 5.9.3
+- **Styling**: `tailwindcss` 4.1.0, `@tailwindcss/vite` 4.1.0
+- **Components**: `shadcn/ui` (React 19 compatible)
+- **State**: `zustand` 5.0.3
+- **Query**: `@tanstack/react-query` 5.74.4
+- **Router**: `react-router` 8.1.0
+- **Forms**: `react-hook-form` 7.55.0 + `zod` 4.4.3
+- **Utils**: `@tanstack/react-table`, `date-fns` 4.1.0
+- **Testing**: `vitest` 4.1.10, `@testing-library/react` 16.3.0, `playwright` 1.51.1
+
+### Infrastructure
+- **БД**: PostgreSQL 17.6
+- **Cache/queue**: Redis 8.0 (Valkey 8.1 как fallback)
+- **Reverse proxy / load balancer**: Traefik 3.4
+- **Container runtime**: Docker + Docker Compose
+
+## 3. Структура монорепозитория
 
 ```
 task-tracker/
 ├── backend/
+│   ├── Cargo.toml              # workspace root
 │   ├── crates/
-│   │   ├── task-tracker-api/          # HTTP/WS сервер (bin)
-│   │   ├── task-tracker-application/  # Сервисы, use-cases, DTO, mappers, политики
-│   │   ├── task-tracker-domain/         # Чистые доменные модели, ошибки, traits
-│   │   ├── task-tracker-infrastructure/ # Репозитории, клиенты, email, cache, events
-│   │   ├── task-tracker-shared/         # Утилиты, ID, время, валидация
-│   │   └── task-tracker-cli/            # Admin CLI
-│   ├── migrations/
-│   ├── tests/
-│   └── Cargo.toml
+│   │   ├── api/                # HTTP слой (controllers, middleware, routes)
+│   │   ├── app/                # application services + DTO + mappers
+│   │   ├── domain/             # entities, value objects, domain events, repository traits
+│   │   ├── infra/              # db, redis, email, metrics, events, cache
+│   │   ├── shared/             # kernel: errors, ids, tracing, utils
+│   │   └── server/             # binary: compose layers, start axum
+│   └── migrations/             # refinery SQL migrations
 ├── frontend/
 │   ├── src/
-│   │   ├── api/
-│   │   ├── features/
-│   │   ├── components/
-│   │   ├── hooks/
-│   │   ├── stores/
-│   │   ├── routes/
-│   │   ├── i18n/
-│   │   ├── types/
-│   │   └── utils/
-│   ├── tests/
-│   └── package.json
+│   │   ├── api/                # generated fetch-клиент по OpenAPI
+│   │   ├── app/                # routing, layouts, providers
+│   │   ├── entities/           # domain-модели, types
+│   │   ├── features/           # feature-sliced: kanban, issue, project, filter...
+│   │   ├── shared/             # ui-kit, lib, config, i18n
+│   │   └── widgets/            # композиционные блоки
+│   ├── playwright/
+│   └── vitest/
 ├── cli/
-├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── TZ.md
-│   ├── PERFORMANCE.md
-│   └── TESTING.md
-├── docker-compose.yml
-├── Dockerfile.backend
-├── Dockerfile.frontend
-└── README.md
+│   └── src/                    # Rust CLI для администратора: users, projects, reindex
+└── docs/
+    ├── ARCHITECTURE.md
+    ├── TZ.md
+    ├── PERFORMANCE.md
+    └── TESTING.md
 ```
 
-## 3. Стек (актуальные версии на 2025–2026)
+## 4. Backend: чёткие слои
 
-| Слой | Технология | Версия |
-|------|------------|--------|
-| Язык backend | Rust | 1.85+ |
-| Web-фреймворк | Axum | 0.8+ |
-| Runtime | Tokio | 1.43+ |
-| База данных | PostgreSQL | 17 |
-| Database access | SQLx | 0.8.3+ |
-| Миграции | sqlx migrate / refinery | latest |
-| Auth | argon2 + jsonwebtoken | latest |
-| Валидация | garde | 0.22+ |
-| Сериализация | serde + serde_json | 1.0.219+ |
-| Логирование | tracing + tracing-subscriber | 0.1.44+ |
-| HTTP client | reqwest | 0.12.15+ |
-| OpenAPI | utoipa | 5.0+ |
-| DI / IoC | shaku или ручной trait-based registry | latest |
-| Background jobs | apalis | 0.6+ |
-| Event bus | in-memory + Redis pub/sub fallback | — |
-| Cache | moka (in-memory) + redis (distributed) | latest |
-| Config | figment | 0.10.19+ |
-| Metrics | metrics + metrics-exporter-prometheus | latest |
-| Email | lettre | 0.11+ |
-| Testing | cargo test, mockall, testcontainers, sqlx-testcontainers | latest |
-| Frontend | React | 19.1+ |
-| Bundler | Vite | 6.2+ |
-| TypeScript | TypeScript | 5.9+ |
-| Styling | Tailwind CSS | 4.1+ |
-| UI kit | shadcn/ui (React 19 + Tailwind v4) | latest |
-| Forms | React Hook Form | 7.66+ |
-| Валидация форм | Zod | 4.1+ |
-| Server state | TanStack Query | 5.93+ |
-| Client state | Zustand | 5.0+ |
-| Router | React Router | 7.5+ |
-| DnD | @dnd-kit/core | 6.3+ |
-| i18n | i18next | 25.0+ |
-| Markdown | react-markdown | 10.0+ |
-| Unit tests | Vitest | 3.2+ |
-| E2E / screenshots | Playwright | 1.52+ |
-| Component tests | @testing-library/react | 16.3+ |
+### 4.1 Presentation layer (`crates/api`)
 
-## 4. Backend архитектура (Rust)
-
-### 4.1 Слоистая архитектура (Spring Boot-like)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Presentation Layer (API crate)                              │
-│  Controller → Request DTO → Mapper → Handler/Extractor       │
-├─────────────────────────────────────────────────────────────┤
-│  Application Layer (Application crate)                       │
-│  Service → Command/Query UseCase → DTO → Mapper → Domain      │
-│  ├─ Transaction boundary                                     │
-│  ├─ Policy / Permission checks                               │
-│  ├─ Event publishing                                          │
-│  └─ Notification scheduling                                   │
-├─────────────────────────────────────────────────────────────┤
-│  Domain Layer (Domain crate)                                   │
-│  Entity → Value Object → Aggregate → Domain Event → Repository │
-│  Trait (port)                                                 │
-├─────────────────────────────────────────────────────────────┤
-│  Infrastructure Layer (Infrastructure crate)                   │
-│  RepositoryImpl → SQLx Client → PostgreSQL                     │
-│  EmailClient → lettre → SMTP                                   │
-│  CacheClient → moka / redis                                    │
-│  EventBusImpl → broadcast / redis                              │
-│  SearchClient → pg_search / meilisearch                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### 4.2 Workspace crates
-
-- `task-tracker-domain` — чистые доменные типы, `Error` enum, `Result`, ID-типы, константы, repository traits, domain events. Не зависит от infrastructure.
-- `task-tracker-application` — сервисы, use cases, DTO, mappers, политики, валидация. Зависит от `domain`.
-- `task-tracker-infrastructure` — SQLx-репозитории, email, cache, event bus, search, file storage. Зависит от `domain`.
-- `task-tracker-api` — Axum-роуты, контроллеры, middleware, WebSocket, DI-реестр, OpenAPI. Зависит от `application` + `infrastructure`.
-- `task-tracker-shared` — утилиты: UUID, время, пагинация, пароли, JWT helpers.
-- `task-tracker-cli` — admin CLI.
-
-Зависимости направлены внутрь: `api → application → domain ← infrastructure`.
-
-### 4.3 Presentation Layer — Controller → Mapper → DTO
-
-```
-backend/crates/task-tracker-api/src/
-  controllers/
-    auth_controller.rs
-    project_controller.rs
-    issue_controller.rs
-    board_controller.rs
-    comment_controller.rs
-    filter_controller.rs
-    admin_controller.rs
-  dto/
-    request/
-      create_issue_request.rs
-      update_issue_request.rs
-      move_issue_request.rs
-    response/
-      issue_response.rs
-      board_response.rs
-      user_response.rs
-  mappers/
-    issue_mapper.rs
-    board_mapper.rs
-    user_mapper.rs
-  extractors/
-    current_user.rs       # Извлекает UserContext из JWT
-    validated_json.rs       # garde + axum extractor
-  routes/
-    mod.rs
-    v1/
-      auth.rs
-      projects.rs
-      issues.rs
-      boards.rs
-      admin.rs
-```
-
-Пример контроллера:
+**Controller** — тонкий HTTP-адаптер. Только:
+- extract path/query/body/headers/auth state
+- вызов `Service::handle(command).await`
+- map `ServiceResult<T>` → `Response<T>`
 
 ```rust
 pub async fn create_issue(
     State(ctx): State<AppContext>,
-    CurrentUser(user): CurrentUser,
-    ValidatedJson(req): ValidatedJson<CreateIssueRequest>,
-) -> ApiResult<Json<IssueResponse>> {
-    let cmd = IssueMapper::to_create_command(req, user.id);
+    Json(req): Json<CreateIssueRequest>,
+) -> Result<Json<IssueResponse>, ApiError> {
+    let cmd = CreateIssueCommand::try_from(req)?;
     let issue = ctx.issue_service.create(cmd).await?;
-    let response = IssueMapper::to_response(issue);
-    Ok(Json(response))
+    Ok(Json(IssueResponse::from(issue)))
 }
 ```
 
-### 4.4 Application Layer — Service → UseCase → Policy
+**DTO**:
+- `*Request` — inbound JSON с `garde` derive-валидацией
+- `*Response` — outbound JSON
+- `*Command` / `*Query` — application input (без HTTP)
+- Маппинг Request → Command, Entity → Response — честные `From`/`TryFrom`.
 
-```
-backend/crates/task-tracker-application/src/
-  services/
-    auth_service.rs
-    user_service.rs
-    project_service.rs
-    issue_service.rs
-    board_service.rs
-    filter_service.rs
-    search_service.rs
-    comment_service.rs
-    attachment_service.rs
-    notification_service.rs
-    admin_service.rs
-    workflow_service.rs
-    role_service.rs
-  use_cases/
-    issues/
-      create_issue.rs
-      update_issue.rs
-      move_issue.rs
-      delete_issue.rs
-      bulk_update_issues.rs
-    projects/
-      create_project.rs
-      update_project.rs
-      add_project_member.rs
-  policies/
-    issue_policy.rs       # can_update?, can_delete?
-    project_policy.rs
-    board_policy.rs
-  dto/
-    issue_dto.rs
-    board_dto.rs
-  mappers/
-    issue_dto_mapper.rs
-  events/
-    handlers/
-      issue_event_handlers.rs
-```
+### 4.2 Application layer (`crates/app`)
 
-Пример сервиса:
+**Service** — единица бизнес-операции. Содержит:
+- авторизацию через `PermissionService`
+- валидацию бизнес-правил
+- координацию репозиториев
+- публикацию доменных событий
+- отправку уведомлений / задач в очередь
 
 ```rust
-pub struct IssueService {
-    issue_repo: Arc<dyn IssueRepository>,
-    project_repo: Arc<dyn ProjectRepository>,
-    permission_svc: Arc<dyn PermissionService>,
-    event_bus: Arc<dyn EventBus>,
-    notifier: Arc<dyn NotificationService>,
-    tx: Arc<dyn UnitOfWork>,
-}
-
 impl IssueService {
-    pub async fn create(&self,
-        actor: UserContext,
-        cmd: CreateIssueCommand,
-    ) -> Result<IssueDto> {
-        let project = self.project_repo.get_by_id(cmd.project_id).await?;
-        self.permission_svc.ensure(&actor, Permission::IssueCreate, &project).await?;
-
-        let issue = self.tx.transaction(|tx| async move {
-            let mut issue = Issue::create(cmd, &project)?;
-            self.issue_repo.save(tx, &issue).await?;
-            self.event_bus.publish(IssueCreatedEvent::from(&issue)).await?;
-            Ok::<_, DomainError>(issue)
+    pub async fn create(&self, cmd: CreateIssueCommand) -> Result<IssueDto, AppError> {
+        self.authz.ensure(&cmd.project_id, Permission::CreateIssue).await?;
+        let issue = self.uow.with_transaction(|repos| async move {
+            let project = repos.projects.get(cmd.project_id).await?;
+            let issue = Issue::create(project, cmd.fields)?;
+            repos.issues.save(&issue).await?;
+            repos.events.publish(issue.events()).await?;
+            Ok(issue)
         }).await?;
-
-        self.notifier.notify_assignee(&issue).await.ok(); // best-effort
+        self.notifier.notify_subscribers(&issue).await;
         Ok(IssueDto::from(issue))
     }
 }
 ```
 
-### 4.5 Domain Layer — Entity + Repository Trait + Domain Event
+**Mapper/DTO**: каждая сущность имеет `Dto` и `Response`. Маппинг не выполняет бизнес-логику.
 
-```
-backend/crates/task-tracker-domain/src/
-  entities/
-    user.rs
-    project.rs
-    issue.rs
-    issue_status.rs
-    workflow.rs
-    comment.rs
-    attachment.rs
-    board.rs
-    sprint.rs
-    filter.rs
-    notification.rs
-  value_objects/
-    project_key.rs
-    issue_number.rs
-    email.rs
-    password_hash.rs
-  events/
-    issue_created.rs
-    issue_updated.rs
-    issue_moved.rs
-    comment_added.rs
-  repositories/
-    user_repository.rs          # trait
-    issue_repository.rs
-    project_repository.rs
-  errors.rs
-  id.rs
-```
+### 4.3 Domain layer (`crates/domain`)
 
-Пример доменного объекта:
-
+**Entity**:
 ```rust
 pub struct Issue {
     pub id: IssueId,
     pub project_id: ProjectId,
-    pub number: IssueNumber,
-    pub issue_type: IssueType,
-    pub title: String,
-    pub description: Option<String>,
-    pub status_id: StatusId,
+    pub key: IssueKey,
+    pub status: StatusId,
+    pub summary: String,
+    pub description: Option<RichText>,
+    pub assignee: Option<UserId>,
+    pub reporter: UserId,
     pub priority: Priority,
-    pub assignee_id: Option<UserId>,
-    pub reporter_id: UserId,
     pub labels: Vec<LabelId>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-impl Issue {
-    pub fn create(cmd: CreateIssueCommand, project: &Project) -> Result<Self> {
-        // business invariants
-    }
-
-    pub fn transition(&mut self, transition: WorkflowTransition, actor: UserId) -> Result<Vec<DomainEvent>> {
-        // проверка условий, генерация событий
-    }
+    pub domain_events: Vec<IssueEvent>,
 }
 ```
 
-### 4.6 Infrastructure Layer — RepositoryImpl / Client
+**Value Objects**: `IssueKey`, `ProjectKey`, `RichText`, `JqlQuery`, `WorkflowTransition`.
 
-```
-backend/crates/task-tracker-infrastructure/src/
-  persistence/
-    db.rs
-    repositories/
-      user_repository_impl.rs
-      issue_repository_impl.rs
-      project_repository_impl.rs
-    models/
-      issue_row.rs        # SQLx FromRow
-    mappers/
-      issue_row_mapper.rs
-  cache/
-    cache_provider.rs
-    moka_provider.rs
-    redis_provider.rs
-  email/
-    email_client.rs
-    lettre_client.rs
-    templates/
-  events/
-    event_bus.rs
-    memory_event_bus.rs
-    redis_event_bus.rs
-  search/
-    search_client.rs
-    postgres_search_client.rs
-    meilisearch_client.rs
-  storage/
-    file_storage.rs
-    local_file_storage.rs
-    s3_file_storage.rs
-  config/
-    infrastructure_config.rs
-```
-
-Пример репозитория:
-
+**Domain Events**:
 ```rust
-pub struct SqlxIssueRepository {
-    pool: PgPool,
+pub enum IssueEvent {
+    Created { issue_id: IssueId, reporter: UserId },
+    StatusChanged { issue_id: IssueId, from: StatusId, to: StatusId },
+    Assigned { issue_id: IssueId, assignee: Option<UserId> },
 }
+```
 
+**Repository traits**:
+```rust
 #[async_trait]
-impl IssueRepository for SqlxIssueRepository {
-    async fn get_by_id(&self, id: IssueId) -> Result<Option<Issue>> {
-        let row = sqlx::query_as!(
-            IssueRow,
-            r#"SELECT ... FROM issues WHERE id = $1"#,
-            id.as_uuid()
-        )
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(row.map(IssueRowMapper::to_domain))
-    }
+pub trait IssueRepository: Send + Sync {
+    async fn get(&self, id: IssueId) -> Result<Issue, DomainError>;
+    async fn save(&self, issue: &Issue) -> Result<(), DomainError>;
+    async fn list(&self, query: IssueQuery) -> Result<Paginated<Issue>, DomainError>;
 }
 ```
 
-### 4.7 Dependency Injection / IoC (Spring Boot-like)
+### 4.4 Infrastructure layer (`crates/infra`)
 
-Rust не имеет runtime reflection, поэтому используем **trait-based DI + manual registry** или `shaku`.
+**SQLx repositories** — реализации repository trait. Используют compile-time checked queries.
 
-#### Вариант A: ручной AppContext (рекомендуется)
-
+**Unit of Work** — транзакционная обёртка:
 ```rust
-pub struct AppContext {
-    pub config: Arc<AppConfig>,
-    pub user_service: Arc<dyn UserService>,
-    pub issue_service: Arc<dyn IssueService>,
-    pub project_service: Arc<dyn ProjectService>,
-    pub event_bus: Arc<dyn EventBus>,
-    pub ws_hub: Arc<WsHub>,
-}
-
-impl AppContext {
-    pub async fn new(config: AppConfig) -> Result<Self> {
-        let pool = create_pool(&config.database_url).await?;
-        let event_bus = Arc::new(MemoryEventBus::new()) as Arc<dyn EventBus>;
-        let user_repo = Arc::new(SqlxUserRepository::new(pool.clone())) as Arc<dyn UserRepository>;
-        let issue_repo = Arc::new(SqlxIssueRepository::new(pool.clone())) as Arc<dyn IssueRepository>;
-        let project_repo = Arc::new(SqlxProjectRepository::new(pool.clone())) as Arc<dyn ProjectRepository>;
-        let permission_svc = Arc::new(PermissionServiceImpl::new(project_repo.clone())) as Arc<dyn PermissionService>;
-        let user_service = Arc::new(UserServiceImpl::new(user_repo.clone())) as Arc<dyn UserService>;
-        let issue_service = Arc::new(IssueServiceImpl::new(issue_repo, project_repo, permission_svc, event_bus.clone())) as Arc<dyn IssueService>;
-
-        Ok(Self { ... })
-    }
+pub trait UnitOfWork: Send + Sync {
+    async fn with_transaction<F, T, E>(&self, f: F) -> Result<T, E>
+    where
+        F: for<'a> FnOnce(&'a Repositories) -> BoxFuture<'a, Result<T, E>>,
+        E: From<InfraError>;
 }
 ```
 
-Передаётся в Axum через `State`:
+**Outbound clients**:
+- `EmailClient` (lettre)
+- `SearchClient` (meilisearch/opensearch как опция)
+- `WebhookClient` (reqwest)
+- `FileStore` (S3-compatible / filesystem)
 
-```rust
-let app = Router::new()
-    .nest("/api/v1", v1_routes())
-    .with_state(ctx);
-```
+**Event bus**:
+- in-memory broadcast для single-instance
+- redis pub/sub для multi-instance
 
-#### Вариант B: shaku
+## 5. Spring Boot-аналоги в Rust
 
-```rust
-module! {
-    AppModule: Arc<dyn AppContextTrait> {
-        components = [SqlxUserRepository, UserServiceImpl],
-        providers = []
-    }
-}
-```
+| Spring Boot | Rust эквивалент |
+|---|---|
+| `@ConfigurationProperties` | `figment` (TOML/JSON/ENV merge) + `serde` struct |
+| `@Service` / `@Component` | trait + `Arc<dyn Trait>` в `AppContext` |
+| `@Autowired` / constructor DI | ручной `new(...)` в `server::build_context()`; либо `shaku` |
+| `@Transactional` | `UnitOfWork::with_transaction` |
+| `@Scheduled` | `apalis` cron worker |
+| Spring Cache | `moka` in-memory; `redis` distributed |
+| Spring Mail | `lettre` через `apalis` queue |
+| Spring Security | axum middleware + `PermissionService` |
+| Spring Boot Actuator | `metrics` + `/health`, `/metrics`, `/ready` |
+| Spring Data JPA | `sqlx` + ручные repository traits |
+| Spring Validation | `garde` derive |
+| Spring Web / Controller | `axum` handlers |
+| Spring Cloud Config | `figment` env override |
+| Spring Session | `redis` + JWT refresh cookie |
 
-Подходит для больших команд, но добавляет макросы и сложность отладки.
+## 6. Конфигурация
 
-### 4.8 Spring Boot-подобные фишки в Rust
-
-| Spring Boot | Rust-аналог |
-|-------------|-------------|
-| `@ConfigurationProperties` | `figment` + `serde` |
-| `@Component` / `@Service` | ручной `Arc<dyn Trait>` registry или `shaku` |
-| `@Autowired` | конструкторный DI |
-| `@RestController` | Axum router + handler fn |
-| `@RequestMapping` | `Router::nest`, `get`, `post` |
-| `@Valid` | garde extractor `ValidatedJson` |
-| `@Transactional` | `UnitOfWork` wrapper / SQLx `transaction` |
-| JPA Repository | SQLx + repository trait + impl |
-| `@EventListener` | `EventBus::subscribe` |
-| `@Scheduled` / `@Async` | `apalis` + `tokio::spawn` |
-| Spring Cache | `moka` / `redis` |
-| Spring Mail | `lettre` |
-| Spring Security | custom Axum middleware + PermissionService |
-| Spring Data JPA Specifications | JQL-подобный AST → SQL builder |
-| Actuator / Metrics | `metrics` + `metrics-exporter-prometheus` |
-| AOP logging | `tracing` + Tower trace layer |
-| `@Profile` | feature flags + config |
-
-### 4.9 Config (Spring Boot-like `@ConfigurationProperties`)
-
-```rust
+```toml
+# backend/crates/shared/src/config.rs
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
-    pub database_url: String,
-    pub http_port: u16,
-    pub jwt_secret: String,
-    pub jwt_access_ttl: u64,
-    pub jwt_refresh_ttl: u64,
-    pub log_level: String,
-    pub redis_url: Option<String>,
-    pub smtp: SmtpConfig,
-}
-
-pub fn load_config() -> Result<AppConfig> {
-    Figment::new()
-        .merge(Toml::file("config.toml"))
-        .merge(Env::prefixed("TASKTRACKER_"))
-        .extract()
-        .map_err(|e| e.into())
+    pub database: DatabaseConfig,
+    pub redis: RedisConfig,
+    pub server: ServerConfig,
+    pub auth: AuthConfig,
+    pub smtp: Option<SmtpConfig>,
+    pub search: SearchConfig,
 }
 ```
 
-### 4.10 Middleware (Spring Boot-like interceptors)
+Загрузка:
+```rust
+let config: AppConfig = Figment::new()
+    .merge(Toml::file("config.toml"))
+    .merge(Env::prefixed("TASKTRACKER_"))
+    .extract()?;
+```
+
+## 7. Middleware stack
 
 ```rust
 let app = Router::new()
+    .merge(api_routes())
     .layer(TraceLayer::new_for_http())
-    .layer(CorsLayer::new().allow_origin(AllowOrigin::exact(config.frontend_url)))
-    .layer(GovernorLayer {
-        config: &rate_limit_config,
-    })
-    .layer(RequestIdLayer)
-    .layer(CompressionLayer::new());
+    .layer(CompressionLayer::new())
+    .layer(CorsLayer::permissive()) // прод production: strict origins
+    .layer(GovernorLayer { config: rate_limit_config })
+    .layer(TimeoutLayer::new(Duration::from_secs(30)))
+    .layer(CatchPanicLayer::new())
+    .layer(PropagateRequestIdLayer::new(x_request_id()));
 ```
 
-Кастомные middleware:
+## 8. Безопасность
 
-- `AuthMiddleware` — извлечение JWT.
-- `PermissionMiddleware` — проверка глобальных прав.
-- `RateLimitMiddleware` — `tower-governor`.
-- `TraceMiddleware` — `tracing` span с request_id.
-- `ErrorMappingMiddleware` — единый формат ошибок.
+- **AuthN**: JWT access token (15 min) + httpOnly refresh cookie (7 дней)
+- **AuthZ**: permission matrix + project roles
+- **Hashing**: argon2id
+- **Input validation**: `garde` на Request DTO
+- **Rate limiting**: `tower_governor` per user / per IP
+- **CORS**: строгий whitelist
+- **CSP**: через reverse proxy
 
-### 4.11 Auth
+## 9. API
 
-- Регистрация: email + пароль.
-- Пароль: argon2id (memory=19 MiB, iterations=2, parallelism=1).
-- Access token: JWT, TTL 15 мин.
-- Refresh token: UUIDv4, хранится в PostgreSQL `refresh_tokens`, передаётся в `httpOnly` cookie.
-- Middleware извлекает access token из `Authorization: Bearer ...` или cookie.
-- CSRF: SameSite=Lax для cookie + CORS origin whitelist.
+- **REST**: основной протокол
+- **OpenAPI**: генерируется из axum-роутов через `utoipa-axum`
+- **WebSocket**: live updates kanban / issue page
+- **Real-time**: redis pub/sub + WS broadcast
 
-### 4.12 Роли и разрешения
+## 10. База данных
 
-- Глобальные роли: `system_admin`, `user`, `guest`.
-- Проектные роли: `project_admin`, `project_lead`, `developer`, `viewer`.
-- Разрешения: `issue:create`, `issue:update`, `issue:delete`, `project:settings`, `board:admin`, `filter:manage`, `user:admin`.
-- Проверка в `PermissionService` на уровне application.
-
-### 4.13 Workflow
-
-- Каждый проект имеет набор статусов.
-- Статус привязан к категории: `todo`, `in_progress`, `done`.
-- Workflow-переходы задают разрешённые переходы и проверки.
-- Перемещение задачи на доске = `POST /issues/:id/transitions`.
-
-### 4.14 Realtime
-
-- WebSocket endpoint `/ws`.
-- Аутентификация: access token в query-параметре `?token=`.
-- Каналы: `user:{id}`, `project:{id}`, `issue:{id}`, `board:{project_id}`.
-- Fallback: Server-Sent Events `/sse`.
-- События: `IssueCreated`, `IssueUpdated`, `IssueMoved`, `CommentAdded`, `Notification`, `BoardRefresh`.
-
-### 4.15 Background jobs / scheduling
-
-- `apalis` — type-safe job queue на PostgreSQL или Redis.
-- Типы задач:
-  - `SendEmailJob`
-  - `GenerateThumbnailJob`
-  - `IndexSearchJob`
-  - `CleanupOldExportsJob`
-- CRON через `apalis::cron`.
-
-### 4.16 Event bus
-
-- In-memory: `tokio::sync::broadcast`.
-- Distributed: Redis pub/sub.
-- События: domain events → application handlers → notifications/realtime/cache invalidation.
-
-### 4.17 Cache
-
-- `moka` — in-memory cache для справочников и permissions.
-- `redis` — distributed cache, rate limit, WS pub/sub.
-- TTL: справочники — 5 мин, permissions — 1 мин, dashboard — 30 сек.
-- Invalidation через event bus.
-
-### 4.18 Email
-
-- `lettre` + SMTP.
-- Шаблоны: `handlebars` или `tera`.
-- Очередь через `apalis`.
-- Fallback: сохранение в `email_queue` для retry.
-
-### 4.19 Metrics / Observability
-
-- `tracing` structured JSON logs.
-- OpenTelemetry traces.
-- Prometheus metrics:
-  - `http_requests_total`
-  - `http_request_duration_seconds`
-  - `db_pool_active_connections`
-  - `ws_connections_total`
-  - `jobs_processed_total`
-- Health endpoint `/health`, readiness `/ready`, metrics `/metrics`.
-
-### 4.20 Search
-
-- PostgreSQL `tsvector` для полнотекста.
-- JQL-подобный язык → AST → SQL builder.
-- Альтернатива: `meilisearch` для больших инсталляций.
-
-## 5. Frontend архитектура (React 19)
-
-### 5.1 Структура `frontend/src`
-
-```
-src/
-  api/                   # Клиент axios/fetch, TanStack Query hooks
-    client.ts
-    hooks/
-      useAuth.ts
-      useProjects.ts
-      useIssues.ts
-      useBoard.ts
-      useFilters.ts
-      useNotifications.ts
-  features/              # Feature-based модули
-    auth/
-    projects/
-    issues/
-    board/
-    filters/
-    search/
-    comments/
-    attachments/
-    admin/
-    notifications/
-    settings/
-  components/            # Переиспользуемые UI-компоненты
-    ui/                  # shadcn/ui база
-    layout/
-    data-table/
-    board/
-    forms/
-  hooks/                 # Общие hooks
-  stores/                # Zustand
-    authStore.ts
-    uiStore.ts
-    boardStore.ts
-  routes/                # React Router 7
-  i18n/                  # ru, en
-  types/                 # openapi-typescript
-  utils/
-  main.tsx
-  App.tsx
-```
-
-### 5.2 Принципы
-
-- Feature-based структура.
-- Server state — TanStack Query.
-- Client state — Zustand.
-- Forms — React Hook Form + Zod.
-- Routing — React Router 7 data-mode.
-- Тёмная тема по умолчанию.
-
-### 5.3 Доска
-
-- `@dnd-kit/core` + `@dnd-kit/sortable`.
-- Optimistic update в TanStack Query.
-- Realtime: при `BoardRefresh` — refetch.
-
-### 5.4 Поиск и фильтры
-
-- JQL-подобный язык.
-- Сохранённые фильтры.
-- Полнотекстовый поиск.
-
-## 6. База данных
-
-### 6.1 Таблицы
-
-- `users`, `user_profiles`, `user_settings`
-- `roles`, `permissions`, `role_permissions`, `project_roles`, `project_members`
-- `projects`, `project_keys`
-- `issue_types`, `issue_types_in_projects`
-- `issue_statuses`, `status_categories`, `workflow_transitions`
-- `issues`, `issue_history`, `issue_links`, `issue_relations`
-- `comments`
-- `attachments`
-- `labels`, `issue_labels`
-- `components`, `issue_components`
-- `versions`, `issue_fix_versions`, `issue_affected_versions`
-- `boards`, `board_columns`, `board_column_issues`
-- `sprints`, `sprint_issues`
-- `filters`, `filter_queries`
-- `notifications`
-- `email_queue`
+PostgreSQL + refinery миграции. Основные таблицы:
+- `users`, `sessions`
+- `projects`, `project_roles`
+- `issue_types`, `issue_statuses`, `issue_priorities`, `workflows`
+- `issues`, `issue_fields`, `issue_custom_fields`
+- `comments`, `attachments`
+- `boards`, `board_columns`, `board_issues`
+- `filters`, `filter_shares`
+- `sprints`, `epics`, `epic_issues`
+- `notifications`, `notification_rules`
 - `audit_log`
-- `refresh_tokens`
-- `api_keys`
-- `webhooks`
 
-### 6.2 Индексы
-
-- B-tree: `issues.project_id`, `issues.status_id`, `issues.assignee_id`, `issues.created_at`.
-- GIN: `issues.search_vector`, `issues.custom_fields`.
-- Partial: `notifications(user_id, is_read) WHERE is_read = false`.
-
-## 7. API
-
-### 7.1 REST
-
-- `/api/v1/...`.
-- Ошибки:
-  ```json
-  {
-    "error": {
-      "code": "VALIDATION_ERROR",
-      "message": "...",
-      "details": {}
-    }
-  }
-  ```
-- Пагинация: cursor-based для лент, offset-based для таблиц.
-
-### 7.2 OpenAPI
-
-- `utoipa` генерирует спецификацию.
-- Scalar UI по `/api/docs`.
-- `openapi-typescript` генерирует frontend-типы.
-
-## 8. Тестирование
-
-Подробнее в `TESTING.md`.
-
-## 9. Инфраструктура
-
-### 9.1 Docker Compose
-
-- PostgreSQL 17.
-- Backend port 19876.
-- Frontend dev port 19877.
-- Production: nginx + backend.
-
-### 9.2 ENV
-
-Префикс `TASKTRACKER_`:
-
-- `TASKTRACKER_DATABASE_URL`
-- `TASKTRACKER_HTTP_PORT=19876`
-- `TASKTRACKER_JWT_SECRET`
-- `TASKTRACKER_REDIS_URL`
-- `TASKTRACKER_SMTP_HOST`, `TASKTRACKER_SMTP_FROM`
-
-## 10. Безопасность
-
-- Argon2id, JWT, httpOnly refresh cookie.
-- Rate limiting, CORS whitelist.
-- Input validation (garde + Zod).
-- XSS/CSRF защита.
-- File upload sandbox.
+Полнотекстовый поиск: PostgreSQL `tsvector` + `GIN` индекс.
 
 ## 11. Производительность
 
 Подробнее в `PERFORMANCE.md`.
 
-## 12. Эволюция
+## 12. Тестирование
 
-1. MVP-каркас.
-2. Core Jira.
-3. Agile.
-4. Enterprise.
-
-## 13. Референс
-
-- Atlassian Jira Data Center / Server.
-- OpenProject.
-- YouTrack.
-- Redmine.
+Подробнее в `TESTING.md`.
