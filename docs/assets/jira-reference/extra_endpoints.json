@@ -1,0 +1,342 @@
+{
+  "/rest/api/2/configuration": {
+    "status": 200,
+    "data": {
+      "votingEnabled": true,
+      "watchingEnabled": true,
+      "unassignedIssuesAllowed": true,
+      "subTasksEnabled": true,
+      "issueLinkingEnabled": true,
+      "timeTrackingEnabled": true,
+      "attachmentsEnabled": true,
+      "timeTrackingConfiguration": {
+        "workingHoursPerDay": 8.0,
+        "workingDaysPerWeek": 5.0,
+        "timeFormat": "pretty",
+        "defaultUnit": "minute"
+      }
+    }
+  },
+  "/rest/api/2/project/10103/statuses": {
+    "status": 200,
+    "data": [
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10100",
+        "id": "10100",
+        "name": "Задача",
+        "subtask": false,
+        "statuses": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/3",
+            "description": "В данный момент по этой проблеме ведется активная работа назначенным лицом.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/inprogress.png",
+            "name": "В работе",
+            "id": "3",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+              "id": 4,
+              "key": "indeterminate",
+              "colorName": "inprogress",
+              "name": "В работе"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10001",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Готово",
+            "id": "10001",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+              "id": 3,
+              "key": "done",
+              "colorName": "success",
+              "name": "Выполнено"
+            }
+          }
+        ]
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10101",
+        "id": "10101",
+        "name": "Подзадача",
+        "subtask": true,
+        "statuses": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/3",
+            "description": "В данный момент по этой проблеме ведется активная работа назначенным лицом.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/inprogress.png",
+            "name": "В работе",
+            "id": "3",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+              "id": 4,
+              "key": "indeterminate",
+              "colorName": "inprogress",
+              "name": "В работе"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10001",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Готово",
+            "id": "10001",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+              "id": 3,
+              "key": "done",
+              "colorName": "success",
+              "name": "Выполнено"
+            }
+          }
+        ]
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+        "id": "10001",
+        "name": "История",
+        "subtask": false,
+        "statuses": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/3",
+            "description": "В данный момент по этой проблеме ведется активная работа назначенным лицом.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/inprogress.png",
+            "name": "В работе",
+            "id": "3",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+              "id": 4,
+              "key": "indeterminate",
+              "colorName": "inprogress",
+              "name": "В работе"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10001",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Готово",
+            "id": "10001",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+              "id": 3,
+              "key": "done",
+              "colorName": "success",
+              "name": "Выполнено"
+            }
+          }
+        ]
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10102",
+        "id": "10102",
+        "name": "Ошибка",
+        "subtask": false,
+        "statuses": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/3",
+            "description": "В данный момент по этой проблеме ведется активная работа назначенным лицом.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/inprogress.png",
+            "name": "В работе",
+            "id": "3",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+              "id": 4,
+              "key": "indeterminate",
+              "colorName": "inprogress",
+              "name": "В работе"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10001",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Готово",
+            "id": "10001",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+              "id": 3,
+              "key": "done",
+              "colorName": "success",
+              "name": "Выполнено"
+            }
+          }
+        ]
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10000",
+        "id": "10000",
+        "name": "Epic",
+        "subtask": false,
+        "statuses": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/3",
+            "description": "В данный момент по этой проблеме ведется активная работа назначенным лицом.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/statuses/inprogress.png",
+            "name": "В работе",
+            "id": "3",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/4",
+              "id": 4,
+              "key": "indeterminate",
+              "colorName": "inprogress",
+              "name": "В работе"
+            }
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10001",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Готово",
+            "id": "10001",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/3",
+              "id": 3,
+              "key": "done",
+              "colorName": "success",
+              "name": "Выполнено"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "/rest/api/2/project/10103/hierarchy": {
+    "status": 404,
+    "data": "{\"message\":\"null for uri: https://task.wemakedev.ru/rest/api/2/project/10103/hierarchy\",\"status-code\":404}"
+  },
+  "/rest/api/2/issue/allwatchers": {
+    "status": 404,
+    "data": "{\"errorMessages\":[\"ЗАПРОС НЕ СУЩЕСТВУЕТ\"],\"errors\":{}}"
+  },
+  "/rest/api/2/project/10103/simplifiedworkflow": {
+    "status": 404,
+    "data": "{\"message\":\"null for uri: https://task.wemakedev.ru/rest/api/2/project/10103/simplifiedworkflow\",\"status-code\":404}"
+  },
+  "/rest/api/2/project/10103/projectkeys": {
+    "status": 404,
+    "data": "{\"message\":\"null for uri: https://task.wemakedev.ru/rest/api/2/project/10103/projectkeys\",\"status-code\":404}"
+  },
+  "/rest/api/2/issue/createmeta/10103/issuetypes": {
+    "status": 200,
+    "data": {
+      "maxResults": 50,
+      "startAt": 0,
+      "total": 5,
+      "isLast": true,
+      "values": [
+        {
+          "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10000",
+          "id": "10000",
+          "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для большой пользовательской истории, требующей декомпозиции.",
+          "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/epic.svg",
+          "name": "Epic",
+          "subtask": false
+        },
+        {
+          "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+          "id": "10001",
+          "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+          "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+          "name": "История",
+          "subtask": false
+        },
+        {
+          "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10100",
+          "id": "10100",
+          "description": "Задание для выполнения.",
+          "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10318&avatarType=issuetype",
+          "name": "Задача",
+          "subtask": false
+        },
+        {
+          "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10101",
+          "id": "10101",
+          "description": "Подзадача запроса.",
+          "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10316&avatarType=issuetype",
+          "name": "Подзадача",
+          "subtask": true
+        },
+        {
+          "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10102",
+          "id": "10102",
+          "description": "",
+          "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10303&avatarType=issuetype",
+          "name": "Ошибка",
+          "subtask": false
+        }
+      ]
+    }
+  }
+}

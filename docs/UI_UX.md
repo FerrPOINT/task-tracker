@@ -459,13 +459,10 @@
 
 ## 17. SVG-мокапы
 
-См. файлы:
-- `docs/assets/ui-mockups/issue-detail.svg`
-- `docs/assets/ui-mockups/kanban-board.svg`
-- `docs/assets/ui-mockups/project-list.svg`
-- `docs/assets/ui-mockups/backlog.svg`
-- `docs/assets/ui-mockups/create-issue.svg`
-- `docs/assets/ui-mockups/dashboard.svg`
+См. папки:
+- `docs/assets/jira-screenshots/` — реальные скриншоты UI из Jira
+- `docs/assets/jira-reference/` — JSON-схемы через Jira REST API
+- `docs/assets/ui-mockups/` — HTML-мокапы интерфейса Task Tracker
 
 ## Appendix: Captured Jira Reference Data
 
