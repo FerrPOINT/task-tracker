@@ -544,3 +544,8 @@
 `summary`, `description`, `status`, `assignee`, `reporter`, `creator`, `priority`, `issuetype`, `project`, `labels`, `components`, `fixVersions`, `versions`, `duedate`, `environment`, `timetracking`, `attachment`, `comment`, `worklog`, `issuelinks`, `subtasks`, `votes`, `watches`, `progress`, `aggregateprogress`, `created`, `updated`, `resolution`, `resolutiondate`, `archiveddate`, `archivedby`.
 
 Полный набор данных: `docs/assets/jira-reference/`.
+## References
+
+- `docs/UI_LIBRARIES.md`
+- `docs/FRONTEND_ARCHITECTURE.md`
+- `docs/USER_STORIES.md`

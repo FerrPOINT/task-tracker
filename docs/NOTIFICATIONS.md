@@ -201,3 +201,8 @@ Notification Scheme привязывается к проекту и опреде
 - `notification_preferences` — настройки пользователя.
 - `webhooks` — глобальные webhooks.
 - `webhook_deliveries` — история доставок.
+## References
+
+- `docs/WORKFLOW.md`
+- `docs/SYSTEM_ADMIN.md`
+- `docs/API.md`

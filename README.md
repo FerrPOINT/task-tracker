@@ -50,6 +50,16 @@ Documentation-first: перед кодом фиксируем функциона
 - [Отчёт по сравнению с Vikunja](docs/VIKUNJA_GAP_ANALYSIS.md)
 - [Jira UI Capture (структурные заметки)](docs/JIRA_UI_CAPTURE.md)
 
+- [ROADMAP](docs/ROADMAP.md)
+- [DATABASE INDEXES](docs/DATABASE_INDEXES.md)
+- [GLOSSARY](docs/GLOSSARY.md)
+- [API VERSIONING](docs/API_VERSIONING.md)
+- [WEBSOCKET EVENTS](docs/WEBSOCKET_EVENTS.md)
+- [EVENTS](docs/EVENTS.md)
+- [OPS RUNBOOK](docs/OPS_RUNBOOK.md)
+- [RELEASE](docs/RELEASE.md)
+- [ONBOARDING](docs/ONBOARDING.md)
+
 ## Разработка
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)

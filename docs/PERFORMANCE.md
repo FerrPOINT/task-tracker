@@ -133,3 +133,8 @@ function IssueList({ issues }) {
 - PostgreSQL read replica для read-heavy queries
 - CDN для статики
 - Object storage для attachments
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/CACHING.md`
+- `docs/MONITORING.md`

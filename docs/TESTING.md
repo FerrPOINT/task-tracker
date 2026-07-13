@@ -158,3 +158,8 @@ export const issueFixture = (override?: Partial<Issue>): Issue => ({
 - `cargo audit` / `pnpm audit`.
 - Rate limit tests.
 - Auth/permission edge cases.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/CODE_STYLE.md`
+- `docs/DEPLOYMENT.md`

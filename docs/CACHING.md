@@ -151,3 +151,8 @@ max_capacity = 10000
 - Не кешировать без invalidation стратегии.
 - Не кешировать персональные данные на shared уровне.
 - Не делать cache TTL больше допустимого time-to-inconsistent.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/PERFORMANCE.md`
+- `docs/DEPLOYMENT.md`

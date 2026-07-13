@@ -222,3 +222,7 @@ onError: (error) => {
 | `INTERNAL_ERROR` | Внутренняя ошибка. Попробуйте позже | Internal error. Please try again later |
 | `EXTERNAL_ERROR` | Внешняя служба недоступна | External service unavailable |
 | `RATE_LIMITED` | Слишком много запросов | Too many requests |
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/API.md`

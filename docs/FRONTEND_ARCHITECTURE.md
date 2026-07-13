@@ -365,3 +365,9 @@ const ProjectPage = lazy(() => import("./pages/project"))
   - entities → features/pages/widgets/app;
   - shared → app/pages/widgets/features/entities;
   - cross-import features.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/UI_LIBRARIES.md`
+- `docs/REACT_STYLING.md`
+- `docs/DESIGN_TOKENS.md`

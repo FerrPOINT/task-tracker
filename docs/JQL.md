@@ -317,3 +317,8 @@ WHERE i.created_at >= date_trunc('week', now());
 | GET | /filters/{id}/execute | Выполнить сохранённый фильтр |
 | POST | /jql/validate | Проверить синтаксис |
 | POST | /jql/parse | Вернуть AST |
+## References
+
+- `docs/DATA_MODEL.md`
+- `docs/API.md`
+- `docs/USER_STORIES.md`

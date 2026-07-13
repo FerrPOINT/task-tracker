@@ -196,3 +196,8 @@
 
 - Self-hosted: no license required.
 - Enterprise: license key + feature flags.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/SECURITY.md`
+- `docs/I18N.md`

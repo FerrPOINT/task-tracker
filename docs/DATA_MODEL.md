@@ -1416,3 +1416,8 @@ erDiagram
     PERMISSION_SCHEMES ||--o{ PERMISSION_SCHEME_ENTRIES : "entries"
     NOTIFICATION_SCHEMES ||--o{ NOTIFICATION_SCHEME_EVENTS : "events"
 ```
+## References
+
+- `docs/TZ.md`
+- `docs/WORKFLOW.md`
+- `docs/MIGRATIONS.md`

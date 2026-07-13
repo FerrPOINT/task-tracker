@@ -240,3 +240,7 @@
 7. **Create issue**: modal step 1 (project + type), then full form with rich text editor, priority, labels multi-select, attachment dropzone, linked issues, assignee, epic link, sprint.
 8. **Dashboard**: gadget grid (Assigned to me table, Activity Stream, etc.), settings/share/export buttons.
 9. **Releases**: versions list with progress bars, empty state.
+## References
+
+- `docs/UI_UX.md`
+- `docs/USER_STORIES.md`

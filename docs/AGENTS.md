@@ -70,3 +70,8 @@
 
 - Техлид: Александр Жуков.
 - Основной язык общения и документов: русский.
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/CODE_STYLE.md`
+- `docs/TESTING.md`
