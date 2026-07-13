@@ -4,10 +4,10 @@ Self-hosted таск-трекер, аналог Jira. Backend — Rust, frontend
 
 ## Структура
 
-- `backend/` — Rust workspace (Axum + SQLx + PostgreSQL)
+- `backend/` — Rust workspace (Axum + SeaORM + PostgreSQL)
 - `frontend/` — React 19 + Vite 6
-- `cli/` — Rust CLI для администрирования
-- `docs/` — архитектура, ТЗ, производительность, тестирование
+- `cli/` — CLI-утилита (Rust)
+- `docs/` — архитектура, ТЗ, производительность, тестирование, библиотеки
 
 ## Документы
 
@@ -15,14 +15,13 @@ Self-hosted таск-трекер, аналог Jira. Backend — Rust, frontend
 - [Техническое задание](docs/TZ.md)
 - [Производительность](docs/PERFORMANCE.md)
 - [Тестирование](docs/TESTING.md)
+- [Библиотеки](docs/LIBRARIES.md)
 
-## Стек (актуальные версии)
+## Запуск
 
-- Rust 1.88, Axum 0.8.9, Tokio 1.52.3, SQLx 0.9.0
-- React 19.1, Vite 6.2, TypeScript 5.9.3, Tailwind 4.1, shadcn/ui
-- PostgreSQL 17, Redis 8
-- Vitest 4.1.10, Playwright 1.51.1, testcontainers 0.27.3
+На данном этапе репозиторий содержит только документацию и пустой каркас папок. Код backend/frontend появится в следующих коммитах.
 
-## Быстрый старт
+## Контакты / репозиторий
 
-Пока в разработке.
+- Remote: `git@github.com:FerrPOINT/task-tracker.git`
+- Ветка: `main`
