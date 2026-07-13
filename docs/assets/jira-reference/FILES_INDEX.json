@@ -1,4 +1,17 @@
 {
+  "FILES_INDEX.json": {
+    "status": "—",
+    "keys": [
+      "admin_schemes.json",
+      "board_10_issues.json",
+      "board_1_epics.json",
+      "board_2_epics.json",
+      "board_3_epics.json",
+      "board_4_epics.json",
+      "comments_PRES_99.json",
+      "comments_PT_21.json"
+    ]
+  },
   "admin_schemes.json": {
     "status": "—",
     "keys": [
@@ -9,9 +22,7 @@
       "reindex",
       "myself",
       "dashboards",
-      "workflowscheme",
-      "notificationscheme",
-      "permissionscheme"
+      "workflowscheme"
     ]
   },
   "board_10_issues.json": {
@@ -60,6 +71,36 @@
       "values"
     ]
   },
+  "changelog_AAT_1.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "id",
+      "self",
+      "key",
+      "changelog"
+    ]
+  },
+  "changelog_PRES_99.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "id",
+      "self",
+      "key",
+      "changelog"
+    ]
+  },
+  "changelog_REL_335.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "id",
+      "self",
+      "key",
+      "changelog"
+    ]
+  },
   "comments_PRES_99.json": {
     "status": 200,
     "keys": [
@@ -80,6 +121,19 @@
       "maxResults",
       "total",
       "comments"
+    ]
+  },
+  "configuration.json": {
+    "status": 200,
+    "keys": [
+      "votingEnabled",
+      "watchingEnabled",
+      "unassignedIssuesAllowed",
+      "subTasksEnabled",
+      "issueLinkingEnabled",
+      "timeTrackingEnabled",
+      "attachmentsEnabled",
+      "timeTrackingConfiguration"
     ]
   },
   "createmeta_10103_issuetype_10000_fields.json": {
@@ -171,6 +225,31 @@
       "issues"
     ]
   },
+  "extra_endpoints.json": {
+    "status": "—",
+    "keys": [
+      "/rest/api/2/configuration",
+      "/rest/api/2/project/10103/statuses",
+      "/rest/api/2/project/10103/hierarchy",
+      "/rest/api/2/issue/allwatchers",
+      "/rest/api/2/project/10103/simplifiedworkflow",
+      "/rest/api/2/project/10103/projectkeys",
+      "/rest/api/2/issue/createmeta/10103/issuetypes"
+    ]
+  },
+  "extracted_from_issues.json": {
+    "status": "—",
+    "keys": [
+      "labels",
+      "components",
+      "used_statuses",
+      "used_issue_types",
+      "used_priorities",
+      "used_assignees_count",
+      "used_reporters_count",
+      "watch_counts_sample"
+    ]
+  },
   "filters_favourite.json": {
     "status": 200,
     "count": 0
@@ -186,6 +265,10 @@
       "total",
       "groups"
     ]
+  },
+  "groups_members.json": {
+    "status": 403,
+    "type": "str"
   },
   "issuePicker.json": {
     "status": 200,
@@ -205,6 +288,26 @@
     ]
   },
   "issues_full_100.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "startAt",
+      "maxResults",
+      "total",
+      "issues"
+    ]
+  },
+  "issues_with_changelog_30.json": {
+    "status": 200,
+    "keys": [
+      "expand",
+      "startAt",
+      "maxResults",
+      "total",
+      "issues"
+    ]
+  },
+  "issues_with_content_50.json": {
     "status": 200,
     "keys": [
       "expand",
@@ -238,9 +341,7 @@
       "resolutions",
       "fields",
       "link_types",
-      "mypermissions",
-      "rapidviews",
-      "agile_boards"
+      "mypermissions"
     ]
   },
   "jira-ui-ux-summary.json": {
@@ -253,9 +354,7 @@
       "resolutions",
       "link_types",
       "custom_field_types",
-      "system_field_names",
-      "boards",
-      "board_columns"
+      "system_field_names"
     ]
   },
   "jira_issue_PT_21.json": {
@@ -268,9 +367,7 @@
       "fields",
       "renderedFields",
       "names",
-      "schema",
-      "operations",
-      "editmeta"
+      "schema"
     ]
   },
   "jira_issue_REL_335.json": {
@@ -283,9 +380,7 @@
       "fields",
       "renderedFields",
       "names",
-      "schema",
-      "operations",
-      "editmeta"
+      "schema"
     ]
   },
   "jira_issue_pres99.json": {
@@ -298,10 +393,12 @@
       "fields",
       "renderedFields",
       "names",
-      "schema",
-      "operations",
-      "editmeta"
+      "schema"
     ]
+  },
+  "labels.json": {
+    "status": 404,
+    "type": "str"
   },
   "priorities.json": {
     "status": 401,
@@ -317,9 +414,14 @@
       "description",
       "lead",
       "components",
-      "issueTypes",
-      "assigneeType",
-      "versions"
+      "issueTypes"
+    ]
+  },
+  "project_avatars_AAT.json": {
+    "status": 200,
+    "keys": [
+      "system",
+      "custom"
     ]
   },
   "project_components.json": {
@@ -332,9 +434,7 @@
       "10105",
       "10002",
       "10000",
-      "10106",
-      "10104",
-      "10101"
+      "10106"
     ]
   },
   "project_details.json": {
@@ -347,10 +447,20 @@
       "10105",
       "10002",
       "10000",
-      "10106",
-      "10104",
-      "10101"
+      "10106"
     ]
+  },
+  "project_issuetypescheme_AAT.json": {
+    "status": 404,
+    "type": "str"
+  },
+  "project_notificationscheme_AAT.json": {
+    "status": 400,
+    "type": "str"
+  },
+  "project_permissionscheme_AAT.json": {
+    "status": 403,
+    "type": "str"
   },
   "project_roles.json": {
     "status": "—",
@@ -362,10 +472,12 @@
       "10105",
       "10002",
       "10000",
-      "10106",
-      "10104",
-      "10101"
+      "10106"
     ]
+  },
+  "project_statuses_AAT.json": {
+    "status": 200,
+    "count": 5
   },
   "project_versions.json": {
     "status": "—",
@@ -377,10 +489,12 @@
       "10105",
       "10002",
       "10000",
-      "10106",
-      "10104",
-      "10101"
+      "10106"
     ]
+  },
+  "project_workflows_AAT.json": {
+    "status": 404,
+    "type": "str"
   },
   "rapidview_backlogs.json": {
     "status": "—",
@@ -411,8 +525,7 @@
       "buildNumber",
       "buildDate",
       "databaseBuildNumber",
-      "scmInfo",
-      "serverTitle"
+      "scmInfo"
     ]
   },
   "sprints_board_1.json": {
@@ -424,6 +537,10 @@
       "values"
     ]
   },
+  "subtask_issue_types.json": {
+    "status": 404,
+    "type": "str"
+  },
   "subtasks_sample.json": {
     "status": 200,
     "keys": [
@@ -433,6 +550,10 @@
       "total",
       "issues"
     ]
+  },
+  "timetracking_config.json": {
+    "status": 404,
+    "type": "str"
   },
   "transitions_PT_21.json": {
     "status": 200,
@@ -451,9 +572,7 @@
       "avatarUrls",
       "displayName",
       "active",
-      "deleted",
-      "timeZone",
-      "locale"
+      "deleted"
     ]
   },
   "users.json": {
