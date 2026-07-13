@@ -1,0 +1,226 @@
+// Vikunja is a to-do list application to facilitate your life.
+// Copyright 2018-present Vikunja and contributors. All rights reserved.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+package files
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"os"
+	"testing"
+	"time"
+
+	"code.vikunja.io/api/pkg/config"
+	"code.vikunja.io/api/pkg/db"
+	"code.vikunja.io/api/pkg/log"
+	"code.vikunja.io/api/pkg/modules/keyvalue"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/stretchr/testify/require"
+)
+
+// This file handles storing and retrieving a file for different backends
+var storage FileStorage
+
+func setDefaultLocalConfig() {
+	config.FilesBasePath.Set(config.ResolvePath(config.FilesBasePath.GetString()))
+}
+
+// Wrap Signer to remove header
+type gcsHTTPSigner struct {
+	wrapped s3.HTTPSignerV4
+}
+
+func (s *gcsHTTPSigner) SignHTTP(ctx context.Context, credentials aws.Credentials, req *http.Request, payloadHash string, service string, region string, signingTime time.Time, optFns ...func(*v4.SignerOptions)) error {
+	req.Header.Del("Accept-Encoding")
+	return s.wrapped.SignHTTP(ctx, credentials, req, payloadHash, service, region, signingTime, optFns...)
+}
+
+// initS3FileHandler initializes the S3 file backend
+func initS3FileHandler() error {
+	// Get S3 configuration
+	endpoint := config.FilesS3Endpoint.GetString()
+	bucket := config.FilesS3Bucket.GetString()
+	region := config.FilesS3Region.GetString()
+	accessKey := config.FilesS3AccessKey.GetString()
+	secretKey := config.FilesS3SecretKey.GetString()
+
+	if endpoint == "" {
+		return errors.New("S3 endpoint is not configured. Please set files.s3.endpoint")
+	}
+	if bucket == "" {
+		return errors.New("S3 bucket is not configured. Please set files.s3.bucket")
+	}
+	if accessKey == "" {
+		return errors.New("S3 access key is not configured. Please set files.s3.accesskey")
+	}
+	if secretKey == "" {
+		return errors.New("S3 secret key is not configured. Please set files.s3.secretkey")
+	}
+
+	// Create AWS SDK v2 config
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
+		awsconfig.WithRegion(region),
+		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	// Create S3 client with custom endpoint and path style options
+	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(endpoint)
+		o.UsePathStyle = config.FilesS3UsePathStyle.GetBool()
+		if endpoint == "https://storage.googleapis.com" {
+			o.HTTPSignerV4 = &gcsHTTPSigner{wrapped: o.HTTPSignerV4}
+			cfg.RequestChecksumCalculation = aws.RequestChecksumCalculationWhenRequired
+		}
+		if config.FilesS3DisableSigning.GetBool() {
+			o.APIOptions = append(o.APIOptions, v4.SwapComputePayloadSHA256ForUnsignedPayloadMiddleware)
+		}
+	})
+
+	storage = newS3Storage(bucket, config.FilesBasePath.GetString(), client)
+
+	return nil
+}
+
+// initLocalFileHandler initializes the local filesystem backend
+func initLocalFileHandler() {
+	setDefaultLocalConfig()
+	storage = newLocalStorage(config.FilesBasePath.GetString())
+}
+
+// InitFileHandler creates a new file handler for the file backend we want to use
+func InitFileHandler() error {
+	fileType := config.FilesType.GetString()
+
+	switch fileType {
+	case "s3":
+		if err := initS3FileHandler(); err != nil {
+			return err
+		}
+	case "local":
+		initLocalFileHandler()
+	default:
+		return fmt.Errorf("invalid file storage type '%s': must be 'local' or 's3'", fileType)
+	}
+
+	if err := ValidateFileStorage(); err != nil {
+		return fmt.Errorf("storage validation failed: %w", err)
+	}
+
+	return nil
+}
+
+// InitTestFileHandler initializes a new memory file system for testing
+func InitTestFileHandler() {
+	setDefaultLocalConfig()
+	storage = newMemStorage()
+}
+
+func initFixtures(t *testing.T) {
+	// DB fixtures
+	db.LoadAndAssertFixtures(t)
+	// File fixtures
+	InitTestFileFixtures(t)
+	err := config.SetMaxFileSizeMBytesFromString("20MB")
+	require.NoError(t, err)
+}
+
+// InitTestFileFixtures initializes file fixtures
+func InitTestFileFixtures(t *testing.T) {
+	testfile := &File{ID: 1}
+	err := storage.Write(testfile.fileID(), bytes.NewReader([]byte("testfile1")), 9)
+	require.NoError(t, err)
+}
+
+// InitTests handles the actual bootstrapping of the test env
+func InitTests() {
+	var err error
+	x, err = db.CreateTestEngine()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = x.Sync2(GetTables()...)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = db.InitTestFixtures("files")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	InitTestFileHandler()
+
+	keyvalue.InitStorage()
+}
+
+// FileStat stats a file. This is an exported function to be able to test this from outside of the package
+func FileStat(file *File) (os.FileInfo, error) {
+	return storage.Stat(file.fileID())
+}
+
+// ValidateFileStorage checks that the configured file storage is writable
+// by creating and removing a temporary file.
+func ValidateFileStorage() error {
+	basePath := config.FilesBasePath.GetString()
+
+	diag := storageDiagnosticInfo(basePath)
+	if diag != "" {
+		diag = "\n" + diag
+	}
+
+	// For local filesystem, ensure the base directory exists
+	if config.FilesType.GetString() == "local" {
+		info, err := os.Stat(basePath)
+		if err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				return fmt.Errorf("failed to access file storage directory at %s: %w%s", basePath, err, diag)
+			}
+
+			err = os.MkdirAll(basePath, 0755)
+			if err != nil {
+				return fmt.Errorf("failed to create file storage directory at %s: %w%s", basePath, err, diag)
+			}
+		} else if !info.IsDir() {
+			return fmt.Errorf("file storage path exists but is not a directory: %s", basePath)
+		}
+	}
+
+	filename := fmt.Sprintf(".vikunja-check-%d", time.Now().UnixNano())
+
+	err := storage.Write(filename, bytes.NewReader([]byte{}), 0)
+	if err != nil {
+		return fmt.Errorf("failed to create test file: %w%s", err, diag)
+	}
+
+	err = storage.Remove(filename)
+	if err != nil {
+		return fmt.Errorf("failed to remove test file: %w", err)
+	}
+
+	return nil
+}
