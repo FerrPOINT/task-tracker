@@ -56,7 +56,40 @@
 - JQL AST → SQL builder
 - Индексация при изменении issue через события
 
-## 7. Rate limiting
+## 7. Virtualization
+
+Для длинных списков и больших досок используем виртуализацию DOM/scroll:
+
+### 7.1 Frontend
+
+- `@tanstack/react-virtual` для списков (issue navigator, activity, comments).
+- `@tanstack/react-window` как альтернатива.
+- Kanban columns — виртуализация карточек, не колонок.
+- Backlog/issue tables — виртуальные строки при > 200 элементов.
+
+### 7.2 Backend
+
+- Issue list — cursor pagination, limit по умолчанию 50.
+- Board — chunked загрузка: 50 задач за запрос, infinite scroll.
+- Search — paginated results, no deep offsets.
+
+### 7.3 Example
+
+```tsx
+import { useVirtualizer } from "@tanstack/react-virtual"
+
+function IssueList({ issues }) {
+  const parentRef = useRef(null)
+  const virtualizer = useVirtualizer({
+    count: issues.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 56,
+  })
+  // render only visible items
+}
+```
+
+## 8. Rate limiting
 
 - `tower_governor` per IP / per user
 - Default: 100 req/min anonymous, 1000 req/min authenticated

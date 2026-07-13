@@ -7,7 +7,7 @@ Self-hosted таск-трекер, аналог Jira. Backend — Rust, frontend
 - `backend/` — Rust workspace (Axum + SeaORM + PostgreSQL)
 - `frontend/` — React 19 + Vite 6
 - `cli/` — CLI-утилита (Rust)
-- `docs/` — архитектура, ТЗ, дата-модель, API, workflow, JQL, user stories, UI/UX, frontend-библиотеки, design tokens, React styling guide, frontend architecture, project admin, system admin, notifications, reports, CLI spec, AGENTS.md, deployment, migrations, file storage, caching, routing, error handling, i18n, code style, ADR, производительность, тестирование, библиотеки, отчёт по Vikunja, Jira structural samples
+- `docs/` — архитектура, ТЗ, дата-модель, API, workflow, JQL, user stories, UI/UX, frontend-библиотеки, design tokens, React styling guide, frontend architecture, project admin, system admin, notifications, reports, CLI spec, AGENTS.md, deployment, migrations, file storage, caching, routing, error handling, i18n, code style, ADR, security, monitoring, производительность, тестирование, библиотеки, отчёт по Vikunja, Jira structural samples
 
 ## Документы
 
@@ -38,15 +38,18 @@ Self-hosted таск-трекер, аналог Jira. Backend — Rust, frontend
 - [i18n](docs/I18N.md)
 - [Code Style](docs/CODE_STYLE.md)
 - [ADR](docs/ADR.md)
+- [Security](docs/SECURITY.md)
+- [Monitoring](docs/MONITORING.md)
 - [Производительность](docs/PERFORMANCE.md)
 - [Тестирование](docs/TESTING.md)
 - [Библиотеки](docs/LIBRARIES.md)
 - [Отчёт по сравнению с Vikunja](docs/VIKUNJA_GAP_ANALYSIS.md)
 - [Jira UI Capture (структурные заметки)](docs/JIRA_UI_CAPTURE.md)
 
-## Запуск
+## Разработка
 
-На данном этапе репозиторий содержит только документацию и пустой каркас папок. Код backend/frontend появится в следующих коммитах.
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [CHANGELOG.md](CHANGELOG.md)
 
 ## Контакты / репозиторий
 
