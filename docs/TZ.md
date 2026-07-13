@@ -1,110 +1,254 @@
-# Техническое задание: Task Tracker
+# Техническое задание: Task Tracker (Jira-like)
 
 ## 1. Цель
 
-Self-hosted таск-трекер для команд, упрощённый аналог Jira. MVP должен покрывать управление проектами, задачами, kanban-доской, фильтрами и уведомлениями.
+Разработать self-hosted таск-трекер с функционалом, сопоставимым с open-source Jira (Data Center/Server). Система должна поддерживать проекты, типы задач, workflow, kanban/scrum-доски, фильтры, поиск, комментарии, вложения, уведомления, роли/разрешения, спринты, эпики и метрики.
 
 ## 2. Область применения
 
-- Внутренние команды.
-- Личные проекты.
-- Самостоятельный хостинг без зависимости от облачных сервисов.
+- Команды разработки.
+- IT-службы поддержки (Service Desk light).
+- Управление продуктами и проектами.
+- Личное самоорганизация.
 
-## 3. Функциональные требования
+## 3. Общие требования
 
-### 3.1 Пользователи
+### 3.1 Стек
+
+- Backend: Rust + Axum + Tokio + SQLx + PostgreSQL 17.
+- Frontend: React 19 + Vite 6 + TypeScript 5.9 + Tailwind CSS 4 + shadcn/ui.
+- CLI: TBD.
+- Тестирование: Vitest (unit), Playwright (e2e + скриншоты), cargo test (Rust unit/integration).
+- Деплой: Docker + Docker Compose.
+
+### 3.2 Качество
+
+- Покрытие тестами:
+  - backend unit + integration: ≥ 80% логики сервисов и репозиториев.
+  - frontend unit: ≥ 70% компонентов и hooks.
+  - e2e: critical path (регистрация → проект → задача → доска → комментарий → поиск).
+- После каждой доработки UI — скриншоты в трёх разрешениях: 375×667, 1920×1080, 2560×1440.
+- Визуальная регрессия: Playwright + screenshot comparisons.
+- Локализация: ru, en.
+- Тёмная тема по умолчанию.
+
+## 4. Функциональные требования
+
+### 4.1 Пользователи и auth
 
 - Регистрация по email + пароль.
-- Вход / выход.
-- Профиль: имя, аватар, email, язык, тёмная/светлая тема.
-- Роли в системе: `admin`, `user`.
-- В MVP без командных ролей: любой пользователь видит все проекты, но редактирует только свои или назначенные.
+- Подтверждение email (опционально, включаемое в админке).
+- Вход/выход/смена пароля.
+- Восстановление пароля через email.
+- Профиль: имя, аватар, email, язык, тема, часовой пояс.
+- Системные роли: `system_admin`, `user`.
+- Сессии: JWT access + httpOnly refresh cookie.
+- API-ключи для интеграций.
 
-### 3.2 Проекты
+### 4.2 Проекты
 
-- Создание проекта: имя, ключ (например `PROJ`), описание, владелец.
-- Список проектов.
-- Настройки проекта: название, описание, статусы задач, типы задач.
-- Удаление проекта только владельцем или админом.
+- Создание проекта: имя, ключ (например `PROJ`), описание, лид, тип проекта (scrum/kanban/simple).
+- Редактирование и архивирование проекта.
+- Настройки:
+  - Типы задач проекта.
+  - Статусы и workflow.
+  - Компоненты.
+  - Версии (fix/affected).
+  - Роли и члены проекта.
+  - Права доступа.
+- Удаление только архивированного проекта.
+- Уникальный ключ проекта.
 
-### 3.3 Задачи (issues)
+### 4.3 Задачи (issues)
 
-- Создание задачи: проект, тип, название, описание (markdown), статус, приоритет, исполнитель.
-- Редактирование задачи.
-- Просмотр задачи с историей изменений.
-- Удаление.
-- Типы задач: `task`, `bug`, `story`, `epic` (MVP — только `task` и `bug`).
-- Приоритеты: `lowest`, `low`, `medium`, `high`, `highest`.
-- Статусы: настраиваемые в рамках проекта, привязаны к категориям `todo`, `in_progress`, `done`.
-- Назначение исполнителя.
-- Метки (labels).
-- Вложения (файлы).
-- Комментарии.
-- Связи: `blocks`, `is blocked by`, `duplicates`, `relates to`.
+- Поля задачи:
+  - Проект, тип, номер (`PROJ-123`).
+  - Заголовок, описание (markdown).
+  - Статус, приоритет.
+  - Исполнитель, репортёр.
+  - Метки, компоненты, версии.
+  - Эпик, спринт.
+  - Story points, time estimate.
+  - Даты: created, updated, due.
+  - Кастомные поля (text, number, select, multi-select, date, user, checkbox).
+- CRUD задач.
+- История изменений (audit log по полям).
+- Связи: `blocks`, `is blocked by`, `duplicates`, `relates to`, `parent of`, `child of`.
+- Подзадачи.
+- Клонирование задачи.
+- Bulk actions: массовое изменение статуса/исполнителя/меток.
 
-### 3.4 Kanban-доска
+### 4.4 Типы задач
 
-- Доска автоматически строится по статусам проекта.
+- Системные: `task`, `bug`, `story`, `epic`, `sub-task`.
+- Пользовательские типы с иконкой и цветом.
+
+### 4.5 Статусы и workflow
+
+- Категории статусов: `todo`, `in_progress`, `done`.
+- Workflow проекта: список статусов и разрешённых переходов.
+- Условия перехода: разрешение, назначенный исполнитель, обязательные поля.
+- Post-functions: назначить исполнителя, добавить комментарий, отправить уведомление.
+
+### 4.6 Kanban-доска
+
+- Доска по умолчанию из статусов проекта.
 - Колонки = статусы.
-- Перетаскивание задачи между колонками меняет статус.
-- Порядок задач внутри колонки сохраняется.
-- Фильтр по исполнителю, метке, приоритету, текстовый поиск.
+- Swimlanes: по эпикам, по исполнителю, без swimlanes.
+- Перетаскивание задач между колонками.
+- Порядок задач в колонке.
+- Быстрое создание задачи в колонке.
+- Отображение assignee, labels, priority, due date.
+- Фильтры по assignee, label, priority, epic, sprint, текст.
+- WIP-лимиты на колонки (опционально).
+- Realtime обновление.
 
-### 3.5 Фильтры и поиск
+### 4.7 Scrum-доска и спринты
 
-- Сохранённые фильтры пользователя.
-- Полнотекстовый поиск по названию и описанию.
-- Фильтры: проект, статус, исполнитель, приоритет, метка, создатель, дата.
+- Создание спринта: имя, цель, даты.
+- Backlog проекта.
+- Перемещение задач из бэклога в спринт.
+- Начало/завершение спринта.
+- Sprint board.
+- Burndown chart.
+- Velocity.
 
-### 3.6 Уведомления
+### 4.8 Эпики
+
+- Тип задачи `epic`.
+- Связь `child of`/`parent of` со story/task.
+- Прогресс эпика по дочерним задачам.
+
+### 4.9 Комментарии
+
+- Добавление, редактирование, удаление.
+- Markdown + @mentions.
+- История правок.
+- Уведомления подписчикам.
+
+### 4.10 Вложения
+
+- Загрузка файлов к задаче или комментарию.
+- Preview для изображений.
+- Хранение: локальная FS или S3.
+- Ограничение по размеру и MIME.
+
+### 4.11 Поиск и фильтры
+
+- Полнотекстовый поиск по заголовку, описанию, комментариям.
+- JQL-подобный язык:
+  - `project = PROJ`
+  - `status in (Open, "In Progress")`
+  - `assignee = currentUser()`
+  - `created >= -7d`
+  - `labels in (backend, rust)`
+  - `sprint in (openSprints())`
+- Сохранённые фильтры.
+- Подписка на фильтр (уведомления).
+- Экспорт результатов в CSV.
+
+### 4.12 Уведомления
 
 - In-app уведомления.
-- События: назначили задачу, прокомментировали, изменили статус.
-- WebSocket push в реальном времени.
-- Email-уведомления — опционально, отключаемые.
+- Email-уведомления.
+- События:
+  - Назначили задачу.
+  - Изменили статус.
+  - Новый комментарий.
+  - Упоминание `@user`.
+  - Приближается due date.
+  - Спринт начался/закончился.
+- Настройки уведомлений пользователя.
 
-### 3.7 Администрирование
+### 4.13 Роли и разрешения
 
-- Панель админа: список пользователей, проектов.
-- Возможность заблокировать пользователя.
-- Системные настройки: SMTP, регистрация открыта/закрыта.
+- Глобальные роли: `system_admin`, `user`, `guest`.
+- Проектные роли: `project_admin`, `project_lead`, `developer`, `viewer`.
+- Проектные схемы разрешений.
+- Проверка на уровне API и сервисов.
 
-## 4. Нефункциональные требования
+### 4.14 Администрирование
 
-### 4.1 Производительность
+- Управление пользователями: блокировка, сброс пароля, назначение ролей.
+- Управление проектами.
+- Глобальные настройки: регистрация, SMTP, внешний вид, retention.
+- Audit log: кто и когда изменил критичные сущности.
 
-- Время ответа API < 200 мс для 95-го перцентиля на типичных запросах.
-- Kanban-доска проекта до 500 задач должна загружаться < 1 сек.
+### 4.15 Кастомные поля
 
-### 4.2 Масштабируемость
+- Типы: text, number, date, select, multi-select, checkbox, user, url.
+- Контекст: глобальные / проектные.
+- Валидация: обязательность, min/max.
 
-- Горизонтальное масштабирование backend за счёт stateless-сервиса.
-- WebSocket — sticky sessions или отдельный pub/sub на Redis.
+### 4.16 Дашборды (v2)
 
-### 4.3 Безопасность
+- Гаджеты: мои задачи, задачи проекта, burndown, статусная диаграмма.
+- Личный и проектный dashboard.
 
-- Пароли хешируются argon2id.
-- JWT с коротким access-токеном и refresh-токеном.
-- Защита от CSRF на state-changing запросах.
-- Rate limit на login/register.
-- Загрузка файлов в изолированную директорию / S3 с проверкой расширений.
+## 5. Нефункциональные требования
 
-### 4.4 Надёжность
+### 5.1 Производительность
 
-- Базовые тесты: unit для сервисов, integration для репозиториев, e2e для critical path.
-- Миграции базы версионируются и откатываются.
-- Логирование в JSON, structured logging.
+- P95 ответа API: < 200 мс при нагрузке до 100 RPS на 2 CPU / 4 GB.
+- Загрузка kanban-доски до 1000 задач: < 1 сек.
+- Поиск по 100K задач: < 500 мс.
+- Frontend First Contentful Paint: < 1.5 сек.
+- WebSocket broadcast до 10K одновременных соединений.
 
-### 4.5 UX
+### 5.2 Масштабируемость
+
+- Stateless backend.
+- Горизонтальное масштабирование backend за балансировщиком.
+- WebSocket — sticky sessions или Redis pub/sub.
+- PostgreSQL read-replicas для отчётов.
+
+### 5.3 Надёжность
+
+- Unit + integration тесты.
+- E2E на critical path.
+- Миграции с откатом.
+- Graceful shutdown.
+- Circuit breaker для внешних сервисов.
+
+### 5.4 Безопасность
+
+- Argon2id.
+- JWT с коротким TTL.
+- Rate limiting.
+- CORS whitelist.
+- Input validation (garde + Zod).
+- XSS/CSRF защита.
+- File upload sandbox.
+
+### 5.5 UX
 
 - Тёмная тема по умолчанию.
-- Russian и English языки.
-- Адаптивная вёрстка: mobile 375×667, desktop 1920×1080, 2K.
-- Горячие клавиши для создания задачи и поиска.
+- Russian и English.
+- Адаптив: mobile 375×667, desktop 1920×1080, 2K 2560×1440.
+- Горячие клавиши: `c` — создать задачу, `/` — поиск, `Esc` — закрыть модалку.
+- Offline-индикатор.
+- Toast-уведомления.
 
-## 5. API (REST + WebSocket)
+## 6. API
 
-### 5.1 Эндпоинты (основные)
+### 6.1 Общие правила
+
+- REST `/api/v1/...`.
+- JSON.
+- Ошибки:
+  ```json
+  {
+    "error": {
+      "code": "VALIDATION_ERROR",
+      "message": "...",
+      "details": {}
+    }
+  }
+  ```
+- Пагинация: `?limit=&cursor=` для лент, `?limit=&offset=` для таблиц.
+- Сортировка: `?sort=created_at:desc`.
+
+### 6.2 Эндпоинты
 
 #### Auth
 
@@ -112,7 +256,16 @@ Self-hosted таск-трекер для команд, упрощённый ан
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
 - `POST /api/v1/auth/logout`
+- `POST /api/v1/auth/forgot-password`
+- `POST /api/v1/auth/reset-password`
 - `GET /api/v1/auth/me`
+
+#### Users
+
+- `GET /api/v1/users`
+- `GET /api/v1/users/:id`
+- `PUT /api/v1/users/:id`
+- `PUT /api/v1/users/:id/avatar`
 
 #### Projects
 
@@ -121,6 +274,10 @@ Self-hosted таск-трекер для команд, упрощённый ан
 - `GET /api/v1/projects/:id`
 - `PUT /api/v1/projects/:id`
 - `DELETE /api/v1/projects/:id`
+- `GET /api/v1/projects/:id/members`
+- `POST /api/v1/projects/:id/members`
+- `DELETE /api/v1/projects/:id/members/:user_id`
+- `PUT /api/v1/projects/:id/members/:user_id/role`
 
 #### Issues
 
@@ -129,11 +286,11 @@ Self-hosted таск-трекер для команд, упрощённый ан
 - `GET /api/v1/issues/:id`
 - `PUT /api/v1/issues/:id`
 - `DELETE /api/v1/issues/:id`
-- `POST /api/v1/issues/:id/move` — смена статуса с позицией
-
-#### Board
-
-- `GET /api/v1/projects/:project_id/board` — структура доски + задачи
+- `POST /api/v1/issues/:id/clone`
+- `POST /api/v1/issues/:id/transitions`
+- `GET /api/v1/issues/:id/history`
+- `POST /api/v1/issues/:id/watch`
+- `POST /api/v1/issues/bulk-update`
 
 #### Comments
 
@@ -145,118 +302,154 @@ Self-hosted таск-трекер для команд, упрощённый ан
 #### Attachments
 
 - `POST /api/v1/issues/:issue_id/attachments`
+- `GET /api/v1/attachments/:id`
 - `DELETE /api/v1/attachments/:id`
+
+#### Boards
+
+- `GET /api/v1/projects/:project_id/boards`
+- `POST /api/v1/projects/:project_id/boards`
+- `GET /api/v1/boards/:id`
+- `PUT /api/v1/boards/:id`
+- `GET /api/v1/boards/:id/issues`
+- `POST /api/v1/boards/:id/columns/:column_id/issues/:issue_id/move`
+
+#### Sprints
+
+- `GET /api/v1/projects/:project_id/sprints`
+- `POST /api/v1/projects/:project_id/sprints`
+- `POST /api/v1/sprints/:id/start`
+- `POST /api/v1/sprints/:id/complete`
+- `PUT /api/v1/sprints/:id/issues`
 
 #### Filters
 
 - `GET /api/v1/filters`
 - `POST /api/v1/filters`
+- `GET /api/v1/filters/:id`
+- `PUT /api/v1/filters/:id`
 - `DELETE /api/v1/filters/:id`
+- `GET /api/v1/filters/:id/results`
+
+#### Search
+
+- `GET /api/v1/search?q=&jql=&...`
 
 #### Notifications
 
 - `GET /api/v1/notifications`
 - `PUT /api/v1/notifications/:id/read`
 - `PUT /api/v1/notifications/read-all`
+- `PUT /api/v1/notifications/settings`
 
 #### Admin
 
 - `GET /api/v1/admin/users`
 - `PUT /api/v1/admin/users/:id/status`
+- `PUT /api/v1/admin/users/:id/role`
 - `GET /api/v1/admin/projects`
+- `GET /api/v1/admin/audit-log`
 
-### 5.2 WebSocket
+#### OpenAPI
+
+- `GET /api/docs` — Scalar UI.
+- `GET /api/openapi.json` — сырой JSON.
+
+### 6.3 WebSocket
 
 - `GET /ws?token=...`
-- Сообщения: JSON `{ "type": "issue.updated", "payload": {...} }`.
+- Каналы: `user:{id}`, `project:{id}`, `issue:{id}`, `board:{id}`, `sprint:{id}`.
+- Сообщения:
+  ```json
+  { "type": "issue.created", "payload": { "id": "...", "project_id": "..." } }
+  ```
 
-### 5.3 OpenAPI
+## 7. Экраны frontend
 
-- Спецификация генерируется из кода.
-- UI: Scalar по адресу `/api/docs`.
-
-## 6. Экраны frontend
-
-- `/login` — вход
-- `/register` — регистрация
+- `/login`
+- `/register`
+- `/forgot-password`
+- `/reset-password`
 - `/projects` — список проектов
-- `/projects/:id` — детали проекта + вкладки задач/доска/настройки
-- `/projects/:id/board` — kanban
-- `/issues/:id` — карточка задачи
-- `/filters` — сохранённые фильтры
-- `/notifications` — уведомления
-- `/admin` — панель администратора
-- `/profile` — профиль пользователя
+- `/projects/new`
+- `/projects/:id` — обзор проекта
+- `/projects/:id/issues` — список задач
+- `/projects/:id/board` — kanban-доска
+- `/projects/:id/backlog` — бэклог + спринты
+- `/projects/:id/settings/*`
+- `/issues/:id` — детали задачи
+- `/filters`
+- `/filters/:id`
+- `/search?jql=...`
+- `/notifications`
+- `/profile`
+- `/admin/*`
+- `/dashboard` — личный дашборд
 
-## 7. Данные и хранение
+## 8. Данные и хранение
 
-- PostgreSQL 16+ — основное хранилище.
-- Файлы — локальная FS или S3-совместимое хранилище.
-- Кеш сессий — Redis (опционально).
-
-## 8. Деплой
-
-- Docker Compose для локального запуска.
-- Backend + frontend nginx для production.
-- Порт по умолчанию: 19876.
+- PostgreSQL 17 — основное хранилище.
+- Файлы — локальная FS `/data/attachments` или S3.
+- Redis — опционально для сессий, rate limit, WS pub/sub.
+- Elasticsearch / pg_search — опционально для полнотекста.
 
 ## 9. Этапы разработки
 
-### Этап 1. Каркас
+### Этап 1. Каркас (2 недели)
 
-- Rust backend: Axum, SQLx, PostgreSQL, миграции, базовый error handling.
-- React frontend: Vite, Router, TanStack Query, Zustand, Tailwind, shadcn/ui.
+- Rust workspace, Axum, SQLx, PostgreSQL, миграции.
+- React + Vite + Tailwind + shadcn/ui.
 - Docker Compose.
+- CI: cargo test, pnpm typecheck, lint.
 
-### Этап 2. Auth и пользователи
+### Этап 2. Auth и пользователи (1 неделя)
 
-- Регистрация, логин, JWT, профиль.
-- Frontend: формы, валидация Zod.
+- Регистрация, логин, JWT, refresh, профиль.
+- Frontend формы.
 
-### Этап 3. Проекты
+### Этап 3. Проекты (1 неделя)
 
-- CRUD проектов, настройки, ключи.
+- CRUD проектов, ключи, члены проекта.
 
-### Этап 4. Задачи
+### Этап 4. Задачи и workflow (2 недели)
 
-- CRUD задач, статусы, приоритеты, исполнители, метки.
+- CRUD задач, типы, статусы, приоритеты.
+- Workflow transitions.
+- История изменений.
 
-### Этап 5. Kanban
+### Этап 5. Доска и DnD (2 недели)
 
-- Доска, DnD, фильтры, realtime обновления.
+- Kanban board, realtime.
+- Фильтры.
 
-### Этап 6. Комментарии и вложения
+### Этап 6. Комментарии и вложения (1 неделя)
 
-- Комментарии, markdown, загрузка файлов.
+### Этап 7. Поиск и фильтры (1 неделя)
 
-### Этап 7. Фильтры и поиск
+### Этап 8. Роли и разрешения (1 неделя)
 
-- Полнотекстовый поиск, сохранённые фильтры.
+### Этап 9. Уведомления и realtime (1 неделя)
 
-### Этап 8. Уведомления и realtime
+### Этап 10. Спринты и эпики (2 недели)
 
-- WebSocket hub, in-app уведомления.
+### Этап 11. Admin, dashboard, polish (2 недели)
 
-### Этап 9. Admin и polish
-
-- Панель админа, тёмная тема, i18n, e2e-тесты.
+### Этап 12. Тестирование, performance, документация (2 недели)
 
 ## 10. Критерии приёмки
 
-- `docker compose up` поднимает приложение.
-- Пользователь может зарегистрироваться, создать проект, добавить задачу, переместить её на доске.
-- UI адаптирован под 375, 1920, 2560.
-- API покрыт OpenAPI, frontend покрыт типами.
-- Critical path покрыт e2e-тестами.
+- `docker compose up` поднимает всё.
+- Регистрация → создание проекта → создание задачи → перемещение на доске → комментарий — проходит e2e.
+- UI скриншоты по трём разрешениям.
+- OpenAPI покрывает все публичные эндпоинты.
+- Backend unit + integration tests зелёные.
+- Lighthouse score ≥ 90 по Performance, Accessibility, Best Practices.
 
-## 11. Что сознательно вне MVP
+## 11. Что вне первой волны
 
-- Teams, группы, сложные роли.
+- LDAP / OAuth / OpenID / SAML.
 - CalDAV.
-- Импортёры из сторонних систем.
-- OAuth / OpenID / LDAP.
-- Time tracking.
-- Sprints, epics, story points.
-- Webhooks.
-- Плагинная система.
-- Desktop / mobile приложения.
+- Импортёры из Jira/Trello/Todoist.
+- Desktop/mobile приложения.
+- Marketplace / плагины.
+- SLA / автоматизация rules / webhooks.
