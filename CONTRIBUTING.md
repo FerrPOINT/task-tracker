@@ -79,24 +79,52 @@ test(e2e): cover issue transition
 - Owner of relevant area should review.
 - No merge without CI green.
 
-## 9. Documentation
+## 10. Documentation Updates
 
-- Update docs for architecture changes.
-- Add ADR for significant decisions.
-- Update CHANGELOG.md for user-facing changes.
+Каждый PR должен обновлять документацию при изменении:
 
-## 10. Release
+- архитектуры, API, workflow — обновить соответствующий `docs/*.md`.
+- нового env или настройки — обновить `docs/DEPLOYMENT.md`, `.env.example`, `README.md`.
+- нового endpoint — обновить `docs/API.md` и OpenAPI.
+- нового компонента — обновить `docs/UI_UX.md` или `docs/FRONTEND_ARCHITECTURE.md`.
+
+## 11. Release
 
 - Maintainers cut releases.
 - Follow Semantic Versioning.
 - Update CHANGELOG.md before tagging.
 
-## 11. Communication
+## 12. Pre-commit / Pre-push
+
+### 12.1 Pre-commit
+
+```bash
+# .husky/pre-commit
+pnpm lint-staged
+```
+
+```json
+// package.json
+"lint-staged": {
+  "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
+  "*.rs": ["rustfmt"]
+}
+```
+
+### 12.2 Pre-push (optional)
+
+```bash
+# .husky/pre-push
+cargo test --lib
+pnpm vitest run
+```
+
+## 13. Communication
 
 - Issues: GitHub issues.
 - Discussions: GitHub discussions.
 - Russian or English accepted.
 
-## 12. License
+## 14. License
 
 See repository license file.
