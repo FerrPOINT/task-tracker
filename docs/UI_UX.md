@@ -466,3 +466,85 @@
 - `docs/assets/ui-mockups/backlog.svg`
 - `docs/assets/ui-mockups/create-issue.svg`
 - `docs/assets/ui-mockups/dashboard.svg`
+
+## Appendix: Captured Jira Reference Data
+
+Снято с реального инстанса https://task.wemakedev.ru (read-only, без изменений).
+
+### Issue Types
+- `Задача` (standard)
+- `Подзадача` (subtask)
+- `История` (standard)
+- `Ошибка` (standard)
+- `Epic` (standard)
+- `Маркетинг` (standard)
+- `Продукт` (standard)
+- `Продажи` (standard)
+- `Администрирование` (standard)
+- `Анализ` (standard)
+- `Техническая` (standard)
+- `Таймшит` (standard)
+
+### Statuses
+- `Открытый` — К выполнению (new)
+- `В работе` — В работе (indeterminate)
+- `Сделать` — К выполнению (new)
+- `Готово` — Выполнено (done)
+- `Backlog` — К выполнению (new)
+- `Selected for Development` — К выполнению (new)
+- `Тестирование` — В работе (indeterminate)
+- `Review` — В работе (indeterminate)
+- `Canceled` — Выполнено (done)
+- `Готово к тестированию` — К выполнению (new)
+
+### Priorities
+- `Highest`
+- `High`
+- `Medium`
+- `Low`
+- `Lowest`
+
+### Projects
+- `ED` —  Education (software)
+- `AAT` — AZHUKOV Azhukov Test (software)
+- `PRES` — Presale (business)
+- `PT` — Product team (business)
+- `ATS` — АТС Релевантер (software)
+- `AIPROJ` — ИИ-проекты (software)
+- `NEUROKEY` — Нейроключ (software)
+- `EDU` — Обучения  (software)
+- `REL` — Релевантер (software)
+- `NKTIME` — Учет рабочего времени (business)
+
+### Board Column Examples
+**Board 10 — Paper1**
+- Список задач
+- Нужно сделать
+- В работе
+- Выполнено
+
+**Board 2 — Presale**
+- Список задач
+- Нужно сделать
+- Готовится КП (Без маржи)
+- Есть вопросы (к заказчику)
+- КП Готово (Без маржи)
+- Ожидает ОС (от клиента)
+- Согласовано (с заказчиком)
+- Пилот
+- Выполнено
+
+**Board 4 — Product Team**
+- Список задач
+- Backlog / Ideas
+- To Do
+- In Progress
+- Review
+- Done
+- Canceled
+
+### Key Fields in Issue Detail
+Системные поля, присутствующие в задачах:
+`summary`, `description`, `status`, `assignee`, `reporter`, `creator`, `priority`, `issuetype`, `project`, `labels`, `components`, `fixVersions`, `versions`, `duedate`, `environment`, `timetracking`, `attachment`, `comment`, `worklog`, `issuelinks`, `subtasks`, `votes`, `watches`, `progress`, `aggregateprogress`, `created`, `updated`, `resolution`, `resolutiondate`, `archiveddate`, `archivedby`.
+
+Полный набор данных: `docs/assets/jira-reference/`.

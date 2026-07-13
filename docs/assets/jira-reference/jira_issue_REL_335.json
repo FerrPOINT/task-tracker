@@ -1,0 +1,1457 @@
+{
+  "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+  "id": "11428",
+  "self": "https://task.wemakedev.ru/rest/api/2/issue/11428",
+  "key": "REL-335",
+  "fields": {
+    "issuetype": {
+      "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10102",
+      "id": "10102",
+      "description": "",
+      "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10303&avatarType=issuetype",
+      "name": "Ошибка",
+      "subtask": false,
+      "avatarId": 10303
+    },
+    "timespent": null,
+    "project": {
+      "self": "https://task.wemakedev.ru/rest/api/2/project/10104",
+      "id": "10104",
+      "key": "REL",
+      "name": "Релевантер",
+      "projectTypeKey": "software",
+      "avatarUrls": {
+        "48x48": "https://task.wemakedev.ru/secure/projectavatar?pid=10104&avatarId=10814",
+        "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&pid=10104&avatarId=10814",
+        "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&pid=10104&avatarId=10814",
+        "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&pid=10104&avatarId=10814"
+      }
+    },
+    "fixVersions": [],
+    "customfield_10111": null,
+    "aggregatetimespent": null,
+    "resolution": null,
+    "customfield_10107": null,
+    "customfield_10108": null,
+    "customfield_10109": "0|i006ng:",
+    "resolutiondate": null,
+    "workratio": -1,
+    "lastViewed": null,
+    "watches": {
+      "self": "https://task.wemakedev.ru/rest/api/2/issue/REL-335/watchers",
+      "watchCount": 1,
+      "isWatching": false
+    },
+    "created": "2026-07-08T15:15:39.568+0300",
+    "priority": {
+      "self": "https://task.wemakedev.ru/rest/api/2/priority/2",
+      "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/high.svg",
+      "name": "High",
+      "id": "2"
+    },
+    "customfield_10100": null,
+    "customfield_10101": null,
+    "customfield_10102": null,
+    "labels": [],
+    "customfield_10103": null,
+    "timeestimate": null,
+    "aggregatetimeoriginalestimate": null,
+    "versions": [],
+    "issuelinks": [],
+    "assignee": {
+      "self": "https://task.wemakedev.ru/rest/api/2/user?username=yaprokushev",
+      "name": "yaprokushev",
+      "key": "JIRAUSER10334",
+      "emailAddress": "yaprokushev@wmt-ai.ru",
+      "avatarUrls": {
+        "48x48": "https://task.wemakedev.ru/secure/useravatar?avatarId=10341",
+        "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&avatarId=10341",
+        "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&avatarId=10341",
+        "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&avatarId=10341"
+      },
+      "displayName": "Ярослав Прокушев ",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "updated": "2026-07-08T15:15:57.700+0300",
+    "status": {
+      "self": "https://task.wemakedev.ru/rest/api/2/status/10003",
+      "description": "",
+      "iconUrl": "https://task.wemakedev.ru/",
+      "name": "Selected for Development",
+      "id": "10003",
+      "statusCategory": {
+        "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+        "id": 2,
+        "key": "new",
+        "colorName": "default",
+        "name": "К выполнению"
+      }
+    },
+    "components": [],
+    "timeoriginalestimate": null,
+    "description": "В разделе Компании [https://app.relevanter.ru/recruiter/control?tab=personal]\r\n\r\nСоздали компанию Лига.\r\n\r\nИ затем собрались из Управления аккаунтами создать нового пользователя и старому пользователю [zev@ligamac.com|mailto:zev@ligamac.com] присвоить компанию Лига. Но в выпадающем списке выбрать компанию Лига не смогли.\r\n\r\nПри этом если через раздел Компании, зайти в статистику компании Лига, то там можно создать пользователя и там компания Лига есть.\r\n\r\nКак должно быть: Список компаний должен быть одинаковый и в Управлении аккаунтами и в Компаниях\r\n\r\n \r\n\r\n!image-2026-07-08-15-13-22-338.png|width=882,height=538!\r\n\r\n \r\n\r\n!image-2026-07-08-15-13-58-111.png|width=680,height=310!",
+    "timetracking": {},
+    "archiveddate": null,
+    "attachment": [
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/attachment/11532",
+        "id": "11532",
+        "filename": "image-2026-07-08-15-13-22-338.png",
+        "author": {
+          "self": "https://task.wemakedev.ru/rest/api/2/user?username=ekudryashova",
+          "name": "ekudryashova",
+          "key": "JIRAUSER10311",
+          "emailAddress": "ekudryashova@wmtgroup.ru",
+          "avatarUrls": {
+            "48x48": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=48",
+            "24x24": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=24",
+            "16x16": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=16",
+            "32x32": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=32"
+          },
+          "displayName": "Екатерина Кудряшова",
+          "active": true,
+          "timeZone": "Europe/Moscow"
+        },
+        "created": "2026-07-08T15:13:22.816+0300",
+        "size": 203969,
+        "mimeType": "image/png",
+        "content": "https://task.wemakedev.ru/secure/attachment/11532/image-2026-07-08-15-13-22-338.png",
+        "thumbnail": "https://task.wemakedev.ru/secure/thumbnail/11532/_thumb_11532.png"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/attachment/11531",
+        "id": "11531",
+        "filename": "image-2026-07-08-15-13-58-111.png",
+        "author": {
+          "self": "https://task.wemakedev.ru/rest/api/2/user?username=ekudryashova",
+          "name": "ekudryashova",
+          "key": "JIRAUSER10311",
+          "emailAddress": "ekudryashova@wmtgroup.ru",
+          "avatarUrls": {
+            "48x48": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=48",
+            "24x24": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=24",
+            "16x16": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=16",
+            "32x32": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=32"
+          },
+          "displayName": "Екатерина Кудряшова",
+          "active": true,
+          "timeZone": "Europe/Moscow"
+        },
+        "created": "2026-07-08T15:13:58.507+0300",
+        "size": 128383,
+        "mimeType": "image/png",
+        "content": "https://task.wemakedev.ru/secure/attachment/11531/image-2026-07-08-15-13-58-111.png",
+        "thumbnail": "https://task.wemakedev.ru/secure/thumbnail/11531/_thumb_11531.png"
+      }
+    ],
+    "aggregatetimeestimate": null,
+    "summary": "Админка: компания создана, но ее нельзя выбрать у пользователя",
+    "creator": {
+      "self": "https://task.wemakedev.ru/rest/api/2/user?username=ekudryashova",
+      "name": "ekudryashova",
+      "key": "JIRAUSER10311",
+      "emailAddress": "ekudryashova@wmtgroup.ru",
+      "avatarUrls": {
+        "48x48": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=48",
+        "24x24": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=24",
+        "16x16": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=16",
+        "32x32": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=32"
+      },
+      "displayName": "Екатерина Кудряшова",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "subtasks": [],
+    "reporter": {
+      "self": "https://task.wemakedev.ru/rest/api/2/user?username=ekudryashova",
+      "name": "ekudryashova",
+      "key": "JIRAUSER10311",
+      "emailAddress": "ekudryashova@wmtgroup.ru",
+      "avatarUrls": {
+        "48x48": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=48",
+        "24x24": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=24",
+        "16x16": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=16",
+        "32x32": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=32"
+      },
+      "displayName": "Екатерина Кудряшова",
+      "active": true,
+      "timeZone": "Europe/Moscow"
+    },
+    "customfield_10000": "{summaryBean=com.atlassian.jira.plugin.devstatus.rest.SummaryBean@5b069f2a[summary={pullrequest=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@29295ae2[byInstanceType={},overall=PullRequestOverallBean{stateCount=0, state='OPEN', details=PullRequestOverallDetails{openCount=0, mergedCount=0, declinedCount=0}}], build=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@729fdd93[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BuildOverallBean@11827768[failedBuildCount=0,successfulBuildCount=0,unknownBuildCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], review=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@54bed702[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.ReviewsOverallBean@3625e284[dueDate=<null>,overDue=false,state=<null>,stateCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], deployment-environment=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@3a5ac296[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.DeploymentOverallBean@3861db82[showProjects=false,successfulCount=0,topEnvironments=[],count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], repository=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@1a450d4b[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.CommitOverallBean@3eded45[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], branch=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@6fcfd1dc[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BranchOverallBean@59c4aa6c[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]]},configErrors=[],errors=[]], devSummaryJson={\"cachedValue\":{\"errors\":[],\"configErrors\":[],\"summary\":{\"pullrequest\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":\"OPEN\",\"details\":{\"openCount\":0,\"mergedCount\":0,\"declinedCount\":0,\"total\":0},\"open\":true},\"byInstanceType\":{}},\"build\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"failedBuildCount\":0,\"successfulBuildCount\":0,\"unknownBuildCount\":0},\"byInstanceType\":{}},\"review\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":null,\"dueDate\":null,\"overDue\":false,\"completed\":false},\"byInstanceType\":{}},\"deployment-environment\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"topEnvironments\":[],\"showProjects\":false,\"successfulCount\":0},\"byInstanceType\":{}},\"repository\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}},\"branch\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}}}},\"isStale\":false}}",
+    "aggregateprogress": {
+      "progress": 0,
+      "total": 0
+    },
+    "customfield_10200": null,
+    "customfield_10202": null,
+    "environment": null,
+    "duedate": "2026-07-15",
+    "progress": {
+      "progress": 0,
+      "total": 0
+    },
+    "comment": {
+      "comments": [],
+      "maxResults": 0,
+      "total": 0,
+      "startAt": 0
+    },
+    "votes": {
+      "self": "https://task.wemakedev.ru/rest/api/2/issue/REL-335/votes",
+      "votes": 0,
+      "hasVoted": false
+    },
+    "worklog": {
+      "startAt": 0,
+      "maxResults": 20,
+      "total": 0,
+      "worklogs": []
+    },
+    "archivedby": null
+  },
+  "renderedFields": {
+    "issuetype": null,
+    "timespent": null,
+    "project": null,
+    "fixVersions": null,
+    "customfield_10111": null,
+    "aggregatetimespent": null,
+    "resolution": null,
+    "customfield_10107": null,
+    "customfield_10108": null,
+    "customfield_10109": null,
+    "resolutiondate": null,
+    "workratio": null,
+    "lastViewed": null,
+    "watches": null,
+    "created": "5 д. назад 3:15 PM",
+    "priority": null,
+    "customfield_10100": null,
+    "customfield_10101": null,
+    "customfield_10102": null,
+    "labels": null,
+    "customfield_10103": null,
+    "timeestimate": null,
+    "aggregatetimeoriginalestimate": null,
+    "versions": null,
+    "issuelinks": null,
+    "assignee": null,
+    "updated": "5 д. назад 3:15 PM",
+    "status": null,
+    "components": null,
+    "timeoriginalestimate": null,
+    "description": "<p>В разделе Компании <a href=\"https://app.relevanter.ru/recruiter/control?tab=personal\" class=\"external-link\" target=\"_blank\" rel=\"nofollow noopener\">https://app.relevanter.ru/recruiter/control?tab=personal</a></p>\n\n<p>Создали компанию Лига.</p>\n\n<p>И затем собрались из Управления аккаунтами создать нового пользователя и старому пользователю <span class=\"nobr\"><a href=\"mailto:zev@ligamac.com\" class=\"external-link\" target=\"_blank\" rel=\"nofollow noopener\">zev@ligamac.com<sup><img class=\"rendericon\" src=\"https://task.wemakedev.ru/images/icons/mail_small.gif\" height=\"12\" width=\"13\" align=\"absmiddle\" alt=\"\" border=\"0\"/></sup></a></span> присвоить компанию Лига. Но в выпадающем списке выбрать компанию Лига не смогли.</p>\n\n<p>При этом если через раздел Компании, зайти в статистику компании Лига, то там можно создать пользователя и там компания Лига есть.</p>\n\n<p>Как должно быть: Список компаний должен быть одинаковый и в Управлении аккаунтами и в Компаниях</p>\n\n<p> </p>\n\n<p><span class=\"image-wrap\" style=\"\"><img src=\"https://task.wemakedev.ru/secure/attachment/11532/11532_image-2026-07-08-15-13-22-338.png\" height=\"538\" width=\"882\" style=\"border: 0px solid black\" /></span></p>\n\n<p> </p>\n\n<p><span class=\"image-wrap\" style=\"\"><img src=\"https://task.wemakedev.ru/secure/attachment/11531/11531_image-2026-07-08-15-13-58-111.png\" height=\"310\" width=\"680\" style=\"border: 0px solid black\" /></span></p>",
+    "timetracking": {},
+    "archiveddate": null,
+    "attachment": [
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/attachment/11532",
+        "id": "11532",
+        "filename": "image-2026-07-08-15-13-22-338.png",
+        "author": {
+          "self": "https://task.wemakedev.ru/rest/api/2/user?username=ekudryashova",
+          "name": "ekudryashova",
+          "key": "JIRAUSER10311",
+          "emailAddress": "ekudryashova@wmtgroup.ru",
+          "avatarUrls": {
+            "48x48": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=48",
+            "24x24": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=24",
+            "16x16": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=16",
+            "32x32": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=32"
+          },
+          "displayName": "Екатерина Кудряшова",
+          "active": true,
+          "timeZone": "Europe/Moscow"
+        },
+        "created": "5 д. назад 3:13 PM",
+        "size": "199 kB",
+        "mimeType": "image/png",
+        "content": "https://task.wemakedev.ru/secure/attachment/11532/image-2026-07-08-15-13-22-338.png",
+        "thumbnail": "https://task.wemakedev.ru/secure/thumbnail/11532/_thumb_11532.png"
+      },
+      {
+        "self": "https://task.wemakedev.ru/rest/api/2/attachment/11531",
+        "id": "11531",
+        "filename": "image-2026-07-08-15-13-58-111.png",
+        "author": {
+          "self": "https://task.wemakedev.ru/rest/api/2/user?username=ekudryashova",
+          "name": "ekudryashova",
+          "key": "JIRAUSER10311",
+          "emailAddress": "ekudryashova@wmtgroup.ru",
+          "avatarUrls": {
+            "48x48": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=48",
+            "24x24": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=24",
+            "16x16": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=16",
+            "32x32": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=32"
+          },
+          "displayName": "Екатерина Кудряшова",
+          "active": true,
+          "timeZone": "Europe/Moscow"
+        },
+        "created": "5 д. назад 3:13 PM",
+        "size": "125 kB",
+        "mimeType": "image/png",
+        "content": "https://task.wemakedev.ru/secure/attachment/11531/image-2026-07-08-15-13-58-111.png",
+        "thumbnail": "https://task.wemakedev.ru/secure/thumbnail/11531/_thumb_11531.png"
+      }
+    ],
+    "aggregatetimeestimate": null,
+    "summary": null,
+    "creator": null,
+    "subtasks": null,
+    "reporter": null,
+    "customfield_10000": null,
+    "aggregateprogress": null,
+    "customfield_10200": null,
+    "customfield_10202": null,
+    "environment": "",
+    "duedate": "15/июл/26",
+    "progress": null,
+    "comment": {
+      "comments": [],
+      "maxResults": 0,
+      "total": 0,
+      "startAt": 0
+    },
+    "votes": null,
+    "worklog": {
+      "startAt": 0,
+      "maxResults": 20,
+      "total": 0,
+      "worklogs": []
+    },
+    "archivedby": null
+  },
+  "names": {
+    "issuetype": "Тип задачи",
+    "timespent": "Затраченное время",
+    "project": "Проект",
+    "fixVersions": "Исправить в версиях",
+    "customfield_10111": "Команда",
+    "aggregatetimespent": "Суммарное затраченое время",
+    "resolution": "Решение",
+    "customfield_10107": "Ссылка на эпик",
+    "customfield_10108": "Спринт",
+    "customfield_10109": "Рейтинг",
+    "resolutiondate": "Дата решения",
+    "workratio": "КПД (полезная работа/затраченная работа)",
+    "lastViewed": "Последний просмотр",
+    "watches": "Наблюдатели",
+    "created": "Создано",
+    "priority": "Приоритет",
+    "customfield_10100": "Родительская ссылка",
+    "customfield_10101": "Целевая дата начала",
+    "customfield_10102": "Целевая дата окончания",
+    "labels": "Метки",
+    "customfield_10103": "Первоначальная оценка сложности",
+    "timeestimate": "Оставшееся время",
+    "aggregatetimeoriginalestimate": "Суммарная первоначальная оценка",
+    "versions": "Затронуты версии",
+    "issuelinks": "Связанные задачи",
+    "assignee": "Исполнитель",
+    "updated": "Обновленo",
+    "status": "Статус",
+    "components": "Компоненты",
+    "timeoriginalestimate": "Первоначальная оценка",
+    "description": "Описание",
+    "timetracking": "Учет времени",
+    "archiveddate": "Дата добавления в архив",
+    "attachment": "Вложение",
+    "aggregatetimeestimate": "Суммарное оставшееся время",
+    "summary": "Тема",
+    "creator": "Создатель",
+    "subtasks": "Подзадачи",
+    "reporter": "Автор",
+    "customfield_10000": "Development",
+    "aggregateprogress": "Суммарный прогресс",
+    "customfield_10200": "Отмечено",
+    "customfield_10202": "Оценка",
+    "environment": "Окружение",
+    "duedate": "Срок исполнения",
+    "progress": "Прогресс",
+    "comment": "Комментарий",
+    "votes": "Голоса",
+    "worklog": "Сделать запись о работе",
+    "archivedby": "Кто добавил в архив"
+  },
+  "schema": {
+    "issuetype": {
+      "type": "issuetype",
+      "system": "issuetype"
+    },
+    "timespent": {
+      "type": "number",
+      "system": "timespent"
+    },
+    "project": {
+      "type": "project",
+      "system": "project"
+    },
+    "fixVersions": {
+      "type": "array",
+      "items": "version",
+      "system": "fixVersions"
+    },
+    "customfield_10111": {
+      "type": "any",
+      "custom": "com.atlassian.teams:rm-teams-custom-field-team",
+      "customId": 10111
+    },
+    "aggregatetimespent": {
+      "type": "number",
+      "system": "aggregatetimespent"
+    },
+    "resolution": {
+      "type": "resolution",
+      "system": "resolution"
+    },
+    "customfield_10107": {
+      "type": "any",
+      "custom": "com.pyxis.greenhopper.jira:gh-epic-link",
+      "customId": 10107
+    },
+    "customfield_10108": {
+      "type": "array",
+      "items": "string",
+      "custom": "com.pyxis.greenhopper.jira:gh-sprint",
+      "customId": 10108
+    },
+    "customfield_10109": {
+      "type": "any",
+      "custom": "com.pyxis.greenhopper.jira:gh-lexo-rank",
+      "customId": 10109
+    },
+    "resolutiondate": {
+      "type": "datetime",
+      "system": "resolutiondate"
+    },
+    "workratio": {
+      "type": "number",
+      "system": "workratio"
+    },
+    "lastViewed": {
+      "type": "datetime",
+      "system": "lastViewed"
+    },
+    "watches": {
+      "type": "watches",
+      "system": "watches"
+    },
+    "created": {
+      "type": "datetime",
+      "system": "created"
+    },
+    "priority": {
+      "type": "priority",
+      "system": "priority"
+    },
+    "customfield_10100": {
+      "type": "any",
+      "custom": "com.atlassian.jpo:jpo-custom-field-parent",
+      "customId": 10100
+    },
+    "customfield_10101": {
+      "type": "date",
+      "custom": "com.atlassian.jpo:jpo-custom-field-baseline-start",
+      "customId": 10101
+    },
+    "customfield_10102": {
+      "type": "date",
+      "custom": "com.atlassian.jpo:jpo-custom-field-baseline-end",
+      "customId": 10102
+    },
+    "labels": {
+      "type": "array",
+      "items": "string",
+      "system": "labels"
+    },
+    "customfield_10103": {
+      "type": "number",
+      "custom": "com.atlassian.jpo:jpo-custom-field-original-story-points",
+      "customId": 10103
+    },
+    "timeestimate": {
+      "type": "number",
+      "system": "timeestimate"
+    },
+    "aggregatetimeoriginalestimate": {
+      "type": "number",
+      "system": "aggregatetimeoriginalestimate"
+    },
+    "versions": {
+      "type": "array",
+      "items": "version",
+      "system": "versions"
+    },
+    "issuelinks": {
+      "type": "array",
+      "items": "issuelinks",
+      "system": "issuelinks"
+    },
+    "assignee": {
+      "type": "user",
+      "system": "assignee"
+    },
+    "updated": {
+      "type": "datetime",
+      "system": "updated"
+    },
+    "status": {
+      "type": "status",
+      "system": "status"
+    },
+    "components": {
+      "type": "array",
+      "items": "component",
+      "system": "components"
+    },
+    "timeoriginalestimate": {
+      "type": "number",
+      "system": "timeoriginalestimate"
+    },
+    "description": {
+      "type": "string",
+      "system": "description"
+    },
+    "timetracking": {
+      "type": "timetracking",
+      "system": "timetracking"
+    },
+    "archiveddate": {
+      "type": "datetime",
+      "system": "archiveddate"
+    },
+    "attachment": {
+      "type": "array",
+      "items": "attachment",
+      "system": "attachment"
+    },
+    "aggregatetimeestimate": {
+      "type": "number",
+      "system": "aggregatetimeestimate"
+    },
+    "summary": {
+      "type": "string",
+      "system": "summary"
+    },
+    "creator": {
+      "type": "user",
+      "system": "creator"
+    },
+    "subtasks": {
+      "type": "array",
+      "items": "issuelinks",
+      "system": "subtasks"
+    },
+    "reporter": {
+      "type": "user",
+      "system": "reporter"
+    },
+    "customfield_10000": {
+      "type": "any",
+      "custom": "com.atlassian.jira.plugins.jira-development-integration-plugin:devsummary",
+      "customId": 10000
+    },
+    "aggregateprogress": {
+      "type": "progress",
+      "system": "aggregateprogress"
+    },
+    "customfield_10200": {
+      "type": "array",
+      "items": "option",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes",
+      "customId": 10200
+    },
+    "customfield_10202": {
+      "type": "number",
+      "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+      "customId": 10202
+    },
+    "environment": {
+      "type": "string",
+      "system": "environment"
+    },
+    "duedate": {
+      "type": "date",
+      "system": "duedate"
+    },
+    "progress": {
+      "type": "progress",
+      "system": "progress"
+    },
+    "comment": {
+      "type": "comments-page",
+      "system": "comment"
+    },
+    "votes": {
+      "type": "votes",
+      "system": "votes"
+    },
+    "worklog": {
+      "type": "array",
+      "items": "worklog",
+      "system": "worklog"
+    },
+    "archivedby": {
+      "type": "user",
+      "system": "archivedby"
+    }
+  },
+  "operations": {
+    "linkGroups": [
+      {
+        "id": "view.issue.opsbar",
+        "links": [],
+        "groups": [
+          {
+            "id": "edit-issue_container",
+            "weight": 1,
+            "links": [
+              {
+                "id": "edit-issue",
+                "styleClass": "issueaction-edit-issue",
+                "iconClass": "aui-icon aui-icon-small aui-iconfont-edit",
+                "label": "Редактировать",
+                "title": "Редактировать этот запрос",
+                "href": "/secure/EditIssue!default.jspa?id=11428",
+                "weight": 1,
+                "params": {
+                  "iconClass": "aui-icon aui-icon-small aui-iconfont-edit"
+                }
+              }
+            ],
+            "groups": []
+          },
+          {
+            "id": "comment-issue_container",
+            "weight": 10,
+            "links": [
+              {
+                "id": "comment-issue",
+                "styleClass": "issueaction-comment-issue add-issue-comment",
+                "iconClass": "aui-icon aui-icon-small aui-iconfont-comment icon-comment",
+                "label": "Добавить комментарий",
+                "title": "Комментировать этот запрос",
+                "href": "/secure/AddComment!default.jspa?id=11428",
+                "weight": 10,
+                "params": {
+                  "iconClass": "aui-icon aui-icon-small aui-iconfont-comment icon-comment"
+                }
+              }
+            ],
+            "groups": []
+          },
+          {
+            "id": "opsbar-operations",
+            "weight": 10,
+            "links": [
+              {
+                "id": "assign-issue",
+                "styleClass": "issueaction-assign-issue",
+                "label": "Назначить",
+                "title": "Назначить исполнителя этой задачи",
+                "href": "/secure/AssignIssue!default.jspa?id=11428",
+                "weight": 5,
+                "params": {}
+              }
+            ],
+            "groups": [
+              {
+                "header": {
+                  "id": "opsbar-operations_more",
+                  "label": "Еще..."
+                },
+                "links": [],
+                "groups": [
+                  {
+                    "id": "operations-work",
+                    "weight": 20,
+                    "links": [
+                      {
+                        "id": "log-work",
+                        "styleClass": "issueaction-log-work",
+                        "label": "Вести журнал работы",
+                        "title": "Сделать запись о работе по этому запросу",
+                        "href": "/secure/CreateWorklog!default.jspa?id=11428",
+                        "weight": 10,
+                        "params": {}
+                      }
+                    ],
+                    "groups": []
+                  },
+                  {
+                    "id": "greenhopper_issue_dropdown",
+                    "weight": 20,
+                    "links": [
+                      {
+                        "id": "greenhopper-rapidboard-operation",
+                        "styleClass": "issueaction-greenhopper-rapidboard-operation js-find-on-board-issue",
+                        "label": "Найти на доске",
+                        "title": "Найти Agile-доски, на которых можно просмотреть эту задачу",
+                        "href": "/secure/FindOnBoard.jspa?issueId=11428",
+                        "weight": 30,
+                        "params": {}
+                      },
+                      {
+                        "id": "greenhopper-rank-top-operation",
+                        "styleClass": "issueaction-greenhopper-rank-top-operation",
+                        "label": "Передвинуть вверх",
+                        "href": "/secure/RankTop.jspa?issueId=11428",
+                        "weight": 40,
+                        "params": {}
+                      },
+                      {
+                        "id": "greenhopper-rank-bottom-operation",
+                        "styleClass": "issueaction-greenhopper-rank-bottom-operation",
+                        "label": "Передвинуть вниз",
+                        "href": "/secure/RankBottom.jspa?issueId=11428",
+                        "weight": 50,
+                        "params": {}
+                      }
+                    ],
+                    "groups": []
+                  },
+                  {
+                    "id": "operations-attachments",
+                    "weight": 30,
+                    "links": [
+                      {
+                        "id": "attach-file",
+                        "styleClass": "unified-attach-file",
+                        "label": "Прикрепить файлы",
+                        "title": "Приложить один или несколько файлов к этой проблеме",
+                        "href": "/secure/AttachFile!default.jspa?id=11428",
+                        "weight": 10,
+                        "params": {}
+                      },
+                      {
+                        "id": "attach-screenshot-html5",
+                        "styleClass": "issueaction-attach-screenshot-html5",
+                        "label": "Приложить скриншоты",
+                        "href": "/secure/ShowAttachScreenshotFormAction!default.jspa?id=11428",
+                        "weight": 15,
+                        "params": {}
+                      }
+                    ],
+                    "groups": []
+                  },
+                  {
+                    "id": "operations-voteswatchers",
+                    "weight": 40,
+                    "links": [
+                      {
+                        "id": "toggle-vote-issue",
+                        "styleClass": "issueaction-vote-issue",
+                        "label": "Добавить голос",
+                        "title": "Голосовать за эту задачу",
+                        "href": "/secure/VoteOrWatchIssue.jspa?atl_token=BRFN-ZLK0-V8UA-FTNT_481d5e804e5742e352fc3d97306cdbd4e7e58f08_lin&id=11428&vote=vote",
+                        "weight": 10,
+                        "params": {}
+                      },
+                      {
+                        "id": "view-voters",
+                        "styleClass": "issueaction-view-voters",
+                        "label": "Голоса",
+                        "title": "Просмотр голосов за эту задачу",
+                        "href": "/secure/ViewVoters!default.jspa?id=11428",
+                        "weight": 30,
+                        "params": {}
+                      },
+                      {
+                        "id": "toggle-watch-issue",
+                        "styleClass": "issueaction-watch-issue",
+                        "label": "Наблюдать за задачей",
+                        "title": "Начать наблюдение за этой задачей",
+                        "href": "/secure/VoteOrWatchIssue.jspa?atl_token=BRFN-ZLK0-V8UA-FTNT_481d5e804e5742e352fc3d97306cdbd4e7e58f08_lin&id=11428&watch=watch",
+                        "weight": 40,
+                        "params": {}
+                      },
+                      {
+                        "id": "manage-watchers",
+                        "styleClass": "issueaction-manage-watchers",
+                        "label": "Наблюдатели",
+                        "title": "Редактировать наблюдателей этого запроса",
+                        "href": "/secure/ManageWatchers!default.jspa?id=11428",
+                        "weight": 60,
+                        "params": {}
+                      }
+                    ],
+                    "groups": []
+                  },
+                  {
+                    "id": "operations-subtasks",
+                    "weight": 50,
+                    "links": [
+                      {
+                        "id": "create-subtask",
+                        "styleClass": "issueaction-create-subtask",
+                        "label": "Создать подзадачу",
+                        "title": "Создать подзадачу для этого запроса",
+                        "href": "/secure/CreateSubTaskIssue!default.jspa?parentIssueId=11428",
+                        "weight": 10,
+                        "params": {}
+                      },
+                      {
+                        "id": "issue-to-subtask",
+                        "styleClass": "issueaction-issue-to-subtask",
+                        "label": "Преобразовать в подзадачу",
+                        "title": "Конвертировать этот запрос в подзадачу",
+                        "href": "/secure/ConvertIssue.jspa?id=11428",
+                        "weight": 20,
+                        "params": {}
+                      }
+                    ],
+                    "groups": []
+                  },
+                  {
+                    "id": "operations-operations",
+                    "weight": 60,
+                    "links": [
+                      {
+                        "id": "create-linked-issue",
+                        "styleClass": "issueaction-create-linked-issue",
+                        "label": "Создать связанную задачу",
+                        "href": "#",
+                        "weight": 5,
+                        "params": {}
+                      },
+                      {
+                        "id": "move-issue",
+                        "styleClass": "issueaction-move-issue",
+                        "label": "Переместить",
+                        "title": "Переместить этот запрос в другой проект или тип запроса",
+                        "href": "/secure/MoveIssue!default.jspa?id=11428",
+                        "weight": 10,
+                        "params": {}
+                      },
+                      {
+                        "id": "link-issue",
+                        "styleClass": "issueaction-link-issue",
+                        "label": "Связать",
+                        "title": "Сделать ссылку этой задачи на другую задачу или пункт",
+                        "href": "/secure/LinkJiraIssue!default.jspa?id=11428",
+                        "weight": 20,
+                        "params": {}
+                      },
+                      {
+                        "id": "clone-issue",
+                        "styleClass": "issueaction-clone-issue",
+                        "label": "Клонировать",
+                        "title": "Клонировать этот запрос",
+                        "href": "/secure/CloneIssueDetails!default.jspa?id=11428",
+                        "weight": 20,
+                        "params": {}
+                      },
+                      {
+                        "id": "edit-labels",
+                        "styleClass": "issueaction-edit-labels",
+                        "label": "Метки",
+                        "title": "Редактировать эту метку запроса",
+                        "href": "/secure/EditLabels!default.jspa?id=11428",
+                        "weight": 30,
+                        "params": {}
+                      }
+                    ],
+                    "groups": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "opsbar-transitions",
+            "weight": 20,
+            "links": [],
+            "groups": [
+              {
+                "header": {
+                  "id": "opsbar-transitions_more",
+                  "styleClass": "opsbar-transitions__status-category_new",
+                  "label": "Selected for Development"
+                },
+                "links": [],
+                "groups": [
+                  {
+                    "id": "transitions-all",
+                    "weight": 70,
+                    "links": [
+                      {
+                        "id": "action_id_11",
+                        "styleClass": "issueaction-workflow-transition",
+                        "label": "Список задач",
+                        "href": "/secure/WorkflowUIDispatcher.jspa?id=11428&action=11&atl_token=",
+                        "weight": 10,
+                        "params": {}
+                      },
+                      {
+                        "id": "action_id_21",
+                        "styleClass": "issueaction-workflow-transition",
+                        "label": "Selected for Development",
+                        "href": "/secure/WorkflowUIDispatcher.jspa?id=11428&action=21&atl_token=",
+                        "weight": 20,
+                        "params": {}
+                      },
+                      {
+                        "id": "action_id_31",
+                        "styleClass": "issueaction-workflow-transition",
+                        "label": "В работе",
+                        "href": "/secure/WorkflowUIDispatcher.jspa?id=11428&action=31&atl_token=",
+                        "weight": 30,
+                        "params": {}
+                      },
+                      {
+                        "id": "action_id_41",
+                        "styleClass": "issueaction-workflow-transition",
+                        "label": "Выполнено",
+                        "href": "/secure/WorkflowUIDispatcher.jspa?id=11428&action=41&atl_token=",
+                        "weight": 40,
+                        "params": {}
+                      },
+                      {
+                        "id": "action_id_51",
+                        "styleClass": "issueaction-workflow-transition",
+                        "label": "Тестирование",
+                        "title": "Тестирование - Managed by JIRA Software",
+                        "href": "/secure/WorkflowUIDispatcher.jspa?id=11428&action=51&atl_token=",
+                        "weight": 50,
+                        "params": {}
+                      },
+                      {
+                        "id": "action_id_61",
+                        "styleClass": "issueaction-workflow-transition",
+                        "label": "Canceled",
+                        "title": "Canceled - Managed by JIRA Software",
+                        "href": "/secure/WorkflowUIDispatcher.jspa?id=11428&action=61&atl_token=",
+                        "weight": 60,
+                        "params": {}
+                      },
+                      {
+                        "id": "action_id_71",
+                        "styleClass": "issueaction-workflow-transition",
+                        "label": "Ревью",
+                        "title": "Ревью - Managed by JIRA Software",
+                        "href": "/secure/WorkflowUIDispatcher.jspa?id=11428&action=71&atl_token=",
+                        "weight": 70,
+                        "params": {}
+                      },
+                      {
+                        "id": "view-workflow-button",
+                        "styleClass": "jira-workflow-designer-link",
+                        "label": "Просмотреть рабочий процесс",
+                        "href": "/browse/REL-335?workflowName=Software+Simplified+Workflow+for+Project+REL&stepId=22",
+                        "weight": 1000000,
+                        "params": {}
+                      }
+                    ],
+                    "groups": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "opsbar-admin",
+            "weight": 30,
+            "links": [],
+            "groups": [
+              {
+                "header": {
+                  "id": "opsbar-admin_more",
+                  "label": "Администратор"
+                },
+                "links": [],
+                "groups": []
+              }
+            ]
+          },
+          {
+            "id": "opsbar-restore",
+            "weight": 40,
+            "links": [],
+            "groups": [
+              {
+                "header": {
+                  "id": "opsbar-restore_more",
+                  "label": "Восстановить задачу"
+                },
+                "links": [],
+                "groups": []
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "jira.issue.tools",
+        "links": [
+          {
+            "id": "jira-share-trigger",
+            "styleClass": "viewissue-share",
+            "iconClass": "aui-icon aui-icon-small aui-iconfont-share",
+            "label": "",
+            "title": "Поделиться этим запросом по электронной почте с другими пользователями",
+            "href": "",
+            "weight": 10,
+            "params": {
+              "iconClass": "aui-icon aui-icon-small aui-iconfont-share"
+            }
+          }
+        ],
+        "groups": [
+          {
+            "id": "view.issue.exports",
+            "header": {
+              "id": "viewissue-export",
+              "iconClass": "icon-default aui-icon aui-icon-small aui-iconfont-export",
+              "label": "Экспорт",
+              "title": "Экспортировать этот запрос в другой формат"
+            },
+            "links": [
+              {
+                "id": "jira.issueviews:issue-xml",
+                "label": "XML",
+                "href": "/si/jira.issueviews:issue-xml/REL-335/REL-335.xml"
+              },
+              {
+                "id": "jira.issueviews:issue-word",
+                "label": "Word",
+                "href": "/si/jira.issueviews:issue-word/REL-335/REL-335.doc"
+              },
+              {
+                "id": "jira.issueviews:issue-html",
+                "label": "Для печати",
+                "href": "/si/jira.issueviews:issue-html/REL-335/REL-335.html"
+              }
+            ],
+            "groups": []
+          }
+        ]
+      }
+    ]
+  },
+  "editmeta": {
+    "fields": {
+      "summary": {
+        "required": true,
+        "schema": {
+          "type": "string",
+          "system": "summary"
+        },
+        "name": "Тема",
+        "fieldId": "summary",
+        "operations": [
+          "set"
+        ]
+      },
+      "issuetype": {
+        "required": true,
+        "schema": {
+          "type": "issuetype",
+          "system": "issuetype"
+        },
+        "name": "Тип задачи",
+        "fieldId": "issuetype",
+        "operations": [],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10100",
+            "id": "10100",
+            "description": "Задание для выполнения.",
+            "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10318&avatarType=issuetype",
+            "name": "Задача",
+            "subtask": false,
+            "avatarId": 10318
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+            "id": "10001",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+            "name": "История",
+            "subtask": false
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10102",
+            "id": "10102",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10303&avatarType=issuetype",
+            "name": "Ошибка",
+            "subtask": false,
+            "avatarId": 10303
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10000",
+            "id": "10000",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для большой пользовательской истории, требующей декомпозиции.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/epic.svg",
+            "name": "Epic",
+            "subtask": false
+          }
+        ]
+      },
+      "components": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "component",
+          "system": "components"
+        },
+        "name": "Компоненты",
+        "fieldId": "components",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ],
+        "allowedValues": []
+      },
+      "description": {
+        "required": false,
+        "schema": {
+          "type": "string",
+          "system": "description"
+        },
+        "name": "Описание",
+        "fieldId": "description",
+        "operations": [
+          "set"
+        ]
+      },
+      "fixVersions": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "version",
+          "system": "fixVersions"
+        },
+        "name": "Исправить в версиях",
+        "fieldId": "fixVersions",
+        "operations": [
+          "set",
+          "add",
+          "remove"
+        ],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10000",
+            "id": "10000",
+            "name": "Релевантер",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-06-17",
+            "userReleaseDate": "17/июн/26",
+            "projectId": 10104
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10001",
+            "id": "10001",
+            "name": "Релевантер_25.06.2026",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-06-25",
+            "userReleaseDate": "25/июн/26",
+            "projectId": 10104
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10002",
+            "id": "10002",
+            "name": "Релевантер_02.07.2026",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-07-03",
+            "userReleaseDate": "03/июл/26",
+            "projectId": 10104
+          }
+        ]
+      },
+      "priority": {
+        "required": false,
+        "schema": {
+          "type": "priority",
+          "system": "priority"
+        },
+        "name": "Приоритет",
+        "fieldId": "priority",
+        "operations": [
+          "set"
+        ],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/1",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/highest.svg",
+            "name": "Highest",
+            "id": "1"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/2",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/high.svg",
+            "name": "High",
+            "id": "2"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/3",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/medium.svg",
+            "name": "Medium",
+            "id": "3"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/4",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/low.svg",
+            "name": "Low",
+            "id": "4"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+            "name": "Lowest",
+            "id": "5"
+          }
+        ]
+      },
+      "labels": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "string",
+          "system": "labels"
+        },
+        "name": "Метки",
+        "fieldId": "labels",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/1.0/labels/suggest?query=",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ]
+      },
+      "environment": {
+        "required": false,
+        "schema": {
+          "type": "string",
+          "system": "environment"
+        },
+        "name": "Окружение",
+        "fieldId": "environment",
+        "operations": [
+          "set"
+        ]
+      },
+      "attachment": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "attachment",
+          "system": "attachment"
+        },
+        "name": "Вложение",
+        "fieldId": "attachment",
+        "operations": []
+      },
+      "versions": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "version",
+          "system": "versions"
+        },
+        "name": "Затронуты версии",
+        "fieldId": "versions",
+        "operations": [
+          "set",
+          "add",
+          "remove"
+        ],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10000",
+            "id": "10000",
+            "name": "Релевантер",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-06-17",
+            "userReleaseDate": "17/июн/26",
+            "projectId": 10104
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10001",
+            "id": "10001",
+            "name": "Релевантер_25.06.2026",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-06-25",
+            "userReleaseDate": "25/июн/26",
+            "projectId": 10104
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/version/10002",
+            "id": "10002",
+            "name": "Релевантер_02.07.2026",
+            "archived": false,
+            "released": true,
+            "releaseDate": "2026-07-03",
+            "userReleaseDate": "03/июл/26",
+            "projectId": 10104
+          }
+        ]
+      },
+      "issuelinks": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "issuelinks",
+          "system": "issuelinks"
+        },
+        "name": "Связанные задачи",
+        "fieldId": "issuelinks",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/2/issue/picker?currentProjectId=&showSubTaskParent=true&showSubTasks=true&currentIssueKey=REL-335&query=",
+        "operations": [
+          "add"
+        ]
+      },
+      "customfield_10107": {
+        "required": false,
+        "schema": {
+          "type": "any",
+          "custom": "com.pyxis.greenhopper.jira:gh-epic-link",
+          "customId": 10107
+        },
+        "name": "Ссылка на эпик",
+        "fieldId": "customfield_10107",
+        "operations": [
+          "set"
+        ]
+      },
+      "customfield_10202": {
+        "required": false,
+        "schema": {
+          "type": "number",
+          "custom": "com.atlassian.jira.plugin.system.customfieldtypes:float",
+          "customId": 10202
+        },
+        "name": "Оценка",
+        "fieldId": "customfield_10202",
+        "operations": [
+          "set"
+        ]
+      },
+      "duedate": {
+        "required": false,
+        "schema": {
+          "type": "date",
+          "system": "duedate"
+        },
+        "name": "Срок исполнения",
+        "fieldId": "duedate",
+        "operations": [
+          "set"
+        ]
+      },
+      "timetracking": {
+        "required": false,
+        "schema": {
+          "type": "timetracking",
+          "system": "timetracking"
+        },
+        "name": "Учет времени",
+        "fieldId": "timetracking",
+        "operations": [
+          "set",
+          "edit"
+        ]
+      },
+      "assignee": {
+        "required": false,
+        "schema": {
+          "type": "user",
+          "system": "assignee"
+        },
+        "name": "Исполнитель",
+        "fieldId": "assignee",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/latest/user/assignable/search?issueKey=REL-335&username=",
+        "operations": [
+          "set"
+        ]
+      },
+      "comment": {
+        "required": false,
+        "schema": {
+          "type": "comments-page",
+          "system": "comment"
+        },
+        "name": "Комментарий",
+        "fieldId": "comment",
+        "operations": [
+          "add",
+          "edit",
+          "remove"
+        ]
+      }
+    }
+  },
+  "changelog": {
+    "startAt": 0,
+    "maxResults": 2,
+    "total": 2,
+    "histories": [
+      {
+        "id": "20928",
+        "author": {
+          "self": "https://task.wemakedev.ru/rest/api/2/user?username=ekudryashova",
+          "name": "ekudryashova",
+          "key": "JIRAUSER10311",
+          "emailAddress": "ekudryashova@wmtgroup.ru",
+          "avatarUrls": {
+            "48x48": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=48",
+            "24x24": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=24",
+            "16x16": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=16",
+            "32x32": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=32"
+          },
+          "displayName": "Екатерина Кудряшова",
+          "active": true,
+          "timeZone": "Europe/Moscow"
+        },
+        "created": "2026-07-08T15:15:45.909+0300",
+        "items": [
+          {
+            "field": "status",
+            "fieldtype": "jira",
+            "from": "10002",
+            "fromString": "Backlog",
+            "to": "10003",
+            "toString": "Selected for Development"
+          }
+        ]
+      },
+      {
+        "id": "20929",
+        "author": {
+          "self": "https://task.wemakedev.ru/rest/api/2/user?username=ekudryashova",
+          "name": "ekudryashova",
+          "key": "JIRAUSER10311",
+          "emailAddress": "ekudryashova@wmtgroup.ru",
+          "avatarUrls": {
+            "48x48": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=48",
+            "24x24": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=24",
+            "16x16": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=16",
+            "32x32": "https://www.gravatar.com/avatar/4b2c4174351e1ed180b9b078cf29c900?d=mm&s=32"
+          },
+          "displayName": "Екатерина Кудряшова",
+          "active": true,
+          "timeZone": "Europe/Moscow"
+        },
+        "created": "2026-07-08T15:15:57.701+0300",
+        "items": [
+          {
+            "field": "duedate",
+            "fieldtype": "jira",
+            "from": null,
+            "fromString": null,
+            "to": "2026-07-15",
+            "toString": "2026-07-15 00:00:00.0"
+          }
+        ]
+      }
+    ]
+  }
+}
