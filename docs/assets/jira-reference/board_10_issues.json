@@ -1,0 +1,915 @@
+{
+  "status": 200,
+  "data": {
+    "expand": "schema,names",
+    "startAt": 0,
+    "maxResults": 100,
+    "total": 4,
+    "issues": [
+      {
+        "expand": "operations,versionedRepresentations,editmeta,changelog,renderedFields",
+        "id": "10862",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/issue/10862",
+        "key": "AAT-1",
+        "fields": {
+          "issuetype": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+            "id": "10001",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+            "name": "История",
+            "subtask": false
+          },
+          "timespent": null,
+          "project": {
+            "self": "https://task.wemakedev.ru/rest/api/2/project/10103",
+            "id": "10103",
+            "key": "AAT",
+            "name": "AZHUKOV Azhukov Test",
+            "projectTypeKey": "software",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+              "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+              "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+              "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+            }
+          },
+          "fixVersions": [],
+          "customfield_10110": null,
+          "customfield_10111": null,
+          "aggregatetimespent": null,
+          "resolution": null,
+          "customfield_10107": null,
+          "customfield_10108": null,
+          "customfield_10109": "0|i003qv:",
+          "resolutiondate": null,
+          "workratio": -1,
+          "lastViewed": null,
+          "watches": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issue/AAT-1/watchers",
+            "watchCount": 1,
+            "isWatching": true
+          },
+          "created": "2026-05-31T13:41:47.000+0300",
+          "priority": {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+            "name": "Lowest",
+            "id": "5"
+          },
+          "customfield_10100": null,
+          "customfield_10101": null,
+          "customfield_10102": null,
+          "labels": [],
+          "customfield_10103": null,
+          "timeestimate": null,
+          "aggregatetimeoriginalestimate": null,
+          "versions": [],
+          "issuelinks": [],
+          "assignee": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "updated": "2026-06-06T14:16:00.000+0300",
+          "status": {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          "components": [],
+          "timeoriginalestimate": null,
+          "description": "h1. Должны быть кликабельные заголовки в списке кандидатов\r\n\r\n \r\n \r\n*Кажется логичным, что заголовок тоже должен быть кликабельным и вести на резюме кандидат на hh*\r\n\r\n!image-2026-05-31-17-44-48-872.png|width=1051,height=565!",
+          "timetracking": {},
+          "archiveddate": null,
+          "attachment": [
+            {
+              "self": "https://task.wemakedev.ru/rest/api/2/attachment/10782",
+              "id": "10782",
+              "filename": "image-2026-05-31-17-44-48-872.png",
+              "author": {
+                "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                "name": "azhukov",
+                "key": "JIRAUSER10332",
+                "emailAddress": "azhukov.java@gmail.com",
+                "avatarUrls": {
+                  "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                  "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                  "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                  "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                },
+                "displayName": "Александр Жуков ",
+                "active": true,
+                "timeZone": "Europe/Moscow"
+              },
+              "created": "2026-05-31T13:44:50.187+0300",
+              "size": 366341,
+              "mimeType": "image/png",
+              "content": "https://task.wemakedev.ru/secure/attachment/10782/image-2026-05-31-17-44-48-872.png",
+              "thumbnail": "https://task.wemakedev.ru/secure/thumbnail/10782/_thumb_10782.png"
+            }
+          ],
+          "aggregatetimeestimate": null,
+          "flagged": false,
+          "summary": "В поиске Должны быть кликабельные заголовки в списке кандидатов Кажется логичным, что заголовок тоже должен быть кликабельным и вести на резюме кандидат на hh",
+          "creator": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "subtasks": [],
+          "reporter": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "customfield_10000": "{summaryBean=com.atlassian.jira.plugin.devstatus.rest.SummaryBean@1314ca53[summary={pullrequest=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@2ca84e17[byInstanceType={},overall=PullRequestOverallBean{stateCount=0, state='OPEN', details=PullRequestOverallDetails{openCount=0, mergedCount=0, declinedCount=0}}], build=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@51314e2c[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BuildOverallBean@3f077aeb[failedBuildCount=0,successfulBuildCount=0,unknownBuildCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], review=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@3a5d235[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.ReviewsOverallBean@75a44b0a[dueDate=<null>,overDue=false,state=<null>,stateCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], deployment-environment=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@2ebf3bbc[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.DeploymentOverallBean@2a6bdca2[showProjects=false,successfulCount=0,topEnvironments=[],count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], repository=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@7f287a0[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.CommitOverallBean@50d9604f[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], branch=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@7ecc333[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BranchOverallBean@739691a0[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]]},configErrors=[],errors=[]], devSummaryJson={\"cachedValue\":{\"errors\":[],\"configErrors\":[],\"summary\":{\"pullrequest\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":\"OPEN\",\"details\":{\"openCount\":0,\"mergedCount\":0,\"declinedCount\":0,\"total\":0},\"open\":true},\"byInstanceType\":{}},\"build\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"failedBuildCount\":0,\"successfulBuildCount\":0,\"unknownBuildCount\":0},\"byInstanceType\":{}},\"review\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":null,\"dueDate\":null,\"overDue\":false,\"completed\":false},\"byInstanceType\":{}},\"deployment-environment\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"topEnvironments\":[],\"showProjects\":false,\"successfulCount\":0},\"byInstanceType\":{}},\"repository\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}},\"branch\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}}}},\"isStale\":false}}",
+          "aggregateprogress": {
+            "progress": 0,
+            "total": 0
+          },
+          "customfield_10200": null,
+          "environment": null,
+          "duedate": null,
+          "progress": {
+            "progress": 0,
+            "total": 0
+          },
+          "comment": {
+            "comments": [
+              {
+                "self": "https://task.wemakedev.ru/rest/api/2/issue/10862/comment/10695",
+                "id": "10695",
+                "author": {
+                  "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                  "name": "azhukov",
+                  "key": "JIRAUSER10332",
+                  "emailAddress": "azhukov.java@gmail.com",
+                  "avatarUrls": {
+                    "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                    "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                    "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                    "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                  },
+                  "displayName": "Александр Жуков ",
+                  "active": true,
+                  "timeZone": "Europe/Moscow"
+                },
+                "body": "TASKNEIROKLYUCH-259",
+                "updateAuthor": {
+                  "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                  "name": "azhukov",
+                  "key": "JIRAUSER10332",
+                  "emailAddress": "azhukov.java@gmail.com",
+                  "avatarUrls": {
+                    "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                    "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                    "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                    "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                  },
+                  "displayName": "Александр Жуков ",
+                  "active": true,
+                  "timeZone": "Europe/Moscow"
+                },
+                "created": "2026-05-31T16:55:14.546+0300",
+                "updated": "2026-05-31T16:55:14.546+0300"
+              }
+            ],
+            "maxResults": 1,
+            "total": 1,
+            "startAt": 0
+          },
+          "votes": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issue/AAT-1/votes",
+            "votes": 0,
+            "hasVoted": false
+          },
+          "worklog": {
+            "startAt": 0,
+            "maxResults": 20,
+            "total": 0,
+            "worklogs": []
+          },
+          "archivedby": null
+        }
+      },
+      {
+        "expand": "operations,versionedRepresentations,editmeta,changelog,renderedFields",
+        "id": "10863",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/issue/10863",
+        "key": "AAT-2",
+        "fields": {
+          "issuetype": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+            "id": "10001",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+            "name": "История",
+            "subtask": false
+          },
+          "timespent": null,
+          "project": {
+            "self": "https://task.wemakedev.ru/rest/api/2/project/10103",
+            "id": "10103",
+            "key": "AAT",
+            "name": "AZHUKOV Azhukov Test",
+            "projectTypeKey": "software",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+              "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+              "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+              "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+            }
+          },
+          "fixVersions": [],
+          "customfield_10110": null,
+          "customfield_10111": null,
+          "aggregatetimespent": null,
+          "resolution": null,
+          "customfield_10107": null,
+          "customfield_10108": null,
+          "customfield_10109": "0|i003r3:",
+          "resolutiondate": null,
+          "workratio": -1,
+          "lastViewed": null,
+          "watches": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issue/AAT-2/watchers",
+            "watchCount": 1,
+            "isWatching": true
+          },
+          "created": "2026-05-31T13:46:37.000+0300",
+          "priority": {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+            "name": "Lowest",
+            "id": "5"
+          },
+          "customfield_10100": null,
+          "customfield_10101": null,
+          "customfield_10102": null,
+          "labels": [],
+          "customfield_10103": null,
+          "timeestimate": null,
+          "aggregatetimeoriginalestimate": null,
+          "versions": [],
+          "issuelinks": [],
+          "assignee": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "updated": "2026-06-02T08:38:00.000+0300",
+          "status": {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          "components": [],
+          "timeoriginalestimate": null,
+          "description": "Создано 09 янв, 01:41, обновлено 23 мая, 01:55\r\nh1. PDF-отчёт «Скачать отчёт» в итогах подбора содержит неуспешных кандидатов\r\n\r\n \r\n \r\nh3. *Предусловия:*\r\n # В вакансии есть успешные и неуспешные кандидаты.\r\n\r\nh3. *Шаги:*\r\n # Перейти в раздел *«Итоги подбора»* по вакансии.\r\n\r\n # Нажать кнопку {*}«Скачать отчёт PDF»{*}.\r\n\r\nh3. *Фактический результат:*\r\n * В PDF-отчёте отображаются все кандидаты: и успешные, и неуспешные.\r\n\r\nh3. *Ожидаемый результат:*\r\n * В PDF-отчёте должны отображаться {*}только успешные кандидаты{*}.\r\n\r\n!image-2026-05-31-17-46-26-261.png|width=1174,height=565!",
+          "timetracking": {},
+          "archiveddate": null,
+          "attachment": [
+            {
+              "self": "https://task.wemakedev.ru/rest/api/2/attachment/10783",
+              "id": "10783",
+              "filename": "image-2026-05-31-17-46-26-261.png",
+              "author": {
+                "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                "name": "azhukov",
+                "key": "JIRAUSER10332",
+                "emailAddress": "azhukov.java@gmail.com",
+                "avatarUrls": {
+                  "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                  "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                  "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                  "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                },
+                "displayName": "Александр Жуков ",
+                "active": true,
+                "timeZone": "Europe/Moscow"
+              },
+              "created": "2026-05-31T13:46:27.283+0300",
+              "size": 218062,
+              "mimeType": "image/png",
+              "content": "https://task.wemakedev.ru/secure/attachment/10783/image-2026-05-31-17-46-26-261.png",
+              "thumbnail": "https://task.wemakedev.ru/secure/thumbnail/10783/_thumb_10783.png"
+            }
+          ],
+          "aggregatetimeestimate": null,
+          "flagged": false,
+          "summary": "PDF-отчёт «Скачать отчёт» в итогах подбора содержит неуспешных кандидатов",
+          "creator": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "subtasks": [],
+          "reporter": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "customfield_10000": "{summaryBean=com.atlassian.jira.plugin.devstatus.rest.SummaryBean@1a0c132e[summary={pullrequest=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@63e46820[byInstanceType={},overall=PullRequestOverallBean{stateCount=0, state='OPEN', details=PullRequestOverallDetails{openCount=0, mergedCount=0, declinedCount=0}}], build=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@6c5fe1b2[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BuildOverallBean@2c3a3171[failedBuildCount=0,successfulBuildCount=0,unknownBuildCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], review=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@6d6299b7[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.ReviewsOverallBean@7b6dd0ff[dueDate=<null>,overDue=false,state=<null>,stateCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], deployment-environment=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@682cec51[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.DeploymentOverallBean@1560f99c[showProjects=false,successfulCount=0,topEnvironments=[],count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], repository=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@6cb675a6[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.CommitOverallBean@79c9bae7[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], branch=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@76088feb[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BranchOverallBean@64b634af[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]]},configErrors=[],errors=[]], devSummaryJson={\"cachedValue\":{\"errors\":[],\"configErrors\":[],\"summary\":{\"pullrequest\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":\"OPEN\",\"details\":{\"openCount\":0,\"mergedCount\":0,\"declinedCount\":0,\"total\":0},\"open\":true},\"byInstanceType\":{}},\"build\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"failedBuildCount\":0,\"successfulBuildCount\":0,\"unknownBuildCount\":0},\"byInstanceType\":{}},\"review\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":null,\"dueDate\":null,\"overDue\":false,\"completed\":false},\"byInstanceType\":{}},\"deployment-environment\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"topEnvironments\":[],\"showProjects\":false,\"successfulCount\":0},\"byInstanceType\":{}},\"repository\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}},\"branch\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}}}},\"isStale\":false}}",
+          "aggregateprogress": {
+            "progress": 0,
+            "total": 0
+          },
+          "customfield_10200": null,
+          "environment": null,
+          "duedate": null,
+          "progress": {
+            "progress": 0,
+            "total": 0
+          },
+          "comment": {
+            "comments": [
+              {
+                "self": "https://task.wemakedev.ru/rest/api/2/issue/10863/comment/10688",
+                "id": "10688",
+                "author": {
+                  "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                  "name": "azhukov",
+                  "key": "JIRAUSER10332",
+                  "emailAddress": "azhukov.java@gmail.com",
+                  "avatarUrls": {
+                    "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                    "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                    "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                    "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                  },
+                  "displayName": "Александр Жуков ",
+                  "active": true,
+                  "timeZone": "Europe/Moscow"
+                },
+                "body": "h1. TASKNEIROKLYUCH-320",
+                "updateAuthor": {
+                  "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                  "name": "azhukov",
+                  "key": "JIRAUSER10332",
+                  "emailAddress": "azhukov.java@gmail.com",
+                  "avatarUrls": {
+                    "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                    "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                    "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                    "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                  },
+                  "displayName": "Александр Жуков ",
+                  "active": true,
+                  "timeZone": "Europe/Moscow"
+                },
+                "created": "2026-05-31T15:37:07.028+0300",
+                "updated": "2026-05-31T16:15:42.963+0300"
+              }
+            ],
+            "maxResults": 1,
+            "total": 1,
+            "startAt": 0
+          },
+          "votes": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issue/AAT-2/votes",
+            "votes": 0,
+            "hasVoted": false
+          },
+          "worklog": {
+            "startAt": 0,
+            "maxResults": 20,
+            "total": 0,
+            "worklogs": []
+          },
+          "archivedby": null
+        }
+      },
+      {
+        "expand": "operations,versionedRepresentations,editmeta,changelog,renderedFields",
+        "id": "10864",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/issue/10864",
+        "key": "AAT-3",
+        "fields": {
+          "issuetype": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+            "id": "10001",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+            "name": "История",
+            "subtask": false
+          },
+          "timespent": null,
+          "project": {
+            "self": "https://task.wemakedev.ru/rest/api/2/project/10103",
+            "id": "10103",
+            "key": "AAT",
+            "name": "AZHUKOV Azhukov Test",
+            "projectTypeKey": "software",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+              "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+              "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+              "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+            }
+          },
+          "fixVersions": [],
+          "customfield_10110": null,
+          "customfield_10111": null,
+          "aggregatetimespent": null,
+          "resolution": null,
+          "customfield_10107": null,
+          "customfield_10108": null,
+          "customfield_10109": "0|i003rb:",
+          "resolutiondate": null,
+          "workratio": -1,
+          "lastViewed": null,
+          "watches": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issue/AAT-3/watchers",
+            "watchCount": 1,
+            "isWatching": true
+          },
+          "created": "2026-06-01T10:18:59.000+0300",
+          "priority": {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+            "name": "Lowest",
+            "id": "5"
+          },
+          "customfield_10100": null,
+          "customfield_10101": null,
+          "customfield_10102": null,
+          "labels": [],
+          "customfield_10103": null,
+          "timeestimate": null,
+          "aggregatetimeoriginalestimate": null,
+          "versions": [],
+          "issuelinks": [],
+          "assignee": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "updated": "2026-06-02T09:08:01.000+0300",
+          "status": {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          "components": [],
+          "timeoriginalestimate": null,
+          "description": "h1. Выпадающий список со статусом вакансии должен быть поверх раздела с требованиями\r\n!image-2026-06-01-14-18-49-580.png|width=667,height=379!",
+          "timetracking": {},
+          "archiveddate": null,
+          "attachment": [
+            {
+              "self": "https://task.wemakedev.ru/rest/api/2/attachment/10785",
+              "id": "10785",
+              "filename": "image-2026-06-01-14-18-49-580.png",
+              "author": {
+                "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                "name": "azhukov",
+                "key": "JIRAUSER10332",
+                "emailAddress": "azhukov.java@gmail.com",
+                "avatarUrls": {
+                  "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                  "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                  "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                  "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                },
+                "displayName": "Александр Жуков ",
+                "active": true,
+                "timeZone": "Europe/Moscow"
+              },
+              "created": "2026-06-01T10:18:50.741+0300",
+              "size": 377074,
+              "mimeType": "image/png",
+              "content": "https://task.wemakedev.ru/secure/attachment/10785/image-2026-06-01-14-18-49-580.png",
+              "thumbnail": "https://task.wemakedev.ru/secure/thumbnail/10785/_thumb_10785.png"
+            }
+          ],
+          "aggregatetimeestimate": null,
+          "flagged": false,
+          "summary": "Вакансия: Статус вакансии уходит под раздел с требованиями",
+          "creator": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "subtasks": [],
+          "reporter": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "customfield_10000": "{summaryBean=com.atlassian.jira.plugin.devstatus.rest.SummaryBean@74cdfb2c[summary={pullrequest=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@711c409d[byInstanceType={},overall=PullRequestOverallBean{stateCount=0, state='OPEN', details=PullRequestOverallDetails{openCount=0, mergedCount=0, declinedCount=0}}], build=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@1b2665d[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BuildOverallBean@12b9c65e[failedBuildCount=0,successfulBuildCount=0,unknownBuildCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], review=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@565c92fd[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.ReviewsOverallBean@2341e299[dueDate=<null>,overDue=false,state=<null>,stateCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], deployment-environment=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@31d3e822[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.DeploymentOverallBean@6d045370[showProjects=false,successfulCount=0,topEnvironments=[],count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], repository=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@5f7def57[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.CommitOverallBean@73048b0b[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], branch=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@5d38ffb1[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BranchOverallBean@12e8b8b5[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]]},configErrors=[],errors=[]], devSummaryJson={\"cachedValue\":{\"errors\":[],\"configErrors\":[],\"summary\":{\"pullrequest\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":\"OPEN\",\"details\":{\"openCount\":0,\"mergedCount\":0,\"declinedCount\":0,\"total\":0},\"open\":true},\"byInstanceType\":{}},\"build\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"failedBuildCount\":0,\"successfulBuildCount\":0,\"unknownBuildCount\":0},\"byInstanceType\":{}},\"review\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":null,\"dueDate\":null,\"overDue\":false,\"completed\":false},\"byInstanceType\":{}},\"deployment-environment\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"topEnvironments\":[],\"showProjects\":false,\"successfulCount\":0},\"byInstanceType\":{}},\"repository\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}},\"branch\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}}}},\"isStale\":false}}",
+          "aggregateprogress": {
+            "progress": 0,
+            "total": 0
+          },
+          "customfield_10200": null,
+          "environment": null,
+          "duedate": null,
+          "progress": {
+            "progress": 0,
+            "total": 0
+          },
+          "comment": {
+            "comments": [
+              {
+                "self": "https://task.wemakedev.ru/rest/api/2/issue/10864/comment/10705",
+                "id": "10705",
+                "author": {
+                  "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                  "name": "azhukov",
+                  "key": "JIRAUSER10332",
+                  "emailAddress": "azhukov.java@gmail.com",
+                  "avatarUrls": {
+                    "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                    "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                    "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                    "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                  },
+                  "displayName": "Александр Жуков ",
+                  "active": true,
+                  "timeZone": "Europe/Moscow"
+                },
+                "body": "TASKNEIROKLYUCH-864",
+                "updateAuthor": {
+                  "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                  "name": "azhukov",
+                  "key": "JIRAUSER10332",
+                  "emailAddress": "azhukov.java@gmail.com",
+                  "avatarUrls": {
+                    "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                    "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                    "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                    "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                  },
+                  "displayName": "Александр Жуков ",
+                  "active": true,
+                  "timeZone": "Europe/Moscow"
+                },
+                "created": "2026-06-01T10:19:25.442+0300",
+                "updated": "2026-06-01T10:19:25.442+0300"
+              }
+            ],
+            "maxResults": 1,
+            "total": 1,
+            "startAt": 0
+          },
+          "votes": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issue/AAT-3/votes",
+            "votes": 0,
+            "hasVoted": false
+          },
+          "worklog": {
+            "startAt": 0,
+            "maxResults": 20,
+            "total": 0,
+            "worklogs": []
+          },
+          "archivedby": null
+        }
+      },
+      {
+        "expand": "operations,versionedRepresentations,editmeta,changelog,renderedFields",
+        "id": "10865",
+        "self": "https://task.wemakedev.ru/rest/agile/1.0/issue/10865",
+        "key": "AAT-4",
+        "fields": {
+          "issuetype": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10001",
+            "id": "10001",
+            "description": "Создано Jira Software — не изменять и не удалять. Тип задачи для пользовательской истории.",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/issuetypes/story.svg",
+            "name": "История",
+            "subtask": false
+          },
+          "timespent": null,
+          "project": {
+            "self": "https://task.wemakedev.ru/rest/api/2/project/10103",
+            "id": "10103",
+            "key": "AAT",
+            "name": "AZHUKOV Azhukov Test",
+            "projectTypeKey": "software",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/projectavatar?avatarId=10324",
+              "24x24": "https://task.wemakedev.ru/secure/projectavatar?size=small&avatarId=10324",
+              "16x16": "https://task.wemakedev.ru/secure/projectavatar?size=xsmall&avatarId=10324",
+              "32x32": "https://task.wemakedev.ru/secure/projectavatar?size=medium&avatarId=10324"
+            }
+          },
+          "fixVersions": [],
+          "customfield_10110": null,
+          "customfield_10111": null,
+          "aggregatetimespent": null,
+          "resolution": null,
+          "customfield_10107": null,
+          "customfield_10108": null,
+          "customfield_10109": "0|i003rj:",
+          "resolutiondate": null,
+          "workratio": -1,
+          "lastViewed": null,
+          "watches": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issue/AAT-4/watchers",
+            "watchCount": 1,
+            "isWatching": true
+          },
+          "created": "2026-06-01T10:20:17.000+0300",
+          "priority": {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+            "name": "Lowest",
+            "id": "5"
+          },
+          "customfield_10100": null,
+          "customfield_10101": null,
+          "customfield_10102": null,
+          "labels": [],
+          "customfield_10103": null,
+          "timeestimate": null,
+          "aggregatetimeoriginalestimate": null,
+          "versions": [],
+          "issuelinks": [],
+          "assignee": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "updated": "2026-06-02T09:08:34.000+0300",
+          "status": {
+            "self": "https://task.wemakedev.ru/rest/api/2/status/10000",
+            "description": "",
+            "iconUrl": "https://task.wemakedev.ru/",
+            "name": "Сделать",
+            "id": "10000",
+            "statusCategory": {
+              "self": "https://task.wemakedev.ru/rest/api/2/statuscategory/2",
+              "id": 2,
+              "key": "new",
+              "colorName": "default",
+              "name": "К выполнению"
+            }
+          },
+          "components": [],
+          "timeoriginalestimate": null,
+          "description": "h1. В вакансии к галочке по джамперам дописать пояснение (кандидаты, которые на последних 3-х местах работы работали менее 12 мес)\r\n\r\n!image-2026-06-01-14-20-10-220.png|width=502,height=149!",
+          "timetracking": {},
+          "archiveddate": null,
+          "attachment": [
+            {
+              "self": "https://task.wemakedev.ru/rest/api/2/attachment/10786",
+              "id": "10786",
+              "filename": "image-2026-06-01-14-20-10-220.png",
+              "author": {
+                "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                "name": "azhukov",
+                "key": "JIRAUSER10332",
+                "emailAddress": "azhukov.java@gmail.com",
+                "avatarUrls": {
+                  "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                  "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                  "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                  "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                },
+                "displayName": "Александр Жуков ",
+                "active": true,
+                "timeZone": "Europe/Moscow"
+              },
+              "created": "2026-06-01T10:20:11.093+0300",
+              "size": 32630,
+              "mimeType": "image/png",
+              "content": "https://task.wemakedev.ru/secure/attachment/10786/image-2026-06-01-14-20-10-220.png",
+              "thumbnail": "https://task.wemakedev.ru/secure/thumbnail/10786/_thumb_10786.png"
+            }
+          ],
+          "aggregatetimeestimate": null,
+          "flagged": false,
+          "summary": "Вакансия: добавить пояснение к джамперам",
+          "creator": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "subtasks": [],
+          "reporter": {
+            "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+            "name": "azhukov",
+            "key": "JIRAUSER10332",
+            "emailAddress": "azhukov.java@gmail.com",
+            "avatarUrls": {
+              "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+              "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+              "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+              "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+            },
+            "displayName": "Александр Жуков ",
+            "active": true,
+            "timeZone": "Europe/Moscow"
+          },
+          "customfield_10000": "{summaryBean=com.atlassian.jira.plugin.devstatus.rest.SummaryBean@3cb4813d[summary={pullrequest=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@31a1962b[byInstanceType={},overall=PullRequestOverallBean{stateCount=0, state='OPEN', details=PullRequestOverallDetails{openCount=0, mergedCount=0, declinedCount=0}}], build=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@de50199[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BuildOverallBean@30c8dec0[failedBuildCount=0,successfulBuildCount=0,unknownBuildCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], review=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@5700ae36[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.ReviewsOverallBean@446830cc[dueDate=<null>,overDue=false,state=<null>,stateCount=0,count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], deployment-environment=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@61a40811[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.DeploymentOverallBean@17ecf43b[showProjects=false,successfulCount=0,topEnvironments=[],count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], repository=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@45cf89ee[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.CommitOverallBean@40a42fcb[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]], branch=com.atlassian.jira.plugin.devstatus.rest.SummaryItemBean@181434e[byInstanceType={},overall=com.atlassian.jira.plugin.devstatus.summary.beans.BranchOverallBean@713c3269[count=0,lastUpdated=<null>,lastUpdatedTimestamp=<null>]]},configErrors=[],errors=[]], devSummaryJson={\"cachedValue\":{\"errors\":[],\"configErrors\":[],\"summary\":{\"pullrequest\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":\"OPEN\",\"details\":{\"openCount\":0,\"mergedCount\":0,\"declinedCount\":0,\"total\":0},\"open\":true},\"byInstanceType\":{}},\"build\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"failedBuildCount\":0,\"successfulBuildCount\":0,\"unknownBuildCount\":0},\"byInstanceType\":{}},\"review\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"stateCount\":0,\"state\":null,\"dueDate\":null,\"overDue\":false,\"completed\":false},\"byInstanceType\":{}},\"deployment-environment\":{\"overall\":{\"count\":0,\"lastUpdated\":null,\"topEnvironments\":[],\"showProjects\":false,\"successfulCount\":0},\"byInstanceType\":{}},\"repository\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}},\"branch\":{\"overall\":{\"count\":0,\"lastUpdated\":null},\"byInstanceType\":{}}}},\"isStale\":false}}",
+          "aggregateprogress": {
+            "progress": 0,
+            "total": 0
+          },
+          "customfield_10200": null,
+          "environment": null,
+          "duedate": null,
+          "progress": {
+            "progress": 0,
+            "total": 0
+          },
+          "comment": {
+            "comments": [
+              {
+                "self": "https://task.wemakedev.ru/rest/api/2/issue/10865/comment/10708",
+                "id": "10708",
+                "author": {
+                  "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                  "name": "azhukov",
+                  "key": "JIRAUSER10332",
+                  "emailAddress": "azhukov.java@gmail.com",
+                  "avatarUrls": {
+                    "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                    "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                    "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                    "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                  },
+                  "displayName": "Александр Жуков ",
+                  "active": true,
+                  "timeZone": "Europe/Moscow"
+                },
+                "body": "TASKNEIROKLYUCH-867",
+                "updateAuthor": {
+                  "self": "https://task.wemakedev.ru/rest/api/2/user?username=azhukov",
+                  "name": "azhukov",
+                  "key": "JIRAUSER10332",
+                  "emailAddress": "azhukov.java@gmail.com",
+                  "avatarUrls": {
+                    "48x48": "https://task.wemakedev.ru/secure/useravatar?ownerId=JIRAUSER10332&avatarId=10812",
+                    "24x24": "https://task.wemakedev.ru/secure/useravatar?size=small&ownerId=JIRAUSER10332&avatarId=10812",
+                    "16x16": "https://task.wemakedev.ru/secure/useravatar?size=xsmall&ownerId=JIRAUSER10332&avatarId=10812",
+                    "32x32": "https://task.wemakedev.ru/secure/useravatar?size=medium&ownerId=JIRAUSER10332&avatarId=10812"
+                  },
+                  "displayName": "Александр Жуков ",
+                  "active": true,
+                  "timeZone": "Europe/Moscow"
+                },
+                "created": "2026-06-02T09:08:34.919+0300",
+                "updated": "2026-06-02T09:08:34.919+0300"
+              }
+            ],
+            "maxResults": 1,
+            "total": 1,
+            "startAt": 0
+          },
+          "votes": {
+            "self": "https://task.wemakedev.ru/rest/api/2/issue/AAT-4/votes",
+            "votes": 0,
+            "hasVoted": false
+          },
+          "worklog": {
+            "startAt": 0,
+            "maxResults": 20,
+            "total": 0,
+            "worklogs": []
+          },
+          "archivedby": null
+        }
+      }
+    ]
+  }
+}

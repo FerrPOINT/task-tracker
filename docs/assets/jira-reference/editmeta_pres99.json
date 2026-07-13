@@ -1,0 +1,162 @@
+{
+  "status": 200,
+  "data": {
+    "fields": {
+      "summary": {
+        "required": true,
+        "schema": {
+          "type": "string",
+          "system": "summary"
+        },
+        "name": "Тема",
+        "fieldId": "summary",
+        "operations": [
+          "set"
+        ]
+      },
+      "issuetype": {
+        "required": true,
+        "schema": {
+          "type": "issuetype",
+          "system": "issuetype"
+        },
+        "name": "Тип задачи",
+        "fieldId": "issuetype",
+        "operations": [],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/issuetype/10100",
+            "id": "10100",
+            "description": "Задание для выполнения.",
+            "iconUrl": "https://task.wemakedev.ru/secure/viewavatar?size=xsmall&avatarId=10318&avatarType=issuetype",
+            "name": "Задача",
+            "subtask": false,
+            "avatarId": 10318
+          }
+        ]
+      },
+      "attachment": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "attachment",
+          "system": "attachment"
+        },
+        "name": "Вложение",
+        "fieldId": "attachment",
+        "operations": []
+      },
+      "duedate": {
+        "required": false,
+        "schema": {
+          "type": "date",
+          "system": "duedate"
+        },
+        "name": "Срок исполнения",
+        "fieldId": "duedate",
+        "operations": [
+          "set"
+        ]
+      },
+      "description": {
+        "required": false,
+        "schema": {
+          "type": "string",
+          "system": "description"
+        },
+        "name": "Описание",
+        "fieldId": "description",
+        "operations": [
+          "set"
+        ]
+      },
+      "priority": {
+        "required": false,
+        "schema": {
+          "type": "priority",
+          "system": "priority"
+        },
+        "name": "Приоритет",
+        "fieldId": "priority",
+        "operations": [
+          "set"
+        ],
+        "allowedValues": [
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/1",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/highest.svg",
+            "name": "Highest",
+            "id": "1"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/2",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/high.svg",
+            "name": "High",
+            "id": "2"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/3",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/medium.svg",
+            "name": "Medium",
+            "id": "3"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/4",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/low.svg",
+            "name": "Low",
+            "id": "4"
+          },
+          {
+            "self": "https://task.wemakedev.ru/rest/api/2/priority/5",
+            "iconUrl": "https://task.wemakedev.ru/images/icons/priorities/lowest.svg",
+            "name": "Lowest",
+            "id": "5"
+          }
+        ]
+      },
+      "labels": {
+        "required": false,
+        "schema": {
+          "type": "array",
+          "items": "string",
+          "system": "labels"
+        },
+        "name": "Метки",
+        "fieldId": "labels",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/1.0/labels/suggest?query=",
+        "operations": [
+          "add",
+          "set",
+          "remove"
+        ]
+      },
+      "assignee": {
+        "required": false,
+        "schema": {
+          "type": "user",
+          "system": "assignee"
+        },
+        "name": "Исполнитель",
+        "fieldId": "assignee",
+        "autoCompleteUrl": "https://task.wemakedev.ru/rest/api/latest/user/assignable/search?issueKey=PRES-99&username=",
+        "operations": [
+          "set"
+        ]
+      },
+      "comment": {
+        "required": false,
+        "schema": {
+          "type": "comments-page",
+          "system": "comment"
+        },
+        "name": "Комментарий",
+        "fieldId": "comment",
+        "operations": [
+          "add",
+          "edit",
+          "remove"
+        ]
+      }
+    }
+  }
+}
