@@ -1,19 +1,6 @@
-# UI/UX Capture Report — Task WMT Jira (task.wemakedev.ru)
+# UI/UX Capture Report — Task WMT Jira ([REDACTED-JIRA-INSTANCE])
 
 ## Статус захвата
-
-### Скриншоты UI (файлы)
-- `backlog_neurokey.png`
-- `create_issue_form.png`
-- `create_issue_step1.png`
-- `dashboard_system.png`
-- `issue_detail_AAT_1.png`
-- `issue_detail_epic_NEUROKEY_488.png`
-- `issue_navigator_search.png`
-- `kanban_board_neurokey.png`
-- `kanban_board_paper1.png`
-- `project_list.png`
-- `releases_empty.png`
 
 ### API reference JSON (файлы)
 - `FILES_INDEX.json`
@@ -80,7 +67,7 @@
 - `subtasks_sample.json`
 - `timetracking_config.json`
 - `transitions_PT_21.json`
-- `user_azhukov.json`
+- `user_[REDACTED].json`
 - `users.json`
 - `votes_PT_21.json`
 - `watchers_PT_21.json`
@@ -212,7 +199,7 @@
 
 ## Проекты
 - `ED` —  Education (lead: -)
-- `AAT` — AZHUKOV Azhukov Test (lead: -)
+- `AAT` — [REDACTED] [REDACTED] Test (lead: -)
 - `PRES` — Presale (lead: -)
 - `PT` — Product team (lead: -)
 - `ATS` — АТС Релевантер (lead: -)
@@ -228,7 +215,7 @@
 - `3` — Доска AIPROJ (sprintSupport: False)
 - `4` — Product Team (sprintSupport: False)
 - `10` — Paper1 (sprintSupport: False)
-- `11` — Доска Релевантер (sprintSupport: False)
+- `11` — [REDACTED] (sprintSupport: False)
 - `12` — Доска ATS (sprintSupport: False)
 - `13` — Обучения (sprintSupport: False)
 
