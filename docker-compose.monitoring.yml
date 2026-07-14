@@ -1,0 +1,32 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.0.0
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks:
+      - tasktracker
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - tasktracker
+
+  loki:
+    image: grafana/loki:3.1.0
+    volumes:
+      - ./monitoring/loki.yml:/etc/loki/local-config.yaml:ro
+    networks:
+      - tasktracker
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/config.yml:ro
+    networks:
+      - tasktracker
+
+volumes:
+  grafana_data:

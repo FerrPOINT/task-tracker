@@ -1,7 +1,5 @@
 # Troubleshooting
 
-> Стартовый документ. До конца разработки список проблем и решений будет пополняться по мере реальных инцидентов.
-
 ## 1. Сборка и запуск
 
 ### `cargo build` падает с ошибкой линковки
@@ -112,11 +110,11 @@ LIMIT 10;
 ### Tailwind стили не применяются
 
 - `pnpm dev` перезапустить.
-- Проверить `@import "tailwindcss"` в `frontend/src/styles/index.css` (появится при реализации).
+- Проверить `@import "tailwindcss"` в `frontend/src/styles/index.css`.
 
 ### i18n не подгружается
 
-- Проверить, что JSON-локали в `frontend/src/i18n/locales/` (появится при реализации).
+- Проверить, что JSON-локали в `frontend/src/i18n/locales/`.
 - Проверить fallback locale (`ru`).
 
 ## 7. Тесты

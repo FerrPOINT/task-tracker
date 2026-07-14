@@ -1,7 +1,5 @@
 # FAQ
 
-> Стартовый документ. До конца разработки вопросы и ответы будут пополняться.
-
 ## 1. Общие вопросы
 
 ### Что это за проект?
@@ -94,7 +92,7 @@ cargo run --bin migrator
 ### Как сменить пароль админа?
 
 ```bash
-./scripts/reset-admin-password.sh   # скрипт появится при реализации
+./scripts/reset-admin-password.sh
 ```
 
 Или через UI: Profile → Security → Change password.
@@ -111,7 +109,7 @@ httpOnly cookie + хеш в `refresh_tokens` (см. `docs/DATA_MODEL.md`).
 
 ### Как сменить порт?
 
-В `.env` и `docker-compose.override.yml` (compose-файлы появятся при реализации).
+В `.env` и `docker-compose.override.yml`.
 
 ### Как обновить на новую версию?
 

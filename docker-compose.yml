@@ -1,0 +1,120 @@
+services:
+  traefik:
+    image: traefik:v3.4
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.tasktracker.address=:19876"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${TRAEFIK_ACME_EMAIL:-admin@example.com}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "19876:19876"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/letsencrypt:/letsencrypt
+    networks:
+      - tasktracker
+
+  postgres:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: ${TASKTRACKER_DB_USER:-tasktracker}
+      POSTGRES_PASSWORD: ${TASKTRACKER_DB_PASSWORD:-[CHANGE_ME]}
+      POSTGRES_DB: ${TASKTRACKER_DB_NAME:-tasktracker}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tasktracker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:8.0-alpine
+    networks:
+      - tasktracker
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  migrator:
+    build:
+      context: ./backend
+      target: migrator
+    environment:
+      TASKTRACKER_DATABASE_URL: ${TASKTRACKER_DATABASE_URL:-postgres://${TASKTRACKER_DB_USER:-tasktracker}:${TASKTRACKER_DB_PASSWORD:-[CHANGE_ME]}@postgres:5432/${TASKTRACKER_DB_NAME:-tasktracker}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tasktracker
+    profiles:
+      - migrator
+
+  api:
+    build:
+      context: ./backend
+      target: runtime
+    environment:
+      TASKTRACKER_DATABASE_URL: ${TASKTRACKER_DATABASE_URL:-postgres://${TASKTRACKER_DB_USER:-tasktracker}:${TASKTRACKER_DB_PASSWORD:-[CHANGE_ME]}@postgres:5432/${TASKTRACKER_DB_NAME:-tasktracker}}
+      TASKTRACKER_REDIS_URL: ${TASKTRACKER_REDIS_URL:-redis://redis:6379}
+      TASKTRACKER_SERVER_PORT: 8080
+      TASKTRACKER_SERVER_HOST: 0.0.0.0
+      TASKTRACKER_JWT_SECRET: ${TASKTRACKER_JWT_SECRET:-[CHANGE_ME_32BYTES_MIN]}
+      TASKTRACKER_REFRESH_SECRET: ${TASKTRACKER_REFRESH_SECRET:-[CHANGE_ME_32BYTES_MIN]}
+      TASKTRACKER_SMTP_HOST: ${TASKTRACKER_SMTP_HOST:-}
+      TASKTRACKER_SMTP_PORT: ${TASKTRACKER_SMTP_PORT:-587}
+      TASKTRACKER_SMTP_USERNAME: ${TASKTRACKER_SMTP_USERNAME:-}
+      TASKTRACKER_SMTP_PASSWORD: ${TASKTRACKER_SMTP_PASSWORD:-}
+      TASKTRACKER_FILE_STORAGE_BACKEND: ${TASKTRACKER_FILE_STORAGE_BACKEND:-filesystem}
+      TASKTRACKER_FILE_STORAGE_PATH: ${TASKTRACKER_FILE_STORAGE_PATH:-/data/attachments}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    volumes:
+      - tasktracker_data:/data/attachments
+    networks:
+      - tasktracker
+    labels:
+      - "traefik.enable=true"
+      - "traefik.entrypoints=tasktracker"
+      - "traefik.http.routers.api.rule=PathPrefix(`/api`) || PathPrefix(`/ws`) || PathPrefix(`/health`) || PathPrefix(`/metrics`)"
+      - "traefik.http.services.api.loadbalancer.server.port=8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+        VITE_WS_URL: ${VITE_WS_URL:-/ws/v1}
+    depends_on:
+      - api
+    networks:
+      - tasktracker
+    labels:
+      - "traefik.enable=true"
+      - "traefik.entrypoints=tasktracker"
+      - "traefik.http.routers.frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.services.frontend.loadbalancer.server.port=80"
+
+volumes:
+  postgres_data:
+  tasktracker_data:
+
+networks:
+  tasktracker:
+    driver: bridge

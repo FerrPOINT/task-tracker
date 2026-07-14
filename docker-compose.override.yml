@@ -1,0 +1,25 @@
+services:
+  traefik:
+    command:
+      - "--api.insecure=true"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=false"
+    ports:
+      - "19876:19876"
+      - "8080:8080"
+    labels: []
+
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  api:
+    labels:
+      - "traefik.enable=false"
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  frontend:
+    ports:
+      - "127.0.0.1:3000:80"
+    labels:
+      - "traefik.enable=false"

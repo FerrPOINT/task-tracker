@@ -1,0 +1,19 @@
+{
+  "translation": {
+    "app": {
+      "title": "Task Tracker"
+    },
+    "navigation": {
+      "projects": "Проекты",
+      "issues": "Задачи",
+      "boards": "Доски",
+      "settings": "Настройки"
+    },
+    "issue": {
+      "create": "Создать задачу",
+      "status": "Статус",
+      "priority": "Приоритет",
+      "assignee": "Исполнитель"
+    }
+  }
+}

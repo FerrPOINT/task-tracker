@@ -1,7 +1,5 @@
 # Local Setup
 
-> Стартовый документ. До конца разработки команды, зависимости и шаги могут измениться — актуализировать при появлении рабочего backend/frontend.
-
 ## 1. Требования
 
 | Инструмент | Минимальная версия | Примечание |
@@ -23,7 +21,7 @@ cd /opt/dev/task-tracker
 cp .env.example .env
 # отредактируй .env под себя
 
-docker compose up -d postgres redis   # docker-compose.yml появится при реализации
+docker compose up -d postgres redis
 cd backend && cargo run --bin server
 cd frontend && pnpm install && pnpm dev
 ```
@@ -90,7 +88,7 @@ pnpm test:e2e
 ## 6. Docker
 
 ```bash
-# Всё через compose (docker-compose.yml появится при реализации)
+# Всё через compose
 docker compose up -d --build
 
 # Только инфраструктура
@@ -110,10 +108,10 @@ docker compose logs -f api
 
 ```bash
 # Автосоздание admin пользователя из .env
-./scripts/init-admin.sh        # скрипт появится при реализации
+./scripts/init-admin.sh
 
 # Seed demo-проекта и задач (опционально)
-./scripts/seed-demo.sh         # скрипт появится при реализации
+./scripts/seed-demo.sh
 ```
 
 ## 8. IDE
