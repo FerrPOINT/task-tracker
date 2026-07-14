@@ -70,6 +70,13 @@ Documentation-first: перед кодом фиксируем функциона
 - [API EDGE CASES](docs/API_EDGE_CASES.md)
 - [SECURITY INCIDENT RESPONSE](docs/SECURITY_INCIDENT_RESPONSE.md)
 - [JIRA GAP DETAILS](docs/JIRA_GAP_DETAILS.md)
+- [API Standards](docs/API_STANDARDS.md)
+- [Domain Model](docs/DOMAIN_MODEL.md)
+- [Database Standards](docs/DATABASE_STANDARDS.md)
+- [Local Setup](docs/LOCAL_SETUP.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [FAQ](docs/FAQ.md)
+- [Backup & Restore](docs/BACKUP_RESTORE.md)
 
 ## Architecture Decisions
 
