@@ -1,7 +1,5 @@
 # Backup & Restore
 
-> Стартовый документ. До конца разработки скрипты и процедуры могут измениться — актуализировать при стабилизации инфраструктуры.
-
 ## 1. Что бэкапим
 
 | Компонент | Способ | Частота |
@@ -14,7 +12,7 @@
 ## 2. Автоматический бэкап
 
 ```bash
-./scripts/backup.sh   # скрипт появится при реализации
+./scripts/backup.sh
 ```
 
 Скрипт делает:
@@ -27,7 +25,7 @@
 ### Cron
 
 ```cron
-0 2 * * * cd /opt/dev/task-tracker && ./scripts/backup.sh >> /var/log/tasktracker-backup.log 2>&1   # скрипт появится при реализации
+0 2 * * * cd /opt/dev/task-tracker && ./scripts/backup.sh >> /var/log/tasktracker-backup.log 2>&1
 ```
 
 ## 3. Ручной бэкап
@@ -43,7 +41,7 @@ docker compose cp api:/data/attachments ./attachments-backup
 ## 4. Восстановление
 
 ```bash
-./scripts/restore.sh /backups/task-tracker-2026-07-13.tar.gz   # скрипт появится при реализации
+./scripts/restore.sh /backups/task-tracker-2026-07-13.tar.gz
 ```
 
 Порядок:

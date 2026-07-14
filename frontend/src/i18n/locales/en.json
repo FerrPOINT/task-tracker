@@ -1,0 +1,19 @@
+{
+  "translation": {
+    "app": {
+      "title": "Task Tracker"
+    },
+    "navigation": {
+      "projects": "Projects",
+      "issues": "Issues",
+      "boards": "Boards",
+      "settings": "Settings"
+    },
+    "issue": {
+      "create": "Create issue",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee"
+    }
+  }
+}

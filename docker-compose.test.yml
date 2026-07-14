@@ -1,0 +1,22 @@
+services:
+  postgres_test:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_USER: tasktracker_test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: tasktracker_test
+    ports:
+      - "127.0.0.1:15432:5432"
+    networks:
+      - tasktracker_test
+
+  redis_test:
+    image: redis:8.0-alpine
+    ports:
+      - "127.0.0.1:16379:6379"
+    networks:
+      - tasktracker_test
+
+networks:
+  tasktracker_test:
+    driver: bridge

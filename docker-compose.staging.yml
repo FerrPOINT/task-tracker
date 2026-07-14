@@ -1,0 +1,14 @@
+services:
+  traefik:
+    command:
+      - "--api.insecure=true"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=false"
+    ports:
+      - "19876:19876"
+      - "8080:8080"
+
+  api:
+    restart: unless-stopped
+
+  frontend:
+    restart: unless-stopped
