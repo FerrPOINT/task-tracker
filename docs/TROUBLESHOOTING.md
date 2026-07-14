@@ -112,11 +112,11 @@ LIMIT 10;
 ### Tailwind стили не применяются
 
 - `pnpm dev` перезапустить.
-- Проверить `@import "tailwindcss"` в `frontend/src/styles/index.css`.
+- Проверить `@import "tailwindcss"` в `frontend/src/styles/index.css` (появится при реализации).
 
 ### i18n не подгружается
 
-- Проверить, что JSON-локали в `frontend/src/i18n/locales/`.
+- Проверить, что JSON-локали в `frontend/src/i18n/locales/` (появится при реализации).
 - Проверить fallback locale (`ru`).
 
 ## 7. Тесты

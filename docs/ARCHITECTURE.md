@@ -33,7 +33,7 @@ Self-hosted таск-трекер, полноценный аналог open-sour
 - **Build**: `vite` 6.2.0
 - **TypeScript**: 5.9.3
 - **Styling**: `tailwindcss` 4.1.0, `@tailwindcss/vite` 4.1.0
-- **Components**: `shadcn/ui` (React 19 compatible)
+- **Components**: `shadcn/ui` (React 19.1.0 compatible)
 - **State**: `zustand` 5.0.3
 - **Query**: `@tanstack/react-query` 5.74.4
 - **Router**: `react-router` 8.1.0

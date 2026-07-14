@@ -94,7 +94,7 @@ cargo run --bin migrator
 ### Как сменить пароль админа?
 
 ```bash
-./scripts/reset-admin-password.sh
+./scripts/reset-admin-password.sh   # скрипт появится при реализации
 ```
 
 Или через UI: Profile → Security → Change password.
@@ -111,7 +111,7 @@ httpOnly cookie + хеш в `refresh_tokens` (см. `docs/DATA_MODEL.md`).
 
 ### Как сменить порт?
 
-В `.env` и `docker-compose.override.yml`.
+В `.env` и `docker-compose.override.yml` (compose-файлы появятся при реализации).
 
 ### Как обновить на новую версию?
 

@@ -135,7 +135,7 @@
 
 ---
 
-## Frontend: React 19 + TypeScript
+## Frontend: React 19.1.0 + TypeScript
 
 ### 1. Базовый стек
 
@@ -152,7 +152,7 @@
 | Библиотека | Версия | Назначение | Почему она |
 |------------|--------|------------|------------|
 | [`tailwindcss`](https://www.npmjs.com/package/tailwindcss) | 4.1.0 | Утилитарный CSS | v4 с новым движком; темизация, dark mode |
-| [`@tailwindcss/vite`](https://www.npmjs.com/package/@tailwindcss/vite) | 4.1.0 | Интеграция Tailwind 4 + Vite | Официальный плагин |
+| [`@tailwindcss/vite`](https://www.npmjs.com/package/@tailwindcss/vite) | 4.1.0 | Интеграция Tailwind CSS 4.1.0 + Vite | Официальный плагин |
 | [`clsx`](https://www.npmjs.com/package/clsx) | 2.1.1 | Условные className | Стандарт |
 | [`tailwind-merge`](https://www.npmjs.com/package/tailwind-merge) | 3.2.0 | Merge классов без конфликтов | Вместе с `cn()` хелпером |
 | [`class-variance-authority`](https://www.npmjs.com/package/class-variance-authority) | 0.7.1 | Варианты компонентов | Как shadcn-варианты |
@@ -362,7 +362,7 @@ rstest = "0.25.0"
 ## Выводы
 
 - **Backend:** выбираем **Axum + SeaORM + PostgreSQL + Redis**. SeaORM даёт Spring-подобный опыт (Entity/Repository), Axum — Tower-middleware и DI через `Arc<dyn Trait>`.
-- **Frontend:** **React 19 + Vite 6 + Tailwind 4 + shadcn/ui + TanStack Query + Zustand + dnd-kit + Tiptap** — полный набор для Jira-like UI.
+- **Frontend:** **React 19.1.0 + Vite 6.2.0 + Tailwind CSS 4.1.0 + shadcn/ui + TanStack Query + Zustand + dnd-kit + Tiptap** — полный набор для Jira-like UI.
 - **Testing:** mockall + testcontainers на Rust; Vitest + Playwright на React.
 - **Infra:** Docker Compose, PostgreSQL 17.6, Redis 8.0, MinIO, Prometheus/Grafana.
 

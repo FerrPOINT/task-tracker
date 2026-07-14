@@ -1,6 +1,6 @@
 # Task Tracker
 
-Self-hosted таск-трекер, аналог Jira. Backend — Rust (Axum + SeaORM + PostgreSQL), frontend — React 19 + Vite 6 + Tailwind CSS v4. Порт по умолчанию `19876`, env-префикс `TASKTRACKER_`, локали `ru`/`en`.
+Self-hosted таск-трекер, аналог Jira. Backend — Rust (Axum + SeaORM + PostgreSQL), frontend — React 19.1.0 + Vite 6.2.0 + Tailwind CSS 4.1.0. Порт по умолчанию `19876`, env-префикс `TASKTRACKER_`, локали `ru`/`en`.
 
 ## Подход
 
@@ -9,7 +9,7 @@ Documentation-first: перед кодом фиксируем функциона
 ## Структура
 
 - `backend/` — Rust workspace (Axum + SeaORM + PostgreSQL)
-- `frontend/` — React 19 + Vite 6
+- `frontend/` — React 19.1.0 + Vite 6.2.0
 - `cli/` — CLI-утилита (Rust)
 - `docs/` — архитектура, ТЗ, дата-модель, API, workflow, JQL, user stories, UI/UX, frontend-библиотеки, design tokens, React styling guide, frontend architecture, project admin, system admin, notifications, reports, CLI spec, AGENTS.md, deployment, migrations, file storage, caching, routing, error handling, i18n, code style, ADR, security, monitoring, производительность, тестирование, библиотеки, отчёт по Vikunja, Jira structural samples
 
@@ -83,13 +83,13 @@ Documentation-first: перед кодом фиксируем функциона
 Архитектурные решения зафиксированы в [docs/ADR.md](docs/ADR.md) и `docs/adr/`:
 
 - [ADR-0001: Rust + Axum](docs/adr/0001-rust-axum.md)
-- [ADR-0002: React 19 + Vite 6](docs/adr/0002-react-vite.md)
+- [ADR-0002: React 19.1.0 + Vite 6.2.0](docs/adr/0002-react-vite.md)
 - [ADR-0003: PostgreSQL](docs/adr/0003-postgresql.md)
 - [ADR-0004: SeaORM + SQLx](docs/adr/0004-seaorm-sqlx.md)
 - [ADR-0005: Feature-Sliced Design](docs/adr/0005-feature-sliced-design.md)
 - [ADR-0006: JWT access + httpOnly refresh cookie](docs/adr/0006-auth-jwt-refresh.md)
 - [ADR-0007: Redis для кэша и WS pub/sub](docs/adr/0007-redis.md)
-- [ADR-0008: shadcn/ui + Tailwind CSS v4](docs/adr/0008-shadcn-tailwind.md)
+- [ADR-0008: shadcn/ui + Tailwind CSS 4.1.0](docs/adr/0008-shadcn-tailwind.md)
 - [ADR-0009: TanStack Query + Zustand](docs/adr/0009-query-zustand.md)
 - [ADR-0010: apalis для фоновых задач](docs/adr/0010-apalis.md)
 

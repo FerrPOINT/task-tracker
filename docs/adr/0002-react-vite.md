@@ -1,4 +1,4 @@
-# ADR-0002: React 19 + Vite 6 for Frontend
+# ADR-0002: React 19.1.0 + Vite 6.2.0 for Frontend
 
 ## Status
 
@@ -14,7 +14,7 @@ Accepted
 |--------|------|------|
 | Vue 3 + Vite | Простота, хороший DX | Меньше готовых сложных компонентов для kanban/dnd |
 | Next.js 15 | SSR, routing, API routes | Избыточно для self-hosted SPA |
-| React 19 + Vite 6 | Гибкость, скорость, большая экосистема | Нужно настраивать router/state самому |
+| React 19.1.0 + Vite 6.2.0 | Гибкость, скорость, большая экосистема | Нужно настраивать router/state самому |
 
 ## Decision
 

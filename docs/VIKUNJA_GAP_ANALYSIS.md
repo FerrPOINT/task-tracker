@@ -119,7 +119,7 @@
 ### Phase 1: Инфраструктура + каркас
 1. `docker-compose.yml` (PostgreSQL + Redis + backend + frontend dev).
 2. Rust workspace: `Cargo.toml`, `crates/{api,app,domain,infra,shared,server}`.
-3. Frontend scaffold: React 19 + Vite 6 + Tailwind 4 + shadcn/ui.
+3. Frontend scaffold: React 19.1.0 + Vite 6.2.0 + Tailwind CSS 4.1.0 + shadcn/ui.
 4. `Dockerfile` для backend + frontend.
 
 ### Phase 2: Core domain
