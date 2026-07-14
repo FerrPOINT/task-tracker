@@ -32,7 +32,7 @@ Frontend — одностраничное React-приложение на Vite 6
 | Virtualization | @tanstack/react-virtual |
 | Charts | recharts |
 | Toasts | sonner |
-| Tests | vitest 4.1.10 + @testing-library/react 16.3.0 |
+| Tests | vitest 4.1.10 + @testing-library/react 16.3.0 + playwright 1.61.1 |
 | E2E | Playwright 1.61.1 |
 
 ## 3. Folder Structure

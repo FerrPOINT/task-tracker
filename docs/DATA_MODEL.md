@@ -251,7 +251,7 @@ Refresh токены для сессий.
 - `refresh_tokens_token_hash_idx` уникальный на `(token_hash)`.
 
 ---
-### 4.3. password_reset_tokens
+### 4.4. password_reset_tokens
 
 ```sql
 CREATE TABLE password_reset_tokens (
@@ -264,7 +264,7 @@ CREATE TABLE password_reset_tokens (
 );
 ```
 
-### 4.4. audit_log
+### 4.5. audit_log
 
 ```sql
 CREATE TABLE audit_log (
@@ -284,7 +284,7 @@ CREATE TABLE audit_log (
 
 ---
 
-### 4.5. issue_types
+### 4.6. issue_types
 
 ```sql
 CREATE TABLE issue_types (
@@ -305,7 +305,7 @@ Seed: Task, Bug, Story, Epic, Sub-task.
 
 
 
-### 4.6a. priorities
+### 4.7. priorities
 
 ```sql
 CREATE TABLE priorities (
@@ -322,7 +322,7 @@ CREATE TABLE priorities (
 ```
 
 Seed: Highest, High, Medium, Low, Lowest.
-### 4.6. statuses
+### 4.8. statuses
 
 ```sql
 CREATE TABLE statuses (
@@ -340,7 +340,7 @@ CREATE TABLE statuses (
 
 Seed: To Do, In Progress, In Review, Done, Cancelled, Reopened.
 
-### 4.7. workflows
+### 4.9. workflows
 
 ```sql
 CREATE TABLE workflows (
@@ -354,7 +354,7 @@ CREATE TABLE workflows (
 );
 ```
 
-### 4.8. workflow_statuses
+### 4.10. workflow_statuses
 
 ```sql
 CREATE TABLE workflow_statuses (
@@ -368,7 +368,7 @@ CREATE TABLE workflow_statuses (
 );
 ```
 
-### 4.9. workflow_transitions
+### 4.11. workflow_transitions
 
 ```sql
 CREATE TABLE workflow_transitions (
@@ -386,7 +386,7 @@ CREATE TABLE workflow_transitions (
 
 `from_status_id IS NULL` означает глобальный переход (например, Reopen).
 
-### 4.10. transition_conditions
+### 4.12. transition_conditions
 
 ```sql
 CREATE TABLE transition_conditions (
@@ -398,7 +398,7 @@ CREATE TABLE transition_conditions (
 );
 ```
 
-### 4.11. transition_validators
+### 4.13. transition_validators
 
 ```sql
 CREATE TABLE transition_validators (
@@ -410,7 +410,7 @@ CREATE TABLE transition_validators (
 );
 ```
 
-### 4.12. transition_post_functions
+### 4.14. transition_post_functions
 
 ```sql
 CREATE TABLE transition_post_functions (
@@ -424,7 +424,7 @@ CREATE TABLE transition_post_functions (
 
 ---
 
-### 4.13. permission_schemes
+### 4.15. permission_schemes
 
 ```sql
 CREATE TABLE permission_schemes (
@@ -436,7 +436,7 @@ CREATE TABLE permission_schemes (
 );
 ```
 
-### 4.14. permission_scheme_entries
+### 4.16. permission_scheme_entries
 
 ```sql
 CREATE TABLE permission_scheme_entries (
@@ -450,7 +450,7 @@ CREATE TABLE permission_scheme_entries (
 );
 ```
 
-### 4.15. notification_schemes
+### 4.17. notification_schemes
 
 ```sql
 CREATE TABLE notification_schemes (
@@ -462,7 +462,7 @@ CREATE TABLE notification_schemes (
 );
 ```
 
-### 4.16. notification_scheme_events
+### 4.18. notification_scheme_events
 
 ```sql
 CREATE TABLE notification_scheme_events (
@@ -477,7 +477,7 @@ CREATE TABLE notification_scheme_events (
 );
 ```
 
-### 4.17. field_configurations
+### 4.19. field_configurations
 
 ```sql
 CREATE TABLE field_configurations (
@@ -489,7 +489,7 @@ CREATE TABLE field_configurations (
 );
 ```
 
-### 4.18. field_configuration_items
+### 4.20. field_configuration_items
 
 ```sql
 CREATE TABLE field_configuration_items (
@@ -505,7 +505,7 @@ CREATE TABLE field_configuration_items (
 );
 ```
 
-### 4.19. screens
+### 4.21. screens
 
 ```sql
 CREATE TABLE screens (
@@ -517,7 +517,7 @@ CREATE TABLE screens (
 );
 ```
 
-### 4.20. screen_tabs
+### 4.22. screen_tabs
 
 ```sql
 CREATE TABLE screen_tabs (
@@ -528,7 +528,7 @@ CREATE TABLE screen_tabs (
 );
 ```
 
-### 4.21. screen_fields
+### 4.23. screen_fields
 
 ```sql
 CREATE TABLE screen_fields (
@@ -541,7 +541,7 @@ CREATE TABLE screen_fields (
 );
 ```
 
-### 4.22. issue_type_screen_schemes
+### 4.24. issue_type_screen_schemes
 
 ```sql
 CREATE TABLE issue_type_screen_schemes (
@@ -553,7 +553,7 @@ CREATE TABLE issue_type_screen_schemes (
 );
 ```
 
-### 4.23. issue_type_screen_scheme_entries
+### 4.25. issue_type_screen_scheme_entries
 
 ```sql
 CREATE TABLE issue_type_screen_scheme_entries (
@@ -566,7 +566,7 @@ CREATE TABLE issue_type_screen_scheme_entries (
 );
 ```
 
-### 4.24. workflow_schemes
+### 4.26. workflow_schemes
 
 ```sql
 CREATE TABLE workflow_schemes (
@@ -578,7 +578,7 @@ CREATE TABLE workflow_schemes (
 );
 ```
 
-### 4.25. workflow_scheme_entries
+### 4.27. workflow_scheme_entries
 
 ```sql
 CREATE TABLE workflow_scheme_entries (
@@ -590,7 +590,7 @@ CREATE TABLE workflow_scheme_entries (
 );
 ```
 
-### 4.26. issue_type_schemes
+### 4.28. issue_type_schemes
 
 ```sql
 CREATE TABLE issue_type_schemes (
@@ -602,7 +602,7 @@ CREATE TABLE issue_type_schemes (
 );
 ```
 
-### 4.27. issue_type_scheme_entries
+### 4.29. issue_type_scheme_entries
 
 ```sql
 CREATE TABLE issue_type_scheme_entries (
@@ -616,7 +616,7 @@ CREATE TABLE issue_type_scheme_entries (
 
 ---
 
-### 4.28. projects
+### 4.30. projects
 
 ```sql
 CREATE TABLE projects (
@@ -634,7 +634,7 @@ CREATE TABLE projects (
 );
 ```
 
-### 4.29. project_issue_counter
+### 4.31. project_issue_counter
 
 ```sql
 CREATE TABLE project_issue_counter (
@@ -643,7 +643,7 @@ CREATE TABLE project_issue_counter (
 );
 ```
 
-### 4.30. project_members
+### 4.32. project_members
 
 ```sql
 CREATE TABLE project_members (
@@ -655,7 +655,7 @@ CREATE TABLE project_members (
 );
 ```
 
-### 4.31. project_role_assignments
+### 4.33. project_role_assignments
 
 ```sql
 CREATE TABLE project_role_assignments (
@@ -669,7 +669,7 @@ CREATE TABLE project_role_assignments (
 );
 ```
 
-### 4.32. project_scheme_bindings
+### 4.34. project_scheme_bindings
 
 ```sql
 CREATE TABLE project_scheme_bindings (
@@ -684,7 +684,7 @@ CREATE TABLE project_scheme_bindings (
 );
 ```
 
-### 4.32. project_settings
+### 4.35. project_settings
 
 Настройки проекта (JSONB + typed flags).
 
@@ -699,7 +699,7 @@ CREATE TABLE project_scheme_bindings (
 Индекс: `project_settings_project_key_idx` уникальный на `(project_id, key)`.
 
 ---
-### 4.33. components
+### 4.36. components
 
 ```sql
 CREATE TABLE components (
@@ -714,7 +714,7 @@ CREATE TABLE components (
 );
 ```
 
-### 4.34. versions
+### 4.37. versions
 
 ```sql
 CREATE TABLE versions (
@@ -733,7 +733,7 @@ CREATE TABLE versions (
 
 ---
 
-### 4.35. issues
+### 4.38. issues
 
 ```sql
 CREATE TABLE issues (
@@ -781,7 +781,7 @@ CREATE TABLE issues (
 - GIN `labels`
 - GIN full-text `tsv_summary_description` (generated)
 
-### 4.36. issue_status_history
+### 4.39. issue_status_history
 
 ```sql
 CREATE TABLE issue_status_history (
@@ -795,7 +795,7 @@ CREATE TABLE issue_status_history (
 );
 ```
 
-### 4.37. issue_assignee_history
+### 4.40. issue_assignee_history
 
 ```sql
 CREATE TABLE issue_assignee_history (
@@ -808,7 +808,7 @@ CREATE TABLE issue_assignee_history (
 );
 ```
 
-### 4.38. issue_labels
+### 4.41. issue_labels
 
 ```sql
 CREATE TABLE issue_labels (
@@ -818,7 +818,7 @@ CREATE TABLE issue_labels (
 );
 ```
 
-### 4.39. issue_components
+### 4.42. issue_components
 
 ```sql
 CREATE TABLE issue_components (
@@ -828,7 +828,7 @@ CREATE TABLE issue_components (
 );
 ```
 
-### 4.40. issue_fix_versions
+### 4.43. issue_fix_versions
 
 ```sql
 CREATE TABLE issue_fix_versions (
@@ -838,7 +838,7 @@ CREATE TABLE issue_fix_versions (
 );
 ```
 
-### 4.41. issue_affected_versions
+### 4.44. issue_affected_versions
 
 ```sql
 CREATE TABLE issue_affected_versions (
@@ -848,7 +848,7 @@ CREATE TABLE issue_affected_versions (
 );
 ```
 
-### 4.42. issue_custom_field_values
+### 4.45. issue_custom_field_values
 
 ```sql
 CREATE TABLE issue_custom_field_values (
@@ -865,7 +865,7 @@ CREATE TABLE issue_custom_field_values (
 );
 ```
 
-### 4.43. issue_watchers
+### 4.46. issue_watchers
 
 ```sql
 CREATE TABLE issue_watchers (
@@ -876,7 +876,7 @@ CREATE TABLE issue_watchers (
 );
 ```
 
-### 4.44. issue_votes
+### 4.47. issue_votes
 
 ```sql
 CREATE TABLE issue_votes (
@@ -887,7 +887,7 @@ CREATE TABLE issue_votes (
 );
 ```
 
-### 4.45. issue_trash
+### 4.48. issue_trash
 
 ```sql
 CREATE TABLE issue_trash (
@@ -902,7 +902,7 @@ CREATE TABLE issue_trash (
 
 ---
 
-### 4.46. issue_link_types
+### 4.49. issue_link_types
 
 ```sql
 CREATE TABLE issue_link_types (
@@ -918,7 +918,7 @@ CREATE TABLE issue_link_types (
 
 Seed: Blocks, Clones, Duplicates, Relates to, Epic link, Parent/Sub-task.
 
-### 4.47. issue_links
+### 4.50. issue_links
 
 ```sql
 CREATE TABLE issue_links (
@@ -935,7 +935,7 @@ CREATE TABLE issue_links (
 
 ---
 
-### 4.48. comments
+### 4.51. comments
 
 ```sql
 CREATE TABLE comments (
@@ -950,7 +950,7 @@ CREATE TABLE comments (
 );
 ```
 
-### 4.49. comment_mentions
+### 4.52. comment_mentions
 
 ```sql
 CREATE TABLE comment_mentions (
@@ -960,7 +960,7 @@ CREATE TABLE comment_mentions (
 );
 ```
 
-### 4.50. activity_log
+### 4.53. activity_log
 
 ```sql
 CREATE TABLE activity_log (
@@ -978,7 +978,7 @@ CREATE TABLE activity_log (
 
 ---
 
-### 4.50a. changelog
+### 4.54. changelog
 
 ```sql
 CREATE TABLE changelog (
@@ -994,28 +994,9 @@ CREATE TABLE changelog (
 CREATE INDEX idx_changelog_issue_id ON changelog(issue_id);
 CREATE INDEX idx_changelog_created_at ON changelog(created_at DESC);
 ```
+---
 
-### 4.50b. audit_log
-
-```sql
-CREATE TABLE audit_log (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    actor_id UUID REFERENCES users(id),
-    action TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id UUID,
-    metadata JSONB,
-    ip_address INET,
-    user_agent TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_audit_log_actor_id ON audit_log(actor_id);
-CREATE INDEX idx_audit_log_entity ON audit_log(entity_type, entity_id);
-CREATE INDEX idx_audit_log_created_at ON audit_log(created_at DESC);
-```
-
-### 4.51. attachments
+### 4.55. attachments
 
 ```sql
 CREATE TABLE attachments (
@@ -1034,7 +1015,7 @@ CREATE TABLE attachments (
 
 ---
 
-### 4.52. worklogs
+### 4.56. worklogs
 
 ```sql
 CREATE TABLE worklogs (
@@ -1052,24 +1033,7 @@ CREATE TABLE worklogs (
 
 ---
 
-### 4.48. changelog
-
-История изменений полей задач.
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `id` | UUIDv7 | PK |
-| `issue_id` | UUID | FK → issues |
-| `field_name` | VARCHAR(64) | Изменённое поле |
-| `old_value` | JSONB | Старое значение |
-| `new_value` | JSONB | Новое значение |
-| `actor_id` | UUID | FK → users |
-| `created_at` | timestamptz | Время изменения |
-
-Индекс: `changelog_issue_created_idx` на `(issue_id, created_at DESC)`.
-
----
-### 4.53. boards
+### 4.57. boards
 
 ```sql
 CREATE TABLE boards (
@@ -1085,7 +1049,7 @@ CREATE TABLE boards (
 );
 ```
 
-### 4.54. board_columns
+### 4.58. board_columns
 
 ```sql
 CREATE TABLE board_columns (
@@ -1099,7 +1063,7 @@ CREATE TABLE board_columns (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-### 4.XX. board_column_statuses
+### 4.58a. board_column_statuses
 
 ```sql
 CREATE TABLE board_column_statuses (
@@ -1110,7 +1074,7 @@ CREATE TABLE board_column_statuses (
 ```
 ```
 
-### 4.55. board_quick_filters
+### 4.59. board_quick_filters
 
 ```sql
 CREATE TABLE board_quick_filters (
@@ -1122,7 +1086,7 @@ CREATE TABLE board_quick_filters (
 );
 ```
 
-### 4.56. sprints
+### 4.60. sprints
 
 ```sql
 CREATE TABLE sprints (
@@ -1141,7 +1105,7 @@ CREATE TABLE sprints (
 );
 ```
 
-### 4.57. sprint_issues
+### 4.61. sprint_issues
 
 ```sql
 CREATE TABLE sprint_issues (
@@ -1156,7 +1120,7 @@ CREATE TABLE sprint_issues (
 
 ---
 
-### 4.58. sprint_reports
+### 4.62. sprint_reports
 
 Агрегированные метрики спринтов.
 
@@ -1174,7 +1138,7 @@ CREATE TABLE sprint_issues (
 Индекс: `sprint_reports_sprint_idx` уникальный на `(sprint_id)`.
 
 ---
-### 4.58. custom_fields
+### 4.63. custom_fields
 
 ```sql
 CREATE TABLE custom_fields (
@@ -1190,7 +1154,7 @@ CREATE TABLE custom_fields (
 );
 ```
 
-### 4.59. custom_field_contexts
+### 4.64. custom_field_contexts
 
 ```sql
 CREATE TABLE custom_field_contexts (
@@ -1203,7 +1167,7 @@ CREATE TABLE custom_field_contexts (
 );
 ```
 
-### 4.60. custom_field_context_projects
+### 4.65. custom_field_context_projects
 
 ```sql
 CREATE TABLE custom_field_context_projects (
@@ -1213,7 +1177,7 @@ CREATE TABLE custom_field_context_projects (
 );
 ```
 
-### 4.61. custom_field_context_issue_types
+### 4.66. custom_field_context_issue_types
 
 ```sql
 CREATE TABLE custom_field_context_issue_types (
@@ -1223,7 +1187,7 @@ CREATE TABLE custom_field_context_issue_types (
 );
 ```
 
-### 4.62. custom_field_options
+### 4.67. custom_field_options
 
 ```sql
 CREATE TABLE custom_field_options (
@@ -1241,7 +1205,7 @@ CREATE TABLE custom_field_options (
 
 ---
 
-### 4.63. saved_filters
+### 4.68. saved_filters
 
 ```sql
 CREATE TABLE saved_filters (
@@ -1257,7 +1221,7 @@ CREATE TABLE saved_filters (
 );
 ```
 
-### 4.64. filter_subscriptions
+### 4.69. filter_subscriptions
 
 ```sql
 CREATE TABLE filter_subscriptions (
@@ -1268,7 +1232,7 @@ CREATE TABLE filter_subscriptions (
 );
 ```
 
-### 4.65. dashboards
+### 4.70. dashboards
 
 ```sql
 CREATE TABLE dashboards (
@@ -1283,7 +1247,7 @@ CREATE TABLE dashboards (
 );
 ```
 
-### 4.66. dashboard_gadgets
+### 4.71. dashboard_gadgets
 
 ```sql
 CREATE TABLE dashboard_gadgets (
@@ -1299,7 +1263,7 @@ CREATE TABLE dashboard_gadgets (
 
 ---
 
-### 4.67. notifications
+### 4.72. notifications
 
 ```sql
 CREATE TABLE notifications (
@@ -1319,7 +1283,7 @@ CREATE TABLE notifications (
 );
 ```
 
-### 4.68. notification_user_settings
+### 4.73. notification_user_settings
 
 ```sql
 CREATE TABLE notification_user_settings (
@@ -1330,7 +1294,7 @@ CREATE TABLE notification_user_settings (
 );
 ```
 
-### 4.69. project_watches
+### 4.74. project_watches
 
 ```sql
 CREATE TABLE project_watches (
@@ -1341,7 +1305,7 @@ CREATE TABLE project_watches (
 );
 ```
 
-### 4.70. issue_watches
+### 4.75. issue_watches
 
 ```sql
 CREATE TABLE issue_watches (
@@ -1354,7 +1318,7 @@ CREATE TABLE issue_watches (
 
 ---
 
-### 4.71. automation_rules
+### 4.76. automation_rules
 
 ```sql
 CREATE TABLE automation_rules (
@@ -1372,7 +1336,7 @@ CREATE TABLE automation_rules (
 );
 ```
 
-### 4.72. automation_rule_logs
+### 4.77. automation_rule_logs
 
 ```sql
 CREATE TABLE automation_rule_logs (
