@@ -6,10 +6,10 @@
 
 ## 2. Основной подход
 
-### 2.1 Tailwind CSS v4 + CSS Variables
+### 2.1 Tailwind CSS 4.1.0 + CSS Variables
 
 - Все базовые токены вынесены в `frontend/src/styles/tokens.css`.
-- Tailwind v4 использует `@theme` для маппинга CSS-переменных на utility-классы.
+- Tailwind CSS 4.1.0 использует `@theme` для маппинга CSS-переменных на utility-классы.
 - В компонентах используем только Tailwind utility-классы; никаких inline styles и произвольных `style={{}}`.
 
 ### 2.2 shadcn/ui как база

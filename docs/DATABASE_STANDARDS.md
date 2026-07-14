@@ -4,7 +4,7 @@
 
 ## 1. СУБД
 
-- PostgreSQL 16+.
+- PostgreSQL 17.6+.
 - Тип UUID — `UUID` (pgcrypto / uuid-ossp). PK по умолчанию `gen_random_uuid()`.
 - Для новых PK рекомендуется UUIDv7, но пока допустим UUIDv4.
 

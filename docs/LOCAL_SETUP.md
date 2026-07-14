@@ -23,7 +23,7 @@ cd /opt/dev/task-tracker
 cp .env.example .env
 # отредактируй .env под себя
 
-docker compose up -d postgres redis
+docker compose up -d postgres redis   # docker-compose.yml появится при реализации
 cd backend && cargo run --bin server
 cd frontend && pnpm install && pnpm dev
 ```
@@ -90,7 +90,7 @@ pnpm test:e2e
 ## 6. Docker
 
 ```bash
-# Всё через compose
+# Всё через compose (docker-compose.yml появится при реализации)
 docker compose up -d --build
 
 # Только инфраструктура
@@ -110,10 +110,10 @@ docker compose logs -f api
 
 ```bash
 # Автосоздание admin пользователя из .env
-./scripts/init-admin.sh
+./scripts/init-admin.sh        # скрипт появится при реализации
 
 # Seed demo-проекта и задач (опционально)
-./scripts/seed-demo.sh
+./scripts/seed-demo.sh         # скрипт появится при реализации
 ```
 
 ## 8. IDE

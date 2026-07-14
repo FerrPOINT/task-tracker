@@ -14,7 +14,7 @@
 ## 2. Автоматический бэкап
 
 ```bash
-./scripts/backup.sh
+./scripts/backup.sh   # скрипт появится при реализации
 ```
 
 Скрипт делает:
@@ -27,7 +27,7 @@
 ### Cron
 
 ```cron
-0 2 * * * cd /opt/dev/task-tracker && ./scripts/backup.sh >> /var/log/tasktracker-backup.log 2>&1
+0 2 * * * cd /opt/dev/task-tracker && ./scripts/backup.sh >> /var/log/tasktracker-backup.log 2>&1   # скрипт появится при реализации
 ```
 
 ## 3. Ручной бэкап
@@ -43,7 +43,7 @@ docker compose cp api:/data/attachments ./attachments-backup
 ## 4. Восстановление
 
 ```bash
-./scripts/restore.sh /backups/task-tracker-2026-07-13.tar.gz
+./scripts/restore.sh /backups/task-tracker-2026-07-13.tar.gz   # скрипт появится при реализации
 ```
 
 Порядок:

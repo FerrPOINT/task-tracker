@@ -3,7 +3,7 @@
 ## Репозиторий
 
 - **GitHub**: `git@github.com:FerrPOINT/task-tracker.git`
-- **Стек**: backend Rust (Axum + SeaORM + PostgreSQL), frontend React 19 + Vite 6 + Tailwind 4
+- **Стек**: backend Rust (Axum + SeaORM + PostgreSQL), frontend React 19.1.0 + Vite 6.2.0 + Tailwind CSS 4.1.0
 - **Порт**: `19876`
 - **Env prefix**: `TASKTRACKER_`
 

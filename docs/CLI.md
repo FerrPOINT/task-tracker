@@ -27,7 +27,7 @@ task-tracker --version
 
 ```bash
 task-tracker auth login --username alice --password-stdin
-task-tracker auth login --token $TOKEN
+task-tracker auth login --token $TASKTRACKER_TOKEN
 task-tracker auth whoami
 task-tracker auth logout
 ```

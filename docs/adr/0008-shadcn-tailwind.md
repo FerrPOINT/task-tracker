@@ -1,4 +1,4 @@
-# ADR-0008: shadcn/ui + Tailwind CSS v4
+# ADR-0008: shadcn/ui + Tailwind CSS 4.1.0
 
 ## Status
 
@@ -19,7 +19,7 @@ Accepted
 
 ## Decision
 
-shadcn/ui компоненты на Radix primitives + Tailwind CSS v4 + CSS variables.
+shadcn/ui компоненты на Radix primitives + Tailwind CSS 4.1.0 + CSS variables.
 
 ## Consequences
 

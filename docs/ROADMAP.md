@@ -9,7 +9,7 @@
 **Цель**: рабочий каркас, CI, локальный запуск.
 
 - [ ] Rust workspace: `Cargo.toml`, crates `api/app/domain/infra/shared/server/cli`.
-- [ ] Frontend: Vite 6 + React 19 + TypeScript 5.9.3 + Tailwind 4.1.0 + shadcn/ui.
+- [ ] Frontend: Vite 6.2.0 + React 19.1.0 + TypeScript 5.9.3 + Tailwind CSS 4.1.0 + shadcn/ui.
 - [ ] Docker Compose: PostgreSQL 17.6, Redis 8.0, Traefik, backend, frontend.
 - [ ] `.env.example`, health endpoints, базовый CI (fmt, clippy, typecheck).
 - [ ] `README.md` update с командами запуска.

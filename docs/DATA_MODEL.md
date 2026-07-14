@@ -2,7 +2,7 @@
 
 ## 1. Общие принципы
 
-- PostgreSQL 17.
+- PostgreSQL 17.6.
 - UUID v7 для большинства PK (сортируемый по времени).
 - JSONB для гибких схем (workflow, field config, dashboard layout, custom field values).
 - Все timestamp с timezone (`timestamptz`).

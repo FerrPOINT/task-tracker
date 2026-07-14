@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-Frontend — одностраничное React-приложение на Vite 6 + TypeScript 5.9.3 + Tailwind CSS 4 + shadcn/ui. Архитектура построена по методологии **Feature-Sliced Design (FSD)** с элементами **Atomic Design** для презентационных компонентов.
+Frontend — одностраничное React-приложение на Vite 6.2.0 + TypeScript 5.9.3 + Tailwind CSS 4.1.0 + shadcn/ui. Архитектура построена по методологии **Feature-Sliced Design (FSD)** с элементами **Atomic Design** для презентационных компонентов.
 
 Цели:
 
