@@ -112,7 +112,7 @@ LIMIT 10;
 - `pnpm dev` перезапустить.
 - Проверить `@import "tailwindcss"` в `frontend/src/styles/index.css`.
 
-### i18n не подгружается
+### Проблемы с i18n
 
 - Проверить, что JSON-локали в `frontend/src/i18n/locales/`.
 - Проверить fallback locale (`ru`).

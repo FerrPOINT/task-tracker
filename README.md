@@ -77,6 +77,9 @@ Documentation-first: перед кодом фиксируем функциона
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [FAQ](docs/FAQ.md)
 - [Backup & Restore](docs/BACKUP_RESTORE.md)
+- [Frontend Standards](docs/FRONTEND_STANDARDS.md)
+- [Logging Standards](docs/LOGGING_STANDARDS.md)
+- [Code Review Guidelines](docs/CODE_REVIEW.md)
 
 ## Architecture Decisions
 
