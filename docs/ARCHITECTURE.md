@@ -150,6 +150,7 @@ task-tracker/
     ├── ARCHITECTURE.md
     ├── CACHING.md
     ├── CLI.md
+    ├── CODE_REVIEW.md
     ├── CODE_STYLE.md
     ├── DATABASE_INDEXES.md
     ├── DATA_MODEL.md
@@ -158,11 +159,13 @@ task-tracker/
     ├── ERROR_HANDLING.md
     ├── EVENTS.md
     ├── FRONTEND_ARCHITECTURE.md
+    ├── FRONTEND_STANDARDS.md
     ├── GLOSSARY.md
     ├── I18N.md
     ├── JIRA_UI_CAPTURE.md
     ├── JQL.md
     ├── LIBRARIES.md
+    ├── LOGGING_STANDARDS.md
     ├── MIGRATIONS.md
     ├── MONITORING.md
     ├── NOTIFICATIONS.md
@@ -449,7 +452,10 @@ let app = Router::new()
 - Error handling — `docs/ERROR_HANDLING.md`.
 - i18n — `docs/I18N.md`.
 - Code style — `docs/CODE_STYLE.md`.
-- ADR — `docs/ADR.md`.
+- Code review guidelines — `docs/CODE_REVIEW.md`.
+- Testing strategy — `docs/TESTING.md`.
+- Logging standards — `docs/LOGGING_STANDARDS.md`.
+- Frontend standards — `docs/FRONTEND_STANDARDS.md`.
 - Security — `docs/SECURITY.md`.
 - Monitoring — `docs/MONITORING.md`.
 - Roadmap — `docs/ROADMAP.md`.
