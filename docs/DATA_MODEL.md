@@ -626,11 +626,23 @@ CREATE TABLE projects (
     description TEXT,
     project_type TEXT NOT NULL CHECK (project_type IN ('basic','kanban','scrum')),
     lead_id UUID NOT NULL REFERENCES users(id),
+    category_id UUID REFERENCES project_categories(id),
     default_assignee_type TEXT DEFAULT 'project_lead', -- 'project_lead','unassigned'
     avatar_url TEXT,
     status TEXT DEFAULT 'active', -- 'active','archived'
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### 4.30a. project_categories
+
+```sql
+CREATE TABLE project_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 ```
 
@@ -1043,6 +1055,7 @@ CREATE TABLE boards (
     type TEXT NOT NULL CHECK (type IN ('kanban','scrum')),
     filter_query TEXT,
     swimlane_field TEXT DEFAULT 'none', -- 'none','assignee','epic'
+    estimation_field_id UUID REFERENCES custom_fields(id),
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -1146,6 +1159,8 @@ CREATE TABLE custom_fields (
     name TEXT NOT NULL,
     description TEXT,
     field_type TEXT NOT NULL, -- 'text','textarea','number','date','datetime','select','multi_select','checkbox','radio','user_picker','multi_user_picker','url','label','boolean','cascading_select'
+    schema JSONB,            -- {"type":"string","items":"option"}
+    clause_names TEXT[] DEFAULT '{}',  -- ["Story Points","cf[10000]"]
     is_system BOOLEAN DEFAULT false,
     is_active BOOLEAN DEFAULT true,
     default_value JSONB,

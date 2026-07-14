@@ -336,6 +336,7 @@ Query parameters:
 {
   "id": "uuid",
   "key": "TT-42",
+  "self": "https://tasktracker.example.com:19876/api/v1/issues/uuid",
   "projectId": "uuid",
   "projectKey": "TT",
   "issueType": { "id": "uuid", "name": "Task", "iconUrl": "...", "color": "..." },
@@ -404,11 +405,32 @@ Soft delete → trash.
 
 ### POST /issues/{id}/watch
 
-Toggle watch.
+Toggle watch. Response: `{"isWatching": true}`.
 
 ### POST /issues/{id}/vote
 
-Toggle vote.
+Toggle vote. Response: `{"votes": 5, "isVoter": true}`.
+
+### GET /issues/{id}/watchers
+
+Response:
+```json
+{
+  "data": [
+    { "id": "uuid", "username": "jdoe", "displayName": "John Doe" }
+  ]
+}
+```
+
+### GET /issues/{id}/votes
+
+Response:
+```json
+{
+  "count": 5,
+  "isVoter": false
+}
+```
 
 ### GET /issues/{id}/activity
 
@@ -492,6 +514,19 @@ Download/stream.
 
 Query: `?projectId=uuid&userId=uuid&from=...&to=...`
 
+**WorklogResponse includes:**
+```json
+{
+  "id": "uuid",
+  "timeSpentSeconds": 3600,
+  "timeSpent": "1h",
+  "remainingEstimateSeconds": 7200,
+  "remainingEstimate": "2h",
+  "startedAt": "2026-01-15T10:00:00Z",
+  "description": "Implemented login"
+}
+```
+
 ---
 
 ## Issue Links
@@ -509,6 +544,43 @@ Query: `?projectId=uuid&userId=uuid&from=...&to=...`
 ```
 
 ### DELETE /issue-links/{id}
+
+---
+
+## Issue Link Types
+
+### GET /issue-link-types
+
+**Response:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "name": "Blocks",
+      "inwardName": "is blocked by",
+      "outwardName": "blocks",
+      "isSystem": true,
+      "isActive": true
+    }
+  ]
+}
+```
+
+### POST /issue-link-types
+
+**Body:**
+```json
+{
+  "name": "Relates to",
+  "inwardName": "relates to",
+  "outwardName": "relates to"
+}
+```
+
+### PUT /issue-link-types/{id}
+
+### DELETE /issue-link-types/{id}
 
 ---
 
@@ -545,6 +617,36 @@ Query: `?projectId=uuid&userId=uuid&from=...&to=...`
 Возвращает задачи, сгруппированные по колонкам.
 
 ### PUT /boards/{id}/columns/reorder
+
+### GET /boards/{id}/columns/{columnId}/statuses
+
+Возвращает статусы, привязанные к колонке.
+
+### PUT /boards/{id}/columns/{columnId}/statuses
+
+**Body:**
+```json
+{
+  "statusIds": ["uuid-todo", "uuid-in-progress"]
+}
+```
+
+### GET /boards/{id}/quick-filters
+
+### POST /boards/{id}/quick-filters
+
+**Body:**
+```json
+{
+  "name": "My Issues",
+  "jql": "assignee = currentUser()",
+  "position": 0
+}
+```
+
+### PUT /boards/{id}/quick-filters/{quickFilterId}
+
+### DELETE /boards/{id}/quick-filters/{quickFilterId}
 
 ---
 

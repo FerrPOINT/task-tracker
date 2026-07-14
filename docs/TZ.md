@@ -72,12 +72,13 @@ Self-hosted таск-трекер, функционально близкий к 
 | `key` | Уникальный короткий ключ: `PROJ`, `TT`, `DEV` (3–10 uppercase) |
 | `name` | Название проекта |
 | `description` | Описание (rich text) |
-| `lead_id` | Владелец/лид проекта |
-| `project_type` | `scrum`, `kanban`, `basic` |
-| `default_assignee` | `PROJECT_LEAD`, `UNASSIGNED` |
-| `avatar_url` | Аватар проекта |
-| `status` | `active`, `archived` |
-| `created_at`, `updated_at` | Timestamps |
+|| `lead_id` | Владелец/лид проекта |
+|| `category_id` | Категория проекта (опционально) |
+|| `project_type` | `scrum`, `kanban`, `basic` |
+|| `default_assignee` | `PROJECT_LEAD`, `UNASSIGNED` |
+|| `avatar_url` | Аватар проекта |
+|| `status` | `active`, `archived` |
+|| `created_at`, `updated_at` | Timestamps |
 
 ### 3.2. Типы проектов
 
@@ -95,6 +96,10 @@ Self-hosted таск-трекер, функционально близкий к 
 - **Screen scheme** — какие экраны (наборы полей) при создании/редактировании/просмотре.
 - **Permission scheme** — права доступа.
 - **Notification scheme** — кто получает уведомления по событиям.
+
+### 3.4. Категории проектов
+
+Project Admin может создавать категории (`name`, `description`) и назначать проектам.
 
 ---
 
@@ -171,10 +176,20 @@ Epic
 
 ### 5.3. Rich text / описание
 
-- HTML/Tiptap JSON
-- Поддержка упоминаний `@username`
-- Чеклисты
-- Вложения-изображения inline
+- ProseMirror JSON (хранится в JSONB).
+- API возвращает `renderedFields` expand с HTML-представлением.
+- При импорте/экспорте Jira используется конвертер ADF ↔ ProseMirror.
+
+### 5.4. Self links
+
+Каждый ресурс API содержит поле `self` с полным URL: `https://host:19876/api/v1/{resource}/{id}`.
+
+### 5.5. Issue watchers / votes
+
+- Watch: `POST /issues/{id}/watch` (toggle).
+- `GET /issues/{id}/watchers` — список наблюдателей.
+- Vote: `POST /issues/{id}/vote` (toggle).
+- `GET /issues/{id}/votes` — счётчик и статус текущего пользователя.
 
 ---
 
@@ -257,6 +272,10 @@ WorkflowScheme {
 
 Project Admin может создавать кастомные статусы в workflow.
 
+### 7.4. Status category
+
+Каждый статус относится к одной из категорий: `todo`, `in_progress`, `done`. Категория используется для отчётов и цветовой индикации на досках.
+
 ---
 
 ## 8. Kanban / Scrum доски
@@ -268,23 +287,37 @@ Project Admin может создавать кастомные статусы в
 | `id` | UUID |
 | `project_id` | Принадлежность проекту |
 | `name` | Название |
-| `type` | `kanban` / `scrum` |
-| `filter_query` | JQL-фильтр задач на доске |
-| `column_status_ids` | Порядок колонок |
-| `swimlanes` | group by assignee / epic / none |
-| `quick_filters` | Список быстрых фильтров |
+|| `type` | `kanban` / `scrum` |
+|| `filter_query` | JQL-фильтр задач на доске |
+|| `column_status_ids` | Порядок колонок |
+|| `swimlanes` | group by assignee / epic / none |
+|| `quick_filters` | Список быстрых фильтров |
+|| `estimation_field_id` | Поле для оценки (story points или custom field) |
 
 ### 8.2. Колонки
 
 - Колонка = статус workflow (или несколько статусов в одной колонке).
 - WIP-limit на колонку.
 - Подсветка при превышении WIP.
+- Управление статусами колонки через API.
 
 ### 8.3. Карточка задачи на доске
 
 - Key, summary, assignee avatar, priority icon, labels, epic color, story points, due date, attachments count, comments count.
 
-### 8.4. Backlog (Scrum)
+### 8.4. Quick filters
+
+Board Admin создаёт быстрые фильтры на основе JQL:
+
+| Поле | Описание |
+|------|----------|
+| `id` | UUID |
+| `board_id` | Доска |
+| `name` | Отображаемое имя |
+| `jql` | JQL-запрос |
+| `position` | Порядок отображения |
+
+### 8.5. Backlog (Scrum)
 
 - Приоритизированный список задач (rank).
 - Drag & drop для сортировки.
@@ -389,6 +422,26 @@ Project Admin может создавать кастомные статусы в
 - Обязательные поля по issue type.
 - Скрытые поля.
 - Default values.
+
+### 10.5. Schema и JQL clause names
+
+Каждое кастомное поле имеет `schema` JSONB:
+
+```json
+{
+  "type": "string",
+  "items": "option",
+  "system": "story_points"
+}
+```
+
+`clause_names` — массив имён для JQL: `["Story Points", "cf[10000]"]`.
+
+### 10.6. ADF / ProseMirror
+
+Description и comments хранятся в формате ProseMirror JSON (JSONB).
+API возвращает `renderedFields` expand с HTML-представлением.
+При импорте/экспорте Jira используется конвертер ADF ↔ ProseMirror.
 
 ---
 
@@ -850,9 +903,12 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 - `POST /api/v1/issues/{id}/transition`
 - `POST /api/v1/issues/{id}/watch`
 - `POST /api/v1/issues/{id}/vote`
+- `GET /api/v1/issues/{id}/watchers`
+- `GET /api/v1/issues/{id}/votes`
 - `GET /api/v1/issues/{id}/activity`
 - `POST /api/v1/issues/{id}/clone`
 - `POST /api/v1/issues/{id}/move`
+- `GET /api/v1/issues/{id}?expand=changelog,renderedFields,operations,editmeta`
 
 ### 27.7. Comments
 
@@ -880,6 +936,10 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 - `GET /api/v1/issues/{id}/links`
 - `POST /api/v1/issues/{id}/links`
 - `DELETE /api/v1/issue-links/{id}`
+- `GET /api/v1/issue-link-types`
+- `POST /api/v1/issue-link-types`
+- `PUT /api/v1/issue-link-types/{id}`
+- `DELETE /api/v1/issue-link-types/{id}`
 
 ### 27.11. Boards
 
@@ -890,6 +950,12 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 - `DELETE /api/v1/boards/{id}`
 - `GET /api/v1/boards/{id}/issues`
 - `POST /api/v1/boards/{id}/columns/reorder`
+- `GET /api/v1/boards/{id}/columns/{columnId}/statuses`
+- `PUT /api/v1/boards/{id}/columns/{columnId}/statuses`
+- `GET /api/v1/boards/{id}/quick-filters`
+- `POST /api/v1/boards/{id}/quick-filters`
+- `PUT /api/v1/boards/{id}/quick-filters/{quickFilterId}`
+- `DELETE /api/v1/boards/{id}/quick-filters/{quickFilterId}`
 - `GET /api/v1/boards/{id}/configuration`
 - `PUT /api/v1/boards/{id}/configuration`
 
