@@ -1022,9 +1022,12 @@ Hard delete.
 - `docs/ARCHITECTURE.md` — общая архитектура backend/frontend.
 - `docs/ERROR_HANDLING.md` — формат ошибок и retry-политика.
 - `docs/SECURITY.md` — headers, CORS, CSRF, auth flow.
-- `docs/API.md` — детали endpoints аутентификации.
+- `docs/API_VERSIONING.md` — политика версионирования и deprecation.
+- `docs/API_EDGE_CASES.md` — граничные случаи и поведение в конфликтах.
+- `docs/AUTH_ADVANCED.md` — advanced auth: OAuth, SSO, MFA, sessions.
 - `docs/DATA_MODEL.md` — структура базы данных.
 - `docs/JQL.md` — синтаксис поиска.
 - `docs/WORKFLOW.md` — workflow engine.
 - `docs/NOTIFICATIONS.md` — события и шаблоны уведомлений.
-- `docs/SECURITY.md` — headers, CORS, CSRF.
+- `docs/PAGINATION.md` — пагинация, bulk operations, rate limiting headers.
+- `docs/WEBSOCKET_EVENTS.md` — WebSocket payloads и realtime updates.

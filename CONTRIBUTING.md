@@ -128,3 +128,12 @@ pnpm vitest run
 ## 14. License
 
 See repository license file.
+
+## 15. References
+
+- `docs/ARCHITECTURE.md` — общая архитектура и стек.
+- `docs/CODE_STYLE.md` — стиль кода Rust / TypeScript.
+- `docs/TESTING.md` — стратегия тестирования и fixtures.
+- `docs/ADR.md` — архитектурные решения.
+- `docs/SECURITY.md` — политики безопасности.
+- `docs/CI_CD.md` — pipeline и качество кода.

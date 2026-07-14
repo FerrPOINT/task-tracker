@@ -461,6 +461,17 @@ let app = Router::new()
 - Operations runbook — `docs/OPS_RUNBOOK.md`.
 - Release process — `docs/RELEASE.md`.
 - Onboarding — `docs/ONBOARDING.md`.
+- Runtime behavior — `docs/RUNTIME.md`.
+- Resilience & fault tolerance — `docs/RESILIENCE.md`.
+- Auth advanced — `docs/AUTH_ADVANCED.md`.
+- Pagination & bulk operations — `docs/PAGINATION.md`.
+- Data retention & archiving — `docs/DATA_RETENTION.md`.
+- Feature flags — `docs/FEATURE_FLAGS.md`.
+- Load balancing & scaling — `docs/LOAD_BALANCING.md`.
+- UX & product gaps — `docs/UX_PRODUCT.md`.
+- API edge cases — `docs/API_EDGE_CASES.md`.
+- Security incident response — `docs/SECURITY_INCIDENT_RESPONSE.md`.
+- Jira details gap analysis — `docs/JIRA_GAP_DETAILS.md`.
 - UI mockups — `docs/assets/ui-mockups/`.
 - Jira structural samples — `docs/assets/jira-samples/`.
 
