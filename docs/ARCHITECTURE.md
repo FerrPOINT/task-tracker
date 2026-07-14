@@ -458,6 +458,13 @@ let app = Router::new()
 - API versioning — `docs/API_VERSIONING.md`.
 - WebSocket events — `docs/WEBSOCKET_EVENTS.md`.
 - Event catalog — `docs/EVENTS.md`.
+- API standards — `docs/API_STANDARDS.md`.
+- Domain model — `docs/DOMAIN_MODEL.md`.
+- Database standards — `docs/DATABASE_STANDARDS.md`.
+- Local setup — `docs/LOCAL_SETUP.md`.
+- Troubleshooting — `docs/TROUBLESHOOTING.md`.
+- FAQ — `docs/FAQ.md`.
+- Backup & restore — `docs/BACKUP_RESTORE.md`.
 - Operations runbook — `docs/OPS_RUNBOOK.md`.
 - Release process — `docs/RELEASE.md`.
 - Onboarding — `docs/ONBOARDING.md`.
