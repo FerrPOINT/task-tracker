@@ -127,3 +127,9 @@ cd frontend && pnpm test && pnpm test:e2e
 
 - Remote: `git@github.com:FerrPOINT/task-tracker.git`
 - Ветка: `main`
+
+## References
+
+- `docs/ARCHITECTURE.md` — общая архитектура и стек.
+- `docs/TZ.md` — техническое задание и scope.
+- `CONTRIBUTING.md` — процесс разработки и review.

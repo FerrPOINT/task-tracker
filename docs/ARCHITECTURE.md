@@ -444,6 +444,8 @@ let app = Router::new()
 - Reports — `docs/REPORTS.md`.
 - CLI specification — `docs/CLI.md`.
 - AGENTS.md rules — `docs/AGENTS.md`.
+- ADR index — `docs/ADR.md`.
+- CI/CD pipeline — `docs/CI_CD.md`.
 - Deployment and Docker Compose — `docs/DEPLOYMENT.md`.
 - Database migrations — `docs/MIGRATIONS.md`.
 - File storage — `docs/STORAGE.md`.
