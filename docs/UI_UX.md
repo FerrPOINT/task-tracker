@@ -161,16 +161,90 @@
 - **Dates**: due date, start date, resolution date.
 - **Components**: multi-select.
 - **Versions**: fix / affected.
-- **Time tracking**: progress bar + log work button.
+- **Time tracking**: progress bar + spent / estimate / remaining + **Log work** button.
+  - Показывает: `4h spent / 8h estimated / 4h remaining`.
+  - Progress bar: цвет зависит от соотношения spent/estimate (зелёный ≤100%, красный >100%).
+  - Клик по кнопке открывает диалог **Log work**.
 - **Watchers**: avatars + add.
 - **Votes**: count + vote button.
+
+### Time tracking panel (Issue Detail right column)
+
+```
+Time tracking
+████████████████░░░░░░░░░░░░░░░░░░
+4h spent / 8h estimated / 4h remaining
+[Log work]
+```
+
+- Если `remaining estimate` не задан — показывать только `spent / estimated`.
+- Если `time spent > estimated` — progress bar красный, текст `over by Xh`.
+- Кнопка **Log work** открывает диалог.
+
+### Log work dialog
+
+```
+┌─────────────────────────────┐
+│ Log work                     │
+├─────────────────────────────┤
+│ Time spent      [ 2h 30m ]  │
+│ Remaining est.  [ 5h 30m ]  │
+│ Started         [2026-07-20] │
+│ Comment         [________]  │
+│                              │
+│ [⏱ Start timer]             │
+├─────────────────────────────┤
+│ [Cancel] [Save]             │
+└─────────────────────────────┘
+```
+
+- `Time spent` обязательно, формат `1h 30m` / `45m` / `2d`.
+- `Remaining estimate` опционально; если пусто — не менять.
+- `Started at` по умолчанию сегодня.
+- `Comment` опционально.
+- **Start timer**: запускает секундомер, при остановке заполняет `Time spent`.
 
 ### 4.4. Вкладки
 
 - **Comments**: threaded, rich text, mentions (`@`), attachments per comment.
 - **Activity**: системный лог (who did what when).
 - **Worklog**: таблица time entries + summary.
+  - Колонки: User, Started, Spent, Remaining estimate, Comment, Actions.
+  - Summary внизу: `Total logged: 6h 30m`.
+  - Редактирование/удаление только своих записей (или админ/менеджер проекта).
+  - **Адаптив**: на мобильных устройствах таблица заменяется на стек карточек.
 - **History**: изменения полей со старыми/новыми значениями.
+
+### 4.5. Цветовые темы
+
+Интерфейс поддерживает три темы:
+
+- **Dark** — почти чёрный фон (`#09090b`), поверхности `zinc-900`, акцент periwinkle.
+- **Gray** — тёмно-серый фон (`#18181b`), поверхности `zinc-800`, тот же акцент.
+- **Light** — светло-серый фон (`#f3f4f6`), белые карточки, тёмный текст.
+
+Переключатель темы находится в шапке. Предпочтение сохраняется в `localStorage` по ключу `tasktracker-theme`. По умолчанию используется тёмная тема. Все UI-токены оформлены через CSS-переменные (`--color-background`, `--color-surface`, `--color-text-primary`, `--color-accent`, и т.д.).
+
+---
+
+## 4a. Worklog Tab Specification
+
+```
++-----------------------------------------------------------+
+| Worklog                                                   |
+|                                                           |
+| User     Started     Spent   Remaining   Comment   Action |
+| Ivan     2026-07-20  2h      6h          Login UI   ✎ 🗑  |
+| Anna     2026-07-19  4h      2h          API docs   ✎ 🗑  |
+|                                                           |
+| Total logged: 6h                                          |
++-----------------------------------------------------------+
+```
+
+- Сортировка по `startedAt` desc.
+- Пагинация не нужна для MVP; scroll при >50 записей.
+- Edit inline либо через тот же диалог Log work с prefill.
+- Delete с подтверждением AlertDialog.
 
 ---
 
