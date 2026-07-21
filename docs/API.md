@@ -494,6 +494,32 @@ Download/stream.
 
 ### GET /issues/{id}/worklogs
 
+**Response 200:**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "issueId": "uuid",
+      "userId": "uuid",
+      "userDisplayName": "Ivan",
+      "timeSpentSeconds": 3600,
+      "timeSpent": "1h",
+      "remainingEstimateSeconds": 7200,
+      "remainingEstimate": "2h",
+      "startedAt": "2026-01-15T10:00:00Z",
+      "comment": "Implemented login",
+      "createdAt": "2026-01-15T10:00:00Z",
+      "updatedAt": "2026-01-15T10:00:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "total": 1,
+  "totalPages": 1
+}
+```
+
 ### POST /issues/{id}/worklogs
 
 **Body:**
@@ -502,13 +528,21 @@ Download/stream.
   "timeSpentSeconds": 3600,
   "remainingEstimateSeconds": 7200,
   "startedAt": "2026-01-15T10:00:00Z",
-  "description": "Implemented login"
+  "comment": "Implemented login"
 }
 ```
 
+**Response 201:** `WorklogResponse`
+
 ### PUT /issues/{id}/worklogs/{worklogId}
 
+**Body:** то же, что и POST.
+
+**Response 200:** `WorklogResponse`
+
 ### DELETE /issues/{id}/worklogs/{worklogId}
+
+**Response 204**
 
 ### GET /worklogs/reports
 
@@ -518,14 +552,21 @@ Query: `?projectId=uuid&userId=uuid&from=...&to=...`
 ```json
 {
   "id": "uuid",
+  "issueId": "uuid",
+  "userId": "uuid",
+  "userDisplayName": "Ivan",
   "timeSpentSeconds": 3600,
   "timeSpent": "1h",
   "remainingEstimateSeconds": 7200,
   "remainingEstimate": "2h",
   "startedAt": "2026-01-15T10:00:00Z",
-  "description": "Implemented login"
+  "comment": "Implemented login",
+  "createdAt": "2026-01-15T10:00:00Z",
+  "updatedAt": "2026-01-15T10:00:00Z"
 }
 ```
+
+**Права:** создание/редактирование/удаление worklog доступно пользователям с правом `Work On Issues` для проекта. Просмотр — с правом `View Project`.
 
 ---
 

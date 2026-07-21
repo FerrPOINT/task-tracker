@@ -59,20 +59,22 @@
 
 ## Developer
 
-| # | User Story | Acceptance Criteria |
-|---|------------|---------------------|
-| DEV-1 | Я могу создать задачу | Форма create issue: project, issue type, summary, description, priority, assignee, labels. |
-| DEV-2 | Я могу создать подзадачу | Parent issue + issue type Sub-task. |
-| DEV-3 | Я могу редактировать задачу | Поля, которые разрешены permission + screen. |
-| DEV-4 | Я могу перемещать задачу по workflow | Transition с проверками condition/validator/post-function. |
-| DEV-5 | Я могу перемещать задачу на kanban-доске | Drag & drop меняет status + rank. |
-| DEV-6 | Я могу добавлять комментарий | Rich text с mentions. |
-| DEV-7 | Я могу прикреплять файлы | Drag & drop, preview, inline-вставка. |
-| DEV-8 | Я могу логировать время | Диалог: time spent, started_at, description. Обновляются estimates. |
-| DEV-9 | Я могу связывать задачи | Диалог link issue: type + target. |
-| DEV-10 | Я могу просматривать activity stream | История изменений, transitions, comments, worklogs. |
-| DEV-11 | Я могу клонировать задачу | Копия с префиксом `(Clone)`. |
-| DEV-12 | Я могу переместить задачу в другой проект | Пересчёт key, сохранение history, уведомления. |
+|| # | User Story | Acceptance Criteria |
+|---|---|------------|---------------------|
+|| DEV-1 | Я могу создать задачу | Форма create issue: project, issue type, summary, description, priority, assignee, labels. |
+|| DEV-2 | Я могу создать подзадачу | Parent issue + issue type Sub-task. |
+|| DEV-3 | Я могу редактировать задачу | Поля, которые разрешены permission + screen. |
+|| DEV-4 | Я могу перемещать задачу по workflow | Transition с проверками condition/validator/post-function. |
+|| DEV-5 | Я могу перемещать задачу на kanban-доске | Drag & drop меняет status + rank. |
+|| DEV-6 | Я могу добавлять комментарий | Rich text с mentions. |
+|| DEV-7 | Я могу прикреплять файлы | Drag & drop, preview, inline-вставка. |
+|| DEV-8 | Я могу логировать время | Диалог: time spent, remaining estimate, started_at, comment. Обновляются estimates. Панель в правой колонке и вкладка Worklog показывают logged time. |
+|| DEV-9 | Я могу редактировать свой worklog | Диалог prefill с сохранёнными данными. |
+|| DEV-10 | Я могу удалить свой worklog | Подтверждение, запись исчезает из списка, estimate не восстанавливается. |
+|| DEV-11 | Я могу связывать задачи | Диалог link issue: type + target. |
+|| DEV-12 | Я могу просматривать activity stream | История изменений, transitions, comments, worklogs. |
+|| DEV-13 | Я могу клонировать задачу | Копия с префиксом `(Clone)`. |
+|| DEV-14 | Я могу переместить задачу в другой проект | Пересчёт key, сохранение history, уведомления. |
 
 ---
 

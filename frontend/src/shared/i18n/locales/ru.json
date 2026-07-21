@@ -1,0 +1,71 @@
+{
+  "timeTracking": {
+    "title": "Учёт времени",
+    "spent": "потрачено",
+    "estimated": "оценка",
+    "remaining": "осталось",
+    "overBy": "перебор на",
+    "logWork": "Залогировать время",
+    "editWorklog": "Редактировать запись",
+    "deleteWorklog": "Удалить запись",
+    "deleteConfirm": "Удалить эту запись о времени?",
+    "timer": {
+      "start": "Запустить таймер",
+      "stop": "Остановить таймер"
+    },
+    "fields": {
+      "timeSpent": "Затраченное время",
+      "remainingEstimate": "Оставшаяся оценка",
+      "startedAt": "Дата начала",
+      "comment": "Комментарий"
+    },
+    "validation": {
+      "timeSpentRequired": "Укажите затраченное время",
+      "invalidFormat": "Используйте формат вроде 1ч 30м"
+    },
+    "worklog": {
+      "title": "Worklog",
+      "empty": "Пока нет записей.",
+      "totalLogged": "Всего залогировано",
+      "user": "Пользователь",
+      "started": "Дата",
+      "timeSpent": "Затрачено",
+      "remaining": "Осталось",
+      "comment": "Комментарий",
+      "actions": "Действия"
+    }
+  },
+  "issue": {
+    "description": "Описание",
+    "details": "Детали",
+    "comments": "Комментарии",
+    "activity": "Активность",
+    "history": "История",
+    "status": "Статус",
+    "assignee": "Исполнитель",
+    "reporter": "Автор",
+    "priority": "Приоритет",
+    "labels": "Метки",
+    "dueDate": "Дата выполнения",
+    "components": "Компоненты",
+    "versions": "Версии",
+    "watchers": "Наблюдатели",
+    "votes": "Голоса",
+    "edit": "Редактировать",
+    "comment": "Комментировать",
+    "assignToMe": "Назначить себе",
+    "moreActions": "Ещё",
+    "copyKey": "Скопировать ключ",
+    "noDescription": "Нет описания.",
+    "loading": "Загрузка...",
+    "notFound": "Задача не найдена"
+  },
+  "common": {
+    "save": "Сохранить",
+    "cancel": "Отмена",
+    "delete": "Удалить",
+    "edit": "Редактировать",
+    "close": "Закрыть",
+    "theme": "Тема: {{theme}}"
+  }
+}

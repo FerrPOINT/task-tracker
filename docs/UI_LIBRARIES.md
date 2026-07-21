@@ -241,6 +241,7 @@
 ## Примечания
 
 - Все компоненты оформляем в стиле **dark-first**, Tailwind + shadcn.
+- Цветовые темы реализованы через CSS-переменные: `--color-background`, `--color-surface`, `--color-text-primary`, `--color-accent` и т.д. Поддерживаются три темы: dark, gray, light. Переключатель и сохранение предпочтения в `localStorage`.
 - Не используем `@atlaskit/*` — это проприетарные компоненты Atlassian.
 - Для accessibility полагаемся на Radix (под капотом shadcn) и `@dnd-kit` (keyboard/sensor support).
 - Анимации drag-and-drop — через CSS transforms + `@dnd-kit`.
