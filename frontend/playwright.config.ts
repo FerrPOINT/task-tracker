@@ -18,7 +18,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm preview',
+    command: 'VITE_API_BASE_URL=http://127.0.0.1:3456/api/v1 pnpm preview',
     url: 'http://localhost:4173',
     reuseExistingServer: true,
   },
