@@ -3,7 +3,9 @@ import { persist } from 'zustand/middleware'
 
 interface AuthState {
   token: string | null
-  setToken: (token: string | null) => void
+  userId: string | null
+  email: string | null
+  setAuth: (token: string, userId: string, email: string) => void
   logout: () => void
 }
 
@@ -11,8 +13,10 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       token: null,
-      setToken: (token) => set({ token }),
-      logout: () => set({ token: null }),
+      userId: null,
+      email: null,
+      setAuth: (token, userId, email) => set({ token, userId, email }),
+      logout: () => set({ token: null, userId: null, email: null }),
     }),
     { name: 'task-tracker-auth' },
   ),

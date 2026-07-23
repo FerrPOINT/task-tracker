@@ -1,3 +1,7 @@
+pub mod requests;
+
+pub use requests::*;
+
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -18,6 +22,8 @@ pub struct LoginRequest {
 pub struct AuthResponse {
     pub access_token: String,
     pub token_type: String,
+    pub user_id: String,
+    pub email: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

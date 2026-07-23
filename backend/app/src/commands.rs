@@ -14,6 +14,12 @@ pub struct LoginCommand {
     pub password: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProjectQueryDto {
+    pub limit: u64,
+    pub offset: u64,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateIssueCommand {
     pub project_key: shared::ProjectKey,
@@ -26,8 +32,11 @@ pub struct CreateIssueCommand {
     pub assignee_id: Option<shared::UserId>,
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ProjectQueryDto {
-    pub limit: u64,
-    pub offset: u64,
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct UpdateIssueCommand {
+    pub summary: Option<String>,
+    pub description: Option<Option<String>>,
+    pub priority: Option<shared::Priority>,
+    pub status_id: Option<String>,
+    pub assignee_id: Option<Option<shared::UserId>>,
 }

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listProjects } from '@/api/project'
-import { getBoard, getBacklog } from '@/api/board'
+import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
 import { searchIssues } from '@/api/search'
 import { login, register } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
@@ -50,21 +50,21 @@ export function useDashboard() {
 }
 
 export function useLogin() {
-  const setToken = useAuthStore((s) => s.setToken)
+  const setAuth = useAuthStore((s) => s.setAuth)
   return useMutation({
     mutationFn: login,
     onSuccess: (data) => {
-      setToken(data.access_token)
+      setAuth(data.access_token, data.user_id, data.email)
     },
   })
 }
 
 export function useRegister() {
-  const setToken = useAuthStore((s) => s.setToken)
+  const setAuth = useAuthStore((s) => s.setAuth)
   return useMutation({
     mutationFn: register,
     onSuccess: (data) => {
-      setToken(data.access_token)
+      setAuth(data.access_token, data.user_id, data.email)
     },
   })
 }
@@ -75,6 +75,17 @@ export function useCreateIssue() {
     mutationFn: createIssue,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: projectKeys.all })
+    },
+  })
+}
+
+export function useMoveIssue(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: MoveIssueInput) => moveIssue(projectKey, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
     },
   })
 }

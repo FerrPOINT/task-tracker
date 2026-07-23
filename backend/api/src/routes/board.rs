@@ -5,9 +5,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::dto::{
-    BacklogResponse, BoardColumnResponse, BoardResponse, IssueResponse, SprintResponse,
-};
+use crate::dto::{BoardResponse, MoveIssueRequest};
 
 pub async fn get_board(
     State(ctx): State<Arc<app::AppContext>>,
@@ -23,10 +21,34 @@ pub async fn get_board(
 pub async fn get_backlog(
     State(ctx): State<Arc<app::AppContext>>,
     Path(project_key): Path<String>,
-) -> Result<Json<BacklogResponse>, StatusCode> {
+) -> Result<Json<crate::dto::BacklogResponse>, StatusCode> {
     let key = shared::ProjectKey::from_str(&project_key).map_err(|_| StatusCode::BAD_REQUEST)?;
     match ctx.services.board.get_backlog(&key).await {
         Ok(b) => Ok(Json(map_backlog(b))),
+        Err(_) => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+pub async fn move_issue(
+    State(ctx): State<Arc<app::AppContext>>,
+    Path(project_key): Path<String>,
+    Json(req): Json<MoveIssueRequest>,
+) -> Result<Json<BoardResponse>, StatusCode> {
+    let key = shared::ProjectKey::from_str(&project_key).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let issue_id = req
+        .issue_id
+        .parse()
+        .ok()
+        .map(shared::IssueId::from_uuid)
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    let status_id = req
+        .status_id
+        .parse()
+        .ok()
+        .map(shared::StatusId::from_uuid)
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    match ctx.services.board.move_issue(&key, issue_id, status_id).await {
+        Ok(b) => Ok(Json(map_board(b))),
         Err(_) => Err(StatusCode::NOT_FOUND),
     }
 }
@@ -36,7 +58,7 @@ fn map_board(b: app::dto::BoardDto) -> BoardResponse {
         columns: b
             .columns
             .into_iter()
-            .map(|c| BoardColumnResponse {
+            .map(|c| crate::dto::BoardColumnResponse {
                 id: c.id,
                 name: c.name,
                 wip_limit: c.wip_limit.map(|v| v as u32),
@@ -44,32 +66,36 @@ fn map_board(b: app::dto::BoardDto) -> BoardResponse {
             })
             .collect(),
         issues: b.issues.into_iter().map(map_issue).collect(),
-        sprint: map_sprint(b.sprint),
+        sprint: crate::dto::SprintResponse {
+            id: b.sprint.id,
+            name: b.sprint.name,
+            goal: b.sprint.goal,
+            state: b.sprint.state,
+            velocity: b.sprint.velocity,
+            remaining_days: b.sprint.remaining_days,
+            issue_ids: b.sprint.issue_ids,
+        },
     }
 }
 
-fn map_backlog(b: app::dto::BacklogDto) -> BacklogResponse {
-    BacklogResponse {
-        sprint: map_sprint(b.sprint),
+fn map_backlog(b: app::dto::BacklogDto) -> crate::dto::BacklogResponse {
+    crate::dto::BacklogResponse {
+        sprint: crate::dto::SprintResponse {
+            id: b.sprint.id,
+            name: b.sprint.name,
+            goal: b.sprint.goal,
+            state: b.sprint.state,
+            velocity: b.sprint.velocity,
+            remaining_days: b.sprint.remaining_days,
+            issue_ids: b.sprint.issue_ids,
+        },
         sprint_issues: b.sprint_issues.into_iter().map(map_issue).collect(),
         backlog_issues: b.backlog_issues.into_iter().map(map_issue).collect(),
     }
 }
 
-fn map_sprint(s: app::dto::SprintDto) -> SprintResponse {
-    SprintResponse {
-        id: s.id,
-        name: s.name,
-        goal: s.goal,
-        state: s.state,
-        velocity: s.velocity,
-        remaining_days: s.remaining_days,
-        issue_ids: s.issue_ids,
-    }
-}
-
-fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
-    IssueResponse {
+fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
+    crate::dto::IssueResponse {
         id: i.id,
         key: i.key,
         summary: i.summary,

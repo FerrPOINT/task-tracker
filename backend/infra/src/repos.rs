@@ -192,6 +192,11 @@ impl IssueRepository for IssueRepo {
     }
 
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError> {
+        let exists = issue::Entity::find_by_id(issue.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .is_some();
         let labels = issue
             .labels
             .iter()
@@ -218,7 +223,11 @@ impl IssueRepository for IssueRepo {
             created_at: Set(issue.created_at),
             updated_at: Set(shared::now()),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        if exists {
+            active.update(&*self.db).await.map_err(AppError::database)?;
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?;
+        }
         Ok(issue.id)
     }
 

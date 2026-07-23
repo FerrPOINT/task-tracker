@@ -1,12 +1,12 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::commands::CreateIssueCommand;
+use crate::commands::{CreateIssueCommand, UpdateIssueCommand};
 use crate::dto::{
     BacklogDto, BoardColumnDto, BoardDto, DashboardDto, IssueDto, ProjectDto, SprintDto,
 };
 use domain::{
-    BoardColumn, ColumnCategory, Issue, IssueQuery, IssueRepository, ProjectRepository,
+    BoardColumn, ColumnCategory, IssueQuery, IssueRepository, ProjectRepository,
     SprintRepository,
 };
 
@@ -91,10 +91,16 @@ impl IssueServiceImpl {
         Self { issues, projects, users }
     }
 
-    async fn resolve_names(&self, issue: &domain::Issue,
+    async fn resolve_names(
+        &self,
+        issue: &domain::Issue,
     ) -> Result<(Option<String>, Option<String>), AppError> {
         let assignee_name = if let Some(id) = issue.assignee_id {
-            self.users.get_by_id(id).await.map(|u| u.display_name.as_ref().to_string()).ok()
+            self.users
+                .get_by_id(id)
+                .await
+                .map(|u| u.display_name.as_ref().to_string())
+                .ok()
         } else {
             None
         };
@@ -118,7 +124,7 @@ impl crate::context::IssueService for IssueServiceImpl {
                 .parse()
                 .map_err(|_| AppError::invalid_input("status_id"))?,
         );
-        let mut issue = Issue::create(
+        let mut issue = domain::Issue::create(
             &project,
             number,
             cmd.issue_type,
@@ -150,6 +156,48 @@ impl crate::context::IssueService for IssueServiceImpl {
     async fn get_by_id(&self, id: IssueId) -> Result<IssueDto, AppError> {
         let issue = self.issues.get_by_id(id).await?;
         let project = self.projects.get_by_id(issue.project_id).await?;
+        let column = default_board_columns()
+            .into_iter()
+            .find(|c| c.id == issue.status_id)
+            .map(|c| c.name.as_ref().to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        let (assignee_name, reporter_name) = self.resolve_names(&issue).await?;
+        Ok(IssueDto::from_issue(
+            issue,
+            project.name.as_ref().to_string(),
+            column,
+            assignee_name,
+            reporter_name,
+        ))
+    }
+
+    async fn update(&self, id: IssueId, cmd: UpdateIssueCommand) -> Result<IssueDto, AppError> {
+        let mut issue = self.issues.get_by_id(id).await?;
+        let project = self.projects.get_by_id(issue.project_id).await?;
+
+        if let Some(summary) = cmd.summary {
+            issue.summary = summary.into();
+            issue.updated_at = shared::now();
+        }
+        if let Some(description) = cmd.description {
+            issue.description = description.map(domain::RichText::from);
+            issue.updated_at = shared::now();
+        }
+        if let Some(priority) = cmd.priority {
+            issue.priority = priority;
+            issue.updated_at = shared::now();
+        }
+        if let Some(status_id) = cmd.status_id {
+            let sid = status_id
+                .parse()
+                .map_err(|_| AppError::invalid_input("status_id"))?;
+            issue.change_status(StatusId::from_uuid(sid));
+        }
+        if let Some(assignee_id) = cmd.assignee_id {
+            issue.assign(assignee_id);
+        }
+
+        self.issues.save(&issue).await?;
         let column = default_board_columns()
             .into_iter()
             .find(|c| c.id == issue.status_id)
@@ -218,7 +266,11 @@ impl BoardServiceImpl {
 
     async fn resolve_names(&self, issue: &domain::Issue) -> (Option<String>, Option<String>) {
         let assignee_name = if let Some(id) = issue.assignee_id {
-            self.users.get_by_id(id).await.map(|u| u.display_name.as_ref().to_string()).ok()
+            self.users
+                .get_by_id(id)
+                .await
+                .map(|u| u.display_name.as_ref().to_string())
+                .ok()
         } else {
             None
         };
@@ -230,11 +282,11 @@ impl BoardServiceImpl {
             .ok();
         (assignee_name, reporter_name)
     }
-}
 
-#[async_trait]
-impl crate::context::BoardService for BoardServiceImpl {
-    async fn get_board(&self, project_key: &ProjectKey) -> Result<BoardDto, AppError> {
+    async fn build_board_dto(
+        &self,
+        project_key: &ProjectKey,
+    ) -> Result<BoardDto, AppError> {
         let board = self.boards.get_default_by_project_key(project_key).await?;
         let sprint = self.sprints.get_active_by_project(board.project_id).await?;
         let issues = self
@@ -295,6 +347,13 @@ impl crate::context::BoardService for BoardServiceImpl {
             issues: dtos,
             sprint: sprint_dto,
         })
+    }
+}
+
+#[async_trait]
+impl crate::context::BoardService for BoardServiceImpl {
+    async fn get_board(&self, project_key: &ProjectKey) -> Result<BoardDto, AppError> {
+        self.build_board_dto(project_key).await
     }
 
     async fn get_backlog(&self, project_key: &ProjectKey) -> Result<BacklogDto, AppError> {
@@ -384,6 +443,18 @@ impl crate::context::BoardService for BoardServiceImpl {
             backlog_issues,
         })
     }
+
+    async fn move_issue(
+        &self,
+        project_key: &ProjectKey,
+        issue_id: IssueId,
+        status_id: StatusId,
+    ) -> Result<BoardDto, AppError> {
+        let mut issue = self.issues.get_by_id(issue_id).await?;
+        issue.change_status(status_id);
+        self.issues.save(&issue).await?;
+        self.build_board_dto(project_key).await
+    }
 }
 
 pub struct DashboardServiceImpl {
@@ -407,7 +478,11 @@ impl DashboardServiceImpl {
 
     async fn resolve_names(&self, issue: &domain::Issue) -> (Option<String>, Option<String>) {
         let assignee_name = if let Some(id) = issue.assignee_id {
-            self.users.get_by_id(id).await.map(|u| u.display_name.as_ref().to_string()).ok()
+            self.users
+                .get_by_id(id)
+                .await
+                .map(|u| u.display_name.as_ref().to_string())
+                .ok()
         } else {
             None
         };
@@ -469,7 +544,11 @@ impl SearchServiceImpl {
 
     async fn resolve_names(&self, issue: &domain::Issue) -> (Option<String>, Option<String>) {
         let assignee_name = if let Some(id) = issue.assignee_id {
-            self.users.get_by_id(id).await.map(|u| u.display_name.as_ref().to_string()).ok()
+            self.users
+                .get_by_id(id)
+                .await
+                .map(|u| u.display_name.as_ref().to_string())
+                .ok()
         } else {
             None
         };
