@@ -7,11 +7,14 @@ rust-version.workspace = true
 [dependencies]
 shared = { path = "../shared" }
 domain = { path = "../domain" }
-infra = { path = "../infra" }
 async-trait = "0.1"
 thiserror.workspace = true
 tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 sea-orm.workspace = true
 anyhow.workspace = true
+jsonwebtoken.workspace = true
+argon2.workspace = true
