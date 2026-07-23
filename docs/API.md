@@ -4,14 +4,25 @@
 
 REST API первой версии Task Tracker. Все endpoint возвращают JSON и используют единую модель пагинации, ошибок и webhook-событий. WebSocket live-updates описаны в разделе 7.
 
+> **Single source of truth:** актуальная OpenAPI-схема лежит в [`openapi/openapi.json`](../openapi/openapi.json). Backend генерирует её из `utoipa`-аннотаций Rust-хендлеров, а фронт получает из неё TypeScript-клиент. Ручная документация ниже — для контекста, но при расхождении приоритет у `openapi/openapi.json`.
+
 ## Базовая информация
 
 - Base URL: `https://{host}:19876/api/v1`
 - Content-Type: `application/json`
-- Auth: JWT access в `Authorization: Bearer {token}`, refresh в httpOnly cookie.
+- Auth: JWT access в `Authorization: Bearer *** refresh в httpOnly cookie.
 - Версионирование: path-based `/api/v1`.
 - Пагинация: `?page=0&size=20&sort=createdAt,desc`
 - Фильтр поиска задач: `?jql=...`
+
+## OpenAPI generation
+
+```bash
+cd backend
+cargo run --bin openapi-gen -- ../openapi/openapi.json
+cd ../frontend
+pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
+```
 
 ---
 

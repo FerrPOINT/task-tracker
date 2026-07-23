@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { Search, Save, Folder, CircleDot, User, Flag } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { searchIssues, type Issue } from '@/api/search'
+import { searchIssues, type SearchResult } from '@/api/search'
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -16,11 +16,22 @@ function PriorityBadge({ priority }: { priority: string }) {
 
 export function SearchPage() {
   const [query, setQuery] = useState('project = TT AND status != Done')
-  const [results, setResults] = useState<Issue[]>([])
+  const [result, setResult] = useState<SearchResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    searchIssues(query).then(setResults)
+    setLoading(true)
+    searchIssues(query)
+      .then((data) => {
+        setResult(data)
+        setError(null)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed to search'))
+      .finally(() => setLoading(false))
   }, [query])
+
+  const results = result?.issues ?? []
 
   return (
     <div className="space-y-4">
@@ -62,6 +73,9 @@ export function SearchPage() {
         </div>
       </div>
 
+      {loading && <div className="p-4 text-text-muted">Searching…</div>}
+      {error && <div className="p-4 text-rose-500">{error}</div>}
+
       <div className="overflow-x-auto rounded-lg border border-border bg-surface">
         <div className="min-w-[560px]">
           <div className="grid grid-cols-[80px_1fr_120px_80px_80px] gap-3 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
@@ -80,7 +94,7 @@ export function SearchPage() {
               <span className="text-text-muted">{issue.key}</span>
               <span className="truncate">{issue.summary}</span>
               <span className="rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">{issue.status}</span>
-              <span className="truncate">{issue.assigneeName}</span>
+              <span className="truncate">{issue.assignee_name ?? '—'}</span>
               <PriorityBadge priority={issue.priority} />
             </Link>
           ))}

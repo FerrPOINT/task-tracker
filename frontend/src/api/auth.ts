@@ -1,23 +1,18 @@
-export interface User {
-  id: string
-  username: string
-  displayName: string
-  email: string
+import { api } from './client'
+import type { components } from './generated'
+
+export type LoginRequest = components['schemas']['LoginRequest']
+export type RegisterRequest = components['schemas']['RegisterRequest']
+export type AuthResponse = components['schemas']['AuthResponse']
+
+export async function login(req: LoginRequest): Promise<AuthResponse> {
+  const { data, error } = await api.POST('/auth/login', { body: req })
+  if (error || !data) throw new Error('failed to login')
+  return data
 }
 
-export const currentUser: User = {
-  id: 'user-1',
-  username: 'me',
-  displayName: 'Current User',
-  email: 'me@example.local',
-}
-
-export async function login(_username: string, _password: string): Promise<User> {
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  return { ...currentUser }
-}
-
-export async function register(_input: { username: string; displayName: string; email: string; password: string }): Promise<User> {
-  await new Promise((resolve) => setTimeout(resolve, 300))
-  return { ...currentUser }
+export async function register(req: RegisterRequest): Promise<AuthResponse> {
+  const { data, error } = await api.POST('/auth/register', { body: req })
+  if (error || !data) throw new Error('failed to register')
+  return data
 }

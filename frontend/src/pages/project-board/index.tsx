@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { Plus, Filter, Users, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { getBoard, type BoardColumn, type Issue, type Sprint } from '@/api/board'
+import { getBoard, type BoardResponse } from '@/api/board'
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -25,28 +25,38 @@ function Avatar({ name }: { name: string }) {
 }
 
 export function ProjectBoardPage() {
-  const [columns, setColumns] = useState<BoardColumn[]>([])
-  const [issues, setIssues] = useState<Issue[]>([])
-  const [sprint, setSprint] = useState<Sprint | null>(null)
+  const { projectKey } = useParams<{ projectKey?: string }>()
+  const [board, setBoard] = useState<BoardResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getBoard().then((data) => {
-      setColumns(data.columns)
-      setIssues(data.issues)
-      setSprint(data.sprint)
-    })
-  }, [])
+    const key = projectKey ?? 'TT'
+    setLoading(true)
+    getBoard(key)
+      .then((data) => {
+        setBoard(data)
+        setError(null)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load board'))
+      .finally(() => setLoading(false))
+  }, [projectKey])
+
+  if (loading) return <div className="p-4 text-text-muted">Loading board…</div>
+  if (error || !board) return <div className="p-4 text-rose-500">{error ?? 'Board not found'}</div>
+
+  const { columns, issues, sprint } = board
 
   function issuesByColumn(columnId: string) {
-    return issues.filter((i) => columns.find((c) => c.id === columnId)?.issueIds.includes(i.id))
+    return issues.filter((i) => columns.find((c) => c.id === columnId)?.issue_ids.includes(i.id))
   }
 
   return (
     <div className="flex flex-col md:h-[calc(100vh-10rem)] md:max-h-[800px]">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <div className="truncate text-lg font-bold sm:text-xl">TT Kanban · {sprint?.name ?? 'Sprint'}</div>
-          <div className="text-sm text-text-muted">Backlog 42 · Active · {sprint?.remainingDays ?? '-'} days left</div>
+          <div className="truncate text-lg font-bold sm:text-xl">{projectKey ?? 'TT'} Kanban · {sprint?.name ?? 'Sprint'}</div>
+          <div className="text-sm text-text-muted">Backlog 42 · Active · {sprint?.remaining_days ?? '-'} days left</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1">
@@ -67,8 +77,9 @@ export function ProjectBoardPage() {
       {/* Desktop horizontal board */}
       <div className="hidden flex-1 gap-4 overflow-x-auto pb-2 md:flex">
         {columns.map((column) => {
+          const wipLimit = column.wip_limit ?? null
           const colIssues = issuesByColumn(column.id)
-          const overLimit = column.wipLimit !== null && colIssues.length >= column.wipLimit
+          const overLimit = wipLimit !== null && colIssues.length >= wipLimit
           return (
             <div
               key={column.id}
@@ -78,7 +89,7 @@ export function ProjectBoardPage() {
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{column.name}</div>
                   <div className="text-xs text-text-muted">
-                    {colIssues.length} · WIP: {column.wipLimit ?? '—'}
+                    {colIssues.length} · WIP: {wipLimit ?? '—'}
                     {overLimit && <span className="ml-1 text-amber-500">⚠️</span>}
                   </div>
                 </div>
@@ -101,7 +112,7 @@ export function ProjectBoardPage() {
                         <PriorityBadge priority={issue.priority} />
                         <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">Task</span>
                       </div>
-                      <Avatar name={issue.assigneeName} />
+                      <Avatar name={issue.assignee_name ?? '?'} />
                     </div>
                   </Link>
                 ))}
@@ -118,15 +129,16 @@ export function ProjectBoardPage() {
       {/* Mobile stacked board */}
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto pb-2 md:hidden">
         {columns.map((column) => {
+          const wipLimit = column.wip_limit ?? null
           const colIssues = issuesByColumn(column.id)
-          const overLimit = column.wipLimit !== null && colIssues.length >= column.wipLimit
+          const overLimit = wipLimit !== null && colIssues.length >= wipLimit
           return (
             <div key={column.id} className="rounded-lg border border-border bg-surface">
               <div className="flex items-center justify-between border-b border-border p-3">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{column.name}</div>
                   <div className="text-xs text-text-muted">
-                    {colIssues.length} · WIP: {column.wipLimit ?? '—'}
+                    {colIssues.length} · WIP: {wipLimit ?? '—'}
                     {overLimit && <span className="ml-1 text-amber-500">⚠️</span>}
                   </div>
                 </div>
@@ -149,7 +161,7 @@ export function ProjectBoardPage() {
                         <PriorityBadge priority={issue.priority} />
                         <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">Task</span>
                       </div>
-                      <Avatar name={issue.assigneeName} />
+                      <Avatar name={issue.assignee_name ?? '?'} />
                     </div>
                   </Link>
                 ))}

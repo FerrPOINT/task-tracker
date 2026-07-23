@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { Plus, MoreHorizontal, GripVertical } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { getBacklog, type Issue, type Sprint } from '@/api/board'
+import { getBacklog, type BacklogResponse, type Issue } from '@/api/board'
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -35,7 +35,7 @@ function IssueRow({ issue }: { issue: Issue }) {
       <span className="min-w-0 flex-1 truncate font-medium sm:order-3">{issue.summary}</span>
       <div className="ml-auto flex shrink-0 items-center gap-2 sm:order-4 sm:ml-0">
         <PriorityBadge priority={issue.priority} />
-        <Avatar name={issue.assigneeName} />
+        <Avatar name={issue.assignee_name ?? '?'} />
       </div>
     </Link>
   )
@@ -58,24 +58,34 @@ function Section({ title, action, issues }: { title: string; action?: React.Reac
 }
 
 export function ProjectBacklogPage() {
-  const [sprint, setSprint] = useState<Sprint | null>(null)
-  const [sprintIssues, setSprintIssues] = useState<Issue[]>([])
-  const [backlogIssues, setBacklogIssues] = useState<Issue[]>([])
+  const { projectKey } = useParams<{ projectKey?: string }>()
+  const [backlog, setBacklog] = useState<BacklogResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    getBacklog().then((data) => {
-      setSprint(data.sprint)
-      setSprintIssues(data.sprintIssues)
-      setBacklogIssues(data.backlogIssues)
-    })
-  }, [])
+    const key = projectKey ?? 'TT'
+    setLoading(true)
+    getBacklog(key)
+      .then((data) => {
+        setBacklog(data)
+        setError(null)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load backlog'))
+      .finally(() => setLoading(false))
+  }, [projectKey])
+
+  if (loading) return <div className="p-4 text-text-muted">Loading backlog…</div>
+  if (error || !backlog) return <div className="p-4 text-rose-500">{error ?? 'Backlog not found'}</div>
+
+  const { sprint, sprint_issues, backlog_issues } = backlog
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold sm:text-2xl">Backlog · Task Tracker</h1>
-          <div className="text-sm text-text-muted">Velocity: {sprint?.velocity ?? '-'} sp · Backlog: {backlogIssues.length} issues</div>
+          <h1 className="text-xl font-bold sm:text-2xl">Backlog · {projectKey ?? 'TT'}</h1>
+          <div className="text-sm text-text-muted">Velocity: {sprint.velocity ?? '-'} sp · Backlog: {backlog_issues.length} issues</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" className="gap-1">
@@ -94,7 +104,7 @@ export function ProjectBacklogPage() {
       </div>
 
       <Section
-        title={`${sprint?.name ?? 'Sprint'} · ${sprint?.velocity ?? '-'} sp · ${sprint?.remainingDays ?? '-'} days left`}
+        title={`${sprint.name} · ${sprint.velocity} sp · ${sprint.remaining_days ?? '-'} days left`}
         action={
           <div className="flex items-center gap-2">
             <Button size="sm" className="h-7 px-2.5 text-xs">Start sprint</Button>
@@ -103,11 +113,11 @@ export function ProjectBacklogPage() {
             </Button>
           </div>
         }
-        issues={sprintIssues}
+        issues={sprint_issues}
       />
 
       <Section
-        title={`Backlog · ${backlogIssues.length} issues`}
+        title={`Backlog · ${backlog_issues.length} issues`}
         action={
           <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" asChild>
             <Link to="/issues/create">
@@ -116,7 +126,7 @@ export function ProjectBacklogPage() {
             </Link>
           </Button>
         }
-        issues={backlogIssues}
+        issues={backlog_issues}
       />
     </div>
   )
