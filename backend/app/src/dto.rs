@@ -1,7 +1,7 @@
 use chrono::{DateTime, FixedOffset};
 use domain::{Issue, Project, Sprint, SprintState, User};
+
 use serde::{Deserialize, Serialize};
-use shared::{IssueId, IssueKey, ProjectId, ProjectKey, UserId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDto {
@@ -167,6 +167,11 @@ pub struct BacklogDto {
     pub sprint: SprintDto,
     pub sprint_issues: Vec<IssueDto>,
     pub backlog_issues: Vec<IssueDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardDto {
+    pub assigned_issues: Vec<IssueDto>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

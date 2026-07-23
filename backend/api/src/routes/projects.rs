@@ -7,7 +7,10 @@ use app::commands::ProjectQueryDto;
 pub async fn list_projects(
     State(ctx): State<Arc<app::AppContext>>,
 ) -> Result<Json<ProjectListResponse>, StatusCode> {
-    let query = ProjectQueryDto { limit: 100, offset: 0 };
+    let query = ProjectQueryDto {
+        limit: 100,
+        offset: 0,
+    };
     match ctx.services.project.list(query).await {
         Ok(items) => Ok(Json(ProjectListResponse {
             projects: items
@@ -16,7 +19,11 @@ pub async fn list_projects(
                     id: p.id,
                     key: p.key,
                     name: p.name,
-                    description: if p.description.is_empty() { None } else { Some(p.description) },
+                    description: if p.description.is_empty() {
+                        None
+                    } else {
+                        Some(p.description)
+                    },
                     todo_count: p.todo_count as u32,
                     in_progress_count: p.in_progress_count as u32,
                     done_count: p.done_count as u32,
