@@ -2,6 +2,10 @@ use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+#[cfg(test)]
+#[path = "config_tests.rs"]
+mod tests;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub database: DatabaseConfig,

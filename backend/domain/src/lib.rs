@@ -1,11 +1,13 @@
 pub mod entities;
 pub mod events;
 pub mod repositories;
+pub mod stubs;
 pub mod value_objects;
 
 pub use entities::*;
 pub use events::*;
 pub use repositories::*;
+pub use stubs::*;
 pub use value_objects::*;
 
 use serde::{Deserialize, Serialize};

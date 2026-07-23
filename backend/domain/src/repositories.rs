@@ -1,6 +1,10 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+#[cfg(test)]
+#[path = "repositories/tests.rs"]
+mod tests;
+
 use crate::{Board, Issue, IssueQuery, Project, Sprint, User};
 use shared::{AppError, BoardId, IssueId, ProjectId, ProjectKey, SprintId, UserId};
 

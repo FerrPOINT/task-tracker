@@ -3,8 +3,9 @@ use std::sync::Arc;
 use domain::{IssueEvent, ProjectEvent};
 use tokio::sync::broadcast;
 
-pub type EventSender = broadcast::Sender<DomainEvent>;
-pub type EventReceiver = broadcast::Receiver<DomainEvent>;
+#[cfg(test)]
+#[path = "event_bus/tests.rs"]
+mod tests;
 
 #[derive(Clone, Debug)]
 pub enum DomainEvent {

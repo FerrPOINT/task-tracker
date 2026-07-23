@@ -209,13 +209,16 @@ impl FromStr for Priority {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "Lowest" => Ok(Self::Lowest),
-            "Low" => Ok(Self::Low),
-            "Medium" => Ok(Self::Medium),
-            "High" => Ok(Self::High),
-            "Highest" => Ok(Self::Highest),
+        match s.to_ascii_lowercase().as_str() {
+            "lowest" => Ok(Self::Lowest),
+            "low" => Ok(Self::Low),
+            "medium" => Ok(Self::Medium),
+            "high" => Ok(Self::High),
+            "highest" => Ok(Self::Highest),
             _ => Err(format!("unknown priority: {}", s)),
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

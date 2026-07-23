@@ -47,7 +47,12 @@ pub async fn move_issue(
         .ok()
         .map(shared::StatusId::from_uuid)
         .ok_or(StatusCode::BAD_REQUEST)?;
-    match ctx.services.board.move_issue(&key, issue_id, status_id).await {
+    match ctx
+        .services
+        .board
+        .move_issue(&key, issue_id, status_id)
+        .await
+    {
         Ok(b) => Ok(Json(map_board(b))),
         Err(_) => Err(StatusCode::NOT_FOUND),
     }

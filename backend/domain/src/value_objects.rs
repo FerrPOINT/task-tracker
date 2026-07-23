@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+#[cfg(test)]
+#[path = "value_objects/tests.rs"]
+mod tests;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct ArcStr(Arc<str>);
 

@@ -7,6 +7,9 @@ use std::str::FromStr;
 
 use crate::value_objects::{ArcStr, RichText};
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: UserId,

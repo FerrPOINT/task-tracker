@@ -6,11 +6,13 @@ use crate::dto::{
     BacklogDto, BoardColumnDto, BoardDto, DashboardDto, IssueDto, ProjectDto, SprintDto,
 };
 use domain::{
-    BoardColumn, ColumnCategory, IssueQuery, IssueRepository, ProjectRepository,
-    SprintRepository,
+    BoardColumn, ColumnCategory, IssueQuery, IssueRepository, ProjectRepository, SprintRepository,
 };
 
 use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
+
+#[cfg(test)]
+mod tests;
 
 pub struct ProjectServiceImpl {
     projects: Arc<dyn ProjectRepository>,
@@ -88,7 +90,11 @@ impl IssueServiceImpl {
         projects: Arc<dyn ProjectRepository>,
         users: Arc<dyn domain::UserRepository>,
     ) -> Self {
-        Self { issues, projects, users }
+        Self {
+            issues,
+            projects,
+            users,
+        }
     }
 
     async fn resolve_names(
@@ -283,10 +289,7 @@ impl BoardServiceImpl {
         (assignee_name, reporter_name)
     }
 
-    async fn build_board_dto(
-        &self,
-        project_key: &ProjectKey,
-    ) -> Result<BoardDto, AppError> {
+    async fn build_board_dto(&self, project_key: &ProjectKey) -> Result<BoardDto, AppError> {
         let board = self.boards.get_default_by_project_key(project_key).await?;
         let sprint = self.sprints.get_active_by_project(board.project_id).await?;
         let issues = self
