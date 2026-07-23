@@ -1,39 +1,106 @@
 {
-  "timeTracking": {
-    "title": "Time tracking",
-    "spent": "spent",
-    "estimated": "estimated",
-    "remaining": "remaining",
-    "overBy": "over by",
-    "logWork": "Log work",
-    "editWorklog": "Edit worklog",
-    "deleteWorklog": "Delete worklog",
-    "deleteConfirm": "Delete this worklog?",
-    "timer": {
-      "start": "Start timer",
-      "stop": "Stop timer"
-    },
-    "fields": {
-      "timeSpent": "Time spent",
-      "remainingEstimate": "Remaining estimate",
-      "startedAt": "Started",
-      "comment": "Comment"
-    },
-    "validation": {
-      "timeSpentRequired": "Time spent is required",
-      "invalidFormat": "Use format like 1h 30m"
-    },
-    "worklog": {
-      "title": "Worklog",
-      "empty": "No worklogs yet.",
-      "totalLogged": "Total logged",
-      "user": "User",
-      "started": "Started",
-      "timeSpent": "Time spent",
-      "remaining": "Remaining",
-      "comment": "Comment",
-      "actions": "Actions"
-    }
+  "navigation": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "myTasks": "My tasks",
+    "backlog": "Backlog",
+    "board": "Board",
+    "trash": "Trash",
+    "search": "Search",
+    "create": "Create"
+  },
+  "auth": {
+    "login": "Log in",
+    "register": "Sign up",
+    "username": "Username",
+    "displayName": "Display name",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Repeat password",
+    "passwordPlaceholder": "at least 8 characters",
+    "createAccount": "Create account",
+    "haveAccount": "Already have an account",
+    "loginDemo": "MVP demo: any login/password works.",
+    "registerDemo": "MVP demo: registration without confirmation."
+  },
+  "dashboard": {
+    "title": "Team Dashboard",
+    "addWidget": "Add widget",
+    "burndown": "Sprint Burndown",
+    "openBugs": "Open Bugs",
+    "bugsTrend": "+{{count}} this week",
+    "velocity": "Velocity",
+    "velocityAverage": "Average over last 3 sprints",
+    "assignedToMe": "Assigned to me",
+    "recentActivity": "Recent activity",
+    "activityLoggedTime": "{{user}} logged {{hours}}h on {{issueKey}}"
+  },
+  "projects": {
+    "title": "Projects",
+    "create": "Create project",
+    "search": "Search projects...",
+    "all": "All projects",
+    "active": "Active",
+    "archived": "Archived",
+    "anyType": "Any type",
+    "scrum": "Scrum",
+    "kanban": "Kanban",
+    "basic": "Basic",
+    "issues": "{{count}} issues",
+    "todo": "To do",
+    "inProgress": "In progress",
+    "done": "Done",
+    "lead": "Lead"
+  },
+  "board": {
+    "title": "{{projectName}} · {{sprintName}}",
+    "subtitle": "Backlog {{backlog}} · Active · {{remainingDays}} days left",
+    "filters": "Filters",
+    "members": "Members",
+    "addColumn": "Column",
+    "create": "Create",
+    "wip": "WIP",
+    "wipWarning": "⚠️"
+  },
+  "backlog": {
+    "title": "Backlog · {{projectName}}",
+    "velocity": "Velocity: {{velocity}} sp",
+    "backlogCount": "Backlog: {{count}} issues",
+    "createSprint": "Create sprint",
+    "createIssue": "Create issue",
+    "startSprint": "Start sprint",
+    "backlogSection": "Backlog · {{count}} issues"
+  },
+  "search": {
+    "title": "Search issues",
+    "queryPlaceholder": "project = TT AND status != Done",
+    "search": "Search",
+    "saveFilter": "Save filter",
+    "reset": "Reset",
+    "key": "KEY",
+    "summary": "SUMMARY",
+    "status": "STATUS",
+    "assignee": "ASSIGNEE",
+    "priority": "PRIORITY"
+  },
+  "issueCreate": {
+    "title": "Create issue",
+    "project": "Project",
+    "type": "Issue type",
+    "summary": "Summary",
+    "summaryPlaceholder": "Short task summary",
+    "description": "Description",
+    "descriptionPlaceholder": "Detailed description, acceptance criteria...",
+    "priority": "Priority",
+    "assignee": "Assignee",
+    "unassigned": "Unassigned",
+    "labels": "Labels",
+    "labelsPlaceholder": "backend, auth",
+    "dueDate": "Due date",
+    "reporter": "Reporter",
+    "create": "Create",
+    "createAnother": "Create another",
+    "cancel": "Cancel"
   },
   "issue": {
     "description": "Description",
@@ -55,10 +122,46 @@
     "comment": "Comment",
     "assignToMe": "Assign to me",
     "moreActions": "More",
-    "copyKey": "Copy issue key",
-    "noDescription": "No description provided.",
+    "copyKey": "Copy key",
+    "noDescription": "No description.",
     "loading": "Loading...",
     "notFound": "Issue not found"
+  },
+  "timeTracking": {
+    "title": "Time tracking",
+    "spent": "spent",
+    "estimated": "estimated",
+    "remaining": "remaining",
+    "overBy": "over by",
+    "logWork": "Log work",
+    "editWorklog": "Edit worklog",
+    "deleteWorklog": "Delete worklog",
+    "deleteConfirm": "Delete this time entry?",
+    "timer": {
+      "start": "Start timer",
+      "stop": "Stop timer"
+    },
+    "fields": {
+      "timeSpent": "Time spent",
+      "remainingEstimate": "Remaining estimate",
+      "startedAt": "Started at",
+      "comment": "Comment"
+    },
+    "validation": {
+      "timeSpentRequired": "Provide time spent",
+      "invalidFormat": "Use a format like 1h 30m"
+    },
+    "worklog": {
+      "title": "Worklog",
+      "empty": "No entries yet.",
+      "totalLogged": "Total logged",
+      "user": "User",
+      "started": "Started",
+      "timeSpent": "Time spent",
+      "remaining": "Remaining",
+      "comment": "Comment",
+      "actions": "Actions"
+    }
   },
   "common": {
     "save": "Save",
