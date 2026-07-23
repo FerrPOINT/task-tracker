@@ -1,13 +1,13 @@
 import { api } from './client'
 import type { components } from './generated'
 
-export type CreateIssueRequest = components['schemas']['CreateIssueRequest']
-export type CreateIssueResponse = components['schemas']['CreateIssueResponse']
+export type CreateIssueInput = components['schemas']['CreateIssueRequest']
+export type Issue = components['schemas']['IssueResponse']
 
-export async function createIssue(req: CreateIssueRequest): Promise<CreateIssueResponse> {
+export async function createIssue(input: CreateIssueInput): Promise<Issue> {
   const { data, error } = await api.POST('/issues', {
-    body: req,
+    body: input,
   })
-  if (error || !data) throw new Error('failed to create issue')
+  if (error || !data) throw new Error('Failed to create issue')
   return data
 }

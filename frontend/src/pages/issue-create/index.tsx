@@ -1,43 +1,37 @@
 import { useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { Plus } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { createIssue } from '@/api/issue-create'
+import { useCreateIssue } from '@/shared/api/hooks'
 
 export function IssueCreatePage() {
+  const navigate = useNavigate()
+  const { mutate, isPending, error } = useCreateIssue()
   const [project_key, setProjectKey] = useState('TT')
   const [type, setType] = useState('Task')
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('Medium')
   const [assignee_id, setAssigneeId] = useState('')
-  const [labels, setLabels] = useState('')
-  const [due_date, setDueDate] = useState('2026-08-15')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setSubmitting(true)
-    setError(null)
-    try {
-      await createIssue({
+    mutate(
+      {
         project_key,
-        issue_type: type as 'Task' | 'Story' | 'Bug' | 'Epic',
+        issue_type: type.toLowerCase() as 'task' | 'story' | 'bug' | 'epic',
         summary,
-        description,
-        priority: priority as 'Highest' | 'High' | 'Medium' | 'Low' | 'Lowest',
+        description: description || null,
+        priority: priority.toLowerCase() as 'highest' | 'high' | 'medium' | 'low' | 'lowest',
+        status_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a21', // Todo
         assignee_id: assignee_id || null,
-        labels: labels.split(',').map((l) => l.trim()).filter(Boolean),
-        due_date: due_date || null,
-      })
-      window.location.href = `/projects/${project_key}/backlog`
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'failed to create issue')
-    } finally {
-      setSubmitting(false)
-    }
+        reporter_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      },
+      {
+        onSuccess: () => navigate(`/projects/${project_key}/backlog`),
+      },
+    )
   }
 
   return (
@@ -48,7 +42,7 @@ export function IssueCreatePage() {
         onSubmit={handleSubmit}
         className="space-y-4 rounded-lg border border-border bg-surface p-4 sm:p-6"
       >
-        {error && <div className="text-sm text-rose-500">{error}</div>}
+        {error && <div className="text-sm text-rose-500">{error.message}</div>}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
@@ -122,30 +116,11 @@ export function IssueCreatePage() {
               onChange={(e) => setAssigneeId(e.target.value)}
             >
               <option value="">Unassigned</option>
-              <option value="user-2">Ivan</option>
-              <option value="user-3">Anna</option>
-              <option value="user-4">Petr</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11">Demo User</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12">Ivan</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13">Anna</option>
+              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14">Petr</option>
             </select>
-          </div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Метки</label>
-            <Input
-              type="text"
-              placeholder="backend, auth"
-              value={labels}
-              onChange={(e) => setLabels(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Срок выполнения</label>
-            <Input
-              type="date"
-              value={due_date}
-              onChange={(e) => setDueDate(e.target.value)}
-            />
           </div>
         </div>
 
@@ -155,9 +130,9 @@ export function IssueCreatePage() {
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
-          <Button type="submit" disabled={submitting} className="gap-1">
+          <Button type="submit" disabled={isPending} className="gap-1">
             <Plus className="h-4 w-4" />
-            {submitting ? 'Создание…' : 'Создать'}
+            {isPending ? 'Создание…' : 'Создать'}
           </Button>
           <Button type="button" variant="outline">Создать ещё одну</Button>
           <Button variant="outline" asChild>

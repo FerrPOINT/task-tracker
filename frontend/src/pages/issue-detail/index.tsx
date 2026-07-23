@@ -58,7 +58,7 @@ export function IssueDetailPage() {
   const issue = issueQuery.data
   const worklogs = worklogsQuery.data ?? []
   const timeSpent = totalTimeSpent(worklogs)
-  const remainingEstimate = latestRemainingEstimate(worklogs) ?? issue.remainingEstimateSeconds
+  const remainingEstimate = latestRemainingEstimate(worklogs)
 
   const handleLogWork = () => {
     setEditingWorklog(undefined)
@@ -111,14 +111,14 @@ export function IssueDetailPage() {
       <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
         <div className="flex items-center gap-4">
           <span className="font-bold text-text-primary">≡ TaskTracker</span>
-          <span className="text-sm text-text-secondary">{issue.projectName}</span>
+          <span className="text-sm text-text-secondary">{issue.project_name}</span>
         </div>
         <ThemeToggle />
       </header>
 
       <main className="mx-auto max-w-6xl p-4 md:p-6">
         <div className="mb-2 text-sm text-text-muted">
-          {issue.projectName} / {issue.key}
+          {issue.project_name} / {issue.key}
         </div>
 
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
@@ -199,7 +199,7 @@ export function IssueDetailPage() {
               <CardContent>
                 <TimeTrackingPanel
                   timeSpentSeconds={timeSpent}
-                  originalEstimateSeconds={issue.originalEstimateSeconds}
+                  originalEstimateSeconds={0}
                   remainingEstimateSeconds={remainingEstimate}
                   onLogWork={handleLogWork}
                 />
@@ -212,8 +212,8 @@ export function IssueDetailPage() {
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <DetailRow label={t('issue.status')} value={issue.status} />
-                <DetailRow label={t('issue.assignee')} value={issue.assigneeName} />
-                <DetailRow label={t('issue.reporter')} value={issue.reporterName} />
+                <DetailRow label={t('issue.assignee')} value={issue.assignee_name ?? '—'} />
+                <DetailRow label={t('issue.reporter')} value={issue.reporter_name ?? '—'} />
                 <DetailRow label={t('issue.priority')} value={issue.priority} />
                 {issue.labels.length > 0 && (
                   <DetailRow
@@ -229,30 +229,6 @@ export function IssueDetailPage() {
                     }
                   />
                 )}
-                {issue.dueDate && <DetailRow label={t('issue.dueDate')} value={issue.dueDate} />}
-                {issue.components.length > 0 && (
-                  <DetailRow label={t('issue.components')} value={issue.components.join(', ')} />
-                )}
-                {issue.versions.length > 0 && (
-                  <DetailRow label={t('issue.versions')} value={issue.versions.join(', ')} />
-                )}
-                <DetailRow
-                  label={t('issue.watchers')}
-                  value={
-                    <div className="flex -space-x-1">
-                      {issue.watchers.map((w) => (
-                        <div
-                          key={w.id}
-                          className="flex h-6 w-6 items-center justify-center rounded-full border border-border bg-surface-raised text-xs text-text-secondary"
-                          title={w.name}
-                        >
-                          {w.name[0]}
-                        </div>
-                      ))}
-                    </div>
-                  }
-                />
-                <DetailRow label={t('issue.votes')} value={`${issue.votes}${issue.voted ? ' ✓' : ''}`} />
               </CardContent>
             </Card>
           </div>

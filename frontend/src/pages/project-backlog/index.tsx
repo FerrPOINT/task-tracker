@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { Plus, MoreHorizontal, GripVertical } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { getBacklog, type BacklogResponse, type Issue } from '@/api/board'
+import { useBacklog } from '@/shared/api/hooks'
+import type { components } from '@/api/generated'
+
+type Issue = components['schemas']['IssueResponse']
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -59,24 +61,11 @@ function Section({ title, action, issues }: { title: string; action?: React.Reac
 
 export function ProjectBacklogPage() {
   const { projectKey } = useParams<{ projectKey?: string }>()
-  const [backlog, setBacklog] = useState<BacklogResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const key = projectKey ?? 'TT'
+  const { data: backlog, isLoading, error } = useBacklog(key)
 
-  useEffect(() => {
-    const key = projectKey ?? 'TT'
-    setLoading(true)
-    getBacklog(key)
-      .then((data) => {
-        setBacklog(data)
-        setError(null)
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load backlog'))
-      .finally(() => setLoading(false))
-  }, [projectKey])
-
-  if (loading) return <div className="p-4 text-text-muted">Loading backlog…</div>
-  if (error || !backlog) return <div className="p-4 text-rose-500">{error ?? 'Backlog not found'}</div>
+  if (isLoading) return <div className="p-4 text-text-muted">Loading backlog…</div>
+  if (error || !backlog) return <div className="p-4 text-rose-500">{error?.message ?? 'Backlog not found'}</div>
 
   const { sprint, sprint_issues, backlog_issues } = backlog
 
@@ -84,7 +73,7 @@ export function ProjectBacklogPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold sm:text-2xl">Backlog · {projectKey ?? 'TT'}</h1>
+          <h1 className="text-xl font-bold sm:text-2xl">Backlog · {key}</h1>
           <div className="text-sm text-text-muted">Velocity: {sprint.velocity ?? '-'} sp · Backlog: {backlog_issues.length} issues</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">

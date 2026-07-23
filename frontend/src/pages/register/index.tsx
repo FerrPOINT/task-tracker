@@ -1,9 +1,30 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Layers } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
+import { useRegister } from '@/shared/api/hooks'
 
 export function RegisterPage() {
+  const navigate = useNavigate()
+  const { mutate, isPending, error } = useRegister()
+  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (password !== confirmPassword) return
+    mutate(
+      { username, email, password },
+      {
+        onSuccess: () => navigate('/'),
+      },
+    )
+  }
+
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
       <div className="absolute right-4 top-4">
@@ -14,43 +35,31 @@ export function RegisterPage() {
           <Layers className="h-6 w-6 text-accent" />
           TaskTracker
         </div>
-        <form
-          className="space-y-4"
-          onSubmit={(e) => {
-            e.preventDefault()
-            window.location.href = '/'
-          }}
-        >
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Имя пользователя</label>
-              <Input type="text" defaultValue="ivan" />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Отображаемое имя</label>
-              <Input type="text" defaultValue="Иван Петров" />
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Имя пользователя</label>
+            <Input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Email</label>
-            <Input type="email" defaultValue="ivan@example.com" />
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Пароль</label>
-            <Input type="password" placeholder="минимум 8 символов" />
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           <div className="space-y-2">
             <label className="text-sm font-medium">Повтор пароля</label>
-            <Input type="password" />
+            <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
           </div>
-          <Button type="submit" className="w-full">
-            Зарегистрироваться
+          {error && <div className="text-sm text-rose-500">{error.message}</div>}
+          <Button type="submit" className="w-full" disabled={isPending}>
+            {isPending ? 'Регистрация…' : 'Зарегистрироваться'}
           </Button>
           <Button variant="outline" className="w-full" asChild>
             <a href="/login">Уже есть аккаунт</a>
           </Button>
         </form>
-        <p className="mt-4 text-center text-xs text-text-muted">MVP-демо: регистрация без подтверждения.</p>
       </div>
     </div>
   )

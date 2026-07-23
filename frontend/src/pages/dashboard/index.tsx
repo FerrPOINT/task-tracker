@@ -1,9 +1,8 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { Plus, Clock } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { listProjects, type Project } from '@/api/project'
+import { useDashboard, useProjects } from '@/shared/api/hooks'
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -16,29 +15,13 @@ function PriorityBadge({ priority }: { priority: string }) {
 }
 
 export function DashboardPage() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useDashboard()
+  const { data: projects, isLoading: projectsLoading } = useProjects()
 
-  useEffect(() => {
-    setLoading(true)
-    listProjects()
-      .then((data) => {
-        setProjects(data)
-        setError(null)
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load projects'))
-      .finally(() => setLoading(false))
-  }, [])
+  if (dashboardLoading || projectsLoading) return <div className="p-4 text-text-muted">Loading dashboard…</div>
+  if (dashboardError) return <div className="p-4 text-rose-500">{dashboardError.message}</div>
 
-  const assigned: { key: string; summary: string; status: string; priority: string }[] = [
-    { key: 'TT-42', summary: 'Implement user authentication', status: 'In Progress', priority: 'High' },
-    { key: 'TT-7', summary: 'OAuth provider integration', status: 'To Do', priority: 'High' },
-    { key: 'TT-15', summary: 'Write E2E tests', status: 'Review', priority: 'Medium' },
-  ]
-
-  if (loading) return <div className="p-4 text-text-muted">Loading dashboard…</div>
-  if (error) return <div className="p-4 text-rose-500">{error}</div>
+  const assigned = dashboard?.assigned_issues ?? []
 
   return (
     <div className="space-y-4">
@@ -119,8 +102,8 @@ export function DashboardPage() {
           <CardContent className="space-y-3">
             {assigned.map((item) => (
               <Link
-                key={item.key}
-                to={`/issues/${item.key}`}
+                key={item.id}
+                to={`/issues/${item.id}`}
                 className="flex flex-col gap-1 text-sm hover:text-accent sm:flex-row sm:items-center sm:justify-between"
               >
                 <span className="min-w-0 truncate">{item.key} {item.summary}</span>
@@ -132,7 +115,7 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Recent activity · {projects.length} projects</CardTitle>
+            <CardTitle className="text-base">Recent activity · {projects?.length ?? 0} projects</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {[

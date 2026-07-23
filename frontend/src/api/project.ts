@@ -6,5 +6,5 @@ export type Project = components['schemas']['ProjectResponse']
 export async function listProjects(): Promise<Project[]> {
   const { data, error } = await api.GET('/projects')
   if (error || !data) throw new Error('failed to load projects')
-  return data.items
+  return data.projects
 }

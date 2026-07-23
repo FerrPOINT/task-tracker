@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { Plus, Search, LayoutGrid, List, Star, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Card, CardContent } from '@/shared/ui/card'
-import { listProjects, type Project } from '@/api/project'
+import { useProjects } from '@/shared/api/hooks'
 
 function ProjectAvatar({ projectKey }: { projectKey: string }) {
   const colors = ['bg-accent', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
@@ -17,23 +16,10 @@ function ProjectAvatar({ projectKey }: { projectKey: string }) {
 }
 
 export function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data: projects, isLoading, error } = useProjects()
 
-  useEffect(() => {
-    setLoading(true)
-    listProjects()
-      .then((data) => {
-        setProjects(data)
-        setError(null)
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load projects'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  if (loading) return <div className="p-4 text-text-muted">Loading projects…</div>
-  if (error) return <div className="p-4 text-rose-500">{error}</div>
+  if (isLoading) return <div className="p-4 text-text-muted">Loading projects…</div>
+  if (error) return <div className="p-4 text-rose-500">{error.message}</div>
 
   return (
     <div className="space-y-4">
@@ -73,7 +59,7 @@ export function ProjectsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {projects.map((project) => (
+        {projects?.map((project) => (
           <Link key={project.id} to={`/projects/${project.key}/board`}>
             <Card className="group transition-colors hover:border-border-strong">
               <CardContent className="p-4">

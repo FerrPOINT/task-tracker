@@ -1,6 +1,5 @@
 import type { Worklog, CreateWorklogPayload, LogWorkInput } from '@/entities/worklog/model'
 import { parseDuration, formatDuration } from '@/shared/lib/time'
-import { recalcIssueTime } from './issue'
 
 let nextId = 1
 
@@ -30,6 +29,11 @@ const worklogs: Worklog[] = [
     updatedAt: '2026-07-20T10:00:00Z',
   },
 ]
+
+function recalcIssueTime(worklogs: Worklog[]) {
+  // no-op placeholder
+  void worklogs
+}
 
 recalcIssueTime(worklogs)
 
