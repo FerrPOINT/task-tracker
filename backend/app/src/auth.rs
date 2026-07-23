@@ -37,8 +37,8 @@ impl crate::context::AuthService for JwtAuthService {
             username: cmd.username.into(),
             display_name: cmd.name.into(),
             password_hash: password_hash.into(),
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
+            created_at: shared::now(),
+            updated_at: shared::now(),
         };
 
         let id = self.users.save(&user).await?;

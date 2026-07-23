@@ -1,17 +1,15 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::dto::{BoardDto, BacklogDto, IssueDto, ProjectDto};
+use crate::dto::{BoardDto, BacklogDto, IssueDto, ProjectDto, SprintDto, BoardColumnDto};
+use crate::commands::CreateIssueCommand;
 use domain::{
     Board, BoardColumn, ColumnCategory, Issue, IssueQuery, IssueRepository, ProjectRepository,
     SprintRepository, UserRepository,
 };
-use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
-use crate::dto::{SprintDto, BoardColumnDto};
-use crate::commands::CreateIssueCommand;
-use crate::context::{
-    ProjectService, IssueService, BoardService, SearchService,
-};
+use crate::context::{ProjectService, IssueService, BoardService, SearchService};
+
+use shared::{AppError, IssueId, ProjectKey, StatusId};
 
 pub struct ProjectServiceImpl {
     projects: Arc<dyn ProjectRepository>,
@@ -62,12 +60,12 @@ impl IssueServiceImpl {
     pub fn new(
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
-        users: Arc<dyn UserRepository>,
+        _users: Arc<dyn UserRepository>,
     ) -> Self {
         Self {
             issues,
             projects,
-            users,
+            users: _users,
         }
     }
 }
