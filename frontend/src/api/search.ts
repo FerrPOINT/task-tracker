@@ -1,12 +1,12 @@
 import { api } from './client'
 import type { components } from './generated'
 
-export type SearchResult = components['schemas']['SearchResultResponse']
+export type Issue = components['schemas']['IssueResponse']
 
-export async function searchIssues(q?: string): Promise<SearchResult> {
-  const { data, error } = await api.GET('/search', {
+export async function searchIssues(q?: string): Promise<Issue[]> {
+  const { data } = await api.GET('/search', {
     params: { query: { q: q ?? '' } },
   })
-  if (error || !data) throw new Error('failed to search')
-  return data
+  if (!data) throw new Error('Failed to search')
+  return data.issues ?? []
 }

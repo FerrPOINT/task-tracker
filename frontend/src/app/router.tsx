@@ -9,18 +9,24 @@ import { IssueCreatePage } from '@/pages/issue-create'
 import { LoginPage } from '@/pages/login'
 import { RegisterPage } from '@/pages/register'
 import { AppShell } from '@/widgets/app-shell'
+import { RequireAuth } from '@/shared/auth/require-auth'
 
 export const router = createBrowserRouter([
   {
-    element: <AppShell />,
+    element: <RequireAuth />,
     children: [
-      { path: '/', element: <DashboardPage /> },
-      { path: '/projects', element: <ProjectsPage /> },
-      { path: '/projects/:projectKey/board', element: <ProjectBoardPage /> },
-      { path: '/projects/:projectKey/backlog', element: <ProjectBacklogPage /> },
-      { path: '/search', element: <SearchPage /> },
-      { path: '/issues/create', element: <IssueCreatePage /> },
-      { path: '/issues/:id', element: <IssueDetailPage /> },
+      {
+        element: <AppShell />,
+        children: [
+          { path: '/', element: <DashboardPage /> },
+          { path: '/projects', element: <ProjectsPage /> },
+          { path: '/projects/:projectKey/board', element: <ProjectBoardPage /> },
+          { path: '/projects/:projectKey/backlog', element: <ProjectBacklogPage /> },
+          { path: '/search', element: <SearchPage /> },
+          { path: '/issues/create', element: <IssueCreatePage /> },
+          { path: '/issues/:id', element: <IssueDetailPage /> },
+        ],
+      },
     ],
   },
   { path: '/login', element: <LoginPage /> },

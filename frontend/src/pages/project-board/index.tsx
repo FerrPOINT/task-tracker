@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { Plus, Filter, Users, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { getBoard, type BoardResponse } from '@/api/board'
+import { useBoard } from '@/shared/api/hooks'
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -26,24 +25,11 @@ function Avatar({ name }: { name: string }) {
 
 export function ProjectBoardPage() {
   const { projectKey } = useParams<{ projectKey?: string }>()
-  const [board, setBoard] = useState<BoardResponse | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const key = projectKey ?? 'TT'
+  const { data: board, isLoading, error } = useBoard(key)
 
-  useEffect(() => {
-    const key = projectKey ?? 'TT'
-    setLoading(true)
-    getBoard(key)
-      .then((data) => {
-        setBoard(data)
-        setError(null)
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load board'))
-      .finally(() => setLoading(false))
-  }, [projectKey])
-
-  if (loading) return <div className="p-4 text-text-muted">Loading board…</div>
-  if (error || !board) return <div className="p-4 text-rose-500">{error ?? 'Board not found'}</div>
+  if (isLoading) return <div className="p-4 text-text-muted">Loading board…</div>
+  if (error || !board) return <div className="p-4 text-rose-500">{error?.message ?? 'Board not found'}</div>
 
   const { columns, issues, sprint } = board
 
@@ -55,7 +41,7 @@ export function ProjectBoardPage() {
     <div className="flex flex-col md:h-[calc(100vh-10rem)] md:max-h-[800px]">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <div className="truncate text-lg font-bold sm:text-xl">{projectKey ?? 'TT'} Kanban · {sprint?.name ?? 'Sprint'}</div>
+          <div className="truncate text-lg font-bold sm:text-xl">{key} Kanban · {sprint?.name ?? 'Sprint'}</div>
           <div className="text-sm text-text-muted">Backlog 42 · Active · {sprint?.remaining_days ?? '-'} days left</div>
         </div>
         <div className="flex flex-wrap items-center gap-2">

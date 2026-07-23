@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router'
-import { Search, Save, Folder, CircleDot, User, Flag } from 'lucide-react'
+import { Search as SearchIcon, Save, Folder, CircleDot, User, Flag } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { searchIssues, type SearchResult } from '@/api/search'
+import { useSearch } from '@/shared/api/hooks'
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -16,28 +16,24 @@ function PriorityBadge({ priority }: { priority: string }) {
 
 export function SearchPage() {
   const [query, setQuery] = useState('project = TT AND status != Done')
-  const [result, setResult] = useState<SearchResult | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState(query)
+  const { data: result, isLoading, error } = useSearch(searchQuery)
 
-  useEffect(() => {
-    setLoading(true)
-    searchIssues(query)
-      .then((data) => {
-        setResult(data)
-        setError(null)
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : 'failed to search'))
-      .finally(() => setLoading(false))
-  }, [query])
+  const results = result ?? []
 
-  const results = result?.issues ?? []
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    setSearchQuery(query)
+  }
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-bold sm:text-2xl">Поиск задач</h1>
 
-      <div className="rounded-lg border border-border bg-surface p-4">
+      <form
+        onSubmit={handleSearch}
+        className="rounded-lg border border-border bg-surface p-4"
+      >
         <textarea
           className="min-h-[72px] w-full rounded-md border border-border-strong bg-background p-3 font-mono text-sm text-text-primary"
           value={query}
@@ -52,6 +48,7 @@ export function SearchPage() {
           ].map((chip, i) => (
             <button
               key={i}
+              type="button"
               className="flex items-center gap-1 rounded-full border border-border-strong bg-surface-raised px-2.5 py-1 text-xs text-text-secondary hover:border-text-muted"
             >
               <chip.icon className="h-3 w-3" />
@@ -60,8 +57,8 @@ export function SearchPage() {
           ))}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button size="sm" className="gap-1">
-            <Search className="h-4 w-4" />
+          <Button type="submit" size="sm" className="gap-1">
+            <SearchIcon className="h-4 w-4" />
             Искать
           </Button>
           <Button variant="outline" size="sm" className="gap-1">
@@ -71,35 +68,37 @@ export function SearchPage() {
           </Button>
           <Button variant="outline" size="sm">Сбросить</Button>
         </div>
-      </div>
+      </form>
 
-      {loading && <div className="p-4 text-text-muted">Searching…</div>}
-      {error && <div className="p-4 text-rose-500">{error}</div>}
+      {isLoading && <div className="p-4 text-text-muted">Searching…</div>}
+      {error && <div className="p-4 text-rose-500">{error.message}</div>}
 
-      <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-        <div className="min-w-[560px]">
-          <div className="grid grid-cols-[80px_1fr_120px_80px_80px] gap-3 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
-            <span>KEY</span>
-            <span>SUMMARY</span>
-            <span>STATUS</span>
-            <span>ASSIGNEE</span>
-            <span>PRIORITY</span>
+      {results.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-border bg-surface">
+          <div className="min-w-[560px]">
+            <div className="grid grid-cols-[80px_1fr_120px_80px_80px] gap-3 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
+              <span>KEY</span>
+              <span>SUMMARY</span>
+              <span>STATUS</span>
+              <span>ASSIGNEE</span>
+              <span>PRIORITY</span>
+            </div>
+            {results.map((issue) => (
+              <Link
+                key={issue.id}
+                to={`/issues/${issue.id}`}
+                className="grid grid-cols-[80px_1fr_120px_80px_80px] items-center gap-3 border-b border-border px-4 py-3 text-sm hover:bg-surface-raised"
+              >
+                <span className="text-text-muted">{issue.key}</span>
+                <span className="truncate">{issue.summary}</span>
+                <span className="rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">{issue.status}</span>
+                <span className="truncate">{issue.assignee_name ?? '—'}</span>
+                <PriorityBadge priority={issue.priority} />
+              </Link>
+            ))}
           </div>
-          {results.map((issue) => (
-            <Link
-              key={issue.id}
-              to={`/issues/${issue.id}`}
-              className="grid grid-cols-[80px_1fr_120px_80px_80px] items-center gap-3 border-b border-border px-4 py-3 text-sm hover:bg-surface-raised"
-            >
-              <span className="text-text-muted">{issue.key}</span>
-              <span className="truncate">{issue.summary}</span>
-              <span className="rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">{issue.status}</span>
-              <span className="truncate">{issue.assignee_name ?? '—'}</span>
-              <PriorityBadge priority={issue.priority} />
-            </Link>
-          ))}
         </div>
-      </div>
+      )}
     </div>
   )
 }

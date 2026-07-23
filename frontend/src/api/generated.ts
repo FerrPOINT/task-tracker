@@ -52,6 +52,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_projects"];
+        put?: never;
+        post: operations["create_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_key}/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_board"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_key}/backlog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_backlog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/issues": {
         parameters: {
             query?: never;
@@ -84,54 +132,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_projects"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{project_key}/backlog": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_backlog"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{project_key}/board": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_board"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/search": {
         parameters: {
             query?: never;
@@ -139,7 +139,23 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["search_issues"];
+        get: operations["search"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_dashboard"];
         put?: never;
         post?: never;
         delete?: never;
@@ -153,115 +169,97 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AuthResponse: {
-            token: string;
-            user: components["schemas"]["UserResponse"];
+            access_token: string;
+            token_type: string;
         };
-        BacklogResponse: {
-            backlog_issues: components["schemas"]["IssueResponse"][];
-            sprint: components["schemas"]["SprintResponse"];
-            sprint_issues: components["schemas"]["IssueResponse"][];
+        LoginRequest: {
+            email: string;
+            password: string;
+        };
+        RegisterRequest: {
+            email: string;
+            username: string;
+            password: string;
+        };
+        ProjectResponse: {
+            id: string;
+            key: string;
+            name: string;
+            description?: string | null;
+            owner_id: string;
+            /** Format: int32 */
+            todo_count: number;
+            /** Format: int32 */
+            in_progress_count: number;
+            /** Format: int32 */
+            done_count: number;
+        };
+        ProjectListResponse: {
+            projects: components["schemas"]["ProjectResponse"][];
+        };
+        CreateProjectRequest: {
+            key: string;
+            name: string;
+            description?: string | null;
+        };
+        IssueResponse: {
+            id: string;
+            key: string;
+            summary: string;
+            description: string;
+            issue_type: string;
+            status: string;
+            priority: string;
+            labels: string[];
+            assignee_id?: string | null;
+            assignee_name?: string | null;
+            reporter_id: string;
+            reporter_name?: string | null;
+            project_name: string;
+        };
+        IssueListResponse: {
+            issues: components["schemas"]["IssueResponse"][];
+        };
+        CreateIssueRequest: {
+            project_key: string;
+            issue_type: string;
+            summary: string;
+            description?: string | null;
+            priority: string;
+            status_id: string;
+            assignee_id?: string | null;
+            reporter_id: string;
         };
         BoardColumnResponse: {
             id: string;
-            issue_ids: string[];
             name: string;
-            /** Format: int64 */
+            issue_ids: string[];
+            /** Format: int32 */
             wip_limit?: number | null;
+        };
+        SprintResponse: {
+            id: string;
+            name: string;
+            goal: string;
+            state: string;
+            /** Format: int64 */
+            velocity: number;
+            /** Format: int64 */
+            remaining_days?: number | null;
+            issue_ids: string[];
         };
         BoardResponse: {
             columns: components["schemas"]["BoardColumnResponse"][];
             issues: components["schemas"]["IssueResponse"][];
             sprint: components["schemas"]["SprintResponse"];
         };
-        CreateIssueRequest: {
-            assignee_id?: string | null;
-            description: string;
-            due_date?: string | null;
-            issue_type: string;
-            labels: string[];
-            /** Format: int64 */
-            original_estimate_seconds?: number | null;
-            priority: string;
-            project_key: string;
-            summary: string;
+        BacklogResponse: {
+            sprint: components["schemas"]["SprintResponse"];
+            sprint_issues: components["schemas"]["IssueResponse"][];
+            backlog_issues: components["schemas"]["IssueResponse"][];
         };
-        CreateIssueResponse: {
-            issue: components["schemas"]["IssueResponse"];
-        };
-        ErrorResponse: {
-            error: string;
-            message: string;
-        };
-        Health: {
-            status: string;
-            version: string;
-        };
-        IssueResponse: {
-            assignee_id?: string | null;
-            assignee_name?: string | null;
-            description: string;
-            due_date?: string | null;
-            id: string;
-            key: string;
-            labels: string[];
-            /** Format: int64 */
-            original_estimate_seconds?: number | null;
-            priority: string;
-            project_key: string;
-            project_name: string;
-            /** Format: int64 */
-            remaining_estimate_seconds?: number | null;
-            reporter_id: string;
-            reporter_name: string;
-            status: string;
-            summary: string;
-            /** Format: int64 */
-            time_spent_seconds: number;
-        };
-        LoginRequest: {
-            email: string;
-            password: string;
-        };
-        ProjectListResponse: {
-            items: components["schemas"]["ProjectResponse"][];
-        };
-        ProjectResponse: {
-            created_at: string;
-            description: string;
-            /** Format: int64 */
-            done_count: number;
-            id: string;
-            /** Format: int64 */
-            in_progress_count: number;
-            key: string;
-            name: string;
-            owner_id: string;
-            /** Format: int64 */
-            todo_count: number;
-        };
-        RegisterRequest: {
-            email: string;
-            name: string;
-            password: string;
-        };
-        SearchResultResponse: {
-            issues: components["schemas"]["IssueResponse"][];
-        };
-        SprintResponse: {
-            goal: string;
-            id: string;
-            issue_ids: string[];
-            name: string;
-            /** Format: int64 */
-            remaining_days?: number | null;
-            state: string;
-            /** Format: int64 */
-            velocity: number;
-        };
-        UserResponse: {
-            email: string;
-            id: string;
-            name: string;
+        DashboardResponse: {
+            assigned_issues: components["schemas"]["IssueResponse"][];
         };
     };
     responses: never;
@@ -335,63 +333,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Health"];
-                };
-            };
-        };
-    };
-    create_issue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateIssueRequest"];
-            };
-        };
-        responses: {
-            /** @description Issue created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreateIssueResponse"];
-                };
-            };
-        };
-    };
-    get_issue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Issue id */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Issue details */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssueResponse"];
-                };
-            };
-            /** @description Issue not found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
+                    "text/plain": string;
                 };
             };
         };
@@ -416,26 +358,25 @@ export interface operations {
             };
         };
     };
-    get_backlog: {
+    create_project: {
         parameters: {
             query?: never;
             header?: never;
-            path: {
-                /** @description Project key */
-                project_key: string;
-            };
+            path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProjectRequest"];
+            };
+        };
         responses: {
-            /** @description Backlog for project */
-            200: {
+            /** @description Project created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["BacklogResponse"];
-                };
+                content?: never;
             };
         };
     };
@@ -444,14 +385,13 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description Project key */
                 project_key: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Board for project */
+            /** @description Board with columns and issues */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -462,11 +402,78 @@ export interface operations {
             };
         };
     };
-    search_issues: {
+    get_backlog: {
         parameters: {
-            query: {
-                /** @description Search query */
-                q: string;
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Backlog with sprint and issues */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BacklogResponse"];
+                };
+            };
+        };
+    };
+    create_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Created issue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+        };
+    };
+    get_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issue details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+        };
+    };
+    search: {
+        parameters: {
+            query?: {
+                q?: string;
             };
             header?: never;
             path?: never;
@@ -480,7 +487,27 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SearchResultResponse"];
+                    "application/json": components["schemas"]["IssueListResponse"];
+                };
+            };
+        };
+    };
+    get_dashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dashboard */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardResponse"];
                 };
             };
         };
