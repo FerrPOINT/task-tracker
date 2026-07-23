@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Tracker — Backlog</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --color-background: #09090b;
+      --color-surface: #18181b;
+      --color-surface-raised: #27272a;
+      --color-border: #27272a;
+      --color-border-strong: #3f3f46;
+      --color-text-primary: #fafafa;
+      --color-text-secondary: #d4d4d8;
+      --color-text-muted: #a1a1aa;
+      --color-accent: #818cf8;
+      --color-accent-hover: #6366f1;
+      --color-danger: #f87171;
+      --color-success: #4ade80;
+      --color-warning: #fbbf24;
+    }
+    [data-theme="gray"] {
+      --color-background: #1f1f23;
+      --color-surface: #2a2a2f;
+      --color-surface-raised: #3f3f46;
+      --color-border: #3f3f46;
+      --color-border-strong: #52525b;
+      --color-text-primary: #f4f4f5;
+      --color-text-secondary: #e4e4e7;
+      --color-text-muted: #a1a1aa;
+      --color-accent: #a5b4fc;
+      --color-accent-hover: #818cf8;
+      --color-danger: #fca5a5;
+      --color-success: #86efac;
+      --color-warning: #fde047;
+    }
+    [data-theme="light"] {
+      --color-background: #f4f4f5;
+      --color-surface: #ffffff;
+      --color-surface-raised: #f4f4f5;
+      --color-border: #e4e4e7;
+      --color-border-strong: #d4d4d8;
+      --color-text-primary: #18181b;
+      --color-text-secondary: #3f3f46;
+      --color-text-muted: #71717a;
+      --color-accent: #4f46e5;
+      --color-accent-hover: #4338ca;
+      --color-danger: #dc2626;
+      --color-success: #16a34a;
+      --color-warning: #d97706;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background-color: var(--color-background);
+      color: var(--color-text-primary);
+      min-height: 100vh;
+    }
+    a { color: inherit; text-decoration: none; }
+    .header {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 48px; padding: 0 16px;
+      border-bottom: 1px solid var(--color-border);
+      background-color: var(--color-surface);
+      position: sticky; top: 0; z-index: 50;
+    }
+    .header-left, .header-right { display: flex; align-items: center; gap: 16px; }
+    .logo { font-weight: 700; display: flex; align-items: center; gap: 8px; }
+    .nav-link {
+      display: flex; align-items: center; gap: 4px;
+      color: var(--color-text-secondary); font-size: 14px;
+      padding: 6px 8px; border-radius: 6px;
+    }
+    .nav-link:hover { background-color: var(--color-surface-raised); color: var(--color-text-primary); }
+    .icon-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px;
+      border-radius: 6px; border: none;
+      background: transparent; color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+    .icon-btn:hover { background-color: var(--color-surface-raised); color: var(--color-text-primary); }
+    .layout { display: flex; min-height: calc(100vh - 48px); }
+    .sidebar {
+      width: 240px; flex-shrink: 0;
+      border-right: 1px solid var(--color-border);
+      background-color: var(--color-surface);
+      padding: 16px 12px;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .sidebar-group { font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin: 12px 8px 4px; }
+    .sidebar-link {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 6px;
+      color: var(--color-text-secondary); font-size: 14px;
+    }
+    .sidebar-link:hover, .sidebar-link.active { background-color: var(--color-surface-raised); color: var(--color-text-primary); }
+    .main { flex: 1; padding: 24px; min-width: 0; }
+    .page-title { font-size: 22px; font-weight: 700; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      height: 32px; padding: 0 14px;
+      border-radius: 6px; border: none;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .btn-primary { background-color: var(--color-accent); color: #fff; }
+    .btn-primary:hover { background-color: var(--color-accent-hover); }
+    .btn-secondary { background-color: var(--color-surface-raised); color: var(--color-text-primary); border: 1px solid var(--color-border-strong); }
+    .btn-secondary:hover { background-color: var(--color-border); }
+    .backlog-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+    .sprint-section { margin-bottom: 24px; }
+    .sprint-title {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 12px;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 8px 8px 0 0;
+      font-weight: 600;
+    }
+    .sprint-body {
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+    }
+    .issue-row {
+      display: grid;
+      grid-template-columns: 30px 80px 1fr 90px 40px;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--color-border);
+      font-size: 14px;
+    }
+    .issue-row:last-child { border-bottom: none; }
+    .issue-row:hover { background-color: var(--color-surface-raised); }
+    .issue-key { color: var(--color-text-muted); font-size: 13px; }
+    .issue-summary { font-weight: 500; }
+    .badge {
+      display: inline-flex; align-items: center;
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 12px; font-weight: 500;
+      background-color: var(--color-surface-raised);
+      color: var(--color-text-secondary);
+    }
+    .priority-high { color: var(--color-danger); }
+    .priority-medium { color: var(--color-warning); }
+    .priority-low { color: var(--color-success); }
+    .avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      background-color: var(--color-accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 600;
+    }
+    .empty-state {
+      padding: 24px;
+      text-align: center;
+      color: var(--color-text-muted);
+      font-size: 14px;
+    }
+    .velocity { font-size: 12px; color: var(--color-text-muted); }
+    .theme-menu {
+      position: absolute; top: 44px; right: 8px;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border-strong);
+      border-radius: 8px; padding: 6px;
+      display: none; flex-direction: column; gap: 2px;
+      min-width: 120px; box-shadow: 0 10px 25px rgba(0,0,0,.3);
+    }
+    .theme-menu.open { display: flex; }
+    .theme-option {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 10px; border-radius: 6px;
+      font-size: 13px; color: var(--color-text-secondary);
+      cursor: pointer;
+    }
+    .theme-option:hover, .theme-option.active { background-color: var(--color-surface-raised); color: var(--color-text-primary); }
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .main { padding: 16px; }
+      .issue-row { grid-template-columns: 30px 60px 1fr 70px 32px; gap: 8px; font-size: 13px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-left">
+      <a href="dashboard.html" class="logo"><i data-lucide="layers" style="width:18px;height:18px;color:var(--color-accent)"></i> TaskTracker</a>
+      <a href="projects.html" class="nav-link"><span>Проекты</span><i data-lucide="chevron-down" style="width:14px;height:14px"></i></a>
+      <a href="search.html" class="nav-link"><i data-lucide="search" style="width:16px;height:16px"></i><span>Поиск</span></a>
+    </div>
+    <div class="header-right">
+      <a href="issue-create.html" class="btn btn-primary" style="height:28px;padding:0 10px;font-size:12px"><i data-lucide="plus" style="width:14px;height:14px"></i> Создать</a>
+      <button class="icon-btn" id="themeBtn"><i data-lucide="moon" style="width:18px;height:18px" id="themeIcon"></i></button>
+      <div class="theme-menu" id="themeMenu">
+        <div class="theme-option" data-theme="dark"><i data-lucide="moon" style="width:14px;height:14px"></i> Dark</div>
+        <div class="theme-option" data-theme="gray"><i data-lucide="cloud-sun" style="width:14px;height:14px"></i> Gray</div>
+        <div class="theme-option" data-theme="light"><i data-lucide="sun" style="width:14px;height:14px"></i> Light</div>
+      </div>
+      <button class="icon-btn"><i data-lucide="bell" style="width:18px;height:18px"></i></button>
+      <button class="icon-btn"><i data-lucide="user" style="width:18px;height:18px"></i></button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <a href="dashboard.html" class="sidebar-link"><i data-lucide="layout-dashboard" style="width:16px;height:16px"></i> Dashboard</a>
+      <a href="projects.html" class="sidebar-link"><i data-lucide="folder-kanban" style="width:16px;height:16px"></i> Проекты</a>
+      <a href="search.html" class="sidebar-link"><i data-lucide="search" style="width:16px;height:16px"></i> Мои задачи</a>
+      <div class="sidebar-group">TASK TRACKER</div>
+      <a href="project-backlog.html" class="sidebar-link active"><i data-lucide="list" style="width:16px;height:16px"></i> Backlog</a>
+      <a href="project-board.html" class="sidebar-link"><i data-lucide="columns" style="width:16px;height:16px"></i> Доска</a>
+      <div class="sidebar-group">СИСТЕМА</div>
+      <a href="trash.html" class="sidebar-link"><i data-lucide="trash-2" style="width:16px;height:16px"></i> Trash</a>
+    </aside>
+
+    <main class="main">
+      <div class="backlog-header">
+        <div>
+          <h1 class="page-title">Backlog · Task Tracker</h1>
+          <div class="velocity">Velocity: 24 sp · Backlog: 42 issues</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary"><i data-lucide="plus" style="width:14px;height:14px"></i> Создать спринт</button>
+          <a href="issue-create.html" class="btn btn-secondary"><i data-lucide="plus" style="width:14px;height:14px"></i> Создать задачу</a>
+        </div>
+      </div>
+
+      <div class="sprint-section">
+        <div class="sprint-title">
+          <span>Sprint 1 · 24 sp · 5 days left</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary" style="height:26px;padding:0 10px">Start sprint</button>
+            <button class="icon-btn" style="width:26px;height:26px"><i data-lucide="more-horizontal" style="width:14px;height:14px"></i></button>
+          </div>
+        </div>
+        <div class="sprint-body">
+          <a href="issue-detail.html" class="issue-row">
+            <i data-lucide="grip-vertical" style="width:14px;height:14px;color:var(--color-text-muted)"></i>
+            <span class="issue-key">TT-10</span>
+            <span class="issue-summary">Auth API</span>
+            <span class="badge priority-high">High</span>
+            <div class="avatar">I</div>
+          </a>
+          <a href="issue-detail.html" class="issue-row">
+            <i data-lucide="grip-vertical" style="width:14px;height:14px;color:var(--color-text-muted)"></i>
+            <span class="issue-key">TT-11</span>
+            <span class="issue-summary">Login page</span>
+            <span class="badge priority-medium">Medium</span>
+            <div class="avatar" style="background-color:var(--color-success)">A</div>
+          </a>
+        </div>
+      </div>
+
+      <div class="sprint-section">
+        <div class="sprint-title">
+          <span>Backlog · 40 issues</span>
+          <a href="issue-create.html" class="btn btn-secondary" style="height:26px;padding:0 10px"><i data-lucide="plus" style="width:14px;height:14px"></i> Создать</a>
+        </div>
+        <div class="sprint-body">
+          <a href="issue-detail.html" class="issue-row">
+            <i data-lucide="grip-vertical" style="width:14px;height:14px;color:var(--color-text-muted)"></i>
+            <span class="issue-key">TT-1</span>
+            <span class="issue-summary">Implement auth</span>
+            <span class="badge priority-high">High</span>
+            <div class="avatar">I</div>
+          </a>
+          <a href="issue-detail.html" class="issue-row">
+            <i data-lucide="grip-vertical" style="width:14px;height:14px;color:var(--color-text-muted)"></i>
+            <span class="issue-key">TT-2</span>
+            <span class="issue-summary">Setup CI/CD</span>
+            <span class="badge priority-medium">Medium</span>
+            <div class="avatar" style="background-color:var(--color-success)">A</div>
+          </a>
+          <a href="issue-detail.html" class="issue-row">
+            <i data-lucide="grip-vertical" style="width:14px;height:14px;color:var(--color-text-muted)"></i>
+            <span class="issue-key">TT-3</span>
+            <span class="issue-summary">Design system tokens</span>
+            <span class="badge priority-low">Low</span>
+            <div class="avatar" style="background-color:var(--color-warning);color:#000">P</div>
+          </a>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    const stored = localStorage.getItem('theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', stored);
+    function updateIcon() {
+      const theme = document.documentElement.getAttribute('data-theme');
+      const icon = theme === 'dark' ? 'moon' : theme === 'gray' ? 'cloud-sun' : 'sun';
+      document.getElementById('themeIcon').setAttribute('data-lucide', icon);
+      document.querySelectorAll('.theme-option').forEach(el => el.classList.toggle('active', el.dataset.theme === theme));
+      lucide.createIcons();
+    }
+    updateIcon();
+    document.getElementById('themeBtn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('themeMenu').classList.toggle('open');
+    });
+    document.getElementById('themeMenu').addEventListener('click', (e) => {
+      const opt = e.target.closest('.theme-option');
+      if (!opt) return;
+      const theme = opt.dataset.theme;
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+      updateIcon();
+      document.getElementById('themeMenu').classList.remove('open');
+    });
+    document.addEventListener('click', () => document.getElementById('themeMenu').classList.remove('open'));
+  </script>
+</body>
+</html>

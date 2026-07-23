@@ -55,7 +55,7 @@ describe('LogWorkDialog', () => {
     fireEvent.click(screen.getByText(/Save/i))
 
     await waitFor(() => {
-      expect(screen.getByText(/Time spent is required/i)).toBeInTheDocument()
+      expect(screen.getByText(/Provide time spent/i)).toBeInTheDocument()
     })
     expect(onSubmit).not.toHaveBeenCalled()
   })

@@ -9,6 +9,9 @@
 - **Контрастность**: доступный WCAG AA для текста.
 - **Иконки**: lucide-react, цветные issue type icons.
 - **Локализация**: ru / en, LTR.
+- **Язык UI по умолчанию**: русский.
+- **CSS-токены**: реализованы через `frontend/src/index.css`: `--color-background`, `--color-surface`, `--color-surface-raised`, `--color-border`, `--color-border-strong`, `--color-text-primary`, `--color-text-secondary`, `--color-text-muted`, `--color-accent`, `--color-accent-hover`, `--color-danger`, `--color-success`, `--color-warning`. Имена токенов совпадают в Tailwind (`bg-background`, `text-text-primary`, `bg-accent` и т.д.).
+- **Переход между темами**: переключатель в шапке, значение сохраняется в `localStorage` ключ `theme`. Три темы: `dark`, `gray`, `light`.
 
 ---
 
@@ -71,6 +74,8 @@
 - Карточка: иконка/аватар, название, key, тип, lead, count issues, favorite star.
 - Hover: быстрые действия (настройки, архивировать).
 - Empty state: CTA создания проекта.
+- **Состояния**: loading — skeleton grid 6 карточек; empty — иконка папки + "Нет проектов" + кнопка создания; error — alert с retry.
+- **Адаптив**: <768px — 1 колонка, 768–1279px — 2, ≥1280px — 3.
 
 ---
 
@@ -212,7 +217,7 @@ Time tracking
   - Колонки: User, Started, Spent, Remaining estimate, Comment, Actions.
   - Summary внизу: `Total logged: 6h 30m`.
   - Редактирование/удаление только своих записей (или админ/менеджер проекта).
-  - **Адаптив**: на мобильных устройствах таблица заменяется на стек карточек.
+  - **Адаптив**: на мобильных устройствах таблица заменяется на стек карточек; каждая карточка содержит User/Started/Spent/Remaining/Comment и кнопки Edit/Delete.
 - **History**: изменения полей со старыми/новыми значениями.
 
 ### 4.5. Цветовые темы
@@ -223,7 +228,7 @@ Time tracking
 - **Gray** — тёмно-серый фон (`#18181b`), поверхности `zinc-800`, тот же акцент.
 - **Light** — светло-серый фон (`#f3f4f6`), белые карточки, тёмный текст.
 
-Переключатель темы находится в шапке. Предпочтение сохраняется в `localStorage` по ключу `tasktracker-theme`. По умолчанию используется тёмная тема. Все UI-токены оформлены через CSS-переменные (`--color-background`, `--color-surface`, `--color-text-primary`, `--color-accent`, и т.д.).
+Переключатель темы находится в шапке. Предпочтение сохраняется в `localStorage` по ключу `theme`. По умолчанию используется тёмная тема. Все UI-токены оформлены через CSS-переменные (`--color-background`, `--color-surface`, `--color-text-primary`, `--color-accent`, и т.д.).
 
 ---
 
@@ -283,6 +288,8 @@ Time tracking
 - Quick filters над доской.
 - Empty column state: dashed placeholder.
 - Column context menu: rename, WIP limit, delete.
+- **Состояния**: loading — skeleton колонки; empty board — CTA добавить первую колонку; WIP limit превышен — бейдж колонки с `warning` цветом.
+- **Адаптив**: <768px — горизонтальный swipe между колонками; планшет — горизонтальный scroll.
 
 ---
 
@@ -309,6 +316,8 @@ Time tracking
 - Drag & drop приоритета.
 - Кнопки start/complete sprint.
 - Velocity indicator (story points committed).
+- **Состояния**: loading — skeleton списки; empty sprint — "Перетащите задачи из бэклога"; empty backlog — CTA создать задачу.
+- **Адаптив**: <768px — одна колонка, compact rows.
 
 ---
 
@@ -336,6 +345,7 @@ Time tracking
 - Project + Issue type влияют на видимые поля (screen scheme).
 - Валидация inline (garde/Zod).
 - Create another — очищает форму, оставляет открытой.
+- **Состояния**: loading — скелетоны полей; ошибки валидации — под полями красным; success toast.
 
 ---
 
@@ -358,6 +368,7 @@ Time tracking
 - Advanced search: JQL textarea с подсветкой/автокомплитом.
 - Результаты: таблица или карточки.
 - Columns настраиваемые.
+- **Состояния**: loading — skeleton строки; empty results — "Ничего не найдено" + кнопка сброса фильтров; error — alert retry.
 
 ---
 
@@ -381,6 +392,7 @@ Time tracking
 - Grid layout 2–3 columns.
 - Gadgets: filter results, burndown, velocity, pie chart by status/assignee.
 - Drag & drop rearrange.
+- **Состояния**: loading — skeleton gadgets; empty dashboard — CTA "Добавить виджет"; error gadget — inline error с retry.
 
 ---
 
@@ -447,10 +459,16 @@ Time tracking
 |------------|----------|
 | `c` | Create issue |
 | `Cmd+K` / `Ctrl+K` | Search |
-| `g` then `p` | Go to projects |
-| `g` then `i` | Go to issues |
-| `e` | Edit issue |
-| `/` | Focus search |
+|| `g` then `p` | Go to projects |
+|| `g` then `i` | Go to issues |
+|| `g` then `b` | Go to backlog |
+|| `g` then `k` | Go to board |
+|| `g` then `d` | Go to dashboard |
+|| `e` | Edit issue |
+|| `/` | Focus search |
+|| `Esc` | Close dialog / cancel edit |
+|| `Enter` | Save inline edit / submit form |
+|| `?` | Show shortcuts help |
 
 ---
 
@@ -471,6 +489,8 @@ Time tracking
 - Bottom sheet для фильтров.
 - Board: горизонтальный swipe между колонками.
 - Issue view: одна колонка, sticky header.
+- **Touch**: карточки board — long press для меню; swipe right/left для быстрых действий (только для будущих жестов, MVP — кнопки).
+- **Keyboard shortcuts на мобильных**: не применяются; spotlight доступен через кнопку поиска.
 
 ---
 
@@ -493,6 +513,8 @@ Time tracking
 - ARIA labels для иконок-кнопок.
 - Color не единственный маркер статуса (текст + badge).
 - `prefers-reduced-motion` для анимаций.
+- **Фокус**: видимое кольцо `focus-visible:ring-accent` на всех кнопках и инпутах.
+- **Dialogs**: `aria-modal="true"`, `role="dialog"`, trap focus, закрытие по Escape, кнопка Cancel/закрытие всегда доступна.
 
 ---
 
@@ -500,9 +522,9 @@ Time tracking
 
 | Роут | Страница |
 |------|----------|
-| `/login` | Login |
-| `/register` | Register |
-| `/` | Dashboard |
+|| `/` | Dashboard |
+|| `/login` | Login |
+|| `/register` | Register |
 | `/projects` | Project list |
 | `/projects/new` | Create project |
 | `/projects/:id` | Project overview |
@@ -528,13 +550,24 @@ Time tracking
 - Все компоненты строятся на `shadcn/ui` + Tailwind.
 - Макеты будут дополнены SVG-мокапами в `docs/assets/ui-mockups/`.
 - Цветовые токены и типографика — в `frontend/src/styles/tokens.css`.
+- **HTML-мокапы**: каждый экран имеет статичную HTML-страницу с переключением тем и навигацией между экранами. См. `docs/assets/ui-mockups/`.
+- **React-страницы**: каждый мокап переносится в `frontend/src/pages/<page>/index.tsx` с mock API и роутингом.
 
 ---
 
 ## 17. SVG-мокапы
 
 См. папки:
-- `docs/assets/ui-mockups/` — HTML-мокапы интерфейса Task Tracker
+- `docs/assets/ui-mockups/` — HTML-мокапы интерфейса Task Tracker. Список файлов:
+  - `login.html`
+  - `register.html`
+  - `dashboard.html`
+  - `projects.html`
+  - `project-board.html`
+  - `project-backlog.html`
+  - `search.html`
+  - `issue-create.html`
+  - `issue-detail.html` (синхронизирован с React-реализацией)
 - `docs/assets/jira-samples/` — обезличенные примеры структур Jira (только форматы, без персональных данных)
 
 ## Appendix: Jira Structural Samples
