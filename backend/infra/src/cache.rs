@@ -2,6 +2,10 @@ use std::time::Duration;
 
 use moka::future::Cache as MokaCache;
 
+#[cfg(test)]
+#[path = "cache/tests.rs"]
+mod tests;
+
 #[derive(Clone)]
 pub struct AppCache {
     inner: MokaCache<String, String>,
@@ -23,5 +27,11 @@ impl AppCache {
 
     pub async fn set(&self, key: String, value: String) {
         self.inner.insert(key, value).await;
+    }
+}
+
+impl Default for AppCache {
+    fn default() -> Self {
+        Self::new()
     }
 }

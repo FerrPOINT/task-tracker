@@ -51,7 +51,9 @@ pub async fn update_issue(
     let cmd = UpdateIssueCommand {
         summary: req.summary,
         description: req.description,
-        priority: req.priority.and_then(|s| shared::Priority::from_str(s.as_str()).ok()),
+        priority: req
+            .priority
+            .and_then(|s| shared::Priority::from_str(s.as_str()).ok()),
         status_id: req.status_id,
         assignee_id: req.assignee_id.map(|s| {
             if s.is_empty() {

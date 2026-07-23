@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use app::AppContext;
-use infra::{build_repositories, run_migrations};
+use server::run;
 use shared::AppConfig;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -15,15 +14,7 @@ async fn main() {
         .init();
 
     let config = Arc::new(AppConfig::from_env().expect("failed to load config"));
-    run_migrations(config.database.clone())
-        .await
-        .expect("failed to run migrations");
-    let repos = Arc::new(
-        build_repositories(config.database.clone())
-            .await
-            .expect("failed to build repos"),
-    );
-    let ctx = Arc::new(AppContext::new(config, repos));
-
-    api::serve(ctx).await;
+    let (ready_tx, _ready_rx) = tokio::sync::oneshot::channel();
+    let (_shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    run(config, ready_tx, shutdown_rx).await;
 }

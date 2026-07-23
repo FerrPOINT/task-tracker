@@ -3,6 +3,10 @@ use domain::{Issue, Project, Sprint, SprintState, User};
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+#[path = "dto/tests.rs"]
+mod tests;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDto {
     pub id: String,
