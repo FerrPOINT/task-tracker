@@ -81,7 +81,13 @@ pub struct IssueDto {
 }
 
 impl IssueDto {
-    pub fn from_issue(issue: Issue, project_name: String, status_name: String) -> Self {
+    pub fn from_issue(
+        issue: Issue,
+        project_name: String,
+        status_name: String,
+        assignee_name: Option<String>,
+        reporter_name: Option<String>,
+    ) -> Self {
         Self {
             id: issue.id.to_string(),
             key: issue.key.to_string(),
@@ -97,9 +103,9 @@ impl IssueDto {
             status_id: issue.status_id.to_string(),
             issue_type: format!("{:?}", issue.issue_type).to_lowercase(),
             assignee_id: issue.assignee_id.map(|id| id.to_string()),
-            assignee_name: None,
+            assignee_name,
             reporter_id: issue.reporter_id.to_string(),
-            reporter_name: None,
+            reporter_name,
             priority: issue.priority.as_str().to_string(),
             labels: issue.labels.iter().map(|l| l.to_string()).collect(),
             due_date: issue.due_date,

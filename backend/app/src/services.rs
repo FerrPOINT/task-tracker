@@ -79,16 +79,32 @@ impl crate::context::ProjectService for ProjectServiceImpl {
 pub struct IssueServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
+    users: Arc<dyn domain::UserRepository>,
 }
 
 impl IssueServiceImpl {
     pub fn new(
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
-        _users: Arc<dyn domain::UserRepository>,
+        users: Arc<dyn domain::UserRepository>,
     ) -> Self {
-        let _ = _users;
-        Self { issues, projects }
+        Self { issues, projects, users }
+    }
+
+    async fn resolve_names(&self, issue: &domain::Issue,
+    ) -> Result<(Option<String>, Option<String>), AppError> {
+        let assignee_name = if let Some(id) = issue.assignee_id {
+            self.users.get_by_id(id).await.map(|u| u.display_name.as_ref().to_string()).ok()
+        } else {
+            None
+        };
+        let reporter_name = self
+            .users
+            .get_by_id(issue.reporter_id)
+            .await
+            .map(|u| u.display_name.as_ref().to_string())
+            .ok();
+        Ok((assignee_name, reporter_name))
     }
 }
 
@@ -121,10 +137,13 @@ impl crate::context::IssueService for IssueServiceImpl {
             .find(|c| c.id == issue.status_id)
             .map(|c| c.name.as_ref().to_string())
             .unwrap_or_else(|| "Todo".to_string());
+        let (assignee_name, reporter_name) = self.resolve_names(&issue).await?;
         Ok(IssueDto::from_issue(
             issue,
             project.name.as_ref().to_string(),
             column,
+            assignee_name,
+            reporter_name,
         ))
     }
 
@@ -136,10 +155,13 @@ impl crate::context::IssueService for IssueServiceImpl {
             .find(|c| c.id == issue.status_id)
             .map(|c| c.name.as_ref().to_string())
             .unwrap_or_else(|| "Unknown".to_string());
+        let (assignee_name, reporter_name) = self.resolve_names(&issue).await?;
         Ok(IssueDto::from_issue(
             issue,
             project.name.as_ref().to_string(),
             column,
+            assignee_name,
+            reporter_name,
         ))
     }
 
@@ -159,10 +181,13 @@ impl crate::context::IssueService for IssueServiceImpl {
                 .find(|c| c.id == issue.status_id)
                 .map(|c| c.name.as_ref().to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
+            let (assignee_name, reporter_name) = self.resolve_names(&issue).await?;
             dtos.push(IssueDto::from_issue(
                 issue,
                 project.name.as_ref().to_string(),
                 column,
+                assignee_name,
+                reporter_name,
             ));
         }
         Ok(dtos)
@@ -173,6 +198,7 @@ pub struct BoardServiceImpl {
     boards: Arc<dyn domain::BoardRepository>,
     issues: Arc<dyn IssueRepository>,
     sprints: Arc<dyn SprintRepository>,
+    users: Arc<dyn domain::UserRepository>,
 }
 
 impl BoardServiceImpl {
@@ -180,12 +206,29 @@ impl BoardServiceImpl {
         boards: Arc<dyn domain::BoardRepository>,
         issues: Arc<dyn IssueRepository>,
         sprints: Arc<dyn SprintRepository>,
+        users: Arc<dyn domain::UserRepository>,
     ) -> Self {
         Self {
             boards,
             issues,
             sprints,
+            users,
         }
+    }
+
+    async fn resolve_names(&self, issue: &domain::Issue) -> (Option<String>, Option<String>) {
+        let assignee_name = if let Some(id) = issue.assignee_id {
+            self.users.get_by_id(id).await.map(|u| u.display_name.as_ref().to_string()).ok()
+        } else {
+            None
+        };
+        let reporter_name = self
+            .users
+            .get_by_id(issue.reporter_id)
+            .await
+            .map(|u| u.display_name.as_ref().to_string())
+            .ok();
+        (assignee_name, reporter_name)
     }
 }
 
@@ -225,7 +268,14 @@ impl crate::context::BoardService for BoardServiceImpl {
                 .find(|c| c.id == issue.status_id)
                 .map(|c| c.name.as_ref().to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
-            dtos.push(IssueDto::from_issue(issue, project_key.to_string(), column));
+            let (a, r) = self.resolve_names(&issue).await;
+            dtos.push(IssueDto::from_issue(
+                issue,
+                project_key.to_string(),
+                column,
+                a,
+                r,
+            ));
         }
 
         let sprint_dto = sprint
@@ -265,19 +315,22 @@ impl crate::context::BoardService for BoardServiceImpl {
             .map(|c| c.id)
             .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()));
 
-        let sprint_issues: Vec<_> = all_issues
+        let sprint_issues_raw: Vec<_> = all_issues
             .clone()
             .into_iter()
             .filter(|i| i.sprint_id.is_some() || i.status_id != todo_status)
             .collect();
-        let backlog_issues: Vec<_> = all_issues
+        let backlog_issues_raw: Vec<_> = all_issues
             .into_iter()
             .filter(|i| i.sprint_id.is_none() && i.status_id == todo_status)
             .collect();
 
         let sprint_dto = sprint
             .map(|s| {
-                SprintDto::from_sprint(s, sprint_issues.iter().map(|i| i.id.to_string()).collect())
+                SprintDto::from_sprint(
+                    s,
+                    sprint_issues_raw.iter().map(|i| i.id.to_string()).collect(),
+                )
             })
             .unwrap_or_else(|| SprintDto {
                 id: "none".to_string(),
@@ -289,25 +342,46 @@ impl crate::context::BoardService for BoardServiceImpl {
                 issue_ids: vec![],
             });
 
-        let map_issues = |issues: Vec<Issue>| {
-            issues
-                .into_iter()
-                .map(|i| {
-                    let column = board
-                        .columns
-                        .iter()
-                        .find(|c| c.id == i.status_id)
-                        .map(|c| c.name.as_ref().to_string())
-                        .unwrap_or_else(|| "Unknown".to_string());
-                    IssueDto::from_issue(i, project_key.to_string(), column)
-                })
-                .collect()
-        };
+        let mut sprint_issues = Vec::new();
+        for i in sprint_issues_raw {
+            let column = board
+                .columns
+                .iter()
+                .find(|c| c.id == i.status_id)
+                .map(|c| c.name.as_ref().to_string())
+                .unwrap_or_else(|| "Unknown".to_string());
+            let (a, r) = self.resolve_names(&i).await;
+            sprint_issues.push(IssueDto::from_issue(
+                i,
+                project_key.to_string(),
+                column,
+                a,
+                r,
+            ));
+        }
+
+        let mut backlog_issues = Vec::new();
+        for i in backlog_issues_raw {
+            let column = board
+                .columns
+                .iter()
+                .find(|c| c.id == i.status_id)
+                .map(|c| c.name.as_ref().to_string())
+                .unwrap_or_else(|| "Unknown".to_string());
+            let (a, r) = self.resolve_names(&i).await;
+            backlog_issues.push(IssueDto::from_issue(
+                i,
+                project_key.to_string(),
+                column,
+                a,
+                r,
+            ));
+        }
 
         Ok(BacklogDto {
             sprint: sprint_dto,
-            sprint_issues: map_issues(sprint_issues),
-            backlog_issues: map_issues(backlog_issues),
+            sprint_issues,
+            backlog_issues,
         })
     }
 }
@@ -315,7 +389,7 @@ impl crate::context::BoardService for BoardServiceImpl {
 pub struct DashboardServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
-    _users: Arc<dyn domain::UserRepository>,
+    users: Arc<dyn domain::UserRepository>,
 }
 
 impl DashboardServiceImpl {
@@ -327,8 +401,23 @@ impl DashboardServiceImpl {
         Self {
             issues,
             projects,
-            _users: users,
+            users,
         }
+    }
+
+    async fn resolve_names(&self, issue: &domain::Issue) -> (Option<String>, Option<String>) {
+        let assignee_name = if let Some(id) = issue.assignee_id {
+            self.users.get_by_id(id).await.map(|u| u.display_name.as_ref().to_string()).ok()
+        } else {
+            None
+        };
+        let reporter_name = self
+            .users
+            .get_by_id(issue.reporter_id)
+            .await
+            .map(|u| u.display_name.as_ref().to_string())
+            .ok();
+        (assignee_name, reporter_name)
     }
 }
 
@@ -344,10 +433,13 @@ impl crate::context::DashboardService for DashboardServiceImpl {
                 .find(|c| c.id == issue.status_id)
                 .map(|c| c.name.as_ref().to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
+            let (a, r) = self.resolve_names(&issue).await;
             dtos.push(IssueDto::from_issue(
                 issue,
                 project.name.as_ref().to_string(),
                 column,
+                a,
+                r,
             ));
         }
         Ok(DashboardDto {
@@ -359,11 +451,35 @@ impl crate::context::DashboardService for DashboardServiceImpl {
 pub struct SearchServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
+    users: Arc<dyn domain::UserRepository>,
 }
 
 impl SearchServiceImpl {
-    pub fn new(issues: Arc<dyn IssueRepository>, projects: Arc<dyn ProjectRepository>) -> Self {
-        Self { issues, projects }
+    pub fn new(
+        issues: Arc<dyn IssueRepository>,
+        projects: Arc<dyn ProjectRepository>,
+        users: Arc<dyn domain::UserRepository>,
+    ) -> Self {
+        Self {
+            issues,
+            projects,
+            users,
+        }
+    }
+
+    async fn resolve_names(&self, issue: &domain::Issue) -> (Option<String>, Option<String>) {
+        let assignee_name = if let Some(id) = issue.assignee_id {
+            self.users.get_by_id(id).await.map(|u| u.display_name.as_ref().to_string()).ok()
+        } else {
+            None
+        };
+        let reporter_name = self
+            .users
+            .get_by_id(issue.reporter_id)
+            .await
+            .map(|u| u.display_name.as_ref().to_string())
+            .ok();
+        (assignee_name, reporter_name)
     }
 }
 
@@ -385,10 +501,13 @@ impl crate::context::SearchService for SearchServiceImpl {
                 .find(|c| c.id == issue.status_id)
                 .map(|c| c.name.as_ref().to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
+            let (a, r) = self.resolve_names(&issue).await;
             dtos.push(IssueDto::from_issue(
                 issue,
                 project.name.as_ref().to_string(),
                 column,
+                a,
+                r,
             ));
         }
         Ok(dtos)

@@ -24,11 +24,15 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
         id: i.id,
         key: i.key,
         summary: i.summary,
+        description: i.description,
         issue_type: i.issue_type,
         status: i.status,
         priority: i.priority,
+        labels: i.labels,
         assignee_id: i.assignee_id,
+        assignee_name: i.assignee_name,
         reporter_id: i.reporter_id,
+        reporter_name: i.reporter_name,
         project_name: i.project_name,
     }
 }

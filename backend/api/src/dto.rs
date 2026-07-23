@@ -26,6 +26,7 @@ pub struct ProjectResponse {
     pub key: String,
     pub name: String,
     pub description: Option<String>,
+    pub owner_id: String,
     pub todo_count: u32,
     pub in_progress_count: u32,
     pub done_count: u32,
@@ -48,11 +49,15 @@ pub struct IssueResponse {
     pub id: String,
     pub key: String,
     pub summary: String,
+    pub description: String,
     pub issue_type: String,
     pub status: String,
     pub priority: String,
+    pub labels: Vec<String>,
     pub assignee_id: Option<String>,
+    pub assignee_name: Option<String>,
     pub reporter_id: String,
+    pub reporter_name: Option<String>,
     pub project_name: String,
 }
 
