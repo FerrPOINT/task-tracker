@@ -11,7 +11,9 @@ app = { path = "../app" }
 async-trait = "0.1"
 config.workspace = true
 sea-orm.workspace = true
+sea-orm-migration.workspace = true
 sqlx.workspace = true
+tokio.workspace = true
 tracing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -19,3 +21,6 @@ chrono.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
+moka.workspace = true
+redis.workspace = true
+migration = { path = "../migration" }

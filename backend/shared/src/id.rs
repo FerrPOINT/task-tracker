@@ -1,12 +1,25 @@
-use std::sync::Arc;
-use std::{fmt, str::FromStr};
-
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::str::FromStr;
+use std::sync::Arc;
+
 use uuid::Uuid;
 
 macro_rules! uuid_id {
     ($name:ident) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[derive(
+            Debug,
+            Clone,
+            Copy,
+            PartialEq,
+            Eq,
+            PartialOrd,
+            Ord,
+            Hash,
+            Serialize,
+            Deserialize,
+        )]
         pub struct $name(Uuid);
 
         impl $name {
@@ -88,7 +101,10 @@ impl FromStr for ProjectKey {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.is_empty() || s.len() > 10 || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        if s.is_empty()
+            || s.len() > 10
+            || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        {
             return Err(format!("invalid project key: {}", s));
         }
         Ok(Self::new(s))
@@ -101,6 +117,18 @@ impl IssueKey {
             project_key,
             number,
         }
+    }
+
+    pub fn parse(s: &str) -> Result<Self, String> {
+        let dash = s
+            .rfind('-')
+            .ok_or_else(|| format!("invalid issue key: {}", s))?;
+        let (project, num) = s.split_at(dash);
+        let number: u32 = num
+            .trim_start_matches('-')
+            .parse()
+            .map_err(|_| format!("invalid issue key number: {}", s))?;
+        Ok(Self::new(ProjectKey::from_str(project)?, number))
     }
 
     pub fn to_string(&self) -> String {

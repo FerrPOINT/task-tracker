@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset};
 use domain::{Issue, Project, Sprint, SprintState, User};
 use serde::{Deserialize, Serialize};
 use shared::{IssueId, IssueKey, ProjectId, ProjectKey, UserId};
@@ -27,7 +27,7 @@ pub struct ProjectDto {
     pub name: String,
     pub description: String,
     pub owner_id: String,
-    pub created_at: DateTime<Utc>,
+    pub created_at: DateTime<FixedOffset>,
     pub todo_count: i64,
     pub in_progress_count: i64,
     pub done_count: i64,
@@ -70,14 +70,14 @@ pub struct IssueDto {
     pub reporter_name: Option<String>,
     pub priority: String,
     pub labels: Vec<String>,
-    pub due_date: Option<DateTime<Utc>>,
+    pub due_date: Option<DateTime<FixedOffset>>,
     pub original_estimate_seconds: Option<i64>,
     pub remaining_estimate_seconds: Option<i64>,
     pub time_spent_seconds: i64,
     pub position: f64,
     pub sprint_id: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
 }
 
 impl IssueDto {

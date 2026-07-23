@@ -1,0 +1,17 @@
+[package]
+name = "migration"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "migration"
+path = "src/lib.rs"
+
+[dependencies]
+async-std = { version = "1", features = ["attributes", "tokio1"] }
+sea-orm-migration.workspace = true
+
+[dependencies.sea-orm]
+workspace = true

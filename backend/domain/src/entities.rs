@@ -1,9 +1,11 @@
-use chrono::{DateTime, Utc};
+use chrono::FixedOffset;
 use serde::{Deserialize, Serialize};
 use shared::{
     AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueType, LabelId, Priority, ProjectId,
-    ProjectKey, SprintId, StatusId, UserId,
+    ProjectKey, SprintId, StatusId, Timestamp, UserId,
 };
+use std::str::FromStr;
+
 use crate::value_objects::{ArcStr, RichText};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -13,8 +15,8 @@ pub struct User {
     pub username: ArcStr,
     pub display_name: ArcStr,
     pub password_hash: ArcStr,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,8 +27,8 @@ pub struct Project {
     pub description: Option<ArcStr>,
     pub owner_id: UserId,
     pub default_board_id: BoardId,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,19 +39,19 @@ pub struct Issue {
     pub issue_type: IssueType,
     pub status_id: StatusId,
     pub summary: ArcStr,
-    pub description: Option<crate::RichText>,
+    pub description: Option<RichText>,
     pub assignee_id: Option<UserId>,
     pub reporter_id: UserId,
     pub priority: Priority,
     pub labels: Vec<LabelId>,
     pub sprint_id: Option<SprintId>,
     pub position: f64,
-    pub due_date: Option<DateTime<Utc>>,
+    pub due_date: Option<Timestamp>,
     pub original_estimate_seconds: Option<i64>,
     pub remaining_estimate_seconds: Option<i64>,
     pub time_spent_seconds: i64,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
     #[serde(skip)]
     pub events: Vec<crate::IssueEvent>,
 }
@@ -61,11 +63,11 @@ impl Issue {
         issue_type: IssueType,
         status_id: StatusId,
         summary: impl Into<ArcStr>,
-        description: Option<crate::RichText>,
+        description: Option<RichText>,
         reporter_id: UserId,
         priority: Priority,
     ) -> Self {
-        let now = Utc::now();
+        let now = shared::now();
         let mut issue = Self {
             id: IssueId::new(),
             project_id: project.id,
@@ -98,7 +100,7 @@ impl Issue {
     pub fn assign(&mut self, assignee_id: Option<UserId>) {
         if self.assignee_id != assignee_id {
             self.assignee_id = assignee_id;
-            self.updated_at = Utc::now();
+            self.updated_at = shared::now();
             self.events.push(crate::IssueEvent::Assigned {
                 issue_id: self.id,
                 assignee_id,
@@ -110,7 +112,7 @@ impl Issue {
         if self.status_id != to {
             let from = self.status_id;
             self.status_id = to;
-            self.updated_at = Utc::now();
+            self.updated_at = shared::now();
             self.events.push(crate::IssueEvent::StatusChanged {
                 issue_id: self.id,
                 from,
@@ -122,7 +124,7 @@ impl Issue {
     pub fn set_position(&mut self, position: f64) {
         if (self.position - position).abs() > f64::EPSILON {
             self.position = position;
-            self.updated_at = Utc::now();
+            self.updated_at = shared::now();
         }
     }
 
@@ -136,9 +138,9 @@ pub struct Comment {
     pub id: CommentId,
     pub issue_id: IssueId,
     pub author_id: UserId,
-    pub body: crate::RichText,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
+    pub body: RichText,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,7 +152,7 @@ pub struct Attachment {
     pub content_type: ArcStr,
     pub size_bytes: i64,
     pub storage_key: ArcStr,
-    pub created_at: DateTime<Utc>,
+    pub created_at: Timestamp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -168,8 +170,8 @@ pub struct Sprint {
     pub name: ArcStr,
     pub goal: Option<ArcStr>,
     pub state: SprintState,
-    pub start_date: Option<DateTime<Utc>>,
-    pub end_date: Option<DateTime<Utc>>,
+    pub start_date: Option<Timestamp>,
+    pub end_date: Option<Timestamp>,
     pub velocity: Option<i64>,
 }
 
@@ -180,6 +182,19 @@ pub enum SprintState {
     Future,
     Active,
     Closed,
+}
+
+impl FromStr for SprintState {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "future" => Ok(Self::Future),
+            "active" => Ok(Self::Active),
+            "closed" => Ok(Self::Closed),
+            _ => Err(format!("unknown sprint state: {}", s)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

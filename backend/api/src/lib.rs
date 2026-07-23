@@ -1,6 +1,6 @@
 pub mod routes;
 
-use axum::{Extension, Router, routing::get};
+use axum::{Router, routing::get};
 use std::sync::Arc;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
