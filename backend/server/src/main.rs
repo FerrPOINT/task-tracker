@@ -1,19 +1,23 @@
-use app::AppContext;
-use infra::AppConfig;
 use std::sync::Arc;
+
+use app::AppContext;
+use infra::build_repositories;
+use shared::AppConfig;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into()),
         )
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().json())
         .init();
 
-    let config = AppConfig::from_env()?;
-    let ctx = Arc::new(AppContext::new(config).await?);
+    let config = Arc::new(AppConfig::from_env().expect("failed to load config"));
+    let repos = Arc::new(build_repositories(config.database.clone()).await.expect("failed to build repos"));
+    let ctx = Arc::new(AppContext::new(config, repos));
 
-    api::serve(ctx).await
+    api::serve(ctx).await;
 }

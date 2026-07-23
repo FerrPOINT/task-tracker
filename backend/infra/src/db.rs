@@ -1,5 +1,13 @@
-use sea_orm::{Database, DatabaseConnection};
+use std::sync::Arc;
 
-pub async fn connect(database_url: &str) -> Result<DatabaseConnection, sea_orm::DbErr> {
-    Database::connect(database_url).await
+use domain::Repositories;
+use shared::{AppConfig, AppError, DatabaseConfig};
+
+pub async fn build_repositories(_config: DatabaseConfig) -> Result<Repositories, AppError> {
+    Ok(Repositories::default())
+}
+
+pub async fn build_context(config: AppConfig) -> Result<app::AppContext, AppError> {
+    let repos = Arc::new(build_repositories(config.database.clone()).await?);
+    Ok(app::AppContext::new(Arc::new(config), repos))
 }

@@ -7,6 +7,8 @@ rust-version.workspace = true
 [dependencies]
 shared = { path = "../shared" }
 domain = { path = "../domain" }
+app = { path = "../app" }
+async-trait = "0.1"
 config.workspace = true
 sea-orm.workspace = true
 sqlx.workspace = true

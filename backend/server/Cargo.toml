@@ -4,20 +4,12 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
-[[bin]]
-name = "task-tracker-server"
-path = "src/main.rs"
-
 [dependencies]
-api = { path = "../api" }
-app = { path = "../app" }
-infra = { path = "../infra" }
 shared = { path = "../shared" }
 domain = { path = "../domain" }
-axum.workspace = true
+app = { path = "../app" }
+infra = { path = "../infra" }
+api = { path = "../api" }
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-config.workspace = true
-serde.workspace = true
-anyhow.workspace = true
