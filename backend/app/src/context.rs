@@ -2,12 +2,14 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::auth::{JwtAuthService, UserClaims};
-use crate::commands::{CreateIssueCommand, LoginCommand, ProjectQueryDto, RegisterCommand};
+use crate::commands::{
+    CreateIssueCommand, LoginCommand, ProjectQueryDto, RegisterCommand, UpdateIssueCommand,
+};
 use crate::dto::{AuthDto, BacklogDto, BoardDto, DashboardDto, IssueDto, ProjectDto};
 use crate::services::{
     BoardServiceImpl, DashboardServiceImpl, IssueServiceImpl, ProjectServiceImpl, SearchServiceImpl,
 };
-use shared::{AppConfig, AppError, IssueId, ProjectKey, UserId};
+use shared::{AppConfig, AppError, IssueId, ProjectKey, StatusId, UserId};
 
 #[derive(Clone)]
 pub struct AppContext {
@@ -90,6 +92,7 @@ pub trait ProjectService: Send + Sync {
 pub trait IssueService: Send + Sync {
     async fn create(&self, cmd: CreateIssueCommand) -> Result<IssueDto, AppError>;
     async fn get_by_id(&self, id: IssueId) -> Result<IssueDto, AppError>;
+    async fn update(&self, id: IssueId, cmd: UpdateIssueCommand) -> Result<IssueDto, AppError>;
     async fn search(&self, q: &str) -> Result<Vec<IssueDto>, AppError>;
 }
 
@@ -97,6 +100,12 @@ pub trait IssueService: Send + Sync {
 pub trait BoardService: Send + Sync {
     async fn get_board(&self, project_key: &ProjectKey) -> Result<BoardDto, AppError>;
     async fn get_backlog(&self, project_key: &ProjectKey) -> Result<BacklogDto, AppError>;
+    async fn move_issue(
+        &self,
+        project_key: &ProjectKey,
+        issue_id: IssueId,
+        status_id: StatusId,
+    ) -> Result<BoardDto, AppError>;
 }
 
 #[async_trait]

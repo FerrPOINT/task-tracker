@@ -1,7 +1,10 @@
 import { Link, useParams } from 'react-router'
 import { Plus, Filter, Users, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
-import { useBoard } from '@/shared/api/hooks'
+import { useBoard, useMoveIssue } from '@/shared/api/hooks'
+import type { components } from '@/api/generated'
+
+export type Issue = components['schemas']['IssueResponse']
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -23,10 +26,40 @@ function Avatar({ name }: { name: string }) {
   )
 }
 
+function IssueCard({ issue, columnId, onMove }: { issue: Issue; columnId: string; onMove?: (issueId: string, targetColumnId: string) => void }) {
+  function handleClick(e: React.MouseEvent) {
+    // Move to next/previous column by wheel click or ctrl+click
+    if (e.ctrlKey || e.button === 1) {
+      e.preventDefault()
+      onMove?.(issue.id, columnId)
+    }
+  }
+  return (
+    <Link
+      key={issue.id}
+      to={`/issues/${issue.id}`}
+      onClick={handleClick}
+      onAuxClick={handleClick}
+      className="block rounded-md border border-border bg-surface-raised p-3 hover:border-border-strong"
+    >
+      <div className="text-xs text-text-muted">{issue.key}</div>
+      <div className="my-1 text-sm font-medium">{issue.summary}</div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <PriorityBadge priority={issue.priority} />
+          <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">{issue.issue_type}</span>
+        </div>
+        <Avatar name={issue.assignee_name ?? '?'} />
+      </div>
+    </Link>
+  )
+}
+
 export function ProjectBoardPage() {
   const { projectKey } = useParams<{ projectKey?: string }>()
   const key = projectKey ?? 'TT'
   const { data: board, isLoading, error } = useBoard(key)
+  const move = useMoveIssue(key)
 
   if (isLoading) return <div className="p-4 text-text-muted">Loading board…</div>
   if (error || !board) return <div className="p-4 text-rose-500">{error?.message ?? 'Board not found'}</div>
@@ -35,6 +68,15 @@ export function ProjectBoardPage() {
 
   function issuesByColumn(columnId: string) {
     return issues.filter((i) => columns.find((c) => c.id === columnId)?.issue_ids.includes(i.id))
+  }
+
+  function handleMove(issueId: string, fromColumnId: string) {
+    const fromIndex = columns.findIndex((c) => c.id === fromColumnId)
+    const toIndex = fromIndex + 1
+    if (toIndex >= columns.length) return
+    const target = columns[toIndex]
+    if (!target) return
+    move.mutate({ issue_id: issueId, status_id: target.id })
   }
 
   return (
@@ -86,21 +128,7 @@ export function ProjectBoardPage() {
 
               <div className="flex-1 space-y-2 overflow-y-auto p-2">
                 {colIssues.map((issue) => (
-                  <Link
-                    key={issue.id}
-                    to={`/issues/${issue.id}`}
-                    className="block rounded-md border border-border bg-surface-raised p-3 hover:border-border-strong"
-                  >
-                    <div className="text-xs text-text-muted">{issue.key}</div>
-                    <div className="my-1 text-sm font-medium">{issue.summary}</div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <PriorityBadge priority={issue.priority} />
-                        <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">Task</span>
-                      </div>
-                      <Avatar name={issue.assignee_name ?? '?'} />
-                    </div>
-                  </Link>
+                  <IssueCard key={issue.id} issue={issue} columnId={column.id} onMove={handleMove} />
                 ))}
               </div>
 
@@ -135,21 +163,7 @@ export function ProjectBoardPage() {
 
               <div className="space-y-2 p-2">
                 {colIssues.map((issue) => (
-                  <Link
-                    key={issue.id}
-                    to={`/issues/${issue.id}`}
-                    className="block rounded-md border border-border bg-surface-raised p-3 hover:border-border-strong"
-                  >
-                    <div className="text-xs text-text-muted">{issue.key}</div>
-                    <div className="my-1 text-sm font-medium">{issue.summary}</div>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <PriorityBadge priority={issue.priority} />
-                        <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">Task</span>
-                      </div>
-                      <Avatar name={issue.assignee_name ?? '?'} />
-                    </div>
-                  </Link>
+                  <IssueCard key={issue.id} issue={issue} columnId={column.id} onMove={handleMove} />
                 ))}
               </div>
 

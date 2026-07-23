@@ -129,7 +129,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_issue"];
         trace?: never;
     };
     "/search": {
@@ -164,6 +164,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_key}/board/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["move_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -171,6 +187,8 @@ export interface components {
         AuthResponse: {
             access_token: string;
             token_type: string;
+            user_id: string;
+            email: string;
         };
         LoginRequest: {
             email: string;
@@ -260,6 +278,19 @@ export interface components {
         };
         DashboardResponse: {
             assigned_issues: components["schemas"]["IssueResponse"][];
+        };
+        UpdateIssueRequest: {
+            summary?: string;
+            description?: string | null;
+            /** @enum {string} */
+            priority?: "Lowest" | "Low" | "Medium" | "High" | "Highest";
+            status_id?: string;
+            assignee_id?: string | null;
+        };
+        MoveIssueRequest: {
+            issue_id: string;
+            status_id: string;
+            before_issue_id?: string | null;
         };
     };
     responses: never;
@@ -470,6 +501,32 @@ export interface operations {
             };
         };
     };
+    update_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated issue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+        };
+    };
     search: {
         parameters: {
             query?: {
@@ -508,6 +565,32 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardResponse"];
+                };
+            };
+        };
+    };
+    move_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Board after move */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BoardResponse"];
                 };
             };
         };

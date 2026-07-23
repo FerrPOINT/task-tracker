@@ -5,8 +5,10 @@ use axum::{
 };
 use std::sync::Arc;
 
-use crate::dto::{CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery};
-use app::commands::CreateIssueCommand;
+use crate::dto::{
+    CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery, UpdateIssueRequest,
+};
+use app::commands::{CreateIssueCommand, UpdateIssueCommand};
 
 pub async fn create_issue(
     State(ctx): State<Arc<app::AppContext>>,
@@ -33,6 +35,35 @@ pub async fn create_issue(
     match ctx.services.issue.create(cmd).await {
         Ok(i) => Ok(Json(map_issue(i))),
         Err(_) => Err(StatusCode::BAD_REQUEST),
+    }
+}
+
+pub async fn update_issue(
+    State(ctx): State<Arc<app::AppContext>>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateIssueRequest>,
+) -> Result<Json<IssueResponse>, StatusCode> {
+    let issue_id = id
+        .parse()
+        .ok()
+        .map(shared::IssueId::from_uuid)
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    let cmd = UpdateIssueCommand {
+        summary: req.summary,
+        description: req.description,
+        priority: req.priority.and_then(|s| shared::Priority::from_str(s.as_str()).ok()),
+        status_id: req.status_id,
+        assignee_id: req.assignee_id.map(|s| {
+            if s.is_empty() {
+                None
+            } else {
+                s.parse().ok().map(shared::UserId::from_uuid)
+            }
+        }),
+    };
+    match ctx.services.issue.update(issue_id, cmd).await {
+        Ok(i) => Ok(Json(map_issue(i))),
+        Err(_) => Err(StatusCode::NOT_FOUND),
     }
 }
 

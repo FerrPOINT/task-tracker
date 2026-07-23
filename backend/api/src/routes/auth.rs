@@ -18,6 +18,8 @@ pub async fn register(
         Ok(dto) => Ok(Json(AuthResponse {
             access_token: dto.token,
             token_type: "Bearer".to_string(),
+            user_id: dto.user.id,
+            email: dto.user.email,
         })),
         Err(_) => Err(StatusCode::BAD_REQUEST),
     }
@@ -35,6 +37,8 @@ pub async fn login(
         Ok(dto) => Ok(Json(AuthResponse {
             access_token: dto.token,
             token_type: "Bearer".to_string(),
+            user_id: dto.user.id,
+            email: dto.user.email,
         })),
         Err(_) => Err(StatusCode::UNAUTHORIZED),
     }

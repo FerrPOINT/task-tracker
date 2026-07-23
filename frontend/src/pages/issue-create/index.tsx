@@ -4,10 +4,12 @@ import { Plus } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { useCreateIssue } from '@/shared/api/hooks'
+import { useAuthStore } from '@/shared/auth/store'
 
 export function IssueCreatePage() {
   const navigate = useNavigate()
   const { mutate, isPending, error } = useCreateIssue()
+  const userId = useAuthStore((s) => s.userId)
   const [project_key, setProjectKey] = useState('TT')
   const [type, setType] = useState('Task')
   const [summary, setSummary] = useState('')
@@ -17,6 +19,9 @@ export function IssueCreatePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!userId) {
+      return
+    }
     mutate(
       {
         project_key,
@@ -24,9 +29,9 @@ export function IssueCreatePage() {
         summary,
         description: description || null,
         priority: priority.toLowerCase() as 'highest' | 'high' | 'medium' | 'low' | 'lowest',
-        status_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a21', // Todo
+        status_id: '00000000-0000-0000-0000-000000000001',
         assignee_id: assignee_id || null,
-        reporter_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        reporter_id: userId,
       },
       {
         onSuccess: () => navigate(`/projects/${project_key}/backlog`),
@@ -43,6 +48,11 @@ export function IssueCreatePage() {
         className="space-y-4 rounded-lg border border-border bg-surface p-4 sm:p-6"
       >
         {error && <div className="text-sm text-rose-500">{error.message}</div>}
+        {!userId && (
+          <div className="text-sm text-amber-500">
+            Автор не определён — войдите снова.
+          </div>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
@@ -53,8 +63,7 @@ export function IssueCreatePage() {
               onChange={(e) => setProjectKey(e.target.value)}
             >
               <option value="TT">Task Tracker (TT)</option>
-              <option value="MOB">Mobile App (MOB)</option>
-              <option value="API">Public API (API)</option>
+              <option value="DEMO">Demo Project (DEMO)</option>
             </select>
           </div>
           <div className="space-y-2">
@@ -117,9 +126,6 @@ export function IssueCreatePage() {
             >
               <option value="">Unassigned</option>
               <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11">Demo User</option>
-              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12">Ivan</option>
-              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a13">Anna</option>
-              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a14">Petr</option>
             </select>
           </div>
         </div>
@@ -130,7 +136,7 @@ export function IssueCreatePage() {
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
-          <Button type="submit" disabled={isPending} className="gap-1">
+          <Button type="submit" disabled={isPending || !userId} className="gap-1">
             <Plus className="h-4 w-4" />
             {isPending ? 'Создание…' : 'Создать'}
           </Button>
