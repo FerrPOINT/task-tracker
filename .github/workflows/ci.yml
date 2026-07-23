@@ -9,34 +9,67 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-        working-directory: backend
-      - run: cargo clippy --all-targets --all-features -- -D warnings
-        working-directory: backend
-      - run: cargo build
-        working-directory: backend
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo test --workspace
 
   frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 10.28.1
+          version: 10
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-        working-directory: frontend
+      - run: pnpm install
+      - run: pnpm generate:api
       - run: pnpm typecheck
-        working-directory: frontend
-      - run: pnpm test
+      - run: pnpm test -- --run
+      - run: pnpm build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install
         working-directory: frontend
       - run: pnpm build
         working-directory: frontend
+      - run: docker compose up -d postgres redis backend
+        working-directory: ${{ github.workspace }}
+      - run: sleep 20
+        working-directory: ${{ github.workspace }}
+      - run: curl -sf http://localhost:3456/api/v1/health
+        working-directory: ${{ github.workspace }}
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: frontend
+      - run: pnpm exec playwright test e2e/smoke.spec.ts --project=chromium
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: http://localhost:3456/api/v1
+      - run: docker compose down -v
+        working-directory: ${{ github.workspace }}

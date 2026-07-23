@@ -11,8 +11,8 @@ const pages = [
   { path: '/register', name: 'register', marker: 'Зарегистрироваться' },
   { path: '/', name: 'dashboard', marker: 'Team Dashboard' },
   { path: '/projects', name: 'projects', marker: 'Проекты' },
-  { path: '/projects/project-1/board', name: 'board', marker: 'TT Kanban' },
-  { path: '/projects/project-1/backlog', name: 'backlog', marker: 'Backlog · Task Tracker' },
+  { path: '/projects/TT/board', name: 'board', marker: 'TT Kanban' },
+  { path: '/projects/TT/backlog', name: 'backlog', marker: 'Backlog · TT' },
   { path: '/search', name: 'search', marker: 'Поиск задач' },
   { path: '/issues/create', name: 'issue-create', marker: 'Создать задачу' },
 ]
