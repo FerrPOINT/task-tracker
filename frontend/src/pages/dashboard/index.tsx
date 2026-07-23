@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { Plus, Clock } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { listProjects } from '@/api/project'
+import { listProjects, type Project } from '@/api/project'
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -16,10 +16,19 @@ function PriorityBadge({ priority }: { priority: string }) {
 }
 
 export function DashboardPage() {
-  const [projectCount, setProjectCount] = useState(0)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    listProjects().then((projects) => setProjectCount(projects.length))
+    setLoading(true)
+    listProjects()
+      .then((data) => {
+        setProjects(data)
+        setError(null)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load projects'))
+      .finally(() => setLoading(false))
   }, [])
 
   const assigned: { key: string; summary: string; status: string; priority: string }[] = [
@@ -27,6 +36,9 @@ export function DashboardPage() {
     { key: 'TT-7', summary: 'OAuth provider integration', status: 'To Do', priority: 'High' },
     { key: 'TT-15', summary: 'Write E2E tests', status: 'Review', priority: 'Medium' },
   ]
+
+  if (loading) return <div className="p-4 text-text-muted">Loading dashboard…</div>
+  if (error) return <div className="p-4 text-rose-500">{error}</div>
 
   return (
     <div className="space-y-4">
@@ -120,7 +132,7 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Recent activity · {projectCount} projects</CardTitle>
+            <CardTitle className="text-base">Recent activity · {projects.length} projects</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {[

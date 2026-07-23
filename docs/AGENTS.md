@@ -20,6 +20,7 @@
 - Backend: слоистая архитектура `controller → service → repository`.
 - DI через `AppContext` / `shaku`.
 - Все публичные API покрыты OpenAPI через `utoipa-axum`.
+- Rust-хендлеры и DTO являются единственным источником правды для схемы; фронт генерирует клиент из `openapi/openapi.json`.
 - Все endpoint тестируются интеграционно через testcontainers.
 - Frontend: компоненты на `shadcn/ui` + Tailwind.
 - Состояние: серверное — `@tanstack/react-query`, клиентское — `zustand`.

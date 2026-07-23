@@ -96,6 +96,13 @@ Documentation-first: перед кодом фиксируем функциона
 - [ADR-0009: TanStack Query + Zustand](docs/adr/0009-query-zustand.md)
 - [ADR-0010: apalis для фоновых задач](docs/adr/0010-apalis.md)
 
+## API / OpenAPI
+
+- Backend is the source of truth for the API schema via `utoipa`.
+- Generated schema: [`openapi/openapi.json`](openapi/openapi.json)
+- OpenAPI workflow: [`openapi/README.md`](openapi/README.md)
+- Frontend client is generated from the schema into `frontend/src/api/generated.ts`.
+
 ## Быстрый старт
 
 ```bash
@@ -105,7 +112,6 @@ docker compose up -d
 ```
 
 Приложение доступно на `http://localhost:19876`.
-
 Локали: `ru` (по умолчанию), `en`.
 
 ## Тесты
@@ -115,7 +121,16 @@ docker compose up -d
 cd backend && cargo test
 
 # Frontend
-cd frontend && pnpm test && pnpm test:e2e
+cd frontend && pnpm typecheck && pnpm test -- --run && pnpm build
+```
+
+## OpenAPI generation
+
+```bash
+cd backend
+cargo run --bin openapi-gen -- /opt/dev/task-tracker/openapi/openapi.json
+cd ../frontend
+pnpm generate:api
 ```
 
 ## Разработка

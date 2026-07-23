@@ -6,28 +6,38 @@ import { Input } from '@/shared/ui/input'
 import { createIssue } from '@/api/issue-create'
 
 export function IssueCreatePage() {
-  const [projectId, setProjectId] = useState('project-1')
+  const [project_key, setProjectKey] = useState('TT')
   const [type, setType] = useState('Task')
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('Medium')
-  const [assigneeId, setAssigneeId] = useState('')
+  const [assignee_id, setAssigneeId] = useState('')
   const [labels, setLabels] = useState('')
-  const [dueDate, setDueDate] = useState('2026-08-15')
+  const [due_date, setDueDate] = useState('2026-08-15')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    await createIssue({
-      projectId,
-      type: type as 'Task' | 'Story' | 'Bug' | 'Epic',
-      summary,
-      description,
-      priority: priority as 'Highest' | 'High' | 'Medium' | 'Low' | 'Lowest',
-      assigneeId: assigneeId || undefined,
-      labels: labels.split(',').map((l) => l.trim()).filter(Boolean),
-      dueDate: dueDate || null,
-    })
-    window.location.href = '/projects/project-1/backlog'
+    setSubmitting(true)
+    setError(null)
+    try {
+      await createIssue({
+        project_key,
+        issue_type: type as 'Task' | 'Story' | 'Bug' | 'Epic',
+        summary,
+        description,
+        priority: priority as 'Highest' | 'High' | 'Medium' | 'Low' | 'Lowest',
+        assignee_id: assignee_id || null,
+        labels: labels.split(',').map((l) => l.trim()).filter(Boolean),
+        due_date: due_date || null,
+      })
+      window.location.href = `/projects/${project_key}/backlog`
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'failed to create issue')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -38,17 +48,19 @@ export function IssueCreatePage() {
         onSubmit={handleSubmit}
         className="space-y-4 rounded-lg border border-border bg-surface p-4 sm:p-6"
       >
+        {error && <div className="text-sm text-rose-500">{error}</div>}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <label className="text-sm font-medium">Проект *</label>
             <select
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
+              value={project_key}
+              onChange={(e) => setProjectKey(e.target.value)}
             >
-              <option value="project-1">Task Tracker (TT)</option>
-              <option value="project-2">Mobile App (MOB)</option>
-              <option value="project-3">Public API (API)</option>
+              <option value="TT">Task Tracker (TT)</option>
+              <option value="MOB">Mobile App (MOB)</option>
+              <option value="API">Public API (API)</option>
             </select>
           </div>
           <div className="space-y-2">
@@ -106,7 +118,7 @@ export function IssueCreatePage() {
             <label className="text-sm font-medium">Исполнитель</label>
             <select
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
-              value={assigneeId}
+              value={assignee_id}
               onChange={(e) => setAssigneeId(e.target.value)}
             >
               <option value="">Unassigned</option>
@@ -131,7 +143,7 @@ export function IssueCreatePage() {
             <label className="text-sm font-medium">Срок выполнения</label>
             <Input
               type="date"
-              value={dueDate}
+              value={due_date}
               onChange={(e) => setDueDate(e.target.value)}
             />
           </div>
@@ -143,13 +155,13 @@ export function IssueCreatePage() {
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
-          <Button type="submit" className="gap-1">
+          <Button type="submit" disabled={submitting} className="gap-1">
             <Plus className="h-4 w-4" />
-            Создать
+            {submitting ? 'Создание…' : 'Создать'}
           </Button>
           <Button type="button" variant="outline">Создать ещё одну</Button>
           <Button variant="outline" asChild>
-            <Link to="/projects/project-1/backlog">Отмена</Link>
+            <Link to={`/projects/${project_key}/backlog`}>Отмена</Link>
           </Button>
         </div>
       </form>

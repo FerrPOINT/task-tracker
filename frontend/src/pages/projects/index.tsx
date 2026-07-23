@@ -18,10 +18,22 @@ function ProjectAvatar({ projectKey }: { projectKey: string }) {
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    listProjects().then(setProjects)
+    setLoading(true)
+    listProjects()
+      .then((data) => {
+        setProjects(data)
+        setError(null)
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed to load projects'))
+      .finally(() => setLoading(false))
   }, [])
+
+  if (loading) return <div className="p-4 text-text-muted">Loading projects…</div>
+  if (error) return <div className="p-4 text-rose-500">{error}</div>
 
   return (
     <div className="space-y-4">
@@ -62,7 +74,7 @@ export function ProjectsPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {projects.map((project) => (
-          <Link key={project.id} to={`/projects/${project.id}/board`}>
+          <Link key={project.id} to={`/projects/${project.key}/board`}>
             <Card className="group transition-colors hover:border-border-strong">
               <CardContent className="p-4">
                 <div className="mb-3 flex items-start justify-between gap-3">
@@ -70,7 +82,7 @@ export function ProjectsPage() {
                     <ProjectAvatar projectKey={project.key} />
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{project.name}</div>
-                      <div className="text-xs text-text-muted">{project.type} · Lead: {project.leadName} · {project.totalIssues} issues</div>
+                      <div className="text-xs text-text-muted">{project.key} · Lead: {project.owner_id} · {project.todo_count + project.in_progress_count + project.done_count} issues</div>
                     </div>
                   </div>
                   <div className="hidden shrink-0 items-center gap-1 sm:flex">
@@ -85,15 +97,15 @@ export function ProjectsPage() {
                 <div className="grid grid-cols-3 gap-2 text-center text-xs sm:text-sm">
                   <div className="rounded bg-surface-raised py-1">
                     <div className="text-text-muted">Todo</div>
-                    <div className="font-medium">{project.todo}</div>
+                    <div className="font-medium">{project.todo_count}</div>
                   </div>
                   <div className="rounded bg-surface-raised py-1">
                     <div className="text-text-muted">In Progress</div>
-                    <div className="font-medium">{project.inProgress}</div>
+                    <div className="font-medium">{project.in_progress_count}</div>
                   </div>
                   <div className="rounded bg-surface-raised py-1">
                     <div className="text-text-muted">Done</div>
-                    <div className="font-medium text-emerald-500">{project.done}</div>
+                    <div className="font-medium text-emerald-500">{project.done_count}</div>
                   </div>
                 </div>
               </CardContent>
