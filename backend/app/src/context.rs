@@ -45,10 +45,12 @@ impl AppContext {
             repos.boards.clone(),
             repos.issues.clone(),
             repos.sprints.clone(),
+            repos.users.clone(),
         ));
         let search: Arc<dyn SearchService> = Arc::new(SearchServiceImpl::new(
             repos.issues.clone(),
             repos.projects.clone(),
+            repos.users.clone(),
         ));
         let dashboard: Arc<dyn DashboardService> = Arc::new(DashboardServiceImpl::new(
             repos.issues.clone(),

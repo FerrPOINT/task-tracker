@@ -24,6 +24,7 @@ pub async fn list_projects(
                     } else {
                         Some(p.description)
                     },
+                    owner_id: p.owner_id,
                     todo_count: p.todo_count as u32,
                     in_progress_count: p.in_progress_count as u32,
                     done_count: p.done_count as u32,

@@ -1,5 +1,3 @@
-use axum::http::StatusCode;
-
-pub async fn health() -> StatusCode {
-    StatusCode::OK
+pub async fn health() -> &'static str {
+    "ok"
 }
