@@ -11,7 +11,7 @@
   "paths": {
     "/auth/login": {
       "post": {
-        "tags": [],
+        "tags": ["auth"],
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -39,7 +39,7 @@
     },
     "/auth/register": {
       "post": {
-        "tags": [],
+        "tags": ["auth"],
         "operationId": "register",
         "requestBody": {
           "content": {
@@ -67,15 +67,108 @@
     },
     "/health": {
       "get": {
-        "tags": [],
+        "tags": ["system"],
         "operationId": "health",
         "responses": {
           "200": {
             "description": "Health check",
             "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "tags": ["projects"],
+        "operationId": "list_projects",
+        "responses": {
+          "200": {
+            "description": "List of projects",
+            "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Health"
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["projects"],
+        "operationId": "create_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Project created"
+          }
+        }
+      }
+    },
+    "/projects/{project_key}/board": {
+      "get": {
+        "tags": ["board"],
+        "operationId": "get_board",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Board with columns and issues",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_key}/backlog": {
+      "get": {
+        "tags": ["board"],
+        "operationId": "get_backlog",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Backlog with sprint and issues",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BacklogResponse"
                 }
               }
             }
@@ -85,7 +178,7 @@
     },
     "/issues": {
       "post": {
-        "tags": [],
+        "tags": ["issues"],
         "operationId": "create_issue",
         "requestBody": {
           "content": {
@@ -98,12 +191,12 @@
           "required": true
         },
         "responses": {
-          "201": {
-            "description": "Issue created",
+          "200": {
+            "description": "Created issue",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CreateIssueResponse"
+                  "$ref": "#/components/schemas/IssueResponse"
                 }
               }
             }
@@ -113,13 +206,12 @@
     },
     "/issues/{id}": {
       "get": {
-        "tags": [],
+        "tags": ["issues"],
         "operationId": "get_issue",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "Issue id",
             "required": true,
             "schema": {
               "type": "string"
@@ -136,106 +228,19 @@
                 }
               }
             }
-          },
-          "404": {
-            "description": "Issue not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/projects": {
-      "get": {
-        "tags": [],
-        "operationId": "list_projects",
-        "responses": {
-          "200": {
-            "description": "List of projects",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProjectListResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/projects/{project_key}/backlog": {
-      "get": {
-        "tags": [],
-        "operationId": "get_backlog",
-        "parameters": [
-          {
-            "name": "project_key",
-            "in": "path",
-            "description": "Project key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Backlog for project",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BacklogResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/projects/{project_key}/board": {
-      "get": {
-        "tags": [],
-        "operationId": "get_board",
-        "parameters": [
-          {
-            "name": "project_key",
-            "in": "path",
-            "description": "Project key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Board for project",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BoardResponse"
-                }
-              }
-            }
           }
         }
       }
     },
     "/search": {
       "get": {
-        "tags": [],
-        "operationId": "search_issues",
+        "tags": ["search"],
+        "operationId": "search",
         "parameters": [
           {
             "name": "q",
             "in": "query",
-            "description": "Search query",
-            "required": true,
+            "required": false,
             "schema": {
               "type": "string"
             }
@@ -247,7 +252,25 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SearchResultResponse"
+                  "$ref": "#/components/schemas/IssueListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "tags": ["dashboard"],
+        "operationId": "get_dashboard",
+        "responses": {
+          "200": {
+            "description": "Dashboard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
                 }
               }
             }
@@ -260,53 +283,201 @@
     "schemas": {
       "AuthResponse": {
         "type": "object",
-        "required": [
-          "token",
-          "user"
-        ],
+        "required": ["access_token", "token_type"],
         "properties": {
-          "token": {
+          "access_token": {
             "type": "string"
           },
-          "user": {
-            "$ref": "#/components/schemas/UserResponse"
+          "token_type": {
+            "type": "string"
           }
         }
       },
-      "BacklogResponse": {
+      "LoginRequest": {
         "type": "object",
-        "required": [
-          "sprint",
-          "sprint_issues",
-          "backlog_issues"
-        ],
+        "required": ["email", "password"],
         "properties": {
-          "backlog_issues": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["email", "username", "password"],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectResponse": {
+        "type": "object",
+        "required": ["id", "key", "name", "owner_id", "todo_count", "in_progress_count", "done_count"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": ["string", "null"]
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "todo_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "in_progress_count": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "done_count": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ProjectListResponse": {
+        "type": "object",
+        "required": ["projects"],
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectResponse"
+            }
+          }
+        }
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "required": ["key", "name"],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": ["string", "null"]
+          }
+        }
+      },
+      "IssueResponse": {
+        "type": "object",
+        "required": ["id", "key", "summary", "description", "issue_type", "status", "priority", "labels", "reporter_id", "project_name"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "issue_type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assignee_id": {
+            "type": ["string", "null"]
+          },
+          "assignee_name": {
+            "type": ["string", "null"]
+          },
+          "reporter_id": {
+            "type": "string"
+          },
+          "reporter_name": {
+            "type": ["string", "null"]
+          },
+          "project_name": {
+            "type": "string"
+          }
+        }
+      },
+      "IssueListResponse": {
+        "type": "object",
+        "required": ["issues"],
+        "properties": {
+          "issues": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/IssueResponse"
             }
+          }
+        }
+      },
+      "CreateIssueRequest": {
+        "type": "object",
+        "required": ["project_key", "issue_type", "summary", "priority", "status_id", "reporter_id"],
+        "properties": {
+          "project_key": {
+            "type": "string"
           },
-          "sprint": {
-            "$ref": "#/components/schemas/SprintResponse"
+          "issue_type": {
+            "type": "string"
           },
-          "sprint_issues": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/IssueResponse"
-            }
+          "summary": {
+            "type": "string"
+          },
+          "description": {
+            "type": ["string", "null"]
+          },
+          "priority": {
+            "type": "string"
+          },
+          "status_id": {
+            "type": "string"
+          },
+          "assignee_id": {
+            "type": ["string", "null"]
+          },
+          "reporter_id": {
+            "type": "string"
           }
         }
       },
       "BoardColumnResponse": {
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "issue_ids"
-        ],
+        "required": ["id", "name", "issue_ids"],
         "properties": {
           "id": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           },
           "issue_ids": {
@@ -315,25 +486,47 @@
               "type": "string"
             }
           },
+          "wip_limit": {
+            "type": ["integer", "null"],
+            "format": "int32"
+          }
+        }
+      },
+      "SprintResponse": {
+        "type": "object",
+        "required": ["id", "name", "goal", "state", "velocity", "issue_ids"],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
           "name": {
             "type": "string"
           },
-          "wip_limit": {
-            "type": [
-              "integer",
-              "null"
-            ],
+          "goal": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "velocity": {
+            "type": "integer",
             "format": "int64"
+          },
+          "remaining_days": {
+            "type": ["integer", "null"],
+            "format": "int64"
+          },
+          "issue_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
       "BoardResponse": {
         "type": "object",
-        "required": [
-          "columns",
-          "issues",
-          "sprint"
-        ],
+        "required": ["columns", "issues", "sprint"],
         "properties": {
           "columns": {
             "type": "array",
@@ -352,292 +545,20 @@
           }
         }
       },
-      "CreateIssueRequest": {
+      "BacklogResponse": {
         "type": "object",
-        "required": [
-          "project_key",
-          "issue_type",
-          "summary",
-          "description",
-          "priority",
-          "labels"
-        ],
+        "required": ["sprint", "sprint_issues", "backlog_issues"],
         "properties": {
-          "assignee_id": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "sprint": {
+            "$ref": "#/components/schemas/SprintResponse"
           },
-          "description": {
-            "type": "string"
-          },
-          "due_date": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "issue_type": {
-            "type": "string"
-          },
-          "labels": {
+          "sprint_issues": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/IssueResponse"
             }
           },
-          "original_estimate_seconds": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "priority": {
-            "type": "string"
-          },
-          "project_key": {
-            "type": "string"
-          },
-          "summary": {
-            "type": "string"
-          }
-        }
-      },
-      "CreateIssueResponse": {
-        "type": "object",
-        "required": [
-          "issue"
-        ],
-        "properties": {
-          "issue": {
-            "$ref": "#/components/schemas/IssueResponse"
-          }
-        }
-      },
-      "ErrorResponse": {
-        "type": "object",
-        "required": [
-          "error",
-          "message"
-        ],
-        "properties": {
-          "error": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          }
-        }
-      },
-      "Health": {
-        "type": "object",
-        "required": [
-          "status",
-          "version"
-        ],
-        "properties": {
-          "status": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          }
-        }
-      },
-      "IssueResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "key",
-          "summary",
-          "description",
-          "project_key",
-          "project_name",
-          "status",
-          "reporter_id",
-          "reporter_name",
-          "priority",
-          "labels",
-          "time_spent_seconds"
-        ],
-        "properties": {
-          "assignee_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "assignee_name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "description": {
-            "type": "string"
-          },
-          "due_date": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "labels": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "original_estimate_seconds": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "priority": {
-            "type": "string"
-          },
-          "project_key": {
-            "type": "string"
-          },
-          "project_name": {
-            "type": "string"
-          },
-          "remaining_estimate_seconds": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "reporter_id": {
-            "type": "string"
-          },
-          "reporter_name": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "summary": {
-            "type": "string"
-          },
-          "time_spent_seconds": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "LoginRequest": {
-        "type": "object",
-        "required": [
-          "email",
-          "password"
-        ],
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
-        }
-      },
-      "ProjectListResponse": {
-        "type": "object",
-        "required": [
-          "items"
-        ],
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProjectResponse"
-            }
-          }
-        }
-      },
-      "ProjectResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "key",
-          "name",
-          "description",
-          "owner_id",
-          "created_at",
-          "todo_count",
-          "in_progress_count",
-          "done_count"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "done_count": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "id": {
-            "type": "string"
-          },
-          "in_progress_count": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "key": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "owner_id": {
-            "type": "string"
-          },
-          "todo_count": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "RegisterRequest": {
-        "type": "object",
-        "required": [
-          "email",
-          "password",
-          "name"
-        ],
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
-        }
-      },
-      "SearchResultResponse": {
-        "type": "object",
-        "required": [
-          "issues"
-        ],
-        "properties": {
-          "issues": {
+          "backlog_issues": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/IssueResponse"
@@ -645,64 +566,15 @@
           }
         }
       },
-      "SprintResponse": {
+      "DashboardResponse": {
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "goal",
-          "state",
-          "velocity",
-          "issue_ids"
-        ],
+        "required": ["assigned_issues"],
         "properties": {
-          "goal": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "issue_ids": {
+          "assigned_issues": {
             "type": "array",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/IssueResponse"
             }
-          },
-          "name": {
-            "type": "string"
-          },
-          "remaining_days": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "state": {
-            "type": "string"
-          },
-          "velocity": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
-      "UserResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "email",
-          "name"
-        ],
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
           }
         }
       }
