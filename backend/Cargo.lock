@@ -1989,6 +1989,7 @@ dependencies = [
  "async-std",
  "sea-orm",
  "sea-orm-migration",
+ "serde_json",
 ]
 
 [[package]]

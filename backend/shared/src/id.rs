@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::str::FromStr;
@@ -9,16 +8,7 @@ use uuid::Uuid;
 macro_rules! uuid_id {
     ($name:ident) => {
         #[derive(
-            Debug,
-            Clone,
-            Copy,
-            PartialEq,
-            Eq,
-            PartialOrd,
-            Ord,
-            Hash,
-            Serialize,
-            Deserialize,
+            Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
         )]
         pub struct $name(Uuid);
 
@@ -72,10 +62,10 @@ uuid_id!(SprintId);
 uuid_id!(BoardId);
 uuid_id!(StatusId);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProjectKey(Arc<str>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IssueKey {
     pub project_key: ProjectKey,
     pub number: u32,
@@ -91,6 +81,19 @@ impl ProjectKey {
     }
 }
 
+impl Serialize for ProjectKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ProjectKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        ProjectKey::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
+
 impl fmt::Display for ProjectKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
@@ -101,13 +104,24 @@ impl FromStr for ProjectKey {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.is_empty()
-            || s.len() > 10
-            || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        if s.is_empty() || s.len() > 10 || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         {
             return Err(format!("invalid project key: {}", s));
         }
         Ok(Self::new(s))
+    }
+}
+
+impl Serialize for IssueKey {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for IssueKey {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        IssueKey::parse(&s).map_err(serde::de::Error::custom)
     }
 }
 

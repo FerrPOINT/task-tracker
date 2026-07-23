@@ -1,4 +1,3 @@
-use chrono::FixedOffset;
 use serde::{Deserialize, Serialize};
 use shared::{
     AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueType, LabelId, Priority, ProjectId,

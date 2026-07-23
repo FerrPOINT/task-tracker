@@ -5,8 +5,8 @@ use jsonwebtoken::{EncodingKey, Header};
 use shared::{AppError, AuthConfig, UserId};
 use std::sync::Arc;
 
-use crate::dto::{AuthDto, UserDto};
 use crate::commands::{LoginCommand, RegisterCommand};
+use crate::dto::{AuthDto, UserDto};
 
 pub struct JwtAuthService {
     config: AuthConfig,
@@ -21,10 +21,7 @@ impl JwtAuthService {
 
 #[async_trait]
 impl crate::context::AuthService for JwtAuthService {
-    async fn register(
-        &self,
-        cmd: RegisterCommand,
-    ) -> Result<AuthDto, AppError> {
+    async fn register(&self, cmd: RegisterCommand) -> Result<AuthDto, AppError> {
         let existing = self.users.get_by_email(&cmd.email).await;
         if existing.is_ok() {
             return Err(AppError::conflict("email already registered"));
@@ -51,10 +48,7 @@ impl crate::context::AuthService for JwtAuthService {
         })
     }
 
-    async fn login(
-        &self,
-        cmd: LoginCommand,
-    ) -> Result<AuthDto, AppError> {
+    async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError> {
         let user = self.users.get_by_email(&cmd.email).await?;
         if !verify_password(&cmd.password, &user.password_hash)? {
             return Err(AppError::Unauthorized);
@@ -68,10 +62,7 @@ impl crate::context::AuthService for JwtAuthService {
         })
     }
 
-    fn verify_token(
-        &self,
-        token: &str,
-    ) -> Result<UserClaims, AppError> {
+    fn verify_token(&self, token: &str) -> Result<UserClaims, AppError> {
         let key = self.config.jwt_secret.as_bytes();
         let token = jsonwebtoken::decode::<UserClaims>(
             token,
@@ -85,8 +76,8 @@ impl crate::context::AuthService for JwtAuthService {
 
 fn hash_password(password: &str) -> Result<String, AppError> {
     use argon2::{
-        password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
         Argon2,
+        password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
     };
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
@@ -98,8 +89,8 @@ fn hash_password(password: &str) -> Result<String, AppError> {
 
 fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
     use argon2::{
-        password_hash::{PasswordHash, PasswordVerifier},
         Argon2,
+        password_hash::{PasswordHash, PasswordVerifier},
     };
     let parsed = PasswordHash::new(hash).map_err(|e| AppError::internal(e))?;
     Ok(Argon2::default()

@@ -7,7 +7,8 @@ use domain::{
     Project, ProjectRepository, Sprint, SprintRepository, SprintState, User, UserRepository,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    QuerySelect, Set,
 };
 use shared::{
     AppError, BoardId, IssueId, IssueKey, IssueType, LabelId, Priority, ProjectId, ProjectKey,
@@ -49,7 +50,9 @@ impl UserRepository for UserRepo {
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
-        model.map(map_user).ok_or_else(|| AppError::not_found("user", id))
+        model
+            .map(map_user)
+            .ok_or_else(|| AppError::not_found("user", id))
     }
 
     async fn get_by_email(&self, email: &str) -> Result<User, AppError> {
@@ -58,7 +61,9 @@ impl UserRepository for UserRepo {
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
-        model.map(map_user).ok_or_else(|| AppError::not_found("user", email))
+        model
+            .map(map_user)
+            .ok_or_else(|| AppError::not_found("user", email))
     }
 
     async fn save(&self, user: &User) -> Result<UserId, AppError> {
@@ -71,10 +76,7 @@ impl UserRepository for UserRepo {
             created_at: Set(user.created_at),
             updated_at: Set(shared::now()),
         };
-        active
-            .insert(&*self.db)
-            .await
-            .map_err(AppError::database)?;
+        active.insert(&*self.db).await.map_err(AppError::database)?;
         Ok(user.id)
     }
 }
@@ -125,15 +127,17 @@ impl ProjectRepository for ProjectRepo {
             created_at: Set(project.created_at),
             updated_at: Set(shared::now()),
         };
-        active
-            .insert(&*self.db)
-            .await
-            .map_err(AppError::database)?;
+        active.insert(&*self.db).await.map_err(AppError::database)?;
         Ok(project.id)
     }
 
-    async fn next_issue_number(&self, _project_id: ProjectId) -> Result<u32, AppError> {
-        Ok(1)
+    async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError> {
+        let count = issue::Entity::find()
+            .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
+            .count(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(count as u32 + 1)
     }
 }
 
@@ -148,7 +152,9 @@ impl IssueRepository for IssueRepo {
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
-        model.map(map_issue).ok_or_else(|| AppError::not_found("issue", id))
+        model
+            .map(map_issue)
+            .ok_or_else(|| AppError::not_found("issue", id))
     }
 
     async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError> {
@@ -157,7 +163,9 @@ impl IssueRepository for IssueRepo {
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
-        model.map(map_issue).ok_or_else(|| AppError::not_found("issue", key))
+        model
+            .map(map_issue)
+            .ok_or_else(|| AppError::not_found("issue", key))
     }
 
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError> {
@@ -210,10 +218,7 @@ impl IssueRepository for IssueRepo {
             created_at: Set(issue.created_at),
             updated_at: Set(shared::now()),
         };
-        active
-            .insert(&*self.db)
-            .await
-            .map_err(AppError::database)?;
+        active.insert(&*self.db).await.map_err(AppError::database)?;
         Ok(issue.id)
     }
 
@@ -233,7 +238,9 @@ impl BoardRepository for BoardRepo {
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
-        model.map(map_board).ok_or_else(|| AppError::not_found("board", id))
+        model
+            .map(map_board)
+            .ok_or_else(|| AppError::not_found("board", id))
     }
 
     async fn get_default_by_project(&self, project_id: ProjectId) -> Result<Board, AppError> {
@@ -249,9 +256,24 @@ impl BoardRepository for BoardRepo {
 
     async fn get_default_by_project_key(
         &self,
-        _project_key: &ProjectKey,
+        project_key: &ProjectKey,
     ) -> Result<Board, AppError> {
-        Err(AppError::not_found("board", _project_key))
+        let project = project::Entity::find()
+            .filter(project::Column::Key.eq(project_key.as_str()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        let project_id = project
+            .map(|p| p.id)
+            .ok_or_else(|| AppError::not_found("project", project_key))?;
+        let model = board::Entity::find()
+            .filter(board::Column::ProjectId.eq(project_id))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_board)
+            .ok_or_else(|| AppError::not_found("board", project_key))
     }
 
     async fn save(&self, board: &Board) -> Result<(), AppError> {
@@ -259,13 +281,15 @@ impl BoardRepository for BoardRepo {
             board
                 .columns
                 .iter()
-                .map(|c| serde_json::json!({
-                    "id": c.id.as_uuid().to_string(),
-                    "name": c.name.as_ref(),
-                    "category": format!("{:?}", c.category),
-                    "wip_limit": c.wip_limit,
-                    "position": c.position,
-                }))
+                .map(|c| {
+                    serde_json::json!({
+                        "id": c.id.as_uuid().to_string(),
+                        "name": c.name.as_ref(),
+                        "category": format!("{:?}", c.category),
+                        "wip_limit": c.wip_limit,
+                        "position": c.position,
+                    })
+                })
                 .collect::<Vec<_>>(),
         )
         .unwrap_or_default();
@@ -275,10 +299,7 @@ impl BoardRepository for BoardRepo {
             name: Set(board.name.as_ref().to_string()),
             columns: Set(columns),
         };
-        active
-            .insert(&*self.db)
-            .await
-            .map_err(AppError::database)?;
+        active.insert(&*self.db).await.map_err(AppError::database)?;
         Ok(())
     }
 }
@@ -322,10 +343,7 @@ impl SprintRepository for SprintRepo {
             end_date: Set(sprint.end_date),
             velocity: Set(sprint.velocity),
         };
-        active
-            .insert(&*self.db)
-            .await
-            .map_err(AppError::database)?;
+        active.insert(&*self.db).await.map_err(AppError::database)?;
         Ok(sprint.id)
     }
 }
@@ -359,7 +377,8 @@ fn map_issue(m: issue::Model) -> Issue {
     Issue {
         id: IssueId::from_uuid(m.id),
         project_id: ProjectId::from_uuid(m.project_id),
-        key: IssueKey::parse(&m.key).unwrap_or_else(|_| IssueKey::new(ProjectKey::new("UNKNOWN"), 0)),
+        key: IssueKey::parse(&m.key)
+            .unwrap_or_else(|_| IssueKey::new(ProjectKey::new("UNKNOWN"), 0)),
         issue_type: IssueType::from_str(&m.issue_type).unwrap_or_default(),
         status_id: StatusId::from_uuid(m.status_id),
         summary: m.summary.into(),
@@ -409,10 +428,7 @@ fn map_board(m: board::Model) -> Board {
                             _ => ColumnCategory::Todo,
                         },
                         wip_limit: v.get("wip_limit").and_then(|x| x.as_i64()),
-                        position: v
-                            .get("position")
-                            .and_then(|x| x.as_i64())
-                            .unwrap_or(0) as i32,
+                        position: v.get("position").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
                     })
                 })
                 .collect()

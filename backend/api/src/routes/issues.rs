@@ -1,4 +1,8 @@
-use axum::{Json, extract::{Path, Query, State}, http::StatusCode};
+use axum::{
+    Json,
+    extract::{Path, Query, State},
+    http::StatusCode,
+};
 use std::sync::Arc;
 
 use crate::dto::{CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery};
@@ -16,8 +20,15 @@ pub async fn create_issue(
         description: req.description,
         priority: shared::Priority::from_str(&req.priority).unwrap_or(shared::Priority::Medium),
         status_id: req.status_id,
-        assignee_id: req.assignee_id.and_then(|s| s.parse().ok().map(shared::UserId::from_uuid)),
-        reporter_id: req.reporter_id.parse().ok().map(shared::UserId::from_uuid).unwrap_or_default(),
+        assignee_id: req
+            .assignee_id
+            .and_then(|s| s.parse().ok().map(shared::UserId::from_uuid)),
+        reporter_id: req
+            .reporter_id
+            .parse()
+            .ok()
+            .map(shared::UserId::from_uuid)
+            .unwrap_or_default(),
     };
     match ctx.services.issue.create(cmd).await {
         Ok(i) => Ok(Json(map_issue(i))),
@@ -29,7 +40,11 @@ pub async fn get_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Path(id): Path<String>,
 ) -> Result<Json<IssueResponse>, StatusCode> {
-    let issue_id = id.parse().ok().map(shared::IssueId::from_uuid).unwrap_or_default();
+    let issue_id = id
+        .parse()
+        .ok()
+        .map(shared::IssueId::from_uuid)
+        .unwrap_or_default();
     match ctx.services.issue.get_by_id(issue_id).await {
         Ok(i) => Ok(Json(map_issue(i))),
         Err(_) => Err(StatusCode::NOT_FOUND),

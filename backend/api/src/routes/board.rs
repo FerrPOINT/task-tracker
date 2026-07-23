@@ -1,7 +1,13 @@
-use axum::{Json, extract::{Path, State}, http::StatusCode};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
 use std::sync::Arc;
 
-use crate::dto::{BoardResponse, BacklogResponse, BoardColumnResponse, SprintResponse, IssueResponse};
+use crate::dto::{
+    BacklogResponse, BoardColumnResponse, BoardResponse, IssueResponse, SprintResponse,
+};
 
 pub async fn get_board(
     State(ctx): State<Arc<app::AppContext>>,

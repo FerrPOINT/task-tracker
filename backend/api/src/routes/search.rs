@@ -1,4 +1,8 @@
-use axum::{Json, extract::{Query, State}, http::StatusCode};
+use axum::{
+    Json,
+    extract::{Query, State},
+    http::StatusCode,
+};
 use std::sync::Arc;
 
 use crate::dto::{IssueListResponse, IssueResponse, SearchQuery};
