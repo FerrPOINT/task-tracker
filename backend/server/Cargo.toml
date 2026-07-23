@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
 [dependencies]
 shared = { path = "../shared" }
 domain = { path = "../domain" }

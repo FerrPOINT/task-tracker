@@ -1,8 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
+use utoipa::OpenApi;
 
 fn main() {
-    let json = api::openapi_json();
+    let json = api::ApiDoc::openapi().to_pretty_json().unwrap();
     let out = PathBuf::from(
         std::env::args()
             .nth(1)
