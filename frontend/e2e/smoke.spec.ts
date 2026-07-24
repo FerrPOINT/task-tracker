@@ -1,23 +1,33 @@
 import { test, expect } from '@playwright/test'
 
-test('login, create issue, see it in backlog and search', async ({ page }) => {
-  const title = `E2E smoke ${Date.now()}`
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
-  await page.goto('/login')
-  await page.fill('input[type="email"]', 'demo@example.com')
-  await page.fill('input[type="password"]', 'demo')
-  await page.click('button:has-text("Войти")')
-  await page.waitForURL('/')
-  await expect(page.locator('text=Team Dashboard')).toBeVisible()
+test('end-to-end smoke: login, browse project, create issue', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page.goto(`${baseURL}/login`)
 
-  await page.goto('/issues/create')
-  await page.fill('input[placeholder*="Краткое описание"]', title)
-  await page.click('button:has-text("Создать")')
-  await page.waitForURL('/projects/TT/backlog')
-  await expect(page.locator('text=' + title).first()).toBeVisible()
+  await expect(page.getByText('TaskTracker')).toBeVisible()
+  await page.locator('input[type="email"]').fill('demo@example.com')
+  await page.locator('input[type="password"]').fill('demo')
+  await page.getByRole('button', { name: 'Войти' }).click()
 
-  await page.goto('/search')
-  await page.fill('textarea', title)
-  await page.click('button:has-text("Искать")')
-  await expect(page.locator('text=' + title).first()).toBeVisible()
+  await page.waitForURL(`${baseURL}/`)
+  await expect(page.getByText('Team Dashboard')).toBeVisible()
+
+  await page.getByText('Проекты').first().click()
+  await page.waitForURL(`${baseURL}/projects`)
+  await expect(page.getByText('Task Tracker')).toBeVisible()
+
+  await page.getByText('Task Tracker').first().click()
+  await page.getByText('Доска').click()
+  await page.waitForURL(`${baseURL}/projects/TT/board`)
+  await expect(page.getByText('TT Kanban')).toBeVisible()
+
+  await page.getByText('Создать').first().click()
+  await page.waitForURL(`${baseURL}/issues/create`)
+  await page.getByPlaceholder('Краткое описание задачи').fill('E2E smoke 1784867024981')
+  await page.getByRole('button', { name: 'Создать', exact: true }).click()
+
+  await page.waitForURL(`${baseURL}/projects/TT/backlog`)
+  await expect(page.getByText('E2E smoke 1784867024981', { exact: true })).toBeVisible()
 })
