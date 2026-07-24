@@ -10,6 +10,13 @@ mod tests {
         assert_eq!(cache.get("missing").await, None);
     }
 
+    #[tokio::test]
+    async fn cache_default_roundtrip() {
+        let cache = AppCache::default();
+        cache.set("d".to_string(), "default".to_string()).await;
+        assert_eq!(cache.get("d").await, Some("default".to_string()));
+    }
+
     #[test]
     fn event_bus_publish_and_subscribe() {
         let bus = EventBus::new();

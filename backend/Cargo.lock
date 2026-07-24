@@ -1781,6 +1781,7 @@ dependencies = [
  "sea-orm-migration",
  "serde",
  "serde_json",
+ "serial_test",
  "shared",
  "sqlx",
  "thiserror",
