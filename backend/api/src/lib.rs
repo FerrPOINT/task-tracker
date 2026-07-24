@@ -62,6 +62,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             get(routes::projects::list_projects).post(routes::projects::create_project),
         )
         .route(
+            "/api/v1/projects/{project_key}",
+            get(routes::projects::get_project),
+        )
+        .route(
             "/api/v1/projects/{project_key}/board",
             get(routes::board::get_board),
         )

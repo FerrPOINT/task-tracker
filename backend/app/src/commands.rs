@@ -14,6 +14,14 @@ pub struct LoginCommand {
     pub password: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateProjectCommand {
+    pub key: shared::ProjectKey,
+    pub name: String,
+    pub description: Option<String>,
+    pub owner_id: shared::UserId,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProjectQueryDto {
     pub limit: u64,

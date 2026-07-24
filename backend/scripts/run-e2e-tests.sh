@@ -9,7 +9,12 @@ DB_HOST="127.0.0.1"
 DB_PORT="3457"
 DB_USER="tasktracker_test"
 DB_NAME="tasktracker_test"
-TT_DB_PASS="${TT_DB_PASS:?must be set}"
+PASS_FILE="${PASS_FILE:-/root/.tt_db_pass}"
+if [ ! -f "$PASS_FILE" ]; then
+    echo "Password file not found: $PASS_FILE" >&2
+    exit 1
+fi
+TT_DB_PASS="$(cat "$PASS_FILE")"
 export TASKTRACKER_DATABASE_URL="postgres://${DB_USER}:${TT_DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 export RUST_LOG="warn"
 
