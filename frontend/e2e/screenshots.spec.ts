@@ -1,6 +1,6 @@
 import { test } from '@playwright/test'
 
-const baseURL = 'http://localhost:4173'
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 const viewports = [
   { name: 'mobile', width: 375, height: 812 },
   { name: 'fullhd', width: 1920, height: 1080 },
@@ -17,8 +17,28 @@ const pages = [
   { path: '/issues/create', name: 'issue-create', marker: 'Создать задачу' },
 ]
 
+async function authenticate(p: any) {
+  const res = await p.request.post(`${baseURL}/api/v1/auth/login`, {
+    data: { email: 'demo@example.com', password: 'demo' },
+  })
+  if (res.status() !== 200) throw new Error('screenshot auth failed')
+  const { access_token, user_id, email } = await res.json()
+  await p.evaluate(
+    (payload: { token: string; userId: string; email: string }) => {
+      window.localStorage.setItem('task-tracker-auth', JSON.stringify(payload))
+    },
+    { token: access_token, userId: user_id, email },
+  )
+}
+
 async function setThemeAndGoto(p: any, theme: 'light' | 'dark', path: string, marker: string) {
-  await p.goto(`${baseURL}${path}`)
+  await p.goto(`${baseURL}/login`)
+  if (!['login', 'register'].includes(path.replace(/^\/?/, ''))) {
+    await authenticate(p)
+    await p.goto(`${baseURL}${path}`)
+  } else {
+    await p.goto(`${baseURL}${path}`)
+  }
   await p.evaluate((t: 'light' | 'dark') => {
     window.localStorage.setItem('theme', t)
     document.documentElement.setAttribute('data-theme', t)
@@ -28,7 +48,7 @@ async function setThemeAndGoto(p: any, theme: 'light' | 'dark', path: string, ma
   await p.waitForFunction(
     (text: string) => document.body.innerText.includes(text),
     marker,
-    { timeout: 5000 }
+    { timeout: 5000 },
   )
 }
 
