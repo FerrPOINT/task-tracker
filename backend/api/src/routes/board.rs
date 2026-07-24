@@ -7,6 +7,12 @@ use std::sync::Arc;
 
 use crate::dto::{BoardResponse, MoveIssueRequest};
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects/{project_key}/board",
+    params(("project_key" = String, Path, description = "Project key")),
+    responses((status = 200, body = BoardResponse))
+)]
 pub async fn get_board(
     State(ctx): State<Arc<app::AppContext>>,
     Path(project_key): Path<String>,
@@ -18,6 +24,12 @@ pub async fn get_board(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects/{project_key}/backlog",
+    params(("project_key" = String, Path, description = "Project key")),
+    responses((status = 200, body = crate::dto::BacklogResponse))
+)]
 pub async fn get_backlog(
     State(ctx): State<Arc<app::AppContext>>,
     Path(project_key): Path<String>,
@@ -29,6 +41,13 @@ pub async fn get_backlog(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/projects/{project_key}/board/move",
+    params(("project_key" = String, Path, description = "Project key")),
+    request_body = MoveIssueRequest,
+    responses((status = 200, body = BoardResponse))
+)]
 pub async fn move_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Path(project_key): Path<String>,

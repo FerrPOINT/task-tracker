@@ -10,6 +10,12 @@ use crate::dto::{
 };
 use app::commands::{CreateIssueCommand, UpdateIssueCommand};
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/issues",
+    request_body = CreateIssueRequest,
+    responses((status = 200, body = IssueResponse))
+)]
 pub async fn create_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Json(req): Json<CreateIssueRequest>,
@@ -38,6 +44,13 @@ pub async fn create_issue(
     }
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/v1/issues/{id}",
+    params(("id" = String, Path, description = "Issue id")),
+    request_body = UpdateIssueRequest,
+    responses((status = 200, body = IssueResponse))
+)]
 pub async fn update_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Path(id): Path<String>,
@@ -69,6 +82,12 @@ pub async fn update_issue(
     }
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/issues/{id}",
+    params(("id" = String, Path, description = "Issue id")),
+    responses((status = 200, body = IssueResponse))
+)]
 pub async fn get_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Path(id): Path<String>,
@@ -84,7 +103,13 @@ pub async fn get_issue(
     }
 }
 
-pub async fn search(
+#[utoipa::path(
+    get,
+    path = "/api/v1/issues",
+    params(SearchQuery),
+    responses((status = 200, body = IssueListResponse))
+)]
+pub async fn search_issues(
     State(ctx): State<Arc<app::AppContext>>,
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<IssueListResponse>, StatusCode> {

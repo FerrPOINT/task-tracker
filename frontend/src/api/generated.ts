@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/auth/login": {
+    "/api/v1/auth/login": {
         parameters: {
             query?: never;
             header?: never;
@@ -20,7 +20,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/register": {
+    "/api/v1/auth/register": {
         parameters: {
             query?: never;
             header?: never;
@@ -36,119 +36,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["health"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_projects"];
-        put?: never;
-        post: operations["create_project"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{project_key}/board": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_board"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/projects/{project_key}/backlog": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_backlog"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/issues": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["create_issue"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/issues/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["get_issue"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch: operations["update_issue"];
-        trace?: never;
-    };
-    "/search": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["search"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/dashboard": {
+    "/api/v1/dashboard": {
         parameters: {
             query?: never;
             header?: never;
@@ -164,7 +52,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/projects/{project_key}/board/move": {
+    "/api/v1/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["health"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search_issues"];
+        put?: never;
+        post: operations["create_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_issue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_issue"];
+        trace?: never;
+    };
+    "/api/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_projects"];
+        put?: never;
+        post: operations["create_project"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_project"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/backlog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_backlog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/board": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_board"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/board/move": {
         parameters: {
             query?: never;
             header?: never;
@@ -180,117 +180,131 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["search_global"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AuthResponse: {
             access_token: string;
+            email: string;
             token_type: string;
             user_id: string;
-            email: string;
         };
-        LoginRequest: {
-            email: string;
-            password: string;
-        };
-        RegisterRequest: {
-            email: string;
-            username: string;
-            password: string;
-        };
-        ProjectResponse: {
-            id: string;
-            key: string;
-            name: string;
-            description?: string | null;
-            owner_id: string;
-            /** Format: int32 */
-            todo_count: number;
-            /** Format: int32 */
-            in_progress_count: number;
-            /** Format: int32 */
-            done_count: number;
-        };
-        ProjectListResponse: {
-            projects: components["schemas"]["ProjectResponse"][];
-        };
-        CreateProjectRequest: {
-            key: string;
-            name: string;
-            description?: string | null;
-        };
-        IssueResponse: {
-            id: string;
-            key: string;
-            summary: string;
-            description: string;
-            issue_type: string;
-            status: string;
-            priority: string;
-            labels: string[];
-            assignee_id?: string | null;
-            assignee_name?: string | null;
-            reporter_id: string;
-            reporter_name?: string | null;
-            project_name: string;
-        };
-        IssueListResponse: {
-            issues: components["schemas"]["IssueResponse"][];
-        };
-        CreateIssueRequest: {
-            project_key: string;
-            issue_type: string;
-            summary: string;
-            description?: string | null;
-            priority: string;
-            status_id: string;
-            assignee_id?: string | null;
-            reporter_id: string;
+        BacklogResponse: {
+            backlog_issues: components["schemas"]["IssueResponse"][];
+            sprint: components["schemas"]["SprintResponse"];
+            sprint_issues: components["schemas"]["IssueResponse"][];
         };
         BoardColumnResponse: {
             id: string;
-            name: string;
             issue_ids: string[];
+            name: string;
             /** Format: int32 */
             wip_limit?: number | null;
-        };
-        SprintResponse: {
-            id: string;
-            name: string;
-            goal: string;
-            state: string;
-            /** Format: int64 */
-            velocity: number;
-            /** Format: int64 */
-            remaining_days?: number | null;
-            issue_ids: string[];
         };
         BoardResponse: {
             columns: components["schemas"]["BoardColumnResponse"][];
             issues: components["schemas"]["IssueResponse"][];
             sprint: components["schemas"]["SprintResponse"];
         };
-        BacklogResponse: {
-            sprint: components["schemas"]["SprintResponse"];
-            sprint_issues: components["schemas"]["IssueResponse"][];
-            backlog_issues: components["schemas"]["IssueResponse"][];
+        CreateIssueRequest: {
+            assignee_id?: string | null;
+            description?: string | null;
+            issue_type: string;
+            priority: string;
+            project_key: string;
+            reporter_id: string;
+            status_id: string;
+            summary: string;
+        };
+        CreateProjectRequest: {
+            description?: string | null;
+            key: string;
+            name: string;
         };
         DashboardResponse: {
             assigned_issues: components["schemas"]["IssueResponse"][];
         };
-        UpdateIssueRequest: {
-            summary?: string;
-            description?: string | null;
-            /** @enum {string} */
-            priority?: "Lowest" | "Low" | "Medium" | "High" | "Highest";
-            status_id?: string;
+        IssueListResponse: {
+            issues: components["schemas"]["IssueResponse"][];
+        };
+        IssueResponse: {
             assignee_id?: string | null;
+            assignee_name?: string | null;
+            description: string;
+            id: string;
+            issue_type: string;
+            key: string;
+            labels: string[];
+            priority: string;
+            project_name: string;
+            reporter_id: string;
+            reporter_name?: string | null;
+            status: string;
+            summary: string;
+        };
+        LoginRequest: {
+            email: string;
+            password: string;
         };
         MoveIssueRequest: {
             issue_id: string;
             status_id: string;
-            before_issue_id?: string | null;
+        };
+        ProjectListResponse: {
+            projects: components["schemas"]["ProjectResponse"][];
+        };
+        ProjectResponse: {
+            description?: string | null;
+            /** Format: int32 */
+            done_count: number;
+            id: string;
+            /** Format: int32 */
+            in_progress_count: number;
+            key: string;
+            name: string;
+            owner_id: string;
+            /** Format: int32 */
+            todo_count: number;
+        };
+        RegisterRequest: {
+            email: string;
+            password: string;
+            username: string;
+        };
+        SprintResponse: {
+            goal: string;
+            id: string;
+            issue_ids: string[];
+            name: string;
+            /** Format: int64 */
+            remaining_days?: number | null;
+            state: string;
+            /** Format: int64 */
+            velocity: number;
+        };
+        UpdateIssueRequest: {
+            assignee_id?: string | null;
+            description?: string | null;
+            priority?: string | null;
+            status_id?: string | null;
+            summary?: string | null;
         };
     };
     responses: never;
@@ -314,7 +328,6 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Login successful */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -338,13 +351,31 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Registration successful */
-            201: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+        };
+    };
+    get_dashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardResponse"];
                 };
             };
         };
@@ -358,13 +389,104 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Health check */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    search_issues: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueListResponse"];
+                };
+            };
+        };
+    };
+    create_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateIssueRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+        };
+    };
+    get_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+        };
+    };
+    update_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIssueRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
                 };
             };
         };
@@ -378,7 +500,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description List of projects */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -402,33 +523,34 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Project created */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
             };
         };
     };
-    get_board: {
+    get_project: {
         parameters: {
             query?: never;
             header?: never;
             path: {
+                /** @description Project key */
                 project_key: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Board with columns and issues */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BoardResponse"];
+                    "application/json": components["schemas"]["ProjectResponse"];
                 };
             };
         };
@@ -438,13 +560,13 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Project key */
                 project_key: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Backlog with sprint and issues */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -455,116 +577,24 @@ export interface operations {
             };
         };
     };
-    create_issue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateIssueRequest"];
-            };
-        };
-        responses: {
-            /** @description Created issue */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssueResponse"];
-                };
-            };
-        };
-    };
-    get_issue: {
+    get_board: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                id: string;
+                /** @description Project key */
+                project_key: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Issue details */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["IssueResponse"];
-                };
-            };
-        };
-    };
-    update_issue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateIssueRequest"];
-            };
-        };
-        responses: {
-            /** @description Updated issue */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssueResponse"];
-                };
-            };
-        };
-    };
-    search: {
-        parameters: {
-            query?: {
-                q?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Search results */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssueListResponse"];
-                };
-            };
-        };
-    };
-    get_dashboard: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Dashboard */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DashboardResponse"];
+                    "application/json": components["schemas"]["BoardResponse"];
                 };
             };
         };
@@ -574,6 +604,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description Project key */
                 project_key: string;
             };
             cookie?: never;
@@ -584,13 +615,33 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Board after move */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["BoardResponse"];
+                };
+            };
+        };
+    };
+    search_global: {
+        parameters: {
+            query: {
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueListResponse"];
                 };
             };
         };

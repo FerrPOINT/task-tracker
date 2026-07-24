@@ -8,7 +8,7 @@ export async function updateIssue(
   id: string,
   input: UpdateIssueInput,
 ): Promise<Issue> {
-  const { data, error } = await api.PATCH('/issues/{id}', {
+  const { data, error } = await api.PATCH('/api/v1/issues/{id}', {
     params: { path: { id } },
     body: input,
   })
@@ -17,7 +17,7 @@ export async function updateIssue(
 }
 
 export async function getIssue(id: string): Promise<Issue | null> {
-  const { data, error } = await api.GET('/issues/{id}', {
+  const { data, error } = await api.GET('/api/v1/issues/{id}', {
     params: { path: { id } },
   })
   if (error || !data) return null

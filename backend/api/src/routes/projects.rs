@@ -4,6 +4,11 @@ use std::sync::Arc;
 use crate::dto::{CreateProjectRequest, ProjectListResponse, ProjectResponse};
 use app::commands::ProjectQueryDto;
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects",
+    responses((status = 200, body = ProjectListResponse))
+)]
 pub async fn list_projects(
     State(ctx): State<Arc<app::AppContext>>,
 ) -> Result<Json<ProjectListResponse>, StatusCode> {
@@ -35,6 +40,12 @@ pub async fn list_projects(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/projects",
+    request_body = CreateProjectRequest,
+    responses((status = 201, body = ProjectResponse))
+)]
 pub async fn create_project(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<crate::middleware::auth::UserClaims>,
@@ -69,6 +80,12 @@ pub async fn create_project(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects/{project_key}",
+    params(("project_key" = String, Path, description = "Project key")),
+    responses((status = 200, body = ProjectResponse))
+)]
 pub async fn get_project(
     State(ctx): State<Arc<app::AppContext>>,
     axum::extract::Path(key): axum::extract::Path<String>,

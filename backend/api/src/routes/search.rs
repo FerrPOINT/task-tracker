@@ -7,7 +7,13 @@ use std::sync::Arc;
 
 use crate::dto::{IssueListResponse, IssueResponse, SearchQuery};
 
-pub async fn search(
+#[utoipa::path(
+    get,
+    path = "/api/v1/search",
+    params(SearchQuery),
+    responses((status = 200, body = IssueListResponse))
+)]
+pub async fn search_global(
     State(ctx): State<Arc<app::AppContext>>,
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<IssueListResponse>, StatusCode> {
