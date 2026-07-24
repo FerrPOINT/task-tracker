@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Task Tracker API",
+    "title": "api",
     "description": "",
     "license": {
       "name": ""
@@ -9,10 +9,10 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/auth/login": {
+    "/api/v1/auth/login": {
       "post": {
         "tags": [
-          "auth"
+          "routes::auth"
         ],
         "operationId": "login",
         "requestBody": {
@@ -27,7 +27,7 @@
         },
         "responses": {
           "200": {
-            "description": "Login successful",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -39,10 +39,10 @@
         }
       }
     },
-    "/auth/register": {
+    "/api/v1/auth/register": {
       "post": {
         "tags": [
-          "auth"
+          "routes::auth"
         ],
         "operationId": "register",
         "requestBody": {
@@ -56,8 +56,8 @@
           "required": true
         },
         "responses": {
-          "201": {
-            "description": "Registration successful",
+          "200": {
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -69,15 +69,35 @@
         }
       }
     },
-    "/health": {
+    "/api/v1/dashboard": {
       "get": {
         "tags": [
-          "system"
+          "routes::dashboard"
+        ],
+        "operationId": "get_dashboard",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "routes::health"
         ],
         "operationId": "health",
         "responses": {
           "200": {
-            "description": "Health check",
+            "description": "",
             "content": {
               "text/plain": {
                 "schema": {
@@ -89,131 +109,38 @@
         }
       }
     },
-    "/projects": {
+    "/api/v1/issues": {
       "get": {
         "tags": [
-          "projects"
+          "routes::issues"
         ],
-        "operationId": "list_projects",
+        "operationId": "search_issues",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "List of projects",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProjectListResponse"
+                  "$ref": "#/components/schemas/IssueListResponse"
                 }
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       },
       "post": {
         "tags": [
-          "projects"
-        ],
-        "operationId": "create_project",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateProjectRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Project created"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/projects/{project_key}/board": {
-      "get": {
-        "tags": [
-          "board"
-        ],
-        "operationId": "get_board",
-        "parameters": [
-          {
-            "name": "project_key",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Board with columns and issues",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BoardResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/projects/{project_key}/backlog": {
-      "get": {
-        "tags": [
-          "board"
-        ],
-        "operationId": "get_backlog",
-        "parameters": [
-          {
-            "name": "project_key",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Backlog with sprint and issues",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BacklogResponse"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
-      }
-    },
-    "/issues": {
-      "post": {
-        "tags": [
-          "issues"
+          "routes::issues"
         ],
         "operationId": "create_issue",
         "requestBody": {
@@ -228,7 +155,7 @@
         },
         "responses": {
           "200": {
-            "description": "Created issue",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -237,24 +164,20 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
-    "/issues/{id}": {
+    "/api/v1/issues/{id}": {
       "get": {
         "tags": [
-          "issues"
+          "routes::issues"
         ],
         "operationId": "get_issue",
         "parameters": [
           {
             "name": "id",
             "in": "path",
+            "description": "Issue id",
             "required": true,
             "schema": {
               "type": "string"
@@ -263,7 +186,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Issue details",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -272,22 +195,18 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       },
       "patch": {
         "tags": [
-          "issues"
+          "routes::issues"
         ],
         "operationId": "update_issue",
         "parameters": [
           {
             "name": "id",
             "in": "path",
+            "description": "Issue id",
             "required": true,
             "schema": {
               "type": "string"
@@ -306,7 +225,7 @@
         },
         "responses": {
           "200": {
-            "description": "Updated issue",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -315,25 +234,69 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
-    "/search": {
+    "/api/v1/projects": {
       "get": {
         "tags": [
-          "search"
+          "routes::projects"
         ],
-        "operationId": "search",
+        "operationId": "list_projects",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "routes::projects"
+        ],
+        "operationId": "create_project",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_key}": {
+      "get": {
+        "tags": [
+          "routes::projects"
+        ],
+        "operationId": "get_project",
         "parameters": [
           {
-            "name": "q",
-            "in": "query",
-            "required": false,
+            "name": "project_key",
+            "in": "path",
+            "description": "Project key",
+            "required": true,
             "schema": {
               "type": "string"
             }
@@ -341,58 +304,91 @@
         ],
         "responses": {
           "200": {
-            "description": "Search results",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/IssueListResponse"
+                  "$ref": "#/components/schemas/ProjectResponse"
                 }
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
-    "/dashboard": {
+    "/api/v1/projects/{project_key}/backlog": {
       "get": {
         "tags": [
-          "dashboard"
+          "routes::board"
         ],
-        "operationId": "get_dashboard",
+        "operationId": "get_backlog",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "description": "Project key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "Dashboard",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DashboardResponse"
+                  "$ref": "#/components/schemas/BacklogResponse"
                 }
               }
             }
           }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ]
+        }
       }
     },
-    "/projects/{project_key}/board/move": {
+    "/api/v1/projects/{project_key}/board": {
+      "get": {
+        "tags": [
+          "routes::board"
+        ],
+        "operationId": "get_board",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "description": "Project key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project_key}/board/move": {
       "post": {
         "tags": [
-          "board"
+          "routes::board"
         ],
         "operationId": "move_issue",
         "parameters": [
           {
             "name": "project_key",
             "in": "path",
+            "description": "Project key",
             "required": true,
             "schema": {
               "type": "string"
@@ -411,7 +407,7 @@
         },
         "responses": {
           "200": {
-            "description": "Board after move",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -420,12 +416,37 @@
               }
             }
           }
-        },
-        "security": [
+        }
+      }
+    },
+    "/api/v1/search": {
+      "get": {
+        "tags": [
+          "routes::search"
+        ],
+        "operationId": "search_global",
+        "parameters": [
           {
-            "bearerAuth": []
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
           }
-        ]
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueListResponse"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
@@ -443,252 +464,39 @@
           "access_token": {
             "type": "string"
           },
+          "email": {
+            "type": "string"
+          },
           "token_type": {
             "type": "string"
           },
           "user_id": {
             "type": "string"
-          },
-          "email": {
-            "type": "string"
           }
         }
       },
-      "LoginRequest": {
+      "BacklogResponse": {
         "type": "object",
         "required": [
-          "email",
-          "password"
+          "sprint",
+          "sprint_issues",
+          "backlog_issues"
         ],
         "properties": {
-          "email": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
-        }
-      },
-      "RegisterRequest": {
-        "type": "object",
-        "required": [
-          "email",
-          "username",
-          "password"
-        ],
-        "properties": {
-          "email": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          },
-          "password": {
-            "type": "string"
-          }
-        }
-      },
-      "ProjectResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "key",
-          "name",
-          "owner_id",
-          "todo_count",
-          "in_progress_count",
-          "done_count"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "owner_id": {
-            "type": "string"
-          },
-          "todo_count": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "in_progress_count": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "done_count": {
-            "type": "integer",
-            "format": "int32"
-          }
-        }
-      },
-      "ProjectListResponse": {
-        "type": "object",
-        "required": [
-          "projects"
-        ],
-        "properties": {
-          "projects": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProjectResponse"
-            }
-          }
-        }
-      },
-      "CreateProjectRequest": {
-        "type": "object",
-        "required": [
-          "key",
-          "name"
-        ],
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
-      "IssueResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "key",
-          "summary",
-          "description",
-          "issue_type",
-          "status",
-          "priority",
-          "labels",
-          "reporter_id",
-          "project_name"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "summary": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "issue_type": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string"
-          },
-          "priority": {
-            "type": "string"
-          },
-          "labels": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "assignee_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "assignee_name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "reporter_id": {
-            "type": "string"
-          },
-          "reporter_name": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "project_name": {
-            "type": "string"
-          }
-        }
-      },
-      "IssueListResponse": {
-        "type": "object",
-        "required": [
-          "issues"
-        ],
-        "properties": {
-          "issues": {
+          "backlog_issues": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/IssueResponse"
             }
-          }
-        }
-      },
-      "CreateIssueRequest": {
-        "type": "object",
-        "required": [
-          "project_key",
-          "issue_type",
-          "summary",
-          "priority",
-          "status_id",
-          "reporter_id"
-        ],
-        "properties": {
-          "project_key": {
-            "type": "string"
           },
-          "issue_type": {
-            "type": "string"
+          "sprint": {
+            "$ref": "#/components/schemas/SprintResponse"
           },
-          "summary": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "priority": {
-            "type": "string"
-          },
-          "status_id": {
-            "type": "string"
-          },
-          "assignee_id": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "reporter_id": {
-            "type": "string"
+          "sprint_issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueResponse"
+            }
           }
         }
       },
@@ -703,63 +511,22 @@
           "id": {
             "type": "string"
           },
-          "name": {
-            "type": "string"
-          },
           "issue_ids": {
             "type": "array",
             "items": {
               "type": "string"
             }
+          },
+          "name": {
+            "type": "string"
           },
           "wip_limit": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
-          }
-        }
-      },
-      "SprintResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "name",
-          "goal",
-          "state",
-          "velocity",
-          "issue_ids"
-        ],
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "goal": {
-            "type": "string"
-          },
-          "state": {
-            "type": "string"
-          },
-          "velocity": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "remaining_days": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int64"
-          },
-          "issue_ids": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -788,28 +555,67 @@
           }
         }
       },
-      "BacklogResponse": {
+      "CreateIssueRequest": {
         "type": "object",
         "required": [
-          "sprint",
-          "sprint_issues",
-          "backlog_issues"
+          "project_key",
+          "issue_type",
+          "summary",
+          "priority",
+          "status_id",
+          "reporter_id"
         ],
         "properties": {
-          "sprint": {
-            "$ref": "#/components/schemas/SprintResponse"
+          "assignee_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "sprint_issues": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/IssueResponse"
-            }
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "backlog_issues": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/IssueResponse"
-            }
+          "issue_type": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "project_key": {
+            "type": "string"
+          },
+          "reporter_id": {
+            "type": "string"
+          },
+          "status_id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "required": [
+          "key",
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -827,32 +633,100 @@
           }
         }
       },
-      "UpdateIssueRequest": {
+      "IssueListResponse": {
         "type": "object",
+        "required": [
+          "issues"
+        ],
         "properties": {
-          "summary": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string",
-            "nullable": true
-          },
-          "priority": {
-            "type": "string",
-            "enum": [
-              "Lowest",
-              "Low",
-              "Medium",
-              "High",
-              "Highest"
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueResponse"
+            }
+          }
+        }
+      },
+      "IssueResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "summary",
+          "description",
+          "issue_type",
+          "status",
+          "priority",
+          "labels",
+          "reporter_id",
+          "project_name"
+        ],
+        "properties": {
+          "assignee_id": {
+            "type": [
+              "string",
+              "null"
             ]
           },
-          "status_id": {
+          "assignee_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
             "type": "string"
           },
-          "assignee_id": {
-            "type": "string",
-            "nullable": true
+          "id": {
+            "type": "string"
+          },
+          "issue_type": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "priority": {
+            "type": "string"
+          },
+          "project_name": {
+            "type": "string"
+          },
+          "reporter_id": {
+            "type": "string"
+          },
+          "reporter_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
           }
         }
       },
@@ -868,19 +742,165 @@
           },
           "status_id": {
             "type": "string"
-          },
-          "before_issue_id": {
-            "type": "string",
-            "nullable": true
           }
         }
-      }
-    },
-    "securitySchemes": {
-      "bearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "bearerFormat": "JWT"
+      },
+      "ProjectListResponse": {
+        "type": "object",
+        "required": [
+          "projects"
+        ],
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectResponse"
+            }
+          }
+        }
+      },
+      "ProjectResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "name",
+          "owner_id",
+          "todo_count",
+          "in_progress_count",
+          "done_count"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "done_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "in_progress_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "todo_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "username",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        }
+      },
+      "SprintResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "goal",
+          "state",
+          "velocity",
+          "issue_ids"
+        ],
+        "properties": {
+          "goal": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "issue_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "remaining_days": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "state": {
+            "type": "string"
+          },
+          "velocity": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "UpdateIssueRequest": {
+        "type": "object",
+        "properties": {
+          "assignee_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "priority": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       }
     }
   }

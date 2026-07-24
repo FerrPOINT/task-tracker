@@ -4,6 +4,12 @@ use std::sync::Arc;
 use crate::dto::{AuthResponse, LoginRequest, RegisterRequest};
 use app::commands::{LoginCommand, RegisterCommand};
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/register",
+    request_body = RegisterRequest,
+    responses((status = 200, body = AuthResponse))
+)]
 pub async fn register(
     State(ctx): State<Arc<app::AppContext>>,
     Json(req): Json<RegisterRequest>,
@@ -25,6 +31,12 @@ pub async fn register(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/login",
+    request_body = LoginRequest,
+    responses((status = 200, body = AuthResponse))
+)]
 pub async fn login(
     State(ctx): State<Arc<app::AppContext>>,
     Json(req): Json<LoginRequest>,

@@ -17,24 +17,43 @@ pub use dto::*;
 pub use routes::*;
 
 #[derive(OpenApi)]
-#[openapi(components(schemas(
-    dto::RegisterRequest,
-    dto::LoginRequest,
-    dto::AuthResponse,
-    dto::ProjectResponse,
-    dto::ProjectListResponse,
-    dto::CreateProjectRequest,
-    dto::IssueResponse,
-    dto::IssueListResponse,
-    dto::CreateIssueRequest,
-    dto::UpdateIssueRequest,
-    dto::MoveIssueRequest,
-    dto::BoardColumnResponse,
-    dto::SprintResponse,
-    dto::BoardResponse,
-    dto::BacklogResponse,
-    dto::DashboardResponse,
-)))]
+#[openapi(
+    paths(
+        routes::health::health,
+        routes::auth::register,
+        routes::auth::login,
+        routes::projects::list_projects,
+        routes::projects::create_project,
+        routes::projects::get_project,
+        routes::board::get_board,
+        routes::board::get_backlog,
+        routes::board::move_issue,
+        routes::issues::create_issue,
+        routes::issues::search_issues,
+        routes::issues::get_issue,
+        routes::issues::update_issue,
+        routes::search::search_global,
+        routes::dashboard::get_dashboard,
+    ),
+    components(schemas(
+        dto::RegisterRequest,
+        dto::LoginRequest,
+        dto::AuthResponse,
+        dto::ProjectResponse,
+        dto::ProjectListResponse,
+        dto::CreateProjectRequest,
+        dto::IssueResponse,
+        dto::IssueListResponse,
+        dto::CreateIssueRequest,
+        dto::UpdateIssueRequest,
+        dto::MoveIssueRequest,
+        dto::BoardColumnResponse,
+        dto::SprintResponse,
+        dto::BoardResponse,
+        dto::BacklogResponse,
+        dto::DashboardResponse,
+    ))
+)]
 pub struct ApiDoc;
 
 pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
@@ -50,47 +69,49 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .allow_headers(Any);
 
     let public = Router::new()
-        .route("/api/v1/health", get(routes::health::health))
-        .route("/api/v1/auth/register", post(routes::auth::register))
-        .route("/api/v1/auth/login", post(routes::auth::login));
+        .route("/health", get(routes::health::health))
+        .route("/auth/register", post(routes::auth::register))
+        .route("/auth/login", post(routes::auth::login));
 
     let auth = from_fn_with_state(ctx.clone(), middleware::auth::bearer_auth);
 
     let protected = Router::new()
         .route(
-            "/api/v1/projects",
+            "/projects",
             get(routes::projects::list_projects).post(routes::projects::create_project),
         )
         .route(
-            "/api/v1/projects/{project_key}",
+            "/projects/{project_key}",
             get(routes::projects::get_project),
         )
         .route(
-            "/api/v1/projects/{project_key}/board",
+            "/projects/{project_key}/board",
             get(routes::board::get_board),
         )
         .route(
-            "/api/v1/projects/{project_key}/backlog",
+            "/projects/{project_key}/backlog",
             get(routes::board::get_backlog),
         )
         .route(
-            "/api/v1/projects/{project_key}/board/move",
+            "/projects/{project_key}/board/move",
             post(routes::board::move_issue),
         )
         .route(
-            "/api/v1/issues",
-            post(routes::issues::create_issue).get(routes::issues::search),
+            "/issues",
+            post(routes::issues::create_issue).get(routes::issues::search_issues),
         )
         .route(
-            "/api/v1/issues/{id}",
+            "/issues/{id}",
             get(routes::issues::get_issue).patch(routes::issues::update_issue),
         )
-        .route("/api/v1/search", get(routes::search::search))
-        .route("/api/v1/dashboard", get(routes::dashboard::get_dashboard))
+        .route("/search", get(routes::search::search_global))
+        .route("/dashboard", get(routes::dashboard::get_dashboard))
         .route_layer(auth);
 
-    public
-        .merge(protected)
+    let api = public.merge(protected);
+
+    Router::new()
+        .nest("/api/v1", api)
         .merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", ApiDoc::openapi()))
         .layer(cors)
 }

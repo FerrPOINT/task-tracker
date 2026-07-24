@@ -7,9 +7,13 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::dto::DashboardResponse;
-
 use app::auth::UserClaims;
 
+#[utoipa::path(
+    get,
+    path = "/api/v1/dashboard",
+    responses((status = 200, body = DashboardResponse))
+)]
 pub async fn get_dashboard(
     State(ctx): State<Arc<app::AppContext>>,
     req: Request,

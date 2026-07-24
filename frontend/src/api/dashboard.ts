@@ -5,7 +5,7 @@ export type Issue = components['schemas']['IssueResponse']
 export type Dashboard = components['schemas']['DashboardResponse']
 
 export async function getDashboard(): Promise<Dashboard> {
-  const { data, error } = await api.GET('/dashboard')
+  const { data, error } = await api.GET('/api/v1/dashboard')
   if (error || !data) throw new Error('failed to load dashboard')
   return data
 }
