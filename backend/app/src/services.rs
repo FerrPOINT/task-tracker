@@ -6,10 +6,11 @@ use crate::dto::{
     BacklogDto, BoardColumnDto, BoardDto, DashboardDto, IssueDto, ProjectDto, SprintDto,
 };
 use domain::{
-    BoardColumn, ColumnCategory, IssueQuery, IssueRepository, ProjectRepository, SprintRepository,
+    Board, BoardColumn, ColumnCategory, IssueQuery, IssueRepository, Project, ProjectRepository,
+    SprintRepository,
 };
 
-use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
+use shared::{AppError, BoardId, IssueId, ProjectId, ProjectKey, StatusId, UserId};
 
 #[cfg(test)]
 mod tests;
@@ -17,16 +18,55 @@ mod tests;
 pub struct ProjectServiceImpl {
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
+    users: Arc<dyn domain::UserRepository>,
+    boards: Arc<dyn domain::BoardRepository>,
 }
 
 impl ProjectServiceImpl {
-    pub fn new(projects: Arc<dyn ProjectRepository>, issues: Arc<dyn IssueRepository>) -> Self {
-        Self { projects, issues }
+    pub fn new(
+        projects: Arc<dyn ProjectRepository>,
+        issues: Arc<dyn IssueRepository>,
+        users: Arc<dyn domain::UserRepository>,
+        boards: Arc<dyn domain::BoardRepository>,
+    ) -> Self {
+        Self {
+            projects,
+            issues,
+            users,
+            boards,
+        }
     }
 }
 
 #[async_trait]
 impl crate::context::ProjectService for ProjectServiceImpl {
+    async fn create(
+        &self,
+        cmd: crate::commands::CreateProjectCommand,
+    ) -> Result<ProjectDto, AppError> {
+        let owner = self.users.get_by_id(cmd.owner_id).await?;
+        let board_id = BoardId::new();
+        let project = Project {
+            id: ProjectId::new(),
+            key: cmd.key,
+            name: cmd.name.into(),
+            description: cmd.description.map(Into::into),
+            owner_id: owner.id,
+            default_board_id: board_id,
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        let board = Board {
+            id: board_id,
+            project_id: project.id,
+            name: "Board".into(),
+            columns: default_board_columns(),
+        };
+        self.projects.save(&project).await?;
+        self.boards.save(&board).await?;
+        Ok(ProjectDto::from_project(project, 0, 0, 0))
+    }
+
     async fn list(
         &self,
         _query: crate::commands::ProjectQueryDto,

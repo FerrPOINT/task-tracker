@@ -3,17 +3,18 @@ mod tests {
     use std::sync::Arc;
 
     use domain::{
-        Board, BoardColumn, BoardRepository, ColumnCategory, IssueRepository,
-        MemoryBoardRepository, MemoryIssueRepository, MemoryProjectRepository,
-        MemorySprintRepository, MemoryUserRepository, Project, ProjectRepository, SprintRepository,
-        User, UserRepository,
+        Board, BoardColumn, BoardRepository, ColumnCategory, MemoryBoardRepository,
+        MemoryIssueRepository, MemoryProjectRepository, MemorySprintRepository,
+        MemoryUserRepository, Project, ProjectRepository, User, UserRepository,
     };
     use shared::{
         AppConfig, AuthConfig, DatabaseConfig, IssueType, Priority, ProjectKey, ServerConfig,
         StatusId, UserId,
     };
 
-    use crate::commands::{CreateIssueCommand, LoginCommand, RegisterCommand, UpdateIssueCommand};
+    use crate::commands::{
+        CreateIssueCommand, CreateProjectCommand, LoginCommand, RegisterCommand, UpdateIssueCommand,
+    };
     use crate::context::AppContext;
 
     fn test_user() -> User {
@@ -308,6 +309,53 @@ mod tests {
 
         let results = ctx.services.search.search("keyword").await.unwrap();
         assert_eq!(results.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn project_service_create_list_and_get_by_key() {
+        let (ctx, user) = ctx_with_demo_data().await;
+        let created = ctx
+            .services
+            .project
+            .create(CreateProjectCommand {
+                key: ProjectKey::new("NP"),
+                name: "New Project".to_string(),
+                description: Some("desc".to_string()),
+                owner_id: user.id,
+            })
+            .await
+            .unwrap();
+        assert_eq!(created.key, "NP");
+        let list = ctx
+            .services
+            .project
+            .list(crate::commands::ProjectQueryDto::default())
+            .await
+            .unwrap();
+        assert_eq!(list.len(), 2);
+        let by_key = ctx
+            .services
+            .project
+            .get_by_key(&ProjectKey::new("NP"))
+            .await
+            .unwrap();
+        assert_eq!(by_key.key, "NP");
+    }
+
+    #[tokio::test]
+    async fn project_service_create_fails_when_owner_missing() {
+        let (ctx, _user) = ctx_with_demo_data().await;
+        let err = ctx
+            .services
+            .project
+            .create(CreateProjectCommand {
+                key: ProjectKey::new("XX"),
+                name: "Bad".to_string(),
+                description: None,
+                owner_id: UserId::new(),
+            })
+            .await;
+        assert!(err.is_err());
     }
 
     #[tokio::test]

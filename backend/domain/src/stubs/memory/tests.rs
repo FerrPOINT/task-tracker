@@ -1,62 +1,165 @@
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use crate::stubs::memory::{
-        MemoryBoardRepository, MemoryEventBus, MemoryIssueRepository, MemoryProjectRepository,
-        MemorySprintRepository, MemoryUnitOfWork, MemoryUserRepository,
-    };
+    use super::super::*;
     use crate::{
-        Board, BoardRepository, EventBus, Issue, IssueQuery, IssueRepository, Project,
-        ProjectQuery, ProjectRepository, Sprint, SprintRepository, SprintState, UnitOfWork, User,
-        UserRepository,
+        Issue, IssueQuery, Project, ProjectEvent, ProjectQuery, Repositories, Sprint, SprintState,
+        User,
     };
-    use shared::{
-        AppError, BoardId, IssueId, IssueKey, IssueType, Priority, ProjectId, ProjectKey, SprintId,
-        StatusId, UserId,
-    };
+    use shared::{IssueType, Priority, StatusId};
+    use std::str::FromStr;
 
-    fn user(id: UserId, email: &str) -> User {
+    fn sample_user() -> User {
         User {
-            id,
-            email: email.into(),
-            username: email.split('@').next().unwrap().into(),
-            display_name: "U".into(),
-            password_hash: "h".into(),
+            id: UserId::new(),
+            email: "u@example.com".into(),
+            username: "u".into(),
+            display_name: "User".into(),
+            password_hash: "hash".into(),
             created_at: shared::now(),
             updated_at: shared::now(),
         }
     }
 
-    fn project(id: ProjectId, key: &str) -> Project {
+    fn sample_project(owner_id: UserId) -> Project {
         Project {
-            id,
-            key: ProjectKey::new(key),
-            name: key.into(),
-            description: None,
-            owner_id: UserId::new(),
+            id: ProjectId::new(),
+            key: ProjectKey::new("TEST"),
+            name: "Test".into(),
+            description: Some("desc".into()),
+            owner_id,
             default_board_id: BoardId::new(),
             created_at: shared::now(),
             updated_at: shared::now(),
         }
     }
 
-    fn issue(id: IssueId, project_id: ProjectId, number: u32) -> Issue {
-        Issue::create(
-            &project(project_id, "TT"),
-            number,
-            IssueType::Task,
-            StatusId::new(),
-            format!("Issue {}", number),
-            None,
-            UserId::new(),
-            Priority::Medium,
-        )
+    #[tokio::test]
+    async fn memory_user_repository_lifecycle() {
+        let repo = MemoryUserRepository::default();
+        let user = sample_user();
+
+        assert!(repo.get_by_id(user.id).await.is_err());
+        repo.save(&user).await.unwrap();
+        assert_eq!(
+            repo.get_by_id(user.id).await.unwrap().email.as_ref(),
+            "u@example.com"
+        );
+        assert_eq!(
+            repo.get_by_email("u@example.com").await.unwrap().id,
+            user.id
+        );
+
+        let mut updated = user.clone();
+        updated.display_name = "Updated".into();
+        repo.save(&updated).await.unwrap();
+        assert_eq!(
+            repo.get_by_id(user.id).await.unwrap().display_name.as_ref(),
+            "Updated"
+        );
     }
 
-    fn sprint(id: SprintId, project_id: ProjectId) -> Sprint {
-        Sprint {
-            id,
+    #[tokio::test]
+    async fn memory_project_repository_lifecycle() {
+        let repo = MemoryProjectRepository::default();
+        let owner = UserId::new();
+        let project = sample_project(owner);
+
+        assert!(repo.get_by_id(project.id).await.is_err());
+        repo.save(&project).await.unwrap();
+        assert_eq!(
+            repo.get_by_id(project.id).await.unwrap().name.as_ref(),
+            "Test"
+        );
+        assert_eq!(repo.get_by_key(&project.key).await.unwrap().id, project.id);
+        assert_eq!(repo.list(ProjectQuery::default()).await.unwrap().len(), 1);
+        assert_eq!(repo.next_issue_number(project.id).await.unwrap(), 2);
+    }
+
+    #[tokio::test]
+    async fn memory_issue_repository_filters_and_search() {
+        let repo = MemoryIssueRepository::default();
+        let project_id = ProjectId::new();
+        let user_id = UserId::new();
+        let status = StatusId::from_uuid(uuid::Uuid::nil());
+        let project = Project {
+            id: project_id,
+            key: ProjectKey::new("TEST"),
+            name: "Test".into(),
+            description: None,
+            owner_id: UserId::new(),
+            default_board_id: BoardId::new(),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        let mut issue = Issue::create(
+            &project,
+            1,
+            IssueType::Task,
+            status,
+            "searchable summary",
+            None,
+            user_id,
+            Priority::Medium,
+        );
+        issue.assign(Some(user_id));
+        repo.save(&issue).await.unwrap();
+
+        let found = repo.get_by_id(issue.id).await.unwrap();
+        assert_eq!(found.summary.as_ref(), "searchable summary");
+
+        let by_key = repo.get_by_key(&issue.key).await.unwrap();
+        assert_eq!(by_key.id, issue.id);
+
+        let filtered = repo
+            .list(IssueQuery {
+                project_id: Some(project_id),
+                assignee_id: Some(user_id),
+                search_text: Some("summary".to_string()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(filtered.len(), 1);
+
+        let empty = repo
+            .list(IssueQuery {
+                status_id: Some(StatusId::new()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(empty.is_empty());
+
+        repo.delete(issue.id).await.unwrap();
+        assert!(repo.get_by_id(issue.id).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn memory_board_and_sprint_repositories() {
+        let boards = MemoryBoardRepository::default();
+        let sprints = MemorySprintRepository::default();
+        let project_id = ProjectId::new();
+        let board = Board {
+            id: BoardId::new(),
+            project_id,
+            name: "Main".into(),
+            columns: vec![],
+        };
+        boards.save(&board).await.unwrap();
+        assert_eq!(boards.get_by_id(board.id).await.unwrap().id, board.id);
+        assert_eq!(
+            boards.get_default_by_project(project_id).await.unwrap().id,
+            board.id
+        );
+        assert!(
+            boards
+                .get_default_by_project_key(&ProjectKey::from_str("NONE").unwrap())
+                .await
+                .is_err()
+        );
+
+        let sprint = Sprint {
+            id: SprintId::new(),
             project_id,
             name: "S1".into(),
             goal: None,
@@ -64,114 +167,42 @@ mod tests {
             start_date: None,
             end_date: None,
             velocity: None,
-        }
-    }
-
-    #[tokio::test]
-    async fn memory_user_repository() {
-        let r = MemoryUserRepository::default();
-        let id = UserId::new();
-        let u = user(id, "a@b.com");
-        assert!(r.save(&u).await.is_ok());
-        assert_eq!(r.get_by_id(id).await.unwrap().id, id);
-        assert_eq!(r.get_by_email("a@b.com").await.unwrap().id, id);
-        assert!(matches!(
-            r.get_by_id(UserId::new()).await,
-            Err(AppError::NotFound { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn memory_project_repository() {
-        let r = MemoryProjectRepository::default();
-        let p = project(ProjectId::new(), "TT");
-        assert!(r.save(&p).await.is_ok());
-        assert_eq!(r.get_by_id(p.id).await.unwrap().id, p.id);
-        assert_eq!(r.get_by_key(&p.key).await.unwrap().id, p.id);
-        assert!(r.next_issue_number(p.id).await.is_ok());
-        assert!(!r.list(ProjectQuery::default()).await.unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn memory_issue_repository() {
-        let r = MemoryIssueRepository::default();
-        let pid = ProjectId::new();
-        let i = issue(IssueId::new(), pid, 1);
-        assert!(r.save(&i).await.is_ok());
-        assert_eq!(r.get_by_id(i.id).await.unwrap().id, i.id);
-        assert_eq!(r.get_by_key(&i.key).await.unwrap().id, i.id);
+        };
+        sprints.save(&sprint).await.unwrap();
+        assert_eq!(sprints.get_by_id(sprint.id).await.unwrap().id, sprint.id);
         assert!(
-            !r.list(IssueQuery {
-                project_id: Some(pid),
-                ..Default::default()
-            })
-            .await
-            .unwrap()
-            .is_empty()
+            sprints
+                .get_active_by_project(project_id)
+                .await
+                .unwrap()
+                .is_some()
         );
-        assert!(r.delete(i.id).await.is_ok());
-        assert!(matches!(
-            r.get_by_id(i.id).await,
-            Err(AppError::NotFound { .. })
-        ));
-    }
-
-    #[tokio::test]
-    async fn memory_board_repository() {
-        let r = MemoryBoardRepository::default();
-        let b = Board {
-            id: BoardId::new(),
-            project_id: ProjectId::new(),
-            name: "Default".into(),
-            columns: vec![],
-        };
-        assert!(r.save(&b).await.is_ok());
-        assert_eq!(r.get_by_id(b.id).await.unwrap().id, b.id);
-        assert_eq!(
-            r.get_default_by_project(b.project_id).await.unwrap().id,
-            b.id
+        assert!(
+            sprints
+                .get_active_by_project(ProjectId::new())
+                .await
+                .unwrap()
+                .is_none()
         );
     }
 
     #[tokio::test]
-    async fn memory_sprint_repository() {
-        let r = MemorySprintRepository::default();
-        let pid = ProjectId::new();
-        let s = sprint(SprintId::new(), pid);
-        assert!(r.save(&s).await.is_ok());
-        assert!(r.get_active_by_project(pid).await.unwrap().is_some());
-        assert_eq!(r.get_by_id(s.id).await.unwrap().id, s.id);
-    }
-
-    #[tokio::test]
-    async fn memory_unit_of_work_runs() {
-        let repos = crate::Repositories {
-            users: Arc::new(MemoryUserRepository::default()),
-            projects: Arc::new(MemoryProjectRepository::default()),
-            issues: Arc::new(MemoryIssueRepository::default()),
-            boards: Arc::new(MemoryBoardRepository::default()),
-            sprints: Arc::new(MemorySprintRepository::default()),
-        };
-        let uow = MemoryUnitOfWork::new(repos);
+    async fn memory_unit_of_work_and_event_bus() {
+        let repos = Repositories::default();
+        let uow = MemoryUnitOfWork::new(repos.clone());
         let result = uow
-            .with_transaction(|repos| {
-                Box::pin(async move { repos.projects.list(ProjectQuery::default()).await })
-            })
-            .await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn memory_event_bus() {
-        let bus = MemoryEventBus::default();
-        assert!(
-            bus.publish(crate::ProjectEvent::Created {
-                project_id: ProjectId::new(),
-                owner_id: UserId::new(),
-            })
+            .with_transaction(|_| Box::pin(async move { Ok(42) }))
             .await
-            .is_ok()
-        );
+            .unwrap();
+        assert_eq!(result, 42);
+
+        let bus = MemoryEventBus::default();
+        bus.publish(ProjectEvent::Created {
+            project_id: ProjectId::new(),
+            owner_id: UserId::new(),
+        })
+        .await
+        .unwrap();
         assert_eq!(bus.drained().len(), 1);
     }
 }

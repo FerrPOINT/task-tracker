@@ -145,7 +145,7 @@ impl IssueKey {
         Ok(Self::new(ProjectKey::from_str(project)?, number))
     }
 
-    pub fn to_string(&self) -> String {
+    pub fn key_string(&self) -> String {
         format!("{}-{}", self.project_key, self.number)
     }
 }

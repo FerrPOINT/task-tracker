@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::auth::{JwtAuthService, UserClaims};
 use crate::commands::{
-    CreateIssueCommand, LoginCommand, ProjectQueryDto, RegisterCommand, UpdateIssueCommand,
+    CreateIssueCommand, CreateProjectCommand, LoginCommand, ProjectQueryDto, RegisterCommand,
+    UpdateIssueCommand,
 };
 use crate::dto::{AuthDto, BacklogDto, BoardDto, DashboardDto, IssueDto, ProjectDto};
 use crate::services::{
@@ -37,6 +38,8 @@ impl AppContext {
         let project: Arc<dyn ProjectService> = Arc::new(ProjectServiceImpl::new(
             repos.projects.clone(),
             repos.issues.clone(),
+            repos.users.clone(),
+            repos.boards.clone(),
         ));
         let issue: Arc<dyn IssueService> = Arc::new(IssueServiceImpl::new(
             repos.issues.clone(),
@@ -84,6 +87,7 @@ pub trait AuthService: Send + Sync {
 
 #[async_trait]
 pub trait ProjectService: Send + Sync {
+    async fn create(&self, cmd: CreateProjectCommand) -> Result<ProjectDto, AppError>;
     async fn list(&self, query: ProjectQueryDto) -> Result<Vec<ProjectDto>, AppError>;
     async fn get_by_key(&self, key: &ProjectKey) -> Result<ProjectDto, AppError>;
 }
