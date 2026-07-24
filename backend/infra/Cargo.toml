@@ -24,3 +24,6 @@ anyhow.workspace = true
 moka.workspace = true
 redis.workspace = true
 migration = { path = "../migration" }
+
+[dev-dependencies]
+serial_test = "3.2"

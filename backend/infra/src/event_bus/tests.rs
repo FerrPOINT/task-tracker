@@ -1,30 +1,34 @@
-#[cfg(test)]
-mod tests {
-    use domain::{IssueEvent, ProjectEvent};
-    use shared::{IssueId, ProjectId, UserId};
+use super::*;
+use domain::{IssueEvent, ProjectEvent};
 
-    use crate::{DomainEvent, EventBus, build_event_bus};
+#[tokio::test]
+async fn event_bus_publish_and_subscribe_issue() {
+    let bus = EventBus::new();
+    let mut rx = bus.subscribe();
+    let event = DomainEvent::Issue(IssueEvent::Created {
+        issue_id: shared::IssueId::new(),
+        reporter_id: shared::UserId::new(),
+    });
+    bus.publish(event);
+    let received = rx.recv().await.unwrap();
+    assert!(matches!(
+        received,
+        DomainEvent::Issue(IssueEvent::Created { .. })
+    ));
+}
 
-    #[test]
-    fn event_bus_publish_and_subscribe() {
-        let bus = EventBus::new();
-        let mut rx = bus.subscribe();
-        bus.publish(DomainEvent::Project(ProjectEvent::Created {
-            project_id: ProjectId::new(),
-            owner_id: UserId::new(),
-        }));
-        let event = rx.try_recv().expect("should receive event");
-        assert!(matches!(event, DomainEvent::Project(_)));
-    }
-
-    #[test]
-    fn build_event_bus_returns_arc() {
-        let bus = build_event_bus();
-        let mut rx = bus.subscribe();
-        bus.publish(DomainEvent::Issue(IssueEvent::Created {
-            issue_id: IssueId::new(),
-            reporter_id: UserId::new(),
-        }));
-        assert!(rx.try_recv().is_ok());
-    }
+#[tokio::test]
+async fn event_bus_publish_and_subscribe_project() {
+    let bus = EventBus::default();
+    let mut rx = bus.subscribe();
+    let event = DomainEvent::Project(ProjectEvent::Created {
+        project_id: shared::ProjectId::new(),
+        owner_id: shared::UserId::new(),
+    });
+    bus.publish(event);
+    let received = rx.recv().await.unwrap();
+    assert!(matches!(
+        received,
+        DomainEvent::Project(ProjectEvent::Created { .. })
+    ));
 }

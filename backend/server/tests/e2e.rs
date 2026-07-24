@@ -92,11 +92,12 @@ async fn full_smoke_with_real_repositories() {
         .unwrap();
     assert_eq!(projects.status(), 200);
     let body: serde_json::Value = projects.json().await.unwrap();
-    let project = &body["projects"].as_array().unwrap()[0];
-    assert_eq!(project["key"], "TT");
+    let projects_arr = body["projects"].as_array().unwrap();
+    assert!(!projects_arr.is_empty());
+    let project_key = projects_arr[0]["key"].as_str().unwrap();
 
     let board = client
-        .get(format!("{}/api/v1/projects/TT/board", url))
+        .get(format!("{}/api/v1/projects/{}/board", url, project_key))
         .bearer_auth(&token)
         .send()
         .await

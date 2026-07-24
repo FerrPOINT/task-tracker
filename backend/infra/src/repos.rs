@@ -127,7 +127,23 @@ impl ProjectRepository for ProjectRepo {
             created_at: Set(project.created_at),
             updated_at: Set(shared::now()),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        project::Entity::insert(active)
+            .on_conflict(
+                sea_orm::sea_query::OnConflict::column(project::Column::Id)
+                    .update_columns([
+                        project::Column::Key,
+                        project::Column::Name,
+                        project::Column::Description,
+                        project::Column::OwnerId,
+                        project::Column::DefaultBoardId,
+                        project::Column::CreatedAt,
+                        project::Column::UpdatedAt,
+                    ])
+                    .to_owned(),
+            )
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
         Ok(project.id)
     }
 
@@ -231,7 +247,11 @@ impl IssueRepository for IssueRepo {
         Ok(issue.id)
     }
 
-    async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
+    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
+        let _ = crate::entities::issue::Entity::delete_by_id(id.as_uuid())
+            .exec(self.db.as_ref())
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
         Ok(())
     }
 }

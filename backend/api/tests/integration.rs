@@ -11,7 +11,7 @@ use app::context::AppContext;
 
 fn test_user() -> User {
     User {
-        id: UserId::new(),
+        id: UserId::from_uuid(uuid::Uuid::parse_str("11111111-1111-1111-1111-111111111111").unwrap()),
         email: "demo@example.com".into(),
         username: "demo".into(),
         display_name: "Demo User".into(),
@@ -215,7 +215,8 @@ async fn dashboard_and_search() {
             "issue_type": "task",
             "priority": "medium",
             "status_id": "00000000-0000-0000-0000-000000000001",
-            "reporter_id": test_user().id.to_string()
+            "reporter_id": test_user().id.to_string(),
+            "assignee_id": test_user().id.to_string()
         }))
         .send()
         .await
@@ -412,4 +413,137 @@ fn test_status_done() -> shared::StatusId {
     shared::StatusId::from_uuid(
         uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap(),
     )
+}
+
+#[tokio::test]
+async fn board_success_and_move() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let board = client
+        .get(format!("{}/api/v1/projects/TT/board", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(board.status(), 200);
+    let body: serde_json::Value = board.json().await.unwrap();
+    assert!(!body["columns"].as_array().unwrap().is_empty());
+
+    let created = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "move me",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 200);
+    let issue: serde_json::Value = created.json().await.unwrap();
+    let issue_id = issue["id"].as_str().unwrap();
+
+    let moved = client
+        .post(format!("{}/api/v1/projects/TT/board/move", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "issue_id": issue_id,
+            "status_id": test_status_done().to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(moved.status(), 200);
+    let body: serde_json::Value = moved.json().await.unwrap();
+    assert!(body["issues"].as_array().is_some());
+}
+
+#[tokio::test]
+async fn dashboard_returns_assigned_issues() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let created = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "assigned to me",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string(),
+            "assignee_id": test_user().id.to_string(),
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 200);
+
+    let res = client
+        .get(format!("{}/api/v1/dashboard", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["assigned_issues"].as_array().unwrap().len() >= 1);
+}
+#[tokio::test]
+async fn issue_get_not_found() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let res = client
+        .get(format!(
+            "{}/api/v1/issues/00000000-0000-0000-0000-000000000000",
+            url
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn issue_update_not_found() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let res = client
+        .patch(format!(
+            "{}/api/v1/issues/00000000-0000-0000-0000-000000000000",
+            url
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"summary":"x"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn issue_create_invalid_project_key() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let res = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "invalid key!",
+            "summary": "x",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
 }
