@@ -117,3 +117,126 @@ pub struct UserClaims {
     pub sub: String,
     pub exp: usize,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::AuthService;
+    use domain::{User, UserRepository};
+    use shared::{UserId, now};
+
+    fn test_user() -> User {
+        User {
+            id: UserId::new(),
+            email: "t@e.com".into(),
+            username: "t".into(),
+            display_name: "T".into(),
+            password_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$invalid".into(),
+            created_at: now(),
+            updated_at: now(),
+        }
+    }
+
+    #[test]
+    fn create_token_ok() {
+        let config = AuthConfig {
+            jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            access_token_ttl_minutes: 15,
+            refresh_token_ttl_days: 7,
+        };
+        let token = create_token(&config, UserId::new()).unwrap();
+        assert!(!token.is_empty());
+    }
+
+    #[test]
+    fn verify_password_rejects_invalid_hash_format() {
+        let result = verify_password("password", "not-a-valid-hash");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_password_rejects_wrong_password() {
+        let password = "correct horse battery staple";
+        let hash = hash_password(password).unwrap();
+        let result = verify_password("wrong password", &hash).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn verify_token_rejects_garbage() {
+        let config = AuthConfig {
+            jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            access_token_ttl_minutes: 15,
+            refresh_token_ttl_days: 7,
+        };
+        let service = JwtAuthService::new(
+            config,
+            Arc::new(domain::stubs::memory::MemoryUserRepository::default()),
+        );
+        assert!(service.verify_token("not.a.token").is_err());
+    }
+
+    #[tokio::test]
+    async fn register_rejects_duplicate_email() {
+        let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
+        let user = test_user();
+        let id = repo.save(&user).await.unwrap();
+        let saved = repo.get_by_id(id).await.unwrap();
+
+        let config = AuthConfig {
+            jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            access_token_ttl_minutes: 15,
+            refresh_token_ttl_days: 7,
+        };
+        let service = JwtAuthService::new(config, repo);
+        let result = service
+            .register(RegisterCommand {
+                email: saved.email.to_string(),
+                username: "other".to_string(),
+                name: "Other".to_string(),
+                password: "12345678".to_string(),
+            })
+            .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn login_rejects_wrong_password() {
+        let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
+        let mut user = test_user();
+        user.password_hash = hash_password("12345678").unwrap().into();
+        repo.save(&user).await.unwrap();
+
+        let config = AuthConfig {
+            jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            access_token_ttl_minutes: 15,
+            refresh_token_ttl_days: 7,
+        };
+        let service = JwtAuthService::new(config, repo);
+        let result = service
+            .login(LoginCommand {
+                email: user.email.to_string(),
+                password: "wrong".to_string(),
+            })
+            .await;
+        assert!(matches!(result, Err(AppError::Unauthorized)));
+    }
+
+    #[tokio::test]
+    async fn login_rejects_unknown_email() {
+        let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
+        let config = AuthConfig {
+            jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            access_token_ttl_minutes: 15,
+            refresh_token_ttl_days: 7,
+        };
+        let service = JwtAuthService::new(config, repo);
+        let result = service
+            .login(LoginCommand {
+                email: "missing@example.com".to_string(),
+                password: "12345678".to_string(),
+            })
+            .await;
+        assert!(result.is_err());
+    }
+}

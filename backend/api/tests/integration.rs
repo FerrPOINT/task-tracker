@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use domain::{
-    Board, BoardColumn, BoardRepository, ColumnCategory, IssueRepository, MemoryBoardRepository,
+    Board, BoardColumn, BoardRepository, ColumnCategory, MemoryBoardRepository,
     MemoryIssueRepository, MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository,
-    Project, ProjectRepository, SprintRepository, User, UserRepository,
+    Project, ProjectRepository, User, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -298,6 +298,22 @@ async fn issue_create_validation_errors() {
         .unwrap();
     assert_eq!(bad_project.status(), 400);
 
+    let bad_reporter = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "Bad reporter",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": "not-a-uuid"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_reporter.status(), 400);
+
     let defaults = client
         .post(format!("{}/api/v1/issues", url))
         .bearer_auth(&token)
@@ -342,6 +358,14 @@ async fn issue_get_and_update_not_found() {
         .await
         .unwrap();
     assert_eq!(bad_update_id.status(), 400);
+
+    let bad_get_id = client
+        .get(format!("{}/api/v1/issues/not-a-uuid", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_get_id.status(), 400);
 
     let missing_update = client
         .patch(format!(

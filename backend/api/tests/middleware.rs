@@ -83,6 +83,55 @@ async fn middleware_rejects_invalid_token() {
 }
 
 #[tokio::test]
+async fn middleware_rejects_wrong_auth_scheme() {
+    let ctx = ctx_with_user().await;
+    let app = api::router(ctx.clone()).with_state(ctx);
+    let req = Request::builder()
+        .uri("/api/v1/dashboard")
+        .header("authorization", "Basic invalid")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn middleware_accepts_lowercase_bearer_prefix() {
+    let ctx = ctx_with_user().await;
+    let token = login_token(&ctx).await;
+    let app = api::router(ctx.clone()).with_state(ctx);
+    let req = Request::builder()
+        .uri("/api/v1/dashboard")
+        .header("authorization", format!("bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn middleware_rejects_expired_token() {
+    let ctx = ctx_with_user().await;
+    let token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &api::middleware::auth::UserClaims {
+            sub: shared::UserId::from_uuid(uuid::Uuid::nil()).to_string(),
+            exp: 1,
+        },
+        &jsonwebtoken::EncodingKey::from_secret("test-secret".as_bytes()),
+    )
+    .unwrap();
+    let app = api::router(ctx.clone()).with_state(ctx);
+    let req = Request::builder()
+        .uri("/api/v1/dashboard")
+        .header("authorization", format!("Bearer {}", token))
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
 async fn middleware_accepts_valid_token() {
     let ctx = ctx_with_user().await;
     let token = login_token(&ctx).await;
@@ -140,7 +189,7 @@ async fn get_project_not_found() {
     let token = login_token(&ctx).await;
     let app = api::router(ctx.clone()).with_state(ctx);
     let req = Request::builder()
-        .uri("/api/v1/projects/NONEXISTENT")
+        .uri("/api/v1/projects/NONEXIST")
         .header("authorization", format!("Bearer {}", token))
         .body(Body::empty())
         .unwrap();

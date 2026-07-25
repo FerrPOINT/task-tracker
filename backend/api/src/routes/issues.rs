@@ -1,7 +1,6 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
 };
 use std::sync::Arc;
 
@@ -9,6 +8,8 @@ use crate::dto::{
     CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery, UpdateIssueRequest,
 };
 use app::commands::{CreateIssueCommand, UpdateIssueCommand};
+use shared::{AppError, ProjectKey};
+use std::str::FromStr;
 
 #[utoipa::path(
     post,
@@ -19,10 +20,10 @@ use app::commands::{CreateIssueCommand, UpdateIssueCommand};
 pub async fn create_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Json(req): Json<CreateIssueRequest>,
-) -> Result<Json<IssueResponse>, StatusCode> {
+) -> Result<Json<IssueResponse>, AppError> {
     let cmd = CreateIssueCommand {
-        project_key: shared::ProjectKey::from_str(&req.project_key)
-            .map_err(|_| StatusCode::BAD_REQUEST)?,
+        project_key: ProjectKey::from_str(&req.project_key)
+            .map_err(|e| AppError::invalid_input(e.to_string()))?,
         issue_type: shared::IssueType::from_str(&req.issue_type).unwrap_or(shared::IssueType::Task),
         summary: req.summary,
         description: req.description,
@@ -36,12 +37,10 @@ pub async fn create_issue(
             .parse()
             .ok()
             .map(shared::UserId::from_uuid)
-            .unwrap_or_default(),
+            .ok_or(AppError::invalid_input("reporter_id"))?,
     };
-    match ctx.services.issue.create(cmd).await {
-        Ok(i) => Ok(Json(map_issue(i))),
-        Err(_) => Err(StatusCode::BAD_REQUEST),
-    }
+    let i = ctx.services.issue.create(cmd).await?;
+    Ok(Json(map_issue(i)))
 }
 
 #[utoipa::path(
@@ -55,12 +54,12 @@ pub async fn update_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Path(id): Path<String>,
     Json(req): Json<UpdateIssueRequest>,
-) -> Result<Json<IssueResponse>, StatusCode> {
+) -> Result<Json<IssueResponse>, AppError> {
     let issue_id = id
         .parse()
         .ok()
         .map(shared::IssueId::from_uuid)
-        .ok_or(StatusCode::BAD_REQUEST)?;
+        .ok_or(AppError::invalid_input("id"))?;
     let cmd = UpdateIssueCommand {
         summary: req.summary,
         description: req.description,
@@ -68,18 +67,18 @@ pub async fn update_issue(
             .priority
             .and_then(|s| shared::Priority::from_str(s.as_str()).ok()),
         status_id: req.status_id,
-        assignee_id: req.assignee_id.map(|s| {
-            if s.is_empty() {
-                None
-            } else {
-                s.parse().ok().map(shared::UserId::from_uuid)
+        assignee_id: match req.assignee_id.as_deref() {
+            None | Some("") => None,
+            Some(s) => {
+                let uuid = s
+                    .parse()
+                    .map_err(|_| AppError::invalid_input("assignee_id"))?;
+                Some(Some(shared::UserId::from_uuid(uuid)))
             }
-        }),
+        },
     };
-    match ctx.services.issue.update(issue_id, cmd).await {
-        Ok(i) => Ok(Json(map_issue(i))),
-        Err(_) => Err(StatusCode::NOT_FOUND),
-    }
+    let i = ctx.services.issue.update(issue_id, cmd).await?;
+    Ok(Json(map_issue(i)))
 }
 
 #[utoipa::path(
@@ -91,16 +90,14 @@ pub async fn update_issue(
 pub async fn get_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Path(id): Path<String>,
-) -> Result<Json<IssueResponse>, StatusCode> {
+) -> Result<Json<IssueResponse>, AppError> {
     let issue_id = id
         .parse()
         .ok()
         .map(shared::IssueId::from_uuid)
-        .unwrap_or_default();
-    match ctx.services.issue.get_by_id(issue_id).await {
-        Ok(i) => Ok(Json(map_issue(i))),
-        Err(_) => Err(StatusCode::NOT_FOUND),
-    }
+        .ok_or(AppError::invalid_input("id"))?;
+    let i = ctx.services.issue.get_by_id(issue_id).await?;
+    Ok(Json(map_issue(i)))
 }
 
 #[utoipa::path(
@@ -112,13 +109,11 @@ pub async fn get_issue(
 pub async fn search_issues(
     State(ctx): State<Arc<app::AppContext>>,
     Query(q): Query<SearchQuery>,
-) -> Result<Json<IssueListResponse>, StatusCode> {
-    match ctx.services.issue.search(&q.q).await {
-        Ok(items) => Ok(Json(IssueListResponse {
-            issues: items.into_iter().map(map_issue).collect(),
-        })),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+) -> Result<Json<IssueListResponse>, AppError> {
+    let items = ctx.services.issue.search(&q.q).await?;
+    Ok(Json(IssueListResponse {
+        issues: items.into_iter().map(map_issue).collect(),
+    }))
 }
 
 fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
@@ -138,5 +133,3 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
         project_name: i.project_name,
     }
 }
-
-use std::str::FromStr;

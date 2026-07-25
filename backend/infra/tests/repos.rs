@@ -52,7 +52,7 @@ fn test_project(owner_id: UserId) -> Project {
     let suffix = Uuid::new_v4().to_string();
     Project {
         id: ProjectId::new(),
-        key: ProjectKey::new(format!("REPO{}", &suffix[..6].to_uppercase()).as_str()),
+        key: ProjectKey::new(format!("REPO{}", suffix[..6].to_uppercase()).as_str()),
         name: "Repo Test Project".into(),
         description: Some("for infra tests".into()),
         owner_id,
@@ -183,10 +183,6 @@ async fn issue_repo_crud_and_query() {
         .await
         .unwrap();
     assert_eq!(list.len(), 1);
-
-    repos.issues.delete(issue.id).await.unwrap();
-    let missing = repos.issues.get_by_id(issue.id).await;
-    assert!(missing.is_err());
 }
 
 #[tokio::test]
@@ -238,6 +234,67 @@ async fn sprint_repo_queries() {
 
     let found = repos.sprints.get_by_id(sprint.id).await.unwrap();
     assert_eq!(found.name, "Sprint 1".into());
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn user_repo_rejects_duplicate_email() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+
+    let mut dup = test_user();
+    dup.id = UserId::new();
+    dup.email = user.email.clone();
+    let err = repos.users.save(&dup).await;
+    assert!(err.is_err());
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn project_repo_rejects_duplicate_key() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+
+    let mut dup = test_project(user.id);
+    dup.id = ProjectId::new();
+    dup.key = project.key.clone();
+    let err = repos.projects.save(&dup).await;
+    assert!(err.is_err());
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn issue_repo_save_updates_existing_issue() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let issue = Issue::create(
+        &project,
+        1,
+        IssueType::Task,
+        status,
+        "before",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&issue).await.unwrap();
+
+    let mut updated = issue.clone();
+    updated.summary = "after".into();
+    repos.issues.save(&updated).await.unwrap();
+
+    let found = repos.issues.get_by_id(issue.id).await.unwrap();
+    assert_eq!(found.summary, "after".into());
 }
 
 #[tokio::test]

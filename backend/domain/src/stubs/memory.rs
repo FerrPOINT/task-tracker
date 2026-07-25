@@ -82,6 +82,12 @@ impl ProjectRepository for MemoryProjectRepository {
         if let Some(idx) = projects.iter().position(|p| p.id == project.id) {
             projects[idx] = project.clone();
         } else {
+            if projects.iter().any(|p| p.key == project.key) {
+                return Err(AppError::conflict(format!(
+                    "project key {} already exists",
+                    project.key
+                )));
+            }
             projects.push(project.clone());
         }
         Ok(project.id)
@@ -167,12 +173,6 @@ impl IssueRepository for MemoryIssueRepository {
             issues.push(issue.clone());
         }
         Ok(issue.id)
-    }
-
-    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
-        let mut issues = self.issues.lock().unwrap();
-        issues.retain(|i| i.id != id);
-        Ok(())
     }
 }
 

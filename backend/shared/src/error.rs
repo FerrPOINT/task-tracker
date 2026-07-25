@@ -1,3 +1,6 @@
+use axum::response::{IntoResponse, Response};
+use http::StatusCode;
+
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("not found: {0}")]
@@ -20,6 +23,21 @@ pub enum AppError {
 
     #[error("internal error: {0}")]
     Internal(String),
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let status = match &self {
+            AppError::NotFound(_) => StatusCode::NOT_FOUND,
+            AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
+            AppError::Unauthorized => StatusCode::UNAUTHORIZED,
+            AppError::Forbidden => StatusCode::FORBIDDEN,
+            AppError::Conflict(_) => StatusCode::CONFLICT,
+            AppError::Database(_) | AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        let body = axum::Json(serde_json::json!({ "error": self.to_string() }));
+        (status, body).into_response()
+    }
 }
 
 impl AppError {

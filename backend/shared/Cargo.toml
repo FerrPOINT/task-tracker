@@ -13,3 +13,5 @@ thiserror.workspace = true
 tracing.workspace = true
 utoipa.workspace = true
 config.workspace = true
+axum.workspace = true
+http.workspace = true

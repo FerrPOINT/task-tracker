@@ -12,12 +12,14 @@ axum.workspace = true
 tokio.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
+async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 utoipa.workspace = true
 utoipa-axum.workspace = true
 utoipa-swagger-ui.workspace = true
 anyhow.workspace = true
+uuid.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
@@ -25,3 +27,4 @@ tower.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 reqwest.workspace = true
+jsonwebtoken = { workspace = true }

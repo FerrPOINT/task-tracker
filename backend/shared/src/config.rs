@@ -1,6 +1,6 @@
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::{env, path::Path};
 
 #[cfg(test)]
 #[path = "config_tests.rs"]
@@ -52,13 +52,13 @@ impl AppConfig {
             .set_default("database.connect_timeout_seconds", 10u64)?
             .set_default("database.idle_timeout_seconds", 600u64)?
             .set_default("server.address", "0.0.0.0")?
-            .set_default("server.port", 3456u64)?
+            .set_default("server.port", 3456u16)?
             .set_default("auth.jwt_secret", "[CHANGE_ME]")?
             .set_default("auth.access_token_ttl_minutes", 15u64)?
             .set_default("auth.refresh_token_ttl_days", 7u64)?
             .build()?;
 
-        Config::builder()
+        let mut cfg: AppConfig = Config::builder()
             .add_source(defaults)
             .add_source(File::from(path.as_ref()).required(false))
             .add_source(
@@ -68,7 +68,24 @@ impl AppConfig {
                     .try_parsing(true),
             )
             .build()?
-            .try_deserialize()
+            .try_deserialize()?;
+
+        // Backwards-compatible alias: TASKTRACKER_JWT_SECRET maps to auth.jwt_secret
+        if let Ok(secret) = env::var("TASKTRACKER_JWT_SECRET") {
+            cfg.auth.jwt_secret = secret;
+        }
+
+        Ok(cfg)
+    }
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            database: DatabaseConfig::default(),
+            server: ServerConfig::default(),
+            auth: AuthConfig::default(),
+        }
     }
 }
 
