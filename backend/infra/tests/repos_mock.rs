@@ -1,6 +1,6 @@
 use infra::repos::SeaOrmRepositories;
 use sea_orm::{DatabaseBackend, DbErr, MockDatabase, RuntimeErr};
-use shared::{IssueId, ProjectId, ProjectKey, SprintId, UserId};
+use shared::{AppError, IssueId, ProjectId, ProjectKey, SprintId, UserId};
 use uuid::Uuid;
 
 fn mock_db_with_query_error() -> SeaOrmRepositories {
@@ -17,53 +17,55 @@ fn mock_db_with_exec_error() -> SeaOrmRepositories {
     SeaOrmRepositories::new(db)
 }
 
+fn assert_database_error(err: Result<impl std::fmt::Debug, AppError>) {
+    match err {
+        Err(AppError::Database(msg)) => {
+            assert!(msg.contains("mock") || msg.contains("Query Error"))
+        }
+        other => panic!("expected AppError::Database, got {:?}", other),
+    }
+}
+
 #[tokio::test]
 async fn user_get_by_id_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.users.get_by_id(UserId::new()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.users.get_by_id(UserId::new()).await);
 }
 
 #[tokio::test]
 async fn user_get_by_email_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.users.get_by_email("x@example.com").await;
-    assert!(err.is_err());
+    assert_database_error(repos.users.get_by_email("x@example.com").await);
 }
 
 #[tokio::test]
 async fn project_get_by_id_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.projects.get_by_id(ProjectId::new()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.projects.get_by_id(ProjectId::new()).await);
 }
 
 #[tokio::test]
 async fn project_get_by_key_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.projects.get_by_key(&ProjectKey::new("TT")).await;
-    assert!(err.is_err());
+    assert_database_error(repos.projects.get_by_key(&ProjectKey::new("TT")).await);
 }
 
 #[tokio::test]
 async fn issue_get_by_id_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.issues.get_by_id(IssueId::new()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.issues.get_by_id(IssueId::new()).await);
 }
 
 #[tokio::test]
 async fn board_get_by_id_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.boards.get_by_id(shared::BoardId::new()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.boards.get_by_id(shared::BoardId::new()).await);
 }
 
 #[tokio::test]
 async fn sprint_get_by_id_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.sprints.get_by_id(SprintId::new()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.sprints.get_by_id(SprintId::new()).await);
 }
 
 #[tokio::test]
@@ -78,8 +80,7 @@ async fn user_save_database_error() {
         created_at: shared::now(),
         updated_at: shared::now(),
     };
-    let err = repos.users.save(&user).await;
-    assert!(err.is_err());
+    assert_database_error(repos.users.save(&user).await);
 }
 
 #[tokio::test]
@@ -95,8 +96,7 @@ async fn project_save_database_error() {
         created_at: shared::now(),
         updated_at: shared::now(),
     };
-    let err = repos.projects.save(&project).await;
-    assert!(err.is_err());
+    assert_database_error(repos.projects.save(&project).await);
 }
 
 #[tokio::test]
@@ -122,44 +122,40 @@ async fn issue_save_database_error() {
         UserId::new(),
         shared::Priority::Medium,
     );
-    let err = repos.issues.save(&issue).await;
-    assert!(err.is_err());
+    assert_database_error(repos.issues.save(&issue).await);
 }
 
 #[tokio::test]
 async fn board_get_default_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos
-        .boards
-        .get_default_by_project_key(&ProjectKey::new("TT"))
-        .await;
-    assert!(err.is_err());
+    assert_database_error(
+        repos
+            .boards
+            .get_default_by_project_key(&ProjectKey::new("TT"))
+            .await,
+    );
 }
 
 #[tokio::test]
 async fn sprint_get_active_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.sprints.get_active_by_project(ProjectId::new()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.sprints.get_active_by_project(ProjectId::new()).await);
 }
 
 #[tokio::test]
 async fn project_next_issue_number_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.projects.next_issue_number(ProjectId::new()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.projects.next_issue_number(ProjectId::new()).await);
 }
 
 #[tokio::test]
 async fn issue_list_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.issues.list(domain::IssueQuery::default()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.issues.list(domain::IssueQuery::default()).await);
 }
 
 #[tokio::test]
 async fn project_list_database_error() {
     let repos = mock_db_with_query_error();
-    let err = repos.projects.list(domain::ProjectQuery::default()).await;
-    assert!(err.is_err());
+    assert_database_error(repos.projects.list(domain::ProjectQuery::default()).await);
 }

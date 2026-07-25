@@ -829,60 +829,64 @@ mod tests {
         AppContext::new(test_config(), repos)
     }
 
+    fn assert_internal(err: Result<impl std::fmt::Debug, AppError>) {
+        match err {
+            Err(AppError::Internal(msg)) => assert!(!msg.is_empty()),
+            other => panic!("expected AppError::Internal, got {:?}", other),
+        }
+    }
+
     #[tokio::test]
     async fn project_create_propagates_repo_error() {
         let ctx = failing_context();
-        let err = ctx
-            .services
-            .project
-            .create(CreateProjectCommand {
-                key: ProjectKey::new("NP"),
-                name: "New".to_string(),
-                description: None,
-                owner_id: UserId::new(),
-            })
-            .await;
-        assert!(err.is_err());
+        assert_internal(
+            ctx.services
+                .project
+                .create(CreateProjectCommand {
+                    key: ProjectKey::new("NP"),
+                    name: "New".to_string(),
+                    description: None,
+                    owner_id: UserId::new(),
+                })
+                .await,
+        );
     }
 
     #[tokio::test]
     async fn issue_create_propagates_repo_error() {
         let ctx = failing_context();
-        let err = ctx
-            .services
-            .issue
-            .create(CreateIssueCommand {
-                project_key: ProjectKey::new("TT"),
-                summary: "x".to_string(),
-                description: None,
-                issue_type: IssueType::Task,
-                priority: Priority::Medium,
-                status_id: "00000000-0000-0000-0000-000000000001".to_string(),
-                reporter_id: UserId::new(),
-                assignee_id: None,
-            })
-            .await;
-        assert!(err.is_err());
+        assert_internal(
+            ctx.services
+                .issue
+                .create(CreateIssueCommand {
+                    project_key: ProjectKey::new("TT"),
+                    summary: "x".to_string(),
+                    description: None,
+                    issue_type: IssueType::Task,
+                    priority: Priority::Medium,
+                    status_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                    reporter_id: UserId::new(),
+                    assignee_id: None,
+                })
+                .await,
+        );
     }
 
     #[tokio::test]
     async fn board_get_propagates_repo_error() {
         let ctx = failing_context();
-        let err = ctx.services.board.get_board(&ProjectKey::new("TT")).await;
-        assert!(err.is_err());
+        assert_internal(ctx.services.board.get_board(&ProjectKey::new("TT")).await);
     }
 
     #[tokio::test]
     async fn dashboard_get_propagates_repo_error() {
         let ctx = failing_context();
-        let err = ctx.services.dashboard.get_dashboard(UserId::new()).await;
-        assert!(err.is_err());
+        assert_internal(ctx.services.dashboard.get_dashboard(UserId::new()).await);
     }
 
     #[tokio::test]
     async fn search_propagates_repo_error() {
         let ctx = failing_context();
-        let err = ctx.services.search.search("q").await;
-        assert!(err.is_err());
+        assert_internal(ctx.services.search.search("q").await);
     }
 }

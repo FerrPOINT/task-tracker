@@ -52,6 +52,9 @@ print(f"lines: {lines:.2f}%")
 print(f"regions: {regions:.2f}%")
 print(f"functions: {functions:.2f}%")
 ok = lines >= 95.0 and regions >= 92.0 and functions >= 85.0
-sys.exit(0 if ok else 1)
+if ok:
+    print("Gate passed")
+else:
+    print("Gate FAILED")
+    sys.exit(1)
 PY
-echo "Gate passed"
