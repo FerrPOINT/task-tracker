@@ -1,18 +1,12 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router'
 import { Layers, LayoutDashboard, FolderKanban, Search, List, Columns2, Trash2, Bell, User, Plus, ChevronDown, Menu, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, labelKey: 'Dashboard' },
-  { to: '/projects', icon: FolderKanban, labelKey: 'Проекты' },
-  { to: '/search', icon: Search, labelKey: 'Мои задачи' },
-]
-
-const projectItems = [
-  { to: '/projects/TT/backlog', icon: List, labelKey: 'Backlog' },
-  { to: '/projects/TT/board', icon: Columns2, labelKey: 'Доска' },
+const systemItems = [
+  { to: '/trash', icon: Trash2, labelKey: 'navigation.trash' },
 ]
 
 const projectKeyPattern = /^\/projects\/([^/]+)\/(board|backlog)$/
@@ -22,10 +16,6 @@ function useCurrentProjectKey() {
   const match = location.pathname.match(projectKeyPattern)
   return match?.[1]
 }
-
-const systemItems = [
-  { to: '/trash', icon: Trash2, labelKey: 'Trash' },
-]
 
 function SidebarLink({ to, icon: Icon, label, active, onClick }: { to: string; icon: React.ElementType; label: string; active: boolean; onClick?: () => void }) {
   return (
@@ -45,9 +35,21 @@ function SidebarLink({ to, icon: Icon, label, active, onClick }: { to: string; i
 }
 
 export function AppShell() {
+  const { t } = useTranslation()
   const location = useLocation()
   const projectKey = useCurrentProjectKey()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const navItems = [
+    { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
+    { to: '/projects', icon: FolderKanban, labelKey: 'navigation.projects' },
+    { to: '/search', icon: Search, labelKey: 'navigation.search' },
+  ]
+
+  const projectItems = [
+    { to: `/projects/${projectKey ?? 'TT'}/backlog`, icon: List, labelKey: 'navigation.backlog' },
+    { to: `/projects/${projectKey ?? 'TT'}/board`, icon: Columns2, labelKey: 'navigation.board' },
+  ]
 
   function isActive(path: string) {
     if (path === '/') return location.pathname === '/'
@@ -82,7 +84,7 @@ export function AppShell() {
             to="/projects"
             className="hidden items-center gap-1 rounded-md px-2 py-1 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
           >
-            <span>Проекты</span>
+            <span>{t('navigation.projects')}</span>
             <ChevronDown className="h-3.5 w-3.5" />
           </Link>
           <Link
@@ -90,14 +92,14 @@ export function AppShell() {
             className="hidden items-center gap-2 rounded-md px-2 py-1 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
           >
             <Search className="h-4 w-4" />
-            <span>Поиск</span>
+            <span>{t('navigation.search')}</span>
           </Link>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
           <Button asChild size="sm" className="h-7 gap-1 px-2.5 text-xs">
             <Link to="/issues/create">
               <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Создать</span>
+              <span className="hidden sm:inline">{t('navigation.create')}</span>
             </Link>
           </Button>
           <ThemeToggle />
@@ -118,32 +120,29 @@ export function AppShell() {
               key={item.to}
               to={item.to}
               icon={item.icon}
-              label={item.labelKey}
+              label={t(item.labelKey)}
               active={isActive(item.to)}
             />
           ))}
 
           <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">Task Tracker · {projectKey ?? 'TT'}</div>
-          {projectItems.map((item) => {
-            const to = item.to.replace('/projects/TT/', `/projects/${projectKey ?? 'TT'}/`)
-            return (
-              <SidebarLink
-                key={item.labelKey}
-                to={to}
-                icon={item.icon}
-                label={item.labelKey}
-                active={isActive(to)}
-              />
-            )
-          })}
+          {projectItems.map((item) => (
+            <SidebarLink
+              key={item.labelKey}
+              to={item.to}
+              icon={item.icon}
+              label={t(item.labelKey)}
+              active={isActive(item.to)}
+            />
+          ))}
 
-          <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">Система</div>
+          <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">{t('navigation.system')}</div>
           {systemItems.map((item) => (
             <SidebarLink
               key={item.to}
               to={item.to}
               icon={item.icon}
-              label={item.labelKey}
+              label={t(item.labelKey)}
               active={isActive(item.to)}
             />
           ))}
@@ -159,34 +158,31 @@ export function AppShell() {
                   key={item.to}
                   to={item.to}
                   icon={item.icon}
-                  label={item.labelKey}
+                  label={t(item.labelKey)}
                   active={isActive(item.to)}
                   onClick={closeMobileMenu}
                 />
               ))}
 
               <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">Task Tracker · {projectKey ?? 'TT'}</div>
-              {projectItems.map((item) => {
-                const to = item.to.replace('/projects/TT/', `/projects/${projectKey ?? 'TT'}/`)
-                return (
-                  <SidebarLink
-                    key={item.labelKey}
-                    to={to}
-                    icon={item.icon}
-                    label={item.labelKey}
-                    active={isActive(to)}
-                    onClick={closeMobileMenu}
-                  />
-                )
-              })}
+              {projectItems.map((item) => (
+                <SidebarLink
+                  key={item.labelKey}
+                  to={item.to}
+                  icon={item.icon}
+                  label={t(item.labelKey)}
+                  active={isActive(item.to)}
+                  onClick={closeMobileMenu}
+                />
+              ))}
 
-              <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">Система</div>
+              <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">{t('navigation.system')}</div>
               {systemItems.map((item) => (
                 <SidebarLink
                   key={item.to}
                   to={item.to}
                   icon={item.icon}
-                  label={item.labelKey}
+                  label={t(item.labelKey)}
                   active={isActive(item.to)}
                   onClick={closeMobileMenu}
                 />

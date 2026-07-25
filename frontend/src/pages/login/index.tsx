@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Layers } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import { useLogin } from '@/shared/api/hooks'
 
 export function LoginPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { mutate, isPending, error } = useLogin()
   const [email, setEmail] = useState('demo@example.com')
@@ -34,22 +36,22 @@ export function LoginPage() {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="login-email">{t('auth.email')}</label>
+            <Input id="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Пароль</label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="login-password">{t('auth.password')}</label>
+            <Input id="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           {error && <div className="text-sm text-rose-500">{error.message}</div>}
           <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? 'Вход…' : 'Войти'}
+            {isPending ? `${t('auth.login')}…` : t('auth.login')}
           </Button>
           <Button variant="outline" className="w-full" asChild>
-            <a href="/register">Создать аккаунт</a>
+            <a href="/register">{t('auth.createAccount')}</a>
           </Button>
         </form>
-        <p className="mt-4 text-center text-xs text-text-muted">MVP-демо: demo / demo.</p>
+        <p className="mt-4 text-center text-xs text-text-muted">{t('auth.loginDemo')}</p>
       </div>
     </div>
   )

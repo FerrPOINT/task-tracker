@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { Plus, Search, LayoutGrid, List, Star, MoreHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Card, CardContent } from '@/shared/ui/card'
@@ -16,37 +17,38 @@ function ProjectAvatar({ projectKey }: { projectKey: string }) {
 }
 
 export function ProjectsPage() {
+  const { t } = useTranslation()
   const { data: projects, isLoading, error } = useProjects()
 
-  if (isLoading) return <div className="p-4 text-text-muted">Loading projects…</div>
+  if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
   if (error) return <div className="p-4 text-rose-500">{error.message}</div>
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-bold sm:text-2xl">Проекты</h1>
+        <h1 className="text-xl font-bold sm:text-2xl">{t('projects.title')}</h1>
         <Button size="sm" className="gap-1">
           <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">Создать проект</span>
-          <span className="sm:hidden">Создать</span>
+          <span className="hidden sm:inline">{t('projects.create')}</span>
+          <span className="sm:hidden">{t('navigation.create')}</span>
         </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         <select className="h-9 rounded-md border border-border-strong bg-surface-raised px-2 text-sm text-text-primary">
-          <option>Все проекты</option>
-          <option>Активные</option>
-          <option>Архивные</option>
+          <option>{t('projects.all')}</option>
+          <option>{t('projects.active')}</option>
+          <option>{t('projects.archived')}</option>
         </select>
         <select className="h-9 rounded-md border border-border-strong bg-surface-raised px-2 text-sm text-text-primary">
-          <option>Любой тип</option>
-          <option>Scrum</option>
-          <option>Kanban</option>
-          <option>Basic</option>
+          <option>{t('projects.anyType')}</option>
+          <option>{t('projects.scrum')}</option>
+          <option>{t('projects.kanban')}</option>
+          <option>{t('projects.basic')}</option>
         </select>
         <div className="relative flex-1 basis-full sm:basis-auto">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <Input type="text" placeholder="Поиск проектов..." className="h-9 w-full pl-9 sm:w-64"></Input>
+          <Input type="text" placeholder={t('projects.search')} className="h-9 w-full pl-9 sm:w-64"></Input>
         </div>
         <div className="ml-auto flex items-center gap-1">
           <Button variant="secondary" size="icon" className="h-8 w-8">
@@ -68,7 +70,7 @@ export function ProjectsPage() {
                     <ProjectAvatar projectKey={project.key} />
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{project.name}</div>
-                      <div className="text-xs text-text-muted">{project.key} · Lead: {project.owner_id} · {project.todo_count + project.in_progress_count + project.done_count} issues</div>
+                      <div className="text-xs text-text-muted">{project.key} · {t('projects.lead')}: {project.owner_id} · {project.todo_count + project.in_progress_count + project.done_count} {t('projects.issues', { count: project.todo_count + project.in_progress_count + project.done_count })}</div>
                     </div>
                   </div>
                   <div className="hidden shrink-0 items-center gap-1 sm:flex">
@@ -82,15 +84,15 @@ export function ProjectsPage() {
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-center text-xs sm:text-sm">
                   <div className="rounded bg-surface-raised py-1">
-                    <div className="text-text-muted">Todo</div>
+                    <div className="text-text-muted">{t('projects.todo')}</div>
                     <div className="font-medium">{project.todo_count}</div>
                   </div>
                   <div className="rounded bg-surface-raised py-1">
-                    <div className="text-text-muted">In Progress</div>
+                    <div className="text-text-muted">{t('projects.inProgress')}</div>
                     <div className="font-medium">{project.in_progress_count}</div>
                   </div>
                   <div className="rounded bg-surface-raised py-1">
-                    <div className="text-text-muted">Done</div>
+                    <div className="text-text-muted">{t('projects.done')}</div>
                     <div className="font-medium text-emerald-500">{project.done_count}</div>
                   </div>
                 </div>

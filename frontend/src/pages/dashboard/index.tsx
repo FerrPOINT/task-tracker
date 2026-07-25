@@ -1,5 +1,6 @@
 import { Link } from 'react-router'
 import { Plus, Clock } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
@@ -15,10 +16,11 @@ function PriorityBadge({ priority }: { priority: string }) {
 }
 
 export function DashboardPage() {
+  const { t } = useTranslation()
   const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useDashboard()
   const { data: projects, isLoading: projectsLoading } = useProjects()
 
-  if (dashboardLoading || projectsLoading) return <div className="p-4 text-text-muted">Loading dashboard…</div>
+  if (dashboardLoading || projectsLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
   if (dashboardError) return <div className="p-4 text-rose-500">{dashboardError.message}</div>
 
   const assigned = dashboard?.assigned_issues ?? []
@@ -26,18 +28,18 @@ export function DashboardPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-bold sm:text-2xl">Team Dashboard</h1>
+        <h1 className="text-xl font-bold sm:text-2xl">{t('dashboard.title')}</h1>
         <Button size="sm" className="gap-1">
           <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">Добавить виджет</span>
-          <span className="sm:hidden">Виджет</span>
+          <span className="hidden sm:inline">{t('dashboard.addWidget')}</span>
+          <span className="sm:hidden">{t('dashboard.addWidget')}</span>
         </Button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Sprint Burndown</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.burndown')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex h-40 items-end gap-1 sm:gap-3">
@@ -56,12 +58,12 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Open Bugs</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.openBugs')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-end gap-2">
               <span className="text-4xl font-bold text-rose-500">7</span>
-              <span className="mb-1 text-xs text-text-muted">+2 за эту неделю</span>
+              <span className="mb-1 text-xs text-text-muted">{t('dashboard.bugsTrend', { count: 2 })}</span>
             </div>
             <div className="space-y-2">
               <Link to="/issues/bug-14" className="flex items-center justify-between gap-2 rounded-md border border-border p-2 hover:bg-surface-raised">
@@ -80,12 +82,12 @@ export function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Velocity</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.velocity')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-end gap-2">
               <span className="text-3xl font-bold sm:text-4xl">24 sp</span>
-              <span className="mb-1 text-xs text-text-muted">Средняя за 3 спринта</span>
+              <span className="mb-1 text-xs text-text-muted">{t('dashboard.velocityAverage')}</span>
             </div>
             <div className="flex h-6 gap-1">
               <div className="flex-1 rounded bg-surface-raised" />
@@ -97,7 +99,7 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Assigned to me</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.assignedToMe')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {assigned.map((item) => (
@@ -115,7 +117,7 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Recent activity · {projects?.length ?? 0} projects</CardTitle>
+            <CardTitle className="text-base">{t('dashboard.recentActivity')} · {projects?.length ?? 0} projects</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {[
@@ -126,7 +128,7 @@ export function DashboardPage() {
               <div key={i} className="flex items-start gap-2 text-sm">
                 <Clock className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
                 <div className="min-w-0">
-                  <div className="truncate">{entry.user} logged {entry.hours}h on {entry.issueKey}</div>
+                  <div className="truncate">{t('dashboard.activityLoggedTime', { user: entry.user, hours: entry.hours, issueKey: entry.issueKey })}</div>
                   <div className="text-xs text-text-muted">{entry.when}</div>
                 </div>
               </div>
