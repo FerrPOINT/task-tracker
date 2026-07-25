@@ -1,8 +1,8 @@
 use axum::{
     Json,
     extract::{Request, State},
-    http::StatusCode,
 };
+use shared::{AppError, UserId};
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -17,22 +17,18 @@ use app::auth::UserClaims;
 pub async fn get_dashboard(
     State(ctx): State<Arc<app::AppContext>>,
     req: Request,
-) -> Result<Json<DashboardResponse>, StatusCode> {
+) -> Result<Json<DashboardResponse>, AppError> {
     let claims = req
         .extensions()
         .get::<UserClaims>()
         .expect("dashboard is protected by auth middleware");
-    let user_id = shared::UserId::from_str(&claims.sub).map_err(|_| StatusCode::UNAUTHORIZED)?;
-    match ctx.services.dashboard.get_dashboard(user_id).await {
-        Ok(dto) => {
-            let issues: Vec<crate::dto::IssueResponse> =
-                dto.assigned_issues.into_iter().map(map_issue).collect();
-            Ok(Json(DashboardResponse {
-                assigned_issues: issues,
-            }))
-        }
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+    let user_id = UserId::from_str(&claims.sub).map_err(|_| AppError::Unauthorized)?;
+    let dto = ctx.services.dashboard.get_dashboard(user_id).await?;
+    let issues: Vec<crate::dto::IssueResponse> =
+        dto.assigned_issues.into_iter().map(map_issue).collect();
+    Ok(Json(DashboardResponse {
+        assigned_issues: issues,
+    }))
 }
 
 fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {

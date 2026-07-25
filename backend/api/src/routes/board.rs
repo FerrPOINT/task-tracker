@@ -1,11 +1,12 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::StatusCode,
 };
+use shared::AppError;
 use std::sync::Arc;
 
 use crate::dto::{BoardResponse, MoveIssueRequest};
+use std::str::FromStr;
 
 #[utoipa::path(
     get,
@@ -16,12 +17,11 @@ use crate::dto::{BoardResponse, MoveIssueRequest};
 pub async fn get_board(
     State(ctx): State<Arc<app::AppContext>>,
     Path(project_key): Path<String>,
-) -> Result<Json<BoardResponse>, StatusCode> {
-    let key = shared::ProjectKey::from_str(&project_key).map_err(|_| StatusCode::BAD_REQUEST)?;
-    match ctx.services.board.get_board(&key).await {
-        Ok(b) => Ok(Json(map_board(b))),
-        Err(_) => Err(StatusCode::NOT_FOUND),
-    }
+) -> Result<Json<BoardResponse>, AppError> {
+    let key = shared::ProjectKey::from_str(&project_key)
+        .map_err(|e| AppError::invalid_input(e.to_string()))?;
+    let b = ctx.services.board.get_board(&key).await?;
+    Ok(Json(map_board(b)))
 }
 
 #[utoipa::path(
@@ -33,12 +33,11 @@ pub async fn get_board(
 pub async fn get_backlog(
     State(ctx): State<Arc<app::AppContext>>,
     Path(project_key): Path<String>,
-) -> Result<Json<crate::dto::BacklogResponse>, StatusCode> {
-    let key = shared::ProjectKey::from_str(&project_key).map_err(|_| StatusCode::BAD_REQUEST)?;
-    match ctx.services.board.get_backlog(&key).await {
-        Ok(b) => Ok(Json(map_backlog(b))),
-        Err(_) => Err(StatusCode::NOT_FOUND),
-    }
+) -> Result<Json<crate::dto::BacklogResponse>, AppError> {
+    let key = shared::ProjectKey::from_str(&project_key)
+        .map_err(|e| AppError::invalid_input(e.to_string()))?;
+    let b = ctx.services.board.get_backlog(&key).await?;
+    Ok(Json(map_backlog(b)))
 }
 
 #[utoipa::path(
@@ -52,29 +51,27 @@ pub async fn move_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Path(project_key): Path<String>,
     Json(req): Json<MoveIssueRequest>,
-) -> Result<Json<BoardResponse>, StatusCode> {
-    let key = shared::ProjectKey::from_str(&project_key).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<Json<BoardResponse>, AppError> {
+    let key = shared::ProjectKey::from_str(&project_key)
+        .map_err(|e| AppError::invalid_input(e.to_string()))?;
     let issue_id = req
         .issue_id
         .parse()
         .ok()
         .map(shared::IssueId::from_uuid)
-        .ok_or(StatusCode::BAD_REQUEST)?;
+        .ok_or(AppError::invalid_input("issue_id"))?;
     let status_id = req
         .status_id
         .parse()
         .ok()
         .map(shared::StatusId::from_uuid)
-        .ok_or(StatusCode::BAD_REQUEST)?;
-    match ctx
+        .ok_or(AppError::invalid_input("status_id"))?;
+    let b = ctx
         .services
         .board
         .move_issue(&key, issue_id, status_id)
-        .await
-    {
-        Ok(b) => Ok(Json(map_board(b))),
-        Err(_) => Err(StatusCode::NOT_FOUND),
-    }
+        .await?;
+    Ok(Json(map_board(b)))
 }
 
 fn map_board(b: app::dto::BoardDto) -> BoardResponse {
@@ -135,5 +132,3 @@ fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
         project_name: i.project_name,
     }
 }
-
-use std::str::FromStr;

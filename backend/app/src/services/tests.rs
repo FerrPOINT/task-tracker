@@ -3,13 +3,14 @@ mod tests {
     use std::sync::Arc;
 
     use domain::{
-        Board, BoardColumn, BoardRepository, ColumnCategory, MemoryBoardRepository,
-        MemoryIssueRepository, MemoryProjectRepository, MemorySprintRepository,
-        MemoryUserRepository, Project, ProjectRepository, User, UserRepository,
+        Board, BoardColumn, BoardRepository, ColumnCategory, Issue, IssueQuery, IssueRepository,
+        MemoryBoardRepository, MemoryIssueRepository, MemoryProjectRepository,
+        MemorySprintRepository, MemoryUserRepository, Project, ProjectQuery, ProjectRepository,
+        Sprint, SprintRepository, User, UserRepository,
     };
     use shared::{
-        AppConfig, AuthConfig, DatabaseConfig, IssueType, Priority, ProjectKey, ServerConfig,
-        StatusId, UserId,
+        AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, Priority,
+        ProjectId, ProjectKey, ServerConfig, SprintId, StatusId, UserId,
     };
 
     use crate::commands::{
@@ -151,6 +152,36 @@ mod tests {
         assert!(!dto.token.is_empty());
         let claims = ctx.services.auth.verify_token(&dto.token).unwrap();
         assert_eq!(claims.sub, dto.user.id.to_string());
+    }
+
+    #[tokio::test]
+    async fn auth_login_missing_user_fails() {
+        let (ctx, _user) = ctx_with_demo_data().await;
+        let err = ctx
+            .services
+            .auth
+            .login(LoginCommand {
+                email: "missing@example.com".to_string(),
+                password: "secret123".to_string(),
+            })
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn auth_expired_token_fails_verification() {
+        let (ctx, _user) = ctx_with_demo_data().await;
+        let expired = jsonwebtoken::encode(
+            &jsonwebtoken::Header::default(),
+            &crate::auth::UserClaims {
+                sub: UserId::new().to_string(),
+                exp: 1,
+            },
+            &jsonwebtoken::EncodingKey::from_secret(ctx.config.auth.jwt_secret.as_bytes()),
+        )
+        .unwrap();
+        let err = ctx.services.auth.verify_token(&expired);
+        assert!(err.is_err());
     }
 
     #[tokio::test]
@@ -427,29 +458,431 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn issue_service_create_fails_for_missing_project() {
+        let (ctx, user) = ctx_with_demo_data().await;
+        let err = ctx
+            .services
+            .issue
+            .create(CreateIssueCommand {
+                project_key: ProjectKey::new("ZZ"),
+                summary: "orphan".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+            })
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn issue_service_create_fails_for_invalid_status_id() {
+        let (ctx, user) = ctx_with_demo_data().await;
+        let err = ctx
+            .services
+            .issue
+            .create(CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "bad status".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: "not-a-uuid".to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+            })
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn issue_service_update_fails_for_invalid_status_id() {
+        let (ctx, user) = ctx_with_demo_data().await;
+        let board = ctx
+            .services
+            .board
+            .get_board(&ProjectKey::new("TT"))
+            .await
+            .unwrap();
+        let created = ctx
+            .services
+            .issue
+            .create(CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Update me".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Low,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+            })
+            .await
+            .unwrap();
+
+        let err = ctx
+            .services
+            .issue
+            .update(
+                created.id.parse().unwrap(),
+                UpdateIssueCommand {
+                    summary: None,
+                    description: None,
+                    priority: None,
+                    status_id: Some("not-a-uuid".to_string()),
+                    assignee_id: None,
+                },
+            )
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn issue_service_update_fails_for_missing_issue() {
+        let (ctx, _user) = ctx_with_demo_data().await;
+        let err = ctx
+            .services
+            .issue
+            .update(
+                shared::IssueId::new(),
+                UpdateIssueCommand {
+                    summary: Some("nope".to_string()),
+                    description: None,
+                    priority: None,
+                    status_id: None,
+                    assignee_id: None,
+                },
+            )
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn board_move_issue_fails_for_missing_issue() {
+        let (ctx, _user) = ctx_with_demo_data().await;
+        let err = ctx
+            .services
+            .board
+            .move_issue(
+                &ProjectKey::new("TT"),
+                shared::IssueId::new(),
+                StatusId::from_uuid(
+                    uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
+                ),
+            )
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn dashboard_get_for_user_without_issues_is_empty() {
+        let (ctx, _user) = ctx_with_demo_data().await;
+        let dashboard = ctx
+            .services
+            .dashboard
+            .get_dashboard(UserId::new())
+            .await
+            .unwrap();
+        assert!(dashboard.assigned_issues.is_empty());
+    }
+
+    #[tokio::test]
+    async fn auth_invalid_token_fails_verification() {
+        let (ctx, _user) = ctx_with_demo_data().await;
+        let err = ctx.services.auth.verify_token("not.valid.token");
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
     async fn auth_duplicate_registration_fails() {
         let (ctx, _user) = ctx_with_demo_data().await;
-        let first = ctx
-            .services
+        let email = "dup@example.com".to_string();
+        ctx.services
             .auth
             .register(RegisterCommand {
-                email: "dup@example.com".to_string(),
+                email: email.clone(),
                 username: "dup".to_string(),
                 name: "Dup".to_string(),
                 password: "secret123".to_string(),
             })
-            .await;
-        assert!(first.is_ok());
-        let second = ctx
+            .await
+            .unwrap();
+
+        let err = ctx
             .services
             .auth
             .register(RegisterCommand {
-                email: "dup@example.com".to_string(),
+                email,
                 username: "dup2".to_string(),
                 name: "Dup2".to_string(),
                 password: "secret123".to_string(),
             })
             .await;
-        assert!(second.is_err());
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn issue_service_get_by_id_fails_for_missing_issue() {
+        let (ctx, _user) = ctx_with_demo_data().await;
+        let err = ctx.services.issue.get_by_id(shared::IssueId::new()).await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn dashboard_get_fails_when_project_missing() {
+        let (ctx, user) = ctx_with_demo_data().await;
+        let fake_project = domain::Project {
+            id: ProjectId::new(),
+            key: ProjectKey::new("FAKE"),
+            name: "Fake".into(),
+            description: None,
+            owner_id: user.id,
+            default_board_id: shared::BoardId::new(),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        let status = StatusId::from_uuid(uuid::Uuid::nil());
+        let issue = domain::Issue::create(
+            &fake_project,
+            1,
+            IssueType::Task,
+            status,
+            "orphan",
+            None,
+            user.id,
+            Priority::Medium,
+        );
+        let mut issue_with_assignee = issue.clone();
+        issue_with_assignee.assign(Some(user.id));
+        ctx.repos.issues.save(&issue_with_assignee).await.unwrap();
+
+        let err = ctx.services.dashboard.get_dashboard(user.id).await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn issue_service_search_fails_when_project_missing() {
+        let (ctx, user) = ctx_with_demo_data().await;
+        let fake_project = domain::Project {
+            id: ProjectId::new(),
+            key: ProjectKey::new("FAKE"),
+            name: "Fake".into(),
+            description: None,
+            owner_id: user.id,
+            default_board_id: shared::BoardId::new(),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        let status = StatusId::from_uuid(uuid::Uuid::nil());
+        let issue = domain::Issue::create(
+            &fake_project,
+            1,
+            IssueType::Task,
+            status,
+            "orphan keyword",
+            None,
+            user.id,
+            Priority::Medium,
+        );
+        ctx.repos.issues.save(&issue).await.unwrap();
+
+        let err = ctx.services.search.search("orphan keyword").await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn issue_service_get_by_id_fails_when_project_missing() {
+        let (ctx, user) = ctx_with_demo_data().await;
+        let fake_project = domain::Project {
+            id: ProjectId::new(),
+            key: ProjectKey::new("FAKE"),
+            name: "Fake".into(),
+            description: None,
+            owner_id: user.id,
+            default_board_id: shared::BoardId::new(),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        let status = StatusId::from_uuid(uuid::Uuid::nil());
+        let issue = domain::Issue::create(
+            &fake_project,
+            1,
+            IssueType::Task,
+            status,
+            "orphan get",
+            None,
+            user.id,
+            Priority::Medium,
+        );
+        ctx.repos.issues.save(&issue).await.unwrap();
+
+        let err = ctx.services.issue.get_by_id(issue.id).await;
+        assert!(err.is_err());
+    }
+
+    fn failing_context() -> AppContext {
+        #[derive(Default)]
+        struct FailingProjectRepository;
+        #[async_trait::async_trait]
+        impl ProjectRepository for FailingProjectRepository {
+            async fn get_by_id(&self, _id: ProjectId) -> Result<Project, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn get_by_key(&self, _key: &ProjectKey) -> Result<Project, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn list(&self, _query: ProjectQuery) -> Result<Vec<Project>, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn save(&self, _project: &Project) -> Result<ProjectId, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn next_issue_number(&self, _project_id: ProjectId) -> Result<u32, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+        }
+
+        #[derive(Default)]
+        struct FailingIssueRepository;
+        #[async_trait::async_trait]
+        impl IssueRepository for FailingIssueRepository {
+            async fn get_by_id(&self, _id: IssueId) -> Result<Issue, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn get_by_key(&self, _key: &IssueKey) -> Result<Issue, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn list(&self, _query: IssueQuery) -> Result<Vec<Issue>, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn save(&self, _issue: &Issue) -> Result<IssueId, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+        }
+
+        #[derive(Default)]
+        struct FailingUserRepository;
+        #[async_trait::async_trait]
+        impl UserRepository for FailingUserRepository {
+            async fn get_by_id(&self, _id: UserId) -> Result<User, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn get_by_email(&self, _email: &str) -> Result<User, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn save(&self, _user: &User) -> Result<UserId, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+        }
+
+        #[derive(Default)]
+        struct FailingBoardRepository;
+        #[async_trait::async_trait]
+        impl BoardRepository for FailingBoardRepository {
+            async fn get_by_id(&self, _id: shared::BoardId) -> Result<Board, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn get_default_by_project(
+                &self,
+                _project_id: ProjectId,
+            ) -> Result<Board, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn get_default_by_project_key(
+                &self,
+                _key: &ProjectKey,
+            ) -> Result<Board, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn save(&self, _board: &Board) -> Result<(), AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+        }
+
+        #[derive(Default)]
+        struct FailingSprintRepository;
+        #[async_trait::async_trait]
+        impl SprintRepository for FailingSprintRepository {
+            async fn get_by_id(&self, _id: SprintId) -> Result<Sprint, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn get_active_by_project(
+                &self,
+                _project_id: ProjectId,
+            ) -> Result<Option<Sprint>, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+            async fn save(&self, _sprint: &Sprint) -> Result<SprintId, AppError> {
+                Err(AppError::Internal("x".into()))
+            }
+        }
+
+        let repos = Arc::new(domain::Repositories {
+            users: Arc::new(FailingUserRepository),
+            projects: Arc::new(FailingProjectRepository),
+            issues: Arc::new(FailingIssueRepository),
+            boards: Arc::new(FailingBoardRepository),
+            sprints: Arc::new(FailingSprintRepository),
+        });
+        AppContext::new(test_config(), repos)
+    }
+
+    #[tokio::test]
+    async fn project_create_propagates_repo_error() {
+        let ctx = failing_context();
+        let err = ctx
+            .services
+            .project
+            .create(CreateProjectCommand {
+                key: ProjectKey::new("NP"),
+                name: "New".to_string(),
+                description: None,
+                owner_id: UserId::new(),
+            })
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn issue_create_propagates_repo_error() {
+        let ctx = failing_context();
+        let err = ctx
+            .services
+            .issue
+            .create(CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "x".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                reporter_id: UserId::new(),
+                assignee_id: None,
+            })
+            .await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn board_get_propagates_repo_error() {
+        let ctx = failing_context();
+        let err = ctx.services.board.get_board(&ProjectKey::new("TT")).await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn dashboard_get_propagates_repo_error() {
+        let ctx = failing_context();
+        let err = ctx.services.dashboard.get_dashboard(UserId::new()).await;
+        assert!(err.is_err());
+    }
+
+    #[tokio::test]
+    async fn search_propagates_repo_error() {
+        let ctx = failing_context();
+        let err = ctx.services.search.search("q").await;
+        assert!(err.is_err());
     }
 }

@@ -51,7 +51,7 @@ functions = totals['functions']['percent']
 print(f"lines: {lines:.2f}%")
 print(f"regions: {regions:.2f}%")
 print(f"functions: {functions:.2f}%")
-ok = lines >= 91.0 and regions >= 86.0 and functions >= 78.0
+ok = lines >= 95.0 and regions >= 92.0 and functions >= 85.0
 sys.exit(0 if ok else 1)
 PY
 echo "Gate passed"

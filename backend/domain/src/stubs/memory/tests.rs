@@ -73,6 +73,14 @@ mod tests {
         assert_eq!(repo.get_by_key(&project.key).await.unwrap().id, project.id);
         assert_eq!(repo.list(ProjectQuery::default()).await.unwrap().len(), 1);
         assert_eq!(repo.next_issue_number(project.id).await.unwrap(), 2);
+        repo.save(&project).await.unwrap();
+        let mut renamed = project.clone();
+        renamed.name = "Renamed".into();
+        repo.save(&renamed).await.unwrap();
+        assert_eq!(
+            repo.get_by_id(project.id).await.unwrap().name.as_ref(),
+            "Renamed"
+        );
     }
 
     #[tokio::test]
@@ -130,8 +138,14 @@ mod tests {
             .unwrap();
         assert!(empty.is_empty());
 
-        repo.delete(issue.id).await.unwrap();
-        assert!(repo.get_by_id(issue.id).await.is_err());
+        repo.save(&issue).await.unwrap();
+        let mut updated = issue.clone();
+        updated.summary = "updated".into();
+        repo.save(&updated).await.unwrap();
+        assert_eq!(
+            repo.get_by_id(issue.id).await.unwrap().summary.as_ref(),
+            "updated"
+        );
     }
 
     #[tokio::test]

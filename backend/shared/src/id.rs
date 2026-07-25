@@ -79,6 +79,11 @@ impl ProjectKey {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub fn is_valid(&self) -> bool {
+        let s = self.as_str();
+        !s.is_empty() && s.len() <= 10 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    }
 }
 
 impl Serialize for ProjectKey {

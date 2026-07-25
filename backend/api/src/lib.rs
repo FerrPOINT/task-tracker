@@ -116,11 +116,18 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .layer(cors)
 }
 
+pub async fn bind(ctx: Arc<app::AppContext>) -> Result<tokio::net::TcpListener, std::io::Error> {
+    tokio::net::TcpListener::bind(&ctx.config.server_addr()).await
+}
+
+pub async fn serve_forever(
+    listener: tokio::net::TcpListener,
+    ctx: Arc<app::AppContext>,
+) -> Result<(), std::io::Error> {
+    axum::serve(listener, router(ctx.clone()).with_state(ctx)).await
+}
+
 pub async fn serve(ctx: Arc<app::AppContext>) {
-    let listener = tokio::net::TcpListener::bind(&ctx.config.server_addr())
-        .await
-        .expect("failed to bind");
-    axum::serve(listener, router(ctx.clone()).with_state(ctx))
-        .await
-        .expect("server failed");
+    let listener = bind(ctx.clone()).await.expect("failed to bind");
+    serve_forever(listener, ctx).await.expect("server failed");
 }

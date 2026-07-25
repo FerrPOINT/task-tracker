@@ -58,7 +58,11 @@ mod tests {
             Err(AppError::NotFound { .. })
         ));
         assert_eq!(r.list(crate::IssueQuery::default()).await.unwrap().len(), 0);
-        assert!(r.delete(IssueId::new()).await.is_ok());
+        assert!(
+            r.get_by_key(&shared::IssueKey::new(ProjectKey::new("PRJ"), 1))
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

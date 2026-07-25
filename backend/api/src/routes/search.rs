@@ -1,8 +1,8 @@
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode,
 };
+use shared::AppError;
 use std::sync::Arc;
 
 use crate::dto::{IssueListResponse, IssueResponse, SearchQuery};
@@ -16,13 +16,11 @@ use crate::dto::{IssueListResponse, IssueResponse, SearchQuery};
 pub async fn search_global(
     State(ctx): State<Arc<app::AppContext>>,
     Query(q): Query<SearchQuery>,
-) -> Result<Json<IssueListResponse>, StatusCode> {
-    match ctx.services.search.search(&q.q).await {
-        Ok(items) => Ok(Json(IssueListResponse {
-            issues: items.into_iter().map(map_issue).collect(),
-        })),
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-    }
+) -> Result<Json<IssueListResponse>, AppError> {
+    let items = ctx.services.search.search(&q.q).await?;
+    Ok(Json(IssueListResponse {
+        issues: items.into_iter().map(map_issue).collect(),
+    }))
 }
 
 fn map_issue(i: app::dto::IssueDto) -> IssueResponse {

@@ -70,6 +70,10 @@ mod tests {
         assert!(ProjectKey::from_str("with space").is_err());
         assert!(ProjectKey::from_str("under_score").is_err());
         assert_eq!(ProjectKey::new("TT").to_string(), "TT");
+        assert!(ProjectKey::new("TT").is_valid());
+        assert!(!ProjectKey::new("").is_valid());
+        assert!(!ProjectKey::new("toolongkey123").is_valid());
+        assert!(!ProjectKey::new("with space").is_valid());
     }
 
     #[test]
