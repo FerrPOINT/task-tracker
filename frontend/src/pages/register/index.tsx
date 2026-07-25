@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Layers } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import { useRegister } from '@/shared/api/hooks'
 
 export function RegisterPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { mutate, isPending, error } = useRegister()
   const [username, setUsername] = useState('')
@@ -37,29 +39,30 @@ export function RegisterPage() {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Имя пользователя</label>
-            <Input type="text" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="register-username">{t('auth.username')}</label>
+            <Input id="register-username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Email</label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="register-email">{t('auth.email')}</label>
+            <Input id="register-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Пароль</label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="register-password">{t('auth.password')}</label>
+            <Input id="register-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Повтор пароля</label>
-            <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="register-confirm">{t('auth.confirmPassword')}</label>
+            <Input id="register-confirm" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
           </div>
           {error && <div className="text-sm text-rose-500">{error.message}</div>}
           <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? 'Регистрация…' : 'Зарегистрироваться'}
+            {isPending ? `${t('auth.register')}…` : t('auth.register')}
           </Button>
           <Button variant="outline" className="w-full" asChild>
-            <a href="/login">Уже есть аккаунт</a>
+            <a href="/login">{t('auth.haveAccount')}</a>
           </Button>
         </form>
+        <p className="mt-4 text-center text-xs text-text-muted">{t('auth.registerDemo')}</p>
       </div>
     </div>
   )

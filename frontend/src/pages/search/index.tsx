@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { Search as SearchIcon, Save, Folder, CircleDot, User, Flag } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { useSearch } from '@/shared/api/hooks'
 
@@ -15,6 +16,7 @@ function PriorityBadge({ priority }: { priority: string }) {
 }
 
 export function SearchPage() {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('project = TT AND status != Done')
   const [searchQuery, setSearchQuery] = useState(query)
   const { data: result, isLoading, error } = useSearch(searchQuery)
@@ -28,7 +30,7 @@ export function SearchPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold sm:text-2xl">Поиск задач</h1>
+      <h1 className="text-xl font-bold sm:text-2xl">{t('search.title')}</h1>
 
       <form
         onSubmit={handleSearch}
@@ -59,29 +61,33 @@ export function SearchPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           <Button type="submit" size="sm" className="gap-1">
             <SearchIcon className="h-4 w-4" />
-            Искать
+            {t('search.search')}
           </Button>
           <Button variant="outline" size="sm" className="gap-1">
             <Save className="h-4 w-4" />
-            <span className="hidden sm:inline">Сохранить фильтр</span>
-            <span className="sm:hidden">Сохранить</span>
+            <span className="hidden sm:inline">{t('search.saveFilter')}</span>
+            <span className="sm:hidden">{t('search.saveFilter')}</span>
           </Button>
-          <Button variant="outline" size="sm">Сбросить</Button>
+          <Button variant="outline" size="sm">{t('search.reset')}</Button>
         </div>
       </form>
 
-      {isLoading && <div className="p-4 text-text-muted">Searching…</div>}
+      {isLoading && <div className="p-4 text-text-muted">{t('issue.loading')}</div>}
       {error && <div className="p-4 text-rose-500">{error.message}</div>}
+
+      {results.length === 0 && !isLoading && !error && (
+        <div className="p-4 text-text-muted">{t('issue.notFound')}</div>
+      )}
 
       {results.length > 0 && (
         <div className="overflow-x-auto rounded-lg border border-border bg-surface">
           <div className="min-w-[560px]">
             <div className="grid grid-cols-[80px_1fr_120px_80px_80px] gap-3 border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
-              <span>KEY</span>
-              <span>SUMMARY</span>
-              <span>STATUS</span>
-              <span>ASSIGNEE</span>
-              <span>PRIORITY</span>
+              <span>{t('search.key')}</span>
+              <span>{t('search.summary')}</span>
+              <span>{t('search.status')}</span>
+              <span>{t('search.assignee')}</span>
+              <span>{t('search.priority')}</span>
             </div>
             {results.map((issue) => (
               <Link

@@ -1,23 +1,17 @@
 {
   "navigation": {
-    "dashboard": "Dashboard",
     "projects": "Projects",
-    "myTasks": "My tasks",
-    "backlog": "Backlog",
-    "board": "Board",
-    "trash": "Trash",
     "search": "Search",
-    "create": "Create"
+    "create": "Create",
+    "system": "System"
   },
   "auth": {
     "login": "Log in",
     "register": "Sign up",
     "username": "Username",
-    "displayName": "Display name",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Repeat password",
-    "passwordPlaceholder": "at least 8 characters",
     "createAccount": "Create account",
     "haveAccount": "Already have an account",
     "loginDemo": "MVP demo: any login/password works.",
@@ -28,12 +22,10 @@
     "addWidget": "Add widget",
     "burndown": "Sprint Burndown",
     "openBugs": "Open Bugs",
-    "bugsTrend": "+{{count}} this week",
     "velocity": "Velocity",
     "velocityAverage": "Average over last 3 sprints",
     "assignedToMe": "Assigned to me",
-    "recentActivity": "Recent activity",
-    "activityLoggedTime": "{{user}} logged {{hours}}h on {{issueKey}}"
+    "recentActivity": "Recent activity"
   },
   "projects": {
     "title": "Projects",
@@ -46,15 +38,12 @@
     "scrum": "Scrum",
     "kanban": "Kanban",
     "basic": "Basic",
-    "issues": "{{count}} issues",
     "todo": "To do",
     "inProgress": "In progress",
     "done": "Done",
     "lead": "Lead"
   },
   "board": {
-    "title": "{{projectName}} · {{sprintName}}",
-    "subtitle": "Backlog {{backlog}} · Active · {{remainingDays}} days left",
     "filters": "Filters",
     "members": "Members",
     "addColumn": "Column",
@@ -63,17 +52,12 @@
     "wipWarning": "⚠️"
   },
   "backlog": {
-    "title": "Backlog · {{projectName}}",
-    "velocity": "Velocity: {{velocity}} sp",
-    "backlogCount": "Backlog: {{count}} issues",
     "createSprint": "Create sprint",
     "createIssue": "Create issue",
-    "startSprint": "Start sprint",
-    "backlogSection": "Backlog · {{count}} issues"
+    "startSprint": "Start sprint"
   },
   "search": {
     "title": "Search issues",
-    "queryPlaceholder": "project = TT AND status != Done",
     "search": "Search",
     "saveFilter": "Save filter",
     "reset": "Reset",
@@ -94,9 +78,6 @@
     "priority": "Priority",
     "assignee": "Assignee",
     "unassigned": "Unassigned",
-    "labels": "Labels",
-    "labelsPlaceholder": "backend, auth",
-    "dueDate": "Due date",
     "reporter": "Reporter",
     "create": "Create",
     "createAnother": "Create another",
@@ -113,15 +94,9 @@
     "reporter": "Reporter",
     "priority": "Priority",
     "labels": "Labels",
-    "dueDate": "Due date",
-    "components": "Components",
-    "versions": "Versions",
-    "watchers": "Watchers",
-    "votes": "Votes",
     "edit": "Edit",
     "comment": "Comment",
     "assignToMe": "Assign to me",
-    "moreActions": "More",
     "copyKey": "Copy key",
     "noDescription": "No description.",
     "loading": "Loading...",
@@ -166,9 +141,6 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
-    "delete": "Delete",
-    "edit": "Edit",
-    "close": "Close",
-    "theme": "Theme: {{theme}}"
+    "delete": "Delete"
   }
 }

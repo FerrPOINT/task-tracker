@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Plus } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { useCreateIssue } from '@/shared/api/hooks'
 import { useAuthStore } from '@/shared/auth/store'
 
 export function IssueCreatePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { mutate, isPending, error } = useCreateIssue()
   const userId = useAuthStore((s) => s.userId)
@@ -41,7 +43,7 @@ export function IssueCreatePage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-5 text-xl font-bold sm:text-2xl">Создать задачу</h1>
+      <h1 className="mb-5 text-xl font-bold sm:text-2xl">{t('issueCreate.title')}</h1>
 
       <form
         onSubmit={handleSubmit}
@@ -56,7 +58,7 @@ export function IssueCreatePage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Проект *</label>
+            <label className="text-sm font-medium">{t('issueCreate.project')} *</label>
             <select
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={project_key}
@@ -67,7 +69,7 @@ export function IssueCreatePage() {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Тип задачи *</label>
+            <label className="text-sm font-medium">{t('issueCreate.type')} *</label>
             <select
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={type}
@@ -82,10 +84,10 @@ export function IssueCreatePage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">Название / Summary *</label>
+          <label className="text-sm font-medium">{t('issueCreate.summary')} *</label>
           <Input
             type="text"
-            placeholder="Краткое описание задачи"
+            placeholder={t('issueCreate.summaryPlaceholder')}
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
             required
@@ -93,10 +95,10 @@ export function IssueCreatePage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">Описание</label>
+          <label className="text-sm font-medium">{t('issueCreate.description')}</label>
           <textarea
             className="min-h-[120px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
-            placeholder="Подробное описание, acceptance criteria..."
+            placeholder={t('issueCreate.descriptionPlaceholder')}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -104,7 +106,7 @@ export function IssueCreatePage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium">Приоритет</label>
+            <label className="text-sm font-medium">{t('issueCreate.priority')}</label>
             <select
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={priority}
@@ -118,31 +120,31 @@ export function IssueCreatePage() {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">Исполнитель</label>
+            <label className="text-sm font-medium">{t('issueCreate.assignee')}</label>
             <select
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={assignee_id}
               onChange={(e) => setAssigneeId(e.target.value)}
             >
-              <option value="">Unassigned</option>
+              <option value="">{t('issueCreate.unassigned')}</option>
               <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11">Demo User</option>
             </select>
           </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">Автор</label>
+          <label className="text-sm font-medium">{t('issueCreate.reporter')}</label>
           <Input type="text" value="me (read-only)" disabled />
         </div>
 
         <div className="flex flex-wrap gap-2 pt-2">
           <Button type="submit" disabled={isPending || !userId} className="gap-1">
             <Plus className="h-4 w-4" />
-            {isPending ? 'Создание…' : 'Создать'}
+            {isPending ? `${t('issueCreate.create')}…` : t('issueCreate.create')}
           </Button>
-          <Button type="button" variant="outline">Создать ещё одну</Button>
+          <Button type="button" variant="outline">{t('issueCreate.createAnother')}</Button>
           <Button variant="outline" asChild>
-            <Link to={`/projects/${project_key}/backlog`}>Отмена</Link>
+            <Link to={`/projects/${project_key}/backlog`}>{t('issueCreate.cancel')}</Link>
           </Button>
         </div>
       </form>

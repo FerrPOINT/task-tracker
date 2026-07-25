@@ -1,39 +1,31 @@
 {
   "navigation": {
-    "dashboard": "Dashboard",
     "projects": "Проекты",
-    "myTasks": "Мои задачи",
-    "backlog": "Backlog",
-    "board": "Доска",
-    "trash": "Trash",
     "search": "Поиск",
-    "create": "Создать"
+    "create": "Создать",
+    "system": "Система"
   },
   "auth": {
     "login": "Войти",
     "register": "Зарегистрироваться",
     "username": "Имя пользователя",
-    "displayName": "Отображаемое имя",
     "email": "Email",
     "password": "Пароль",
     "confirmPassword": "Повтор пароля",
-    "passwordPlaceholder": "минимум 8 символов",
     "createAccount": "Создать аккаунт",
     "haveAccount": "Уже есть аккаунт",
-    "loginDemo": "MVP-демо: любой логин/пароль.",
+    "loginDemo": "MVP-демо: любой логин/пароль работает.",
     "registerDemo": "MVP-демо: регистрация без подтверждения."
   },
   "dashboard": {
-    "title": "Team Dashboard",
+    "title": "Командный дашборд",
     "addWidget": "Добавить виджет",
-    "burndown": "Sprint Burndown",
-    "openBugs": "Open Bugs",
-    "bugsTrend": "+{{count}} за эту неделю",
-    "velocity": "Velocity",
-    "velocityAverage": "Средняя за 3 спринта",
-    "assignedToMe": "Assigned to me",
-    "recentActivity": "Recent activity",
-    "activityLoggedTime": "{{user}} logged {{hours}}h on {{issueKey}}"
+    "burndown": "Спринт Burndown",
+    "openBugs": "Открытые баги",
+    "velocity": "Скорость",
+    "velocityAverage": "Среднее за последние 3 спринта",
+    "assignedToMe": "Назначено на меня",
+    "recentActivity": "Недавняя активность"
   },
   "projects": {
     "title": "Проекты",
@@ -45,61 +37,50 @@
     "anyType": "Любой тип",
     "scrum": "Scrum",
     "kanban": "Kanban",
-    "basic": "Basic",
-    "issues": "{{count}} issues",
+    "basic": "Базовый",
     "todo": "К выполнению",
     "inProgress": "В работе",
     "done": "Готово",
-    "lead": "Lead"
+    "lead": "Лид"
   },
   "board": {
-    "title": "{{projectName}} · {{sprintName}}",
-    "subtitle": "Backlog {{backlog}} · Active · {{remainingDays}} days left",
     "filters": "Фильтры",
     "members": "Участники",
     "addColumn": "Колонка",
-    "create": "Create",
+    "create": "Создать",
     "wip": "WIP",
     "wipWarning": "⚠️"
   },
   "backlog": {
-    "title": "Backlog · {{projectName}}",
-    "velocity": "Velocity: {{velocity}} sp",
-    "backlogCount": "Backlog: {{count}} issues",
     "createSprint": "Создать спринт",
     "createIssue": "Создать задачу",
-    "startSprint": "Start sprint",
-    "backlogSection": "Backlog · {{count}} issues"
+    "startSprint": "Начать спринт"
   },
   "search": {
     "title": "Поиск задач",
-    "queryPlaceholder": "project = TT AND status != Done",
-    "search": "Искать",
+    "search": "Найти",
     "saveFilter": "Сохранить фильтр",
     "reset": "Сбросить",
-    "key": "KEY",
-    "summary": "SUMMARY",
-    "status": "STATUS",
-    "assignee": "ASSIGNEE",
-    "priority": "PRIORITY"
+    "key": "КЛЮЧ",
+    "summary": "ЗАГОЛОВОК",
+    "status": "СТАТУС",
+    "assignee": "ИСПОЛНИТЕЛЬ",
+    "priority": "ПРИОРИТЕТ"
   },
   "issueCreate": {
     "title": "Создать задачу",
     "project": "Проект",
     "type": "Тип задачи",
-    "summary": "Название / Summary",
+    "summary": "Заголовок",
     "summaryPlaceholder": "Краткое описание задачи",
     "description": "Описание",
-    "descriptionPlaceholder": "Подробное описание, acceptance criteria...",
+    "descriptionPlaceholder": "Подробное описание, критерии приёмки...",
     "priority": "Приоритет",
     "assignee": "Исполнитель",
-    "unassigned": "Unassigned",
-    "labels": "Метки",
-    "labelsPlaceholder": "backend, auth",
-    "dueDate": "Срок выполнения",
+    "unassigned": "Не назначен",
     "reporter": "Автор",
     "create": "Создать",
-    "createAnother": "Создать ещё одну",
+    "createAnother": "Создать ещё",
     "cancel": "Отмена"
   },
   "issue": {
@@ -113,15 +94,9 @@
     "reporter": "Автор",
     "priority": "Приоритет",
     "labels": "Метки",
-    "dueDate": "Дата выполнения",
-    "components": "Компоненты",
-    "versions": "Версии",
-    "watchers": "Наблюдатели",
-    "votes": "Голоса",
-    "edit": "Редактировать",
+    "edit": "Изменить",
     "comment": "Комментировать",
-    "assignToMe": "Назначить себе",
-    "moreActions": "Ещё",
+    "assignToMe": "Назначить на себя",
     "copyKey": "Скопировать ключ",
     "noDescription": "Нет описания.",
     "loading": "Загрузка...",
@@ -129,34 +104,34 @@
   },
   "timeTracking": {
     "title": "Учёт времени",
-    "spent": "потрачено",
-    "estimated": "оценка",
+    "spent": "затрачено",
+    "estimated": "оценено",
     "remaining": "осталось",
-    "overBy": "перебор на",
-    "logWork": "Залогировать время",
-    "editWorklog": "Редактировать запись",
+    "overBy": "перерасход",
+    "logWork": "Записать время",
+    "editWorklog": "Изменить запись",
     "deleteWorklog": "Удалить запись",
-    "deleteConfirm": "Удалить эту запись о времени?",
+    "deleteConfirm": "Удалить эту запись времени?",
     "timer": {
       "start": "Запустить таймер",
       "stop": "Остановить таймер"
     },
     "fields": {
-      "timeSpent": "Затраченное время",
+      "timeSpent": "Затрачено времени",
       "remainingEstimate": "Оставшаяся оценка",
-      "startedAt": "Дата начала",
+      "startedAt": "Начало",
       "comment": "Комментарий"
     },
     "validation": {
       "timeSpentRequired": "Укажите затраченное время",
-      "invalidFormat": "Используйте формат вроде 1ч 30м"
+      "invalidFormat": "Используйте формат вроде 1h 30m"
     },
     "worklog": {
-      "title": "Worklog",
+      "title": "Журнал работ",
       "empty": "Пока нет записей.",
-      "totalLogged": "Всего залогировано",
+      "totalLogged": "Всего затрачено",
       "user": "Пользователь",
-      "started": "Дата",
+      "started": "Начало",
       "timeSpent": "Затрачено",
       "remaining": "Осталось",
       "comment": "Комментарий",
@@ -166,9 +141,6 @@
   "common": {
     "save": "Сохранить",
     "cancel": "Отмена",
-    "delete": "Удалить",
-    "edit": "Редактировать",
-    "close": "Закрыть",
-    "theme": "Тема: {{theme}}"
+    "delete": "Удалить"
   }
 }

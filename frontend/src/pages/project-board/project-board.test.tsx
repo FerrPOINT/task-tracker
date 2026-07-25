@@ -1,14 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectBoardPage } from './'
 import { ThemeProvider } from '@/shared/lib/theme'
 
-const getBoard = vi.hoisted(() =>
-  vi.fn(() =>
-    Promise.resolve({
+vi.mock('@/shared/api/hooks', () => ({
+  useBoard: () => ({
+    data: {
       project_key: 'TT',
       sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
       columns: [
@@ -26,27 +25,21 @@ const getBoard = vi.hoisted(() =>
           assignee_name: 'me',
         },
       ],
-    }),
-  ),
-)
-const moveIssue = vi.hoisted(() => vi.fn(() => Promise.resolve()))
-
-vi.mock('@/api/board', () => ({
-  getBoard,
-  moveIssue,
+    },
+    isLoading: false,
+    error: null,
+  }),
+  useMoveIssue: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 function wrapper(children: React.ReactNode) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return (
     <ThemeProvider>
-      <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/projects/TT/board']}>
-          <Routes>
-            <Route path="/projects/:projectKey/board" element={children} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>
+      <MemoryRouter initialEntries={['/projects/TT/board']}>
+        <Routes>
+          <Route path="/projects/:projectKey/board" element={children} />
+        </Routes>
+      </MemoryRouter>
     </ThemeProvider>
   )
 }
@@ -54,10 +47,8 @@ function wrapper(children: React.ReactNode) {
 describe('ProjectBoardPage', () => {
   it('renders board columns and issue card', async () => {
     render(wrapper(<ProjectBoardPage />))
-    await waitFor(() => expect(screen.getByText('TT Kanban · Sprint 1')).toBeInTheDocument())
-    const columns = screen.getAllByText('To Do')
-    expect(columns.length).toBeGreaterThanOrEqual(1)
-    const keys = screen.getAllByText('TT-1')
-    expect(keys.length).toBeGreaterThanOrEqual(1)
+    const columns = await screen.findAllByText(/to do/i)
+    expect(columns.length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(2)
   })
 })

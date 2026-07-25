@@ -4,12 +4,12 @@ import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 
-import { LoginPage } from './'
+import { RegisterPage } from './'
 import { useAuthStore } from '@/shared/auth/store'
 import { ThemeProvider } from '@/shared/lib/theme'
 
-const login = vi.hoisted(() => vi.fn())
-vi.mock('@/api/auth', () => ({ login }))
+const register = vi.hoisted(() => vi.fn())
+vi.mock('@/api/auth', () => ({ register }))
 
 function wrapper(children: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
@@ -22,7 +22,7 @@ function wrapper(children: React.ReactNode) {
   )
 }
 
-describe('LoginPage', () => {
+describe('RegisterPage', () => {
   beforeEach(() => {
     useAuthStore.setState({ token: null, userId: null, email: null })
   })
@@ -31,26 +31,24 @@ describe('LoginPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders login form and submits', async () => {
-    login.mockResolvedValueOnce({
+  it('renders register form and submits', async () => {
+    register.mockResolvedValueOnce({
       access_token: 'tok',
       user_id: 'u1',
-      email: 'demo@example.com',
+      email: 'new@example.com',
     } as any)
 
-    render(wrapper(<LoginPage />))
+    render(wrapper(<RegisterPage />))
     expect(screen.getByText('TaskTracker')).toBeInTheDocument()
 
-    const email = screen.getByDisplayValue('demo@example.com') as HTMLInputElement
-    await userEvent.clear(email)
-    await userEvent.type(email, 'demo@example.com')
-    const password = screen.getByDisplayValue('demo') as HTMLInputElement
-    await userEvent.clear(password)
-    await userEvent.type(password, 'demo')
+    await userEvent.type(screen.getByLabelText(/имя пользователя|username/i), 'newuser')
+    await userEvent.type(screen.getByLabelText(/email/i), 'new@example.com')
+    await userEvent.type(screen.getByLabelText(/^пароль|^password/i), 'password123')
+    await userEvent.type(screen.getByLabelText(/повтор пароля|repeat password/i), 'password123')
 
-    const submit = screen.getByRole('button', { name: /войти|Log in/i })
+    const submit = screen.getByRole('button', { name: /зарегистрироваться|sign up/i })
     await userEvent.click(submit)
 
-    await waitFor(() => expect(login).toHaveBeenCalled())
+    await waitFor(() => expect(register).toHaveBeenCalled())
   })
 })
