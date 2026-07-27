@@ -9,9 +9,9 @@ const viewports = [
 const pages = [
   { path: '/login', name: 'login', marker: 'TaskTracker' },
   { path: '/register', name: 'register', marker: 'Зарегистрироваться' },
-  { path: '/', name: 'dashboard', marker: 'Team Dashboard' },
+  { path: '/', name: 'dashboard', marker: 'Командный дашборд' },
   { path: '/projects', name: 'projects', marker: 'Проекты' },
-  { path: '/projects/TT/board', name: 'board', marker: 'TT Kanban' },
+  { path: '/projects/TT/board', name: 'board', marker: 'TT' },
   { path: '/projects/TT/backlog', name: 'backlog', marker: 'Backlog · TT' },
   { path: '/search', name: 'search', marker: 'Поиск задач' },
   { path: '/issues/create', name: 'issue-create', marker: 'Создать задачу' },
@@ -23,6 +23,7 @@ async function authenticate(p: any) {
   })
   if (res.status() !== 200) throw new Error('screenshot auth failed')
   const { access_token, user_id, email } = await res.json()
+  await p.goto(`${baseURL}/login`)
   await p.evaluate(
     (payload: { token: string; userId: string; email: string }) => {
       window.localStorage.setItem('task-tracker-auth', JSON.stringify(payload))
@@ -32,18 +33,15 @@ async function authenticate(p: any) {
 }
 
 async function setThemeAndGoto(p: any, theme: 'light' | 'dark', path: string, marker: string) {
-  await p.goto(`${baseURL}/login`)
   if (!['login', 'register'].includes(path.replace(/^\/?/, ''))) {
     await authenticate(p)
-    await p.goto(`${baseURL}${path}`)
-  } else {
-    await p.goto(`${baseURL}${path}`)
   }
+  await p.goto(`${baseURL}/login`)
   await p.evaluate((t: 'light' | 'dark') => {
     window.localStorage.setItem('theme', t)
     document.documentElement.setAttribute('data-theme', t)
   }, theme)
-  await p.reload()
+  await p.goto(`${baseURL}${path}`)
   await p.waitForLoadState('networkidle')
   await p.waitForFunction(
     (text: string) => document.body.innerText.includes(text),
