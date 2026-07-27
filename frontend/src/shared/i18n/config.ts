@@ -13,6 +13,7 @@ i18n
     lng: 'ru',
     fallbackLng: 'en',
     interpolation: { escapeValue: false },
+    react: { useSuspense: false },
   })
 
 export default i18n

@@ -54,7 +54,11 @@
   "backlog": {
     "createSprint": "Create sprint",
     "createIssue": "Create issue",
-    "startSprint": "Start sprint"
+    "startSprint": "Start sprint",
+    "title": "Backlog · {{projectName}}",
+    "velocity": "Velocity: {{velocity}} sp",
+    "backlogCount": "Backlog: {{count}}",
+    "backlogSection": "Backlog · {{count}}"
   },
   "search": {
     "title": "Search issues",

@@ -54,7 +54,11 @@
   "backlog": {
     "createSprint": "Создать спринт",
     "createIssue": "Создать задачу",
-    "startSprint": "Начать спринт"
+    "startSprint": "Начать спринт",
+    "title": "Backlog · {{projectName}}",
+    "velocity": "Скорость: {{velocity}} sp",
+    "backlogCount": "В бэклоге: {{count}}",
+    "backlogSection": "Backlog · {{count}}"
   },
   "search": {
     "title": "Поиск задач",
