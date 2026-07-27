@@ -647,6 +647,24 @@ Time tracking
 - Canceled
 
 ### Key Fields in Issue Detail
+
+## 12. Реализация
+
+Все описанные в документе страницы реализованы в виде React-компонентов в `frontend/src/pages/`:
+
+| Страница | Путь |
+|---|---|
+| Авторизация | `login/` |
+| Регистрация | `register/` |
+| Дашборд | `dashboard/` |
+| Список проектов | `projects/` |
+| Доска проекта | `project-board/` |
+| Бэклог проекта | `project-backlog/` |
+| Поиск | `search/` |
+| Создание задачи | `issue-create/` |
+| Карточка задачи | `issue-detail/` |
+
+Верификация UI выполняется через Playwright-скриншоты в разрешениях 375×812, 1920×1080 и 2560×1440.
 Системные поля, присутствующие в задачах:
 `summary`, `description`, `status`, `assignee`, `reporter`, `creator`, `priority`, `issuetype`, `project`, `labels`, `components`, `fixVersions`, `versions`, `duedate`, `environment`, `timetracking`, `attachment`, `comment`, `worklog`, `issuelinks`, `subtasks`, `votes`, `watches`, `progress`, `aggregateprogress`, `created`, `updated`, `resolution`, `resolutiondate`, `archiveddate`, `archivedby`.
 

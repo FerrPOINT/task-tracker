@@ -1,514 +1,211 @@
-# Архитектура Task Tracker (Jira-like)
+# Архитектура Task Tracker
 
 ## 1. Контекст
 
-Self-hosted таск-трекер. MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию. Реализована связь frontend ↔ backend через OpenAPI-first: `openapi/openapi.json` генерируется из Rust-кода, TypeScript клиент `frontend/src/api/generated.ts` обновляется командой `pnpm generate:api`, запросы идут через `openapi-fetch`, состояния кешируются через TanStack Query.
+Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.
 
-## 2. Технологический стек (актуальные версии)
+Связь frontend ↔ backend реализована через OpenAPI-first: `openapi/openapi.json` генерируется из Rust-кода, TypeScript-клиент `frontend/src/api/generated.ts` обновляется командой `pnpm generate-api`, запросы идут через `openapi-fetch`, состояния кешируются через `@tanstack/react-query`.
+
+## 2. Технологический стек
 
 ### Backend
-- **Rust**: 1.88.0+ (latest stable на июль 2026)
-- **Web framework**: `axum` 0.8.9
-- **Async runtime**: `tokio` 1.52.3 (`full`)
-- **DB access**: `sea-orm` 2.0.x + `sqlx` 0.9.0
-- **Migrations**: `refinery` 0.8.15 (или SeaORM Migrator)
-- **Config**: `figment` 0.10.19
-- **Validation**: `garde` 0.23.0
-- **Auth**: `argon2` 0.6.0-pre.1, `jsonwebtoken` 10.4.0
-- **Email**: `lettre` 0.11.22
-- **Queue/scheduler**: `apalis` 0.7.4
-- **Cache**: `moka` 0.12.15
-- **Redis**: `redis` 1.3.0
-- **HTTP client**: `reqwest` 0.13.4
-- **Metrics**: `metrics` 0.24.6 + `metrics-exporter-prometheus`
-- **Tracing**: `tracing` 0.1.44
-- **OpenAPI**: `utoipa` 5.5.0
-- **DI**: ручной `AppContext` (`Arc<dyn Trait>`); опционально `shaku` 0.6.2
-- **Testing**: `mockall` 0.15.0, `testcontainers` 0.27.3
-- **Rate limiting**: `tower_governor` 0.8.0
-- **HTTP middleware**: `tower-http` 0.7.0
+
+| Компонент | Библиотека | Версия |
+|---|---|---|
+| Язык | Rust | 1.97.1 |
+| Web framework | axum | 0.8.3 |
+| Async runtime | tokio | 1.44 |
+| DB ORM | sea-orm | 1.1 |
+| Raw SQL | sqlx | 0.8 |
+| Migrations | sea-orm-migration | 1.1 |
+| Config | config | 0.15 |
+| Auth | jsonwebtoken + argon2 | 9.3 / 0.5 |
+| Validation | validator | 0.19 |
+| HTTP middleware | tower-http | 0.6 |
+| OpenAPI | utoipa + utoipa-axum + utoipa-swagger-ui | 5.0 / 0.2 / 9.0 |
+| IDs | uuid | 1.16 |
+| Time | chrono | 0.4 |
+| Optional cache | moka + redis | 0.12 / 0.29 |
+| CLI | clap | 4.5 |
+| Testing | tokio-test + reqwest | 0.4 / 0.12 |
 
 ### Frontend
-- **React**: 19.1.0
-- **Build**: `vite` 6.2.0
-- **TypeScript**: 5.9.3
-- **Styling**: `tailwindcss` 4.1.0, `@tailwindcss/vite` 4.1.0
-- **Components**: `shadcn/ui` (React 19.1.0 compatible)
-- **State**: `zustand` 5.0.3
-- **Query**: `@tanstack/react-query` 5.74.4
-- **Router**: `react-router` 8.1.0
-- **Forms**: `react-hook-form` 7.55.0 + `zod` 4.4.3
-- **Utils**: `@tanstack/react-table`, `date-fns` 4.1.0, `@dnd-kit/core`, `@dnd-kit/sortable`, `@tiptap/react`, `sonner`, `@tanstack/react-virtual`
-- **Testing**: `vitest` 4.1.10, `@testing-library/react` 16.3.0, `playwright` 1.61.1
+
+| Компонент | Библиотека | Версия |
+|---|---|---|
+| Framework | react + react-dom | 19.1.0 |
+| Build | vite | 6.2.0 |
+| Styling | tailwindcss + @tailwindcss/vite | 4.1.0 |
+| Components | shadcn/ui | — |
+| Router | react-router | 8.1.0 |
+| Server state | @tanstack/react-query | 5.74.4 |
+| Client state | zustand | 5.0.3 |
+| Forms | react-hook-form + zod | 7.55.0 / 3.25.60 |
+| i18n | i18next + react-i18next | 25.1.0 / 15.5.0 |
+| Unit tests | vitest + @testing-library/react | 4.1.10 / 16.x |
+| E2E tests | @playwright/test | 1.61.1 |
+| Types | typescript | 5.9.3 |
 
 ### Infrastructure
-- **БД**: PostgreSQL 17.6
-- **Cache/queue**: Redis 8.0 (Valkey 8.1 как fallback)
-- **Reverse proxy / load balancer**: Traefik 3.4
-- **Container runtime**: Docker + Docker Compose
+
+- PostgreSQL 17
+- Docker + Docker Compose
+- Backend порт: `3456`
+- Frontend dev порт: `5173`
+- Env prefix: `TASKTRACKER_`
 
 ## 3. Структура монорепозитория
 
 ```
 task-tracker/
 ├── backend/
-│   ├── Cargo.toml
-│   ├── crates/
-│   │   ├── api/
-│   │   ├── app/
-│   │   ├── domain/
-│   │   ├── infra/
-│   │   ├── shared/
-│   │   └── server/
-│   └── migrations/
+│   ├── Cargo.toml          # workspace
+│   ├── api/                # axum routes + DTO
+│   ├── app/                # сервисы / use cases
+│   ├── domain/             # entities + repository traits
+│   ├── infra/              # postgres repos + event bus
+│   ├── shared/             # config, errors, id utils
+│   ├── server/             # entrypoint
+│   ├── cli/                # утилиты командной строки
+│   ├── migration/          # sea-orm migrations
+│   └── scripts/
+│       └── run-e2e-tests.sh # coverage gate
 ├── frontend/
 │   ├── src/
-│   │   ├── api/
-│   │   ├── app/
-│   │   ├── entities/
-│   │   ├── features/
-│   │   ├── shared/
-│   │   └── widgets/
-│   ├── playwright/
-│   └── vitest/
-├── cli/
-│   └── src/
+│   │   ├── api/            # openapi-fetch client + ручные API
+│   │   ├── app/            # router, providers
+│   │   ├── entities/       # dto/types
+│   │   ├── features/       # feature slices
+│   │   ├── pages/          # страницы
+│   │   ├── shared/         # ui-kit, lib, i18n
+│   │   └── widgets/        # app-shell
+│   ├── e2e/                # Playwright specs
+│   └── src/**/*.test.tsx   # Vitest unit tests
+├── docker-compose.yml
+├── .env.example
+├── justfile                # unified dev commands
+├── lefthook.yml            # git hooks
 └── docs/
-    ├── ADR.md
     ├── AGENTS.md
-    ├── API.md
-    ├── API_EDGE_CASES.md
-    ├── API_VERSIONING.md
     ├── ARCHITECTURE.md
-    ├── AUTH_ADVANCED.md
-    ├── CACHING.md
-    ├── CI_CD.md
-    ├── CLI.md
-    ├── CODE_STYLE.md
-    ├── DATABASE_INDEXES.md
-    ├── DATA_MODEL.md
-    ├── DATA_RETENTION.md
-    ├── DEPLOYMENT.md
-    ├── DESIGN_TOKENS.md
-    ├── ERROR_HANDLING.md
-    ├── EVENTS.md
-    ├── FEATURE_FLAGS.md
-    ├── FRONTEND_ARCHITECTURE.md
-    ├── GLOSSARY.md
-    ├── I18N.md
-    ├── JIRA_GAP_DETAILS.md
-    ├── JIRA_UI_CAPTURE.md
-    ├── JQL.md
-    ├── LIBRARIES.md
-    ├── LOAD_BALANCING.md
-    ├── MIGRATIONS.md
-    ├── MONITORING.md
-    ├── NOTIFICATIONS.md
-    ├── ONBOARDING.md
-    ├── OPS_RUNBOOK.md
-    ├── PAGINATION.md
-    ├── PERFORMANCE.md
-    ├── PROJECT_ADMIN.md
-    ├── REACT_STYLING.md
-    ├── RELEASE.md
-    ├── REPORTS.md
-    ├── RESILIENCE.md
-    ├── ROADMAP.md
-    ├── ROUTING.md
-    ├── RUNTIME.md
-    ├── SECURITY.md
-    ├── SECURITY_INCIDENT_RESPONSE.md
-    ├── STORAGE.md
-    ├── SYSTEM_ADMIN.md
-    ├── TESTING.md
-    ├── TZ.md
-    ├── UI_LIBRARIES.md
-    ├── UI_UX.md
-    ├── USER_STORIES.md
-    ├── UX_PRODUCT.md
-    ├── VIKUNJA_GAP_ANALYSIS.md
-    ├── WEBSOCKET_EVENTS.md
-    ├── WORKFLOW.md
-    └── adr/
-├── frontend/
-│   ├── src/
-│   │   ├── api/
-│   │   ├── app/
-│   │   ├── entities/
-│   │   ├── features/
-│   │   ├── shared/
-│   │   └── widgets/
-│   ├── playwright/
-│   └── vitest/
-├── cli/
-│   └── src/
-└── docs/
-    ├── ADR.md
-    ├── AGENTS.md
     ├── API.md
-    ├── API_VERSIONING.md
-    ├── ARCHITECTURE.md
-    ├── CACHING.md
-    ├── CLI.md
-    ├── CODE_REVIEW.md
-    ├── CODE_STYLE.md
-    ├── DATABASE_INDEXES.md
     ├── DATA_MODEL.md
-    ├── DEPLOYMENT.md
-    ├── DESIGN_TOKENS.md
-    ├── ERROR_HANDLING.md
-    ├── EVENTS.md
-    ├── FRONTEND_ARCHITECTURE.md
-    ├── FRONTEND_STANDARDS.md
-    ├── GLOSSARY.md
-    ├── I18N.md
-    ├── JIRA_UI_CAPTURE.md
-    ├── JQL.md
-    ├── LIBRARIES.md
-    ├── LOGGING_STANDARDS.md
-    ├── MIGRATIONS.md
-    ├── MONITORING.md
-    ├── NOTIFICATIONS.md
-    ├── ONBOARDING.md
-    ├── OPS_RUNBOOK.md
-    ├── PERFORMANCE.md
-    ├── PROJECT_ADMIN.md
-    ├── REACT_STYLING.md
-    ├── RELEASE.md
-    ├── REPORTS.md
-    ├── ROADMAP.md
-    ├── ROUTING.md
-    ├── SECURITY.md
-    ├── STORAGE.md
-    ├── SYSTEM_ADMIN.md
     ├── TESTING.md
-    ├── TZ.md
-    ├── UI_LIBRARIES.md
     ├── UI_UX.md
-    ├── USER_STORIES.md
-    ├── VIKUNJA_GAP_ANALYSIS.md
-    ├── WEBSOCKET_EVENTS.md
-    ├── WORKFLOW.md
-    ├── adr/
-    └── assets/
-        ├── ui-mockups/
-        │   ├── issue-detail.html
-        │   ├── kanban-board.html
-        │   └── project-list.html
-        └── jira-samples/
-            ├── issue-shape.json
-            ├── custom-field-shape.json
-            └── board-config-shape.json
+    └── ...
 ```
 
-## 4. Backend: чёткие слои
+## 4. Backend: слоистая архитектура
 
-### 4.1 Presentation layer (`crates/api`)
+### 4.1 Presentation layer (`api/`)
 
-**Controller** — тонкий HTTP-адаптер. Только:
-- extract path/query/body/headers/auth state
-- вызов `Service::handle(command).await`
-- map `ServiceResult<T>` → `Response<T>`
+Тонкий HTTP-адаптер. Отвечает за:
+- извлечение path/query/body/auth state
+- route-уровневую валидацию (`ProjectKey::is_valid`, UUID parse)
+- вызов сервисных функций из `app/`
+- маппинг `AppError` → HTTP статус через `IntoResponse`
+
+Все защищённые маршруты проходят через JWT-middleware (`api/src/middleware/auth.rs`).
+
+### 4.2 Application layer (`app/`)
+
+Сервисы содержат бизнес-операции:
+- `auth.rs` — регистрация/логин, хеширование, JWT
+- `services.rs` — CRUD проектов, задач, дашборд, поиск, board move
+
+Общая логика маппинга и счётчиков вынесена в `app/src/services/helpers.rs`.
+
+### 4.3 Domain layer (`domain/`)
+
+- Entities: `Issue`, `Project`, `User`, `Board`, `Sprint`, `Worklog`
+- Repository traits: async, без `delete()` (soft-архивирование не реализовано в MVP)
+- In-memory stubs для тестов: `domain/src/stubs/memory.rs`
+
+### 4.4 Infrastructure layer (`infra/`)
+
+- `repos.rs` — SeaORM Postgres-реализации repository traits
+- `event_bus.rs` — in-memory event bus
+- `entities/` — SeaORM models
+
+## 5. Конфигурация
+
+Конфиг загружается через `config` crate с префиксом `TASKTRACKER_`.
 
 ```rust
-pub async fn create_issue(
-    State(ctx): State<AppContext>,
-    Json(req): Json<CreateIssueRequest>,
-) -> Result<Json<IssueResponse>, ApiError> {
-    let cmd = CreateIssueCommand::try_from(req)?;
-    let issue = ctx.issue_service.create(cmd).await?;
-    Ok(Json(IssueResponse::from(issue)))
-}
-```
-
-**DTO**:
-- `*Request` — inbound JSON с `garde` derive-валидацией
-- `*Response` — outbound JSON
-- `*Command` / `*Query` — application input (без HTTP)
-- Маппинг Request → Command, Entity → Response — честные `From`/`TryFrom`.
-
-### 4.2 Application layer (`crates/app`)
-
-**Service** — единица бизнес-операции. Содержит:
-- авторизацию через `PermissionService`
-- валидацию бизнес-правил
-- координацию репозиториев
-- публикацию доменных событий
-- отправку уведомлений / задач в очередь
-
-```rust
-impl IssueService {
-    pub async fn create(&self, cmd: CreateIssueCommand) -> Result<IssueDto, AppError> {
-        self.authz.ensure(&cmd.project_id, Permission::CreateIssue).await?;
-        let issue = self.uow.with_transaction(|repos| async move {
-            let project = repos.projects.get(cmd.project_id).await?;
-            let issue = Issue::create(project, cmd.fields)?;
-            repos.issues.save(&issue).await?;
-            repos.events.publish(issue.events()).await?;
-            Ok(issue)
-        }).await?;
-        self.notifier.notify_subscribers(&issue).await;
-        Ok(IssueDto::from(issue))
-    }
-}
-```
-
-**Mapper/DTO**: каждая сущность имеет `Dto` и `Response`. Маппинг не выполняет бизнес-логику.
-
-### 4.3 Domain layer (`crates/domain`)
-
-**Entity**:
-```rust
-pub struct Issue {
-    pub id: IssueId,
-    pub project_id: ProjectId,
-    pub key: IssueKey,
-    pub status: StatusId,
-    pub summary: String,
-    pub description: Option<RichText>,
-    pub assignee: Option<UserId>,
-    pub reporter: UserId,
-    pub priority: Priority,
-    pub labels: Vec<LabelId>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub domain_events: Vec<IssueEvent>,
-}
-```
-
-**Value Objects**: `IssueKey`, `ProjectKey`, `RichText`, `JqlQuery`, `WorkflowTransition`.
-
-**Domain Events**:
-```rust
-pub enum IssueEvent {
-    Created { issue_id: IssueId, reporter: UserId },
-    StatusChanged { issue_id: IssueId, from: StatusId, to: StatusId },
-    Assigned { issue_id: IssueId, assignee: Option<UserId> },
-}
-```
-
-**Repository traits**:
-```rust
-#[async_trait]
-pub trait IssueRepository: Send + Sync {
-    async fn get(&self, id: IssueId) -> Result<Issue, DomainError>;
-    async fn save(&self, issue: &Issue) -> Result<(), DomainError>;
-    async fn list(&self, query: IssueQuery) -> Result<Paginated<Issue>, DomainError>;
-}
-```
-
-### 4.4 Infrastructure layer (`crates/infra`)
-
-**SQLx/SeaORM repositories** — реализации repository trait. SeaORM для стандартных CRUD, sqlx для сложных JQL-запросов и отчётов.
-
-**Unit of Work** — транзакционная обёртка:
-```rust
-pub trait UnitOfWork: Send + Sync {
-    async fn with_transaction<F, T, E>(&self, f: F) -> Result<T, E>
-    where
-        F: for<'a> FnOnce(&'a Repositories) -> BoxFuture<'a, Result<T, E>>,
-        E: From<InfraError>;
-}
-```
-
-**Outbound clients**:
-- `EmailClient` (lettre)
-- `SearchClient` (meilisearch/opensearch как опция)
-- `WebhookClient` (reqwest)
-- `FileStore` (S3-compatible / filesystem)
-
-**Event bus**:
-- in-memory broadcast для single-instance
-- redis pub/sub для multi-instance
-
-## 5. Spring Boot-аналоги в Rust
-
-| Spring Boot | Rust эквивалент |
-|---|---|
-| `@ConfigurationProperties` | `figment` (TOML/JSON/ENV merge) + `serde` struct |
-| `@Service` / `@Component` | trait + `Arc<dyn Trait>` в `AppContext` |
-| `@Autowired` / constructor DI | ручной `new(...)` в `server::build_context()`; либо `shaku` |
-| `@Transactional` | `UnitOfWork::with_transaction` |
-| `@Scheduled` | `apalis` cron worker |
-| Spring Cache | `moka` in-memory; `redis` distributed |
-| Spring Mail | `lettre` через `apalis` queue |
-| Spring Security | axum middleware + `PermissionService` |
-| Spring Boot Actuator | `metrics` + `/health`, `/metrics`, `/ready` |
-| Spring Data JPA | `sqlx` + ручные repository traits |
-| Spring Validation | `garde` derive |
-| Spring Web / Controller | `axum` handlers |
-| Spring Cloud Config | `figment` env override |
-| Spring Session | `redis` + JWT refresh cookie |
-
-## 6. Конфигурация
-
-```toml
-# backend/crates/shared/src/config.rs
-#[derive(Debug, Deserialize)]
 pub struct AppConfig {
     pub database: DatabaseConfig,
-    pub redis: RedisConfig,
     pub server: ServerConfig,
     pub auth: AuthConfig,
-    pub smtp: Option<SmtpConfig>,
-    pub search: SearchConfig,
 }
 ```
 
-Загрузка:
-```rust
-let config: AppConfig = Figment::new()
-    .merge(Toml::file("config.toml"))
-    .merge(Env::prefixed("TASKTRACKER_"))
-    .extract()?;
-```
+Основные env vars:
+- `TASKTRACKER_DATABASE_URL`
+- `TASKTRACKER_SERVER_PORT`
+- `TASKTRACKER_JWT_SECRET`
+- `TASKTRACKER_DATABASE_PASSWORD`
 
-## 7. Middleware stack
+Fallback: если `auth.jwt_secret` не задан, используется `TASKTRACKER_JWT_SECRET`.
+
+## 6. Middleware stack
 
 ```rust
-let app = Router::new()
+Router::new()
     .merge(api_routes())
     .layer(TraceLayer::new_for_http())
+    .layer(CorsLayer::permissive())
     .layer(CompressionLayer::new())
-    .layer(CorsLayer::permissive()) // прод production: strict origins
-    .layer(GovernorLayer { config: rate_limit_config })
-    .layer(TimeoutLayer::new(Duration::from_secs(30)))
-    .layer(CatchPanicLayer::new())
-    .layer(PropagateRequestIdLayer::new(x_request_id()));
 ```
 
-## 8. Security
+CORS настроен для локальной разработки (`localhost:5173`, `localhost:4173`).
 
-- **AuthN**: JWT access token (15 min) + httpOnly refresh cookie (7 дней)
-- **AuthZ**: permission matrix + project roles
+## 7. Security
+
+- **AuthN**: JWT access token (Bearer), без refresh в MVP
 - **Hashing**: argon2id
-- **Input validation**: `garde` на Request DTO
-- **Rate limiting**: `tower_governor` per user / per IP
-- **CORS**: строгий whitelist
-- **CSP**: через reverse proxy
+- **Input validation**: `validator` derive на Request DTO + route-уровневые проверки
+- **CORS**: whitelist для dev
 
-Политика безопасности детально — `docs/SECURITY.md`.
+## 8. Frontend архитектура
 
-## 9. Logging, Observability, Scalability
+- **Pages** — экраны: login, register, dashboard, projects, project-board, project-backlog, search, issue-create, issue-detail
+- **Features** — time-tracking и будущие бизнес-модули
+- **Shared** — ui-kit, i18n, auth store, theme, API hooks
+- **App** — роутер (`react-router`), провайдеры QueryClient + ThemeProvider
+- **Widgets** — `AppShell` с sidebar + header, адаптивный под mobile
 
-### 9.1 Logging
+## 9. API, документация и тестирование
 
-- JSON structured logs.
-- Request ID correlation.
-- Levels: ERROR, WARN, INFO, DEBUG, TRACE.
-- No sensitive data in logs.
-- Local: pretty output. Production: JSON to stdout → Loki.
+- OpenAPI-схема — `openapi/openapi.json`
+- Детали REST API — `docs/API.md`
+- UI/UX — `docs/UI_UX.md`
+- Дата-модель — `docs/DATA_MODEL.md`
+- Тестирование — `docs/TESTING.md`
 
-### 9.2 Observability
+## 10. Dev workflow
 
-- Prometheus metrics: `http_requests_total`, `http_request_duration_seconds`, `db_pool_connections`, `cache_hit_total`, etc.
-- Grafana dashboards: API, DB, Cache, Infrastructure, Business.
-- OpenTelemetry traces.
-- Loki log aggregation.
-- Alertmanager rules.
+Управляется через `justfile`:
 
-Подробнее — `docs/MONITORING.md`.
+```bash
+just setup       # установка зависимостей
+just dev         # backend + frontend
+just gate        # fmt + clippy + typecheck + tests
+just build       # production build
+just e2e         # Playwright tests
+```
 
-### 9.3 Scalability
-
-- API instances are stateless.
-- Horizontal scaling via container orchestration.
-- WebSocket multi-instance sync via Redis pub/sub.
-- DB read replicas for heavy JQL/reports.
-- Cache offloading via Redis.
-- Async processing via `apalis` workers.
-
-## 10. API, Workflow, JQL, UI, Deployment, and Operations
-
-- REST API specification — `docs/API.md`.
-- OpenAPI generation — `utoipa-axum`.
-- WebSocket — live updates kanban / issue page, payloads в `docs/API.md`.
-- Real-time — redis pub/sub + WS broadcast.
-- Technical specification (TZ) — `docs/TZ.md`.
-- Data model — `docs/DATA_MODEL.md`.
-- Performance goals — `docs/PERFORMANCE.md`.
-- Libraries overview — `docs/LIBRARIES.md`.
-- Jira UI capture notes — `docs/JIRA_UI_CAPTURE.md`.
-- Vikunja gap analysis — `docs/VIKUNJA_GAP_ANALYSIS.md`.
-- Workflow engine — `docs/WORKFLOW.md`.
-- JQL grammar — `docs/JQL.md`.
-- User stories — `docs/USER_STORIES.md`.
-- UI/UX specification — `docs/UI_UX.md`.
-- Frontend architecture — `docs/FRONTEND_ARCHITECTURE.md`.
-- Design tokens — `docs/DESIGN_TOKENS.md`.
-- React styling guide — `docs/REACT_STYLING.md`.
-- Frontend libraries — `docs/UI_LIBRARIES.md`.
-- Project administration — `docs/PROJECT_ADMIN.md`.
-- System administration — `docs/SYSTEM_ADMIN.md`.
-- Notifications — `docs/NOTIFICATIONS.md`.
-- Reports — `docs/REPORTS.md`.
-- CLI specification — `docs/CLI.md`.
-- AGENTS.md rules — `docs/AGENTS.md`.
-- ADR index — `docs/ADR.md`.
-- CI/CD pipeline — `docs/CI_CD.md`.
-- Deployment and Docker Compose — `docs/DEPLOYMENT.md`.
-- Database migrations — `docs/MIGRATIONS.md`.
-- File storage — `docs/STORAGE.md`.
-- Caching strategy — `docs/CACHING.md`.
-- Routing — `docs/ROUTING.md`.
-- Error handling — `docs/ERROR_HANDLING.md`.
-- i18n — `docs/I18N.md`.
-- Code style — `docs/CODE_STYLE.md`.
-- Code review guidelines — `docs/CODE_REVIEW.md`.
-- Testing strategy — `docs/TESTING.md`.
-- Logging standards — `docs/LOGGING_STANDARDS.md`.
-- Frontend standards — `docs/FRONTEND_STANDARDS.md`.
-- Security — `docs/SECURITY.md`.
-- Monitoring — `docs/MONITORING.md`.
-- Roadmap — `docs/ROADMAP.md`.
-- Database indexes — `docs/DATABASE_INDEXES.md`.
-- Glossary — `docs/GLOSSARY.md`.
-- API versioning — `docs/API_VERSIONING.md`.
-- WebSocket events — `docs/WEBSOCKET_EVENTS.md`.
-- Event catalog — `docs/EVENTS.md`.
-- API standards — `docs/API_STANDARDS.md`.
-- Domain model — `docs/DOMAIN_MODEL.md`.
-- Database standards — `docs/DATABASE_STANDARDS.md`.
-- Local setup — `docs/LOCAL_SETUP.md`.
-- Troubleshooting — `docs/TROUBLESHOOTING.md`.
-- FAQ — `docs/FAQ.md`.
-- Backup & restore — `docs/BACKUP_RESTORE.md`.
-- Operations runbook — `docs/OPS_RUNBOOK.md`.
-- Release process — `docs/RELEASE.md`.
-- Onboarding — `docs/ONBOARDING.md`.
-- Runtime behavior — `docs/RUNTIME.md`.
-- Resilience & fault tolerance — `docs/RESILIENCE.md`.
-- Auth advanced — `docs/AUTH_ADVANCED.md`.
-- Pagination & bulk operations — `docs/PAGINATION.md`.
-- Data retention & archiving — `docs/DATA_RETENTION.md`.
-- Feature flags — `docs/FEATURE_FLAGS.md`.
-- Load balancing & scaling — `docs/LOAD_BALANCING.md`.
-- UX & product gaps — `docs/UX_PRODUCT.md`.
-- API edge cases — `docs/API_EDGE_CASES.md`.
-- Security incident response — `docs/SECURITY_INCIDENT_RESPONSE.md`.
-- Jira details gap analysis — `docs/JIRA_GAP_DETAILS.md`.
-- UI mockups — `docs/assets/ui-mockups/`.
-- Jira structural samples — `docs/assets/jira-samples/`.
-
-## 10. Testing
-
-Подробнее в `docs/TESTING.md`.
+Git hooks через `lefthook`:
+- `pre-commit`: rust fmt check, clippy, frontend typecheck + test + lint
+- `pre-push`: backend tests, frontend build, e2e smoke
+- `commit-msg`: conventional commits
 
 ## 11. Deployment
 
-Подробнее в `docs/DEPLOYMENT.md`.
-
-## 12. Security
-
-Подробнее в `docs/SECURITY.md`.
-
-## 13. Monitoring
-
-Подробнее в `docs/MONITORING.md`.
+Подробности — `docs/DEPLOYMENT.md`.
 
 ## References
 
 - `README.md`
-- `docs/TZ.md`
-- `docs/ROADMAP.md`
-- `CONTRIBUTING.md` (корень репозитория)
+- `docs/AGENTS.md`
+- `docs/DEPLOYMENT.md`
+- `docs/TESTING.md`

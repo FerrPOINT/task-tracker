@@ -2,218 +2,131 @@
 
 ## 1. Принципы
 
-- Тесты пишутся одновременно с кодом (TDD для сервисов).
-- Каждая доработка UI сопровождается скриншотами.
-- Critical path покрыт e2e.
-- Регрессионные скриншоты перед merge.
+- Каждый тест проверяет значимый путь и конкретное поведение.
+- Backend: реальные интеграционные тесты с PostgreSQL через Docker; unit-тесты для domain/services.
+- Frontend: unit-тесты на Vitest; E2E на Playwright.
+- После изменений UI — скриншоты в 375×812, 1920×1080, 2560×1440.
+- Coverage gate: lines ≥95%, regions ≥92%, functions ≥85% (backend).
 
 ## 2. Backend тесты
 
 ### Unit-тесты
-- Domain entities: бизнес-правила, workflow transitions
-- Mappers: Request → Command → DTO → Response
-- Validators: `garde` rules
+
+- `domain/` — entity invariants, repository stubs, `ProjectKey::is_valid`.
+- `app/src/services/tests.rs` — service logic, auth edge cases, error propagation.
+- `app/src/auth.rs` — password hash/verify, token generate/parse.
+- `shared/src/config_tests.rs` — env parsing scenarios.
+- `shared/src/id/tests.rs` — UUID / project key edge cases.
+
+Запуск:
+```bash
+cd backend
+cargo test -p <crate> -- --test-threads=1   # если тесты меняют env
+cargo test -p api --test failing_repos -- --test-threads=1
+```
 
 ### Integration-тесты
-- Repository tests через `testcontainers` PostgreSQL
-- Service tests с in-memory event bus и mock email client
-- API tests через `reqwest` к запущенному `TestServer`
 
-### Load-тесты
-- `k6`/`oha` на критических эндпоинтах
-- Целевые показатели: P95 < 200 мс, 100 RPS
+- `infra/tests/repos.rs` — Postgres-репозитории против реальной БД.
+- `infra/tests/repos_mock.rs` — `sea_orm::MockDatabase` error paths.
+- `api/tests/integration.rs` — end-to-end HTTP через Docker backend.
+- `api/tests/failing_repos.rs` — 500-ветки с failing stubs.
+
+### Coverage gate
+
+```bash
+export TT_DB_PASS=$(cat /root/.tt_db_pass)
+cd backend && bash scripts/run-e2e-tests.sh
+```
+
+Текущие thresholds: lines 95%, regions 92%, functions 85%.
 
 ## 3. Frontend тесты
 
 ### Unit-тесты
-- `vitest` для pure functions, hooks, stores
-- `@testing-library/react` для компонентов
-- MSW для мока API
+
+Фреймворк: Vitest + `@testing-library/react`.
+
+Страницы с тестами:
+- `login/login.test.tsx`
+- `register/register.test.tsx`
+- `dashboard/dashboard.test.tsx`
+- `projects/projects.test.tsx`
+- `project-board/project-board.test.tsx`
+- `search/search.test.tsx`
+- `features/time-tracking/**/*.test.ts`
+
+Запуск:
+```bash
+cd frontend
+pnpm test
+```
 
 ### E2E
-- `playwright` 1.61.1
-- Critical path:
-  - регистрация / логин
-  - создание проекта
-  - создание задачи
-  - перемещение на kanban
-  - добавление комментария
-  - поиск JQL
-  - фильтры
-- Скриншоты после каждого шага в трёх разрешениях:
-  - 375×667 (mobile)
-  - 1920×1080 (Full HD)
-  - 2560×1440 (2K)
 
-### Visual regression
-- Playwright screenshot assertions
-- Percy / Chromatic как опция
+Playwright specs в `frontend/e2e/`:
+- `integration.spec.ts` — smoke против Docker backend
+- `screenshots.spec.ts` — мульти-вьюпортные скриншоты
 
-## 4. CI/CD
-
-Краткий pipeline — детали в `docs/CI_CD.md`:
-
-- GitHub Actions.
-- Lint, unit, integration, E2E, coverage, security audit, Docker build.
-- Coverage gates block merge.
-
-## 5. Test Isolation
-
-### 5.1 Backend
-
-- Каждый integration test получает свежую логическую БД в одном PostgreSQL контейнере.
-- `testcontainers` поднимает Postgres/Redis один раз на suite.
-- Миграции применяются в `setup` hook.
-- Тесты внутри транзакции с откатом (`BEGIN ... ROLLBACK`).
-- Unit тесты параллельны; integration — последовательны внутри suite.
-
-### 5.2 Frontend
-
-- MSW мокает API.
-- LocalStorage/SessionStorage мокаются в `setupFiles`.
-- Zustand store сбрасывается в `beforeEach`.
-- TanStack Query cache — `queryClient.clear()`.
-
-### 5.3 E2E
-
-- Новый браузерный контекст на тест.
-- Seed БД через `/api/v1/test/seed`.
-- Deterministic fixtures.
-- Parallel workers = 4.
-
-## 6. Flaky Tests Strategy
-
-| Problem | Solution |
-|---------|----------|
-| Async race | `await expect(...).toPass({ timeout: 5000 })` |
-| DB ordering | deterministic `ORDER BY` по `created_at` |
-| Time-based | fake timers / `timekeeper` |
-| Network mocks | strict MSW matching |
-| Unstable selectors | `data-testid` |
-| Quarantine | flaky test → `@flaky` tag → отдельный CI job с retry |
-| Retry policy | Playwright retry=2, unit/integration retry=0 |
-
-## 7. Mutation Testing
-
-- Backend: `cargo-mutation-testing` / `mutagen` для domain/services.
-- Frontend: `stryker-js` для критичных pure functions.
-- Запускается раз в неделю scheduled job, не блокирует PR.
-- Target: mutation score >= 60%.
-
-## 8. Test Artifacts
-
-| Artifact | Path | Retention |
-|----------|------|-----------|
-| Coverage HTML | `target/tarpaulin/` / `coverage/` | 30 days |
-| Playwright report | `playwright-report/` | 14 days |
-| Playwright screenshots | `test-results/` | 14 days |
-| JUnit XML | `junit-*.xml` | 30 days |
-| OpenAPI diff | `openapi-diff.md` | 30 days |
-
-## 9. Чек-лист перед merge
-
-- [ ] Все unit-тесты проходят
-- [ ] Интеграционные тесты проходят
-- [ ] E2E critical path проходит
-- [ ] Скриншоты для трёх разрешений приложены
-- [ ] Performance budget не нарушен
-- [ ] OpenAPI spec не сломан
-- [ ] Coverage gates green
-
-## 10. Fixtures and Factories
-
-### 10.1 Backend Fixtures
-
-```
-backend/fixtures/
-├── minimal.sql          -- bare minimum for tests
-├── dev.sql              -- rich dev dataset
-├── e2e.sql              -- deterministic e2e dataset
-└── factories/
-    ├── users.rs
-    ├── projects.rs
-    ├── issues.rs
-    ├── comments.rs
-    └── worklogs.rs
+Запуск:
+```bash
+cd frontend
+pnpm exec playwright test --project=chromium
 ```
 
-### 10.2 Factory Example (Rust)
+### Screenshot набор
 
-```rust
-pub fn issue_factory() -> IssueFactory {
-    IssueFactory::default()
-        .project_id(Uuid::new_v4())
-        .issue_type_id(Uuid::new_v4())
-        .summary("Test issue".to_string())
-}
+Скриншоты сохраняются в `/root/.hermes/cache/images/react-<page>-<viewport>.png`.
+
+## 4. Dev commands
+
+Все команды через `justfile`:
+
+```bash
+just gate          # fmt-check + clippy + typecheck + tests
+just test          # backend + frontend tests
+just e2e           # Playwright
+just test-backend-coverage  # coverage gate
 ```
 
-### 10.3 Frontend Fixtures
+## 5. Git hooks
 
-```ts
-// test/fixtures/issues.ts
-export const issueFixture = (override?: Partial<Issue>): Issue => ({
-  id: crypto.randomUUID(),
-  key: "PROJ-1",
-  summary: "Test issue",
-  status: statusFixture(),
-  ...override,
-})
-```
+Lefthook (`lefthook.yml`):
+- `pre-commit`: rust fmt check, clippy, frontend typecheck/test/lint
+- `pre-push`: backend tests, frontend build, e2e smoke
+- `commit-msg`: conventional commits (`feat|fix|docs|...`)
 
-### 10.4 Seed Scripts
+## 6. Coverage
 
-- `seed_dev.ts` — admin, sample project, workflow, statuses, issue types, 50 задач.
-- `seed_e2e.ts` — deterministic dataset для Playwright.
-
-## 11. Coverage
-
-### 11.1 Targets
+### Backend
 
 | Layer | Target |
-|-------|--------|
-| Domain / services | >= 80% |
-| Repository | >= 70% |
-| API controllers | >= 75% |
-| Frontend utilities / hooks | >= 70% |
-| Critical UI components | >= 60% |
-| E2E critical path | 100% |
-| Project total | >= 75% |
+|---|---|
+| Domain | ≥90% |
+| Application | ≥95% |
+| Infra | ≥90% |
+| API routes | ≥85% |
+| **Total** | **lines ≥95, regions ≥92, functions ≥85** |
 
-### 11.2 Tools
+### Frontend
 
-- Backend: `cargo tarpaulin` (или `cargo-llvm-cov`).
-- Frontend: `vitest --coverage` + `@vitest/coverage-v8`.
-- CI gate: coverage не должно падать.
+- Целевой показатель не зафиксирован в CI; приоритет — покрытие critical UI и pure utils.
 
-### 11.3 Exclusions
+## 7. Чек-лист перед merge
 
-- Generated code (DTOs from openapi-generator).
-- UI mockups.
-- Third-party vendored code.
-- Pure type definitions.
+- [ ] `cargo fmt --all && cargo clippy --workspace --all-targets` clean
+- [ ] `pnpm typecheck` clean
+- [ ] `pnpm test` green
+- [ ] `cargo test --workspace -- --test-threads=1` green
+- [ ] `bash scripts/run-e2e-tests.sh` green
+- [ ] `pnpm build` green
+- [ ] Playwright critical path green
+- [ ] Документация обновлена
 
-## 12. Snapshot Tests
-
-- JQL parser AST snapshots.
-- API response DTO snapshots.
-- Frontend component snapshots для стабильных UI-элементов.
-
-## 13. Contract Tests
-
-- Pact / openapi-validator для backend-frontend API contract.
-- Run against generated `openapi.json`.
-
-## 14. Security Tests
-
-- OWASP ZAP scan.
-- `cargo audit` / `pnpm audit`.
-- Rate limit tests.
-- Auth/permission edge cases.
 ## References
 
 - `docs/ARCHITECTURE.md`
-- `docs/API_EDGE_CASES.md`
-- `docs/CI_CD.md`
-- `docs/CODE_STYLE.md`
 - `docs/DEPLOYMENT.md`
+- `justfile`
+- `lefthook.yml`
+- `backend/scripts/run-e2e-tests.sh`

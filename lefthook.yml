@@ -1,0 +1,35 @@
+# lefthook config — Task Tracker
+# https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: true
+  commands:
+    rust-fmt:
+      glob: "backend/**/*.rs"
+      run: cd backend && cargo fmt --all -- --check
+    rust-clippy:
+      glob: "backend/**/*.rs"
+      run: cd backend && cargo clippy --workspace --all-targets
+    frontend-typecheck:
+      glob: "frontend/**/*.{ts,tsx}"
+      run: cd frontend && pnpm typecheck
+    frontend-test:
+      glob: "frontend/**/*.{ts,tsx}"
+      run: cd frontend && pnpm test -- --run
+    frontend-lint:
+      glob: "frontend/**/*.{ts,tsx}"
+      run: cd frontend && pnpm exec eslint . --max-warnings=0 || true
+
+pre-push:
+  commands:
+    backend-test:
+      run: cd backend && cargo test --workspace -- --test-threads=1
+    frontend-build:
+      run: cd frontend && pnpm build
+    e2e-smoke:
+      run: cd frontend && pnpm exec playwright test --project=chromium --grep="smoke"
+
+commit-msg:
+  commands:
+    conventional-commit:
+      run: 'head -1 {1} | grep -Eq "^(feat|fix|docs|style|refactor|test|chore|perf|ci|build)(\\(.+\\))?!?: .+" || (echo "Use Conventional Commits" && exit 1)'
