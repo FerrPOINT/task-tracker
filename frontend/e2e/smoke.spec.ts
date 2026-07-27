@@ -91,7 +91,7 @@ test.describe('smoke', () => {
     await page.getByRole('button', { name: /войти/i }).click()
 
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
-    await expect(page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи|командный дашборд/i })).toBeVisible()
 
     await page.goto(`${baseURL}/projects`)
     await expect(page.getByText(mockUser.name)).toBeVisible()
