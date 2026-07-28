@@ -26,6 +26,7 @@ pub struct DatabaseConfig {
 pub struct ServerConfig {
     pub address: String,
     pub port: u16,
+    pub cors_allowed_origins: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +54,7 @@ impl AppConfig {
             .set_default("database.idle_timeout_seconds", 600u64)?
             .set_default("server.address", "0.0.0.0")?
             .set_default("server.port", 3456u16)?
+            .set_default("server.cors_allowed_origins", vec!["*"])?
             .set_default("auth.jwt_secret", "[CHANGE_ME]")?
             .set_default("auth.access_token_ttl_minutes", 15u64)?
             .set_default("auth.refresh_token_ttl_days", 7u64)?
@@ -73,6 +75,12 @@ impl AppConfig {
         // Backwards-compatible alias: TASKTRACKER_JWT_SECRET maps to auth.jwt_secret
         if let Ok(secret) = env::var("TASKTRACKER_JWT_SECRET") {
             cfg.auth.jwt_secret = secret;
+        }
+
+        if cfg.auth.jwt_secret == "[CHANGE_ME]" {
+            return Err(ConfigError::Message(
+                "auth.jwt_secret must be changed from default [CHANGE_ME]".to_string(),
+            ));
         }
 
         Ok(cfg)
@@ -106,6 +114,7 @@ impl Default for ServerConfig {
         Self {
             address: "0.0.0.0".to_string(),
             port: 3456,
+            cors_allowed_origins: vec!["*".to_string()],
         }
     }
 }
