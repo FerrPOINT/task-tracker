@@ -40,7 +40,11 @@ const DialogContent = React.forwardRef<
     >
       {children}
       <DialogPrimitive.Close asChild>
-        <Button variant="ghost" size="icon" className="absolute right-3 top-3 text-text-muted hover:text-text-primary">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="absolute right-3 top-3 text-text-muted hover:text-text-primary"
+        >
           <X className="h-4 w-4" />
         </Button>
       </DialogPrimitive.Close>
@@ -66,4 +70,13 @@ const DialogTitle = React.forwardRef<
 ))
 DialogTitle.displayName = DialogPrimitive.Title.displayName
 
-export { Dialog, DialogPortal, DialogOverlay, DialogClose, DialogTrigger, DialogContent, DialogHeader, DialogTitle }
+export {
+  Dialog,
+  DialogPortal,
+  DialogOverlay,
+  DialogClose,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+}

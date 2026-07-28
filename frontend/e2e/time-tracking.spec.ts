@@ -4,7 +4,9 @@ test('time tracking panel and worklog flow', async ({ page }) => {
   await page.goto('/issues/issue-1')
 
   await expect(page.getByText('Учёт времени')).toBeVisible()
-  await expect(page.getByTestId('time-tracking-summary')).toHaveText('3h потрачено / 8h оценка / 4h осталось')
+  await expect(page.getByTestId('time-tracking-summary')).toHaveText(
+    '3h потрачено / 8h оценка / 4h осталось',
+  )
 
   await expect(page.getByRole('tab', { name: 'Worklog' })).toBeVisible()
   await expect(page.getByRole('cell', { name: 'API integration' })).toBeVisible()
@@ -19,7 +21,9 @@ test('time tracking panel and worklog flow', async ({ page }) => {
   await page.getByRole('button', { name: 'Сохранить' }).click()
   await expect(page.getByRole('dialog')).not.toBeVisible()
 
-  await expect(page.getByTestId('time-tracking-summary')).toHaveText('3h 30m потрачено / 8h оценка / 3h 30m осталось')
+  await expect(page.getByTestId('time-tracking-summary')).toHaveText(
+    '3h 30m потрачено / 8h оценка / 3h 30m осталось',
+  )
 
   await page.getByRole('button', { name: 'Редактировать запись' }).first().click()
   await page.getByLabel('Затраченное время').fill('1h')

@@ -27,7 +27,10 @@ async function themedScreenshots() {
       window.localStorage.setItem('theme', t)
     }, theme.name)
     await page.getByText('Учёт времени').waitFor({ state: 'visible' })
-    await page.screenshot({ path: `/root/.hermes/cache/images/${theme.label}-fhd.png`, fullPage: true })
+    await page.screenshot({
+      path: `/root/.hermes/cache/images/${theme.label}-fhd.png`,
+      fullPage: true,
+    })
     await browser.close()
     console.log(`saved ${theme.label}-fhd.png`)
   }
@@ -40,7 +43,10 @@ async function dialog() {
   await page.getByText('Учёт времени').waitFor({ state: 'visible' })
   await page.getByRole('button', { name: 'Залогировать время' }).click()
   await page.getByRole('dialog').waitFor({ state: 'visible' })
-  await page.screenshot({ path: '/root/.hermes/cache/images/log-work-dialog-open.png', fullPage: true })
+  await page.screenshot({
+    path: '/root/.hermes/cache/images/log-work-dialog-open.png',
+    fullPage: true,
+  })
   await browser.close()
   console.log('saved log-work-dialog-open.png')
 }

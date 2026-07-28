@@ -1,13 +1,25 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router'
-import { Layers, LayoutDashboard, FolderKanban, Search, List, Columns2, Trash2, Bell, User, Plus, ChevronDown, Menu, X } from 'lucide-react'
+import {
+  Layers,
+  LayoutDashboard,
+  FolderKanban,
+  Search,
+  List,
+  Columns2,
+  Trash2,
+  Bell,
+  User,
+  Plus,
+  ChevronDown,
+  Menu,
+  X,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 
-const systemItems = [
-  { to: '/trash', icon: Trash2, labelKey: 'navigation.trash' },
-]
+const systemItems = [{ to: '/trash', icon: Trash2, labelKey: 'navigation.trash' }]
 
 const projectKeyPattern = /^\/projects\/([^/]+)\/(board|backlog)$/
 
@@ -17,7 +29,19 @@ function useCurrentProjectKey() {
   return match?.[1]
 }
 
-function SidebarLink({ to, icon: Icon, label, active, onClick }: { to: string; icon: React.ElementType; label: string; active: boolean; onClick?: () => void }) {
+function SidebarLink({
+  to,
+  icon: Icon,
+  label,
+  active,
+  onClick,
+}: {
+  to: string
+  icon: React.ElementType
+  label: string
+  active: boolean
+  onClick?: () => void
+}) {
   return (
     <Link
       to={to}
@@ -74,7 +98,11 @@ export function AppShell() {
             onClick={() => setMobileMenuOpen((v) => !v)}
             aria-label="Toggle menu"
           >
-            {mobileMenuOpen ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
+            {mobileMenuOpen ? (
+              <X className="h-[18px] w-[18px]" />
+            ) : (
+              <Menu className="h-[18px] w-[18px]" />
+            )}
           </Button>
           <Link to="/" className="flex items-center gap-2 font-bold">
             <Layers className="h-[18px] w-[18px] text-accent" />
@@ -125,7 +153,9 @@ export function AppShell() {
             />
           ))}
 
-          <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">Task Tracker · {projectKey ?? 'TT'}</div>
+          <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
+            Task Tracker · {projectKey ?? 'TT'}
+          </div>
           {projectItems.map((item) => (
             <SidebarLink
               key={item.labelKey}
@@ -136,7 +166,9 @@ export function AppShell() {
             />
           ))}
 
-          <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">{t('navigation.system')}</div>
+          <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
+            {t('navigation.system')}
+          </div>
           {systemItems.map((item) => (
             <SidebarLink
               key={item.to}
@@ -151,7 +183,10 @@ export function AppShell() {
         {/* Mobile menu overlay */}
         {mobileMenuOpen && (
           <div className="fixed inset-0 z-40 md:hidden">
-            <div className="absolute inset-0 bg-black/40" onClick={() => setMobileMenuOpen(false)} />
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setMobileMenuOpen(false)}
+            />
             <aside className="absolute left-0 top-0 h-full w-64 border-r border-border bg-surface p-3 pt-14 shadow-lg">
               {navItems.map((item) => (
                 <SidebarLink
@@ -164,7 +199,9 @@ export function AppShell() {
                 />
               ))}
 
-              <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">Task Tracker · {projectKey ?? 'TT'}</div>
+              <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
+                Task Tracker · {projectKey ?? 'TT'}
+              </div>
               {projectItems.map((item) => (
                 <SidebarLink
                   key={item.labelKey}
@@ -176,7 +213,9 @@ export function AppShell() {
                 />
               ))}
 
-              <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">{t('navigation.system')}</div>
+              <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
+                {t('navigation.system')}
+              </div>
               {systemItems.map((item) => (
                 <SidebarLink
                   key={item.to}

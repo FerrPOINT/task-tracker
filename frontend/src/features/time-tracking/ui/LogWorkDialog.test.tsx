@@ -18,10 +18,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
 describe('LogWorkDialog', () => {
   it('submits valid input', async () => {
     const onSubmit = vi.fn()
-    render(
-      <LogWorkDialog open={true} onOpenChange={() => {}} onSubmit={onSubmit} />,
-      { wrapper },
-    )
+    render(<LogWorkDialog open={true} onOpenChange={() => {}} onSubmit={onSubmit} />, { wrapper })
 
     fireEvent.change(screen.getByLabelText(/Time spent/i), {
       target: { value: '1h 30m' },
@@ -47,10 +44,7 @@ describe('LogWorkDialog', () => {
 
   it('shows validation error on empty time spent', async () => {
     const onSubmit = vi.fn()
-    render(
-      <LogWorkDialog open={true} onOpenChange={() => {}} onSubmit={onSubmit} />,
-      { wrapper },
-    )
+    render(<LogWorkDialog open={true} onOpenChange={() => {}} onSubmit={onSubmit} />, { wrapper })
 
     fireEvent.click(screen.getByText(/Save/i))
 

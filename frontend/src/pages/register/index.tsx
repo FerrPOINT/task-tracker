@@ -39,20 +39,52 @@ export function RegisterPage() {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="register-username">{t('auth.username')}</label>
-            <Input id="register-username" type="text" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="register-username">
+              {t('auth.username')}
+            </label>
+            <Input
+              id="register-username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="register-email">{t('auth.email')}</label>
-            <Input id="register-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="register-email">
+              {t('auth.email')}
+            </label>
+            <Input
+              id="register-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="register-password">{t('auth.password')}</label>
-            <Input id="register-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="register-password">
+              {t('auth.password')}
+            </label>
+            <Input
+              id="register-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="register-confirm">{t('auth.confirmPassword')}</label>
-            <Input id="register-confirm" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="register-confirm">
+              {t('auth.confirmPassword')}
+            </label>
+            <Input
+              id="register-confirm"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
           </div>
           {error && <div className="text-sm text-rose-500">{error.message}</div>}
           <Button type="submit" className="w-full" disabled={isPending}>

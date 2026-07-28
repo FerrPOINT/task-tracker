@@ -51,9 +51,7 @@ export function IssueCreatePage() {
       >
         {error && <div className="text-sm text-rose-500">{error.message}</div>}
         {!userId && (
-          <div className="text-sm text-amber-500">
-            Автор не определён — войдите снова.
-          </div>
+          <div className="text-sm text-amber-500">Автор не определён — войдите снова.</div>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -142,7 +140,9 @@ export function IssueCreatePage() {
             <Plus className="h-4 w-4" />
             {isPending ? `${t('issueCreate.create')}…` : t('issueCreate.create')}
           </Button>
-          <Button type="button" variant="outline">{t('issueCreate.createAnother')}</Button>
+          <Button type="button" variant="outline">
+            {t('issueCreate.createAnother')}
+          </Button>
           <Button variant="outline" asChild>
             <Link to={`/projects/${project_key}/backlog`}>{t('issueCreate.cancel')}</Link>
           </Button>

@@ -4,10 +4,7 @@ import type { components } from './generated'
 export type UpdateIssueInput = components['schemas']['UpdateIssueRequest']
 export type Issue = components['schemas']['IssueResponse']
 
-export async function updateIssue(
-  id: string,
-  input: UpdateIssueInput,
-): Promise<Issue> {
+export async function updateIssue(id: string, input: UpdateIssueInput): Promise<Issue> {
   const { data, error } = await api.PATCH('/api/v1/issues/{id}', {
     params: { path: { id } },
     body: input,

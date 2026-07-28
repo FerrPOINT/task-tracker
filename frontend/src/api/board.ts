@@ -21,10 +21,7 @@ export async function getBacklog(projectKey: string): Promise<Backlog> {
   return data
 }
 
-export async function moveIssue(
-  projectKey: string,
-  input: MoveIssueInput,
-): Promise<Board> {
+export async function moveIssue(projectKey: string, input: MoveIssueInput): Promise<Board> {
   const { data, error } = await api.POST('/api/v1/projects/{project_key}/board/move', {
     params: { path: { project_key: projectKey } },
     body: input,

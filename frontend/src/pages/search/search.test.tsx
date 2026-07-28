@@ -9,9 +9,7 @@ const search = vi.hoisted(() => vi.fn())
 vi.mock('@/shared/api/hooks', () => ({ useSearch: search }))
 
 function wrapper(children: React.ReactNode) {
-  return (
-    <MemoryRouter>{children}</MemoryRouter>
-  )
+  return <MemoryRouter>{children}</MemoryRouter>
 }
 
 describe('SearchPage', () => {

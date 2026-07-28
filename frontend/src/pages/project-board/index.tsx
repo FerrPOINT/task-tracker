@@ -21,13 +21,23 @@ function Avatar({ name }: { name: string }) {
   const colors = ['bg-accent', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
   const color = colors[name.charCodeAt(0) % colors.length]
   return (
-    <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${color}`}>
+    <div
+      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${color}`}
+    >
       {name.charAt(0).toUpperCase()}
     </div>
   )
 }
 
-function IssueCard({ issue, columnId, onMove }: { issue: Issue; columnId: string; onMove?: (issueId: string, targetColumnId: string) => void }) {
+function IssueCard({
+  issue,
+  columnId,
+  onMove,
+}: {
+  issue: Issue
+  columnId: string
+  onMove?: (issueId: string, targetColumnId: string) => void
+}) {
   function handleClick(e: React.MouseEvent) {
     // Move to next/previous column by wheel click or ctrl+click
     if (e.ctrlKey || e.button === 1) {
@@ -48,7 +58,9 @@ function IssueCard({ issue, columnId, onMove }: { issue: Issue; columnId: string
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <PriorityBadge priority={issue.priority} />
-          <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">{issue.issue_type}</span>
+          <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">
+            {issue.issue_type}
+          </span>
         </div>
         <Avatar name={issue.assignee_name ?? '?'} />
       </div>
@@ -64,7 +76,8 @@ export function ProjectBoardPage() {
   const move = useMoveIssue(key)
 
   if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
-  if (error || !board) return <div className="p-4 text-rose-500">{error?.message ?? t('issue.notFound')}</div>
+  if (error || !board)
+    return <div className="p-4 text-rose-500">{error?.message ?? t('issue.notFound')}</div>
 
   const { columns, issues, sprint } = board
 
@@ -85,8 +98,12 @@ export function ProjectBoardPage() {
     <div className="flex flex-col md:h-[calc(100vh-10rem)] md:max-h-[800px]">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <div className="truncate text-lg font-bold sm:text-xl">{t('board.title', { projectName: key, sprintName: sprint?.name ?? 'Sprint' })}</div>
-          <div className="text-sm text-text-muted">{t('board.subtitle', { backlog: 42, remainingDays: sprint?.remaining_days ?? '-' })}</div>
+          <div className="truncate text-lg font-bold sm:text-xl">
+            {t('board.title', { projectName: key, sprintName: sprint?.name ?? 'Sprint' })}
+          </div>
+          <div className="text-sm text-text-muted">
+            {t('board.subtitle', { backlog: 42, remainingDays: sprint?.remaining_days ?? '-' })}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" className="gap-1">
@@ -120,7 +137,9 @@ export function ProjectBoardPage() {
                   <div className="truncate text-sm font-semibold">{column.name}</div>
                   <div className="text-xs text-text-muted">
                     {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
-                    {overLimit && <span className="ml-1 text-amber-500">{t('board.wipWarning')}</span>}
+                    {overLimit && (
+                      <span className="ml-1 text-amber-500">{t('board.wipWarning')}</span>
+                    )}
                   </div>
                 </div>
                 <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
@@ -130,7 +149,12 @@ export function ProjectBoardPage() {
 
               <div className="flex-1 space-y-2 overflow-y-auto p-2">
                 {colIssues.map((issue) => (
-                  <IssueCard key={issue.id} issue={issue} columnId={column.id} onMove={handleMove} />
+                  <IssueCard
+                    key={issue.id}
+                    issue={issue}
+                    columnId={column.id}
+                    onMove={handleMove}
+                  />
                 ))}
               </div>
 
@@ -155,7 +179,9 @@ export function ProjectBoardPage() {
                   <div className="truncate text-sm font-semibold">{column.name}</div>
                   <div className="text-xs text-text-muted">
                     {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
-                    {overLimit && <span className="ml-1 text-amber-500">{t('board.wipWarning')}</span>}
+                    {overLimit && (
+                      <span className="ml-1 text-amber-500">{t('board.wipWarning')}</span>
+                    )}
                   </div>
                 </div>
                 <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
@@ -165,7 +191,12 @@ export function ProjectBoardPage() {
 
               <div className="space-y-2 p-2">
                 {colIssues.map((issue) => (
-                  <IssueCard key={issue.id} issue={issue} columnId={column.id} onMove={handleMove} />
+                  <IssueCard
+                    key={issue.id}
+                    issue={issue}
+                    columnId={column.id}
+                    onMove={handleMove}
+                  />
                 ))}
               </div>
 

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, Route } from '@playwright/test'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
@@ -9,7 +9,7 @@ const mockUser = {
   issueId: 'issue-1',
 }
 
-function routeJson(route: any, body: unknown, status = 200) {
+function routeJson(route: Route, body: unknown, status = 200) {
   return route.fulfill({
     status,
     contentType: 'application/json',
@@ -18,7 +18,9 @@ function routeJson(route: any, body: unknown, status = 200) {
 }
 
 test.describe('smoke', () => {
-  test('login then navigate through dashboard, projects, board and create issue', async ({ page }) => {
+  test('login then navigate through dashboard, projects, board and create issue', async ({
+    page,
+  }) => {
     await page.route('**/api/v1/auth/login', (route) =>
       routeJson(route, {
         access_token: 'demo-token',
@@ -27,9 +29,7 @@ test.describe('smoke', () => {
         email: 'demo@example.com',
       }),
     )
-    await page.route('**/api/v1/dashboard', (route) =>
-      routeJson(route, { assigned_issues: [] }),
-    )
+    await page.route('**/api/v1/dashboard', (route) => routeJson(route, { assigned_issues: [] }))
     await page.route('**/api/v1/projects', (route) =>
       routeJson(route, {
         projects: [
@@ -91,7 +91,9 @@ test.describe('smoke', () => {
     await page.getByRole('button', { name: /войти/i }).click()
 
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
-    await expect(page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи|командный дашборд/i })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи|командный дашборд/i }),
+    ).toBeVisible()
 
     await page.goto(`${baseURL}/projects`)
     await expect(page.getByText(mockUser.name)).toBeVisible()

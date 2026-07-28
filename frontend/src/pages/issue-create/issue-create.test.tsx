@@ -14,7 +14,9 @@ vi.mock('@/api/issue-create', () => ({
 }))
 
 function wrapper(children: React.ReactNode) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
   return (
     <ThemeProvider>
       <QueryClientProvider client={qc}>

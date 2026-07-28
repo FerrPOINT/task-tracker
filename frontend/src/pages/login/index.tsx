@@ -36,12 +36,28 @@ export function LoginPage() {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="login-email">{t('auth.email')}</label>
-            <Input id="login-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="login-email">
+              {t('auth.email')}
+            </label>
+            <Input
+              id="login-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="login-password">{t('auth.password')}</label>
-            <Input id="login-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <label className="text-sm font-medium" htmlFor="login-password">
+              {t('auth.password')}
+            </label>
+            <Input
+              id="login-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
           </div>
           {error && <div className="text-sm text-rose-500">{error.message}</div>}
           <Button type="submit" className="w-full" disabled={isPending}>

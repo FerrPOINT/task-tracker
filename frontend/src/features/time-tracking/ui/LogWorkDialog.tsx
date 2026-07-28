@@ -4,12 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { Play, Square } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/shared/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/dialog'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
@@ -33,12 +28,15 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
     timeSpent: z
       .string()
       .min(1, t('timeTracking.validation.timeSpentRequired'))
-      .refine((v) => {
-        const parsed = parseDuration(v)
-        return parsed !== null && parsed > 0
-      }, {
-        message: t('timeTracking.validation.invalidFormat'),
-      }),
+      .refine(
+        (v) => {
+          const parsed = parseDuration(v)
+          return parsed !== null && parsed > 0
+        },
+        {
+          message: t('timeTracking.validation.invalidFormat'),
+        },
+      ),
     remainingEstimate: z.string(),
     startedAt: z.string().min(1),
     comment: z.string(),
@@ -107,7 +105,9 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? t('timeTracking.editWorklog') : t('timeTracking.logWork')}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? t('timeTracking.editWorklog') : t('timeTracking.logWork')}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -120,7 +120,9 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
                 variant="secondary"
                 size="icon"
                 onClick={toggleTimer}
-                aria-label={timerRunning ? t('timeTracking.timer.stop') : t('timeTracking.timer.start')}
+                aria-label={
+                  timerRunning ? t('timeTracking.timer.stop') : t('timeTracking.timer.start')
+                }
               >
                 {timerRunning ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </Button>
@@ -135,7 +137,11 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
 
           <div className="space-y-1">
             <Label htmlFor="remainingEstimate">{t('timeTracking.fields.remainingEstimate')}</Label>
-            <Input id="remainingEstimate" {...form.register('remainingEstimate')} placeholder="2h" />
+            <Input
+              id="remainingEstimate"
+              {...form.register('remainingEstimate')}
+              placeholder="2h"
+            />
           </div>
 
           <div className="space-y-1">

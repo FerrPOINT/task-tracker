@@ -1,4 +1,4 @@
-import { test } from '@playwright/test'
+import { test, Page } from '@playwright/test'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 const viewports = [
@@ -17,7 +17,7 @@ const pages = [
   { path: '/issues/create', name: 'issue-create', marker: 'Создать задачу' },
 ]
 
-async function authenticate(p: any) {
+async function authenticate(p: Page) {
   const res = await p.request.post(`${baseURL}/api/v1/auth/login`, {
     data: { email: 'demo@example.com', password: 'demo' },
   })
@@ -32,7 +32,7 @@ async function authenticate(p: any) {
   )
 }
 
-async function setThemeAndGoto(p: any, theme: 'light' | 'dark', path: string, marker: string) {
+async function setThemeAndGoto(p: Page, theme: 'light' | 'dark', path: string, marker: string) {
   if (!['login', 'register'].includes(path.replace(/^\/?/, ''))) {
     await authenticate(p)
   }
@@ -43,11 +43,9 @@ async function setThemeAndGoto(p: any, theme: 'light' | 'dark', path: string, ma
   }, theme)
   await p.goto(`${baseURL}${path}`)
   await p.waitForLoadState('networkidle')
-  await p.waitForFunction(
-    (text: string) => document.body.innerText.includes(text),
-    marker,
-    { timeout: 5000 },
-  )
+  await p.waitForFunction((text: string) => document.body.innerText.includes(text), marker, {
+    timeout: 5000,
+  })
 }
 
 for (const page of pages) {

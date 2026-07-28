@@ -47,7 +47,9 @@ function wrapper(children: React.ReactNode) {
 describe('DashboardPage', () => {
   it('renders dashboard widgets and assigned issues', async () => {
     render(wrapper(<DashboardPage />))
-    await waitFor(() => expect(screen.getByText(/командный дашборд|team dashboard/i)).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText(/командный дашборд|team dashboard/i)).toBeInTheDocument(),
+    )
     expect(screen.getByText((content) => content.includes('Fix tests'))).toBeInTheDocument()
   })
 })
