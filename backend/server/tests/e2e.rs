@@ -18,6 +18,7 @@ fn test_config() -> Arc<AppConfig> {
         server: ServerConfig {
             address: "127.0.0.1".to_string(),
             port: 0,
+            cors_allowed_origins: vec!["*".to_string()],
         },
         auth: AuthConfig {
             jwt_secret: "test-secret".to_string(),

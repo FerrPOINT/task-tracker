@@ -1,5 +1,6 @@
 use axum::{
     Router,
+    http::HeaderValue,
     http::Method,
     middleware::from_fn_with_state,
     routing::{get, post},
@@ -57,16 +58,43 @@ pub use routes::*;
 pub struct ApiDoc;
 
 pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
-    let cors = CorsLayer::new()
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::PATCH,
-            Method::DELETE,
-        ])
-        .allow_origin(Any)
-        .allow_headers(Any);
+    let cors = if ctx.config.server.cors_allowed_origins.len() == 1
+        && ctx.config.server.cors_allowed_origins[0] == "*"
+    {
+        CorsLayer::new()
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+            ])
+            .allow_origin(Any)
+            .allow_headers(Any)
+    } else {
+        let origins: Vec<HeaderValue> = ctx
+            .config
+            .server
+            .cors_allowed_origins
+            .iter()
+            .filter(|o| !o.is_empty())
+            .map(|o| {
+                o.parse::<HeaderValue>()
+                    .expect("invalid cors allowed origin")
+            })
+            .collect();
+        let allowed = tower_http::cors::AllowOrigin::list(origins);
+        CorsLayer::new()
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+            ])
+            .allow_origin(allowed)
+            .allow_headers(Any)
+    };
 
     let public = Router::new()
         .route("/health", get(routes::health::health))
