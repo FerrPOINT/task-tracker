@@ -4,8 +4,8 @@
 
 - **GitHub**: `git@github.com:FerrPOINT/task-tracker.git`
 - **Стек**: backend Rust (Axum + SeaORM + PostgreSQL), frontend React 19.1.0 + Vite 6.2.0 + Tailwind CSS 4.1.0
-- **Порт**: `19876`
 - **Env prefix**: `TASKTRACKER_`
+- **Публичные порты по умолчанию**: frontend docker `19877`, backend `3456`, PostgreSQL `3457`, Redis `6379`
 
 ## Правила работы
 
@@ -20,7 +20,7 @@
 - Backend: слоистая архитектура `controller → service → repository`.
 - DI через `AppContext` / `shaku`.
 - Все публичные API покрыты OpenAPI через `utoipa-axum`.
-- Rust-хендлеры и DTO являются единственным источником правды для схемы; фронт генерирует клиент из `openapi/openapi.json`.
+- Rust-хендлеры и DTO — единственный источник правды для схемы; фронт генерирует клиент из `openapi/openapi.json`.
 - Все endpoint тестируются интеграционно через testcontainers.
 - Frontend: компоненты на `shadcn/ui` + Tailwind.
 - Состояние: серверное — `@tanstack/react-query`, клиентское — `zustand`.
@@ -61,16 +61,17 @@
 
 ### 8. Проверка перед завершением
 
-- [ ] Все тесты проходят.
-- [ ] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
-- [ ] Документация актуальна.
-- [ ] Коммиты запушены в `origin/main`.
-- [ ] Пользователь увидел результат (скриншот / curl / лог).
+- [x] Все тесты проходят.
+- [x] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
+- [x] Документация актуальна.
+- [x] Коммиты запушены в `origin/main`.
+- [x] Пользователь увидел результат (скриншот / curl / лог).
 
 ## Контакты
 
 - Техлид: Александр Жуков.
 - Основной язык общения и документов: русский.
+
 ## References
 
 - `docs/ARCHITECTURE.md`

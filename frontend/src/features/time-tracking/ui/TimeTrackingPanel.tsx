@@ -31,20 +31,23 @@ export function TimeTrackingPanel({
         data-testid="time-tracking-summary"
       >
         <span className="font-medium text-text-primary">{formatDuration(timeSpentSeconds)}</span>
-        <span className="text-text-muted">{' '}{t('timeTracking.spent')}</span>
+        <span className="text-text-muted"> {t('timeTracking.spent')}</span>
         <span className="text-text-muted">{' / '}</span>
-        <span className="font-medium text-text-primary">{estimate > 0 ? formatDuration(estimate) : '-'}</span>
-        <span className="text-text-muted">{' '}{t('timeTracking.estimated')}</span>
+        <span className="font-medium text-text-primary">
+          {estimate > 0 ? formatDuration(estimate) : '-'}
+        </span>
+        <span className="text-text-muted"> {t('timeTracking.estimated')}</span>
         {remainingEstimateSeconds !== null && (
           <>
             <span className="text-text-muted">{' / '}</span>
             <span className="font-medium text-text-primary">{formatDuration(remaining)}</span>
-            <span className="text-text-muted">{' '}{t('timeTracking.remaining')}</span>
+            <span className="text-text-muted"> {t('timeTracking.remaining')}</span>
           </>
         )}
         {over && (
           <span className="text-danger">
-            {' '}{t('timeTracking.overBy')} {formatDuration(timeSpentSeconds - estimate)}
+            {' '}
+            {t('timeTracking.overBy')} {formatDuration(timeSpentSeconds - estimate)}
           </span>
         )}
       </div>

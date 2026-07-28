@@ -3,7 +3,11 @@
     "projects": "Projects",
     "search": "Search",
     "create": "Create",
-    "system": "System"
+    "system": "System",
+    "dashboard": "Dashboard",
+    "backlog": "Backlog",
+    "board": "Board",
+    "trash": "Trash"
   },
   "auth": {
     "login": "Log in",
@@ -145,6 +149,7 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
-    "delete": "Delete"
+    "delete": "Delete",
+    "theme": "Theme: {{theme}}"
   }
 }

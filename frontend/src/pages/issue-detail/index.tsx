@@ -123,7 +123,9 @@ export function IssueDetailPage() {
 
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="flex items-start gap-3">
-            <span className="mt-1 rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-accent">Task</span>
+            <span className="mt-1 rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-accent">
+              Task
+            </span>
             <div>
               <h1 className="text-2xl font-semibold text-text-primary">
                 {issue.key} {issue.summary}
@@ -160,7 +162,11 @@ export function IssueDetailPage() {
                 <CardTitle className="text-sm">{t('issue.description')}</CardTitle>
               </CardHeader>
               <CardContent>
-                {issue.description ? renderDescription(issue.description) : <p className="text-sm text-text-muted">{t('issue.noDescription')}</p>}
+                {issue.description ? (
+                  renderDescription(issue.description)
+                ) : (
+                  <p className="text-sm text-text-muted">{t('issue.noDescription')}</p>
+                )}
               </CardContent>
             </Card>
 
@@ -221,7 +227,10 @@ export function IssueDetailPage() {
                     value={
                       <div className="flex flex-wrap gap-1">
                         {issue.labels.map((l) => (
-                          <span key={l} className="rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
+                          <span
+                            key={l}
+                            className="rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary"
+                          >
                             {l}
                           </span>
                         ))}

@@ -12,7 +12,11 @@ function PriorityBadge({ priority }: { priority: string }) {
       : priority === 'Medium'
         ? 'text-amber-500'
         : 'text-emerald-500'
-  return <span className={`rounded-full bg-surface-raised px-2 py-0.5 text-xs font-medium ${color}`}>{priority}</span>
+  return (
+    <span className={`rounded-full bg-surface-raised px-2 py-0.5 text-xs font-medium ${color}`}>
+      {priority}
+    </span>
+  )
 }
 
 export function SearchPage() {
@@ -32,10 +36,7 @@ export function SearchPage() {
     <div className="space-y-4">
       <h1 className="text-xl font-bold sm:text-2xl">{t('search.title')}</h1>
 
-      <form
-        onSubmit={handleSearch}
-        className="rounded-lg border border-border bg-surface p-4"
-      >
+      <form onSubmit={handleSearch} className="rounded-lg border border-border bg-surface p-4">
         <textarea
           className="min-h-[72px] w-full rounded-md border border-border-strong bg-background p-3 font-mono text-sm text-text-primary"
           value={query}
@@ -68,7 +69,9 @@ export function SearchPage() {
             <span className="hidden sm:inline">{t('search.saveFilter')}</span>
             <span className="sm:hidden">{t('search.saveFilter')}</span>
           </Button>
-          <Button variant="outline" size="sm">{t('search.reset')}</Button>
+          <Button variant="outline" size="sm">
+            {t('search.reset')}
+          </Button>
         </div>
       </form>
 
@@ -97,7 +100,9 @@ export function SearchPage() {
               >
                 <span className="text-text-muted">{issue.key}</span>
                 <span className="truncate">{issue.summary}</span>
-                <span className="rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">{issue.status}</span>
+                <span className="rounded-full bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
+                  {issue.status}
+                </span>
                 <span className="truncate">{issue.assignee_name ?? '—'}</span>
                 <PriorityBadge priority={issue.priority} />
               </Link>

@@ -7,6 +7,7 @@ COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY frontend/ ./
+COPY openapi/openapi.json ../openapi/openapi.json
 RUN pnpm build
 
 FROM nginx:alpine

@@ -2,14 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/shared/ui/table'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/shared/ui/table'
 import { Button } from '@/shared/ui/button'
 import {
   AlertDialog,
@@ -43,24 +36,43 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
 
   return (
     <div className="space-y-4">
-      <div className="hidden overflow-x-auto rounded-md border border-border md:block" data-testid="worklog-table">
+      <div
+        className="hidden overflow-x-auto rounded-md border border-border md:block"
+        data-testid="worklog-table"
+      >
         <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow>
-              <TableHead className="min-w-[110px] whitespace-nowrap">{t('timeTracking.worklog.user')}</TableHead>
-              <TableHead className="min-w-[110px] whitespace-nowrap">{t('timeTracking.worklog.started')}</TableHead>
-              <TableHead className="min-w-[100px] whitespace-nowrap">{t('timeTracking.worklog.timeSpent')}</TableHead>
-              <TableHead className="min-w-[100px] whitespace-nowrap">{t('timeTracking.worklog.remaining')}</TableHead>
-              <TableHead className="min-w-[180px] whitespace-nowrap">{t('timeTracking.worklog.comment')}</TableHead>
-              <TableHead className="min-w-[90px] whitespace-nowrap text-right">{t('timeTracking.worklog.actions')}</TableHead>
+              <TableHead className="min-w-[110px] whitespace-nowrap">
+                {t('timeTracking.worklog.user')}
+              </TableHead>
+              <TableHead className="min-w-[110px] whitespace-nowrap">
+                {t('timeTracking.worklog.started')}
+              </TableHead>
+              <TableHead className="min-w-[100px] whitespace-nowrap">
+                {t('timeTracking.worklog.timeSpent')}
+              </TableHead>
+              <TableHead className="min-w-[100px] whitespace-nowrap">
+                {t('timeTracking.worklog.remaining')}
+              </TableHead>
+              <TableHead className="min-w-[180px] whitespace-nowrap">
+                {t('timeTracking.worklog.comment')}
+              </TableHead>
+              <TableHead className="min-w-[90px] whitespace-nowrap text-right">
+                {t('timeTracking.worklog.actions')}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {worklogs.map((w) => (
               <TableRow key={w.id}>
                 <TableCell className="whitespace-nowrap font-medium">{w.userDisplayName}</TableCell>
-                <TableCell className="whitespace-nowrap">{format(new Date(w.startedAt), 'yyyy-MM-dd')}</TableCell>
-                <TableCell className="whitespace-nowrap">{formatDuration(w.timeSpentSeconds)}</TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {format(new Date(w.startedAt), 'yyyy-MM-dd')}
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
+                  {formatDuration(w.timeSpentSeconds)}
+                </TableCell>
                 <TableCell className="whitespace-nowrap">
                   {w.remainingEstimateSeconds !== null
                     ? formatDuration(w.remainingEstimateSeconds)
@@ -151,7 +163,9 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
                 <span className="text-text-muted">{t('timeTracking.worklog.started')}</span>
-                <span className="text-text-primary">{format(new Date(w.startedAt), 'yyyy-MM-dd')}</span>
+                <span className="text-text-primary">
+                  {format(new Date(w.startedAt), 'yyyy-MM-dd')}
+                </span>
                 <span className="text-text-muted">{t('timeTracking.worklog.timeSpent')}</span>
                 <span className="text-text-primary">{formatDuration(w.timeSpentSeconds)}</span>
                 <span className="text-text-muted">{t('timeTracking.worklog.remaining')}</span>
@@ -173,7 +187,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
       </div>
 
       <div className="text-sm text-text-secondary">
-        {t('timeTracking.worklog.totalLogged')}: {' '}
+        {t('timeTracking.worklog.totalLogged')}:{' '}
         <span className="font-semibold text-text-primary">{formatDuration(total)}</span>
       </div>
     </div>

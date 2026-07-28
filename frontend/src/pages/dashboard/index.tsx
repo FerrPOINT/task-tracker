@@ -20,7 +20,8 @@ export function DashboardPage() {
   const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useDashboard()
   const { data: projects, isLoading: projectsLoading } = useProjects()
 
-  if (dashboardLoading || projectsLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
+  if (dashboardLoading || projectsLoading)
+    return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
   if (dashboardError) return <div className="p-4 text-rose-500">{dashboardError.message}</div>
 
   const assigned = dashboard?.assigned_issues ?? []
@@ -63,14 +64,22 @@ export function DashboardPage() {
           <CardContent className="space-y-3">
             <div className="flex items-end gap-2">
               <span className="text-4xl font-bold text-rose-500">7</span>
-              <span className="mb-1 text-xs text-text-muted">{t('dashboard.bugsTrend', { count: 2 })}</span>
+              <span className="mb-1 text-xs text-text-muted">
+                {t('dashboard.bugsTrend', { count: 2 })}
+              </span>
             </div>
             <div className="space-y-2">
-              <Link to="/issues/bug-14" className="flex items-center justify-between gap-2 rounded-md border border-border p-2 hover:bg-surface-raised">
+              <Link
+                to="/issues/bug-14"
+                className="flex items-center justify-between gap-2 rounded-md border border-border p-2 hover:bg-surface-raised"
+              >
                 <span className="min-w-0 truncate text-sm">TT-14 UI glitch on mobile</span>
                 <PriorityBadge priority="High" />
               </Link>
-              <Link to="/issues/bug-9" className="flex items-center justify-between gap-2 rounded-md border border-border p-2 hover:bg-surface-raised">
+              <Link
+                to="/issues/bug-9"
+                className="flex items-center justify-between gap-2 rounded-md border border-border p-2 hover:bg-surface-raised"
+              >
                 <span className="min-w-0 truncate text-sm">TT-9 Auth token refresh</span>
                 <PriorityBadge priority="Medium" />
               </Link>
@@ -108,8 +117,12 @@ export function DashboardPage() {
                 to={`/issues/${item.id}`}
                 className="flex flex-col gap-1 text-sm hover:text-accent sm:flex-row sm:items-center sm:justify-between"
               >
-                <span className="min-w-0 truncate">{item.key} {item.summary}</span>
-                <span className="shrink-0 self-start rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">{item.status}</span>
+                <span className="min-w-0 truncate">
+                  {item.key} {item.summary}
+                </span>
+                <span className="shrink-0 self-start rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
+                  {item.status}
+                </span>
               </Link>
             ))}
           </CardContent>
@@ -117,7 +130,9 @@ export function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t('dashboard.recentActivity')} · {projects?.length ?? 0} projects</CardTitle>
+            <CardTitle className="text-base">
+              {t('dashboard.recentActivity')} · {projects?.length ?? 0} projects
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {[
@@ -128,7 +143,13 @@ export function DashboardPage() {
               <div key={i} className="flex items-start gap-2 text-sm">
                 <Clock className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
                 <div className="min-w-0">
-                  <div className="truncate">{t('dashboard.activityLoggedTime', { user: entry.user, hours: entry.hours, issueKey: entry.issueKey })}</div>
+                  <div className="truncate">
+                    {t('dashboard.activityLoggedTime', {
+                      user: entry.user,
+                      hours: entry.hours,
+                      issueKey: entry.issueKey,
+                    })}
+                  </div>
                   <div className="text-xs text-text-muted">{entry.when}</div>
                 </div>
               </div>

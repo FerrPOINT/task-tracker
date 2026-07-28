@@ -64,7 +64,7 @@ fmt-rust:
 
 # Format frontend code
 fmt-frontend:
-    cd frontend && pnpm format
+    cd frontend && pnpm format:check
 
 # Format all
 fmt: fmt-rust fmt-frontend
@@ -101,7 +101,11 @@ e2e:
     cd frontend && pnpm exec playwright test
 
 # Full quality gate (CI-like)
-gate: fmt-check-rust clippy typecheck test-frontend test-backend
+gate: fmt-check-rust clippy typecheck lint test-frontend test-backend
+
+# Lint frontend
+lint:
+    cd frontend && pnpm lint
 
 # ─────────────────────────────────────────────
 # Production

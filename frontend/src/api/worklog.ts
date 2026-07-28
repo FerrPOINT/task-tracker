@@ -55,7 +55,9 @@ function buildWorklog(issueId: string, payload: CreateWorklogPayload): Worklog {
 
 export async function listWorklogs(issueId: string): Promise<Worklog[]> {
   await delay(150)
-  return worklogs.filter((w) => w.issueId === issueId).sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  return worklogs
+    .filter((w) => w.issueId === issueId)
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 }
 
 export async function createWorklog(issueId: string, input: LogWorkInput): Promise<Worklog> {
@@ -81,10 +83,7 @@ export async function createWorklog(issueId: string, input: LogWorkInput): Promi
   return worklog
 }
 
-export async function updateWorklog(
-  worklogId: string,
-  input: LogWorkInput,
-): Promise<Worklog> {
+export async function updateWorklog(worklogId: string, input: LogWorkInput): Promise<Worklog> {
   const index = worklogs.findIndex((w) => w.id === worklogId)
   if (index === -1) throw new Error('Worklog not found')
   const existing = worklogs[index]!

@@ -8,6 +8,7 @@ dist
 .idea
 .vscode
 coverage
+.lighthouseci
 playwright-report
 test-results
 *.tmp

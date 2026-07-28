@@ -185,6 +185,15 @@ impl IssueRepository for IssueRepo {
         if let Some(spid) = query.sprint_id {
             select = select.filter(issue::Column::SprintId.eq(spid.as_uuid()));
         }
+        if let Some(q) = query.search_text.as_deref().filter(|s| !s.is_empty()) {
+            let pattern = format!("%{}%", q);
+            select = select.filter(
+                sea_orm::Condition::any()
+                    .add(issue::Column::Summary.like(&pattern))
+                    .add(issue::Column::Key.like(&pattern))
+                    .add(issue::Column::Description.like(&pattern)),
+            );
+        }
         let models = select
             .limit(query.limit)
             .offset(query.offset)

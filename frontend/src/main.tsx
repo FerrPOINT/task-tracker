@@ -20,7 +20,9 @@ function Boot() {
     }
     const handler = () => setReady(true)
     i18n.on('initialized', handler)
-    return () => { i18n.off('initialized', handler) }
+    return () => {
+      i18n.off('initialized', handler)
+    }
   }, [])
   if (!ready) return null
   return (

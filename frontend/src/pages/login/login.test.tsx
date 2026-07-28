@@ -12,7 +12,9 @@ const login = vi.hoisted(() => vi.fn())
 vi.mock('@/api/auth', () => ({ login }))
 
 function wrapper(children: React.ReactNode) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
   return (
     <ThemeProvider>
       <QueryClientProvider client={qc}>
@@ -36,7 +38,7 @@ describe('LoginPage', () => {
       access_token: 'tok',
       user_id: 'u1',
       email: 'demo@example.com',
-    } as any)
+    })
 
     render(wrapper(<LoginPage />))
     expect(screen.getByText('TaskTracker')).toBeInTheDocument()

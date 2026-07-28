@@ -3,7 +3,11 @@
     "projects": "Проекты",
     "search": "Поиск",
     "create": "Создать",
-    "system": "Система"
+    "system": "Система",
+    "dashboard": "Дашборд",
+    "backlog": "Бэклог",
+    "board": "Доска",
+    "trash": "Корзина"
   },
   "auth": {
     "login": "Войти",
@@ -145,6 +149,7 @@
   "common": {
     "save": "Сохранить",
     "cancel": "Отмена",
-    "delete": "Удалить"
+    "delete": "Удалить",
+    "theme": "Тема: {{theme}}"
   }
 }

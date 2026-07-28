@@ -1,7 +1,11 @@
 {
   "ci": {
     "collect": {
-      "url": ["http://localhost:4173/login", "http://localhost:4173/", "http://localhost:4173/projects"],
+      "url": [
+        "http://localhost:4173/login",
+        "http://localhost:4173/",
+        "http://localhost:4173/projects"
+      ],
       "startServerCommand": "pnpm preview --port 4173",
       "startServerReadyPattern": "Local:",
       "numberOfRuns": 1,

@@ -10,7 +10,9 @@ function ProjectAvatar({ projectKey }: { projectKey: string }) {
   const colors = ['bg-accent', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
   const color = colors[projectKey.charCodeAt(0) % colors.length]
   return (
-    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white sm:h-12 sm:w-12 ${color}`}>
+    <div
+      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white sm:h-12 sm:w-12 ${color}`}
+    >
       {projectKey.slice(0, 2).toUpperCase()}
     </div>
   )
@@ -48,7 +50,11 @@ export function ProjectsPage() {
         </select>
         <div className="relative flex-1 basis-full sm:basis-auto">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <Input type="text" placeholder={t('projects.search')} className="h-9 w-full pl-9 sm:w-64"></Input>
+          <Input
+            type="text"
+            placeholder={t('projects.search')}
+            className="h-9 w-full pl-9 sm:w-64"
+          ></Input>
         </div>
         <div className="ml-auto flex items-center gap-1">
           <Button variant="secondary" size="icon" className="h-8 w-8">
@@ -70,14 +76,29 @@ export function ProjectsPage() {
                     <ProjectAvatar projectKey={project.key} />
                     <div className="min-w-0">
                       <div className="truncate font-semibold">{project.name}</div>
-                      <div className="text-xs text-text-muted">{project.key} · {t('projects.lead')}: {project.owner_id} · {project.todo_count + project.in_progress_count + project.done_count} {t('projects.issues', { count: project.todo_count + project.in_progress_count + project.done_count })}</div>
+                      <div className="text-xs text-text-muted">
+                        {project.key} · {t('projects.lead')}: {project.owner_id} ·{' '}
+                        {project.todo_count + project.in_progress_count + project.done_count}{' '}
+                        {t('projects.issues', {
+                          count:
+                            project.todo_count + project.in_progress_count + project.done_count,
+                        })}
+                      </div>
                     </div>
                   </div>
                   <div className="hidden shrink-0 items-center gap-1 sm:flex">
-                    <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                    >
                       <Star className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                    >
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </div>
