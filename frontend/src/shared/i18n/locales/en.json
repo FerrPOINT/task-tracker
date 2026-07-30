@@ -53,7 +53,8 @@
     "addColumn": "Column",
     "create": "Create",
     "wip": "WIP",
-    "wipWarning": "⚠️"
+    "wipWarning": "⚠️",
+    "backlog": "Backlog"
   },
   "backlog": {
     "createSprint": "Create sprint",

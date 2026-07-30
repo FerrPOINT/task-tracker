@@ -53,7 +53,8 @@
     "addColumn": "Колонка",
     "create": "Создать",
     "wip": "WIP",
-    "wipWarning": "⚠️"
+    "wipWarning": "⚠️",
+    "backlog": "Backlog"
   },
   "backlog": {
     "createSprint": "Создать спринт",
