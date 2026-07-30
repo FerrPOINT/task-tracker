@@ -105,3 +105,10 @@ server {
   }
 }
 ```
+
+## References
+
+- `docs/ARCHITECTURE.md`
+- `docs/LOCAL_SETUP.md`
+- `docs/OPS_RUNBOOK.md`
+- `docs/SECURITY.md`

@@ -6,7 +6,7 @@ use std::{env, path::Path};
 #[path = "config_tests.rs"]
 mod tests;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     pub database: DatabaseConfig,
     pub server: ServerConfig,
@@ -65,7 +65,7 @@ impl AppConfig {
             .add_source(File::from(path.as_ref()).required(false))
             .add_source(
                 Environment::with_prefix("TASKTRACKER")
-                    .separator("_")
+                    .separator("__")
                     .prefix_separator("_")
                     .try_parsing(true),
             )
@@ -84,16 +84,6 @@ impl AppConfig {
         }
 
         Ok(cfg)
-    }
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            database: DatabaseConfig::default(),
-            server: ServerConfig::default(),
-            auth: AuthConfig::default(),
-        }
     }
 }
 
