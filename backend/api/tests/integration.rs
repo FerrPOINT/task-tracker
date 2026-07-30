@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use domain::{
     Board, BoardColumn, BoardRepository, ColumnCategory, MemoryBoardRepository,
-    MemoryIssueRepository, MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository,
+    MemoryCommentRepository, MemoryIssueRepository, MemoryProjectMemberRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
     Project, ProjectRepository, User, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
@@ -42,7 +43,9 @@ fn test_config() -> Arc<AppConfig> {
 async fn spawn_server() -> (String, reqwest::Client) {
     let user = test_user();
     let mut project = Project {
-        id: shared::ProjectId::new(),
+        id: shared::ProjectId::from_uuid(
+            uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+        ),
         key: ProjectKey::new("TT"),
         name: "Task Tracker".into(),
         description: None,
@@ -112,9 +115,9 @@ async fn spawn_server() -> (String, reqwest::Client) {
         issues: issues.clone(),
         boards: boards.clone(),
         sprints: sprints.clone(),
-        comments: Arc::new(domain::StubCommentRepository),
-        worklogs: Arc::new(domain::StubWorklogRepository),
-        members: Arc::new(domain::StubProjectMemberRepository),
+        comments: Arc::new(MemoryCommentRepository::default()),
+        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        members: Arc::new(MemoryProjectMemberRepository::default()),
     });
 
     let ctx = Arc::new(AppContext::new(test_config(), repos));
@@ -558,6 +561,233 @@ async fn issue_update_not_found() {
         .await
         .unwrap();
     assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn comments_crud() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let created = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "commentable issue",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 200);
+    let issue: serde_json::Value = created.json().await.unwrap();
+    let issue_id = issue["id"].as_str().unwrap();
+
+    let list0 = client
+        .get(format!("{}/api/v1/issues/{issue_id}/comments", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list0.status(), 200);
+    let body: serde_json::Value = list0.json().await.unwrap();
+    assert!(body["comments"].as_array().unwrap().is_empty());
+
+    let create = client
+        .post(format!("{}/api/v1/issues/{issue_id}/comments", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"body": "first comment"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201);
+    let comment: serde_json::Value = create.json().await.unwrap();
+    let comment_id = comment["id"].as_str().unwrap();
+    assert_eq!(comment["body"], "first comment");
+
+    let update = client
+        .patch(format!("{}/api/v1/comments/{comment_id}", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"body": "updated comment"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update.status(), 200);
+    let body: serde_json::Value = update.json().await.unwrap();
+    assert_eq!(body["body"], "updated comment");
+
+    let delete = client
+        .delete(format!("{}/api/v1/comments/{comment_id}", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete.status(), 204);
+}
+
+#[tokio::test]
+async fn worklogs_crud() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let created = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "worklog issue",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 200);
+    let issue: serde_json::Value = created.json().await.unwrap();
+    let issue_id = issue["id"].as_str().unwrap();
+
+    let list0 = client
+        .get(format!("{}/api/v1/issues/{issue_id}/worklogs", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list0.status(), 200);
+
+    let create = client
+        .post(format!("{}/api/v1/issues/{issue_id}/worklogs", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "started_at": "2026-07-21T10:00:00+00:00",
+            "duration_seconds": 3600,
+            "description": "e2e worklog"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201);
+    let worklog: serde_json::Value = create.json().await.unwrap();
+    let worklog_id = worklog["id"].as_str().unwrap();
+    assert_eq!(worklog["duration_seconds"], 3600);
+
+    let update = client
+        .patch(format!("{}/api/v1/worklogs/{worklog_id}", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "started_at": "2026-07-21T11:00:00+00:00",
+            "duration_seconds": 7200,
+            "description": "updated worklog"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update.status(), 200);
+    let body: serde_json::Value = update.json().await.unwrap();
+    assert_eq!(body["duration_seconds"], 7200);
+
+    let delete = client
+        .delete(format!("{}/api/v1/worklogs/{worklog_id}", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete.status(), 204);
+}
+
+#[tokio::test]
+async fn project_members_crud() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let register = client
+        .post(format!("{}/api/v1/auth/register", url))
+        .json(&serde_json::json!({
+            "email": "member@example.com",
+            "username": "member",
+            "name": "Member User",
+            "password": "secret123"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(register.status(), 201);
+    let user: serde_json::Value = register.json().await.unwrap();
+    let user_id = user["user_id"].as_str().unwrap();
+    let project_id = test_project_id();
+
+    let list0 = client
+        .get(format!("{}/api/v1/projects/{project_id}/members", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list0.status(), 200);
+
+    let add = client
+        .post(format!("{}/api/v1/projects/{project_id}/members", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"user_id": user_id, "role": "member"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add.status(), 201);
+    let body: serde_json::Value = add.json().await.unwrap();
+    assert_eq!(body["role"], "member");
+
+    let remove = client
+        .delete(format!(
+            "{}/api/v1/projects/{project_id}/members/{user_id}",
+            url
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(remove.status(), 204);
+}
+
+#[tokio::test]
+async fn issue_transition() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let created = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "transition me",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 200);
+    let issue: serde_json::Value = created.json().await.unwrap();
+    let issue_id = issue["id"].as_str().unwrap();
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{issue_id}/transition", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"target_status_id": test_status_done().to_string()}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["status"], "Done");
+}
+
+fn test_project_id() -> String {
+    "22222222-2222-2222-2222-222222222222".to_string()
 }
 
 #[tokio::test]

@@ -1,4 +1,5 @@
 import { test, Page } from '@playwright/test'
+import { seedIntegrationData } from './setup'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 const viewports = [
@@ -11,11 +12,15 @@ const pages = [
   { path: '/register', name: 'register', marker: 'Зарегистрироваться' },
   { path: '/', name: 'dashboard', marker: 'Командный дашборд' },
   { path: '/projects', name: 'projects', marker: 'Проекты' },
-  { path: '/projects/TT/board', name: 'board', marker: 'TT' },
-  { path: '/projects/TT/backlog', name: 'backlog', marker: 'Backlog · TT' },
+  { path: '/projects/DEMO/board', name: 'board', marker: 'DEMO' },
+  { path: '/projects/DEMO/backlog', name: 'backlog', marker: 'Backlog · DEMO' },
   { path: '/search', name: 'search', marker: 'Поиск задач' },
   { path: '/issues/create', name: 'issue-create', marker: 'Создать задачу' },
 ]
+
+test.beforeAll(async () => {
+  await seedIntegrationData()
+})
 
 async function authenticate(p: Page) {
   const res = await p.request.post(`${baseURL}/api/v1/auth/login`, {

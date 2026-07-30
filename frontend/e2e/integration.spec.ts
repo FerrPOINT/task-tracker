@@ -1,4 +1,5 @@
 import { test, expect, Page } from '@playwright/test'
+import { seedIntegrationData } from './setup'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
@@ -16,6 +17,10 @@ async function login(page: Page) {
 }
 
 test.describe('integration against live backend', () => {
+  test.beforeAll(async () => {
+    await seedIntegrationData()
+  })
+
   test('login then navigate through dashboard, projects, board, backlog, search, create issue', async ({
     page,
   }) => {
@@ -38,6 +43,13 @@ test.describe('integration against live backend', () => {
     await page.goto(`${baseURL}/projects/DEMO/backlog`)
     await expect(page.getByRole('heading', { name: /бэклог|backlog/i })).toBeVisible()
     await expect(page.getByRole('link').first()).toBeVisible()
+
+    await page.goto(`${baseURL}/projects/DEMO/board`)
+    const todoCard = page.getByText('Smoke issue').first()
+    await expect(todoCard).toBeVisible()
+    const doneColumn = page.locator('[data-status="Done"]').first()
+    await todoCard.dragTo(doneColumn)
+    await expect(page.locator('[data-status="Done"]').getByText('Smoke issue')).toBeVisible()
 
     await page.goto(`${baseURL}/search`)
     await page.getByRole('textbox').fill('DEMO')
