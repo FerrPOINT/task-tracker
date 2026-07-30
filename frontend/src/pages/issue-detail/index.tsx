@@ -23,6 +23,9 @@ import { CommentsPanel } from '@/features/comments/ui/CommentList'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
+import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
+import { useBoard } from '@/shared/api/hooks'
+import { useUpdateIssue } from '@/shared/api/hooks'
 
 export function IssueDetailPage() {
   const { id = '' } = useParams()
@@ -37,6 +40,8 @@ export function IssueDetailPage() {
     refetchOnWindowFocus: false,
     staleTime: 0,
   })
+  const boardQuery = useBoard(issueQuery.data?.project_key)
+  const updateIssue = useUpdateIssue(id)
   const worklogsQuery = useWorklogs(id)
   const create = useCreateWorklog(id)
   const update = useUpdateWorklog(id)
@@ -219,28 +224,13 @@ export function IssueDetailPage() {
               <CardHeader>
                 <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <DetailRow label={t('issue.status')} value={issue.status} />
-                <DetailRow label={t('issue.assignee')} value={issue.assignee_name ?? '—'} />
-                <DetailRow label={t('issue.reporter')} value={issue.reporter_name ?? '—'} />
-                <DetailRow label={t('issue.priority')} value={issue.priority} />
-                {issue.labels.length > 0 && (
-                  <DetailRow
-                    label={t('issue.labels')}
-                    value={
-                      <div className="flex flex-wrap gap-1">
-                        {issue.labels.map((l) => (
-                          <span
-                            key={l}
-                            className="rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary"
-                          >
-                            {l}
-                          </span>
-                        ))}
-                      </div>
-                    }
-                  />
-                )}
+              <CardContent className="text-sm">
+                <IssueMetaEditor
+                  issue={issue}
+                  columns={boardQuery.data?.columns ?? []}
+                  disabled={updateIssue.isPending}
+                  onChange={(patch) => updateIssue.mutate(patch)}
+                />
               </CardContent>
             </Card>
           </div>
@@ -254,15 +244,6 @@ export function IssueDetailPage() {
         worklog={editingWorklog}
       />
       <Toaster position="top-center" richColors />
-    </div>
-  )
-}
-
-function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-text-muted">{label}</span>
-      <span className="text-right text-text-primary">{value}</span>
     </div>
   )
 }

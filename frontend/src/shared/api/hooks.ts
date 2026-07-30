@@ -4,6 +4,7 @@ import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/boar
 import { searchIssues } from '@/api/search'
 import { login, register, getCurrentUser } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
+import { updateIssue } from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
 import { useAuthStore } from '@/shared/auth/store'
 
@@ -108,5 +109,16 @@ export function useCurrentUser() {
     queryKey: ['me'],
     queryFn: getCurrentUser,
     staleTime: 5 * 60 * 1000,
+  })
+}
+
+
+export function useUpdateIssue(id: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof updateIssue>[1]) => updateIssue(id, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['issue', id] })
+    },
   })
 }

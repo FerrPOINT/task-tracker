@@ -96,6 +96,12 @@
     "details": "Details",
     "comments": "Comments",
     "activity": "Activity",
+    "priority": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
     "history": "History",
     "status": "Status",
     "assignee": "Assignee",
