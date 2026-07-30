@@ -1,8 +1,9 @@
 import { Link, useParams } from 'react-router'
-import { Plus, Filter, Users, MoreHorizontal } from 'lucide-react'
+import { Plus, Filter, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { useBoard, useMoveIssue } from '@/shared/api/hooks'
+import { ProjectMembersPanel } from '@/features/project-members/ui/ProjectMembersPanel'
 import type { components } from '@/api/generated'
 
 export type Issue = components['schemas']['IssueResponse']
@@ -110,10 +111,9 @@ export function ProjectBoardPage() {
             <Filter className="h-4 w-4" />
             <span className="hidden sm:inline">{t('board.filters')}</span>
           </Button>
-          <Button variant="outline" size="sm" className="gap-1">
-            <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('board.members')}</span>
-          </Button>
+          {board?.project_id && (
+            <ProjectMembersPanel projectId={board.project_id} />
+          )}
           <Button size="sm" className="gap-1">
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">{t('board.addColumn')}</span>

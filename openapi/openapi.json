@@ -1124,6 +1124,8 @@
       "BacklogResponse": {
         "type": "object",
         "required": [
+          "project_id",
+          "project_key",
           "sprint",
           "sprint_issues",
           "backlog_issues"
@@ -1134,6 +1136,12 @@
             "items": {
               "$ref": "#/components/schemas/IssueResponse"
             }
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "project_key": {
+            "type": "string"
           },
           "sprint": {
             "$ref": "#/components/schemas/SprintResponse"
@@ -1179,6 +1187,8 @@
       "BoardResponse": {
         "type": "object",
         "required": [
+          "project_id",
+          "project_key",
           "columns",
           "issues",
           "sprint"
@@ -1195,6 +1205,12 @@
             "items": {
               "$ref": "#/components/schemas/IssueResponse"
             }
+          },
+          "project_id": {
+            "type": "string"
+          },
+          "project_key": {
+            "type": "string"
           },
           "sprint": {
             "$ref": "#/components/schemas/SprintResponse"
