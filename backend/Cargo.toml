@@ -44,7 +44,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # web
 http = "1.3"
 # openapi
-utoipa = { version = "5.0", features = ["axum_extras"] }
+utoipa = { version = "5.0", features = ["axum_extras", "chrono"] }
 utoipa-axum = "0.2"
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
 async-trait = "0.1"

@@ -16,6 +16,7 @@ fn test_user() -> User {
         username: "demo".into(),
         display_name: "Demo User".into(),
         password_hash: "$argon2id$v=19$m=65536,t=3,p=4$stN/enhZ9yOvgWC9E8Y6BA$IL9I0WONb/I6zoT4rdmdkrPcIFADFxsLCjrO0ySSl0Y".into(),
+        refresh_token_hash: None,
         created_at: shared::now(),
         updated_at: shared::now(),
     }
@@ -29,6 +30,11 @@ fn test_config() -> Arc<AppConfig> {
             jwt_secret: "test-secret".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         },
     })
 }
@@ -106,6 +112,9 @@ async fn spawn_server() -> (String, reqwest::Client) {
         issues: issues.clone(),
         boards: boards.clone(),
         sprints: sprints.clone(),
+        comments: Arc::new(domain::StubCommentRepository),
+        worklogs: Arc::new(domain::StubWorklogRepository),
+        members: Arc::new(domain::StubProjectMemberRepository),
     });
 
     let ctx = Arc::new(AppContext::new(test_config(), repos));
@@ -173,7 +182,7 @@ async fn register_and_list_projects() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 200);
+    assert_eq!(res.status(), 201);
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["email"], "new@example.com");
     let token = body["access_token"].as_str().unwrap().to_string();

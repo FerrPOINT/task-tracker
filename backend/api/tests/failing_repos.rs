@@ -64,6 +64,11 @@ async fn serve_forever_responds_to_request() {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         },
     });
 
@@ -101,6 +106,11 @@ async fn bind_returns_listener_on_valid_addr() {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         },
     });
 

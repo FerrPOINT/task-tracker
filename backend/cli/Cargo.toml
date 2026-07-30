@@ -1,18 +1,17 @@
 [package]
-name = "cli"
+name = "task-tracker-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
 [[bin]]
-name = "tt"
+name = "task-tracker"
 path = "src/main.rs"
 
 [dependencies]
-shared = { path = "../shared" }
-clap.workspace = true
-reqwest.workspace = true
-tokio.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-anyhow.workspace = true
+clap = { workspace = true, features = ["derive", "env"] }
+reqwest = { workspace = true, features = ["json", "rustls-tls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+anyhow = { workspace = true }

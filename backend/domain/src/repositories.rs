@@ -5,13 +5,16 @@ use std::sync::Arc;
 #[path = "repositories/tests.rs"]
 mod tests;
 
-use crate::{Board, Issue, IssueQuery, Project, Sprint, User};
-use shared::{AppError, BoardId, IssueId, ProjectId, ProjectKey, SprintId, UserId};
+use crate::{Board, Comment, Issue, IssueQuery, Project, ProjectMember, Sprint, User, Worklog};
+use shared::{
+    AppError, BoardId, CommentId, IssueId, ProjectId, ProjectKey, SprintId, UserId, WorklogId,
+};
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError>;
     async fn get_by_email(&self, email: &str) -> Result<User, AppError>;
+    async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError>;
     async fn save(&self, user: &User) -> Result<UserId, AppError>;
 }
 
@@ -58,6 +61,22 @@ pub trait SprintRepository: Send + Sync {
 }
 
 #[async_trait]
+pub trait CommentRepository: Send + Sync {
+    async fn get_by_id(&self, id: CommentId) -> Result<Comment, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Comment>, AppError>;
+    async fn save(&self, comment: &Comment) -> Result<CommentId, AppError>;
+    async fn delete(&self, id: CommentId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait WorklogRepository: Send + Sync {
+    async fn get_by_id(&self, id: WorklogId) -> Result<Worklog, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError>;
+    async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError>;
+    async fn delete(&self, id: WorklogId) -> Result<(), AppError>;
+}
+
+#[async_trait]
 pub trait UnitOfWork: Send + Sync {
     async fn with_transaction<F, T>(&self, f: F) -> Result<T, AppError>
     where
@@ -82,6 +101,9 @@ pub struct Repositories {
     pub issues: Arc<dyn IssueRepository>,
     pub boards: Arc<dyn BoardRepository>,
     pub sprints: Arc<dyn SprintRepository>,
+    pub comments: Arc<dyn CommentRepository>,
+    pub worklogs: Arc<dyn WorklogRepository>,
+    pub members: Arc<dyn ProjectMemberRepository>,
 }
 
 impl Default for Repositories {
@@ -92,7 +114,68 @@ impl Default for Repositories {
             issues: Arc::new(StubIssueRepository),
             boards: Arc::new(StubBoardRepository),
             sprints: Arc::new(StubSprintRepository),
+            comments: Arc::new(StubCommentRepository),
+            worklogs: Arc::new(StubWorklogRepository),
+            members: Arc::new(StubProjectMemberRepository),
         }
+    }
+}
+
+pub struct StubProjectMemberRepository;
+#[async_trait]
+impl ProjectMemberRepository for StubProjectMemberRepository {
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<ProjectMember>, AppError> {
+        Ok(vec![])
+    }
+    async fn get(
+        &self,
+        _project_id: ProjectId,
+        _user_id: UserId,
+    ) -> Result<ProjectMember, AppError> {
+        Err(AppError::not_found("project member", _project_id))
+    }
+    async fn save(&self, _member: &ProjectMember) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn delete(&self, _project_id: ProjectId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubCommentRepository;
+#[async_trait]
+impl CommentRepository for StubCommentRepository {
+    async fn get_by_id(&self, _id: CommentId) -> Result<Comment, AppError> {
+        Err(AppError::not_found("comment", "stub"))
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<Comment>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _comment: &Comment) -> Result<CommentId, AppError> {
+        Ok(CommentId::new())
+    }
+    async fn delete(&self, _id: CommentId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubWorklogRepository;
+#[async_trait]
+impl WorklogRepository for StubWorklogRepository {
+    async fn get_by_id(&self, _id: WorklogId) -> Result<Worklog, AppError> {
+        Err(AppError::not_found("worklog", "stub"))
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _worklog: &Worklog) -> Result<WorklogId, AppError> {
+        Ok(WorklogId::new())
+    }
+    async fn delete(&self, _id: WorklogId) -> Result<(), AppError> {
+        Ok(())
     }
 }
 
@@ -103,6 +186,9 @@ impl UserRepository for StubUserRepository {
         Err(AppError::not_found("user", "stub"))
     }
     async fn get_by_email(&self, _email: &str) -> Result<User, AppError> {
+        Err(AppError::not_found("user", "stub"))
+    }
+    async fn get_by_refresh_token(&self, _token_hash: &str) -> Result<User, AppError> {
         Err(AppError::not_found("user", "stub"))
     }
     async fn save(&self, _user: &User) -> Result<UserId, AppError> {
@@ -204,4 +290,12 @@ impl EventBus for StubEventBus {
     async fn publish(&self, _event: crate::ProjectEvent) -> Result<(), AppError> {
         Ok(())
     }
+}
+
+#[async_trait]
+pub trait ProjectMemberRepository: Send + Sync {
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<ProjectMember>, AppError>;
+    async fn get(&self, project_id: ProjectId, user_id: UserId) -> Result<ProjectMember, AppError>;
+    async fn save(&self, member: &ProjectMember) -> Result<(), AppError>;
+    async fn delete(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError>;
 }

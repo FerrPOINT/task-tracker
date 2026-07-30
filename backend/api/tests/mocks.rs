@@ -19,6 +19,10 @@ impl UserRepository for FailingUserRepository {
         Err(AppError::Internal("failing user repo".into()))
     }
 
+    async fn get_by_refresh_token(&self, _token_hash: &str) -> Result<User, AppError> {
+        Err(AppError::not_found("user", "stub"))
+    }
+
     async fn save(&self, _user: &User) -> Result<UserId, AppError> {
         Err(AppError::Internal("failing user repo".into()))
     }
@@ -127,6 +131,9 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
         issues: Arc::new(FailingIssueRepository),
         boards: Arc::new(FailingBoardRepository),
         sprints: Arc::new(FailingSprintRepository),
+        comments: Arc::new(domain::StubCommentRepository),
+        worklogs: Arc::new(domain::StubWorklogRepository),
+        members: Arc::new(domain::StubProjectMemberRepository),
     });
     Arc::new(app::AppContext::new(config, repos))
 }
@@ -140,6 +147,9 @@ pub fn failing_context() -> Arc<app::AppContext> {
         issues: Arc::new(FailingIssueRepository),
         boards: Arc::new(FailingBoardRepository),
         sprints: Arc::new(FailingSprintRepository),
+        comments: Arc::new(domain::StubCommentRepository),
+        worklogs: Arc::new(domain::StubWorklogRepository),
+        members: Arc::new(domain::StubProjectMemberRepository),
     });
     Arc::new(app::AppContext::new(
         Arc::new(shared::AppConfig {
@@ -149,6 +159,11 @@ pub fn failing_context() -> Arc<app::AppContext> {
                 jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
                 access_token_ttl_minutes: 15,
                 refresh_token_ttl_days: 7,
+                refresh_cookie_name: "refresh_token".to_string(),
+                refresh_cookie_secure: true,
+                refresh_cookie_same_site: "Lax".to_string(),
+                refresh_cookie_domain: None,
+                refresh_cookie_path: "/api/v1/auth".to_string(),
             },
         }),
         repos,

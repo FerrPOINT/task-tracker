@@ -1,63 +1,38 @@
-import type { Worklog, CreateWorklogPayload, LogWorkInput } from '@/entities/worklog/model'
+import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { parseDuration, formatDuration } from '@/shared/lib/time'
+import { api } from './client'
 
-let nextId = 1
-
-const worklogs: Worklog[] = [
-  {
-    id: `wl-${nextId++}`,
-    issueId: 'issue-1',
-    userId: 'user-1',
-    userDisplayName: 'Ivan',
-    timeSpentSeconds: 3600,
-    remainingEstimateSeconds: 4 * 3600,
-    startedAt: '2026-07-19T09:00:00Z',
-    comment: 'Initial setup',
-    createdAt: '2026-07-19T09:00:00Z',
-    updatedAt: '2026-07-19T09:00:00Z',
-  },
-  {
-    id: `wl-${nextId++}`,
-    issueId: 'issue-1',
-    userId: 'user-2',
-    userDisplayName: 'Anna',
-    timeSpentSeconds: 7200,
-    remainingEstimateSeconds: 4 * 3600,
-    startedAt: '2026-07-20T10:00:00Z',
-    comment: 'API integration',
-    createdAt: '2026-07-20T10:00:00Z',
-    updatedAt: '2026-07-20T10:00:00Z',
-  },
-]
-
-function recalcIssueTime(worklogs: Worklog[]) {
-  // no-op placeholder
-  void worklogs
-}
-
-recalcIssueTime(worklogs)
-
-function buildWorklog(issueId: string, payload: CreateWorklogPayload): Worklog {
-  const now = new Date().toISOString()
+function mapDto(w: {
+  id: string
+  issue_id: string
+  author_id: string
+  author_name?: string | null
+  started_at: string
+  duration_seconds: number
+  description?: string | null
+  created_at: string
+  updated_at: string
+}): Worklog {
   return {
-    id: `wl-${nextId++}`,
-    issueId,
-    userId: 'user-1',
-    userDisplayName: 'Ivan',
-    timeSpentSeconds: payload.timeSpentSeconds,
-    remainingEstimateSeconds: payload.remainingEstimateSeconds,
-    startedAt: payload.startedAt,
-    comment: payload.comment,
-    createdAt: now,
-    updatedAt: now,
+    id: w.id,
+    issueId: w.issue_id,
+    userId: w.author_id,
+    userDisplayName: w.author_name ?? '',
+    timeSpentSeconds: w.duration_seconds,
+    remainingEstimateSeconds: null,
+    startedAt: w.started_at,
+    comment: w.description ?? null,
+    createdAt: w.created_at,
+    updatedAt: w.updated_at,
   }
 }
 
 export async function listWorklogs(issueId: string): Promise<Worklog[]> {
-  await delay(150)
-  return worklogs
-    .filter((w) => w.issueId === issueId)
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  const { data, error } = await api.GET('/api/v1/issues/{issue_id}/worklogs', {
+    params: { path: { issue_id: issueId } },
+  })
+  if (error || !data) throw new Error('Failed to load worklogs')
+  return data.worklogs.map(mapDto).sort((a, b) => b.startedAt.localeCompare(a.startedAt))
 }
 
 export async function createWorklog(issueId: string, input: LogWorkInput): Promise<Worklog> {
@@ -65,63 +40,44 @@ export async function createWorklog(issueId: string, input: LogWorkInput): Promi
   if (timeSpentSeconds === null || timeSpentSeconds === 0) {
     throw new Error('Invalid time spent')
   }
-  const remainingEstimateSeconds = input.remainingEstimate?.trim()
-    ? parseDuration(input.remainingEstimate)
-    : null
 
-  const payload: CreateWorklogPayload = {
-    timeSpentSeconds,
-    remainingEstimateSeconds,
-    startedAt: input.startedAt ?? new Date().toISOString(),
-    comment: input.comment?.trim() ?? null,
-  }
-
-  await delay(200)
-  const worklog = buildWorklog(issueId, payload)
-  worklogs.push(worklog)
-  recalcIssueTime(worklogs)
-  return worklog
+  const { data, error } = await api.POST('/api/v1/issues/{issue_id}/worklogs', {
+    params: { path: { issue_id: issueId } },
+    body: {
+      started_at: input.startedAt ?? new Date().toISOString(),
+      duration_seconds: timeSpentSeconds,
+      description: input.comment?.trim() ?? null,
+    },
+  })
+  if (error || !data) throw new Error('Failed to create worklog')
+  return mapDto(data)
 }
 
 export async function updateWorklog(worklogId: string, input: LogWorkInput): Promise<Worklog> {
-  const index = worklogs.findIndex((w) => w.id === worklogId)
-  if (index === -1) throw new Error('Worklog not found')
-  const existing = worklogs[index]!
-
   const timeSpentSeconds = parseDuration(input.timeSpent)
   if (timeSpentSeconds === null || timeSpentSeconds === 0) {
     throw new Error('Invalid time spent')
   }
-  const remainingEstimateSeconds = input.remainingEstimate?.trim()
-    ? parseDuration(input.remainingEstimate)
-    : null
 
-  await delay(200)
-  const updated: Worklog = {
-    ...existing,
-    timeSpentSeconds,
-    remainingEstimateSeconds,
-    startedAt: input.startedAt ?? existing.startedAt,
-    comment: input.comment?.trim() ?? null,
-    updatedAt: new Date().toISOString(),
-  }
-  worklogs[index] = updated
-  recalcIssueTime(worklogs)
-  return updated
+  const { data, error } = await api.PATCH('/api/v1/worklogs/{id}', {
+    params: { path: { id: worklogId } },
+    body: {
+      started_at: input.startedAt,
+      duration_seconds: timeSpentSeconds,
+      description: input.comment?.trim() ?? null,
+    },
+  })
+  if (error || !data) throw new Error('Failed to update worklog')
+  return mapDto(data)
 }
 
 export async function deleteWorklog(worklogId: string): Promise<void> {
-  const index = worklogs.findIndex((w) => w.id === worklogId)
-  if (index === -1) throw new Error('Worklog not found')
-  await delay(150)
-  worklogs.splice(index, 1)
-  recalcIssueTime(worklogs)
+  const { error } = await api.DELETE('/api/v1/worklogs/{id}', {
+    params: { path: { id: worklogId } },
+  })
+  if (error) throw new Error('Failed to delete worklog')
 }
 
 export function toHuman(seconds: number): string {
   return formatDuration(seconds)
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

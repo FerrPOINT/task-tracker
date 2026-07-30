@@ -30,7 +30,7 @@ async fn setup() -> domain::Repositories {
         .await
         .expect("run migrations");
     let _ = db
-        .execute_unprepared("TRUNCATE TABLE users, projects, issues, boards, sprints, labels, project_members CASCADE")
+        .execute_unprepared("TRUNCATE TABLE users, projects, issues, boards, sprints, labels, project_members, comments, worklogs CASCADE")
         .await;
     to_domain_repositories(SeaOrmRepositories::new(db))
 }
@@ -43,6 +43,7 @@ fn test_user() -> User {
         username: format!("repotest-{}", &suffix[..8]).into(),
         display_name: "Repo Test".into(),
         password_hash: "$argon2id$v=19$m=65536,t=3,p=4$stN/enhZ9yOvgWC9E8Y6BA$IL9I0WONb/I6zoT4rdmdkrPcIFADFxsLCjrO0ySSl0Y".into(),
+        refresh_token_hash: None,
         created_at: now(),
         updated_at: now(),
     }

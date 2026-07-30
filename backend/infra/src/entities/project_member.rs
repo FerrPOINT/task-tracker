@@ -7,8 +7,8 @@ pub struct Model {
     pub project_id: Uuid,
     #[sea_orm(primary_key, auto_increment = false)]
     pub user_id: Uuid,
-    #[sea_orm(column_type = "String(StringLen::N(16))")]
     pub role: String,
+    pub joined_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

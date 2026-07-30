@@ -3,14 +3,19 @@ use std::sync::Arc;
 
 use crate::auth::{JwtAuthService, UserClaims};
 use crate::commands::{
-    CreateIssueCommand, CreateProjectCommand, LoginCommand, ProjectQueryDto, RegisterCommand,
-    UpdateIssueCommand,
+    CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateWorklogCommand,
+    LoginCommand, ProjectQueryDto, RegisterCommand, TransitionIssueCommand, UpdateCommentCommand,
+    UpdateIssueCommand, UpdateWorklogCommand,
 };
-use crate::dto::{AuthDto, BacklogDto, BoardDto, DashboardDto, IssueDto, ProjectDto};
+use crate::dto::{
+    AuthDto, BacklogDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto, WorklogDto,
+};
 use crate::services::{
-    BoardServiceImpl, DashboardServiceImpl, IssueServiceImpl, ProjectServiceImpl, SearchServiceImpl,
+    BoardServiceImpl, CommentServiceImpl, DashboardServiceImpl, IssueServiceImpl,
+    ProjectMemberService, ProjectMemberServiceImpl, ProjectServiceImpl, SearchServiceImpl,
+    WorklogServiceImpl,
 };
-use shared::{AppConfig, AppError, IssueId, ProjectKey, StatusId, UserId};
+use shared::{AppConfig, AppError, CommentId, IssueId, ProjectKey, StatusId, UserId, WorklogId};
 
 #[derive(Clone)]
 pub struct AppContext {
@@ -27,6 +32,9 @@ pub struct Services {
     pub board: Arc<dyn BoardService>,
     pub search: Arc<dyn SearchService>,
     pub dashboard: Arc<dyn DashboardService>,
+    pub comment: Arc<dyn CommentService>,
+    pub worklog: Arc<dyn WorklogService>,
+    pub member: Arc<dyn ProjectMemberService>,
 }
 
 impl AppContext {
@@ -44,6 +52,7 @@ impl AppContext {
         let issue: Arc<dyn IssueService> = Arc::new(IssueServiceImpl::new(
             repos.issues.clone(),
             repos.projects.clone(),
+            repos.boards.clone(),
             repos.users.clone(),
         ));
         let board: Arc<dyn BoardService> = Arc::new(BoardServiceImpl::new(
@@ -62,7 +71,6 @@ impl AppContext {
             repos.projects.clone(),
             repos.users.clone(),
         ));
-
         Self {
             config,
             services: Services {
@@ -72,6 +80,20 @@ impl AppContext {
                 board,
                 search,
                 dashboard,
+                comment: Arc::new(CommentServiceImpl::new(
+                    repos.comments.clone(),
+                    repos.users.clone(),
+                    repos.issues.clone(),
+                )),
+                worklog: Arc::new(WorklogServiceImpl::new(
+                    repos.worklogs.clone(),
+                    repos.users.clone(),
+                    repos.issues.clone(),
+                )),
+                member: Arc::new(ProjectMemberServiceImpl::new(
+                    repos.members.clone(),
+                    repos.users.clone(),
+                )),
             },
             repos,
         }
@@ -83,6 +105,36 @@ pub trait AuthService: Send + Sync {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthDto, AppError>;
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError>;
     fn verify_token(&self, token: &str) -> Result<UserClaims, AppError>;
+    async fn refresh(&self, refresh_token: &str) -> Result<AuthDto, AppError>;
+    async fn logout(&self, user_id: UserId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait CommentService: Send + Sync {
+    async fn list(&self, issue_id: IssueId, requester: UserId)
+    -> Result<Vec<CommentDto>, AppError>;
+    async fn create(&self, cmd: CreateCommentCommand) -> Result<CommentDto, AppError>;
+    async fn update(
+        &self,
+        id: CommentId,
+        cmd: UpdateCommentCommand,
+        requester: UserId,
+    ) -> Result<CommentDto, AppError>;
+    async fn delete(&self, id: CommentId, requester: UserId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait WorklogService: Send + Sync {
+    async fn list(&self, issue_id: IssueId, requester: UserId)
+    -> Result<Vec<WorklogDto>, AppError>;
+    async fn create(&self, cmd: CreateWorklogCommand) -> Result<WorklogDto, AppError>;
+    async fn update(
+        &self,
+        id: WorklogId,
+        cmd: UpdateWorklogCommand,
+        requester: UserId,
+    ) -> Result<WorklogDto, AppError>;
+    async fn delete(&self, id: WorklogId, requester: UserId) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -97,6 +149,7 @@ pub trait IssueService: Send + Sync {
     async fn create(&self, cmd: CreateIssueCommand) -> Result<IssueDto, AppError>;
     async fn get_by_id(&self, id: IssueId) -> Result<IssueDto, AppError>;
     async fn update(&self, id: IssueId, cmd: UpdateIssueCommand) -> Result<IssueDto, AppError>;
+    async fn transition(&self, cmd: TransitionIssueCommand) -> Result<IssueDto, AppError>;
     async fn search(&self, q: &str) -> Result<Vec<IssueDto>, AppError>;
 }
 

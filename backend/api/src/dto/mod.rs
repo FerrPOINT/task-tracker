@@ -2,6 +2,7 @@ pub mod requests;
 
 pub use requests::*;
 
+use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
@@ -21,9 +22,18 @@ pub struct LoginRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AuthResponse {
     pub access_token: String,
+    pub refresh_token: String,
     pub token_type: String,
     pub user_id: String,
     pub email: String,
+    pub expires_in: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TokenResponse {
+    pub access_token: String,
+    pub token_type: String,
+    pub expires_in: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -125,4 +135,91 @@ pub struct DashboardResponse {
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct SearchQuery {
     pub q: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CommentResponse {
+    pub id: String,
+    pub issue_id: String,
+    pub author_id: String,
+    pub author_name: Option<String>,
+    pub body: String,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct CommentListResponse {
+    pub comments: Vec<CommentResponse>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateCommentRequest {
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateCommentRequest {
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct WorklogResponse {
+    pub id: String,
+    pub issue_id: String,
+    pub author_id: String,
+    pub author_name: Option<String>,
+    pub started_at: DateTime<FixedOffset>,
+    pub duration_seconds: i64,
+    pub description: Option<String>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct WorklogListResponse {
+    pub worklogs: Vec<WorklogResponse>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateWorklogRequest {
+    pub started_at: DateTime<FixedOffset>,
+    pub duration_seconds: i64,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateWorklogRequest {
+    pub started_at: Option<DateTime<FixedOffset>>,
+    pub duration_seconds: Option<i64>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct RefreshRequest {
+    pub refresh_token: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProjectMemberResponse {
+    pub project_id: String,
+    pub user_id: String,
+    pub role: String,
+    pub joined_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ProjectMemberListResponse {
+    pub members: Vec<ProjectMemberResponse>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AddProjectMemberRequest {
+    pub user_id: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct TransitionIssueRequest {
+    pub target_status_id: String,
 }

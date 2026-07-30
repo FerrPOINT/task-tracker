@@ -34,16 +34,21 @@ impl crate::context::AuthService for JwtAuthService {
             username: cmd.username.into(),
             display_name: cmd.name.into(),
             password_hash: password_hash.into(),
+            refresh_token_hash: None,
             created_at: shared::now(),
             updated_at: shared::now(),
         };
 
         let id = self.users.save(&user).await?;
         let user = self.users.get_by_id(id).await?;
-        let token = create_token(&self.config, user.id)?;
+        let access = create_access_token(&self.config, user.id)?;
+        let refresh = create_refresh_token(&self.config, user.id)?;
+        let expires_in = self.config.access_token_ttl_minutes * 60;
 
         Ok(AuthDto {
-            token,
+            access_token: access,
+            refresh_token: refresh,
+            expires_in,
             user: UserDto::from(user),
         })
     }
@@ -54,12 +59,40 @@ impl crate::context::AuthService for JwtAuthService {
             return Err(AppError::Unauthorized);
         }
 
-        let token = create_token(&self.config, user.id)?;
+        let access = create_access_token(&self.config, user.id)?;
+        let refresh = create_refresh_token(&self.config, user.id)?;
+        let expires_in = self.config.access_token_ttl_minutes * 60;
 
         Ok(AuthDto {
-            token,
+            access_token: access,
+            refresh_token: refresh,
+            expires_in,
             user: UserDto::from(user),
         })
+    }
+
+    async fn refresh(&self, refresh_token: &str) -> Result<AuthDto, AppError> {
+        let claims = self.verify_token(refresh_token)?;
+        let user_id = claims
+            .sub
+            .parse::<UserId>()
+            .map_err(|_| AppError::invalid_input("invalid user id"))?;
+        let user = self.users.get_by_id(user_id).await?;
+        let access = create_access_token(&self.config, user.id)?;
+        let refresh = create_refresh_token(&self.config, user.id)?;
+        let expires_in = self.config.access_token_ttl_minutes * 60;
+        Ok(AuthDto {
+            access_token: access,
+            refresh_token: refresh,
+            expires_in,
+            user: UserDto::from(user),
+        })
+    }
+
+    async fn logout(&self, user_id: UserId) -> Result<(), AppError> {
+        let mut user = self.users.get_by_id(user_id).await?;
+        user.refresh_token_hash = None;
+        self.users.save(&user).await.map(|_| ())
     }
 
     fn verify_token(&self, token: &str) -> Result<UserClaims, AppError> {
@@ -98,8 +131,22 @@ fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
         .is_ok())
 }
 
-fn create_token(config: &AuthConfig, user_id: UserId) -> Result<String, AppError> {
+fn create_access_token(config: &AuthConfig, user_id: UserId) -> Result<String, AppError> {
     let exp = Utc::now() + Duration::minutes(config.access_token_ttl_minutes as i64);
+    let claims = UserClaims {
+        sub: user_id.to_string(),
+        exp: exp.timestamp() as usize,
+    };
+    jsonwebtoken::encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(config.jwt_secret.as_bytes()),
+    )
+    .map_err(AppError::internal)
+}
+
+fn create_refresh_token(config: &AuthConfig, user_id: UserId) -> Result<String, AppError> {
+    let exp = Utc::now() + Duration::days(config.refresh_token_ttl_days as i64);
     let claims = UserClaims {
         sub: user_id.to_string(),
         exp: exp.timestamp() as usize,
@@ -132,6 +179,7 @@ mod tests {
             username: "t".into(),
             display_name: "T".into(),
             password_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$invalid".into(),
+            refresh_token_hash: None,
             created_at: now(),
             updated_at: now(),
         }
@@ -143,8 +191,13 @@ mod tests {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         };
-        let token = create_token(&config, UserId::new()).unwrap();
+        let token = create_access_token(&config, UserId::new()).unwrap();
         assert!(!token.is_empty());
     }
 
@@ -168,6 +221,11 @@ mod tests {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         };
         let service = JwtAuthService::new(
             config,
@@ -187,6 +245,11 @@ mod tests {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         };
         let service = JwtAuthService::new(config, repo);
         let result = service
@@ -211,6 +274,11 @@ mod tests {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         };
         let service = JwtAuthService::new(config, repo);
         let result = service
@@ -229,6 +297,11 @@ mod tests {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         };
         let service = JwtAuthService::new(config, repo);
         let result = service

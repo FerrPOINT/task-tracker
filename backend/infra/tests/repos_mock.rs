@@ -77,6 +77,7 @@ async fn user_save_database_error() {
         email: "x@example.com".into(),
         display_name: "X".into(),
         password_hash: "h".into(),
+        refresh_token_hash: None,
         created_at: shared::now(),
         updated_at: shared::now(),
     };

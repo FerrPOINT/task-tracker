@@ -14,6 +14,11 @@ fn test_config() -> Arc<shared::AppConfig> {
             jwt_secret: "test-secret".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         },
     })
 }
@@ -30,6 +35,9 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
         issues: issues.clone(),
         boards: boards.clone(),
         sprints: sprints.clone(),
+        comments: Arc::new(domain::StubCommentRepository),
+        worklogs: Arc::new(domain::StubWorklogRepository),
+        members: Arc::new(domain::StubProjectMemberRepository),
     });
     let ctx = Arc::new(app::context::AppContext::new(test_config(), repos));
     ctx.services
@@ -54,7 +62,7 @@ async fn login_token(ctx: &app::context::AppContext) -> String {
         })
         .await
         .unwrap()
-        .token
+        .access_token
 }
 
 #[tokio::test]

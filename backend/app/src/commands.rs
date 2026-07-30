@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use shared::{IssueId, ProjectId, StatusId, UserId};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RegisterCommand {
@@ -47,4 +48,45 @@ pub struct UpdateIssueCommand {
     pub priority: Option<shared::Priority>,
     pub status_id: Option<String>,
     pub assignee_id: Option<Option<shared::UserId>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateCommentCommand {
+    pub issue_id: shared::IssueId,
+    pub author_id: shared::UserId,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct UpdateCommentCommand {
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateWorklogCommand {
+    pub issue_id: shared::IssueId,
+    pub author_id: shared::UserId,
+    pub started_at: chrono::DateTime<chrono::FixedOffset>,
+    pub duration_seconds: i64,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct UpdateWorklogCommand {
+    pub started_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub duration_seconds: Option<i64>,
+    pub description: Option<Option<String>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AddProjectMemberCommand {
+    pub project_id: ProjectId,
+    pub user_id: UserId,
+    pub role: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct TransitionIssueCommand {
+    pub issue_id: IssueId,
+    pub target_status_id: StatusId,
 }

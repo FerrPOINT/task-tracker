@@ -1,12 +1,18 @@
 use async_trait::async_trait;
+use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::commands::{CreateIssueCommand, UpdateIssueCommand};
+use crate::commands::{
+    CreateCommentCommand, CreateIssueCommand, CreateWorklogCommand, UpdateCommentCommand,
+    UpdateIssueCommand, UpdateWorklogCommand,
+};
 use crate::dto::{
-    BacklogDto, BoardColumnDto, BoardDto, DashboardDto, IssueDto, ProjectDto, SprintDto,
+    BacklogDto, BoardColumnDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto,
+    ProjectMemberDto, SprintDto, WorklogDto,
 };
 use domain::{
-    Board, ColumnCategory, Issue, IssueQuery, IssueRepository, ProjectRepository, SprintRepository,
+    Board, BoardRepository, ColumnCategory, Issue, IssueQuery, IssueRepository, ProjectMember,
+    ProjectMemberRepository, ProjectRepository, ProjectRole, SprintRepository, UserRepository,
 };
 use shared::{AppError, BoardId, IssueId, ProjectId, ProjectKey, StatusId, UserId};
 
@@ -99,6 +105,7 @@ impl crate::context::ProjectService for ProjectServiceImpl {
 pub struct IssueServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
+    boards: Arc<dyn BoardRepository>,
     users: Arc<dyn domain::UserRepository>,
 }
 
@@ -106,11 +113,13 @@ impl IssueServiceImpl {
     pub fn new(
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
+        boards: Arc<dyn BoardRepository>,
         users: Arc<dyn domain::UserRepository>,
     ) -> Self {
         Self {
             issues,
             projects,
+            boards,
             users,
         }
     }
@@ -147,6 +156,38 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue,
             project.name.as_ref().to_string(),
             column,
+            assignee_name,
+            reporter_name,
+        ))
+    }
+
+    async fn transition(
+        &self,
+        cmd: crate::commands::TransitionIssueCommand,
+    ) -> Result<IssueDto, AppError> {
+        let issue = self.issues.get_by_id(cmd.issue_id).await?;
+        let board = self.boards.get_default_by_project(issue.project_id).await?;
+        let valid = board.columns.iter().any(|c| c.id == cmd.target_status_id);
+        if !valid {
+            return Err(AppError::invalid_input("invalid target status"));
+        }
+        let mut updated = issue.clone();
+        updated.status_id = cmd.target_status_id;
+        updated.updated_at = shared::now();
+        self.issues.save(&updated).await?;
+        let project = self.projects.get_by_id(updated.project_id).await?;
+        let status = board
+            .columns
+            .iter()
+            .find(|c| c.id == updated.status_id)
+            .map(|c| c.name.as_ref().to_string())
+            .unwrap_or_default();
+        let (assignee_name, reporter_name) =
+            helpers::resolve_names(self.users.clone(), &updated).await;
+        Ok(IssueDto::from_issue(
+            updated,
+            project.name.as_ref().to_string(),
+            status,
             assignee_name,
             reporter_name,
         ))
@@ -446,5 +487,257 @@ impl crate::context::SearchService for SearchServiceImpl {
             issues,
         )
         .await
+    }
+}
+
+#[derive(Clone)]
+pub struct CommentServiceImpl {
+    comments: Arc<dyn domain::CommentRepository>,
+    users: Arc<dyn domain::UserRepository>,
+    issues: Arc<dyn domain::IssueRepository>,
+}
+
+impl CommentServiceImpl {
+    pub fn new(
+        comments: Arc<dyn domain::CommentRepository>,
+        users: Arc<dyn domain::UserRepository>,
+        issues: Arc<dyn domain::IssueRepository>,
+    ) -> Self {
+        Self {
+            comments,
+            users,
+            issues,
+        }
+    }
+}
+
+#[async_trait]
+impl crate::context::CommentService for CommentServiceImpl {
+    async fn list(
+        &self,
+        issue_id: IssueId,
+        _requester: UserId,
+    ) -> Result<Vec<CommentDto>, AppError> {
+        self.issues.get_by_id(issue_id).await?;
+        let comments = self.comments.list_by_issue(issue_id).await?;
+        let mut result = Vec::with_capacity(comments.len());
+        for c in comments {
+            let user = self.users.get_by_id(c.author_id).await.ok();
+            result.push(CommentDto::from_comment(
+                c,
+                user.map(|u| u.display_name.as_ref().to_string()),
+            ));
+        }
+        Ok(result)
+    }
+
+    async fn create(&self, cmd: CreateCommentCommand) -> Result<CommentDto, AppError> {
+        self.issues.get_by_id(cmd.issue_id).await?;
+        let comment = domain::Comment {
+            id: shared::CommentId::new(),
+            issue_id: cmd.issue_id,
+            author_id: cmd.author_id,
+            body: domain::value_objects::RichText::new(cmd.body),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        self.comments.save(&comment).await?;
+        let user = self.users.get_by_id(cmd.author_id).await.ok();
+        Ok(CommentDto::from_comment(
+            comment,
+            user.map(|u| u.display_name.as_ref().to_string()),
+        ))
+    }
+
+    async fn update(
+        &self,
+        id: shared::CommentId,
+        cmd: UpdateCommentCommand,
+        requester: UserId,
+    ) -> Result<CommentDto, AppError> {
+        let mut comment = self.comments.get_by_id(id).await?;
+        if comment.author_id != requester {
+            return Err(AppError::Unauthorized);
+        }
+        if let Some(body) = cmd.body {
+            comment.body = domain::value_objects::RichText::new(body);
+            comment.updated_at = shared::now();
+        }
+        self.comments.save(&comment).await?;
+        let user = self.users.get_by_id(comment.author_id).await.ok();
+        Ok(CommentDto::from_comment(
+            comment,
+            user.map(|u| u.display_name.as_ref().to_string()),
+        ))
+    }
+
+    async fn delete(&self, id: shared::CommentId, requester: UserId) -> Result<(), AppError> {
+        let comment = self.comments.get_by_id(id).await?;
+        if comment.author_id != requester {
+            return Err(AppError::Unauthorized);
+        }
+        self.comments.delete(id).await
+    }
+}
+
+#[derive(Clone)]
+pub struct WorklogServiceImpl {
+    worklogs: Arc<dyn domain::WorklogRepository>,
+    users: Arc<dyn domain::UserRepository>,
+    issues: Arc<dyn domain::IssueRepository>,
+}
+
+impl WorklogServiceImpl {
+    pub fn new(
+        worklogs: Arc<dyn domain::WorklogRepository>,
+        users: Arc<dyn domain::UserRepository>,
+        issues: Arc<dyn domain::IssueRepository>,
+    ) -> Self {
+        Self {
+            worklogs,
+            users,
+            issues,
+        }
+    }
+}
+
+#[async_trait]
+impl crate::context::WorklogService for WorklogServiceImpl {
+    async fn list(
+        &self,
+        issue_id: IssueId,
+        _requester: UserId,
+    ) -> Result<Vec<WorklogDto>, AppError> {
+        self.issues.get_by_id(issue_id).await?;
+        let worklogs = self.worklogs.list_by_issue(issue_id).await?;
+        let mut result = Vec::with_capacity(worklogs.len());
+        for w in worklogs {
+            let user = self.users.get_by_id(w.author_id).await.ok();
+            result.push(WorklogDto::from_worklog(
+                w,
+                user.map(|u| u.display_name.as_ref().to_string()),
+            ));
+        }
+        Ok(result)
+    }
+
+    async fn create(&self, cmd: CreateWorklogCommand) -> Result<WorklogDto, AppError> {
+        self.issues.get_by_id(cmd.issue_id).await?;
+        let worklog = domain::Worklog {
+            id: shared::WorklogId::new(),
+            issue_id: cmd.issue_id,
+            author_id: cmd.author_id,
+            started_at: cmd.started_at,
+            duration_seconds: cmd.duration_seconds,
+            description: cmd.description.map(|d| d.into()),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        self.worklogs.save(&worklog).await?;
+        let user = self.users.get_by_id(cmd.author_id).await.ok();
+        Ok(WorklogDto::from_worklog(
+            worklog,
+            user.map(|u| u.display_name.as_ref().to_string()),
+        ))
+    }
+
+    async fn update(
+        &self,
+        id: shared::WorklogId,
+        cmd: UpdateWorklogCommand,
+        requester: UserId,
+    ) -> Result<WorklogDto, AppError> {
+        let mut worklog = self.worklogs.get_by_id(id).await?;
+        if worklog.author_id != requester {
+            return Err(AppError::Unauthorized);
+        }
+        if let Some(started_at) = cmd.started_at {
+            worklog.started_at = started_at;
+        }
+        if let Some(duration) = cmd.duration_seconds {
+            worklog.duration_seconds = duration;
+        }
+        if let Some(description) = cmd.description {
+            worklog.description = description.map(|d| d.into());
+        }
+        worklog.updated_at = shared::now();
+        self.worklogs.save(&worklog).await?;
+        let user = self.users.get_by_id(worklog.author_id).await.ok();
+        Ok(WorklogDto::from_worklog(
+            worklog,
+            user.map(|u| u.display_name.as_ref().to_string()),
+        ))
+    }
+
+    async fn delete(&self, id: shared::WorklogId, requester: UserId) -> Result<(), AppError> {
+        let worklog = self.worklogs.get_by_id(id).await?;
+        if worklog.author_id != requester {
+            return Err(AppError::Unauthorized);
+        }
+        self.worklogs.delete(id).await
+    }
+}
+
+#[async_trait]
+pub trait ProjectMemberService: Send + Sync {
+    async fn list(&self, project_id: ProjectId) -> Result<Vec<ProjectMemberDto>, AppError>;
+    async fn add(
+        &self,
+        cmd: crate::commands::AddProjectMemberCommand,
+    ) -> Result<ProjectMemberDto, AppError>;
+    async fn remove(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError>;
+}
+
+pub struct ProjectMemberServiceImpl {
+    members: Arc<dyn ProjectMemberRepository>,
+    users: Arc<dyn UserRepository>,
+}
+
+impl ProjectMemberServiceImpl {
+    pub fn new(members: Arc<dyn ProjectMemberRepository>, users: Arc<dyn UserRepository>) -> Self {
+        Self { members, users }
+    }
+}
+
+#[async_trait]
+impl ProjectMemberService for ProjectMemberServiceImpl {
+    async fn list(&self, project_id: ProjectId) -> Result<Vec<ProjectMemberDto>, AppError> {
+        let members = self.members.list_by_project(project_id).await?;
+        let mut dtos = Vec::with_capacity(members.len());
+        for m in members {
+            let role = m.role.as_str().to_string();
+            dtos.push(ProjectMemberDto {
+                project_id: m.project_id.to_string(),
+                user_id: m.user_id.to_string(),
+                role,
+                joined_at: m.joined_at,
+            });
+        }
+        Ok(dtos)
+    }
+
+    async fn add(
+        &self,
+        cmd: crate::commands::AddProjectMemberCommand,
+    ) -> Result<ProjectMemberDto, AppError> {
+        let role = ProjectRole::from_str(&cmd.role).unwrap_or_default();
+        let _ = self.users.get_by_id(cmd.user_id).await?;
+        let member = ProjectMember {
+            project_id: cmd.project_id,
+            user_id: cmd.user_id,
+            role,
+            joined_at: shared::now(),
+        };
+        self.members.save(&member).await?;
+        Ok(ProjectMemberDto {
+            project_id: member.project_id.to_string(),
+            user_id: member.user_id.to_string(),
+            role: member.role.as_str().to_string(),
+            joined_at: member.joined_at,
+        })
+    }
+
+    async fn remove(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError> {
+        self.members.delete(project_id, user_id).await
     }
 }

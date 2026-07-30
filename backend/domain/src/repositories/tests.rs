@@ -25,6 +25,7 @@ async fn stub_user_repository() {
             username: "ab".into(),
             display_name: "A B".into(),
             password_hash: "h".into(),
+            refresh_token_hash: None,
             created_at: shared::now(),
             updated_at: shared::now(),
         })

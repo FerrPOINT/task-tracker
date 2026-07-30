@@ -19,6 +19,9 @@ pub async fn build_repositories(config: DatabaseConfig) -> Result<Repositories, 
         issues: repos.issues,
         boards: repos.boards,
         sprints: repos.sprints,
+        comments: repos.comments,
+        worklogs: repos.worklogs,
+        members: repos.members,
     })
 }
 
