@@ -24,6 +24,7 @@ import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
+import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
 import { useBoard } from '@/shared/api/hooks'
 import { useUpdateIssue } from '@/shared/api/hooks'
 
@@ -95,26 +96,7 @@ export function IssueDetailPage() {
     toast.success(t('issue.copyKey'))
   }
 
-  const renderDescription = (text: string) => {
-    const lines = text.split('\n')
-    return (
-      <div className="space-y-3 text-sm text-text-secondary">
-        {lines.map((line, idx) => {
-          if (line.startsWith('· ')) {
-            return (
-              <ul key={idx} className="ml-5 list-disc">
-                <li>{line.slice(2)}</li>
-              </ul>
-            )
-          }
-          if (line.trim() === '') return <div key={idx} className="h-2" />
-          return <p key={idx}>{line}</p>
-        })}
-      </div>
-    )
-  }
-
-  return (
+return (
     <div className="min-h-screen bg-background">
       <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
         <div className="flex items-center gap-4">
@@ -153,7 +135,14 @@ export function IssueDetailPage() {
               <MessageSquare className="h-4 w-4" />
               {t('issue.comment')}
             </Button>
-            <Button variant="secondary" size="sm">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={updateIssue.isPending || currentUserId === issue.assignee_id}
+              onClick={() =>
+                currentUserId && updateIssue.mutate({ assignee_id: currentUserId })
+              }
+            >
               <UserPlus className="h-4 w-4" />
               {t('issue.assignToMe')}
             </Button>
@@ -166,15 +155,12 @@ export function IssueDetailPage() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
           <div className="space-y-6">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('issue.description')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {issue.description ? (
-                  renderDescription(issue.description)
-                ) : (
-                  <p className="text-sm text-text-muted">{t('issue.noDescription')}</p>
-                )}
+              <CardContent className="pt-6">
+                <IssueDescriptionEditor
+                  issue={issue}
+                  disabled={updateIssue.isPending}
+                  onSubmit={(patch) => updateIssue.mutate(patch)}
+                />
               </CardContent>
             </Card>
 
