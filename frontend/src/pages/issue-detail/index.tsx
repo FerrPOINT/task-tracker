@@ -19,8 +19,10 @@ import {
 import { TimeTrackingPanel } from '@/features/time-tracking/ui/TimeTrackingPanel'
 import { WorklogTab } from '@/features/time-tracking/ui/WorklogTab'
 import { LogWorkDialog } from '@/features/time-tracking/ui/LogWorkDialog'
+import { CommentsPanel } from '@/features/comments/ui/CommentList'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
+import { useAuthStore } from '@/shared/auth/store'
 
 export function IssueDetailPage() {
   const { id = '' } = useParams()
@@ -178,7 +180,7 @@ export function IssueDetailPage() {
                 <TabsTrigger value="history">{t('issue.history')}</TabsTrigger>
               </TabsList>
               <TabsContent value="comments">
-                <p className="text-sm text-text-muted">No comments yet.</p>
+                <CommentsPanel issueId={id} currentUserId={useAuthStore((s) => s.userId) ?? undefined} />
               </TabsContent>
               <TabsContent value="activity">
                 <p className="text-sm text-text-muted">No activity yet.</p>

@@ -152,4 +152,16 @@
     "delete": "Delete",
     "theme": "Theme: {{theme}}"
   }
-}
+,
+  "comments": {
+    "title": "Comments",
+    "body": "Comment",
+    "placeholder": "Write a comment...",
+    "add": "Add comment",
+    "empty": "No comments yet.",
+    "unknown": "Unknown user",
+    "deleteConfirm": "Delete this comment?",
+    "validation": {
+      "required": "Comment text is required"
+    }
+  }}
