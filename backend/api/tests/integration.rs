@@ -810,3 +810,34 @@ async fn issue_create_invalid_project_key() {
         .unwrap();
     assert_eq!(res.status(), 400);
 }
+
+#[tokio::test]
+async fn users_me_returns_current_user() {
+    let (url, client) = spawn_server().await;
+
+    let res = client
+        .post(format!("{}/api/v1/auth/register", url))
+        .json(&serde_json::json!({
+            "email": "me@example.com",
+            "username": "meuser",
+            "name": "Me User",
+            "password": "password123"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let token = body["access_token"].as_str().unwrap();
+
+    let res = client
+        .get(format!("{}/api/v1/users/me", url))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["email"], "me@example.com");
+    assert_eq!(body["username"], "meuser");
+}

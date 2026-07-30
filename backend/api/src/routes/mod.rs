@@ -9,3 +9,5 @@ pub mod projects;
 pub mod search;
 pub mod transitions;
 pub mod worklogs;
+
+pub mod users;

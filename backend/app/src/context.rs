@@ -107,6 +107,7 @@ pub trait AuthService: Send + Sync {
     fn verify_token(&self, token: &str) -> Result<UserClaims, AppError>;
     async fn refresh(&self, refresh_token: &str) -> Result<AuthDto, AppError>;
     async fn logout(&self, user_id: UserId) -> Result<(), AppError>;
+    async fn me(&self, user_id: UserId) -> Result<crate::dto::UserDto, AppError>;
 }
 
 #[async_trait]
