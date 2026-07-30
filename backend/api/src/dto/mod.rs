@@ -37,6 +37,14 @@ pub struct TokenResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UserResponse {
+    pub id: String,
+    pub email: String,
+    pub username: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ProjectResponse {
     pub id: String,
     pub key: String,

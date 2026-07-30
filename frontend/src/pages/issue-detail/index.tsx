@@ -27,6 +27,7 @@ import { useAuthStore } from '@/shared/auth/store'
 export function IssueDetailPage() {
   const { id = '' } = useParams()
   const { t } = useTranslation()
+  const currentUserId = useAuthStore((s) => s.userId)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingWorklog, setEditingWorklog] = useState<Worklog | undefined>(undefined)
 
@@ -180,7 +181,7 @@ export function IssueDetailPage() {
                 <TabsTrigger value="history">{t('issue.history')}</TabsTrigger>
               </TabsList>
               <TabsContent value="comments">
-                <CommentsPanel issueId={id} currentUserId={useAuthStore((s) => s.userId) ?? undefined} />
+                <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
               </TabsContent>
               <TabsContent value="activity">
                 <p className="text-sm text-text-muted">No activity yet.</p>
