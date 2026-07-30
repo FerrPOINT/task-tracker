@@ -1,6 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
+    http::StatusCode,
 };
 use std::sync::Arc;
 
@@ -8,7 +9,7 @@ use crate::dto::{
     CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery, UpdateIssueRequest,
 };
 use app::commands::{CreateIssueCommand, UpdateIssueCommand};
-use shared::{AppError, ProjectKey};
+use shared::{AppError, IssueId, ProjectKey};
 use std::str::FromStr;
 
 #[utoipa::path(
@@ -134,4 +135,20 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
         reporter_name: i.reporter_name,
         project_name: i.project_name,
     }
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/v1/issues/{id}",
+    responses((status = 204), (status = 404))
+)]
+pub async fn delete_issue(
+    State(ctx): State<Arc<app::AppContext>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, shared::AppError> {
+    let issue_id = id
+        .parse::<IssueId>()
+        .map_err(|_| shared::AppError::invalid_input("id"))?;
+    ctx.services.issue.delete(issue_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

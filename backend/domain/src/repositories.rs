@@ -41,6 +41,7 @@ pub trait IssueRepository: Send + Sync {
     async fn get_by_key(&self, key: &shared::IssueKey) -> Result<Issue, AppError>;
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError>;
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError>;
+    async fn delete(&self, id: IssueId) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -235,6 +236,9 @@ impl IssueRepository for StubIssueRepository {
     }
     async fn save(&self, _issue: &Issue) -> Result<IssueId, AppError> {
         Ok(IssueId::new())
+    }
+    async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::not_found("issue", "stub"))
     }
 }
 

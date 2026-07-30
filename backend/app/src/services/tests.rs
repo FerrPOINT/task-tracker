@@ -763,6 +763,9 @@ fn failing_context() -> AppContext {
         async fn save(&self, _issue: &Issue) -> Result<IssueId, AppError> {
             Err(AppError::Internal("x".into()))
         }
+        async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
+            Err(AppError::Internal("x".into()))
+        }
     }
 
     #[derive(Default)]

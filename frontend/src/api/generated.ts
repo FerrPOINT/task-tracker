@@ -110,7 +110,7 @@ export interface paths {
         get: operations["get_issue"];
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["delete_issue"];
         options?: never;
         head?: never;
         patch: operations["update_issue"];
@@ -781,6 +781,31 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["IssueResponse"];
                 };
+            };
+        };
+    };
+    delete_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

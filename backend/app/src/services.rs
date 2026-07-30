@@ -253,6 +253,10 @@ impl crate::context::IssueService for IssueServiceImpl {
         )
         .await
     }
+
+    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
+        self.issues.delete(id).await
+    }
 }
 
 pub struct BoardServiceImpl {

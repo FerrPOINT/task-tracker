@@ -153,6 +153,7 @@ pub trait IssueService: Send + Sync {
     async fn update(&self, id: IssueId, cmd: UpdateIssueCommand) -> Result<IssueDto, AppError>;
     async fn transition(&self, cmd: TransitionIssueCommand) -> Result<IssueDto, AppError>;
     async fn search(&self, q: &str) -> Result<Vec<IssueDto>, AppError>;
+    async fn delete(&self, id: IssueId) -> Result<(), AppError>;
 }
 
 #[async_trait]
