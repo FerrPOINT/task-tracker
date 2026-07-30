@@ -63,7 +63,7 @@ Response:
 
 При выпуске `v2`:
 
-- Создать `docs/API_V2_MIGRATION.md` с mapping endpoint/field.
+- Создать `docs/API_V2_MIGRATION.md` с mapping endpoint/field (появится при реализации v2).
 - Breaking changes changelog.
 - Script для проверки использования deprecated features.
 

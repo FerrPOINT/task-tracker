@@ -315,4 +315,3 @@ API должен возвращать человекочитаемый форм�
 - `docs/WORKFLOW.md`
 - `docs/JQL.md`
 - `docs/JIRA_UI_CAPTURE.md`
-- `docs/VIKUNJA_GAP_ANALYSIS.md`
