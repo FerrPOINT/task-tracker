@@ -3,8 +3,9 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: tasktracker
-      POSTGRES_PASSWORD: ${TASKTRACKER_TEST_DB_PASSWORD:-[REDACTED]}
+      POSTGRES_PASSWORD: ${TASKTRACKER_TEST_DB_PASSWORD:-tasktracker_test_password}
       POSTGRES_DB: tasktracker_test
+      POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "127.0.0.1:3458:5432"
     healthcheck:

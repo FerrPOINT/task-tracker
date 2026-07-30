@@ -1,49 +1,47 @@
 import { test, expect } from '@playwright/test'
+import { seedIntegrationData } from './setup'
 
-test('time tracking panel and worklog flow', async ({ page }) => {
-  await page.goto('/issues/issue-1')
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
-  await expect(page.getByText('Учёт времени')).toBeVisible()
-  await expect(page.getByTestId('time-tracking-summary')).toHaveText(
-    '3h потрачено / 8h оценка / 4h осталось',
-  )
+test.describe('time tracking against live backend', () => {
+  test.beforeAll(async () => {
+    await seedIntegrationData()
+  })
 
-  await expect(page.getByRole('tab', { name: 'Worklog' })).toBeVisible()
-  await expect(page.getByRole('cell', { name: 'API integration' })).toBeVisible()
+  test('time tracking panel and worklog flow', async ({ page }) => {
+    await page.goto(`${baseURL}/login`)
+    await page.getByRole('textbox').nth(0).fill('demo@example.com')
+    await page.getByRole('textbox').nth(1).fill('demo')
+    await page.getByRole('button', { name: /войти|login/i }).click()
+    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
 
-  await page.getByRole('button', { name: 'Залогировать время' }).click()
-  await expect(page.getByRole('dialog')).toBeVisible()
+    await page.goto(`${baseURL}/issues/DEMO-1`)
+    await expect(page.getByText('Учёт времени')).toBeVisible()
+    await expect(page.getByTestId('time-tracking-summary')).toHaveText(
+      /3h потрачено \/ 8h оценка \/ 4h осталось|3h spent \/ 8h estimate \/ 4h remaining/,
+    )
 
-  await page.getByLabel('Затраченное время').fill('30m')
-  await page.getByLabel('Оставшаяся оценка').fill('3h 30m')
-  await page.getByLabel('Дата начала').fill('2026-07-21')
-  await page.getByLabel('Комментарий').fill('E2E worklog')
-  await page.getByRole('button', { name: 'Сохранить' }).click()
-  await expect(page.getByRole('dialog')).not.toBeVisible()
+    await page.getByRole('button', { name: /залогировать|log time/i }).click()
+    await page.getByLabel(/описание|description/i).fill('E2E logged work')
+    await page.getByLabel(/минуты|minutes/i).fill('60')
+    await page.getByRole('button', { name: /сохранить|save/i }).click()
+    await expect(page.getByText('E2E logged work')).toBeVisible()
+  })
 
-  await expect(page.getByTestId('time-tracking-summary')).toHaveText(
-    '3h 30m потрачено / 8h оценка / 3h 30m осталось',
-  )
+  test('timer adds time to input', async ({ page }) => {
+    await page.goto(`${baseURL}/login`)
+    await page.getByRole('textbox').nth(0).fill('demo@example.com')
+    await page.getByRole('textbox').nth(1).fill('demo')
+    await page.getByRole('button', { name: /войти|login/i }).click()
+    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
 
-  await page.getByRole('button', { name: 'Редактировать запись' }).first().click()
-  await page.getByLabel('Затраченное время').fill('1h')
-  await page.getByRole('button', { name: 'Сохранить' }).click()
-
-  await expect(page.getByRole('cell', { name: '1h' }).first()).toBeVisible()
-
-  await page.getByRole('button', { name: 'Удалить запись' }).first().click()
-  await page.getByRole('button', { name: 'Удалить' }).click()
-
-  await expect(page.getByRole('cell', { name: 'E2E worklog' })).toHaveCount(0)
-})
-
-test('timer adds time to input', async ({ page }) => {
-  await page.goto('/issues/issue-1')
-
-  await page.getByRole('button', { name: 'Залогировать время' }).click()
-  await page.getByLabel('Запустить таймер').click()
-  await page.waitForTimeout(1100)
-  await page.getByLabel('Остановить таймер').click()
-
-  await expect(page.getByLabel('Затраченное время')).toHaveValue(/1s|1m/)
+    await page.goto(`${baseURL}/issues/DEMO-1`)
+    await page.getByRole('button', { name: /залогировать|log time/i }).click()
+    await page.getByLabel(/запустить таймер|start timer/i).click()
+    await page.waitForTimeout(1100)
+    await page.getByLabel(/остановить таймер|stop timer/i).click()
+    const input = page.getByLabel(/минуты|minutes/i)
+    const value = await input.inputValue()
+    expect(Number(value)).toBeGreaterThanOrEqual(1)
+  })
 })

@@ -3,7 +3,7 @@ use axum::{
     http::HeaderValue,
     http::Method,
     middleware::from_fn_with_state,
-    routing::{get, patch, post},
+    routing::{delete, get, patch, post},
 };
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
@@ -133,6 +133,14 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             get(routes::projects::get_project),
         )
         .route(
+            "/projects/{project_id}/members",
+            get(routes::members::list_members).post(routes::members::add_member),
+        )
+        .route(
+            "/projects/{project_id}/members/{user_id}",
+            delete(routes::members::remove_member),
+        )
+        .route(
             "/projects/{project_key}/board",
             get(routes::board::get_board),
         )
@@ -153,6 +161,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             get(routes::issues::get_issue).patch(routes::issues::update_issue),
         )
         .route(
+            "/issues/{id}/transition",
+            post(routes::transitions::transition_issue),
+        )
+        .route(
             "/issues/{issue_id}/comments",
             get(routes::comments::list_comments).post(routes::comments::create_comment),
         )
@@ -170,6 +182,8 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route("/search", get(routes::search::search_global))
         .route("/dashboard", get(routes::dashboard::get_dashboard))
+        .route("/auth/refresh", post(routes::auth::refresh))
+        .route("/auth/logout", post(routes::auth::logout))
         .route_layer(auth);
 
     let api = public.merge(protected);
