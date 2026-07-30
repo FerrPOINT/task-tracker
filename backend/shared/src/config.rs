@@ -34,6 +34,11 @@ pub struct AuthConfig {
     pub jwt_secret: String,
     pub access_token_ttl_minutes: u64,
     pub refresh_token_ttl_days: u64,
+    pub refresh_cookie_name: String,
+    pub refresh_cookie_secure: bool,
+    pub refresh_cookie_same_site: String,
+    pub refresh_cookie_domain: Option<String>,
+    pub refresh_cookie_path: String,
 }
 
 impl AppConfig {
@@ -58,6 +63,11 @@ impl AppConfig {
             .set_default("auth.jwt_secret", "[CHANGE_ME]")?
             .set_default("auth.access_token_ttl_minutes", 15u64)?
             .set_default("auth.refresh_token_ttl_days", 7u64)?
+            .set_default("auth.refresh_cookie_name", "refresh_token")?
+            .set_default("auth.refresh_cookie_secure", true)?
+            .set_default("auth.refresh_cookie_same_site", "Lax")?
+            .set_default("auth.refresh_cookie_domain", Option::<String>::None)?
+            .set_default("auth.refresh_cookie_path", "/api/v1/auth")?
             .build()?;
 
         let mut cfg: AppConfig = Config::builder()
@@ -115,6 +125,11 @@ impl Default for AuthConfig {
             jwt_secret: "[CHANGE_ME]".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
         }
     }
 }

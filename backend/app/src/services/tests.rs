@@ -23,6 +23,7 @@ fn test_user() -> User {
         username: "demo".into(),
         display_name: "Demo User".into(),
         password_hash: "$argon2id$v=19$m=65536,t=3,p=4$stN/enhZ9yOvgWC9E8Y6BA$IL9I0WONb/I6zoT4rdmdkrPcIFADFxsLCjrO0ySSl0Y".into(),
+        refresh_token_hash: None,
         created_at: shared::now(),
         updated_at: shared::now(),
     }
@@ -36,6 +37,11 @@ fn test_config() -> Arc<AppConfig> {
             jwt_secret: "test-secret".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: false,
+            refresh_cookie_same_site: "lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/".to_string(),
         },
     })
 }
@@ -114,6 +120,9 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         issues: issues.clone(),
         boards: boards.clone(),
         sprints: sprints.clone(),
+        comments: Arc::new(domain::StubCommentRepository),
+        worklogs: Arc::new(domain::StubWorklogRepository),
+        members: Arc::new(domain::StubProjectMemberRepository),
     });
     AppContext::new(test_config(), repos.clone());
     (AppContext::new(test_config(), repos.clone()), user_copy)
@@ -143,8 +152,8 @@ async fn auth_register_and_login() {
         .await
         .unwrap();
 
-    assert!(!dto.token.is_empty());
-    let claims = ctx.services.auth.verify_token(&dto.token).unwrap();
+    assert!(!dto.access_token.is_empty());
+    let claims = ctx.services.auth.verify_token(&dto.access_token).unwrap();
     assert_eq!(claims.sub, dto.user.id.to_string());
 }
 
@@ -766,6 +775,10 @@ fn failing_context() -> AppContext {
         async fn get_by_email(&self, _email: &str) -> Result<User, AppError> {
             Err(AppError::Internal("x".into()))
         }
+        async fn get_by_refresh_token(&self, _token_hash: &str) -> Result<User, AppError> {
+            Err(AppError::not_found("user", "stub"))
+        }
+
         async fn save(&self, _user: &User) -> Result<UserId, AppError> {
             Err(AppError::Internal("x".into()))
         }
@@ -813,6 +826,9 @@ fn failing_context() -> AppContext {
         issues: Arc::new(FailingIssueRepository),
         boards: Arc::new(FailingBoardRepository),
         sprints: Arc::new(FailingSprintRepository),
+        comments: Arc::new(domain::StubCommentRepository),
+        worklogs: Arc::new(domain::StubWorklogRepository),
+        members: Arc::new(domain::StubProjectMemberRepository),
     });
     AppContext::new(test_config(), repos)
 }

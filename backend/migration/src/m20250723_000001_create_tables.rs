@@ -32,6 +32,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Users::DisplayName).string().not_null())
                     .col(ColumnDef::new(Users::PasswordHash).string().not_null())
+                    .col(ColumnDef::new(Users::RefreshTokenHash).string().null())
                     .col(
                         ColumnDef::new(Users::CreatedAt)
                             .timestamp_with_time_zone()
@@ -281,6 +282,47 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        manager
+            .create_table(
+                Table::create()
+                    .table(Worklogs::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Worklogs::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key()
+                            .extra("DEFAULT gen_random_uuid()".to_owned()),
+                    )
+                    .col(ColumnDef::new(Worklogs::IssueId).uuid().not_null())
+                    .col(ColumnDef::new(Worklogs::AuthorId).uuid().not_null())
+                    .col(
+                        ColumnDef::new(Worklogs::StartedAt)
+                            .timestamp_with_time_zone()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(Worklogs::DurationSeconds)
+                            .big_integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Worklogs::Description).string().null())
+                    .col(
+                        ColumnDef::new(Worklogs::CreatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(SimpleExpr::Keyword(Keyword::CurrentTimestamp)),
+                    )
+                    .col(
+                        ColumnDef::new(Worklogs::UpdatedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(SimpleExpr::Keyword(Keyword::CurrentTimestamp)),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
         // indexes
         create_idx(
             manager,
@@ -338,11 +380,21 @@ impl MigrationTrait for Migration {
             Sprints::ProjectId,
         )
         .await?;
+        create_idx(
+            manager,
+            Worklogs::Table,
+            "idx_worklogs_issue_id",
+            Worklogs::IssueId,
+        )
+        .await?;
 
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .drop_table(Table::drop().table(Worklogs::Table).if_exists().to_owned())
+            .await?;
         manager
             .drop_table(
                 Table::drop()
@@ -410,6 +462,7 @@ enum Users {
     Username,
     DisplayName,
     PasswordHash,
+    RefreshTokenHash,
     CreatedAt,
     UpdatedAt,
 }
@@ -504,6 +557,19 @@ enum Labels {
     ProjectId,
     Name,
     Color,
+}
+
+#[derive(DeriveIden)]
+enum Worklogs {
+    Table,
+    Id,
+    IssueId,
+    AuthorId,
+    StartedAt,
+    DurationSeconds,
+    Description,
+    CreatedAt,
+    UpdatedAt,
 }
 
 #[derive(DeriveIden)]

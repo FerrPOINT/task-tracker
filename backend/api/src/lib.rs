@@ -3,7 +3,7 @@ use axum::{
     http::HeaderValue,
     http::Method,
     middleware::from_fn_with_state,
-    routing::{get, post},
+    routing::{get, patch, post},
 };
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
@@ -26,14 +26,26 @@ pub use routes::*;
         routes::projects::list_projects,
         routes::projects::create_project,
         routes::projects::get_project,
+        routes::members::list_members,
+        routes::members::add_member,
+        routes::members::remove_member,
         routes::board::get_board,
         routes::board::get_backlog,
         routes::board::move_issue,
+        routes::comments::list_comments,
+        routes::comments::create_comment,
+        routes::comments::update_comment,
+        routes::comments::delete_comment,
         routes::issues::create_issue,
         routes::issues::search_issues,
         routes::issues::get_issue,
         routes::issues::update_issue,
+        routes::transitions::transition_issue,
         routes::search::search_global,
+        routes::worklogs::list_worklogs,
+        routes::worklogs::create_worklog,
+        routes::worklogs::update_worklog,
+        routes::worklogs::delete_worklog,
         routes::dashboard::get_dashboard,
     ),
     components(schemas(
@@ -49,6 +61,14 @@ pub use routes::*;
         dto::UpdateIssueRequest,
         dto::MoveIssueRequest,
         dto::BoardColumnResponse,
+        dto::CommentResponse,
+        dto::CommentListResponse,
+        dto::CreateCommentRequest,
+        dto::UpdateCommentRequest,
+        dto::WorklogResponse,
+        dto::WorklogListResponse,
+        dto::CreateWorklogRequest,
+        dto::UpdateWorklogRequest,
         dto::SprintResponse,
         dto::BoardResponse,
         dto::BacklogResponse,
@@ -131,6 +151,22 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route(
             "/issues/{id}",
             get(routes::issues::get_issue).patch(routes::issues::update_issue),
+        )
+        .route(
+            "/issues/{issue_id}/comments",
+            get(routes::comments::list_comments).post(routes::comments::create_comment),
+        )
+        .route(
+            "/comments/{id}",
+            patch(routes::comments::update_comment).delete(routes::comments::delete_comment),
+        )
+        .route(
+            "/issues/{issue_id}/worklogs",
+            get(routes::worklogs::list_worklogs).post(routes::worklogs::create_worklog),
+        )
+        .route(
+            "/worklogs/{id}",
+            patch(routes::worklogs::update_worklog).delete(routes::worklogs::delete_worklog),
         )
         .route("/search", get(routes::search::search_global))
         .route("/dashboard", get(routes::dashboard::get_dashboard))

@@ -17,6 +17,7 @@ fn sample_user() -> User {
         username: "u".into(),
         display_name: "User".into(),
         password_hash: "hash".into(),
+        refresh_token_hash: None,
         created_at: shared::now(),
         updated_at: shared::now(),
     }

@@ -3,20 +3,22 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use domain::{
-    Board, BoardColumn, BoardRepository, ColumnCategory, Issue, IssueQuery, IssueRepository,
-    Project, ProjectRepository, Sprint, SprintRepository, SprintState, User, UserRepository,
+    Board, BoardColumn, BoardRepository, ColumnCategory, Comment, CommentRepository, Issue,
+    IssueQuery, IssueRepository, Project, ProjectMember, ProjectMemberRepository,
+    ProjectRepository, ProjectRole, Sprint, SprintRepository, SprintState, User, UserRepository,
+    Worklog, WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QuerySelect, Set,
+    QueryOrder, QuerySelect, Set,
 };
 use shared::{
-    AppError, BoardId, IssueId, IssueKey, IssueType, LabelId, Priority, ProjectId, ProjectKey,
-    SprintId, StatusId, UserId,
+    AppError, BoardId, CommentId, IssueId, IssueKey, IssueType, LabelId, Priority, ProjectId,
+    ProjectKey, SprintId, StatusId, UserId, WorklogId,
 };
 use uuid::Uuid;
 
-use crate::entities::{board, issue, project, sprint, user};
+use crate::entities::{board, comment, issue, project, project_member, sprint, user, worklog};
 
 pub struct SeaOrmRepositories {
     pub users: Arc<dyn UserRepository>,
@@ -24,6 +26,9 @@ pub struct SeaOrmRepositories {
     pub issues: Arc<dyn IssueRepository>,
     pub boards: Arc<dyn BoardRepository>,
     pub sprints: Arc<dyn SprintRepository>,
+    pub comments: Arc<dyn CommentRepository>,
+    pub worklogs: Arc<dyn WorklogRepository>,
+    pub members: Arc<dyn ProjectMemberRepository>,
 }
 
 impl SeaOrmRepositories {
@@ -35,6 +40,9 @@ impl SeaOrmRepositories {
             issues: Arc::new(IssueRepo { db: db.clone() }),
             boards: Arc::new(BoardRepo { db: db.clone() }),
             sprints: Arc::new(SprintRepo { db: db.clone() }),
+            comments: Arc::new(CommentRepo { db: db.clone() }),
+            worklogs: Arc::new(WorklogRepo { db: db.clone() }),
+            members: Arc::new(ProjectMemberRepo { db: db.clone() }),
         }
     }
 }
@@ -66,6 +74,17 @@ impl UserRepository for UserRepo {
             .ok_or_else(|| AppError::not_found("user", email))
     }
 
+    async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError> {
+        let model = user::Entity::find()
+            .filter(user::Column::RefreshTokenHash.eq(token_hash))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_user)
+            .ok_or_else(|| AppError::not_found("user", "refresh"))
+    }
+
     async fn save(&self, user: &User) -> Result<UserId, AppError> {
         let active = user::ActiveModel {
             id: Set(user.id.as_uuid()),
@@ -73,10 +92,23 @@ impl UserRepository for UserRepo {
             username: Set(user.username.as_ref().to_string()),
             display_name: Set(user.display_name.as_ref().to_string()),
             password_hash: Set(user.password_hash.as_ref().to_string()),
+            refresh_token_hash: Set(user
+                .refresh_token_hash
+                .as_ref()
+                .map(|h| h.as_ref().to_string())),
             created_at: Set(user.created_at),
             updated_at: Set(shared::now()),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        let exists = user::Entity::find_by_id(user.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .is_some();
+        if exists {
+            active.update(&*self.db).await.map_err(AppError::database)?;
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?;
+        }
         Ok(user.id)
     }
 }
@@ -372,6 +404,7 @@ fn map_user(m: user::Model) -> User {
         username: m.username.into(),
         display_name: m.display_name.into(),
         password_hash: m.password_hash.into(),
+        refresh_token_hash: m.refresh_token_hash.map(|h| h.into()),
         created_at: m.created_at,
         updated_at: m.updated_at,
     }
@@ -480,5 +513,205 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         issues: sea.issues,
         boards: sea.boards,
         sprints: sea.sprints,
+        comments: sea.comments,
+        worklogs: sea.worklogs,
+        members: sea.members,
+    }
+}
+
+struct CommentRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl CommentRepository for CommentRepo {
+    async fn get_by_id(&self, id: CommentId) -> Result<Comment, AppError> {
+        let model = comment::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_comment)
+            .ok_or_else(|| AppError::not_found("comment", id))
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Comment>, AppError> {
+        let models = comment::Entity::find()
+            .filter(comment::Column::IssueId.eq(issue_id.as_uuid()))
+            .order_by_asc(comment::Column::CreatedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_comment).collect())
+    }
+
+    async fn save(&self, comment_item: &Comment) -> Result<CommentId, AppError> {
+        let exists = comment::Entity::find_by_id(comment_item.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .is_some();
+        let active = comment::ActiveModel {
+            id: Set(comment_item.id.as_uuid()),
+            issue_id: Set(comment_item.issue_id.as_uuid()),
+            author_id: Set(comment_item.author_id.as_uuid()),
+            body: Set(comment_item.body.as_ref().to_string()),
+            created_at: Set(comment_item.created_at),
+            updated_at: Set(shared::now()),
+        };
+        if exists {
+            active.update(&*self.db).await.map_err(AppError::database)?;
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?;
+        }
+        Ok(comment_item.id)
+    }
+
+    async fn delete(&self, id: CommentId) -> Result<(), AppError> {
+        comment::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+fn map_comment(m: comment::Model) -> Comment {
+    Comment {
+        id: CommentId::from_uuid(m.id),
+        issue_id: IssueId::from_uuid(m.issue_id),
+        author_id: UserId::from_uuid(m.author_id),
+        body: domain::value_objects::RichText::new(m.body),
+        created_at: m.created_at,
+        updated_at: m.updated_at,
+    }
+}
+
+struct WorklogRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl WorklogRepository for WorklogRepo {
+    async fn get_by_id(&self, id: WorklogId) -> Result<Worklog, AppError> {
+        let model = worklog::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_worklog)
+            .ok_or_else(|| AppError::not_found("worklog", id))
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
+        let models = worklog::Entity::find()
+            .filter(worklog::Column::IssueId.eq(issue_id.as_uuid()))
+            .order_by_asc(worklog::Column::StartedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_worklog).collect())
+    }
+
+    async fn save(&self, worklog_item: &Worklog) -> Result<WorklogId, AppError> {
+        let exists = worklog::Entity::find_by_id(worklog_item.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .is_some();
+        let active = worklog::ActiveModel {
+            id: Set(worklog_item.id.as_uuid()),
+            issue_id: Set(worklog_item.issue_id.as_uuid()),
+            author_id: Set(worklog_item.author_id.as_uuid()),
+            started_at: Set(worklog_item.started_at),
+            duration_seconds: Set(worklog_item.duration_seconds),
+            description: Set(worklog_item
+                .description
+                .as_ref()
+                .map(|d| d.as_ref().to_string())),
+            created_at: Set(worklog_item.created_at),
+            updated_at: Set(shared::now()),
+        };
+        if exists {
+            active.update(&*self.db).await.map_err(AppError::database)?;
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?;
+        }
+        Ok(worklog_item.id)
+    }
+
+    async fn delete(&self, id: WorklogId) -> Result<(), AppError> {
+        worklog::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+fn map_worklog(m: worklog::Model) -> Worklog {
+    Worklog {
+        id: WorklogId::from_uuid(m.id),
+        issue_id: IssueId::from_uuid(m.issue_id),
+        author_id: UserId::from_uuid(m.author_id),
+        started_at: m.started_at,
+        duration_seconds: m.duration_seconds,
+        description: m.description.map(|d| d.into()),
+        created_at: m.created_at,
+        updated_at: m.updated_at,
+    }
+}
+
+struct ProjectMemberRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl ProjectMemberRepository for ProjectMemberRepo {
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<ProjectMember>, AppError> {
+        let models = project_member::Entity::find()
+            .filter(project_member::Column::ProjectId.eq(project_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_project_member).collect())
+    }
+
+    async fn get(&self, project_id: ProjectId, user_id: UserId) -> Result<ProjectMember, AppError> {
+        let model = project_member::Entity::find_by_id((project_id.as_uuid(), user_id.as_uuid()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_project_member)
+            .ok_or_else(|| AppError::not_found("project member", project_id))
+    }
+
+    async fn save(&self, member: &ProjectMember) -> Result<(), AppError> {
+        let active = project_member::ActiveModel {
+            project_id: Set(member.project_id.as_uuid()),
+            user_id: Set(member.user_id.as_uuid()),
+            role: Set(member.role.as_str().to_string()),
+            joined_at: Set(member.joined_at),
+        };
+        active.insert(&*self.db).await.map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn delete(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError> {
+        project_member::Entity::delete_by_id((project_id.as_uuid(), user_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+fn map_project_member(m: project_member::Model) -> ProjectMember {
+    ProjectMember {
+        project_id: ProjectId::from_uuid(m.project_id),
+        user_id: UserId::from_uuid(m.user_id),
+        role: ProjectRole::from_str(&m.role).unwrap_or_default(),
+        joined_at: m.joined_at,
     }
 }

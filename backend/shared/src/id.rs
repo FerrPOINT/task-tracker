@@ -61,6 +61,7 @@ uuid_id!(LabelId);
 uuid_id!(SprintId);
 uuid_id!(BoardId);
 uuid_id!(StatusId);
+uuid_id!(WorklogId);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProjectKey(Arc<str>);

@@ -186,6 +186,70 @@ pub struct DashboardDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthDto {
-    pub token: String,
+    pub access_token: String,
+    pub refresh_token: String,
+    pub expires_in: u64,
     pub user: UserDto,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommentDto {
+    pub id: String,
+    pub issue_id: String,
+    pub author_id: String,
+    pub author_name: Option<String>,
+    pub body: String,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl CommentDto {
+    pub fn from_comment(comment: domain::Comment, author_name: Option<String>) -> Self {
+        Self {
+            id: comment.id.to_string(),
+            issue_id: comment.issue_id.to_string(),
+            author_id: comment.author_id.to_string(),
+            author_name,
+            body: comment.body.as_ref().to_string(),
+            created_at: comment.created_at,
+            updated_at: comment.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorklogDto {
+    pub id: String,
+    pub issue_id: String,
+    pub author_id: String,
+    pub author_name: Option<String>,
+    pub started_at: DateTime<FixedOffset>,
+    pub duration_seconds: i64,
+    pub description: Option<String>,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+impl WorklogDto {
+    pub fn from_worklog(worklog: domain::Worklog, author_name: Option<String>) -> Self {
+        Self {
+            id: worklog.id.to_string(),
+            issue_id: worklog.issue_id.to_string(),
+            author_id: worklog.author_id.to_string(),
+            author_name,
+            started_at: worklog.started_at,
+            duration_seconds: worklog.duration_seconds,
+            description: worklog.description.as_ref().map(|d| d.as_ref().to_string()),
+            created_at: worklog.created_at,
+            updated_at: worklog.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectMemberDto {
+    pub project_id: String,
+    pub user_id: String,
+    pub role: String,
+    pub joined_at: DateTime<FixedOffset>,
 }

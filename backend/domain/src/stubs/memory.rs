@@ -6,10 +6,14 @@ use std::sync::{Arc, Mutex};
 mod tests;
 
 use crate::{
-    Board, BoardRepository, EventBus, Issue, IssueQuery, IssueRepository, Project, ProjectQuery,
-    ProjectRepository, Sprint, SprintRepository, UnitOfWork, User, UserRepository,
+    Board, BoardRepository, Comment, CommentRepository, EventBus, Issue, IssueQuery,
+    IssueRepository, Project, ProjectMember, ProjectMemberRepository, ProjectQuery,
+    ProjectRepository, Sprint, SprintRepository, UnitOfWork, User, UserRepository, Worklog,
+    WorklogRepository,
 };
-use shared::{AppError, BoardId, IssueId, ProjectId, ProjectKey, SprintId, UserId};
+use shared::{
+    AppError, BoardId, CommentId, IssueId, ProjectId, ProjectKey, SprintId, UserId, WorklogId,
+};
 
 #[derive(Default)]
 pub struct MemoryUserRepository {
@@ -34,6 +38,19 @@ impl UserRepository for MemoryUserRepository {
             .find(|u| u.email.as_ref() == email)
             .cloned()
             .ok_or_else(|| AppError::not_found("user", email))
+    }
+
+    async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError> {
+        let users = self.users.lock().unwrap();
+        users
+            .iter()
+            .find(|u| {
+                u.refresh_token_hash
+                    .as_ref()
+                    .is_some_and(|h| h.as_ref() == token_hash)
+            })
+            .cloned()
+            .ok_or_else(|| AppError::not_found("user", "refresh"))
     }
 
     async fn save(&self, user: &User) -> Result<UserId, AppError> {
@@ -301,5 +318,168 @@ impl EventBus for MemoryEventBus {
 impl MemoryEventBus {
     pub fn drained(&self) -> Vec<crate::ProjectEvent> {
         std::mem::take(&mut *self.events.lock().unwrap())
+    }
+}
+
+pub struct MemoryCommentRepository {
+    comments: Arc<Mutex<Vec<Comment>>>,
+}
+
+impl MemoryCommentRepository {
+    pub fn new() -> Self {
+        Self {
+            comments: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
+impl Default for MemoryCommentRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl CommentRepository for MemoryCommentRepository {
+    async fn get_by_id(&self, id: CommentId) -> Result<Comment, AppError> {
+        let comments = self.comments.lock().unwrap();
+        comments
+            .iter()
+            .find(|c| c.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("comment", id))
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Comment>, AppError> {
+        let comments = self.comments.lock().unwrap();
+        Ok(comments
+            .iter()
+            .filter(|c| c.issue_id == issue_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn save(&self, comment: &Comment) -> Result<CommentId, AppError> {
+        let mut comments = self.comments.lock().unwrap();
+        if let Some(idx) = comments.iter().position(|c| c.id == comment.id) {
+            comments[idx] = comment.clone();
+        } else {
+            comments.push(comment.clone());
+        }
+        Ok(comment.id)
+    }
+
+    async fn delete(&self, id: CommentId) -> Result<(), AppError> {
+        let mut comments = self.comments.lock().unwrap();
+        comments.retain(|c| c.id != id);
+        Ok(())
+    }
+}
+
+pub struct MemoryWorklogRepository {
+    worklogs: Arc<Mutex<Vec<Worklog>>>,
+}
+
+impl MemoryWorklogRepository {
+    pub fn new() -> Self {
+        Self {
+            worklogs: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
+impl Default for MemoryWorklogRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl WorklogRepository for MemoryWorklogRepository {
+    async fn get_by_id(&self, id: WorklogId) -> Result<Worklog, AppError> {
+        let worklogs = self.worklogs.lock().unwrap();
+        worklogs
+            .iter()
+            .find(|w| w.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("worklog", id))
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
+        let worklogs = self.worklogs.lock().unwrap();
+        Ok(worklogs
+            .iter()
+            .filter(|w| w.issue_id == issue_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError> {
+        let mut worklogs = self.worklogs.lock().unwrap();
+        if let Some(idx) = worklogs.iter().position(|w| w.id == worklog.id) {
+            worklogs[idx] = worklog.clone();
+        } else {
+            worklogs.push(worklog.clone());
+        }
+        Ok(worklog.id)
+    }
+
+    async fn delete(&self, id: WorklogId) -> Result<(), AppError> {
+        let mut worklogs = self.worklogs.lock().unwrap();
+        worklogs.retain(|w| w.id != id);
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryProjectMemberRepository {
+    members: Arc<Mutex<Vec<ProjectMember>>>,
+}
+
+#[async_trait]
+impl ProjectMemberRepository for MemoryProjectMemberRepository {
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<ProjectMember>, AppError> {
+        Ok(self
+            .members
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn get(&self, project_id: ProjectId, user_id: UserId) -> Result<ProjectMember, AppError> {
+        self.members
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|m| m.project_id == project_id && m.user_id == user_id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("project member", project_id))
+    }
+
+    async fn save(&self, member: &ProjectMember) -> Result<(), AppError> {
+        let mut members = self.members.lock().unwrap();
+        let idx = members
+            .iter()
+            .position(|m| m.project_id == member.project_id && m.user_id == member.user_id);
+        if let Some(i) = idx {
+            members[i] = member.clone();
+        } else {
+            members.push(member.clone());
+        }
+        Ok(())
+    }
+
+    async fn delete(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError> {
+        let mut members = self.members.lock().unwrap();
+        let idx = members
+            .iter()
+            .position(|m| m.project_id == project_id && m.user_id == user_id);
+        if let Some(i) = idx {
+            members.remove(i);
+        }
+        Ok(())
     }
 }

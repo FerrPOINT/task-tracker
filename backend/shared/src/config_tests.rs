@@ -15,6 +15,11 @@ fn clear_env() {
         "TASKTRACKER_JWT_SECRET",
         "TASKTRACKER_AUTH__ACCESS_TOKEN_TTL_MINUTES",
         "TASKTRACKER_AUTH__REFRESH_TOKEN_TTL_DAYS",
+        "TASKTRACKER_AUTH__REFRESH_TOKEN_COOKIE_NAME",
+        "TASKTRACKER_AUTH__REFRESH_COOKIE_SECURE",
+        "TASKTRACKER_AUTH__REFRESH_COOKIE_SAME_SITE",
+        "TASKTRACKER_AUTH__REFRESH_COOKIE_DOMAIN",
+        "TASKTRACKER_AUTH__REFRESH_COOKIE_PATH",
     ] {
         unsafe { env::remove_var(key) };
     }
@@ -40,6 +45,10 @@ fn config_scenarios() {
     assert_eq!(cfg.database.idle_timeout_seconds, 600);
     assert_eq!(cfg.auth.access_token_ttl_minutes, 15);
     assert_eq!(cfg.auth.refresh_token_ttl_days, 7);
+    assert_eq!(cfg.auth.refresh_cookie_name, "refresh_token");
+    assert!(cfg.auth.refresh_cookie_secure);
+    assert_eq!(cfg.auth.refresh_cookie_same_site, "Lax");
+    assert_eq!(cfg.auth.refresh_cookie_path, "/api/v1/auth");
     assert_eq!(cfg.database.url, "");
     assert_eq!(cfg.auth.jwt_secret, "test-secret-32-chars-long!!!!!");
     set_env(

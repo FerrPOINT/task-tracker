@@ -9,6 +9,7 @@ pub mod project;
 pub mod project_member;
 pub mod sprint;
 pub mod user;
+pub mod worklog;
 
 pub use attachment::Entity as Attachment;
 pub use board::Entity as Board;
@@ -19,3 +20,4 @@ pub use project::Entity as Project;
 pub use project_member::Entity as ProjectMember;
 pub use sprint::Entity as Sprint;
 pub use user::Entity as User;
+pub use worklog::Entity as Worklog;

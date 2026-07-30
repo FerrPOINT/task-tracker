@@ -1,7 +1,8 @@
+use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use shared::{
     AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueType, LabelId, Priority, ProjectId,
-    ProjectKey, SprintId, StatusId, Timestamp, UserId,
+    ProjectKey, SprintId, StatusId, Timestamp, UserId, WorklogId,
 };
 use std::str::FromStr;
 
@@ -17,8 +18,16 @@ pub struct User {
     pub username: ArcStr,
     pub display_name: ArcStr,
     pub password_hash: ArcStr,
+    pub refresh_token_hash: Option<ArcStr>,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+}
+
+impl User {
+    pub fn clear_refresh_token(&mut self) {
+        self.refresh_token_hash = None;
+        self.updated_at = shared::now();
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -257,4 +266,54 @@ pub enum ColumnCategory {
     Todo,
     InProgress,
     Done,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Worklog {
+    pub id: WorklogId,
+    pub issue_id: IssueId,
+    pub author_id: UserId,
+    pub started_at: Timestamp,
+    pub duration_seconds: i64,
+    pub description: Option<ArcStr>,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+}
+
+#[derive(Debug, Clone)]
+pub struct ProjectMember {
+    pub project_id: ProjectId,
+    pub user_id: UserId,
+    pub role: ProjectRole,
+    pub joined_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ProjectRole {
+    #[default]
+    Member,
+    Admin,
+    Owner,
+}
+
+impl ProjectRole {
+    pub fn as_str(&self) -> &str {
+        match self {
+            ProjectRole::Member => "member",
+            ProjectRole::Admin => "admin",
+            ProjectRole::Owner => "owner",
+        }
+    }
+}
+
+impl std::str::FromStr for ProjectRole {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "admin" => Ok(ProjectRole::Admin),
+            "owner" => Ok(ProjectRole::Owner),
+            _ => Ok(ProjectRole::Member),
+        }
+    }
 }
