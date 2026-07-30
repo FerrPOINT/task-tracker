@@ -13,6 +13,13 @@ export async function updateIssue(id: string, input: UpdateIssueInput): Promise<
   return data
 }
 
+export async function deleteIssue(id: string): Promise<void> {
+  const { error } = await api.DELETE('/api/v1/issues/{id}', {
+    params: { path: { id } },
+  })
+  if (error) throw new Error('Failed to delete issue')
+}
+
 export async function getIssue(id: string): Promise<Issue | null> {
   const { data, error } = await api.GET('/api/v1/issues/{id}', {
     params: { path: { id } },

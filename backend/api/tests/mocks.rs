@@ -78,6 +78,10 @@ impl IssueRepository for FailingIssueRepository {
     async fn save(&self, _issue: &Issue) -> Result<IssueId, AppError> {
         Err(AppError::Internal("failing issue repo".into()))
     }
+
+    async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::Internal("failing issue repo".into()))
+    }
 }
 
 #[derive(Default)]

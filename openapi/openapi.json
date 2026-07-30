@@ -288,6 +288,30 @@
           }
         }
       },
+      "delete": {
+        "tags": [
+          "routes::issues"
+        ],
+        "operationId": "delete_issue",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      },
       "patch": {
         "tags": [
           "routes::issues"

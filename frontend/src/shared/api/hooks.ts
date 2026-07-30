@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router'
 import { listProjects } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
 import { searchIssues } from '@/api/search'
 import { login, register, getCurrentUser, listUsers } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
-import { updateIssue } from '@/api/issue'
+import { updateIssue, deleteIssue } from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
 import { useAuthStore } from '@/shared/auth/store'
 
@@ -127,6 +128,19 @@ export function useUpdateIssue(id: string) {
     mutationFn: (input: Parameters<typeof updateIssue>[1]) => updateIssue(id, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['issue', id] })
+    },
+  })
+}
+
+export function useDeleteIssue() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  return useMutation({
+    mutationFn: deleteIssue,
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all })
+      qc.removeQueries({ queryKey: ['issue', id] })
+      navigate('/')
     },
   })
 }

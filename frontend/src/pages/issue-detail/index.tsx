@@ -25,8 +25,7 @@ import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
-import { useBoard } from '@/shared/api/hooks'
-import { useUpdateIssue } from '@/shared/api/hooks'
+import { useBoard, useUpdateIssue, useDeleteIssue } from '@/shared/api/hooks'
 
 export function IssueDetailPage() {
   const { id = '' } = useParams()
@@ -43,6 +42,7 @@ export function IssueDetailPage() {
   })
   const boardQuery = useBoard(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
+  const deleteIssueMutation = useDeleteIssue()
   const worklogsQuery = useWorklogs(id)
   const create = useCreateWorklog(id)
   const update = useUpdateWorklog(id)
@@ -145,6 +145,18 @@ return (
             >
               <UserPlus className="h-4 w-4" />
               {t('issue.assignToMe')}
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={deleteIssueMutation.isPending}
+              onClick={() => {
+                if (window.confirm(t('issue.deleteConfirm'))) {
+                  deleteIssueMutation.mutate(id)
+                }
+              }}
+            >
+              {t('issue.delete')}
             </Button>
             <Button variant="secondary" size="icon">
               <MoreHorizontal className="h-4 w-4" />

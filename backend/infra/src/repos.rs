@@ -283,6 +283,16 @@ impl IssueRepository for IssueRepo {
         }
         Ok(issue.id)
     }
+    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
+        let res = issue::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if res.rows_affected == 0 {
+            return Err(AppError::not_found("issue", id));
+        }
+        Ok(())
+    }
 }
 
 struct BoardRepo {

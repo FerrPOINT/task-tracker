@@ -40,6 +40,7 @@ pub use routes::*;
         routes::issues::search_issues,
         routes::issues::get_issue,
         routes::issues::update_issue,
+        routes::issues::delete_issue,
         routes::transitions::transition_issue,
         routes::search::search_global,
         routes::worklogs::list_worklogs,
@@ -162,7 +163,9 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route(
             "/issues/{id}",
-            get(routes::issues::get_issue).patch(routes::issues::update_issue),
+            get(routes::issues::get_issue)
+                .patch(routes::issues::update_issue)
+                .delete(routes::issues::delete_issue),
         )
         .route(
             "/issues/{id}/transition",

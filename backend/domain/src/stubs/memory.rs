@@ -192,6 +192,16 @@ impl IssueRepository for MemoryIssueRepository {
         }
         Ok(issue.id)
     }
+
+    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
+        let mut issues = self.issues.lock().unwrap();
+        if let Some(idx) = issues.iter().position(|i| i.id == id) {
+            issues.remove(idx);
+            Ok(())
+        } else {
+            Err(AppError::not_found("issue", id))
+        }
+    }
 }
 
 #[derive(Default)]
