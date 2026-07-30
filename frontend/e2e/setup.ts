@@ -48,42 +48,73 @@ export async function seedIntegrationData(): Promise<ApiContext> {
   const { access_token, refresh_token, user_id } = loginRes.data
 
   const projectsRes = await get('/projects', access_token)
-  let project = projectsRes.data.projects?.find((p: any) => p.key === 'DEMO')
+  type ProjectItem = { id: string; key: string }
+  let project = (projectsRes.data.projects as ProjectItem[] | undefined)?.find(
+    (p) => p.key === 'DEMO',
+  )
   if (!project) {
-    const createProjectRes = await post('/projects', {
-      key: 'DEMO',
-      name: 'Demo Project',
-      description: 'Playwright E2E project',
-    }, access_token)
-    if (createProjectRes.status !== 201) {
-      throw new Error(`create project failed: ${createProjectRes.status} ${JSON.stringify(createProjectRes.data)}`)
+    const createProjectRes = await post(
+      '/projects',
+      {
+        key: 'DEMO',
+        name: 'Demo Project',
+        description: 'Playwright E2E project',
+      },
+      access_token,
+    )
+    if (createProjectRes.status !== 200 && createProjectRes.status !== 201) {
+      throw new Error(
+        `create project failed: ${createProjectRes.status} ${JSON.stringify(createProjectRes.data)}`,
+      )
     }
-    project = createProjectRes.data
+    project = createProjectRes.data as ProjectItem
   }
 
   const issuesRes = await get(`/projects/${project.id}/issues`, access_token)
-  let issue = issuesRes.data.issues?.find((i: any) => i.summary === 'Smoke issue')
+  type IssueItem = { id: string; key: string; summary: string }
+  let issue = (issuesRes.data.issues as IssueItem[] | undefined)?.find(
+    (i) => i.summary === 'Smoke issue',
+  )
+
   if (!issue) {
-    const createIssueRes = await post('/issues', {
-      project_key: 'DEMO',
-      issue_type: 'task',
-      summary: 'Smoke issue',
-      description: 'Created by E2E setup',
-      priority: 'medium',
-      status_id: 'todo',
-      reporter_id: user_id,
-    }, access_token)
-    if (createIssueRes.status !== 201) {
-      throw new Error(`create issue failed: ${createIssueRes.status} ${JSON.stringify(createIssueRes.data)}`)
+    const createIssueRes = await post(
+      '/issues',
+      {
+        project_key: 'DEMO',
+        issue_type: 'task',
+        summary: 'Smoke issue',
+        description: 'Created by E2E setup',
+        priority: 'medium',
+        status_id: '00000000-0000-0000-0000-000000000001',
+        reporter_id: user_id,
+      },
+      access_token,
+    )
+    if (createIssueRes.status === 200 || createIssueRes.status === 201) {
+      issue = createIssueRes.data as IssueItem
+    } else {
+      // Race: another parallel worker created the issue; re-fetch
+      const retryRes = await get(`/projects/${project.id}/issues`, access_token)
+      issue = (retryRes.data.issues as IssueItem[] | undefined)?.find(
+        (i) => i.summary === 'Smoke issue',
+      )
+      if (!issue) {
+        throw new Error(
+          `create issue failed: ${createIssueRes.status} ${JSON.stringify(createIssueRes.data)}`,
+        )
+      }
     }
-    issue = createIssueRes.data
   }
 
-  await post(`/issues/${issue.id}/worklogs`, {
-    description: 'Initial work',
-    started_at: new Date().toISOString(),
-    duration_minutes: 180,
-  }, access_token)
+  await post(
+    `/issues/${issue.id}/worklogs`,
+    {
+      description: 'Initial work',
+      started_at: new Date().toISOString(),
+      duration_seconds: 180,
+    },
+    access_token,
+  )
 
   return {
     token: access_token,
