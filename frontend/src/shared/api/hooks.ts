@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { listProjects } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
 import { searchIssues } from '@/api/search'
-import { login, register, getCurrentUser } from '@/api/auth'
+import { login, register, getCurrentUser, listUsers } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
 import { updateIssue } from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
@@ -103,6 +103,14 @@ export function useMoveIssue(projectKey: string) {
   })
 }
 
+
+export function useUsers() {
+  return useQuery({
+    queryKey: ['users'],
+    queryFn: listUsers,
+    enabled: !!useAuthStore.getState().token,
+  })
+}
 
 export function useCurrentUser() {
   return useQuery({

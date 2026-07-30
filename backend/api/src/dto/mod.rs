@@ -37,6 +37,11 @@ pub struct TokenResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UserListResponse {
+    pub users: Vec<UserResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UserResponse {
     pub id: String,
     pub email: String,

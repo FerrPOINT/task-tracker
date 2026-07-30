@@ -26,6 +26,10 @@ impl UserRepository for FailingUserRepository {
     async fn save(&self, _user: &User) -> Result<UserId, AppError> {
         Err(AppError::Internal("failing user repo".into()))
     }
+
+    async fn list(&self) -> Result<Vec<User>, AppError> {
+        Err(AppError::Internal("failing user repo".into()))
+    }
 }
 
 #[derive(Default)]

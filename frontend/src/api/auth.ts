@@ -18,6 +18,14 @@ export async function register(req: RegisterRequest): Promise<AuthResponse> {
   return data
 }
 
+export type User = components['schemas']['UserResponse']
+
+export async function listUsers(): Promise<User[]> {
+  const { data, error } = await api.GET('/api/v1/users')
+  if (error || !data) throw new Error('failed to load users')
+  return data.users
+}
+
 export async function getCurrentUser(): Promise<UserResponse> {
   const { data, error } = await api.GET('/api/v1/users/me')
   if (error || !data) throw new Error('failed to load current user')

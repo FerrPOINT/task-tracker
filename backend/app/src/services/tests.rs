@@ -782,6 +782,10 @@ fn failing_context() -> AppContext {
         async fn save(&self, _user: &User) -> Result<UserId, AppError> {
             Err(AppError::Internal("x".into()))
         }
+
+        async fn list(&self) -> Result<Vec<User>, AppError> {
+            Err(AppError::Internal("x".into()))
+        }
     }
 
     #[derive(Default)]

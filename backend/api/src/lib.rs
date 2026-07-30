@@ -48,12 +48,14 @@ pub use routes::*;
         routes::worklogs::delete_worklog,
         routes::dashboard::get_dashboard,
         routes::users::get_me,
+        routes::users::list_users,
     ),
     components(schemas(
         dto::RegisterRequest,
         dto::LoginRequest,
         dto::AuthResponse,
         dto::UserResponse,
+        dto::UserListResponse,
         dto::ProjectResponse,
         dto::ProjectListResponse,
         dto::CreateProjectRequest,
@@ -187,6 +189,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route("/auth/refresh", post(routes::auth::refresh))
         .route("/auth/logout", post(routes::auth::logout))
         .route("/users/me", get(routes::users::get_me))
+        .route("/users", get(routes::users::list_users))
         .route_layer(auth);
 
     let api = public.merge(protected);
