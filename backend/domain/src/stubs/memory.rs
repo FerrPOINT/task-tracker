@@ -62,6 +62,11 @@ impl UserRepository for MemoryUserRepository {
         }
         Ok(user.id)
     }
+
+    async fn list(&self) -> Result<Vec<User>, AppError> {
+        let users = self.users.lock().unwrap();
+        Ok(users.clone())
+    }
 }
 
 #[derive(Default)]

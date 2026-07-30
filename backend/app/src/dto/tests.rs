@@ -19,7 +19,7 @@ fn sample_user() -> User {
 #[test]
 fn user_dto_from_user() {
     let dto: UserDto = sample_user().into();
-    assert_eq!(dto.name, "A B");
+    assert_eq!(dto.display_name, "A B");
     assert_eq!(dto.email, "a@b.com");
 }
 

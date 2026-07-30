@@ -16,6 +16,7 @@ pub trait UserRepository: Send + Sync {
     async fn get_by_email(&self, email: &str) -> Result<User, AppError>;
     async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError>;
     async fn save(&self, user: &User) -> Result<UserId, AppError>;
+    async fn list(&self) -> Result<Vec<User>, AppError>;
 }
 
 #[async_trait]
@@ -193,6 +194,10 @@ impl UserRepository for StubUserRepository {
     }
     async fn save(&self, _user: &User) -> Result<UserId, AppError> {
         Ok(UserId::new())
+    }
+
+    async fn list(&self) -> Result<Vec<User>, AppError> {
+        Ok(vec![])
     }
 }
 

@@ -100,6 +100,11 @@ impl crate::context::AuthService for JwtAuthService {
         Ok(crate::dto::UserDto::from(user))
     }
 
+    async fn list_users(&self) -> Result<Vec<crate::dto::UserDto>, AppError> {
+        let users = self.users.list().await?;
+        Ok(users.into_iter().map(crate::dto::UserDto::from).collect())
+    }
+
     fn verify_token(&self, token: &str) -> Result<UserClaims, AppError> {
         let key = self.config.jwt_secret.as_bytes();
         let token = jsonwebtoken::decode::<UserClaims>(

@@ -11,7 +11,8 @@ mod tests;
 pub struct UserDto {
     pub id: String,
     pub email: String,
-    pub name: String,
+    pub username: String,
+    pub display_name: String,
 }
 
 impl From<User> for UserDto {
@@ -19,7 +20,8 @@ impl From<User> for UserDto {
         Self {
             id: user.id.to_string(),
             email: user.email.as_ref().to_string(),
-            name: user.display_name.as_ref().to_string(),
+            username: user.username.as_ref().to_string(),
+            display_name: user.display_name.as_ref().to_string(),
         }
     }
 }

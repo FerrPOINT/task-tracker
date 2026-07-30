@@ -111,6 +111,15 @@ impl UserRepository for UserRepo {
         }
         Ok(user.id)
     }
+
+    async fn list(&self) -> Result<Vec<User>, AppError> {
+        let models = user::Entity::find()
+            .order_by_asc(user::Column::DisplayName)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_user).collect())
+    }
 }
 
 struct ProjectRepo {
