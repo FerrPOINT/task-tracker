@@ -83,7 +83,6 @@
 
 - CSV issue import.
 - JSON project import.
-- Vikunja JSON migration.
 - Jira CSV import (field mapping).
 
 ### 8.2 Export

@@ -101,4 +101,4 @@ services:
 
 ## Лицензия
 
-MIT — см. [LICENSE](LICENSE).
+MIT.
