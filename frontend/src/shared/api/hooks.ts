@@ -8,6 +8,12 @@ import { createIssue } from '@/api/issue-create'
 import { updateIssue, deleteIssue } from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
 import { useAuthStore } from '@/shared/auth/store'
+import {
+  listProjectMembers,
+  addProjectMember,
+  removeProjectMember,
+  type AddProjectMemberInput,
+} from '@/api/members'
 
 export const projectKeys = {
   all: ['projects'] as const,
@@ -141,6 +147,34 @@ export function useDeleteIssue() {
       qc.invalidateQueries({ queryKey: projectKeys.all })
       qc.removeQueries({ queryKey: ['issue', id] })
       navigate('/')
+    },
+  })
+}
+
+export function useProjectMembers(projectId: string) {
+  return useQuery({
+    queryKey: ['project-members', projectId],
+    queryFn: () => listProjectMembers(projectId),
+    enabled: !!projectId,
+  })
+}
+
+export function useAddProjectMember(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AddProjectMemberInput) => addProjectMember(projectId, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-members', projectId] })
+    },
+  })
+}
+
+export function useRemoveProjectMember(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (userId: string) => removeProjectMember(projectId, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['project-members', projectId] })
     },
   })
 }

@@ -169,6 +169,8 @@ impl SprintDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoardDto {
+    pub project_id: String,
+    pub project_key: String,
     pub columns: Vec<BoardColumnDto>,
     pub issues: Vec<IssueDto>,
     pub sprint: SprintDto,
@@ -176,6 +178,8 @@ pub struct BoardDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BacklogDto {
+    pub project_id: String,
+    pub project_key: String,
     pub sprint: SprintDto,
     pub sprint_issues: Vec<IssueDto>,
     pub backlog_issues: Vec<IssueDto>,

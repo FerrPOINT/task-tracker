@@ -170,4 +170,11 @@
     "validation": {
       "required": "Comment text is required"
     }
-  }}
+  },
+  "projectMembers": {
+    "title": "Project members",
+    "addUser": "Add member",
+    "selectUser": "Select user",
+    "empty": "No members yet."
+  }
+}

@@ -327,6 +327,8 @@ impl BoardServiceImpl {
             });
 
         Ok(BoardDto {
+            project_id: board.project_id.to_string(),
+            project_key: project_key.to_string(),
             columns,
             issues: issue_dtos,
             sprint: sprint_dto,
@@ -400,6 +402,8 @@ impl crate::context::BoardService for BoardServiceImpl {
         .await?;
 
         Ok(BacklogDto {
+            project_id: board.project_id.to_string(),
+            project_key: project_key.to_string(),
             sprint: sprint_dto,
             sprint_issues,
             backlog_issues,

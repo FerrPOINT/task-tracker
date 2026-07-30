@@ -130,6 +130,8 @@ pub struct SprintResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BoardResponse {
+    pub project_id: String,
+    pub project_key: String,
     pub columns: Vec<BoardColumnResponse>,
     pub issues: Vec<IssueResponse>,
     pub sprint: SprintResponse,
@@ -137,6 +139,8 @@ pub struct BoardResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct BacklogResponse {
+    pub project_id: String,
+    pub project_key: String,
     pub sprint: SprintResponse,
     pub sprint_issues: Vec<IssueResponse>,
     pub backlog_issues: Vec<IssueResponse>,

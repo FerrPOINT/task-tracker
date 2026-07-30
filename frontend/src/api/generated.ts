@@ -359,6 +359,8 @@ export interface components {
         };
         BacklogResponse: {
             backlog_issues: components["schemas"]["IssueResponse"][];
+            project_id: string;
+            project_key: string;
             sprint: components["schemas"]["SprintResponse"];
             sprint_issues: components["schemas"]["IssueResponse"][];
         };
@@ -372,6 +374,8 @@ export interface components {
         BoardResponse: {
             columns: components["schemas"]["BoardColumnResponse"][];
             issues: components["schemas"]["IssueResponse"][];
+            project_id: string;
+            project_key: string;
             sprint: components["schemas"]["SprintResponse"];
         };
         CommentListResponse: {

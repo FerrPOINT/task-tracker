@@ -76,6 +76,8 @@ pub async fn move_issue(
 
 fn map_board(b: app::dto::BoardDto) -> BoardResponse {
     BoardResponse {
+        project_id: b.project_id,
+        project_key: b.project_key,
         columns: b
             .columns
             .into_iter()
@@ -101,6 +103,8 @@ fn map_board(b: app::dto::BoardDto) -> BoardResponse {
 
 fn map_backlog(b: app::dto::BacklogDto) -> crate::dto::BacklogResponse {
     crate::dto::BacklogResponse {
+        project_id: b.project_id,
+        project_key: b.project_key,
         sprint: crate::dto::SprintResponse {
             id: b.sprint.id,
             name: b.sprint.name,
