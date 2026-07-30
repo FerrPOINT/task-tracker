@@ -133,20 +133,16 @@ impl IssueRepository for MemoryIssueRepository {
         let issues = self.issues.lock().unwrap();
         let mut result: Vec<Issue> = issues
             .iter()
-            .filter(|i| query.project_id.map_or(true, |pid| i.project_id == pid))
-            .filter(|i| query.status_id.map_or(true, |sid| i.status_id == sid))
+            .filter(|i| query.project_id.is_none_or(|pid| i.project_id == pid))
+            .filter(|i| query.status_id.is_none_or(|sid| i.status_id == sid))
             .filter(|i| {
                 query
                     .assignee_id
-                    .map_or(true, |aid| i.assignee_id == Some(aid))
+                    .is_none_or(|aid| i.assignee_id == Some(aid))
             })
+            .filter(|i| query.sprint_id.is_none_or(|spid| i.sprint_id == Some(spid)))
             .filter(|i| {
-                query
-                    .sprint_id
-                    .map_or(true, |spid| i.sprint_id == Some(spid))
-            })
-            .filter(|i| {
-                query.search_text.as_ref().map_or(true, |q| {
+                query.search_text.as_ref().is_none_or(|q| {
                     i.summary
                         .as_ref()
                         .to_ascii_lowercase()

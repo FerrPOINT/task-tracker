@@ -516,7 +516,7 @@ async fn dashboard_returns_assigned_issues() {
         .unwrap();
     assert_eq!(res.status(), 200);
     let body: serde_json::Value = res.json().await.unwrap();
-    assert!(body["assigned_issues"].as_array().unwrap().len() >= 1);
+    assert!(!body["assigned_issues"].as_array().unwrap().is_empty());
 }
 #[tokio::test]
 async fn issue_get_not_found() {

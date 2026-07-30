@@ -83,7 +83,7 @@ fn hash_password(password: &str) -> Result<String, AppError> {
     let argon2 = Argon2::default();
     let hash = argon2
         .hash_password(password.as_bytes(), &salt)
-        .map_err(|e| AppError::internal(e))?;
+        .map_err(AppError::internal)?;
     Ok(hash.to_string())
 }
 
@@ -92,7 +92,7 @@ fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
         Argon2,
         password_hash::{PasswordHash, PasswordVerifier},
     };
-    let parsed = PasswordHash::new(hash).map_err(|e| AppError::internal(e))?;
+    let parsed = PasswordHash::new(hash).map_err(AppError::internal)?;
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())
@@ -109,7 +109,7 @@ fn create_token(config: &AuthConfig, user_id: UserId) -> Result<String, AppError
         &claims,
         &EncodingKey::from_secret(config.jwt_secret.as_bytes()),
     )
-    .map_err(|e| AppError::internal(e))
+    .map_err(AppError::internal)
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

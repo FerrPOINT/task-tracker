@@ -59,6 +59,7 @@ pub struct Issue {
 }
 
 impl Issue {
+    #[allow(clippy::too_many_arguments)]
     pub fn create(
         project: &Project,
         number: u32,
