@@ -96,6 +96,12 @@
     "details": "Детали",
     "comments": "Комментарии",
     "activity": "Активность",
+    "priority": {
+      "low": "Низкий",
+      "medium": "Средний",
+      "high": "Высокий",
+      "critical": "Критический"
+    },
     "history": "История",
     "status": "Статус",
     "assignee": "Исполнитель",

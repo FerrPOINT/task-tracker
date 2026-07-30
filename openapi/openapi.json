@@ -1344,7 +1344,9 @@
           "summary",
           "description",
           "issue_type",
+          "project_key",
           "status",
+          "status_id",
           "priority",
           "labels",
           "reporter_id",
@@ -1384,6 +1386,9 @@
           "priority": {
             "type": "string"
           },
+          "project_key": {
+            "type": "string"
+          },
           "project_name": {
             "type": "string"
           },
@@ -1397,6 +1402,9 @@
             ]
           },
           "status": {
+            "type": "string"
+          },
+          "status_id": {
             "type": "string"
           },
           "summary": {

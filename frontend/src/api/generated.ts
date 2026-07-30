@@ -412,10 +412,12 @@ export interface components {
             key: string;
             labels: string[];
             priority: string;
+            project_key: string;
             project_name: string;
             reporter_id: string;
             reporter_name?: string | null;
             status: string;
+            status_id: string;
             summary: string;
         };
         LoginRequest: {
