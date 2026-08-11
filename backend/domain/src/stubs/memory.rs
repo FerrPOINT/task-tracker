@@ -124,6 +124,16 @@ impl ProjectRepository for MemoryProjectRepository {
         let count = projects.iter().filter(|p| p.id == project.id).count();
         Ok(count as u32 + 1)
     }
+
+    async fn delete(&self, id: ProjectId) -> Result<(), AppError> {
+        let mut projects = self.projects.lock().unwrap();
+        if let Some(idx) = projects.iter().position(|p| p.id == id) {
+            projects.remove(idx);
+            Ok(())
+        } else {
+            Err(AppError::not_found("project", id))
+        }
+    }
 }
 
 #[derive(Default)]

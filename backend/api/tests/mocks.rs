@@ -53,6 +53,10 @@ impl ProjectRepository for FailingProjectRepository {
         Err(AppError::Internal("failing project repo".into()))
     }
 
+    async fn delete(&self, _id: ProjectId) -> Result<(), AppError> {
+        Err(AppError::Internal("failing project repo".into()))
+    }
+
     async fn next_issue_number(&self, _project_id: ProjectId) -> Result<u32, AppError> {
         Err(AppError::Internal("failing project repo".into()))
     }

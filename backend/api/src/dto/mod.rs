@@ -74,6 +74,12 @@ pub struct CreateProjectRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct UpdateProjectRequest {
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IssueResponse {
     pub id: String,
     pub key: String,

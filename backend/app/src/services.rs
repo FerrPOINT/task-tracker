@@ -100,6 +100,38 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         let (todo, in_progress, done) = helpers::count_by_status(&counts);
         Ok(ProjectDto::from_project(project, todo, in_progress, done))
     }
+
+    async fn update(
+        &self,
+        key: &ProjectKey,
+        cmd: crate::commands::UpdateProjectCommand,
+        requester_id: UserId,
+    ) -> Result<ProjectDto, AppError> {
+        let mut project = self.projects.get_by_key(key).await?;
+        if project.owner_id != requester_id {
+            return Err(AppError::Forbidden);
+        }
+        if let Some(name) = cmd.name {
+            project.name = name.into();
+            project.updated_at = shared::now();
+        }
+        if let Some(description) = cmd.description {
+            project.description = description.map(Into::into);
+            project.updated_at = shared::now();
+        }
+        self.projects.save(&project).await?;
+        let counts = self.issues.list(IssueQuery::project(project.id)).await?;
+        let (todo, in_progress, done) = helpers::count_by_status(&counts);
+        Ok(ProjectDto::from_project(project, todo, in_progress, done))
+    }
+
+    async fn delete(&self, key: &ProjectKey, requester_id: UserId) -> Result<(), AppError> {
+        let project = self.projects.get_by_key(key).await?;
+        if project.owner_id != requester_id {
+            return Err(AppError::Forbidden);
+        }
+        self.projects.delete(project.id).await
+    }
 }
 
 pub struct IssueServiceImpl {

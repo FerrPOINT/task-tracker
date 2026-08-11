@@ -14,10 +14,18 @@ import {
   ChevronDown,
   Menu,
   X,
+  LogOut,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
+import { useCurrentUser, useLogout } from '@/shared/api/hooks'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/shared/ui/dropdown-menu'
 
 const systemItems = [{ to: '/trash', icon: Trash2, labelKey: 'navigation.trash' }]
 
@@ -63,6 +71,8 @@ export function AppShell() {
   const location = useLocation()
   const projectKey = useCurrentProjectKey()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { data: user } = useCurrentUser()
+  const logout = useLogout()
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
@@ -134,9 +144,23 @@ export function AppShell() {
           <Button variant="ghost" size="icon" className="hidden h-8 w-8 sm:inline-flex">
             <Bell className="h-[18px] w-[18px]" />
           </Button>
-          <Button variant="ghost" size="icon" className="hidden h-8 w-8 sm:inline-flex">
-            <User className="h-[18px] w-[18px]" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <User className="h-[18px] w-[18px]" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-2 py-1.5 text-sm font-medium text-text-primary">
+                {user?.display_name ?? user?.email ?? 'User'}
+              </div>
+              <div className="px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
+              <DropdownMenuItem onClick={() => logout.mutate()} className="gap-2 text-text-secondary">
+                <LogOut className="h-4 w-4" />
+                <span>{t('navigation.logout')}</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 

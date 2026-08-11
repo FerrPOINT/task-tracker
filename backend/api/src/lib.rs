@@ -23,9 +23,13 @@ pub use routes::*;
         routes::health::health,
         routes::auth::register,
         routes::auth::login,
+        routes::auth::refresh_openapi,
+        routes::auth::logout_openapi,
         routes::projects::list_projects,
         routes::projects::create_project,
         routes::projects::get_project,
+        routes::projects::update_project,
+        routes::projects::delete_project,
         routes::members::list_members,
         routes::members::add_member,
         routes::members::remove_member,
@@ -60,6 +64,7 @@ pub use routes::*;
         dto::ProjectResponse,
         dto::ProjectListResponse,
         dto::CreateProjectRequest,
+        dto::UpdateProjectRequest,
         dto::IssueResponse,
         dto::IssueListResponse,
         dto::CreateIssueRequest,
@@ -135,7 +140,9 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route(
             "/projects/{project_key}",
-            get(routes::projects::get_project),
+            get(routes::projects::get_project)
+                .patch(routes::projects::update_project)
+                .delete(routes::projects::delete_project),
         )
         .route(
             "/projects/{project_id}/members",

@@ -222,10 +222,10 @@ export interface paths {
         get: operations["get_project"];
         put?: never;
         post?: never;
-        delete?: never;
+        delete: operations["delete_project"];
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_project"];
         trace?: never;
     };
     "/api/v1/projects/{project_key}/backlog": {
@@ -338,6 +338,38 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_worklog"];
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["refresh_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -536,6 +568,13 @@ export interface components {
             started_at: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        RefreshRequest: {
+            refresh_token: string;
+        };
+        UpdateProjectRequest: {
+            name?: string | null;
+            description?: string | null;
         };
     };
     responses: never;
@@ -1236,6 +1275,52 @@ export interface operations {
             };
         };
     };
+    delete_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_project: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+        };
+    };
     get_backlog: {
         parameters: {
             query?: never;
@@ -1434,6 +1519,62 @@ export interface operations {
             };
             /** @description Worklog not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    refresh_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Tokens refreshed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Invalid refresh token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logged out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

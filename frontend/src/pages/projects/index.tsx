@@ -1,10 +1,22 @@
 import { Link } from 'react-router'
-import { Plus, Search, LayoutGrid, List, Star, MoreHorizontal } from 'lucide-react'
+import { Plus, Search, LayoutGrid, List, Star, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Card, CardContent } from '@/shared/ui/card'
-import { useProjects } from '@/shared/api/hooks'
+import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from '@/shared/api/hooks'
+import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/shared/ui/alert-dialog'
+import type { Project } from '@/api/project'
 
 function ProjectAvatar({ projectKey }: { projectKey: string }) {
   const colors = ['bg-accent', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
@@ -21,15 +33,72 @@ function ProjectAvatar({ projectKey }: { projectKey: string }) {
 export function ProjectsPage() {
   const { t } = useTranslation()
   const { data: projects, isLoading, error } = useProjects()
+  const [formOpen, setFormOpen] = useState(false)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [deletingProject, setDeletingProject] = useState<Project | null>(null)
+
+  const create = useCreateProject()
+  const update = useUpdateProject(editingProject?.key ?? '')
+  const remove = useDeleteProject()
 
   if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
   if (error) return <div className="p-4 text-rose-500">{error.message}</div>
 
+  const isFormPending = create.isPending || update.isPending
+  const formError = create.error ?? update.error
+
   return (
     <div className="space-y-4">
+      <ProjectFormDialog
+        open={formOpen}
+        project={editingProject}
+        onOpenChange={(open) => {
+          setFormOpen(open)
+          if (!open) setEditingProject(null)
+        }}
+        onSubmit={(values) => {
+          if (editingProject) {
+            update.mutate(values as import('@/api/project').UpdateProjectRequest)
+            if (!update.isPending) setFormOpen(false)
+          } else {
+            create.mutate(values as import('@/api/project').CreateProjectRequest)
+          }
+        }}
+        isPending={isFormPending}
+        error={formError as Error | null}
+      />
+
+      <AlertDialog
+        open={!!deletingProject}
+        onOpenChange={(open) => !open && setDeletingProject(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('projects.deleteTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('projects.deleteDescription', { name: deletingProject?.name })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <AlertDialogCancel onClick={() => setDeletingProject(null)}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deletingProject) {
+                  remove.mutate(deletingProject.key)
+                  setDeletingProject(null)
+                }
+              }}
+              disabled={remove.isPending}
+            >
+              {t('common.delete')}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold sm:text-2xl">{t('projects.title')}</h1>
-        <Button size="sm" className="gap-1">
+        <Button size="sm" className="gap-1" onClick={() => setFormOpen(true)}>
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">{t('projects.create')}</span>
           <span className="sm:hidden">{t('navigation.create')}</span>
@@ -87,6 +156,29 @@ export function ProjectsPage() {
                     </div>
                   </div>
                   <div className="hidden shrink-0 items-center gap-1 sm:flex">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        setEditingProject(project)
+                        setFormOpen(true)
+                      }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.preventDefault()
+                        setDeletingProject(project)
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-rose-500" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

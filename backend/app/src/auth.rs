@@ -41,16 +41,7 @@ impl crate::context::AuthService for JwtAuthService {
 
         let id = self.users.save(&user).await?;
         let user = self.users.get_by_id(id).await?;
-        let access = create_access_token(&self.config, user.id)?;
-        let refresh = create_refresh_token(&self.config, user.id)?;
-        let expires_in = self.config.access_token_ttl_minutes * 60;
-
-        Ok(AuthDto {
-            access_token: access,
-            refresh_token: refresh,
-            expires_in,
-            user: UserDto::from(user),
-        })
+        self.issue_tokens(user).await
     }
 
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError> {
@@ -59,16 +50,7 @@ impl crate::context::AuthService for JwtAuthService {
             return Err(AppError::Unauthorized);
         }
 
-        let access = create_access_token(&self.config, user.id)?;
-        let refresh = create_refresh_token(&self.config, user.id)?;
-        let expires_in = self.config.access_token_ttl_minutes * 60;
-
-        Ok(AuthDto {
-            access_token: access,
-            refresh_token: refresh,
-            expires_in,
-            user: UserDto::from(user),
-        })
+        self.issue_tokens(user).await
     }
 
     async fn refresh(&self, refresh_token: &str) -> Result<AuthDto, AppError> {
@@ -78,15 +60,11 @@ impl crate::context::AuthService for JwtAuthService {
             .parse::<UserId>()
             .map_err(|_| AppError::invalid_input("invalid user id"))?;
         let user = self.users.get_by_id(user_id).await?;
-        let access = create_access_token(&self.config, user.id)?;
-        let refresh = create_refresh_token(&self.config, user.id)?;
-        let expires_in = self.config.access_token_ttl_minutes * 60;
-        Ok(AuthDto {
-            access_token: access,
-            refresh_token: refresh,
-            expires_in,
-            user: UserDto::from(user),
-        })
+        let token_hash = hash_refresh_token(refresh_token);
+        if user.refresh_token_hash.as_deref() != Some(&token_hash) {
+            return Err(AppError::Unauthorized);
+        }
+        self.issue_tokens(user).await
     }
 
     async fn logout(&self, user_id: UserId) -> Result<(), AppError> {
@@ -115,6 +93,31 @@ impl crate::context::AuthService for JwtAuthService {
         .map_err(|_| AppError::Unauthorized)?;
         Ok(token.claims)
     }
+}
+
+impl JwtAuthService {
+    async fn issue_tokens(&self, mut user: User) -> Result<AuthDto, AppError> {
+        let access = create_access_token(&self.config, user.id)?;
+        let refresh = create_refresh_token(&self.config, user.id)?;
+        let token_hash = hash_refresh_token(&refresh);
+        user.refresh_token_hash = Some(token_hash.into());
+        self.users.save(&user).await?;
+        let expires_in = self.config.access_token_ttl_minutes * 60;
+
+        Ok(AuthDto {
+            access_token: access,
+            refresh_token: refresh,
+            expires_in,
+            user: UserDto::from(user),
+        })
+    }
+}
+
+fn hash_refresh_token(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
 }
 
 fn hash_password(password: &str) -> Result<String, AppError> {

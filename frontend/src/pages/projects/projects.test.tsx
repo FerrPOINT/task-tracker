@@ -21,6 +21,9 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
     error: null,
   }),
+  useCreateProject: () => ({ mutate: vi.fn(), isPending: false, error: null }),
+  useUpdateProject: () => ({ mutate: vi.fn(), isPending: false, error: null }),
+  useDeleteProject: () => ({ mutate: vi.fn(), isPending: false, error: null }),
 }))
 
 function wrapper(children: React.ReactNode) {
