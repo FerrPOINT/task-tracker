@@ -2,7 +2,9 @@ use axum::{Extension, Json, extract::State, http::StatusCode};
 use shared::{AppError, ProjectKey, UserId};
 use std::sync::Arc;
 
-use crate::dto::{CreateProjectRequest, ProjectListResponse, ProjectResponse};
+use crate::dto::{
+    CreateProjectRequest, ProjectListResponse, ProjectResponse, UpdateProjectRequest,
+};
 use app::commands::ProjectQueryDto;
 
 #[utoipa::path(
@@ -85,4 +87,58 @@ pub async fn get_project(
     }
     let p = ctx.services.project.get_by_key(&key).await?;
     Ok(Json(map_project_response(p)))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/v1/projects/{project_key}",
+    params(("project_key" = String, Path, description = "Project key")),
+    request_body = UpdateProjectRequest,
+    responses((status = 200, body = ProjectResponse))
+)]
+pub async fn update_project(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
+    axum::extract::Path(key): axum::extract::Path<String>,
+    Json(req): Json<UpdateProjectRequest>,
+) -> Result<Json<ProjectResponse>, AppError> {
+    let key = ProjectKey::new(key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
+    let requester_id = claims
+        .sub
+        .parse::<uuid::Uuid>()
+        .map(UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("owner_id"))?;
+    let cmd = app::commands::UpdateProjectCommand {
+        name: req.name,
+        description: req.description,
+    };
+    let dto = ctx.services.project.update(&key, cmd, requester_id).await?;
+    Ok(Json(map_project_response(dto)))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/v1/projects/{project_key}",
+    params(("project_key" = String, Path, description = "Project key")),
+    responses((status = 204))
+)]
+pub async fn delete_project(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
+    axum::extract::Path(key): axum::extract::Path<String>,
+) -> Result<StatusCode, AppError> {
+    let key = ProjectKey::new(key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
+    let requester_id = claims
+        .sub
+        .parse::<uuid::Uuid>()
+        .map(UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("owner_id"))?;
+    ctx.services.project.delete(&key, requester_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }

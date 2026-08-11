@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import { listProjects } from '@/api/project'
+import { listProjects, createProject, updateProject, deleteProject } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
 import { searchIssues } from '@/api/search'
-import { login, register, getCurrentUser, listUsers } from '@/api/auth'
+import { login, register, getCurrentUser, listUsers, logout } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
 import { updateIssue, deleteIssue } from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
@@ -127,6 +127,58 @@ export function useCurrentUser() {
   })
 }
 
+export function useLogout() {
+  const logoutStore = useAuthStore((s) => s.logout)
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  return useMutation({
+    mutationFn: logout,
+    onSuccess: () => {
+      logoutStore()
+      qc.clear()
+      navigate('/login')
+    },
+    onError: () => {
+      logoutStore()
+      navigate('/login')
+    },
+  })
+}
+
+export function useCreateProject() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  return useMutation({
+    mutationFn: createProject,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: projectKeys.all })
+      navigate(`/projects/${data.key}/board`)
+    },
+  })
+}
+
+export function useUpdateProject(key: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: Parameters<typeof updateProject>[1]) => updateProject(key, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.all })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(key) })
+    },
+  })
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+  return useMutation({
+    mutationFn: deleteProject,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.all })
+      navigate('/projects')
+    },
+  })
+}
 
 export function useUpdateIssue(id: string) {
   const qc = useQueryClient()

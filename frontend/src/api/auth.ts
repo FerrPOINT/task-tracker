@@ -31,3 +31,8 @@ export async function getCurrentUser(): Promise<UserResponse> {
   if (error || !data) throw new Error('failed to load current user')
   return data
 }
+
+export async function logout(): Promise<void> {
+  const { error } = await api.POST('/api/v1/auth/logout')
+  if (error) throw new Error('failed to logout')
+}

@@ -85,6 +85,12 @@ pub struct AddProjectMemberCommand {
     pub role: String,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct UpdateProjectCommand {
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TransitionIssueCommand {
     pub issue_id: IssueId,

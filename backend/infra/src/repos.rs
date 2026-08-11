@@ -168,11 +168,31 @@ impl ProjectRepository for ProjectRepo {
             created_at: Set(project.created_at),
             updated_at: Set(shared::now()),
         };
-        project::Entity::insert(active)
+        let exists = project::Entity::find_by_id(project.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .is_some();
+        if exists {
+            active.update(&*self.db).await.map_err(AppError::database)?;
+        } else {
+            project::Entity::insert(active)
+                .exec(&*self.db)
+                .await
+                .map_err(AppError::database)?;
+        }
+        Ok(project.id)
+    }
+
+    async fn delete(&self, id: ProjectId) -> Result<(), AppError> {
+        let res = project::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
             .map_err(AppError::database)?;
-        Ok(project.id)
+        if res.rows_affected == 0 {
+            return Err(AppError::not_found("project", id));
+        }
+        Ok(())
     }
 
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError> {

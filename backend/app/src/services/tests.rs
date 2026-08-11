@@ -742,6 +742,9 @@ fn failing_context() -> AppContext {
         async fn save(&self, _project: &Project) -> Result<ProjectId, AppError> {
             Err(AppError::Internal("x".into()))
         }
+        async fn delete(&self, _id: ProjectId) -> Result<(), AppError> {
+            Err(AppError::Internal("x".into()))
+        }
         async fn next_issue_number(&self, _project_id: ProjectId) -> Result<u32, AppError> {
             Err(AppError::Internal("x".into()))
         }

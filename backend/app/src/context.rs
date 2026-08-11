@@ -5,7 +5,7 @@ use crate::auth::{JwtAuthService, UserClaims};
 use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateWorklogCommand,
     LoginCommand, ProjectQueryDto, RegisterCommand, TransitionIssueCommand, UpdateCommentCommand,
-    UpdateIssueCommand, UpdateWorklogCommand,
+    UpdateIssueCommand, UpdateProjectCommand, UpdateWorklogCommand,
 };
 use crate::dto::{
     AuthDto, BacklogDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto, WorklogDto,
@@ -144,6 +144,13 @@ pub trait ProjectService: Send + Sync {
     async fn create(&self, cmd: CreateProjectCommand) -> Result<ProjectDto, AppError>;
     async fn list(&self, query: ProjectQueryDto) -> Result<Vec<ProjectDto>, AppError>;
     async fn get_by_key(&self, key: &ProjectKey) -> Result<ProjectDto, AppError>;
+    async fn update(
+        &self,
+        key: &ProjectKey,
+        cmd: UpdateProjectCommand,
+        requester_id: UserId,
+    ) -> Result<ProjectDto, AppError>;
+    async fn delete(&self, key: &ProjectKey, requester_id: UserId) -> Result<(), AppError>;
 }
 
 #[async_trait]

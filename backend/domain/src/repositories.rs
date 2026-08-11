@@ -25,6 +25,7 @@ pub trait ProjectRepository: Send + Sync {
     async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError>;
     async fn list(&self, query: ProjectQuery) -> Result<Vec<Project>, AppError>;
     async fn save(&self, project: &Project) -> Result<ProjectId, AppError>;
+    async fn delete(&self, id: ProjectId) -> Result<(), AppError>;
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError>;
 }
 
@@ -219,6 +220,10 @@ impl ProjectRepository for StubProjectRepository {
     }
     async fn next_issue_number(&self, _project_id: ProjectId) -> Result<u32, AppError> {
         Ok(1)
+    }
+
+    async fn delete(&self, _id: ProjectId) -> Result<(), AppError> {
+        Ok(())
     }
 }
 
