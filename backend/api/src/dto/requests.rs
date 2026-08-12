@@ -8,6 +8,7 @@ pub struct UpdateIssueRequest {
     pub priority: Option<String>,
     pub status_id: Option<String>,
     pub assignee_id: Option<String>,
+    pub sprint_id: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

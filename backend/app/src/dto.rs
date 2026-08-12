@@ -143,6 +143,8 @@ pub struct SprintDto {
     pub velocity: i64,
     pub remaining_days: Option<i64>,
     pub issue_ids: Vec<String>,
+    pub start_date: Option<DateTime<FixedOffset>>,
+    pub end_date: Option<DateTime<FixedOffset>>,
 }
 
 impl SprintDto {
@@ -163,6 +165,8 @@ impl SprintDto {
             velocity: sprint.velocity.unwrap_or(0),
             remaining_days: None,
             issue_ids,
+            start_date: sprint.start_date,
+            end_date: sprint.end_date,
         }
     }
 }

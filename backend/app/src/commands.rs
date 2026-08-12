@@ -1,5 +1,38 @@
 use serde::{Deserialize, Serialize};
-use shared::{IssueId, ProjectId, StatusId, UserId};
+use shared::{IssueId, ProjectId, SprintId, StatusId, UserId};
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateSprintCommand {
+    pub project_id: ProjectId,
+    pub name: String,
+    pub goal: Option<String>,
+    pub start_date: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub end_date: Option<chrono::DateTime<chrono::FixedOffset>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct UpdateSprintCommand {
+    pub name: Option<String>,
+    pub goal: Option<Option<String>>,
+    pub start_date: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
+    pub end_date: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MoveIssueToSprintCommand {
+    pub issue_id: IssueId,
+    pub sprint_id: Option<SprintId>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StartSprintCommand {
+    pub sprint_id: SprintId,
+}
+
+#[derive(Debug, Clone)]
+pub struct CloseSprintCommand {
+    pub sprint_id: SprintId,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RegisterCommand {
@@ -48,6 +81,7 @@ pub struct UpdateIssueCommand {
     pub priority: Option<shared::Priority>,
     pub status_id: Option<String>,
     pub assignee_id: Option<Option<shared::UserId>>,
+    pub sprint_id: Option<Option<shared::SprintId>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

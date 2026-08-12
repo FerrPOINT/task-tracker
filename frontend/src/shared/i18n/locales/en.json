@@ -60,10 +60,25 @@
     "createSprint": "Create sprint",
     "createIssue": "Create issue",
     "startSprint": "Start sprint",
+    "closeSprint": "Close sprint",
     "title": "Backlog · {{projectName}}",
     "velocity": "Velocity: {{velocity}} sp",
     "backlogCount": "Backlog: {{count}}",
-    "backlogSection": "Backlog · {{count}}"
+    "backlogSection": "Backlog · {{count}}",
+    "activeSprint": "{{name}} · {{velocity}} sp · {{remaining}} days",
+    "futureSprint": "{{name}}",
+    "emptySprint": "No issues in this sprint.",
+    "emptyBacklog": "Backlog is empty.",
+    "edit": "Edit sprint"
+  },
+  "sprint": {
+    "name": "Sprint name",
+    "namePlaceholder": "e.g. Sprint 1",
+    "goal": "Goal",
+    "goalPlaceholder": "What should this sprint achieve?",
+    "velocity": "Velocity (story points)",
+    "startDate": "Start date",
+    "endDate": "End date"
   },
   "search": {
     "title": "Search issues",
@@ -107,6 +122,8 @@
     "status": "Status",
     "assignee": "Assignee",
     "reporter": "Reporter",
+    "sprint": "Sprint",
+    "noSprint": "No sprint",
     "priority": "Priority",
     "labels": "Labels",
     "edit": "Edit",

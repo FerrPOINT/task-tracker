@@ -54,6 +54,14 @@ pub use routes::*;
         routes::dashboard::get_dashboard,
         routes::users::get_me,
         routes::users::list_users,
+        routes::sprints::list_sprints,
+        routes::sprints::create_sprint,
+        routes::sprints::get_sprint,
+        routes::sprints::update_sprint,
+        routes::sprints::start_sprint,
+        routes::sprints::close_sprint,
+        routes::sprints::move_issue_to_sprint,
+        routes::sprints::remove_issue_from_sprint,
     ),
     components(schemas(
         dto::RegisterRequest,
@@ -80,6 +88,10 @@ pub use routes::*;
         dto::CreateWorklogRequest,
         dto::UpdateWorklogRequest,
         dto::SprintResponse,
+        dto::SprintListResponse,
+        dto::CreateSprintRequest,
+        dto::UpdateSprintRequest,
+        dto::MoveIssueToSprintRequest,
         dto::BoardResponse,
         dto::BacklogResponse,
         dto::DashboardResponse,
@@ -200,6 +212,30 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route("/auth/logout", post(routes::auth::logout))
         .route("/users/me", get(routes::users::get_me))
         .route("/users", get(routes::users::list_users))
+        .route(
+            "/projects/{project_key}/sprints",
+            get(routes::sprints::list_sprints).post(routes::sprints::create_sprint),
+        )
+        .route(
+            "/projects/{project_key}/sprints/{sprint_id}",
+            get(routes::sprints::get_sprint).patch(routes::sprints::update_sprint),
+        )
+        .route(
+            "/projects/{project_key}/sprints/{sprint_id}/start",
+            post(routes::sprints::start_sprint),
+        )
+        .route(
+            "/projects/{project_key}/sprints/{sprint_id}/close",
+            post(routes::sprints::close_sprint),
+        )
+        .route(
+            "/projects/{project_key}/sprints/{sprint_id}/issues",
+            post(routes::sprints::move_issue_to_sprint),
+        )
+        .route(
+            "/projects/{project_key}/sprints/{sprint_id}/remove-issue",
+            post(routes::sprints::remove_issue_from_sprint),
+        )
         .route_layer(auth);
 
     let api = public.merge(protected);

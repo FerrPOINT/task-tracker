@@ -420,7 +420,21 @@ impl SprintRepository for SprintRepo {
             .ok_or_else(|| AppError::not_found("sprint", id))
     }
 
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<Sprint>, AppError> {
+        let models = sprint::Entity::find()
+            .filter(sprint::Column::ProjectId.eq(project_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_sprint).collect())
+    }
+
     async fn save(&self, sprint: &Sprint) -> Result<SprintId, AppError> {
+        let exists = sprint::Entity::find_by_id(sprint.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .is_some();
         let active = sprint::ActiveModel {
             id: Set(sprint.id.as_uuid()),
             project_id: Set(sprint.project_id.as_uuid()),
@@ -431,7 +445,11 @@ impl SprintRepository for SprintRepo {
             end_date: Set(sprint.end_date),
             velocity: Set(sprint.velocity),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        if exists {
+            active.update(&*self.db).await.map_err(AppError::database)?;
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?;
+        }
         Ok(sprint.id)
     }
 }

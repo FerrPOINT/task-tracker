@@ -57,5 +57,6 @@ pub async fn transition_issue(
         reporter_id: dto.reporter_id,
         reporter_name: dto.reporter_name,
         project_name: dto.project_name,
+        sprint_id: dto.sprint_id,
     }))
 }

@@ -389,6 +389,7 @@ async fn update_issue_invalid_assignee_id_returns_400() {
         priority: None,
         status_id: None,
         assignee_id: Some("not-a-uuid".to_string()),
+        sprint_id: None,
     };
     let response = app
         .oneshot(

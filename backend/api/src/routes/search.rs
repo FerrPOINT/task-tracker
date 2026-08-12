@@ -40,5 +40,6 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
         reporter_id: i.reporter_id,
         reporter_name: i.reporter_name,
         project_name: i.project_name,
+        sprint_id: i.sprint_id,
     }
 }

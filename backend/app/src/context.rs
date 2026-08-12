@@ -13,7 +13,7 @@ use crate::dto::{
 use crate::services::{
     BoardServiceImpl, CommentServiceImpl, DashboardServiceImpl, IssueServiceImpl,
     ProjectMemberService, ProjectMemberServiceImpl, ProjectServiceImpl, SearchServiceImpl,
-    WorklogServiceImpl,
+    SprintService, SprintServiceImpl, WorklogServiceImpl,
 };
 use shared::{AppConfig, AppError, CommentId, IssueId, ProjectKey, StatusId, UserId, WorklogId};
 
@@ -35,6 +35,7 @@ pub struct Services {
     pub comment: Arc<dyn CommentService>,
     pub worklog: Arc<dyn WorklogService>,
     pub member: Arc<dyn ProjectMemberService>,
+    pub sprint: Arc<dyn SprintService>,
 }
 
 impl AppContext {
@@ -71,6 +72,12 @@ impl AppContext {
             repos.projects.clone(),
             repos.users.clone(),
         ));
+        let sprint: Arc<dyn SprintService> = Arc::new(SprintServiceImpl::new(
+            repos.sprints.clone(),
+            repos.issues.clone(),
+            repos.projects.clone(),
+            repos.users.clone(),
+        ));
         Self {
             config,
             services: Services {
@@ -94,6 +101,7 @@ impl AppContext {
                     repos.members.clone(),
                     repos.users.clone(),
                 )),
+                sprint,
             },
             repos,
         }
