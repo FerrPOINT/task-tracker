@@ -7,6 +7,7 @@ pub mod issues;
 pub mod members;
 pub mod projects;
 pub mod search;
+pub mod sprints;
 pub mod transitions;
 pub mod worklogs;
 

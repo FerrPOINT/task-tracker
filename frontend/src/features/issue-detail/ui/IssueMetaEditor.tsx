@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
 import type { Issue } from '@/api/issue'
+import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
 import { useCurrentUser, useUsers } from '@/shared/api/hooks'
 
@@ -9,15 +10,17 @@ const priorities = ['Low', 'Medium', 'High', 'Critical']
 interface IssueMetaEditorProps {
   issue: Issue
   columns: Board['columns']
+  sprints?: Sprint[]
   onChange: (patch: {
     status_id?: string
     priority?: string
     assignee_id?: string | null
+    sprint_id?: string | null
   }) => void
   disabled?: boolean
 }
 
-export function IssueMetaEditor({ issue, columns, onChange, disabled }: IssueMetaEditorProps) {
+export function IssueMetaEditor({ issue, columns, sprints, onChange, disabled }: IssueMetaEditorProps) {
   const { t } = useTranslation()
   const currentUser = useCurrentUser()
   const usersQuery = useUsers()
@@ -89,6 +92,25 @@ export function IssueMetaEditor({ issue, columns, onChange, disabled }: IssueMet
           ))}
         </select>
       </div>
+
+      {sprints && (
+        <div className="space-y-1.5">
+          <label className="block text-text-muted">{t('issue.sprint')}</label>
+          <select
+            value={issue.sprint_id ?? ''}
+            onChange={(e) => onChange({ sprint_id: e.target.value || null })}
+            disabled={disabled}
+            className={selectClass}
+          >
+            <option value="">{t('issue.noSprint')}</option>
+            {sprints.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   )
 }

@@ -259,6 +259,7 @@ async fn issue_service_update_and_move() {
                 priority: Some(Priority::High),
                 status_id: Some(in_progress_id.clone()),
                 assignee_id: Some(Some(user.id)),
+                sprint_id: None,
             },
         )
         .await
@@ -536,6 +537,7 @@ async fn issue_service_update_fails_for_invalid_status_id() {
                 priority: None,
                 status_id: Some("not-a-uuid".to_string()),
                 assignee_id: None,
+                sprint_id: None,
             },
         )
         .await;
@@ -556,6 +558,7 @@ async fn issue_service_update_fails_for_missing_issue() {
                 priority: None,
                 status_id: None,
                 assignee_id: None,
+                sprint_id: None,
             },
         )
         .await;
@@ -826,6 +829,9 @@ fn failing_context() -> AppContext {
             Err(AppError::Internal("x".into()))
         }
         async fn save(&self, _sprint: &Sprint) -> Result<SprintId, AppError> {
+            Err(AppError::Internal("x".into()))
+        }
+        async fn list_by_project(&self, _project_id: ProjectId) -> Result<Vec<Sprint>, AppError> {
             Err(AppError::Internal("x".into()))
         }
     }

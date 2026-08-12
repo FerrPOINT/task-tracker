@@ -62,6 +62,10 @@ fn config_scenarios() {
     set_env("TASKTRACKER_SERVER__PORT", "19876");
     set_env("TASKTRACKER_AUTH__ACCESS_TOKEN_TTL_MINUTES", "60");
     set_env("TASKTRACKER_AUTH__REFRESH_TOKEN_TTL_DAYS", "14");
+    set_env(
+        "TASKTRACKER_AUTH__JWT_SECRET",
+        "test-secret-32-chars-long!!!!!",
+    );
     let cfg = AppConfig::from_path("/nonexistent.toml").unwrap();
     assert_eq!(cfg.server.port, 19876);
     assert_eq!(cfg.auth.jwt_secret, "test-secret-32-chars-long!!!!!");

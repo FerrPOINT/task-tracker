@@ -289,6 +289,15 @@ impl SprintRepository for MemorySprintRepository {
             .ok_or_else(|| AppError::not_found("sprint", id))
     }
 
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<Sprint>, AppError> {
+        let sprints = self.sprints.lock().unwrap();
+        Ok(sprints
+            .iter()
+            .filter(|s| s.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
     async fn save(&self, sprint: &Sprint) -> Result<SprintId, AppError> {
         let mut sprints = self.sprints.lock().unwrap();
         if let Some(idx) = sprints.iter().position(|s| s.id == sprint.id) {

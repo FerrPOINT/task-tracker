@@ -60,10 +60,25 @@
     "createSprint": "Создать спринт",
     "createIssue": "Создать задачу",
     "startSprint": "Начать спринт",
+    "closeSprint": "Завершить спринт",
     "title": "Backlog · {{projectName}}",
     "velocity": "Скорость: {{velocity}} sp",
     "backlogCount": "В бэклоге: {{count}}",
-    "backlogSection": "Backlog · {{count}}"
+    "backlogSection": "Backlog · {{count}}",
+    "activeSprint": "{{name}} · {{velocity}} sp · {{remaining}} дн.",
+    "futureSprint": "{{name}}",
+    "emptySprint": "В спринте нет задач.",
+    "emptyBacklog": "Бэклог пуст.",
+    "edit": "Изменить спринт"
+  },
+  "sprint": {
+    "name": "Название спринта",
+    "namePlaceholder": "Например, Спринт 1",
+    "goal": "Цель",
+    "goalPlaceholder": "Что должен достичь этот спринт?",
+    "velocity": "Скорость (story points)",
+    "startDate": "Дата начала",
+    "endDate": "Дата окончания"
   },
   "search": {
     "title": "Поиск задач",
@@ -107,6 +122,8 @@
     "status": "Статус",
     "assignee": "Исполнитель",
     "reporter": "Автор",
+    "sprint": "Спринт",
+    "noSprint": "Без спринта",
     "priority": "Приоритет",
     "labels": "Метки",
     "edit": "Изменить",

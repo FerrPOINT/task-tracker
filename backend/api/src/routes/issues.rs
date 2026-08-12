@@ -77,6 +77,16 @@ pub async fn update_issue(
                 Some(Some(shared::UserId::from_uuid(uuid)))
             }
         },
+        sprint_id: match req.sprint_id {
+            None => None,
+            Some(None) => Some(None),
+            Some(Some(s)) => {
+                let uuid = s
+                    .parse()
+                    .map_err(|_| AppError::invalid_input("sprint_id"))?;
+                Some(Some(shared::SprintId::from_uuid(uuid)))
+            }
+        },
     };
     let i = ctx.services.issue.update(issue_id, cmd).await?;
     Ok(Json(map_issue(i)))
@@ -134,6 +144,7 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
         reporter_id: i.reporter_id,
         reporter_name: i.reporter_name,
         project_name: i.project_name,
+        sprint_id: i.sprint_id,
     }
 }
 

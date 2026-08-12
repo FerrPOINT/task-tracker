@@ -15,9 +15,102 @@ import {
   type AddProjectMemberInput,
 } from '@/api/members'
 
+import {
+  closeSprint,
+  createSprint,
+  listSprints,
+  moveIssueToSprint,
+  removeIssueFromSprint,
+  startSprint,
+  updateSprint,
+  type CreateSprintRequest,
+  type UpdateSprintRequest,
+} from '@/api/sprint'
+
 export const projectKeys = {
   all: ['projects'] as const,
   detail: (key: string) => ['project', key] as const,
+  sprints: (key: string) => ['sprints', key] as const,
+}
+
+export function useSprints(projectKey: string | undefined) {
+  return useQuery({
+    queryKey: projectKeys.sprints(projectKey ?? ''),
+    queryFn: () => listSprints(projectKey!),
+    enabled: !!projectKey,
+  })
+}
+
+export function useCreateSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateSprintRequest) => createSprint(projectKey, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+    },
+  })
+}
+
+export function useUpdateSprint(projectKey: string, sprintId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateSprintRequest) => updateSprint(projectKey, sprintId, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+    },
+  })
+}
+
+export function useStartSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sprintId: string) => startSprint(projectKey, sprintId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+    },
+  })
+}
+
+export function useCloseSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (sprintId: string) => closeSprint(projectKey, sprintId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+    },
+  })
+}
+
+export function useMoveIssueToSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sprintId, issueId }: { sprintId: string; issueId: string }) =>
+      moveIssueToSprint(projectKey, sprintId, issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+    },
+  })
+}
+
+export function useRemoveIssueFromSprint(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ sprintId, issueId }: { sprintId: string; issueId: string }) =>
+      removeIssueFromSprint(projectKey, sprintId, issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
+      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+    },
+  })
 }
 
 export function useProjects() {

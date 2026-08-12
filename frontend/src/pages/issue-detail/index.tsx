@@ -25,7 +25,7 @@ import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
-import { useBoard, useUpdateIssue, useDeleteIssue } from '@/shared/api/hooks'
+import { useBoard, useUpdateIssue, useDeleteIssue, useSprints } from '@/shared/api/hooks'
 
 export function IssueDetailPage() {
   const { id = '' } = useParams()
@@ -41,6 +41,7 @@ export function IssueDetailPage() {
     staleTime: 0,
   })
   const boardQuery = useBoard(issueQuery.data?.project_key)
+  const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
   const worklogsQuery = useWorklogs(id)
@@ -226,6 +227,7 @@ return (
                 <IssueMetaEditor
                   issue={issue}
                   columns={boardQuery.data?.columns ?? []}
+                  sprints={sprintsQuery.data ?? []}
                   disabled={updateIssue.isPending}
                   onChange={(patch) => updateIssue.mutate(patch)}
                 />

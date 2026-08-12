@@ -20,6 +20,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["logout_openapi"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["refresh_openapi"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -276,6 +308,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_key}/sprints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_sprints"];
+        put?: never;
+        post: operations["create_sprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/sprints/{sprint_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_sprint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_sprint"];
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/sprints/{sprint_id}/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["close_sprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/sprints/{sprint_id}/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["move_issue_to_sprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/sprints/{sprint_id}/remove-issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["remove_issue_from_sprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/sprints/{sprint_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["start_sprint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -338,38 +466,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["update_worklog"];
-        trace?: never;
-    };
-    "/api/v1/auth/refresh": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["refresh_token"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/auth/logout": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["logout"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
         trace?: never;
     };
 }
@@ -442,6 +538,14 @@ export interface components {
             key: string;
             name: string;
         };
+        CreateSprintRequest: {
+            /** Format: date-time */
+            end_date?: string | null;
+            goal?: string | null;
+            name: string;
+            /** Format: date-time */
+            start_date?: string | null;
+        };
         CreateWorklogRequest: {
             description?: string | null;
             /** Format: int64 */
@@ -468,6 +572,7 @@ export interface components {
             project_name: string;
             reporter_id: string;
             reporter_name?: string | null;
+            sprint_id?: string | null;
             status: string;
             status_id: string;
             summary: string;
@@ -479,6 +584,9 @@ export interface components {
         MoveIssueRequest: {
             issue_id: string;
             status_id: string;
+        };
+        MoveIssueToSprintRequest: {
+            issue_id: string;
         };
         ProjectListResponse: {
             projects: components["schemas"]["ProjectResponse"][];
@@ -506,18 +614,34 @@ export interface components {
             /** Format: int32 */
             todo_count: number;
         };
+        RefreshRequest: {
+            refresh_token: string;
+        };
         RegisterRequest: {
             email: string;
             password: string;
             username: string;
         };
+        SprintListResponse: {
+            sprints: components["schemas"]["SprintResponse"][];
+        };
         SprintResponse: {
+            /**
+             * Format: date-time
+             * @description Format: date-time
+             */
+            end_date?: string | null;
             goal: string;
             id: string;
             issue_ids: string[];
             name: string;
             /** Format: int64 */
             remaining_days?: number | null;
+            /**
+             * Format: date-time
+             * @description Format: date-time
+             */
+            start_date?: string | null;
             state: string;
             /** Format: int64 */
             velocity: number;
@@ -532,8 +656,21 @@ export interface components {
             assignee_id?: string | null;
             description?: string | null;
             priority?: string | null;
+            sprint_id?: string | null;
             status_id?: string | null;
             summary?: string | null;
+        };
+        UpdateProjectRequest: {
+            description?: string | null;
+            name?: string | null;
+        };
+        UpdateSprintRequest: {
+            /** Format: date-time */
+            end_date?: string | null;
+            goal?: string | null;
+            name?: string | null;
+            /** Format: date-time */
+            start_date?: string | null;
         };
         UpdateWorklogRequest: {
             description?: string | null;
@@ -569,13 +706,6 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
-        RefreshRequest: {
-            refresh_token: string;
-        };
-        UpdateProjectRequest: {
-            name?: string | null;
-            description?: string | null;
-        };
     };
     responses: never;
     parameters: never;
@@ -608,6 +738,62 @@ export interface operations {
                 };
             };
             /** @description Invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    logout_openapi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logged out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    refresh_openapi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshRequest"];
+            };
+        };
+        responses: {
+            /** @description Tokens refreshed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Invalid refresh token */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -1391,6 +1577,210 @@ export interface operations {
             };
         };
     };
+    list_sprints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SprintListResponse"];
+                };
+            };
+        };
+    };
+    create_sprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSprintRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SprintResponse"];
+                };
+            };
+        };
+    };
+    get_sprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+                /** @description Sprint id */
+                sprint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SprintResponse"];
+                };
+            };
+        };
+    };
+    update_sprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+                /** @description Sprint id */
+                sprint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSprintRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SprintResponse"];
+                };
+            };
+        };
+    };
+    close_sprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+                /** @description Sprint id */
+                sprint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SprintResponse"];
+                };
+            };
+        };
+    };
+    move_issue_to_sprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+                /** @description Sprint id */
+                sprint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveIssueToSprintRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+        };
+    };
+    remove_issue_from_sprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+                /** @description Sprint id */
+                sprint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveIssueToSprintRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+        };
+    };
+    start_sprint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+                /** @description Sprint id */
+                sprint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SprintResponse"];
+                };
+            };
+        };
+    };
     search_global: {
         parameters: {
             query: {
@@ -1519,62 +1909,6 @@ export interface operations {
             };
             /** @description Worklog not found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    refresh_token: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RefreshRequest"];
-            };
-        };
-        responses: {
-            /** @description Tokens refreshed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthResponse"];
-                };
-            };
-            /** @description Invalid refresh token */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    logout: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Logged out */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Unauthorized */
-            401: {
                 headers: {
                     [name: string]: unknown;
                 };

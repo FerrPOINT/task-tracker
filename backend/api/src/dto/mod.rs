@@ -96,6 +96,7 @@ pub struct IssueResponse {
     pub reporter_id: String,
     pub reporter_name: Option<String>,
     pub project_name: String,
+    pub sprint_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -132,6 +133,10 @@ pub struct SprintResponse {
     pub velocity: i64,
     pub remaining_days: Option<i64>,
     pub issue_ids: Vec<String>,
+    /** Format: date-time */
+    pub start_date: Option<DateTime<FixedOffset>>,
+    /** Format: date-time */
+    pub end_date: Option<DateTime<FixedOffset>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -247,4 +252,30 @@ pub struct AddProjectMemberRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct TransitionIssueRequest {
     pub target_status_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SprintListResponse {
+    pub sprints: Vec<SprintResponse>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateSprintRequest {
+    pub name: String,
+    pub goal: Option<String>,
+    pub start_date: Option<DateTime<FixedOffset>>,
+    pub end_date: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct UpdateSprintRequest {
+    pub name: Option<String>,
+    pub goal: Option<Option<String>>,
+    pub start_date: Option<Option<DateTime<FixedOffset>>>,
+    pub end_date: Option<Option<DateTime<FixedOffset>>>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct MoveIssueToSprintRequest {
+    pub issue_id: String,
 }

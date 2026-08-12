@@ -97,6 +97,8 @@ fn map_board(b: app::dto::BoardDto) -> BoardResponse {
             velocity: b.sprint.velocity,
             remaining_days: b.sprint.remaining_days,
             issue_ids: b.sprint.issue_ids,
+            start_date: b.sprint.start_date,
+            end_date: b.sprint.end_date,
         },
     }
 }
@@ -113,6 +115,8 @@ fn map_backlog(b: app::dto::BacklogDto) -> crate::dto::BacklogResponse {
             velocity: b.sprint.velocity,
             remaining_days: b.sprint.remaining_days,
             issue_ids: b.sprint.issue_ids,
+            start_date: b.sprint.start_date,
+            end_date: b.sprint.end_date,
         },
         sprint_issues: b.sprint_issues.into_iter().map(map_issue).collect(),
         backlog_issues: b.backlog_issues.into_iter().map(map_issue).collect(),
@@ -136,5 +140,6 @@ fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
         reporter_id: i.reporter_id,
         reporter_name: i.reporter_name,
         project_name: i.project_name,
+        sprint_id: i.sprint_id,
     }
 }

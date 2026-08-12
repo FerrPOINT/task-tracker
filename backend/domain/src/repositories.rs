@@ -60,6 +60,7 @@ pub trait SprintRepository: Send + Sync {
         project_id: ProjectId,
     ) -> Result<Option<Sprint>, AppError>;
     async fn get_by_id(&self, id: SprintId) -> Result<Sprint, AppError>;
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<Sprint>, AppError>;
     async fn save(&self, sprint: &Sprint) -> Result<SprintId, AppError>;
 }
 
@@ -275,6 +276,9 @@ impl SprintRepository for StubSprintRepository {
     }
     async fn get_by_id(&self, _id: SprintId) -> Result<Sprint, AppError> {
         Err(AppError::not_found("sprint", "stub"))
+    }
+    async fn list_by_project(&self, _project_id: ProjectId) -> Result<Vec<Sprint>, AppError> {
+        Ok(vec![])
     }
     async fn save(&self, _sprint: &Sprint) -> Result<SprintId, AppError> {
         Ok(SprintId::new())

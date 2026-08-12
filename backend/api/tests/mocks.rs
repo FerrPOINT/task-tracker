@@ -132,6 +132,10 @@ impl SprintRepository for FailingSprintRepository {
     async fn save(&self, _sprint: &Sprint) -> Result<SprintId, AppError> {
         Err(AppError::Internal("failing sprint repo".into()))
     }
+
+    async fn list_by_project(&self, _project_id: ProjectId) -> Result<Vec<Sprint>, AppError> {
+        Err(AppError::Internal("failing sprint repo".into()))
+    }
 }
 
 pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::AppContext> {
