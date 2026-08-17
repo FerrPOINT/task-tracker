@@ -1,12 +1,19 @@
 import { Link, useParams } from 'react-router'
 import { Plus, Filter, MoreHorizontal, List } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
 import { useBoard, useMoveIssue } from '@/shared/api/hooks'
 import { ProjectMembersPanel } from '@/features/project-members/ui/ProjectMembersPanel'
 import type { components } from '@/api/generated'
 
 export type Issue = components['schemas']['IssueResponse']
+
+type DragState = {
+  issueId: string | null
+  sourceColumnId: string | null
+  dragging: boolean
+}
 
 function PriorityBadge({ priority }: { priority: string }) {
   const color =
@@ -33,26 +40,25 @@ function Avatar({ name }: { name: string }) {
 function IssueCard({
   issue,
   columnId,
-  onMove,
+  onDragStart,
 }: {
   issue: Issue
   columnId: string
-  onMove?: (issueId: string, targetColumnId: string) => void
+  onDragStart: (issueId: string, columnId: string) => void
 }) {
-  function handleClick(e: React.MouseEvent) {
-    // Move to next/previous column by wheel click or ctrl+click
-    if (e.ctrlKey || e.button === 1) {
-      e.preventDefault()
-      onMove?.(issue.id, columnId)
-    }
+  function handleDragStart(e: React.DragEvent) {
+    onDragStart(issue.id, columnId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', issue.id)
   }
+
   return (
     <Link
       key={issue.id}
       to={`/issues/${issue.id}`}
-      onClick={handleClick}
-      onAuxClick={handleClick}
-      className="block rounded-md border border-border bg-surface-raised p-3 hover:border-border-strong"
+      draggable
+      onDragStart={handleDragStart}
+      className="block cursor-grab rounded-md border border-border bg-surface-raised p-3 hover:border-border-strong active:cursor-grabbing"
     >
       <div className="text-xs text-text-muted">{issue.key}</div>
       <div className="my-1 text-sm font-medium">{issue.summary}</div>
@@ -75,6 +81,12 @@ export function ProjectBoardPage() {
   const key = projectKey ?? 'TT'
   const { data: board, isLoading, error } = useBoard(key)
   const move = useMoveIssue(key)
+  const [drag, setDrag] = useState<DragState>({
+    issueId: null,
+    sourceColumnId: null,
+    dragging: false,
+  })
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
 
   if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
   if (error || !board)
@@ -86,13 +98,28 @@ export function ProjectBoardPage() {
     return issues.filter((i) => columns.find((c) => c.id === columnId)?.issue_ids.includes(i.id))
   }
 
-  function handleMove(issueId: string, fromColumnId: string) {
-    const fromIndex = columns.findIndex((c) => c.id === fromColumnId)
-    const toIndex = fromIndex + 1
-    if (toIndex >= columns.length) return
-    const target = columns[toIndex]
-    if (!target) return
-    move.mutate({ issue_id: issueId, status_id: target.id })
+  function handleDragStart(issueId: string, columnId: string) {
+    setDrag({ issueId, sourceColumnId: columnId, dragging: true })
+  }
+
+  function handleDragOver(e: React.DragEvent, columnId: string) {
+    e.preventDefault()
+    if (columnId === drag.sourceColumnId) return
+    setDropTarget(columnId)
+  }
+
+  function handleDrop(e: React.DragEvent, targetColumnId: string) {
+    e.preventDefault()
+    const issueId = e.dataTransfer.getData('text/plain') || drag.issueId
+    if (issueId && targetColumnId && targetColumnId !== drag.sourceColumnId) {
+      move.mutate({ issue_id: issueId, status_id: targetColumnId })
+    }
+    setDrag({ issueId: null, sourceColumnId: null, dragging: false })
+    setDropTarget(null)
+  }
+
+  function handleDragLeave() {
+    setDropTarget(null)
   }
 
   return (
@@ -133,10 +160,16 @@ export function ProjectBoardPage() {
           const wipLimit = column.wip_limit ?? null
           const colIssues = issuesByColumn(column.id)
           const overLimit = wipLimit !== null && colIssues.length >= wipLimit
+          const isDropTarget = dropTarget === column.id && drag.dragging
           return (
             <div
               key={column.id}
-              className="flex min-w-[260px] flex-1 flex-col rounded-lg border border-border bg-surface"
+              onDragOver={(e) => handleDragOver(e, column.id)}
+              onDrop={(e) => handleDrop(e, column.id)}
+              onDragLeave={handleDragLeave}
+              className={`flex min-w-[260px] flex-1 flex-col rounded-lg border bg-surface transition-colors ${
+                isDropTarget ? 'border-accent ring-1 ring-accent' : 'border-border'
+              }`}
             >
               <div className="flex items-center justify-between border-b border-border p-3">
                 <div className="min-w-0">
@@ -159,7 +192,7 @@ export function ProjectBoardPage() {
                     key={issue.id}
                     issue={issue}
                     columnId={column.id}
-                    onMove={handleMove}
+                    onDragStart={handleDragStart}
                   />
                 ))}
               </div>
@@ -201,7 +234,7 @@ export function ProjectBoardPage() {
                     key={issue.id}
                     issue={issue}
                     columnId={column.id}
-                    onMove={handleMove}
+                    onDragStart={handleDragStart}
                   />
                 ))}
               </div>

@@ -178,6 +178,9 @@ async fn issue_repo_crud_and_query() {
             assignee_id: None,
             sprint_id: None,
             search_text: None,
+            priority: None,
+            sort_by: None,
+            sort_order: None,
             limit: 10,
             offset: 0,
         })

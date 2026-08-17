@@ -24,11 +24,10 @@
   "dashboard": {
     "title": "Team Dashboard",
     "addWidget": "Add widget",
-    "burndown": "Sprint Burndown",
-    "openBugs": "Open Bugs",
-    "velocity": "Velocity",
-    "velocityAverage": "Average over last 3 sprints",
     "assignedToMe": "Assigned to me",
+    "noAssigned": "No issues assigned to you.",
+    "projects": "Projects",
+    "noProjects": "No projects yet.",
     "recentActivity": "Recent activity"
   },
   "projects": {
@@ -69,7 +68,10 @@
     "futureSprint": "{{name}}",
     "emptySprint": "No issues in this sprint.",
     "emptyBacklog": "Backlog is empty.",
-    "edit": "Edit sprint"
+    "edit": "Edit sprint",
+    "issueActions": "Issue actions",
+    "removeFromSprint": "Remove from sprint",
+    "moveToSprint": "Move to sprint"
   },
   "sprint": {
     "name": "Sprint name",

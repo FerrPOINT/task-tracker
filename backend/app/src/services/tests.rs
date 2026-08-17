@@ -342,7 +342,12 @@ async fn search_finds_issue() {
         .await
         .unwrap();
 
-    let results = ctx.services.search.search("keyword").await.unwrap();
+    let results = ctx
+        .services
+        .search
+        .search(Default::default())
+        .await
+        .unwrap();
     assert_eq!(results.len(), 1);
 }
 
@@ -694,7 +699,7 @@ async fn issue_service_search_fails_when_project_missing() {
     );
     ctx.repos.issues.save(&issue).await.unwrap();
 
-    let err = ctx.services.search.search("orphan keyword").await;
+    let err = ctx.services.search.search(Default::default()).await;
     assert!(err.is_err());
 }
 
@@ -907,5 +912,5 @@ async fn dashboard_get_propagates_repo_error() {
 #[tokio::test]
 async fn search_propagates_repo_error() {
     let ctx = failing_context();
-    assert_internal(ctx.services.search.search("q").await);
+    assert_internal(ctx.services.search.search(Default::default()).await);
 }

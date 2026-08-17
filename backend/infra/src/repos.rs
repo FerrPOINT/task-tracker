@@ -246,6 +246,22 @@ impl IssueRepository for IssueRepo {
         if let Some(spid) = query.sprint_id {
             select = select.filter(issue::Column::SprintId.eq(spid.as_uuid()));
         }
+        if let Some(priority) = query.priority.as_deref().filter(|s| !s.is_empty()) {
+            select = select.filter(issue::Column::Priority.eq(priority));
+        }
+        if let Some(sort_by) = query.sort_by.as_deref() {
+            let order = query.sort_order.as_deref().unwrap_or("asc");
+            let col: issue::Column = match sort_by {
+                "created" => issue::Column::CreatedAt,
+                "updated" => issue::Column::UpdatedAt,
+                "priority" => issue::Column::Priority,
+                _ => issue::Column::CreatedAt,
+            };
+            select = match order {
+                "desc" => select.order_by_desc(col),
+                _ => select.order_by_asc(col),
+            };
+        }
         if let Some(q) = query.search_text.as_deref().filter(|s| !s.is_empty()) {
             let pattern = format!("%{}%", q);
             select = select.filter(

@@ -121,7 +121,18 @@ pub async fn search_issues(
     State(ctx): State<Arc<app::AppContext>>,
     Query(q): Query<SearchQuery>,
 ) -> Result<Json<IssueListResponse>, AppError> {
-    let items = ctx.services.issue.search(&q.q).await?;
+    let items = ctx
+        .services
+        .issue
+        .search(app::context::SearchFilters {
+            q: q.q,
+            project_key: q.project_key,
+            priority: q.priority,
+            assignee_id: q.assignee_id,
+            sort_by: q.sort_by,
+            sort_order: q.sort_order,
+        })
+        .await?;
     Ok(Json(IssueListResponse {
         issues: items.into_iter().map(map_issue).collect(),
     }))

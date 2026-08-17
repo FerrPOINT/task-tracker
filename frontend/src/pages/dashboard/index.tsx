@@ -1,19 +1,8 @@
 import { Link } from 'react-router'
-import { Plus, Clock } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
-
-function PriorityBadge({ priority }: { priority: string }) {
-  const color =
-    priority === 'High'
-      ? 'text-rose-500'
-      : priority === 'Medium'
-        ? 'text-amber-500'
-        : 'text-emerald-500'
-  return <span className={`text-xs font-medium ${color}`}>{priority}</span>
-}
 
 export function DashboardPage() {
   const { t } = useTranslation()
@@ -30,87 +19,22 @@ export function DashboardPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold sm:text-2xl">{t('dashboard.title')}</h1>
-        <Button size="sm" className="gap-1">
-          <Plus className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('dashboard.addWidget')}</span>
-          <span className="sm:hidden">{t('dashboard.addWidget')}</span>
+        <Button size="sm" className="gap-1" asChild>
+          <Link to="/issues/create">
+            {t('navigation.create')}
+          </Link>
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t('dashboard.burndown')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex h-40 items-end gap-1 sm:gap-3">
-              {[40, 35, 30, 28, 22, 15, 10].map((v, i) => (
-                <div key={i} className="flex flex-1 flex-col items-center gap-1">
-                  <div
-                    className="w-full rounded bg-accent"
-                    style={{ height: `${(v / 40) * 100}%` }}
-                  />
-                  <span className="text-[10px] text-text-muted sm:text-xs">Day {i + 1}</span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t('dashboard.openBugs')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-end gap-2">
-              <span className="text-4xl font-bold text-rose-500">7</span>
-              <span className="mb-1 text-xs text-text-muted">
-                {t('dashboard.bugsTrend', { count: 2 })}
-              </span>
-            </div>
-            <div className="space-y-2">
-              <Link
-                to="/issues/bug-14"
-                className="flex items-center justify-between gap-2 rounded-md border border-border p-2 hover:bg-surface-raised"
-              >
-                <span className="min-w-0 truncate text-sm">TT-14 UI glitch on mobile</span>
-                <PriorityBadge priority="High" />
-              </Link>
-              <Link
-                to="/issues/bug-9"
-                className="flex items-center justify-between gap-2 rounded-md border border-border p-2 hover:bg-surface-raised"
-              >
-                <span className="min-w-0 truncate text-sm">TT-9 Auth token refresh</span>
-                <PriorityBadge priority="Medium" />
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t('dashboard.velocity')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-end gap-2">
-              <span className="text-3xl font-bold sm:text-4xl">24 sp</span>
-              <span className="mb-1 text-xs text-text-muted">{t('dashboard.velocityAverage')}</span>
-            </div>
-            <div className="flex h-6 gap-1">
-              <div className="flex-1 rounded bg-surface-raised" />
-              <div className="flex-1 rounded bg-accent" />
-              <div className="flex-1 rounded bg-emerald-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
+        <Card className="sm:col-span-2 lg:col-span-1">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">{t('dashboard.assignedToMe')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {assigned.length === 0 && (
+              <p className="text-sm text-text-muted">{t('dashboard.noAssigned')}</p>
+            )}
             {assigned.map((item) => (
               <Link
                 key={item.id}
@@ -128,32 +52,40 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="sm:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">
-              {t('dashboard.recentActivity')} · {projects?.length ?? 0} projects
+              {t('dashboard.projects')} · {projects?.length ?? 0}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {[
-              { user: 'Ivan', hours: 2, issueKey: 'TT-42', when: '24ч назад' },
-              { user: 'Anna', hours: 1.5, issueKey: 'TT-11', when: '3ч назад' },
-              { user: 'Petr', hours: 3, issueKey: 'TT-15', when: '5ч назад' },
-            ].map((entry, i) => (
-              <div key={i} className="flex items-start gap-2 text-sm">
-                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-text-muted" />
-                <div className="min-w-0">
-                  <div className="truncate">
-                    {t('dashboard.activityLoggedTime', {
-                      user: entry.user,
-                      hours: entry.hours,
-                      issueKey: entry.issueKey,
-                    })}
+            {projects?.length === 0 && (
+              <p className="text-sm text-text-muted">{t('dashboard.noProjects')}</p>
+            )}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {projects?.map((project) => (
+                <Link
+                  key={project.id}
+                  to={`/projects/${project.key}/board`}
+                  className="rounded-md border border-border p-3 hover:bg-surface-raised"
+                >
+                  <div className="mb-1 text-sm font-medium text-text-primary">
+                    {project.key} · {project.name}
                   </div>
-                  <div className="text-xs text-text-muted">{entry.when}</div>
-                </div>
-              </div>
-            ))}
+                  <div className="flex gap-2 text-xs text-text-muted">
+                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                      {t('board.todo')}: {project.todo_count ?? 0}
+                    </span>
+                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                      {t('board.inProgress')}: {project.in_progress_count ?? 0}
+                    </span>
+                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                      {t('board.done')}: {project.done_count ?? 0}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>

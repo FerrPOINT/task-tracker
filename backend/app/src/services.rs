@@ -6,6 +6,7 @@ use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateWorklogCommand, UpdateCommentCommand,
     UpdateIssueCommand, UpdateWorklogCommand,
 };
+use crate::context::SearchFilters;
 use crate::dto::{
     BacklogDto, BoardColumnDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto,
     ProjectMemberDto, SprintDto, WorklogDto,
@@ -273,14 +274,34 @@ impl crate::context::IssueService for IssueServiceImpl {
         ))
     }
 
-    async fn search(&self, q: &str) -> Result<Vec<IssueDto>, AppError> {
-        let issues = self
-            .issues
-            .list(IssueQuery {
-                search_text: Some(q.to_string()),
-                ..Default::default()
-            })
-            .await?;
+    async fn search(
+        &self,
+        filters: crate::context::SearchFilters,
+    ) -> Result<Vec<IssueDto>, AppError> {
+        let mut query = IssueQuery::default();
+        if let Some(q) = filters.q.as_deref().filter(|s| !s.is_empty()) {
+            query.search_text = Some(q.to_string());
+        }
+        if let Some(priority) = filters.priority.as_deref().filter(|s| !s.is_empty()) {
+            query.priority = Some(priority.to_string());
+        }
+        if let Some(sort_by) = filters.sort_by.as_deref() {
+            query.sort_by = Some(sort_by.to_string());
+            query.sort_order = filters.sort_order.clone();
+        }
+        if let Some(project_key) = filters.project_key.as_deref() {
+            let key: ProjectKey = project_key
+                .parse()
+                .map_err(|e: String| AppError::invalid_input(e))?;
+            let project = self.projects.get_by_key(&key).await?;
+            query.project_id = Some(project.id);
+        }
+        if let Some(assignee_id) = filters.assignee_id.as_deref() {
+            let uuid = uuid::Uuid::parse_str(assignee_id)
+                .map_err(|e| AppError::invalid_input(e.to_string()))?;
+            query.assignee_id = Some(UserId::from_uuid(uuid));
+        }
+        let issues = self.issues.list(query).await?;
         helpers::build_issue_dtos_with_projects(
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
@@ -673,14 +694,31 @@ impl SearchServiceImpl {
 
 #[async_trait]
 impl crate::context::SearchService for SearchServiceImpl {
-    async fn search(&self, q: &str) -> Result<Vec<IssueDto>, AppError> {
-        let issues = self
-            .issues
-            .list(IssueQuery {
-                search_text: Some(q.to_string()),
-                ..Default::default()
-            })
-            .await?;
+    async fn search(&self, filters: SearchFilters) -> Result<Vec<IssueDto>, AppError> {
+        let mut query = IssueQuery::default();
+        if let Some(q) = filters.q.as_deref().filter(|s| !s.is_empty()) {
+            query.search_text = Some(q.to_string());
+        }
+        if let Some(priority) = filters.priority.as_deref().filter(|s| !s.is_empty()) {
+            query.priority = Some(priority.to_string());
+        }
+        if let Some(sort_by) = filters.sort_by.as_deref() {
+            query.sort_by = Some(sort_by.to_string());
+            query.sort_order = filters.sort_order.clone();
+        }
+        if let Some(project_key) = filters.project_key.as_deref() {
+            let key: ProjectKey = project_key
+                .parse()
+                .map_err(|e: String| AppError::invalid_input(e))?;
+            let project = self.projects.get_by_key(&key).await?;
+            query.project_id = Some(project.id);
+        }
+        if let Some(assignee_id) = filters.assignee_id.as_deref() {
+            let uuid = uuid::Uuid::parse_str(assignee_id)
+                .map_err(|e| AppError::invalid_input(e.to_string()))?;
+            query.assignee_id = Some(UserId::from_uuid(uuid));
+        }
+        let issues = self.issues.list(query).await?;
         helpers::build_issue_dtos_with_projects(
             Arc::clone(&self.projects),
             Arc::clone(&self.users),

@@ -24,11 +24,10 @@
   "dashboard": {
     "title": "Командный дашборд",
     "addWidget": "Добавить виджет",
-    "burndown": "Спринт Burndown",
-    "openBugs": "Открытые баги",
-    "velocity": "Скорость",
-    "velocityAverage": "Среднее за последние 3 спринта",
     "assignedToMe": "Назначено на меня",
+    "noAssigned": "На вас нет назначенных задач.",
+    "projects": "Проекты",
+    "noProjects": "Пока нет проектов.",
     "recentActivity": "Недавняя активность"
   },
   "projects": {
@@ -69,7 +68,10 @@
     "futureSprint": "{{name}}",
     "emptySprint": "В спринте нет задач.",
     "emptyBacklog": "Бэклог пуст.",
-    "edit": "Изменить спринт"
+    "edit": "Изменить спринт",
+    "issueActions": "Действия с задачей",
+    "removeFromSprint": "Убрать из спринта",
+    "moveToSprint": "Переместить в спринт"
   },
   "sprint": {
     "name": "Название спринта",
