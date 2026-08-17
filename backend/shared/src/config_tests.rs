@@ -1,6 +1,10 @@
 use std::env;
+use std::sync::Mutex;
 
 use crate::AppConfig;
+
+// Tests that mutate process-wide env vars must not run in parallel.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn clear_env() {
     for key in [
@@ -31,6 +35,7 @@ fn set_env(key: &str, value: &str) {
 
 #[test]
 fn config_scenarios() {
+    let _guard = ENV_LOCK.lock().unwrap();
     clear_env();
     set_env("TASKTRACKER_JWT_SECRET", "test-secret-32-chars-long!!!!!");
 
@@ -87,6 +92,7 @@ fn config_scenarios() {
 
 #[test]
 fn config_defaults_implemented() {
+    let _guard = ENV_LOCK.lock().unwrap();
     let cfg = AppConfig::default();
     assert_eq!(cfg.server.port, 3456);
     assert_eq!(cfg.database.max_connections, 20);
@@ -95,6 +101,7 @@ fn config_defaults_implemented() {
 
 #[test]
 fn config_from_env_uses_default_path() {
+    let _guard = ENV_LOCK.lock().unwrap();
     clear_env();
     set_env("TASKTRACKER_JWT_SECRET", "test-secret-32-chars-long!!!!!");
     // from_env targets config/default.toml which won't exist; defaults still apply

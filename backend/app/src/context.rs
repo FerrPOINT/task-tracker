@@ -167,7 +167,10 @@ pub trait IssueService: Send + Sync {
     async fn get_by_id(&self, id: IssueId) -> Result<IssueDto, AppError>;
     async fn update(&self, id: IssueId, cmd: UpdateIssueCommand) -> Result<IssueDto, AppError>;
     async fn transition(&self, cmd: TransitionIssueCommand) -> Result<IssueDto, AppError>;
-    async fn search(&self, q: &str) -> Result<Vec<IssueDto>, AppError>;
+    async fn search(
+        &self,
+        filters: crate::context::SearchFilters,
+    ) -> Result<Vec<IssueDto>, AppError>;
     async fn delete(&self, id: IssueId) -> Result<(), AppError>;
 }
 
@@ -183,9 +186,19 @@ pub trait BoardService: Send + Sync {
     ) -> Result<BoardDto, AppError>;
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SearchFilters {
+    pub q: Option<String>,
+    pub project_key: Option<String>,
+    pub priority: Option<String>,
+    pub assignee_id: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
+}
+
 #[async_trait]
 pub trait SearchService: Send + Sync {
-    async fn search(&self, q: &str) -> Result<Vec<IssueDto>, AppError>;
+    async fn search(&self, filters: SearchFilters) -> Result<Vec<IssueDto>, AppError>;
 }
 
 #[async_trait]

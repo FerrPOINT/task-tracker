@@ -19,7 +19,10 @@ pub struct IssueQuery {
     pub sprint_id: Option<SprintId>,
     pub status_id: Option<StatusId>,
     pub assignee_id: Option<UserId>,
+    pub priority: Option<String>,
     pub search_text: Option<String>,
+    pub sort_by: Option<String>,
+    pub sort_order: Option<String>,
     pub limit: u64,
     pub offset: u64,
 }
@@ -31,7 +34,10 @@ impl Default for IssueQuery {
             sprint_id: None,
             status_id: None,
             assignee_id: None,
+            priority: None,
             search_text: None,
+            sort_by: None,
+            sort_order: None,
             limit: 1000,
             offset: 0,
         }
@@ -51,5 +57,11 @@ impl IssueQuery {
             assignee_id: Some(assignee_id),
             ..Default::default()
         }
+    }
+
+    pub fn with_sort(mut self, field: &str, order: &str) -> Self {
+        self.sort_by = Some(field.to_string());
+        self.sort_order = Some(order.to_string());
+        self
     }
 }

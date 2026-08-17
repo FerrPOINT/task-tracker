@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { listProjects, createProject, updateProject, deleteProject } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
-import { searchIssues } from '@/api/search'
+import { searchIssues, type SearchFilters } from '@/api/search'
 import { login, register, getCurrentUser, listUsers, logout } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
 import { updateIssue, deleteIssue } from '@/api/issue'
@@ -136,11 +136,15 @@ export function useBacklog(projectKey: string | undefined) {
   })
 }
 
-export function useSearch(q: string) {
+export function useIssues(filters: SearchFilters = {}) {
   return useQuery({
-    queryKey: ['search', q],
-    queryFn: () => searchIssues(q),
+    queryKey: ['search', filters],
+    queryFn: () => searchIssues(filters),
   })
+}
+
+export function useSearch(q: string) {
+  return useIssues({ q })
 }
 
 export function useDashboard() {

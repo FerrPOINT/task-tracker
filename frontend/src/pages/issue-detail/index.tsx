@@ -20,6 +20,8 @@ import { TimeTrackingPanel } from '@/features/time-tracking/ui/TimeTrackingPanel
 import { WorklogTab } from '@/features/time-tracking/ui/WorklogTab'
 import { LogWorkDialog } from '@/features/time-tracking/ui/LogWorkDialog'
 import { CommentsPanel } from '@/features/comments/ui/CommentList'
+import { useComments } from '@/features/comments/model/use-comments'
+import { ActivityFeed } from '@/features/issue-detail/ui/ActivityFeed'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
@@ -44,12 +46,13 @@ export function IssueDetailPage() {
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
-  const worklogsQuery = useWorklogs(id)
+  const { data: worklogsData, isLoading: worklogsLoading } = useWorklogs(id)
+  const commentsQuery = useComments(id)
   const create = useCreateWorklog(id)
   const update = useUpdateWorklog(id)
   const remove = useDeleteWorklog(id)
 
-  if (issueQuery.isLoading || worklogsQuery.isLoading) {
+  if (issueQuery.isLoading || worklogsLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent"></div>
@@ -66,7 +69,7 @@ export function IssueDetailPage() {
   }
 
   const issue = issueQuery.data
-  const worklogs = worklogsQuery.data ?? []
+  const worklogs = worklogsData ?? []
   const timeSpent = totalTimeSpent(worklogs)
   const remainingEstimate = latestRemainingEstimate(worklogs)
 
@@ -177,29 +180,28 @@ return (
               </CardContent>
             </Card>
 
-            <Tabs defaultValue="worklog">
+            <Tabs defaultValue="activity">
               <TabsList>
-                <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
                 <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
+                <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
                 <TabsTrigger value="worklog">{t('timeTracking.worklog.title')}</TabsTrigger>
-                <TabsTrigger value="history">{t('issue.history')}</TabsTrigger>
               </TabsList>
+              <TabsContent value="activity">
+                <ActivityFeed
+                  comments={commentsQuery.data ?? []}
+                  worklogs={worklogs}
+                />
+              </TabsContent>
               <TabsContent value="comments">
                 <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
-              </TabsContent>
-              <TabsContent value="activity">
-                <p className="text-sm text-text-muted">No activity yet.</p>
               </TabsContent>
               <TabsContent value="worklog">
                 <WorklogTab
                   worklogs={worklogs}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
-                  currentUserId="user-1"
+                  currentUserId={currentUserId ?? ''}
                 />
-              </TabsContent>
-              <TabsContent value="history">
-                <p className="text-sm text-text-muted">No history yet.</p>
               </TabsContent>
             </Tabs>
           </div>

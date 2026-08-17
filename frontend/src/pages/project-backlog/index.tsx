@@ -1,6 +1,15 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { Plus, MoreHorizontal, GripVertical, Play, CheckCircle2, Pencil } from 'lucide-react'
+import {
+  Plus,
+  MoreHorizontal,
+  GripVertical,
+  Play,
+  CheckCircle2,
+  Pencil,
+  ArrowRightLeft,
+  X,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import {
@@ -8,8 +17,18 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/shared/ui/dropdown-menu'
-import { useBacklog, useSprints, useCreateSprint, useUpdateSprint, useStartSprint, useCloseSprint } from '@/shared/api/hooks'
+import {
+  useBacklog,
+  useSprints,
+  useCreateSprint,
+  useUpdateSprint,
+  useStartSprint,
+  useCloseSprint,
+  useMoveIssueToSprint,
+  useRemoveIssueFromSprint,
+} from '@/shared/api/hooks'
 import { SprintFormDialog } from '@/features/sprints/ui/SprintFormDialog'
 import type { components } from '@/api/generated'
 import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
@@ -57,20 +76,96 @@ function IssueRow({
         <Avatar name={issue.assignee_name ?? '?'} />
       </div>
       <div className="sm:order-5" />
-      <div className="sm:order-6">{action}</div>
+      <div className="flex justify-end sm:order-6">{action}</div>
     </div>
   )
 }
 
-function Section({
+function MoveIssueAction({
+  issue,
+  projectKey,
+  activeSprint,
+  futureSprints,
+  removeFromSprintId,
+}: {
+  issue: Issue
+  projectKey: string
+  activeSprint?: Sprint | null
+  futureSprints: Sprint[]
+  removeFromSprintId?: string
+}) {
+  const { t } = useTranslation()
+  const moveTo = useMoveIssueToSprint(projectKey)
+  const removeFrom = useRemoveIssueFromSprint(projectKey)
+  const isLoading = moveTo.isPending || removeFrom.isPending
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100"
+          aria-label={t('backlog.issueActions')}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {removeFromSprintId && (
+          <DropdownMenuItem
+            disabled={isLoading}
+            onClick={() => removeFrom.mutate({ sprintId: removeFromSprintId, issueId: issue.id })}
+          >
+            <X className="mr-2 h-4 w-4" />
+            {t('backlog.removeFromSprint')}
+          </DropdownMenuItem>
+        )}
+        {(activeSprint || futureSprints.length > 0) && (
+          <>
+            {removeFromSprintId && <DropdownMenuSeparator />}
+            <DropdownMenuItem disabled className="text-text-muted">
+              <ArrowRightLeft className="mr-2 h-4 w-4" />
+              {t('backlog.moveToSprint')}
+            </DropdownMenuItem>
+            {activeSprint && issue.sprint_id !== activeSprint.id && (
+              <DropdownMenuItem
+                disabled={isLoading}
+                onClick={() => moveTo.mutate({ sprintId: activeSprint.id, issueId: issue.id })}
+              >
+                {activeSprint.name}
+              </DropdownMenuItem>
+            )}
+            {futureSprints.map(
+              (s) =>
+                s.id !== issue.sprint_id && (
+                  <DropdownMenuItem
+                    key={s.id}
+                    disabled={isLoading}
+                    onClick={() => moveTo.mutate({ sprintId: s.id, issueId: issue.id })}
+                  >
+                    {s.name}
+                  </DropdownMenuItem>
+                ),
+            )}
+          </>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function Section<T extends Issue>({
   title,
   action,
-  issues,
+  items,
+  renderItem,
   emptyText,
 }: {
   title: string
   action?: React.ReactNode
-  issues: Issue[]
+  items: T[]
+  renderItem: (item: T) => React.ReactNode
   emptyText?: string
 }) {
   return (
@@ -80,12 +175,10 @@ function Section({
         {action}
       </div>
       <div className="rounded-b-lg border-x border-b border-border bg-surface">
-        {issues.length === 0 && emptyText && (
+        {items.length === 0 && emptyText && (
           <div className="px-3 py-6 text-center text-sm text-text-muted">{emptyText}</div>
         )}
-        {issues.map((issue) => (
-          <IssueRow key={issue.id} issue={issue} />
-        ))}
+        {items.map(renderItem)}
       </div>
     </div>
   )
@@ -208,7 +301,22 @@ export function ProjectBacklogPage() {
             )}
           </div>
         }
-        issues={sprint_issues}
+        items={sprint_issues}
+        renderItem={(issue) => (
+          <IssueRow
+            key={issue.id}
+            issue={issue}
+            action={
+              <MoveIssueAction
+                issue={issue}
+                projectKey={key}
+                activeSprint={activeFromList}
+                futureSprints={futureSprints}
+                removeFromSprintId={activeSprint.id !== 'none' ? activeSprint.id : undefined}
+              />
+            }
+          />
+        )}
         emptyText={t('backlog.emptySprint')}
       />
 
@@ -241,7 +349,22 @@ export function ProjectBacklogPage() {
               </DropdownMenu>
             </div>
           }
-          issues={[]}
+          items={sprint_issues.filter((issue) => issue.sprint_id === sprint.id)}
+          renderItem={(issue) => (
+            <IssueRow
+              key={issue.id}
+              issue={issue}
+              action={
+                <MoveIssueAction
+                  issue={issue}
+                  projectKey={key}
+                  activeSprint={activeFromList}
+                  futureSprints={futureSprints}
+                  removeFromSprintId={sprint.id}
+                />
+              }
+            />
+          )}
           emptyText={t('backlog.emptySprint')}
         />
       ))}
@@ -256,7 +379,21 @@ export function ProjectBacklogPage() {
             </Link>
           </Button>
         }
-        issues={backlog_issues}
+        items={backlog_issues}
+        renderItem={(issue) => (
+          <IssueRow
+            key={issue.id}
+            issue={issue}
+            action={
+              <MoveIssueAction
+                issue={issue}
+                projectKey={key}
+                activeSprint={activeFromList}
+                futureSprints={futureSprints}
+              />
+            }
+          />
+        )}
         emptyText={t('backlog.emptyBacklog')}
       />
 
@@ -271,3 +408,4 @@ export function ProjectBacklogPage() {
     </div>
   )
 }
+
