@@ -1,9 +1,9 @@
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use shared::{
-    AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueStatusHistoryId, IssueType,
-    IssueTypeId, LabelId, Priority, ProjectId, ProjectKey, SprintId, StatusId, Timestamp, UserId,
-    WorkflowTransitionId, WorklogId,
+    AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, IssueStatusHistoryId,
+    IssueType, IssueTypeId, LabelId, Priority, ProjectId, ProjectKey, SprintId, StatusId,
+    Timestamp, UserId, WorkflowTransitionId, WorklogId,
 };
 use std::str::FromStr;
 
@@ -354,6 +354,44 @@ impl std::str::FromStr for ProjectRole {
             "admin" => Ok(ProjectRole::Admin),
             "owner" => Ok(ProjectRole::Owner),
             _ => Ok(ProjectRole::Member),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueLink {
+    pub id: IssueLinkId,
+    pub source_id: IssueId,
+    pub target_id: IssueId,
+    pub link_type: LinkType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LinkType {
+    Blocks,
+    Duplicates,
+    Relates,
+}
+
+impl LinkType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LinkType::Blocks => "blocks",
+            LinkType::Duplicates => "duplicates",
+            LinkType::Relates => "relates",
+        }
+    }
+}
+
+impl std::str::FromStr for LinkType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "blocks" => Ok(LinkType::Blocks),
+            "duplicates" => Ok(LinkType::Duplicates),
+            "relates" => Ok(LinkType::Relates),
+            other => Err(format!("unknown link type: {other}")),
         }
     }
 }

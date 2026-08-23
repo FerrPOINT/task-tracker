@@ -16,7 +16,8 @@ use crate::services::{
     SprintService, SprintServiceImpl, WorklogServiceImpl,
 };
 use shared::{
-    AppConfig, AppError, AttachmentId, CommentId, IssueId, ProjectKey, StatusId, UserId, WorklogId,
+    AppConfig, AppError, AttachmentId, CommentId, IssueId, IssueLinkId, LabelId, ProjectKey,
+    StatusId, UserId, WorklogId,
 };
 
 #[derive(Clone)]
@@ -42,6 +43,8 @@ pub struct Services {
     pub workflow: Arc<dyn WorkflowService>,
     pub issue_type: Arc<dyn IssueTypeService>,
     pub attachment: Arc<dyn AttachmentService>,
+    pub label: Arc<dyn LabelService>,
+    pub issue_link: Arc<dyn IssueLinkService>,
 }
 
 impl AppContext {
@@ -128,6 +131,15 @@ impl AppContext {
                     repos.attachments.clone(),
                     repos.issues.clone(),
                     storage,
+                )),
+                label: Arc::new(crate::services::LabelServiceImpl::new(
+                    repos.labels.clone(),
+                    repos.projects.clone(),
+                    repos.issues.clone(),
+                )),
+                issue_link: Arc::new(crate::services::IssueLinkServiceImpl::new(
+                    repos.issue_links.clone(),
+                    repos.issues.clone(),
                 )),
                 sprint,
             },
@@ -281,4 +293,68 @@ pub struct AttachmentDto {
     pub content_type: String,
     pub size_bytes: i64,
     pub created_at: String,
+}
+
+#[async_trait]
+pub trait LabelService: Send + Sync {
+    async fn create(
+        &self,
+        project_key: &ProjectKey,
+        name: &str,
+        color: &str,
+        requester: UserId,
+    ) -> Result<LabelDto, AppError>;
+    async fn list_by_project(&self, project_key: &ProjectKey) -> Result<Vec<LabelDto>, AppError>;
+    async fn update(
+        &self,
+        label_id: LabelId,
+        name: &str,
+        color: &str,
+        requester: UserId,
+    ) -> Result<LabelDto, AppError>;
+    async fn delete(&self, label_id: LabelId, requester: UserId) -> Result<(), AppError>;
+    async fn list_for_issue(&self, issue_id: IssueId) -> Result<Vec<LabelDto>, AppError>;
+    async fn attach(
+        &self,
+        issue_id: IssueId,
+        label_id: LabelId,
+        requester: UserId,
+    ) -> Result<(), AppError>;
+    async fn detach(
+        &self,
+        issue_id: IssueId,
+        label_id: LabelId,
+        requester: UserId,
+    ) -> Result<(), AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LabelDto {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub color: String,
+}
+
+#[async_trait]
+pub trait IssueLinkService: Send + Sync {
+    async fn create(
+        &self,
+        source_id: IssueId,
+        target_key: &str,
+        link_type: &str,
+        requester: UserId,
+    ) -> Result<IssueLinkDto, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueLinkDto>, AppError>;
+    async fn delete(&self, link_id: IssueLinkId, requester: UserId) -> Result<(), AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct IssueLinkDto {
+    pub id: String,
+    pub source_id: String,
+    pub source_key: String,
+    pub target_id: String,
+    pub target_key: String,
+    pub link_type: String,
 }

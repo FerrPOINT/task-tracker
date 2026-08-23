@@ -72,6 +72,7 @@ impl UserRepository for MemoryUserRepository {
 #[derive(Default)]
 pub struct MemoryProjectRepository {
     projects: Arc<Mutex<Vec<Project>>>,
+    issue_counters: Arc<Mutex<std::collections::HashMap<ProjectId, u32>>>,
 }
 
 #[async_trait]
@@ -116,13 +117,12 @@ impl ProjectRepository for MemoryProjectRepository {
     }
 
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError> {
-        let projects = self.projects.lock().unwrap();
-        let project = projects
-            .iter()
-            .find(|p| p.id == project_id)
-            .ok_or_else(|| AppError::not_found("project", project_id))?;
-        let count = projects.iter().filter(|p| p.id == project.id).count();
-        Ok(count as u32 + 1)
+        // Monotonic per-project counter so sequential and concurrent creation
+        // never yields duplicate keys (mirrors the SQL repo MAX(number)+1 retry).
+        let mut counters = self.issue_counters.lock().unwrap();
+        let next = counters.entry(project_id).or_insert(0);
+        *next += 1;
+        Ok(*next)
     }
 
     async fn delete(&self, id: ProjectId) -> Result<(), AppError> {
@@ -569,6 +569,143 @@ impl crate::AttachmentRepository for MemoryAttachmentRepository {
     async fn delete(&self, id: shared::AttachmentId) -> Result<(), AppError> {
         let mut items = self.attachments.lock().unwrap();
         items.retain(|a| a.id != id);
+        Ok(())
+    }
+}
+
+pub struct MemoryLabelRepository {
+    labels: Arc<Mutex<Vec<crate::Label>>>,
+    issue_labels: Arc<Mutex<Vec<(IssueId, shared::LabelId)>>>,
+}
+
+impl MemoryLabelRepository {
+    pub fn new() -> Self {
+        Self {
+            labels: Arc::new(Mutex::new(Vec::new())),
+            issue_labels: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
+impl Default for MemoryLabelRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl crate::LabelRepository for MemoryLabelRepository {
+    async fn get_by_id(&self, id: shared::LabelId) -> Result<crate::Label, AppError> {
+        self.labels
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|l| l.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("label", id))
+    }
+
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<crate::Label>, AppError> {
+        Ok(self
+            .labels
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn save(&self, label: &crate::Label) -> Result<shared::LabelId, AppError> {
+        let mut labels = self.labels.lock().unwrap();
+        if let Some(idx) = labels.iter().position(|l| l.id == label.id) {
+            labels[idx] = label.clone();
+        } else {
+            labels.push(label.clone());
+        }
+        Ok(label.id)
+    }
+
+    async fn delete(&self, id: shared::LabelId) -> Result<(), AppError> {
+        self.labels.lock().unwrap().retain(|l| l.id != id);
+        self.issue_labels
+            .lock()
+            .unwrap()
+            .retain(|(_, lid)| *lid != id);
+        Ok(())
+    }
+
+    async fn list_ids_by_issue(&self, issue_id: IssueId) -> Result<Vec<shared::LabelId>, AppError> {
+        Ok(self
+            .issue_labels
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(iid, _)| *iid == issue_id)
+            .map(|(_, lid)| *lid)
+            .collect())
+    }
+
+    async fn attach(&self, issue_id: IssueId, label_id: shared::LabelId) -> Result<(), AppError> {
+        let mut il = self.issue_labels.lock().unwrap();
+        if !il.contains(&(issue_id, label_id)) {
+            il.push((issue_id, label_id));
+        }
+        Ok(())
+    }
+
+    async fn detach(&self, issue_id: IssueId, label_id: shared::LabelId) -> Result<(), AppError> {
+        self.issue_labels
+            .lock()
+            .unwrap()
+            .retain(|(iid, lid)| !(*iid == issue_id && *lid == label_id));
+        Ok(())
+    }
+}
+
+pub struct MemoryIssueLinkRepository {
+    links: Arc<Mutex<Vec<crate::IssueLink>>>,
+}
+
+impl MemoryIssueLinkRepository {
+    pub fn new() -> Self {
+        Self {
+            links: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
+impl Default for MemoryIssueLinkRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl crate::IssueLinkRepository for MemoryIssueLinkRepository {
+    async fn save(&self, link: &crate::IssueLink) -> Result<shared::IssueLinkId, AppError> {
+        let mut links = self.links.lock().unwrap();
+        if let Some(idx) = links.iter().position(|l| l.id == link.id) {
+            links[idx] = link.clone();
+        } else {
+            links.push(link.clone());
+        }
+        Ok(link.id)
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<crate::IssueLink>, AppError> {
+        Ok(self
+            .links
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.source_id == issue_id || l.target_id == issue_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn delete(&self, id: shared::IssueLinkId) -> Result<(), AppError> {
+        self.links.lock().unwrap().retain(|l| l.id != id);
         Ok(())
     }
 }

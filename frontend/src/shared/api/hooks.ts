@@ -28,6 +28,8 @@ import {
 } from '@/api/sprint'
 import { listStatuses, listTransitions, listIssueTypes } from '@/api/workflow'
 import { listAttachments, uploadAttachment, deleteAttachment } from '@/api/attachment'
+import { listProjectLabels, createLabel, listIssueLabels, attachLabel, detachLabel } from '@/api/label'
+import { listIssueLinks, createIssueLink, deleteIssueLink } from '@/api/link'
 
 export const workflowKeys = {
   statuses: ['statuses'] as const,
@@ -373,5 +375,79 @@ export function useRemoveProjectMember(projectId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['project-members', projectId] })
     },
+  })
+}
+
+export const labelKeys = {
+  project: (projectKey: string) => ['labels', projectKey] as const,
+  issue: (issueId: string) => ['issue-labels', issueId] as const,
+}
+
+export function useProjectLabels(projectKey: string | undefined) {
+  return useQuery({
+    queryKey: labelKeys.project(projectKey ?? ''),
+    queryFn: () => listProjectLabels(projectKey!),
+    enabled: !!projectKey,
+  })
+}
+
+export function useCreateLabel(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, color }: { name: string; color: string }) => createLabel(projectKey, name, color),
+    onSuccess: () => qc.invalidateQueries({ queryKey: labelKeys.project(projectKey) }),
+  })
+}
+
+export function useIssueLabels(issueId: string | undefined) {
+  return useQuery({
+    queryKey: labelKeys.issue(issueId ?? ''),
+    queryFn: () => listIssueLabels(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useAttachLabel(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (labelId: string) => attachLabel(issueId, labelId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: labelKeys.issue(issueId) }),
+  })
+}
+
+export function useDetachLabel(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (labelId: string) => detachLabel(issueId, labelId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: labelKeys.issue(issueId) }),
+  })
+}
+
+export const linkKeys = {
+  issue: (issueId: string) => ['issue-links', issueId] as const,
+}
+
+export function useIssueLinks(issueId: string | undefined) {
+  return useQuery({
+    queryKey: linkKeys.issue(issueId ?? ''),
+    queryFn: () => listIssueLinks(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useCreateIssueLink(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ targetKey, linkType }: { targetKey: string; linkType: string }) =>
+      createIssueLink(issueId, targetKey, linkType),
+    onSuccess: () => qc.invalidateQueries({ queryKey: linkKeys.issue(issueId) }),
+  })
+}
+
+export function useDeleteIssueLink(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteIssueLink(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: linkKeys.issue(issueId) }),
   })
 }

@@ -44,6 +44,8 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(domain::StubAttachmentRepository),
+        labels: Arc::new(domain::StubLabelRepository),
+        issue_links: Arc::new(domain::StubIssueLinkRepository),
     });
     let ctx = Arc::new(app::context::AppContext::new(
         test_config(),

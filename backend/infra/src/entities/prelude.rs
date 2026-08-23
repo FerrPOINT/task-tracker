@@ -2,6 +2,8 @@ pub use super::attachment::Entity as Attachment;
 pub use super::board::Entity as Board;
 pub use super::comment::Entity as Comment;
 pub use super::issue::Entity as Issue;
+pub use super::issue_label::Entity as IssueLabel;
+pub use super::issue_link::Entity as IssueLinkEntity;
 pub use super::label::Entity as Label;
 pub use super::project::Entity as Project;
 pub use super::project_member::Entity as ProjectMember;

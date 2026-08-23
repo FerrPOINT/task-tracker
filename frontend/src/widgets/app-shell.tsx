@@ -27,7 +27,8 @@ import {
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu'
 
-const systemItems = [{ to: '/trash', icon: Trash2, labelKey: 'navigation.trash' }]
+// /trash навигация появится вместе с фазой архива (soft-delete)
+const systemItems: Array<{ to: string; icon: typeof Trash2; labelKey: string }> = []
 
 const projectKeyPattern = /^\/projects\/([^/]+)\/(board|backlog)$/
 

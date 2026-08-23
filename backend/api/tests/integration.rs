@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use domain::{
     Board, BoardColumn, BoardRepository, InMemoryStorage, MemoryAttachmentRepository,
-    MemoryBoardRepository, MemoryCommentRepository, MemoryIssueRepository,
-    MemoryProjectMemberRepository, MemoryProjectRepository, MemorySprintRepository,
-    MemoryUserRepository, MemoryWorklogRepository, Project, ProjectRepository, StatusCategory,
-    User, UserRepository,
+    MemoryBoardRepository, MemoryCommentRepository, MemoryIssueLinkRepository,
+    MemoryIssueRepository, MemoryLabelRepository, MemoryProjectMemberRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
+    Project, ProjectRepository, StatusCategory, User, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -124,6 +124,8 @@ async fn spawn_server() -> (String, reqwest::Client) {
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(MemoryAttachmentRepository::default()),
+        labels: Arc::new(MemoryLabelRepository::default()),
+        issue_links: Arc::new(MemoryIssueLinkRepository::default()),
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -1026,4 +1028,292 @@ async fn attachments_require_auth() {
         .await
         .unwrap();
     assert_eq!(res.status(), 401);
+}
+
+// ===== Label tests =====
+
+#[tokio::test]
+async fn labels_crud_and_issue_attach_flow() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    // create
+    let res = client
+        .post(format!("{}/api/v1/projects/TT/labels", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "bug", "color": "#ef4444"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let label: serde_json::Value = res.json().await.unwrap();
+    let label_id = label["id"].as_str().unwrap().to_string();
+    assert_eq!(label["name"], "bug");
+
+    // list by project
+    let res = client
+        .get(format!("{}/api/v1/projects/TT/labels", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let list: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        list["labels"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|l| l["name"] == "bug")
+    );
+
+    // attach to issue
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/labels", url, issue_id))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"label_id": label_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204);
+
+    // list issue labels
+    let res = client
+        .get(format!("{}/api/v1/issues/{}/labels", url, issue_id))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let issue_labels: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(issue_labels["labels"].as_array().unwrap().len(), 1);
+
+    // update
+    let res = client
+        .put(format!("{}/api/v1/labels/{}", url, label_id))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "critical-bug", "color": "#dc2626"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let updated: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(updated["name"], "critical-bug");
+
+    // detach
+    let res = client
+        .delete(format!(
+            "{}/api/v1/issues/{}/labels/{}",
+            url, issue_id, label_id
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204);
+
+    // delete label
+    let res = client
+        .delete(format!("{}/api/v1/labels/{}", url, label_id))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204);
+}
+
+#[tokio::test]
+async fn label_create_empty_name_400() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .post(format!("{}/api/v1/projects/TT/labels", url))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"name": "  ", "color": "#000000"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn label_create_unknown_project_404() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .post(format!("{}/api/v1/projects/NOPE/labels", url))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"name": "x", "color": "#000000"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn label_attach_unknown_label_404() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/labels", url, issue_id))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"label_id": "00000000-0000-0000-0000-00c0ffee0099"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn labels_require_auth() {
+    let (url, client) = spawn_server().await;
+    let res = client
+        .get(format!("{}/api/v1/projects/TT/labels", url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
+}
+
+// ===== Issue link tests =====
+
+async fn create_second_issue(
+    url: &str,
+    client: &reqwest::Client,
+    token: &str,
+    summary: &str,
+) -> String {
+    let res = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "summary": summary,
+            "reporter_id": "00000000-0000-0000-0000-000000000001"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    body["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn issue_links_create_list_delete_flow() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let a = create_issue_via_api(&url, &client, &token).await;
+    let b_id = create_second_issue(&url, &client, &token, "link target").await;
+
+    // fetch key of b
+    let res = client
+        .get(format!("{}/api/v1/issues/{}", url, b_id))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let b: serde_json::Value = res.json().await.unwrap();
+    let b_key = b["key"].as_str().unwrap().to_string();
+
+    // create link a -> b (blocks)
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/links", url, a))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"target_key": b_key, "link_type": "blocks"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let link: serde_json::Value = res.json().await.unwrap();
+    let link_id = link["id"].as_str().unwrap().to_string();
+    assert_eq!(link["link_type"], "blocks");
+    assert_eq!(link["target_key"], b_key);
+
+    // list links from both sides
+    for iid in [&a, &b_id] {
+        let res = client
+            .get(format!("{}/api/v1/issues/{}/links", url, iid))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+        let list: serde_json::Value = res.json().await.unwrap();
+        assert_eq!(list["links"].as_array().unwrap().len(), 1);
+    }
+
+    // delete
+    let res = client
+        .delete(format!("{}/api/v1/issue-links/{}", url, link_id))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204);
+}
+
+#[tokio::test]
+async fn issue_link_self_link_400() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let a = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .get(format!("{}/api/v1/issues/{}", url, a))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let issue: serde_json::Value = res.json().await.unwrap();
+    let key = issue["key"].as_str().unwrap();
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/links", url, a))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"target_key": key, "link_type": "relates"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn issue_link_unknown_type_400() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let a = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/links", url, a))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"target_key": "TT-999", "link_type": "banana"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn issue_link_unknown_target_404() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let a = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/links", url, a))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"target_key": "TT-424242", "link_type": "relates"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
 }

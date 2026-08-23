@@ -4,25 +4,25 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use domain::{
     Attachment, AttachmentRepository, Board, BoardColumn, BoardRepository, Comment,
-    CommentRepository, Issue, IssueQuery, IssueRepository, IssueTypeEntity, IssueTypeRepository,
-    Project, ProjectMember, ProjectMemberRepository, ProjectRepository, ProjectRole, Sprint,
-    SprintRepository, SprintState, Status, StatusCategory, StatusRepository, User, UserRepository,
-    WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository, Worklog,
-    WorklogRepository,
+    CommentRepository, Issue, IssueLink, IssueLinkRepository, IssueQuery, IssueRepository,
+    IssueTypeEntity, IssueTypeRepository, Label, LabelRepository, LinkType, Project, ProjectMember,
+    ProjectMemberRepository, ProjectRepository, ProjectRole, Sprint, SprintRepository, SprintState,
+    Status, StatusCategory, StatusRepository, User, UserRepository, WorkflowTransition,
+    WorkflowTransitionId, WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use shared::{
-    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueType, IssueTypeId, LabelId,
-    Priority, ProjectId, ProjectKey, SprintId, StatusId, UserId, WorklogId,
+    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, IssueType,
+    IssueTypeId, LabelId, Priority, ProjectId, ProjectKey, SprintId, StatusId, UserId, WorklogId,
 };
 use uuid::Uuid;
 
 use crate::entities::{
-    attachment, board, comment, issue, issue_type, project, project_member, sprint, status, user,
-    workflow_transition, worklog,
+    attachment, board, comment, issue, issue_label, issue_link, issue_type, label, project,
+    project_member, sprint, status, user, workflow_transition, worklog,
 };
 
 fn map_status(m: status::Model) -> Status {
@@ -73,6 +73,8 @@ pub struct SeaOrmRepositories {
     pub transitions: Arc<dyn WorkflowTransitionRepository>,
     pub issue_types: Arc<dyn IssueTypeRepository>,
     pub attachments: Arc<dyn AttachmentRepository>,
+    pub labels: Arc<dyn LabelRepository>,
+    pub issue_links: Arc<dyn IssueLinkRepository>,
 }
 
 impl SeaOrmRepositories {
@@ -90,7 +92,9 @@ impl SeaOrmRepositories {
             statuses: Arc::new(StatusRepo { db: db.clone() }),
             transitions: Arc::new(TransitionRepo { db: db.clone() }),
             issue_types: Arc::new(IssueTypeRepo { db: db.clone() }),
-            attachments: Arc::new(AttachmentRepo { db }),
+            attachments: Arc::new(AttachmentRepo { db: db.clone() }),
+            labels: Arc::new(LabelRepo { db: db.clone() }),
+            issue_links: Arc::new(IssueLinkRepo { db }),
         }
     }
 }
@@ -652,6 +656,8 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         transitions: sea.transitions,
         issue_types: sea.issue_types,
         attachments: sea.attachments,
+        labels: sea.labels,
+        issue_links: sea.issue_links,
     }
 }
 
@@ -715,6 +721,163 @@ fn map_attachment(m: attachment::Model) -> Attachment {
         size_bytes: m.size_bytes,
         storage_key: m.storage_key.into(),
         created_at: m.created_at,
+    }
+}
+
+struct LabelRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+fn map_label(m: label::Model) -> Label {
+    Label {
+        id: LabelId::from_uuid(m.id),
+        project_id: ProjectId::from_uuid(m.project_id),
+        name: m.name.into(),
+        color: m.color.into(),
+    }
+}
+
+#[async_trait]
+impl LabelRepository for LabelRepo {
+    async fn get_by_id(&self, id: LabelId) -> Result<Label, AppError> {
+        let model = label::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_label)
+            .ok_or_else(|| AppError::not_found("label", id))
+    }
+
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<Label>, AppError> {
+        let models = label::Entity::find()
+            .filter(label::Column::ProjectId.eq(project_id.as_uuid()))
+            .order_by_asc(label::Column::Name)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_label).collect())
+    }
+
+    async fn save(&self, label: &Label) -> Result<LabelId, AppError> {
+        let existing = label::Entity::find_by_id(label.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        let active = label::ActiveModel {
+            id: Set(label.id.as_uuid()),
+            project_id: Set(label.project_id.as_uuid()),
+            name: Set(label.name.as_ref().to_string()),
+            color: Set(label.color.as_ref().to_string()),
+            created_at: Set(existing
+                .as_ref()
+                .map(|m| m.created_at)
+                .unwrap_or_else(|| chrono::Utc::now().fixed_offset())),
+        };
+        // Explicit insert/update branch: a new entity with a client-generated UUID
+        // must INSERT, not UPDATE-by-id (which matches zero rows).
+        let saved = if existing.is_some() {
+            active.update(&*self.db).await.map_err(AppError::database)?
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?
+        };
+        Ok(LabelId::from_uuid(saved.id))
+    }
+
+    async fn delete(&self, id: LabelId) -> Result<(), AppError> {
+        label::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn list_ids_by_issue(&self, issue_id: IssueId) -> Result<Vec<LabelId>, AppError> {
+        let models = issue_label::Entity::find()
+            .filter(issue_label::Column::IssueId.eq(issue_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .map(|m| LabelId::from_uuid(m.label_id))
+            .collect())
+    }
+
+    async fn attach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError> {
+        let existing = issue_label::Entity::find()
+            .filter(issue_label::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_label::Column::LabelId.eq(label_id.as_uuid()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if existing.is_some() {
+            return Ok(());
+        }
+        let active = issue_label::ActiveModel {
+            issue_id: Set(issue_id.as_uuid()),
+            label_id: Set(label_id.as_uuid()),
+        };
+        active.insert(&*self.db).await.map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn detach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError> {
+        issue_label::Entity::delete_many()
+            .filter(issue_label::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_label::Column::LabelId.eq(label_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+struct IssueLinkRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl IssueLinkRepository for IssueLinkRepo {
+    async fn save(&self, link: &IssueLink) -> Result<IssueLinkId, AppError> {
+        let active = issue_link::ActiveModel {
+            id: Set(link.id.as_uuid()),
+            source_id: Set(link.source_id.as_uuid()),
+            target_id: Set(link.target_id.as_uuid()),
+            link_type: Set(link.link_type.as_str().to_string()),
+            created_at: Set(chrono::Utc::now().fixed_offset()),
+        };
+        active.insert(&*self.db).await.map_err(AppError::database)?;
+        Ok(link.id)
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueLink>, AppError> {
+        let models = issue_link::Entity::find()
+            .filter(
+                sea_orm::Condition::any()
+                    .add(issue_link::Column::SourceId.eq(issue_id.as_uuid()))
+                    .add(issue_link::Column::TargetId.eq(issue_id.as_uuid())),
+            )
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .map(|m| IssueLink {
+                id: IssueLinkId::from_uuid(m.id),
+                source_id: IssueId::from_uuid(m.source_id),
+                target_id: IssueId::from_uuid(m.target_id),
+                link_type: m.link_type.parse().unwrap_or(LinkType::Relates),
+            })
+            .collect())
+    }
+
+    async fn delete(&self, id: IssueLinkId) -> Result<(), AppError> {
+        issue_link::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
     }
 }
 

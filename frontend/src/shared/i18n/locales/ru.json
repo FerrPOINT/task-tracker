@@ -7,7 +7,8 @@
     "dashboard": "Дашборд",
     "backlog": "Бэклог",
     "board": "Доска",
-    "trash": "Корзина"
+    "trash": "Корзина",
+    "logout": "Выйти"
   },
   "auth": {
     "login": "Войти",
@@ -44,7 +45,17 @@
     "todo": "К выполнению",
     "inProgress": "В работе",
     "done": "Готово",
-    "lead": "Лид"
+    "lead": "Лид",
+    "createProject": "Создать проект",
+    "deleteDescription": "Проект и все его задачи будут удалены без возможности восстановления.",
+    "deleteTitle": "Удалить проект?",
+    "description": "Описание",
+    "descriptionPlaceholder": "Короткое описание проекта",
+    "editProject": "Редактировать проект",
+    "issues": "Задачи",
+    "key": "Ключ",
+    "name": "Название",
+    "namePlaceholder": "Например, Task Tracker"
   },
   "board": {
     "filters": "Фильтры",
@@ -53,7 +64,12 @@
     "create": "Создать",
     "wip": "WIP",
     "wipWarning": "⚠️",
-    "backlog": "Backlog"
+    "backlog": "Backlog",
+    "done": "Done",
+    "inProgress": "In Progress",
+    "subtitle": "Задачи по колонкам статусов",
+    "title": "Доска",
+    "todo": "To Do"
   },
   "backlog": {
     "createSprint": "Создать спринт",
@@ -91,7 +107,17 @@
     "summary": "ЗАГОЛОВОК",
     "status": "СТАТУС",
     "assignee": "ИСПОЛНИТЕЛЬ",
-    "priority": "ПРИОРИТЕТ"
+    "priority": "ПРИОРИТЕТ",
+    "allAssignees": "Все исполнители",
+    "allPriorities": "Все приоритеты",
+    "allProjects": "Все проекты",
+    "allStatuses": "Все статусы",
+    "backToProjects": "К проектам",
+    "clear": "Сбросить",
+    "noResults": "Ничего не найдено",
+    "placeholder": "Поиск задач…",
+    "project": "Проект",
+    "sort": "Сортировка"
   },
   "issueCreate": {
     "title": "Создать задачу",
@@ -133,7 +159,13 @@
     "loading": "Загрузка...",
     "notFound": "Задача не найдена",
     "delete": "Удалить",
-    "deleteConfirm": "Удалить задачу без возможности восстановления?"
+    "deleteConfirm": "Удалить задачу без возможности восстановления?",
+    "commented": "прокомментировал(а)",
+    "descriptionPlaceholder": "Добавьте описание…",
+    "loggedTime": "затрачено",
+    "noActivity": "Активности пока нет",
+    "summaryRequired": "Укажите тему задачи",
+    "unassigned": "Не назначен"
   },
   "timeTracking": {
     "title": "Учёт времени",
@@ -177,7 +209,9 @@
     "delete": "Удалить",
     "theme": "Тема: {{theme}}",
     "creating": "Создание…",
-    "loading": "Загрузка…"
+    "loading": "Загрузка…",
+    "edit": "Изменить",
+    "saving": "Сохранение…"
   },
   "comments": {
     "title": "Комментарии",
@@ -212,5 +246,43 @@
     "download": "Скачать {{name}}",
     "delete": "Удалить {{name}}",
     "uploadFailed": "Не удалось загрузить файл"
+  },
+  "sprints": {
+    "create": "Создать спринт",
+    "createSprint": "Новый спринт",
+    "editSprint": "Редактировать спринт",
+    "endDate": "Дата окончания",
+    "goal": "Цель",
+    "goalPlaceholder": "Что должно быть готово к концу спринта",
+    "name": "Название",
+    "namePlaceholder": "Спринт 1",
+    "startDate": "Дата начала"
+  },
+  "labels": {
+    "title": "Метки",
+    "none": "Меток нет",
+    "create": "Новая метка",
+    "add": "Добавить",
+    "namePlaceholder": "Название метки",
+    "detach": "Убрать метку {{name}}"
+  },
+  "links": {
+    "title": "Связи",
+    "none": "Связей нет",
+    "add": "Добавить связь",
+    "typeLabel": "Тип связи",
+    "notFound": "Задача {{key}} не найдена",
+    "delete": "Удалить связь с {{key}}",
+    "type": {
+      "blocks": "блокирует",
+      "duplicates": "дублирует",
+      "relates": "связана с"
+    },
+    "typeInverse": {
+      "blocks": "блокируется",
+      "duplicates": "дублируется",
+      "relates": "связана с"
+    },
+    "submit": "Связать"
   }
 }

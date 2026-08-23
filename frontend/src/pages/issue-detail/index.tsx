@@ -23,6 +23,8 @@ import { CommentsPanel } from '@/features/comments/ui/CommentList'
 import { useComments } from '@/features/comments/model/use-comments'
 import { ActivityFeed } from '@/features/issue-detail/ui/ActivityFeed'
 import { AttachmentPanel } from '@/features/issue-detail/ui/AttachmentPanel'
+import { LabelEditor } from '@/features/issue-detail/ui/LabelEditor'
+import { LinkEditor } from '@/features/issue-detail/ui/LinkEditor'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
@@ -223,6 +225,24 @@ return (
                   remainingEstimateSeconds={remainingEstimate}
                   onLogWork={handleLogWork}
                 />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">{t('labels.title')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <LabelEditor issueId={id} projectKey={issueQuery.data?.project_key ?? ''} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">{t('links.title')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <LinkEditor issueId={id} currentKey={issueQuery.data?.key ?? ''} />
               </CardContent>
             </Card>
 

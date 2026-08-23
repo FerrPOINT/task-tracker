@@ -3,7 +3,7 @@ use axum::{
     http::HeaderValue,
     http::Method,
     middleware::from_fn_with_state,
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
 };
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
@@ -48,6 +48,16 @@ pub use routes::*;
         routes::transitions::transition_issue,
         routes::search::search_global,
         routes::attachments::list_attachments,
+        routes::labels::list_labels,
+        routes::labels::create_label,
+        routes::labels::update_label,
+        routes::labels::delete_label,
+        routes::labels::list_issue_labels,
+        routes::labels::attach_label,
+        routes::labels::detach_label,
+        routes::links::list_links,
+        routes::links::create_link,
+        routes::links::delete_link,
         routes::attachments::upload_attachment,
         routes::attachments::download_attachment,
         routes::attachments::delete_attachment,
@@ -184,6 +194,27 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/issues/{issue_id}/attachments",
             get(routes::attachments::list_attachments).post(routes::attachments::upload_attachment),
         )
+        .route(
+            "/projects/{project_key}/labels",
+            get(routes::labels::list_labels).post(routes::labels::create_label),
+        )
+        .route(
+            "/labels/{id}",
+            put(routes::labels::update_label).delete(routes::labels::delete_label),
+        )
+        .route(
+            "/issues/{issue_id}/labels",
+            get(routes::labels::list_issue_labels).post(routes::labels::attach_label),
+        )
+        .route(
+            "/issues/{issue_id}/labels/{label_id}",
+            delete(routes::labels::detach_label),
+        )
+        .route(
+            "/issues/{issue_id}/links",
+            get(routes::links::list_links).post(routes::links::create_link),
+        )
+        .route("/issue-links/{id}", delete(routes::links::delete_link))
         .route(
             "/attachments/{id}/download",
             get(routes::attachments::download_attachment),

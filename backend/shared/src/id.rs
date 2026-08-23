@@ -57,6 +57,7 @@ uuid_id!(ProjectId);
 uuid_id!(IssueId);
 uuid_id!(CommentId);
 uuid_id!(AttachmentId);
+uuid_id!(IssueLinkId);
 uuid_id!(LabelId);
 uuid_id!(SprintId);
 uuid_id!(BoardId);

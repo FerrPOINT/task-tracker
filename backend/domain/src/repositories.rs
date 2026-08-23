@@ -6,13 +6,13 @@ use std::sync::Arc;
 mod tests;
 
 use crate::{
-    Board, Comment, Issue, IssueQuery, IssueStatusHistory, IssueTypeEntity, Project, ProjectMember,
-    Sprint, Status, User, WorkflowTransition, Worklog,
+    Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity, Label,
+    Project, ProjectMember, Sprint, Status, User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
-    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, ProjectId, ProjectKey, SprintId,
-    StatusId, UserId, WorklogId,
+    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, LabelId, ProjectId,
+    ProjectKey, SprintId, StatusId, UserId, WorklogId,
 };
 
 #[async_trait]
@@ -154,6 +154,8 @@ pub struct Repositories {
     pub transitions: Arc<dyn WorkflowTransitionRepository>,
     pub issue_types: Arc<dyn IssueTypeRepository>,
     pub attachments: Arc<dyn AttachmentRepository>,
+    pub labels: Arc<dyn LabelRepository>,
+    pub issue_links: Arc<dyn IssueLinkRepository>,
 }
 
 impl Default for Repositories {
@@ -171,6 +173,8 @@ impl Default for Repositories {
             transitions: Arc::new(StubWorkflowTransitionRepository),
             issue_types: Arc::new(StubIssueTypeRepository),
             attachments: Arc::new(StubAttachmentRepository),
+            labels: Arc::new(StubLabelRepository),
+            issue_links: Arc::new(StubIssueLinkRepository),
         }
     }
 }
@@ -212,6 +216,32 @@ impl AttachmentRepository for StubAttachmentRepository {
         Ok(AttachmentId::new())
     }
     async fn delete(&self, _id: AttachmentId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubLabelRepository;
+#[async_trait]
+impl LabelRepository for StubLabelRepository {
+    async fn get_by_id(&self, _id: LabelId) -> Result<Label, AppError> {
+        Err(AppError::not_found("label", "stub"))
+    }
+    async fn list_by_project(&self, _project_id: ProjectId) -> Result<Vec<Label>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _label: &Label) -> Result<LabelId, AppError> {
+        Ok(LabelId::new())
+    }
+    async fn delete(&self, _id: LabelId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn list_ids_by_issue(&self, _issue_id: IssueId) -> Result<Vec<LabelId>, AppError> {
+        Ok(vec![])
+    }
+    async fn attach(&self, _issue_id: IssueId, _label_id: LabelId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn detach(&self, _issue_id: IssueId, _label_id: LabelId) -> Result<(), AppError> {
         Ok(())
     }
 }
@@ -463,6 +493,38 @@ impl FileStorage for InMemoryStorage {
             .lock()
             .unwrap()
             .remove(&(issue_id.to_string(), key.to_string()));
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait LabelRepository: Send + Sync {
+    async fn get_by_id(&self, id: LabelId) -> Result<Label, AppError>;
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<Label>, AppError>;
+    async fn save(&self, label: &Label) -> Result<LabelId, AppError>;
+    async fn delete(&self, id: LabelId) -> Result<(), AppError>;
+    async fn list_ids_by_issue(&self, issue_id: IssueId) -> Result<Vec<LabelId>, AppError>;
+    async fn attach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError>;
+    async fn detach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait IssueLinkRepository: Send + Sync {
+    async fn save(&self, link: &IssueLink) -> Result<IssueLinkId, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueLink>, AppError>;
+    async fn delete(&self, id: IssueLinkId) -> Result<(), AppError>;
+}
+
+pub struct StubIssueLinkRepository;
+#[async_trait]
+impl IssueLinkRepository for StubIssueLinkRepository {
+    async fn save(&self, _link: &IssueLink) -> Result<IssueLinkId, AppError> {
+        Ok(IssueLinkId::new())
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueLink>, AppError> {
+        Ok(vec![])
+    }
+    async fn delete(&self, _id: IssueLinkId) -> Result<(), AppError> {
         Ok(())
     }
 }

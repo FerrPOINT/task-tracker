@@ -75,6 +75,8 @@ async fn memory_project_repository_lifecycle() {
     );
     assert_eq!(repo.get_by_key(&project.key).await.unwrap().id, project.id);
     assert_eq!(repo.list(ProjectQuery::default()).await.unwrap().len(), 1);
+    // Monotonic per-project counter: first allocation is 1, next is 2.
+    assert_eq!(repo.next_issue_number(project.id).await.unwrap(), 1);
     assert_eq!(repo.next_issue_number(project.id).await.unwrap(), 2);
     repo.save(&project).await.unwrap();
     let mut renamed = project.clone();

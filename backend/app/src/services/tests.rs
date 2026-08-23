@@ -129,6 +129,8 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(domain::StubAttachmentRepository),
+        labels: Arc::new(domain::StubLabelRepository),
+        issue_links: Arc::new(domain::StubIssueLinkRepository),
     });
     AppContext::new(
         test_config(),
@@ -871,6 +873,8 @@ fn failing_context() -> AppContext {
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(domain::StubAttachmentRepository),
+        labels: Arc::new(domain::StubLabelRepository),
+        issue_links: Arc::new(domain::StubIssueLinkRepository),
     });
     AppContext::new(test_config(), repos, Arc::new(TestStorage::default()))
 }

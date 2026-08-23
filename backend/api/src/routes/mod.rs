@@ -12,5 +12,7 @@ pub mod transitions;
 pub mod worklogs;
 
 pub mod attachments;
+pub mod labels;
+pub mod links;
 pub mod users;
 pub mod workflow;

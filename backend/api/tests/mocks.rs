@@ -154,6 +154,8 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(domain::StubAttachmentRepository),
+        labels: Arc::new(domain::StubLabelRepository),
+        issue_links: Arc::new(domain::StubIssueLinkRepository),
     });
     Arc::new(app::AppContext::new(
         config,
@@ -178,6 +180,8 @@ pub fn failing_context() -> Arc<app::AppContext> {
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(domain::StubAttachmentRepository),
+        labels: Arc::new(domain::StubLabelRepository),
+        issue_links: Arc::new(domain::StubIssueLinkRepository),
     });
     Arc::new(app::AppContext::new(
         Arc::new(shared::AppConfig {

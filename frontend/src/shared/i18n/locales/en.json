@@ -7,7 +7,8 @@
     "dashboard": "Dashboard",
     "backlog": "Backlog",
     "board": "Board",
-    "trash": "Trash"
+    "trash": "Trash",
+    "logout": "Log out"
   },
   "auth": {
     "login": "Log in",
@@ -44,7 +45,17 @@
     "todo": "To do",
     "inProgress": "In progress",
     "done": "Done",
-    "lead": "Lead"
+    "lead": "Lead",
+    "createProject": "Create project",
+    "deleteDescription": "The project and all its issues will be permanently deleted.",
+    "deleteTitle": "Delete project?",
+    "description": "Description",
+    "descriptionPlaceholder": "Short project description",
+    "editProject": "Edit project",
+    "issues": "Issues",
+    "key": "Key",
+    "name": "Name",
+    "namePlaceholder": "e.g. Task Tracker"
   },
   "board": {
     "filters": "Filters",
@@ -53,7 +64,12 @@
     "create": "Create",
     "wip": "WIP",
     "wipWarning": "⚠️",
-    "backlog": "Backlog"
+    "backlog": "Backlog",
+    "done": "Done",
+    "inProgress": "In Progress",
+    "subtitle": "Issues grouped by status columns",
+    "title": "Board",
+    "todo": "To Do"
   },
   "backlog": {
     "createSprint": "Create sprint",
@@ -91,7 +107,17 @@
     "summary": "SUMMARY",
     "status": "STATUS",
     "assignee": "ASSIGNEE",
-    "priority": "PRIORITY"
+    "priority": "PRIORITY",
+    "allAssignees": "All assignees",
+    "allPriorities": "All priorities",
+    "allProjects": "All projects",
+    "allStatuses": "All statuses",
+    "backToProjects": "Back to projects",
+    "clear": "Clear",
+    "noResults": "No results",
+    "placeholder": "Search issues…",
+    "project": "Project",
+    "sort": "Sort"
   },
   "issueCreate": {
     "title": "Create issue",
@@ -133,7 +159,13 @@
     "loading": "Loading...",
     "notFound": "Issue not found",
     "delete": "Delete",
-    "deleteConfirm": "Delete this issue permanently?"
+    "deleteConfirm": "Delete this issue permanently?",
+    "commented": "commented",
+    "descriptionPlaceholder": "Add a description…",
+    "loggedTime": "logged",
+    "noActivity": "No activity yet",
+    "summaryRequired": "Summary is required",
+    "unassigned": "Unassigned"
   },
   "timeTracking": {
     "title": "Time tracking",
@@ -177,7 +209,9 @@
     "delete": "Delete",
     "theme": "Theme: {{theme}}",
     "creating": "Creating…",
-    "loading": "Loading…"
+    "loading": "Loading…",
+    "edit": "Edit",
+    "saving": "Saving…"
   },
   "comments": {
     "title": "Comments",
@@ -212,5 +246,43 @@
     "download": "Download {{name}}",
     "delete": "Delete {{name}}",
     "uploadFailed": "Failed to upload file"
+  },
+  "sprints": {
+    "create": "Create sprint",
+    "createSprint": "New sprint",
+    "editSprint": "Edit sprint",
+    "endDate": "End date",
+    "goal": "Goal",
+    "goalPlaceholder": "What should be done by the end of the sprint",
+    "name": "Name",
+    "namePlaceholder": "Sprint 1",
+    "startDate": "Start date"
+  },
+  "labels": {
+    "title": "Labels",
+    "none": "No labels",
+    "create": "New label",
+    "add": "Add",
+    "namePlaceholder": "Label name",
+    "detach": "Remove label {{name}}"
+  },
+  "links": {
+    "title": "Links",
+    "none": "No links",
+    "add": "Add link",
+    "typeLabel": "Link type",
+    "notFound": "Issue {{key}} not found",
+    "delete": "Remove link to {{key}}",
+    "type": {
+      "blocks": "blocks",
+      "duplicates": "duplicates",
+      "relates": "relates to"
+    },
+    "typeInverse": {
+      "blocks": "blocked by",
+      "duplicates": "duplicated by",
+      "relates": "relates to"
+    },
+    "submit": "Link"
   }
 }
