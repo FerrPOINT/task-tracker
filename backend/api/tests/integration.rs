@@ -1317,3 +1317,313 @@ async fn issue_link_unknown_target_404() {
         .unwrap();
     assert_eq!(res.status(), 404);
 }
+
+// ===== Member edge-case tests =====
+
+#[tokio::test]
+async fn member_readd_is_idempotent_upsert() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let project_id = test_project_id();
+
+    // register a second user
+    let register = client
+        .post(format!("{}/api/v1/auth/register", url))
+        .json(&serde_json::json!({
+            "email": "readd@example.com",
+            "username": "readd",
+            "name": "Re Add",
+            "password": "secret123"
+        }))
+        .send()
+        .await
+        .unwrap();
+    let user: serde_json::Value = register.json().await.unwrap();
+    let user_id = user["user_id"].as_str().unwrap();
+
+    // add twice
+    for expected_role in ["member", "admin"] {
+        let res = client
+            .post(format!("{}/api/v1/projects/{project_id}/members", url))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({"user_id": user_id, "role": expected_role}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 201);
+        let body: serde_json::Value = res.json().await.unwrap();
+        assert_eq!(body["role"], expected_role);
+    }
+
+    // list shows exactly one membership with the latest role
+    let res = client
+        .get(format!("{}/api/v1/projects/{project_id}/members", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let list: serde_json::Value = res.json().await.unwrap();
+    let members = list["members"].as_array().unwrap();
+    let hits = members
+        .iter()
+        .filter(|m| m["user_id"].as_str().unwrap() == user_id)
+        .collect::<Vec<_>>();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0]["role"], "admin");
+}
+
+#[tokio::test]
+async fn member_add_unknown_project_404() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .post(format!("{}/api/v1/projects/00000000-0000-0000-0000-00c0ffee7777/members", url))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"user_id": "00000000-0000-0000-0000-000000000001", "role": "member"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn member_remove_returns_204() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let project_id = test_project_id();
+
+    let register = client
+        .post(format!("{}/api/v1/auth/register", url))
+        .json(&serde_json::json!({
+            "email": "remove-me@example.com",
+            "username": "removeme",
+            "name": "Remove Me",
+            "password": "secret123"
+        }))
+        .send()
+        .await
+        .unwrap();
+    let user: serde_json::Value = register.json().await.unwrap();
+    let user_id = user["user_id"].as_str().unwrap();
+
+    let add = client
+        .post(format!("{}/api/v1/projects/{project_id}/members", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"user_id": user_id, "role": "member"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(add.status(), 201);
+
+    let remove = client
+        .delete(format!(
+            "{}/api/v1/projects/{project_id}/members/{user_id}",
+            url
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(remove.status(), 204);
+}
+
+// ===== Sprint workflow tests =====
+
+#[tokio::test]
+async fn sprint_lifecycle_create_start_close() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    // create
+    let create = client
+        .post(format!("{url}/api/v1/projects/TT/sprints"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "Sprint 1", "goal": "Ship it"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201);
+    let sprint: serde_json::Value = create.json().await.unwrap();
+    let sprint_id = sprint["id"].as_str().unwrap().to_string();
+    assert_eq!(sprint["state"], "future");
+
+    // start
+    let start = client
+        .post(format!(
+            "{url}/api/v1/projects/TT/sprints/{sprint_id}/start"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(start.status(), 200);
+    let started: serde_json::Value = start.json().await.unwrap();
+    assert_eq!(started["state"], "active");
+
+    // close
+    let close = client
+        .post(format!(
+            "{url}/api/v1/projects/TT/sprints/{sprint_id}/close"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(close.status(), 200);
+    let closed: serde_json::Value = close.json().await.unwrap();
+    assert_eq!(closed["state"], "closed");
+
+    // list contains it
+    let list = client
+        .get(format!("{url}/api/v1/projects/TT/sprints"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list.status(), 200);
+    let body: serde_json::Value = list.json().await.unwrap();
+    assert!(
+        body["sprints"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|s| s["id"].as_str() == Some(sprint_id.as_str()))
+    );
+}
+
+#[tokio::test]
+async fn sprint_move_and_remove_issue() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let sprint = client
+        .post(format!("{url}/api/v1/projects/TT/sprints"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "Sprint M"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(sprint.status(), 201);
+    let sprint_json: serde_json::Value = sprint.json().await.unwrap();
+    let sprint_id = sprint_json["id"].as_str().unwrap().to_string();
+
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    // move in
+    let mv = client
+        .post(format!(
+            "{url}/api/v1/projects/TT/sprints/{sprint_id}/issues"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"issue_id": issue_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mv.status(), 200);
+
+    // remove
+    let rm = client
+        .post(format!(
+            "{url}/api/v1/projects/TT/sprints/{sprint_id}/remove-issue"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"issue_id": issue_id}))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        rm.status() == 200 || rm.status() == 204,
+        "unexpected {}",
+        rm.status()
+    );
+}
+
+#[tokio::test]
+async fn sprint_update_and_get() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let created = client
+        .post(format!("{url}/api/v1/projects/TT/sprints"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "Before"}))
+        .send()
+        .await
+        .unwrap();
+    let created_json: serde_json::Value = created.json().await.unwrap();
+    let sid = created_json["id"].as_str().unwrap().to_string();
+
+    let upd = client
+        .patch(format!("{url}/api/v1/projects/TT/sprints/{sid}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "After", "goal": "updated"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(upd.status(), 200);
+    let upd_json: serde_json::Value = upd.json().await.unwrap();
+    assert_eq!(upd_json["name"], "After");
+
+    let got = client
+        .get(format!("{url}/api/v1/projects/TT/sprints/{sid}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(got.status(), 200);
+    let got_json: serde_json::Value = got.json().await.unwrap();
+    assert_eq!(got_json["goal"], "updated");
+}
+
+#[tokio::test]
+async fn sprint_unknown_404() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/projects/TT/sprints/00000000-0000-0000-0000-00c0ffee7777"
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+// ===== Workflow (statuses/transitions/issue-types) tests =====
+
+#[tokio::test]
+async fn workflow_lists_reachable() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    for path in [
+        "/api/v1/statuses",
+        "/api/v1/transitions",
+        "/api/v1/issue-types",
+    ] {
+        let res = client
+            .get(format!("{url}{path}"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200, "{path}");
+        let body: serde_json::Value = res.json().await.unwrap();
+        assert!(body.as_array().is_some(), "{path} did not return an array");
+    }
+}
+
+#[tokio::test]
+async fn workflow_lists_require_auth() {
+    let (url, client) = spawn_server().await;
+    for path in [
+        "/api/v1/statuses",
+        "/api/v1/transitions",
+        "/api/v1/issue-types",
+    ] {
+        let res = client.get(format!("{url}{path}")).send().await.unwrap();
+        assert_eq!(res.status(), 401, "{path}");
+    }
+}

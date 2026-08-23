@@ -229,7 +229,8 @@
     "title": "Project members",
     "addUser": "Add member",
     "selectUser": "Select user",
-    "empty": "No members yet."
+    "empty": "No members yet.",
+    "remove": "Remove member {{name}}"
   },
   "issueType": {
     "task": "Task",

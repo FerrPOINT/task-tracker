@@ -1061,19 +1061,17 @@ impl ProjectMemberService for ProjectMemberServiceImpl {
     ) -> Result<ProjectMemberDto, AppError> {
         let role = ProjectRole::from_str(&cmd.role).unwrap_or_default();
         let _ = self.users.get_by_id(cmd.user_id).await?;
-        if let Ok(existing) = self.members.get(cmd.project_id, cmd.user_id).await {
-            return Ok(ProjectMemberDto {
-                project_id: existing.project_id.to_string(),
-                user_id: existing.user_id.to_string(),
-                role: existing.role.as_str().to_string(),
-                joined_at: existing.joined_at,
-            });
-        }
+        // Re-adding an existing member upserts the role (repo save is idempotent)
+        // and preserves the original joined_at.
+        let joined_at = match self.members.get(cmd.project_id, cmd.user_id).await {
+            Ok(existing) => existing.joined_at,
+            Err(_) => shared::now(),
+        };
         let member = ProjectMember {
             project_id: cmd.project_id,
             user_id: cmd.user_id,
             role,
-            joined_at: shared::now(),
+            joined_at,
         };
         self.members.save(&member).await?;
         Ok(ProjectMemberDto {

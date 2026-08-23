@@ -108,6 +108,7 @@ export function ProjectMembersPanel({ projectId, trigger }: { projectId: string;
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 shrink-0 text-text-muted hover:text-rose-500"
+                      aria-label={t('projectMembers.remove', { name })}
                       onClick={() => remove.mutate(m.user_id)}
                       disabled={remove.isPending}
                     >
