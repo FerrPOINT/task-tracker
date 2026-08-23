@@ -19,6 +19,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
+import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import { useCurrentUser, useLogout } from '@/shared/api/hooks'
 import {
   DropdownMenu,
@@ -73,6 +74,7 @@ export function AppShell() {
   const projectKey = useCurrentProjectKey()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { data: user } = useCurrentUser()
+  useTrackerEvents()
   const logout = useLogout()
 
   const navItems = [

@@ -61,6 +61,7 @@ pub use routes::*;
         routes::attachments::upload_attachment,
         routes::attachments::download_attachment,
         routes::attachments::delete_attachment,
+        routes::events::events,
         routes::workflow::list_statuses,
         routes::workflow::list_transitions,
         routes::workflow::list_issue_types,
@@ -223,6 +224,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/attachments/{id}",
             delete(routes::attachments::delete_attachment),
         )
+        .route("/events", get(routes::events::events))
         .route("/statuses", get(routes::workflow::list_statuses))
         .route("/transitions", get(routes::workflow::list_transitions))
         .route("/issue-types", get(routes::workflow::list_issue_types))

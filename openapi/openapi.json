@@ -307,6 +307,28 @@
         }
       }
     },
+    "/api/v1/events": {
+      "get": {
+        "tags": [
+          "routes::events"
+        ],
+        "description": "Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries.",
+        "operationId": "events",
+        "responses": {
+          "200": {
+            "description": "SSE stream (text/event-stream)"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [

@@ -1,9 +1,11 @@
 pub mod config;
 pub mod error;
+pub mod events;
 pub mod id;
 
 pub use config::*;
 pub use error::*;
+pub use events::*;
 pub use id::*;
 
 use chrono::{DateTime, FixedOffset, Utc};

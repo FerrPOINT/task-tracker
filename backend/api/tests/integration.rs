@@ -1627,3 +1627,128 @@ async fn workflow_lists_require_auth() {
         assert_eq!(res.status(), 401, "{path}");
     }
 }
+
+// ===== SSE events tests =====
+
+#[tokio::test]
+async fn sse_stream_receives_issue_events() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    // subscribe (SSE), then create an issue and expect the event
+    let stream = client
+        .get(format!("{url}/api/v1/events"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stream.status(), 200);
+    assert!(
+        stream
+            .headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("text/event-stream")
+    );
+
+    // spawn a reader that collects events into a channel
+    use futures_util::StreamExt;
+    let mut byte_stream = stream.bytes_stream();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(8);
+    tokio::spawn(async move {
+        let mut buf = String::new();
+        while let Some(chunk) = byte_stream.next().await {
+            match chunk {
+                Ok(bytes) => {
+                    buf.push_str(&String::from_utf8_lossy(&bytes));
+                    // split complete SSE frames
+                    while let Some(pos) = buf.find("\n\n") {
+                        let frame: String = buf.drain(..pos + 2).collect();
+                        let _ = tx.send(frame).await;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    // create an issue -> expect issue_created event
+    let created = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "summary": "sse test issue",
+            "reporter_id": "00000000-0000-0000-0000-000000000001"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 200);
+
+    let mut got_created = false;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while std::time::Instant::now() < deadline {
+        match tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv()).await {
+            Ok(Some(frame)) => {
+                if frame.contains("event: tracker") && frame.contains("issue_created") {
+                    got_created = true;
+                    break;
+                }
+            }
+            _ => continue,
+        }
+    }
+    assert!(got_created, "did not receive issue_created SSE event");
+}
+
+#[tokio::test]
+async fn sse_requires_auth() {
+    let (url, client) = spawn_server().await;
+    let res = client
+        .get(format!("{url}/api/v1/events"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
+}
+
+#[tokio::test]
+async fn sse_accepts_query_token() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .get(format!("{url}/api/v1/events?access_token={token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert!(
+        res.headers()
+            .get("content-type")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .starts_with("text/event-stream")
+    );
+}
+
+#[tokio::test]
+async fn sse_query_token_rejected_for_other_paths() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    // access_token query must NOT authorize non-SSE endpoints
+    let res = client
+        .get(format!("{url}/api/v1/projects?access_token={token}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
+}

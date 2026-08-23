@@ -146,6 +146,7 @@ pub struct IssueServiceImpl {
     users: Arc<dyn domain::UserRepository>,
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
+    events: crate::context::EventBus,
 }
 
 impl IssueServiceImpl {
@@ -156,10 +157,12 @@ impl IssueServiceImpl {
         users: Arc<dyn domain::UserRepository>,
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
+        events: crate::context::EventBus,
     ) -> Self {
         Self {
             issues,
             projects,
+            events,
             boards,
             users,
             statuses,
@@ -214,6 +217,10 @@ impl crate::context::IssueService for IssueServiceImpl {
             .unwrap_or_else(|| helpers::issue_status_column(issue.status_id));
         let (assignee_name, reporter_name) =
             helpers::resolve_names(self.users.clone(), &issue).await;
+        self.events.publish(shared::TrackerEvent::IssueCreated {
+            issue_id: issue.id.to_string(),
+            project_key: project.key.to_string(),
+        });
         Ok(IssueDto::from_issue(
             issue,
             project.name.as_ref().to_string(),
@@ -261,6 +268,10 @@ impl crate::context::IssueService for IssueServiceImpl {
             });
         let (assignee_name, reporter_name) =
             helpers::resolve_names(self.users.clone(), &updated).await;
+        self.events.publish(shared::TrackerEvent::IssueMoved {
+            issue_id: updated.id.to_string(),
+            project_key: project.key.to_string(),
+        });
         Ok(IssueDto::from_issue(
             updated,
             project.name.as_ref().to_string(),
@@ -319,6 +330,10 @@ impl crate::context::IssueService for IssueServiceImpl {
             .unwrap_or_else(|| helpers::issue_status_column(issue.status_id));
         let (assignee_name, reporter_name) =
             helpers::resolve_names(self.users.clone(), &issue).await;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: project.key.to_string(),
+        });
         Ok(IssueDto::from_issue(
             issue,
             project.name.as_ref().to_string(),
@@ -834,6 +849,8 @@ pub struct CommentServiceImpl {
     comments: Arc<dyn domain::CommentRepository>,
     users: Arc<dyn domain::UserRepository>,
     issues: Arc<dyn domain::IssueRepository>,
+    projects: Arc<dyn ProjectRepository>,
+    events: crate::context::EventBus,
 }
 
 impl CommentServiceImpl {
@@ -841,11 +858,15 @@ impl CommentServiceImpl {
         comments: Arc<dyn domain::CommentRepository>,
         users: Arc<dyn domain::UserRepository>,
         issues: Arc<dyn domain::IssueRepository>,
+        projects: Arc<dyn ProjectRepository>,
+        events: crate::context::EventBus,
     ) -> Self {
         Self {
             comments,
             users,
             issues,
+            projects,
+            events,
         }
     }
 }
@@ -882,6 +903,14 @@ impl crate::context::CommentService for CommentServiceImpl {
         };
         self.comments.save(&comment).await?;
         let user = self.users.get_by_id(cmd.author_id).await.ok();
+        if let Ok(issue) = self.issues.get_by_id(cmd.issue_id).await {
+            if let Ok(project) = self.projects.get_by_id(issue.project_id).await {
+                self.events.publish(shared::TrackerEvent::IssueCommented {
+                    issue_id: cmd.issue_id.to_string(),
+                    project_key: project.key.to_string(),
+                });
+            }
+        }
         Ok(CommentDto::from_comment(
             comment,
             user.map(|u| u.display_name.as_ref().to_string()),

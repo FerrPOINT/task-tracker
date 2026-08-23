@@ -20,11 +20,37 @@ use shared::{
     StatusId, UserId, WorklogId,
 };
 
+/// Broadcast hub for real-time invalidation events (SSE).
+/// Capacity is bounded; a lagging subscriber misses events and simply refetches.
+#[derive(Clone)]
+pub struct EventBus {
+    tx: tokio::sync::broadcast::Sender<shared::TrackerEvent>,
+}
+
+impl Default for EventBus {
+    fn default() -> Self {
+        let (tx, _) = tokio::sync::broadcast::channel(256);
+        Self { tx }
+    }
+}
+
+impl EventBus {
+    pub fn publish(&self, event: shared::TrackerEvent) {
+        // Ignore send errors: no subscribers is a normal state.
+        let _ = self.tx.send(event);
+    }
+
+    pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<shared::TrackerEvent> {
+        self.tx.subscribe()
+    }
+}
+
 #[derive(Clone)]
 pub struct AppContext {
     pub config: Arc<AppConfig>,
     pub services: Services,
     pub repos: Arc<domain::Repositories>,
+    pub events: EventBus,
 }
 
 #[derive(Clone)]
@@ -53,6 +79,16 @@ impl AppContext {
         repos: Arc<domain::Repositories>,
         storage: Arc<dyn domain::FileStorage>,
     ) -> Self {
+        Self::with_events(config, repos, storage, EventBus::default())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_events(
+        config: Arc<AppConfig>,
+        repos: Arc<domain::Repositories>,
+        storage: Arc<dyn domain::FileStorage>,
+        events: EventBus,
+    ) -> Self {
         let auth: Arc<dyn AuthService> = Arc::new(JwtAuthService::new(
             config.auth.clone(),
             repos.users.clone(),
@@ -70,6 +106,7 @@ impl AppContext {
             repos.users.clone(),
             repos.statuses.clone(),
             repos.transitions.clone(),
+            events.clone(),
         ));
         let board: Arc<dyn BoardService> = Arc::new(BoardServiceImpl::new(
             repos.boards.clone(),
@@ -97,6 +134,7 @@ impl AppContext {
         ));
         Self {
             config,
+            events: events.clone(),
             services: Services {
                 auth,
                 project,
@@ -108,6 +146,8 @@ impl AppContext {
                     repos.comments.clone(),
                     repos.users.clone(),
                     repos.issues.clone(),
+                    repos.projects.clone(),
+                    events.clone(),
                 )),
                 worklog: Arc::new(WorklogServiceImpl::new(
                     repos.worklogs.clone(),
