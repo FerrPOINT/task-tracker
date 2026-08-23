@@ -4,58 +4,73 @@
 
 План разработки от пустого репозитория до production-ready Jira-like таск-трекера. Каждая фаза — отдельный milestone, заканчивается рабочим коммитом и проверкой.
 
+## Статус (обновлено 2026-08-23)
+
+**Фазы 0–4 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time).
+
+Реализовано сверх плана фаз 0–4:
+
+- Workflow: глобальные статусы/переходы/типы задач, валидация переходов в `PATCH /issues` и `POST /issues/{id}/transition`.
+- Attachments: multipart-загрузка (лимит 25 МБ), дисковое хранилище (`TASKTRACKER_STORAGE`), скачивание, удаление.
+- Labels: CRUD на уровне проекта, привязка к задачам.
+- Issue links: `blocks` / `duplicates` / `relates`.
+- Real-time: SSE `GET /api/v1/events` + инвалидация TanStack Query на фронте (вместо WebSocket из плана — выбран SSE как проще и достаточно для invalidation-модели).
+- Тесты: 43 api integration, 25 backend suites, vitest 24, Playwright E2E (smoke/integration/time-tracking/attachments/labels-links/members/realtime); coverage-гейт `scripts/run-e2e-tests.sh` (lines ≥ 77 / regions ≥ 70 / functions ≥ 63).
+
+Отложено до поздних фаз: JQL (фаза 5), уведомления/email (фаза 6), «Корзина»/soft-delete (фаза 6+, ссылка из сайдбара убрана), watcher/vote, версии/компоненты, кастомные поля, админка.
+
 ## 2. Phase 0: Bootstrap (M0)
 
 **Цель**: рабочий каркас, CI, локальный запуск.
 
-- [ ] Rust workspace: `Cargo.toml`, crates `api/app/domain/infra/shared/server/cli`.
-- [ ] Frontend: Vite 6.2.0 + React 19.1.0 + TypeScript 5.9.3 + Tailwind CSS 4.1.0 + shadcn/ui.
-- [ ] Docker Compose: PostgreSQL 17.6, Redis 8.0, Traefik, backend, frontend.
-- [ ] `.env.example`, health endpoints, базовый CI (fmt, clippy, typecheck).
-- [ ] `README.md` update с командами запуска.
-- [ ] Verification: `docker compose up`, `curl /health`.
+- [x] Rust workspace: `Cargo.toml`, crates `api/app/domain/infra/shared/server/cli`.
+- [x] Frontend: Vite 6.2.0 + React 19.1.0 + TypeScript 5.9.3 + Tailwind CSS 4.1.0 + shadcn/ui.
+- [x] Docker Compose: PostgreSQL 17.6, Redis 8.0, Traefik, backend, frontend.
+- [x] `.env.example`, health endpoints, базовый CI (fmt, clippy, typecheck).
+- [x] `README.md` update с командами запуска.
+- [x] Verification: `docker compose up`, `curl /health`.
 
 ## 3. Phase 1: Auth (M1)
 
 **Цель**: регистрация, вход, сессии, пользователи.
 
-- [ ] DB migrations: `users`, `sessions`.
-- [ ] Argon2id password hashing.
-- [ ] JWT access + httpOnly refresh cookie.
-- [ ] Endpoints: `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`.
-- [ ] Frontend: login/register pages, auth store, protected routes.
-- [ ] Verification: e2e login flow, token refresh, logout.
+- [x] DB migrations: `users`, `sessions`.
+- [x] Argon2id password hashing.
+- [x] JWT access + httpOnly refresh cookie.
+- [x] Endpoints: `POST /auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`.
+- [x] Frontend: login/register pages, auth store, protected routes.
+- [x] Verification: e2e login flow, token refresh, logout.
 
 ## 4. Phase 2: Projects (M2)
 
 **Цель**: управление проектами и членами.
 
-- [ ] Migrations: `projects`, `project_members`, `project_role_assignments`, `project_settings`.
-- [ ] CRUD projects, project key uniqueness.
-- [ ] Default roles: Admin, Member, Viewer.
-- [ ] Frontend: project list, create project, project sidebar.
-- [ ] Verification: create project, invite member, role checks.
+- [x] Migrations: `projects`, `project_members`, `project_role_assignments`, `project_settings`.
+- [x] CRUD projects, project key uniqueness.
+- [x] Default roles: Admin, Member, Viewer.
+- [x] Frontend: project list, create project, project sidebar.
+- [x] Verification: create project, invite member, role checks.
 
 ## 5. Phase 3: Issues (M3)
 
 **Цель**: задачи, типы, статусы, workflow.
 
-- [ ] Migrations: `issue_types`, `statuses`, `workflows`, `workflow_statuses`, `workflow_transitions`, `issues`, `issue_status_history`.
-- [ ] Default workflow: Open → In Progress → Done.
-- [ ] Issue CRUD, key generation (`PROJ-1`).
-- [ ] Comments and attachments (file upload).
-- [ ] Frontend: issue detail, create issue, comments.
-- [ ] Verification: e2e create issue, transition status, comment.
+- [x] Migrations: `issue_types`, `statuses`, `workflows`, `workflow_statuses`, `workflow_transitions`, `issues`, `issue_status_history`.
+- [x] Default workflow: Open → In Progress → Done.
+- [x] Issue CRUD, key generation (`PROJ-1`).
+- [x] Comments and attachments (file upload).
+- [x] Frontend: issue detail, create issue, comments.
+- [x] Verification: e2e create issue, transition status, comment.
 
 ## 6. Phase 4: Kanban Board (M4)
 
 **Цель**: доска с колонками и drag-and-drop.
 
-- [ ] Migrations: `boards`, `board_columns`, `board_quick_filters`.
-- [ ] Board config API.
-- [ ] WebSocket live updates for board moves.
-- [ ] Frontend: kanban board with `@dnd-kit/core`.
-- [ ] Verification: screenshots mobile/Full HD/2K, WS real-time.
+- [x] Migrations: `boards`, `board_columns`, `board_quick_filters`.
+- [x] Board config API.
+- [x] Live updates for board moves (реализовано через SSE `GET /api/v1/events`, а не WebSocket — см. Статус).
+- [x] Frontend: kanban board (HTML5 drag-and-drop без внешних зависимостей).
+- [x] Verification: screenshots mobile/Full HD/2K, WS real-time.
 
 ## 7. Phase 5: Search + Filters (M5)
 

@@ -26,6 +26,137 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 ---
 
+## Реализованные эндпоинты (v1, автоген из openapi.json)
+
+Ниже — все 42 пути, фактически реализованные в бэкенде (источник: `openapi/openapi.json`, сгенерирован из `utoipa`-аннонтаций). Остальные разделы этого документа описывают целевую полную спецификацию (фазы 5+).
+
+### Health
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/health` | Health-check (plain text) |
+
+### Auth
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| POST | `/auth/login` | Вход, выдача access/refresh |
+| POST | `/auth/logout` | Выход, отзыв refresh |
+| POST | `/auth/refresh` | Обновление access-токена |
+| POST | `/auth/register` | Регистрация |
+
+### Users
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/users` |  |
+| GET | `/users/me` | Текущий пользователь |
+
+### Projects (CRUD)
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET, POST | `/projects` | Список проектов / создание |
+| GET, DELETE, PATCH | `/projects/{project_key}` | Проект по ключу / обновление / удаление |
+
+### Projects — board/backlog/sprints/labels (по ключу)
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/projects/{project_key}/backlog` | Бэклог проекта |
+| GET | `/projects/{project_key}/board` | Доска проекта |
+| POST | `/projects/{project_key}/board/move` | Перемещение задачи по колонкам |
+| GET, POST | `/projects/{project_key}/labels` | Метки проекта / создание |
+| GET, POST | `/projects/{project_key}/sprints` | Спринты проекта / создание |
+| GET, PATCH | `/projects/{project_key}/sprints/{sprint_id}` | Спринт: получение / PATCH / удаление |
+| POST | `/projects/{project_key}/sprints/{sprint_id}/close` | Закрытие спринта |
+| POST | `/projects/{project_key}/sprints/{sprint_id}/issues` | Перенос задач в спринт |
+| POST | `/projects/{project_key}/sprints/{sprint_id}/remove-issue` | Убрать задачу из спринта |
+| POST | `/projects/{project_key}/sprints/{sprint_id}/start` | Старт спринта |
+
+### Project members (по UUID)
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET, POST | `/projects/{project_id}/members` | Участники проекта / добавление (upsert роли) |
+| DELETE | `/projects/{project_id}/members/{user_id}` | Удаление участника |
+
+### Issues
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET, POST | `/issues` | Поиск задач / создание |
+| GET, DELETE, PATCH | `/issues/{id}` |  |
+
+### Comments
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| DELETE, PATCH | `/comments/{id}` | Правка / удаление комментария |
+
+### Attachments
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| DELETE | `/attachments/{id}` | Метаданные / удаление вложения |
+| GET | `/attachments/{id}/download` | Скачивание файла вложения |
+
+### Labels
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| PUT, DELETE | `/labels/{id}` | Метка: обновление / удаление |
+
+### Issue Links
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| DELETE | `/issue-links/{id}` | Удаление связи |
+
+### Worklogs
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| DELETE, PATCH | `/worklogs/{id}` | Правка / удаление записи |
+
+### Workflow — Statuses
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/statuses` | Статусы workflow |
+
+### Workflow — Transitions
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/transitions` | Разрешённые переходы workflow |
+
+### Workflow — Issue Types
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/issue-types` | Типы задач |
+
+### Search
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/search` | Глобальный поиск с фильтрами |
+
+### Dashboard
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/dashboard` | Дашборд текущего пользователя |
+
+### Real-time (SSE)
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/events` | SSE-поток событий реального времени |
+
+---
+
 ## Общие модели
 
 ### PaginationResponse<T>

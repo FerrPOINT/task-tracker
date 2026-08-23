@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 
 test.describe('real-time board updates (SSE)', () => {
-  test('issue created via API appears on open board without reload', async ({ page, context, request }) => {
+  test('issue created via API appears on open board without reload', async ({ page, request }) => {
     const login = await request.post('/api/v1/auth/login', {
       data: { email: 'demo@example.com', password: 'demo' },
     })

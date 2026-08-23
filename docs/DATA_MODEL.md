@@ -1,5 +1,129 @@
 # Дата-модель Task Tracker
 
+## 0. Фактическая схема реализованных таблиц (миграции 000001–000017)
+
+Раздел 4 описывает целевую полную модель (фазы 5+). Ниже — таблицы, реально существующие в текущих миграциях (`backend/migration/src/`), полученные из живой БД. При расхождении приоритет у миграций.
+
+### statuses
+```
+                             Table "public.statuses"
+   Column   |           Type           | Collation | Nullable |      Default
+------------+--------------------------+-----------+----------+-------------------
+ id         | uuid                     |           | not null | gen_random_uuid()
+ name       | character varying        |           | not null |
+ category   | character varying(16)    |           | not null |
+ position   | integer                  |           | not null | 0
+ is_default | boolean                  |           | not null | false
+ is_closed  | boolean                  |           | not null | false
+ created_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "statuses_pkey" PRIMARY KEY, btree (id)
+```
+
+### workflow_transitions
+```
+                         Table "public.workflow_transitions"
+     Column     |           Type           | Collation | Nullable |      Default
+----------------+--------------------------+-----------+----------+-------------------
+ id             | uuid                     |           | not null | gen_random_uuid()
+ name           | character varying        |           |          |
+ from_status_id | uuid                     |           | not null |
+ to_status_id   | uuid                     |           | not null |
+ created_at     | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "workflow_transitions_pkey" PRIMARY KEY, btree (id)
+    "idx_transitions_from_status" btree (from_status_id)
+    "idx_transitions_to_status" btree (to_status_id)
+```
+
+### issue_types
+```
+                              Table "public.issue_types"
+     Column      |           Type           | Collation | Nullable |      Default
+-----------------+--------------------------+-----------+----------+-------------------
+ id              | uuid                     |           | not null | gen_random_uuid()
+ name            | character varying        |           | not null |
+ description     | text                     |           |          |
+ icon            | character varying        |           |          |
+ color           | character varying(7)     |           |          |
+ is_subtask      | boolean                  |           | not null | false
+ hierarchy_level | smallint                 |           | not null | 1
+ created_at      | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "issue_types_pkey" PRIMARY KEY, btree (id)
+    "issue_types_name_key" UNIQUE CONSTRAINT, btree (name)
+```
+
+### attachments
+```
+                             Table "public.attachments"
+    Column    |           Type           | Collation | Nullable |      Default
+--------------+--------------------------+-----------+----------+-------------------
+ id           | uuid                     |           | not null | gen_random_uuid()
+ issue_id     | uuid                     |           | not null |
+ author_id    | uuid                     |           | not null |
+ file_name    | character varying        |           | not null |
+ content_type | character varying        |           | not null |
+ size_bytes   | bigint                   |           | not null |
+ storage_key  | character varying        |           | not null |
+ created_at   | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "attachments_pkey" PRIMARY KEY, btree (id)
+    "idx_attachments_issue_id" btree (issue_id)
+```
+
+### labels
+```
+                              Table "public.labels"
+   Column   |           Type           | Collation | Nullable |      Default
+------------+--------------------------+-----------+----------+-------------------
+ id         | uuid                     |           | not null | gen_random_uuid()
+ project_id | uuid                     |           | not null |
+ name       | character varying        |           | not null |
+ color      | character varying        |           | not null |
+ created_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "labels_pkey" PRIMARY KEY, btree (id)
+    "idx_labels_project" btree (project_id)
+    "uq_labels_project_name" UNIQUE, btree (project_id, name)
+Referenced by:
+    TABLE "issue_labels" CONSTRAINT "fk_issue_labels_label" FOREIGN KEY (label_id) REFERENCES labels(id) ON DELETE CASCADE
+```
+
+### issue_labels
+```
+           Table "public.issue_labels"
+  Column  | Type | Collation | Nullable | Default
+----------+------+-----------+----------+---------
+ issue_id | uuid |           | not null |
+ label_id | uuid |           | not null |
+Indexes:
+    "pk_issue_labels" PRIMARY KEY, btree (issue_id, label_id)
+Foreign-key constraints:
+    "fk_issue_labels_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_issue_labels_label" FOREIGN KEY (label_id) REFERENCES labels(id) ON DELETE CASCADE
+```
+
+### issue_links
+```
+                            Table "public.issue_links"
+   Column   |           Type           | Collation | Nullable |      Default
+------------+--------------------------+-----------+----------+-------------------
+ id         | uuid                     |           | not null | gen_random_uuid()
+ source_id  | uuid                     |           | not null |
+ target_id  | uuid                     |           | not null |
+ link_type  | character varying(32)    |           | not null |
+ created_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "issue_links_pkey" PRIMARY KEY, btree (id)
+    "uq_issue_links_pair_type" UNIQUE, btree (source_id, target_id, link_type)
+Foreign-key constraints:
+    "fk_issue_links_source" FOREIGN KEY (source_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_issue_links_target" FOREIGN KEY (target_id) REFERENCES issues(id) ON DELETE CASCADE
+```
+
+---
+
 ## 1. Общие принципы
 
 - PostgreSQL 17.6.

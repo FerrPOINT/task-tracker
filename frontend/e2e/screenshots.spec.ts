@@ -47,10 +47,11 @@ async function setThemeAndGoto(p: Page, theme: 'light' | 'dark', path: string, m
     document.documentElement.setAttribute('data-theme', t)
   }, theme)
   await p.goto(`${baseURL}${path}`)
-  await p.waitForLoadState('networkidle')
+  // SSE connection stays open forever, so networkidle never fires on authed pages.
   await p.waitForFunction((text: string) => document.body.innerText.includes(text), marker, {
-    timeout: 5000,
+    timeout: 10_000,
   })
+  await p.waitForTimeout(300)
 }
 
 for (const page of pages) {
