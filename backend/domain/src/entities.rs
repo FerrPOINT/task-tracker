@@ -1,12 +1,13 @@
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use shared::{
-    AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueType, LabelId, Priority, ProjectId,
-    ProjectKey, SprintId, StatusId, Timestamp, UserId, WorklogId,
+    AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueStatusHistoryId, IssueType,
+    IssueTypeId, LabelId, Priority, ProjectId, ProjectKey, SprintId, StatusId, Timestamp, UserId,
+    WorkflowTransitionId, WorklogId,
 };
 use std::str::FromStr;
 
-use crate::value_objects::{ArcStr, RichText};
+pub use crate::value_objects::{ArcStr, RichText};
 
 #[cfg(test)]
 mod tests;
@@ -210,6 +211,45 @@ impl FromStr for SprintState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueTypeEntity {
+    pub id: IssueTypeId,
+    pub name: ArcStr,
+    pub description: Option<ArcStr>,
+    pub icon: Option<ArcStr>,
+    pub color: Option<ArcStr>,
+    pub is_subtask: bool,
+    pub hierarchy_level: i16,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Status {
+    pub id: StatusId,
+    pub name: ArcStr,
+    pub category: StatusCategory,
+    pub position: i32,
+    pub is_default: bool,
+    pub is_closed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowTransition {
+    pub id: WorkflowTransitionId,
+    pub name: Option<ArcStr>,
+    pub from_status_id: StatusId,
+    pub to_status_id: StatusId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IssueStatusHistory {
+    pub id: IssueStatusHistoryId,
+    pub issue_id: IssueId,
+    pub from_status_id: Option<StatusId>,
+    pub to_status_id: StatusId,
+    pub changed_by_id: UserId,
+    pub changed_at: Timestamp,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Board {
     pub id: BoardId,
     pub project_id: ProjectId,
@@ -227,21 +267,21 @@ impl Default for Board {
                 BoardColumn {
                     id: StatusId::nil(),
                     name: "To Do".into(),
-                    category: ColumnCategory::Todo,
+                    category: StatusCategory::Todo,
                     wip_limit: None,
                     position: 0,
                 },
                 BoardColumn {
                     id: StatusId::nil(),
                     name: "In Progress".into(),
-                    category: ColumnCategory::InProgress,
+                    category: StatusCategory::InProgress,
                     wip_limit: None,
                     position: 1,
                 },
                 BoardColumn {
                     id: StatusId::nil(),
                     name: "Done".into(),
-                    category: ColumnCategory::Done,
+                    category: StatusCategory::Done,
                     wip_limit: None,
                     position: 2,
                 },
@@ -250,22 +290,22 @@ impl Default for Board {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BoardColumn {
-    pub id: StatusId,
-    pub name: ArcStr,
-    pub category: ColumnCategory,
-    pub wip_limit: Option<i64>,
-    pub position: i32,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum ColumnCategory {
+pub enum StatusCategory {
     #[default]
     Todo,
     InProgress,
     Done,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardColumn {
+    pub id: StatusId,
+    pub name: ArcStr,
+    pub category: StatusCategory,
+    pub wip_limit: Option<i64>,
+    pub position: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

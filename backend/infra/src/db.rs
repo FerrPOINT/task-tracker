@@ -22,6 +22,9 @@ pub async fn build_repositories(config: DatabaseConfig) -> Result<Repositories, 
         comments: repos.comments,
         worklogs: repos.worklogs,
         members: repos.members,
+        statuses: repos.statuses,
+        transitions: repos.transitions,
+        issue_types: repos.issue_types,
     })
 }
 

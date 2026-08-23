@@ -3,23 +3,62 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use domain::{
-    Board, BoardColumn, BoardRepository, ColumnCategory, Comment, CommentRepository, Issue,
-    IssueQuery, IssueRepository, Project, ProjectMember, ProjectMemberRepository,
-    ProjectRepository, ProjectRole, Sprint, SprintRepository, SprintState, User, UserRepository,
-    Worklog, WorklogRepository,
+    Board, BoardColumn, BoardRepository, Comment, CommentRepository, Issue, IssueQuery,
+    IssueRepository, IssueTypeEntity, IssueTypeRepository, Project, ProjectMember,
+    ProjectMemberRepository, ProjectRepository, ProjectRole, Sprint, SprintRepository, SprintState,
+    Status, StatusCategory, StatusRepository, User, UserRepository, WorkflowTransition,
+    WorkflowTransitionId, WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
     QueryOrder, QuerySelect, Set,
 };
 use shared::{
-    AppError, BoardId, CommentId, IssueId, IssueKey, IssueType, LabelId, Priority, ProjectId,
-    ProjectKey, SprintId, StatusId, UserId, WorklogId,
+    AppError, BoardId, CommentId, IssueId, IssueKey, IssueType, IssueTypeId, LabelId, Priority,
+    ProjectId, ProjectKey, SprintId, StatusId, UserId, WorklogId,
 };
 use uuid::Uuid;
 
-use crate::entities::{board, comment, issue, project, project_member, sprint, user, worklog};
+use crate::entities::{
+    board, comment, issue, issue_type, project, project_member, sprint, status, user,
+    workflow_transition, worklog,
+};
 
+fn map_status(m: status::Model) -> Status {
+    Status {
+        id: StatusId::from_uuid(m.id),
+        name: domain::ArcStr::from(m.name),
+        category: match m.category.as_str() {
+            "inprogress" => StatusCategory::InProgress,
+            "done" => StatusCategory::Done,
+            _ => StatusCategory::Todo,
+        },
+        position: m.position,
+        is_default: m.is_default,
+        is_closed: m.is_closed,
+    }
+}
+
+fn map_transition(m: workflow_transition::Model) -> WorkflowTransition {
+    WorkflowTransition {
+        id: WorkflowTransitionId::from_uuid(m.id),
+        name: m.name.map(domain::ArcStr::from),
+        from_status_id: StatusId::from_uuid(m.from_status_id),
+        to_status_id: StatusId::from_uuid(m.to_status_id),
+    }
+}
+
+fn map_issue_type(m: issue_type::Model) -> IssueTypeEntity {
+    IssueTypeEntity {
+        id: IssueTypeId::from_uuid(m.id),
+        name: domain::ArcStr::from(m.name),
+        description: m.description.map(domain::ArcStr::from),
+        icon: m.icon.map(domain::ArcStr::from),
+        color: m.color.map(domain::ArcStr::from),
+        is_subtask: m.is_subtask,
+        hierarchy_level: m.hierarchy_level,
+    }
+}
 pub struct SeaOrmRepositories {
     pub users: Arc<dyn UserRepository>,
     pub projects: Arc<dyn ProjectRepository>,
@@ -29,6 +68,9 @@ pub struct SeaOrmRepositories {
     pub comments: Arc<dyn CommentRepository>,
     pub worklogs: Arc<dyn WorklogRepository>,
     pub members: Arc<dyn ProjectMemberRepository>,
+    pub statuses: Arc<dyn StatusRepository>,
+    pub transitions: Arc<dyn WorkflowTransitionRepository>,
+    pub issue_types: Arc<dyn IssueTypeRepository>,
 }
 
 impl SeaOrmRepositories {
@@ -43,6 +85,9 @@ impl SeaOrmRepositories {
             comments: Arc::new(CommentRepo { db: db.clone() }),
             worklogs: Arc::new(WorklogRepo { db: db.clone() }),
             members: Arc::new(ProjectMemberRepo { db: db.clone() }),
+            statuses: Arc::new(StatusRepo { db: db.clone() }),
+            transitions: Arc::new(TransitionRepo { db: db.clone() }),
+            issue_types: Arc::new(IssueTypeRepo { db: db.clone() }),
         }
     }
 }
@@ -196,12 +241,23 @@ impl ProjectRepository for ProjectRepo {
     }
 
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError> {
-        let count = issue::Entity::find()
+        // MAX(number) parsed from issue keys, so deleted issues never cause key reuse
+        // and concurrent counters can only collide on truly parallel inserts (handled by retry).
+        let keys = issue::Entity::find()
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
-            .count(&*self.db)
+            .select_only()
+            .column(issue::Column::Key)
+            .into_tuple::<String>()
+            .all(&*self.db)
             .await
             .map_err(AppError::database)?;
-        Ok(count as u32 + 1)
+        let max = keys
+            .iter()
+            .filter_map(|k| k.rsplit('-').next())
+            .filter_map(|suffix| suffix.parse::<u32>().ok())
+            .max()
+            .unwrap_or(0);
+        Ok(max + 1)
     }
 }
 
@@ -545,10 +601,10 @@ fn map_board(m: board::Model) -> Board {
                         id: StatusId::from_uuid(id),
                         name: name.into(),
                         category: match category {
-                            "Todo" | "todo" => ColumnCategory::Todo,
-                            "InProgress" | "in_progress" => ColumnCategory::InProgress,
-                            "Done" | "done" => ColumnCategory::Done,
-                            _ => ColumnCategory::Todo,
+                            "Todo" | "todo" => StatusCategory::Todo,
+                            "InProgress" | "in_progress" => StatusCategory::InProgress,
+                            "Done" | "done" => StatusCategory::Done,
+                            _ => StatusCategory::Todo,
                         },
                         wip_limit: v.get("wip_limit").and_then(|x| x.as_i64()),
                         position: v.get("position").and_then(|x| x.as_i64()).unwrap_or(0) as i32,
@@ -589,6 +645,9 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         comments: sea.comments,
         worklogs: sea.worklogs,
         members: sea.members,
+        statuses: sea.statuses,
+        transitions: sea.transitions,
+        issue_types: sea.issue_types,
     }
 }
 
@@ -786,5 +845,102 @@ fn map_project_member(m: project_member::Model) -> ProjectMember {
         user_id: UserId::from_uuid(m.user_id),
         role: ProjectRole::from_str(&m.role).unwrap_or_default(),
         joined_at: m.joined_at,
+    }
+}
+
+struct StatusRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl StatusRepository for StatusRepo {
+    async fn list_all(&self) -> Result<Vec<Status>, AppError> {
+        let models = status::Entity::find()
+            .order_by_asc(status::Column::Position)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_status).collect())
+    }
+
+    async fn get_default(&self) -> Result<Status, AppError> {
+        let model = status::Entity::find()
+            .filter(status::Column::IsDefault.eq(true))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_status)
+            .ok_or_else(|| AppError::not_found("default status", "default"))
+    }
+
+    async fn get_by_id(&self, id: StatusId) -> Result<Status, AppError> {
+        let model = status::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_status)
+            .ok_or_else(|| AppError::not_found("status", id))
+    }
+}
+
+struct TransitionRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl WorkflowTransitionRepository for TransitionRepo {
+    async fn list_all(&self) -> Result<Vec<WorkflowTransition>, AppError> {
+        let models = workflow_transition::Entity::find()
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_transition).collect())
+    }
+
+    async fn is_allowed(
+        &self,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+    ) -> Result<bool, AppError> {
+        let from_uuid = from_status_id.as_uuid();
+        let to_uuid = to_status_id.as_uuid();
+        if from_uuid == to_uuid {
+            return Ok(true);
+        }
+        let count = workflow_transition::Entity::find()
+            .filter(workflow_transition::Column::FromStatusId.eq(from_uuid))
+            .filter(workflow_transition::Column::ToStatusId.eq(to_uuid))
+            .count(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(count > 0)
+    }
+}
+
+struct IssueTypeRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl IssueTypeRepository for IssueTypeRepo {
+    async fn list_all(&self) -> Result<Vec<IssueTypeEntity>, AppError> {
+        let models = issue_type::Entity::find()
+            .order_by_asc(issue_type::Column::HierarchyLevel)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_issue_type).collect())
+    }
+
+    async fn get_by_id(&self, id: IssueTypeId) -> Result<IssueTypeEntity, AppError> {
+        let model = issue_type::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_issue_type)
+            .ok_or_else(|| AppError::not_found("issue type", id))
     }
 }

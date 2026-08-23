@@ -12,3 +12,4 @@ pub mod transitions;
 pub mod worklogs;
 
 pub mod users;
+pub mod workflow;

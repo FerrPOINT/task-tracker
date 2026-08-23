@@ -150,6 +150,9 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
         comments: Arc::new(domain::StubCommentRepository),
         worklogs: Arc::new(domain::StubWorklogRepository),
         members: Arc::new(domain::StubProjectMemberRepository),
+        statuses: Arc::new(domain::StubStatusRepository),
+        transitions: Arc::new(domain::StubWorkflowTransitionRepository),
+        issue_types: Arc::new(domain::StubIssueTypeRepository),
     });
     Arc::new(app::AppContext::new(config, repos))
 }
@@ -166,6 +169,9 @@ pub fn failing_context() -> Arc<app::AppContext> {
         comments: Arc::new(domain::StubCommentRepository),
         worklogs: Arc::new(domain::StubWorklogRepository),
         members: Arc::new(domain::StubProjectMemberRepository),
+        statuses: Arc::new(domain::StubStatusRepository),
+        transitions: Arc::new(domain::StubWorkflowTransitionRepository),
+        issue_types: Arc::new(domain::StubIssueTypeRepository),
     });
     Arc::new(app::AppContext::new(
         Arc::new(shared::AppConfig {

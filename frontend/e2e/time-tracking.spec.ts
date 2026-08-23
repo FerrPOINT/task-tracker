@@ -28,6 +28,8 @@ test.describe('time tracking against live backend', () => {
     await page.getByLabel(/комментарий|comment/i).fill('E2E logged work')
     await page.getByLabel(/затрачено|time spent/i).fill('1h 30m')
     await page.getByRole('button', { name: /сохранить|save/i }).click()
+    // Worklog rows live on the «Журнал работ» tab, not the default «Активность» tab
+    await page.getByRole('tab', { name: /журнал работ|worklog/i }).click()
     await expect(page.getByRole('cell', { name: 'E2E logged work' })).toBeVisible()
   })
 
@@ -45,6 +47,9 @@ test.describe('time tracking against live backend', () => {
     await page.getByLabel(/остановить таймер|stop timer/i).click()
     const input = page.getByLabel(/затрачено|time spent/i)
     const value = await input.inputValue()
-    expect(Number(value)).toBeGreaterThanOrEqual(1)
+    // Value is a duration string like "1s" or "1m 5s"
+    const seconds = (value.match(/(\d+)s/) || [0, 0]).slice(1).map(Number).reduce((a, x) => a + x, 0)
+    const minutes = (value.match(/(\d+)m/) || [0, 0]).slice(1).map(Number).reduce((a, x) => a + x, 0)
+    expect(seconds + minutes * 60).toBeGreaterThanOrEqual(1)
   })
 })

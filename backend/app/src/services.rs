@@ -12,8 +12,10 @@ use crate::dto::{
     ProjectMemberDto, SprintDto, WorklogDto,
 };
 use domain::{
-    Board, BoardRepository, ColumnCategory, Issue, IssueQuery, IssueRepository, ProjectMember,
-    ProjectMemberRepository, ProjectRepository, ProjectRole, SprintRepository, UserRepository,
+    Board, BoardRepository, Issue, IssueQuery, IssueRepository, IssueTypeEntity,
+    IssueTypeRepository, ProjectMember, ProjectMemberRepository, ProjectRepository, ProjectRole,
+    SprintRepository, StatusCategory, StatusRepository, UserRepository, WorkflowTransition,
+    WorkflowTransitionRepository,
 };
 use shared::{AppError, BoardId, IssueId, ProjectId, ProjectKey, SprintId, StatusId, UserId};
 
@@ -140,6 +142,8 @@ pub struct IssueServiceImpl {
     projects: Arc<dyn ProjectRepository>,
     boards: Arc<dyn BoardRepository>,
     users: Arc<dyn domain::UserRepository>,
+    statuses: Arc<dyn StatusRepository>,
+    transitions: Arc<dyn WorkflowTransitionRepository>,
 }
 
 impl IssueServiceImpl {
@@ -148,12 +152,16 @@ impl IssueServiceImpl {
         projects: Arc<dyn ProjectRepository>,
         boards: Arc<dyn BoardRepository>,
         users: Arc<dyn domain::UserRepository>,
+        statuses: Arc<dyn StatusRepository>,
+        transitions: Arc<dyn WorkflowTransitionRepository>,
     ) -> Self {
         Self {
             issues,
             projects,
             boards,
             users,
+            statuses,
+            transitions,
         }
     }
 }
@@ -162,27 +170,46 @@ impl IssueServiceImpl {
 impl crate::context::IssueService for IssueServiceImpl {
     async fn create(&self, cmd: CreateIssueCommand) -> Result<IssueDto, AppError> {
         let project = self.projects.get_by_key(&cmd.project_key).await?;
-        let number = self.projects.next_issue_number(project.id).await?;
         let status_id = StatusId::from_uuid(
             cmd.status_id
                 .parse()
                 .map_err(|_| AppError::invalid_input("status_id"))?,
         );
-        let mut issue = Issue::create(
-            &project,
-            number,
-            cmd.issue_type,
-            status_id,
-            cmd.summary,
-            cmd.description.map(domain::RichText::from),
-            cmd.reporter_id,
-            cmd.priority,
-        );
-        if let Some(assignee_id) = cmd.assignee_id {
-            issue.assign(Some(assignee_id));
+        // Retry on key conflicts: concurrent creators may compute the same next number.
+        let mut issue = None;
+        for _ in 0..5 {
+            let number = self.projects.next_issue_number(project.id).await?;
+            let mut candidate = Issue::create(
+                &project,
+                number,
+                cmd.issue_type,
+                status_id,
+                cmd.summary.clone(),
+                cmd.description.clone().map(domain::RichText::from),
+                cmd.reporter_id,
+                cmd.priority.clone(),
+            );
+            if let Some(assignee_id) = cmd.assignee_id {
+                candidate.assign(Some(assignee_id));
+            }
+            match self.issues.save(&candidate).await {
+                Ok(_) => {
+                    issue = Some(candidate);
+                    break;
+                }
+                Err(AppError::Database(msg)) if msg.contains("issues_key_key") => continue,
+                Err(e) => return Err(e),
+            }
         }
-        self.issues.save(&issue).await?;
-        let column = helpers::issue_status_column(issue.status_id);
+        let issue = issue.ok_or_else(|| {
+            AppError::conflict("could not allocate a unique issue key, try again")
+        })?;
+        let statuses = self.statuses.list_all().await.unwrap_or_default();
+        let column = statuses
+            .iter()
+            .find(|s| s.id == issue.status_id)
+            .map(|s| s.name.as_ref().to_string())
+            .unwrap_or_else(|| helpers::issue_status_column(issue.status_id));
         let (assignee_name, reporter_name) =
             helpers::resolve_names(self.users.clone(), &issue).await;
         Ok(IssueDto::from_issue(
@@ -200,21 +227,36 @@ impl crate::context::IssueService for IssueServiceImpl {
     ) -> Result<IssueDto, AppError> {
         let issue = self.issues.get_by_id(cmd.issue_id).await?;
         let board = self.boards.get_default_by_project(issue.project_id).await?;
-        let valid = board.columns.iter().any(|c| c.id == cmd.target_status_id);
+        let statuses = self.statuses.list_all().await.unwrap_or_default();
+        let valid = statuses.iter().any(|s| s.id == cmd.target_status_id)
+            || board.columns.iter().any(|c| c.id == cmd.target_status_id);
         if !valid {
             return Err(AppError::invalid_input("invalid target status"));
+        }
+        let allowed = self
+            .transitions
+            .is_allowed(issue.status_id, cmd.target_status_id)
+            .await?;
+        if !allowed {
+            return Err(AppError::invalid_input("workflow transition not allowed"));
         }
         let mut updated = issue.clone();
         updated.status_id = cmd.target_status_id;
         updated.updated_at = shared::now();
         self.issues.save(&updated).await?;
         let project = self.projects.get_by_id(updated.project_id).await?;
-        let status = board
-            .columns
+        let status = statuses
             .iter()
-            .find(|c| c.id == updated.status_id)
-            .map(|c| c.name.as_ref().to_string())
-            .unwrap_or_default();
+            .find(|s| s.id == updated.status_id)
+            .map(|s| s.name.as_ref().to_string())
+            .unwrap_or_else(|| {
+                board
+                    .columns
+                    .iter()
+                    .find(|c| c.id == updated.status_id)
+                    .map(|c| c.name.as_ref().to_string())
+                    .unwrap_or_default()
+            });
         let (assignee_name, reporter_name) =
             helpers::resolve_names(self.users.clone(), &updated).await;
         Ok(IssueDto::from_issue(
@@ -252,7 +294,12 @@ impl crate::context::IssueService for IssueServiceImpl {
             let sid = status_id
                 .parse()
                 .map_err(|_| AppError::invalid_input("status_id"))?;
-            issue.change_status(StatusId::from_uuid(sid));
+            let target = StatusId::from_uuid(sid);
+            let allowed = self.transitions.is_allowed(issue.status_id, target).await?;
+            if !allowed {
+                return Err(AppError::invalid_input("workflow transition not allowed"));
+            }
+            issue.change_status(target);
         }
         if let Some(assignee_id) = cmd.assignee_id {
             issue.assign(assignee_id);
@@ -262,7 +309,12 @@ impl crate::context::IssueService for IssueServiceImpl {
         }
 
         self.issues.save(&issue).await?;
-        let column = helpers::issue_status_column(issue.status_id);
+        let statuses = self.statuses.list_all().await.unwrap_or_default();
+        let column = statuses
+            .iter()
+            .find(|s| s.id == issue.status_id)
+            .map(|s| s.name.as_ref().to_string())
+            .unwrap_or_else(|| helpers::issue_status_column(issue.status_id));
         let (assignee_name, reporter_name) =
             helpers::resolve_names(self.users.clone(), &issue).await;
         Ok(IssueDto::from_issue(
@@ -289,14 +341,14 @@ impl crate::context::IssueService for IssueServiceImpl {
             query.sort_by = Some(sort_by.to_string());
             query.sort_order = filters.sort_order.clone();
         }
-        if let Some(project_key) = filters.project_key.as_deref() {
+        if let Some(project_key) = filters.project_key.as_deref().filter(|s| !s.is_empty()) {
             let key: ProjectKey = project_key
                 .parse()
                 .map_err(|e: String| AppError::invalid_input(e))?;
             let project = self.projects.get_by_key(&key).await?;
             query.project_id = Some(project.id);
         }
-        if let Some(assignee_id) = filters.assignee_id.as_deref() {
+        if let Some(assignee_id) = filters.assignee_id.as_deref().filter(|s| !s.is_empty()) {
             let uuid = uuid::Uuid::parse_str(assignee_id)
                 .map_err(|e| AppError::invalid_input(e.to_string()))?;
             query.assignee_id = Some(UserId::from_uuid(uuid));
@@ -320,6 +372,8 @@ pub struct BoardServiceImpl {
     issues: Arc<dyn IssueRepository>,
     sprints: Arc<dyn SprintRepository>,
     users: Arc<dyn domain::UserRepository>,
+    statuses: Arc<dyn StatusRepository>,
+    transitions: Arc<dyn WorkflowTransitionRepository>,
 }
 
 impl BoardServiceImpl {
@@ -328,12 +382,16 @@ impl BoardServiceImpl {
         issues: Arc<dyn IssueRepository>,
         sprints: Arc<dyn SprintRepository>,
         users: Arc<dyn domain::UserRepository>,
+        statuses: Arc<dyn StatusRepository>,
+        transitions: Arc<dyn WorkflowTransitionRepository>,
     ) -> Self {
         Self {
             boards,
             issues,
             sprints,
             users,
+            statuses,
+            transitions,
         }
     }
 
@@ -348,20 +406,46 @@ impl BoardServiceImpl {
             })
             .await?;
 
-        let columns: Vec<BoardColumnDto> = board
-            .columns
-            .iter()
-            .map(|c| BoardColumnDto {
-                id: c.id.to_string(),
-                name: c.name.as_ref().to_string(),
-                wip_limit: c.wip_limit,
-                issue_ids: issues
-                    .iter()
-                    .filter(|i| i.status_id == c.id)
-                    .map(|i| i.id.to_string())
-                    .collect(),
-            })
-            .collect();
+        let db_statuses = self.statuses.list_all().await.unwrap_or_default();
+        let columns: Vec<BoardColumnDto> = if board.columns.iter().all(|c| c.id.as_uuid().is_nil())
+        {
+            db_statuses
+                .iter()
+                .map(|s| BoardColumnDto {
+                    id: s.id.to_string(),
+                    name: s.name.as_ref().to_string(),
+                    wip_limit: None,
+                    issue_ids: issues
+                        .iter()
+                        .filter(|i| i.status_id == s.id)
+                        .map(|i| i.id.to_string())
+                        .collect(),
+                })
+                .collect()
+        } else {
+            board
+                .columns
+                .iter()
+                .map(|c| {
+                    // Statuses are the single source of truth for names.
+                    let name = db_statuses
+                        .iter()
+                        .find(|s| s.id == c.id)
+                        .map(|s| s.name.as_ref().to_string())
+                        .unwrap_or_else(|| c.name.as_ref().to_string());
+                    BoardColumnDto {
+                        id: c.id.to_string(),
+                        name,
+                        wip_limit: c.wip_limit,
+                        issue_ids: issues
+                            .iter()
+                            .filter(|i| i.status_id == c.id)
+                            .map(|i| i.id.to_string())
+                            .collect(),
+                    }
+                })
+                .collect()
+        };
 
         let issue_dtos = helpers::build_issue_dtos(
             Arc::clone(&self.users),
@@ -411,12 +495,19 @@ impl crate::context::BoardService for BoardServiceImpl {
             })
             .await?;
 
-        let todo_status = board
-            .columns
+        let db_statuses = self.statuses.list_all().await.unwrap_or_default();
+        let todo_status = db_statuses
             .iter()
-            .find(|c| c.category == ColumnCategory::Todo)
-            .map(|c| c.id)
-            .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()));
+            .find(|s| s.category == StatusCategory::Todo)
+            .map(|s| s.id)
+            .unwrap_or_else(|| {
+                board
+                    .columns
+                    .iter()
+                    .find(|c| c.category == StatusCategory::Todo)
+                    .map(|c| c.id)
+                    .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()))
+            });
 
         let sprint_issues_raw: Vec<_> = all_issues
             .clone()
@@ -476,9 +567,17 @@ impl crate::context::BoardService for BoardServiceImpl {
         issue_id: IssueId,
         status_id: StatusId,
     ) -> Result<BoardDto, AppError> {
-        let mut issue = self.issues.get_by_id(issue_id).await?;
-        issue.change_status(status_id);
-        self.issues.save(&issue).await?;
+        let issue = self.issues.get_by_id(issue_id).await?;
+        let allowed = self
+            .transitions
+            .is_allowed(issue.status_id, status_id)
+            .await?;
+        if !allowed {
+            return Err(AppError::invalid_input("workflow transition not allowed"));
+        }
+        let mut updated = issue.clone();
+        updated.change_status(status_id);
+        self.issues.save(&updated).await?;
         self.build_board_dto(project_key).await
     }
 }
@@ -706,14 +805,14 @@ impl crate::context::SearchService for SearchServiceImpl {
             query.sort_by = Some(sort_by.to_string());
             query.sort_order = filters.sort_order.clone();
         }
-        if let Some(project_key) = filters.project_key.as_deref() {
+        if let Some(project_key) = filters.project_key.as_deref().filter(|s| !s.is_empty()) {
             let key: ProjectKey = project_key
                 .parse()
                 .map_err(|e: String| AppError::invalid_input(e))?;
             let project = self.projects.get_by_key(&key).await?;
             query.project_id = Some(project.id);
         }
-        if let Some(assignee_id) = filters.assignee_id.as_deref() {
+        if let Some(assignee_id) = filters.assignee_id.as_deref().filter(|s| !s.is_empty()) {
             let uuid = uuid::Uuid::parse_str(assignee_id)
                 .map_err(|e| AppError::invalid_input(e.to_string()))?;
             query.assignee_id = Some(UserId::from_uuid(uuid));
@@ -977,5 +1076,66 @@ impl ProjectMemberService for ProjectMemberServiceImpl {
 
     async fn remove(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError> {
         self.members.delete(project_id, user_id).await
+    }
+}
+
+pub struct StatusServiceImpl {
+    statuses: Arc<dyn StatusRepository>,
+}
+
+impl StatusServiceImpl {
+    pub fn new(statuses: Arc<dyn StatusRepository>) -> Self {
+        Self { statuses }
+    }
+}
+
+#[async_trait]
+impl crate::context::StatusService for StatusServiceImpl {
+    async fn list_statuses(&self) -> Result<Vec<domain::Status>, AppError> {
+        self.statuses.list_all().await
+    }
+}
+
+pub struct WorkflowServiceImpl {
+    transitions: Arc<dyn WorkflowTransitionRepository>,
+}
+
+impl WorkflowServiceImpl {
+    pub fn new(transitions: Arc<dyn WorkflowTransitionRepository>) -> Self {
+        Self { transitions }
+    }
+}
+
+#[async_trait]
+impl crate::context::WorkflowService for WorkflowServiceImpl {
+    async fn list_transitions(&self) -> Result<Vec<WorkflowTransition>, AppError> {
+        self.transitions.list_all().await
+    }
+
+    async fn is_transition_allowed(
+        &self,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+    ) -> Result<bool, AppError> {
+        self.transitions
+            .is_allowed(from_status_id, to_status_id)
+            .await
+    }
+}
+
+pub struct IssueTypeServiceImpl {
+    issue_types: Arc<dyn IssueTypeRepository>,
+}
+
+impl IssueTypeServiceImpl {
+    pub fn new(issue_types: Arc<dyn IssueTypeRepository>) -> Self {
+        Self { issue_types }
+    }
+}
+
+#[async_trait]
+impl crate::context::IssueTypeService for IssueTypeServiceImpl {
+    async fn list_issue_types(&self) -> Result<Vec<IssueTypeEntity>, AppError> {
+        self.issue_types.list_all().await
     }
 }

@@ -35,7 +35,7 @@ test.describe('integration against live backend', () => {
     await expect(page.getByText('Demo Project').first()).toBeVisible()
 
     await page.goto(`${baseURL}/projects/DEMO/board`)
-    await expect(page.getByText('Todo').first()).toBeVisible()
+    await expect(page.getByText('To Do').first()).toBeVisible()
     await expect(page.getByText('In Progress').first()).toBeVisible()
     await expect(page.getByText('Done').first()).toBeVisible()
 
@@ -51,9 +51,9 @@ test.describe('integration against live backend', () => {
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
 
     await page.goto(`${baseURL}/search`)
-    await page.getByRole('textbox').fill('DEMO')
-    await page.locator('form button[type="submit"]').click()
-    await expect(page.getByText('DEMO').first()).toBeVisible()
+    await page.getByRole('textbox').fill('Smoke')
+    // Debounced URL-param search: wait for results without a submit button
+    await expect(page.getByText('Smoke issue').first()).toBeVisible({ timeout: 10_000 })
 
     const issueSummary = `Integration test issue ${Date.now()}`
     await page.goto(`${baseURL}/issues/create`)

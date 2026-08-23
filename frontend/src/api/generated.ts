@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/issue-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_issue_types"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/issues": {
         parameters: {
             query?: never;
@@ -420,6 +436,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/statuses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_statuses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_transitions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users": {
         parameters: {
             query?: never;
@@ -577,6 +625,16 @@ export interface components {
             status_id: string;
             summary: string;
         };
+        IssueTypeResponse: {
+            color?: string | null;
+            description?: string | null;
+            /** Format: int32 */
+            hierarchy_level: number;
+            icon?: string | null;
+            id: string;
+            is_subtask: boolean;
+            name: string;
+        };
         LoginRequest: {
             email: string;
             password: string;
@@ -646,8 +704,23 @@ export interface components {
             /** Format: int64 */
             velocity: number;
         };
+        StatusResponse: {
+            category: string;
+            id: string;
+            is_closed: boolean;
+            is_default: boolean;
+            name: string;
+            /** Format: int32 */
+            position: number;
+        };
         TransitionIssueRequest: {
             target_status_id: string;
+        };
+        TransitionResponse: {
+            from_status_id: string;
+            id: string;
+            name: string;
+            to_status_id: string;
         };
         UpdateCommentRequest: {
             body: string;
@@ -947,10 +1020,35 @@ export interface operations {
             };
         };
     };
+    list_issue_types: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List issue types */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueTypeResponse"][];
+                };
+            };
+        };
+    };
     search_issues: {
         parameters: {
-            query: {
-                q: string;
+            query?: {
+                q?: string | null;
+                project_key?: string | null;
+                priority?: string | null;
+                assignee_id?: string | null;
+                sort_by?: string | null;
+                sort_order?: string | null;
             };
             header?: never;
             path?: never;
@@ -1783,8 +1881,13 @@ export interface operations {
     };
     search_global: {
         parameters: {
-            query: {
-                q: string;
+            query?: {
+                q?: string | null;
+                project_key?: string | null;
+                priority?: string | null;
+                assignee_id?: string | null;
+                sort_by?: string | null;
+                sort_order?: string | null;
             };
             header?: never;
             path?: never;
@@ -1798,6 +1901,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IssueListResponse"];
+                };
+            };
+        };
+    };
+    list_statuses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List statuses */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"][];
+                };
+            };
+        };
+    };
+    list_transitions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List workflow transitions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TransitionResponse"][];
                 };
             };
         };

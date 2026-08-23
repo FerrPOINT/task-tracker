@@ -1,4 +1,4 @@
-use crate::{Board, ColumnCategory, Issue, Project, SprintState, User};
+use crate::{Board, Issue, Project, SprintState, StatusCategory, User};
 use shared::{BoardId, IssueKey, IssueType, Priority, ProjectId, ProjectKey, StatusId, UserId};
 use std::str::FromStr;
 
@@ -174,11 +174,11 @@ fn sprint_state_from_str() {
 fn board_default_has_columns() {
     let board = Board::default();
     assert_eq!(board.columns.len(), 3);
-    assert!(matches!(board.columns[0].category, ColumnCategory::Todo));
-    assert!(matches!(board.columns[2].category, ColumnCategory::Done));
+    assert!(matches!(board.columns[0].category, StatusCategory::Todo));
+    assert!(matches!(board.columns[2].category, StatusCategory::Done));
 }
 
 #[test]
 fn column_category_default() {
-    assert_eq!(ColumnCategory::default(), ColumnCategory::Todo);
+    assert_eq!(StatusCategory::default(), StatusCategory::Todo);
 }

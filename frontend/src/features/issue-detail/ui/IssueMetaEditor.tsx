@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
-import { useCurrentUser, useUsers } from '@/shared/api/hooks'
+import { useCurrentUser, useStatuses, useTransitions, useUsers } from '@/shared/api/hooks'
 
 const priorities = ['Low', 'Medium', 'High', 'Critical']
 
@@ -24,6 +24,23 @@ export function IssueMetaEditor({ issue, columns, sprints, onChange, disabled }:
   const { t } = useTranslation()
   const currentUser = useCurrentUser()
   const usersQuery = useUsers()
+  const statusesQuery = useStatuses()
+  const transitionsQuery = useTransitions()
+
+  // Available target statuses for the current status, per workflow transitions.
+  // Falls back to all statuses (minus the current one) when transitions are unavailable.
+  const statusOptions = useMemo(() => {
+    const all =
+      statusesQuery.data && statusesQuery.data.length > 0
+        ? statusesQuery.data.map((s) => ({ id: s.id, name: s.name }))
+        : columns.map((c) => ({ id: c.id, name: c.name }))
+    const fromTransitions = (transitionsQuery.data ?? [])
+      .filter((tr) => tr.from_status_id === issue.status_id)
+      .map((tr) => tr.to_status_id)
+    if (fromTransitions.length === 0) return all
+    const allowed = new Set([issue.status_id, ...fromTransitions])
+    return all.filter((s) => allowed.has(s.id))
+  }, [statusesQuery.data, transitionsQuery.data, columns, issue.status_id])
 
   const assigneeOptions = useMemo(() => {
     const initial = usersQuery.data ?? []
@@ -46,24 +63,30 @@ export function IssueMetaEditor({ issue, columns, sprints, onChange, disabled }:
   return (
     <div className="space-y-4 text-sm">
       <div className="space-y-1.5">
-        <label className="block text-text-muted">{t('issue.status')}</label>
+        <label htmlFor="issue-status" className="block text-text-muted">
+          {t('issue.status')}
+        </label>
         <select
+          id="issue-status"
           value={issue.status_id}
           onChange={(e) => onChange({ status_id: e.target.value })}
           disabled={disabled}
           className={selectClass}
         >
-          {columns.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
+          {statusOptions.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
             </option>
           ))}
         </select>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-text-muted">{t('issue.priority')}</label>
+        <label htmlFor="issue-priority" className="block text-text-muted">
+          {t('issue.priority')}
+        </label>
         <select
+          id="issue-priority"
           value={issue.priority}
           onChange={(e) => onChange({ priority: e.target.value })}
           disabled={disabled}
@@ -78,8 +101,11 @@ export function IssueMetaEditor({ issue, columns, sprints, onChange, disabled }:
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-text-muted">{t('issue.assignee')}</label>
+        <label htmlFor="issue-assignee" className="block text-text-muted">
+          {t('issue.assignee')}
+        </label>
         <select
+          id="issue-assignee"
           value={issue.assignee_id ?? ''}
           onChange={(e) => onChange({ assignee_id: e.target.value || null })}
           disabled={disabled || usersQuery.isLoading}
@@ -95,8 +121,11 @@ export function IssueMetaEditor({ issue, columns, sprints, onChange, disabled }:
 
       {sprints && (
         <div className="space-y-1.5">
-          <label className="block text-text-muted">{t('issue.sprint')}</label>
+          <label htmlFor="issue-sprint" className="block text-text-muted">
+            {t('issue.sprint')}
+          </label>
           <select
+            id="issue-sprint"
             value={issue.sprint_id ?? ''}
             onChange={(e) => onChange({ sprint_id: e.target.value || null })}
             disabled={disabled}

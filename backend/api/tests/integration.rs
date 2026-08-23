@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use domain::{
-    Board, BoardColumn, BoardRepository, ColumnCategory, MemoryBoardRepository,
-    MemoryCommentRepository, MemoryIssueRepository, MemoryProjectMemberRepository,
-    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
-    Project, ProjectRepository, User, UserRepository,
+    Board, BoardColumn, BoardRepository, MemoryBoardRepository, MemoryCommentRepository,
+    MemoryIssueRepository, MemoryProjectMemberRepository, MemoryProjectRepository,
+    MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository, Project,
+    ProjectRepository, StatusCategory, User, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -72,28 +72,28 @@ async fn spawn_server() -> (String, reqwest::Client) {
             BoardColumn {
                 id: todo,
                 name: "Todo".into(),
-                category: ColumnCategory::Todo,
+                category: StatusCategory::Todo,
                 wip_limit: None,
                 position: 0,
             },
             BoardColumn {
                 id: in_progress,
                 name: "In Progress".into(),
-                category: ColumnCategory::InProgress,
+                category: StatusCategory::InProgress,
                 wip_limit: Some(5),
                 position: 1,
             },
             BoardColumn {
                 id: review,
                 name: "Review".into(),
-                category: ColumnCategory::InProgress,
+                category: StatusCategory::InProgress,
                 wip_limit: None,
                 position: 2,
             },
             BoardColumn {
                 id: done,
                 name: "Done".into(),
-                category: ColumnCategory::Done,
+                category: StatusCategory::Done,
                 wip_limit: None,
                 position: 3,
             },
@@ -118,6 +118,9 @@ async fn spawn_server() -> (String, reqwest::Client) {
         comments: Arc::new(MemoryCommentRepository::default()),
         worklogs: Arc::new(MemoryWorklogRepository::default()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
+        statuses: Arc::new(domain::StubStatusRepository),
+        transitions: Arc::new(domain::StubWorkflowTransitionRepository),
+        issue_types: Arc::new(domain::StubIssueTypeRepository),
     });
 
     let ctx = Arc::new(AppContext::new(test_config(), repos));

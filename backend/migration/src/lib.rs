@@ -1,3 +1,4 @@
+pub mod m20250723_0000015_workflow_and_issue_types;
 pub mod m20250723_000001_create_tables;
 pub mod m20250723_000002_seed_demo_data;
 
@@ -10,6 +11,7 @@ impl MigratorTrait for Migrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
             Box::new(m20250723_000001_create_tables::Migration),
+            Box::new(m20250723_0000015_workflow_and_issue_types::Migration),
             Box::new(m20250723_000002_seed_demo_data::Migration),
         ]
     }

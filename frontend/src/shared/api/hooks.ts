@@ -26,6 +26,25 @@ import {
   type CreateSprintRequest,
   type UpdateSprintRequest,
 } from '@/api/sprint'
+import { listStatuses, listTransitions, listIssueTypes } from '@/api/workflow'
+
+export const workflowKeys = {
+  statuses: ['statuses'] as const,
+  transitions: ['transitions'] as const,
+  issueTypes: ['issue-types'] as const,
+}
+
+export function useStatuses() {
+  return useQuery({ queryKey: workflowKeys.statuses, queryFn: listStatuses, staleTime: 5 * 60 * 1000 })
+}
+
+export function useTransitions() {
+  return useQuery({ queryKey: workflowKeys.transitions, queryFn: listTransitions, staleTime: 5 * 60 * 1000 })
+}
+
+export function useIssueTypes() {
+  return useQuery({ queryKey: workflowKeys.issueTypes, queryFn: listIssueTypes, staleTime: 5 * 60 * 1000 })
+}
 
 export const projectKeys = {
   all: ['projects'] as const,

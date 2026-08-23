@@ -5,9 +5,14 @@ use std::sync::Arc;
 #[path = "repositories/tests.rs"]
 mod tests;
 
-use crate::{Board, Comment, Issue, IssueQuery, Project, ProjectMember, Sprint, User, Worklog};
+use crate::{
+    Board, Comment, Issue, IssueQuery, IssueStatusHistory, IssueTypeEntity, Project, ProjectMember,
+    Sprint, Status, User, WorkflowTransition, Worklog,
+};
+use shared::IssueTypeId;
 use shared::{
-    AppError, BoardId, CommentId, IssueId, ProjectId, ProjectKey, SprintId, UserId, WorklogId,
+    AppError, BoardId, CommentId, IssueId, IssueKey, ProjectId, ProjectKey, SprintId, StatusId,
+    UserId, WorklogId,
 };
 
 #[async_trait]
@@ -39,10 +44,39 @@ pub struct ProjectQuery {
 #[async_trait]
 pub trait IssueRepository: Send + Sync {
     async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError>;
-    async fn get_by_key(&self, key: &shared::IssueKey) -> Result<Issue, AppError>;
+    async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError>;
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError>;
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError>;
     async fn delete(&self, id: IssueId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait StatusRepository: Send + Sync {
+    async fn get_by_id(&self, id: StatusId) -> Result<Status, AppError>;
+    async fn list_all(&self) -> Result<Vec<Status>, AppError>;
+    async fn get_default(&self) -> Result<Status, AppError>;
+}
+
+#[async_trait]
+pub trait WorkflowTransitionRepository: Send + Sync {
+    async fn list_all(&self) -> Result<Vec<WorkflowTransition>, AppError>;
+    async fn is_allowed(
+        &self,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+    ) -> Result<bool, AppError>;
+}
+
+#[async_trait]
+pub trait IssueTypeRepository: Send + Sync {
+    async fn get_by_id(&self, id: IssueTypeId) -> Result<IssueTypeEntity, AppError>;
+    async fn list_all(&self) -> Result<Vec<IssueTypeEntity>, AppError>;
+}
+
+#[async_trait]
+pub trait IssueStatusHistoryRepository: Send + Sync {
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueStatusHistory>, AppError>;
+    async fn save(&self, entry: &IssueStatusHistory) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -108,6 +142,9 @@ pub struct Repositories {
     pub comments: Arc<dyn CommentRepository>,
     pub worklogs: Arc<dyn WorklogRepository>,
     pub members: Arc<dyn ProjectMemberRepository>,
+    pub statuses: Arc<dyn StatusRepository>,
+    pub transitions: Arc<dyn WorkflowTransitionRepository>,
+    pub issue_types: Arc<dyn IssueTypeRepository>,
 }
 
 impl Default for Repositories {
@@ -121,6 +158,9 @@ impl Default for Repositories {
             comments: Arc::new(StubCommentRepository),
             worklogs: Arc::new(StubWorklogRepository),
             members: Arc::new(StubProjectMemberRepository),
+            statuses: Arc::new(StubStatusRepository),
+            transitions: Arc::new(StubWorkflowTransitionRepository),
+            issue_types: Arc::new(StubIssueTypeRepository),
         }
     }
 }
@@ -282,6 +322,46 @@ impl SprintRepository for StubSprintRepository {
     }
     async fn save(&self, _sprint: &Sprint) -> Result<SprintId, AppError> {
         Ok(SprintId::new())
+    }
+}
+
+pub struct StubStatusRepository;
+#[async_trait]
+impl StatusRepository for StubStatusRepository {
+    async fn get_by_id(&self, _id: StatusId) -> Result<Status, AppError> {
+        Err(AppError::not_found("status", "stub"))
+    }
+    async fn list_all(&self) -> Result<Vec<Status>, AppError> {
+        Ok(vec![])
+    }
+    async fn get_default(&self) -> Result<Status, AppError> {
+        Err(AppError::not_found("status", "stub"))
+    }
+}
+
+pub struct StubWorkflowTransitionRepository;
+#[async_trait]
+impl WorkflowTransitionRepository for StubWorkflowTransitionRepository {
+    async fn list_all(&self) -> Result<Vec<WorkflowTransition>, AppError> {
+        Ok(vec![])
+    }
+    async fn is_allowed(
+        &self,
+        _from_status_id: StatusId,
+        _to_status_id: StatusId,
+    ) -> Result<bool, AppError> {
+        Ok(true)
+    }
+}
+
+pub struct StubIssueTypeRepository;
+#[async_trait]
+impl IssueTypeRepository for StubIssueTypeRepository {
+    async fn get_by_id(&self, _id: IssueTypeId) -> Result<IssueTypeEntity, AppError> {
+        Err(AppError::not_found("issue type", "stub"))
+    }
+    async fn list_all(&self) -> Result<Vec<IssueTypeEntity>, AppError> {
+        Ok(vec![])
     }
 }
 

@@ -284,3 +284,32 @@ pub struct UpdateSprintRequest {
 pub struct MoveIssueToSprintRequest {
     pub issue_id: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct StatusResponse {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub position: i32,
+    pub is_default: bool,
+    pub is_closed: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct TransitionResponse {
+    pub id: String,
+    pub name: String,
+    pub from_status_id: String,
+    pub to_status_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct IssueTypeResponse {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub color: Option<String>,
+    pub is_subtask: bool,
+    pub hierarchy_level: i16,
+}

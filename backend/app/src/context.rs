@@ -36,6 +36,9 @@ pub struct Services {
     pub worklog: Arc<dyn WorklogService>,
     pub member: Arc<dyn ProjectMemberService>,
     pub sprint: Arc<dyn SprintService>,
+    pub status: Arc<dyn StatusService>,
+    pub workflow: Arc<dyn WorkflowService>,
+    pub issue_type: Arc<dyn IssueTypeService>,
 }
 
 impl AppContext {
@@ -55,12 +58,16 @@ impl AppContext {
             repos.projects.clone(),
             repos.boards.clone(),
             repos.users.clone(),
+            repos.statuses.clone(),
+            repos.transitions.clone(),
         ));
         let board: Arc<dyn BoardService> = Arc::new(BoardServiceImpl::new(
             repos.boards.clone(),
             repos.issues.clone(),
             repos.sprints.clone(),
             repos.users.clone(),
+            repos.statuses.clone(),
+            repos.transitions.clone(),
         ));
         let search: Arc<dyn SearchService> = Arc::new(SearchServiceImpl::new(
             repos.issues.clone(),
@@ -101,6 +108,15 @@ impl AppContext {
                     repos.members.clone(),
                     repos.users.clone(),
                 )),
+                status: Arc::new(crate::services::StatusServiceImpl::new(
+                    repos.statuses.clone(),
+                )),
+                workflow: Arc::new(crate::services::WorkflowServiceImpl::new(
+                    repos.transitions.clone(),
+                )),
+                issue_type: Arc::new(crate::services::IssueTypeServiceImpl::new(
+                    repos.issue_types.clone(),
+                )),
                 sprint,
             },
             repos,
@@ -117,6 +133,26 @@ pub trait AuthService: Send + Sync {
     async fn logout(&self, user_id: UserId) -> Result<(), AppError>;
     async fn me(&self, user_id: UserId) -> Result<crate::dto::UserDto, AppError>;
     async fn list_users(&self) -> Result<Vec<crate::dto::UserDto>, AppError>;
+}
+
+#[async_trait]
+pub trait StatusService: Send + Sync {
+    async fn list_statuses(&self) -> Result<Vec<domain::Status>, AppError>;
+}
+
+#[async_trait]
+pub trait WorkflowService: Send + Sync {
+    async fn list_transitions(&self) -> Result<Vec<domain::WorkflowTransition>, AppError>;
+    async fn is_transition_allowed(
+        &self,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+    ) -> Result<bool, AppError>;
+}
+
+#[async_trait]
+pub trait IssueTypeService: Send + Sync {
+    async fn list_issue_types(&self) -> Result<Vec<domain::IssueTypeEntity>, AppError>;
 }
 
 #[async_trait]

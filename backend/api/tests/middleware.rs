@@ -38,6 +38,9 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
         comments: Arc::new(domain::StubCommentRepository),
         worklogs: Arc::new(domain::StubWorklogRepository),
         members: Arc::new(domain::StubProjectMemberRepository),
+        statuses: Arc::new(domain::StubStatusRepository),
+        transitions: Arc::new(domain::StubWorkflowTransitionRepository),
+        issue_types: Arc::new(domain::StubIssueTypeRepository),
     });
     let ctx = Arc::new(app::context::AppContext::new(test_config(), repos));
     ctx.services

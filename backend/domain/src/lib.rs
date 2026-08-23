@@ -11,7 +11,7 @@ pub use stubs::*;
 pub use value_objects::*;
 
 use serde::{Deserialize, Serialize};
-use shared::{ProjectId, SprintId, StatusId, UserId};
+pub use shared::{IssueTypeId, ProjectId, SprintId, StatusId, UserId, WorkflowTransitionId};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IssueQuery {
@@ -64,4 +64,13 @@ impl IssueQuery {
         self.sort_order = Some(order.to_string());
         self
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatusDto {
+    pub id: String,
+    pub name: String,
+    pub category: String,
+    pub position: i32,
+    pub is_default: bool,
 }

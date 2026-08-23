@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use domain::{
-    Board, BoardColumn, BoardRepository, ColumnCategory, Issue, IssueQuery, IssueRepository,
-    MemoryBoardRepository, MemoryIssueRepository, MemoryProjectRepository, MemorySprintRepository,
-    MemoryUserRepository, Project, ProjectQuery, ProjectRepository, Sprint, SprintRepository, User,
+    Board, BoardColumn, BoardRepository, Issue, IssueQuery, IssueRepository, MemoryBoardRepository,
+    MemoryIssueRepository, MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository,
+    Project, ProjectQuery, ProjectRepository, Sprint, SprintRepository, StatusCategory, User,
     UserRepository,
 };
 use shared::{
@@ -77,28 +77,28 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
             BoardColumn {
                 id: todo,
                 name: "Todo".into(),
-                category: ColumnCategory::Todo,
+                category: StatusCategory::Todo,
                 wip_limit: None,
                 position: 0,
             },
             BoardColumn {
                 id: in_progress,
                 name: "In Progress".into(),
-                category: ColumnCategory::InProgress,
+                category: StatusCategory::InProgress,
                 wip_limit: Some(5),
                 position: 1,
             },
             BoardColumn {
                 id: review,
                 name: "Review".into(),
-                category: ColumnCategory::InProgress,
+                category: StatusCategory::InProgress,
                 wip_limit: None,
                 position: 2,
             },
             BoardColumn {
                 id: done,
                 name: "Done".into(),
-                category: ColumnCategory::Done,
+                category: StatusCategory::Done,
                 wip_limit: None,
                 position: 3,
             },
@@ -123,6 +123,9 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         comments: Arc::new(domain::StubCommentRepository),
         worklogs: Arc::new(domain::StubWorklogRepository),
         members: Arc::new(domain::StubProjectMemberRepository),
+        statuses: Arc::new(domain::StubStatusRepository),
+        transitions: Arc::new(domain::StubWorkflowTransitionRepository),
+        issue_types: Arc::new(domain::StubIssueTypeRepository),
     });
     AppContext::new(test_config(), repos.clone());
     (AppContext::new(test_config(), repos.clone()), user_copy)
@@ -850,6 +853,9 @@ fn failing_context() -> AppContext {
         comments: Arc::new(domain::StubCommentRepository),
         worklogs: Arc::new(domain::StubWorklogRepository),
         members: Arc::new(domain::StubProjectMemberRepository),
+        statuses: Arc::new(domain::StubStatusRepository),
+        transitions: Arc::new(domain::StubWorkflowTransitionRepository),
+        issue_types: Arc::new(domain::StubIssueTypeRepository),
     });
     AppContext::new(test_config(), repos)
 }

@@ -1,5 +1,5 @@
 use domain::{
-    Board, BoardColumn, ColumnCategory, Issue, Project, ProjectQuery, Sprint, SprintState, User,
+    Board, BoardColumn, Issue, Project, ProjectQuery, Sprint, SprintState, StatusCategory, User,
 };
 use infra::repos::{SeaOrmRepositories, to_domain_repositories};
 use migration::MigratorTrait;
@@ -73,7 +73,7 @@ fn test_board(project_id: ProjectId, board_id: BoardId) -> Board {
         columns: vec![BoardColumn {
             id: todo,
             name: "Todo".into(),
-            category: ColumnCategory::Todo,
+            category: StatusCategory::Todo,
             wip_limit: None,
             position: 0,
         }],

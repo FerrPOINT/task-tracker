@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use domain::{BoardColumn, ColumnCategory, Issue, ProjectRepository};
+use domain::{BoardColumn, Issue, ProjectRepository, StatusCategory};
 use shared::{AppError, ProjectId, StatusId};
 
 pub async fn resolve_names(
@@ -130,28 +130,28 @@ pub fn default_board_columns() -> Vec<BoardColumn> {
         BoardColumn {
             id: todo_status(),
             name: "Todo".into(),
-            category: ColumnCategory::Todo,
+            category: StatusCategory::Todo,
             wip_limit: None,
             position: 0,
         },
         BoardColumn {
             id: in_progress_status(),
             name: "In Progress".into(),
-            category: ColumnCategory::InProgress,
+            category: StatusCategory::InProgress,
             wip_limit: Some(5),
             position: 1,
         },
         BoardColumn {
             id: review_status(),
             name: "Review".into(),
-            category: ColumnCategory::InProgress,
+            category: StatusCategory::InProgress,
             wip_limit: None,
             position: 3,
         },
         BoardColumn {
             id: done_status(),
             name: "Done".into(),
-            category: ColumnCategory::Done,
+            category: StatusCategory::Done,
             wip_limit: None,
             position: 4,
         },

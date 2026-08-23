@@ -107,26 +107,23 @@
     "reporter": "Reporter",
     "create": "Create",
     "createAnother": "Create another",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "me": "me",
+    "noReporter": "Reporter unknown — please log in again.",
+    "submit": "Create"
   },
   "issue": {
     "description": "Description",
     "details": "Details",
     "comments": "Comments",
     "activity": "Activity",
-    "priority": {
-      "low": "Low",
-      "medium": "Medium",
-      "high": "High",
-      "critical": "Critical"
-    },
+    "priority": "Priority",
     "history": "History",
     "status": "Status",
     "assignee": "Assignee",
     "reporter": "Reporter",
     "sprint": "Sprint",
     "noSprint": "No sprint",
-    "priority": "Priority",
     "labels": "Labels",
     "edit": "Edit",
     "comment": "Comment",
@@ -134,7 +131,9 @@
     "copyKey": "Copy key",
     "noDescription": "No description.",
     "loading": "Loading...",
-    "notFound": "Issue not found"
+    "notFound": "Issue not found",
+    "delete": "Delete",
+    "deleteConfirm": "Delete this issue permanently?"
   },
   "timeTracking": {
     "title": "Time tracking",
@@ -176,9 +175,9 @@
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
-    "theme": "Theme: {{theme}}"
-  }
-,
+    "theme": "Theme: {{theme}}",
+    "creating": "Creating…"
+  },
   "comments": {
     "title": "Comments",
     "body": "Comment",
@@ -196,5 +195,12 @@
     "addUser": "Add member",
     "selectUser": "Select user",
     "empty": "No members yet."
+  },
+  "issueType": {
+    "task": "Task",
+    "bug": "Bug",
+    "story": "Story",
+    "epic": "Epic",
+    "sub-task": "Sub-task"
   }
 }

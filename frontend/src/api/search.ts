@@ -16,15 +16,16 @@ export interface SearchFilters {
 export async function searchIssues(filters: SearchFilters = {}): Promise<Issue[]> {
   const { data } = await api.GET('/api/v1/search', {
     params: {
-      query: {
-        q: filters.q ?? '',
-        project_key: filters.project_key ?? '',
-        status: filters.status ?? '',
-        assignee_id: filters.assignee_id ?? '',
-        priority: filters.priority ?? '',
-        sort_by: filters.sort_by ?? '',
-        sort_order: filters.sort_order ?? '',
-      },
+      query: Object.fromEntries(
+        Object.entries({
+          q: filters.q,
+          project_key: filters.project_key,
+          assignee_id: filters.assignee_id,
+          priority: filters.priority,
+          sort_by: filters.sort_by,
+          sort_order: filters.sort_order,
+        }).filter(([, v]) => v !== undefined && v !== ''),
+      ),
     },
   })
   if (!data) throw new Error('Failed to search')

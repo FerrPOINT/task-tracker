@@ -47,6 +47,9 @@ pub use routes::*;
         routes::issues::delete_issue,
         routes::transitions::transition_issue,
         routes::search::search_global,
+        routes::workflow::list_statuses,
+        routes::workflow::list_transitions,
+        routes::workflow::list_issue_types,
         routes::worklogs::list_worklogs,
         routes::worklogs::create_worklog,
         routes::worklogs::update_worklog,
@@ -95,6 +98,9 @@ pub use routes::*;
         dto::BoardResponse,
         dto::BacklogResponse,
         dto::DashboardResponse,
+        dto::StatusResponse,
+        dto::TransitionResponse,
+        dto::IssueTypeResponse,
     ))
 )]
 pub struct ApiDoc;
@@ -168,6 +174,9 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/projects/{project_key}/board",
             get(routes::board::get_board),
         )
+        .route("/statuses", get(routes::workflow::list_statuses))
+        .route("/transitions", get(routes::workflow::list_transitions))
+        .route("/issue-types", get(routes::workflow::list_issue_types))
         .route(
             "/projects/{project_key}/backlog",
             get(routes::board::get_backlog),

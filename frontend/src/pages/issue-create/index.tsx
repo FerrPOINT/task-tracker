@@ -1,10 +1,10 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { useCreateIssue } from '@/shared/api/hooks'
+import { useCreateIssue, useIssueTypes, useProjects, useUsers } from '@/shared/api/hooks'
 import { useAuthStore } from '@/shared/auth/store'
 
 export function IssueCreatePage() {
@@ -12,12 +12,26 @@ export function IssueCreatePage() {
   const navigate = useNavigate()
   const { mutate, isPending, error } = useCreateIssue()
   const userId = useAuthStore((s) => s.userId)
-  const [project_key, setProjectKey] = useState('TT')
+  const projectsQuery = useProjects()
+  const usersQuery = useUsers()
+  const issueTypesQuery = useIssueTypes()
+
+  const [project_key, setProjectKey] = useState('')
   const [type, setType] = useState('Task')
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('Medium')
   const [assignee_id, setAssigneeId] = useState('')
+
+  const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
+  const users = usersQuery.data ?? []
+  const issueTypes = issueTypesQuery.data ?? []
+
+  useEffect(() => {
+    if (!project_key && projects.length > 0) {
+      setProjectKey(projects[0]!.key)
+    }
+  }, [projects, project_key])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -51,39 +65,61 @@ export function IssueCreatePage() {
       >
         {error && <div className="text-sm text-rose-500">{error.message}</div>}
         {!userId && (
-          <div className="text-sm text-amber-500">Автор не определён — войдите снова.</div>
+          <div className="text-sm text-amber-500">{t('issueCreate.noReporter')}</div>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('issueCreate.project')} *</label>
+            <label htmlFor="issue-project" className="text-sm font-medium">
+              {t('issueCreate.project')} *
+            </label>
             <select
+              id="issue-project"
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={project_key}
               onChange={(e) => setProjectKey(e.target.value)}
+              disabled={projectsQuery.isLoading || projects.length === 0}
             >
-              <option value="TT">Task Tracker (TT)</option>
-              <option value="DEMO">Demo Project (DEMO)</option>
+              {projects.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.name} ({p.key})
+                </option>
+              ))}
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('issueCreate.type')} *</label>
+            <label htmlFor="issue-type" className="text-sm font-medium">
+              {t('issueCreate.type')} *
+            </label>
             <select
+              id="issue-type"
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={type}
               onChange={(e) => setType(e.target.value)}
             >
-              <option>Task</option>
-              <option>Story</option>
-              <option>Bug</option>
-              <option>Epic</option>
+              {issueTypes.length > 0
+                ? issueTypes
+                    .filter((it) => !it.is_subtask)
+                    .map((it) => (
+                      <option key={it.id} value={it.name}>
+                        {t(`issueType.${it.name.toLowerCase()}`, { defaultValue: it.name })}
+                      </option>
+                    ))
+                : ['Task', 'Story', 'Bug', 'Epic'].map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
             </select>
           </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">{t('issueCreate.summary')} *</label>
+          <label htmlFor="issue-summary" className="text-sm font-medium">
+            {t('issueCreate.summary')} *
+          </label>
           <Input
+            id="issue-summary"
             type="text"
             placeholder={t('issueCreate.summaryPlaceholder')}
             value={summary}
@@ -93,8 +129,11 @@ export function IssueCreatePage() {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">{t('issueCreate.description')}</label>
+          <label htmlFor="issue-description" className="text-sm font-medium">
+            {t('issueCreate.description')}
+          </label>
           <textarea
+            id="issue-description"
             className="min-h-[120px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
             placeholder={t('issueCreate.descriptionPlaceholder')}
             value={description}
@@ -104,8 +143,11 @@ export function IssueCreatePage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('issueCreate.priority')}</label>
+            <label htmlFor="issue-priority" className="text-sm font-medium">
+              {t('issueCreate.priority')}
+            </label>
             <select
+              id="issue-priority"
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
@@ -118,33 +160,40 @@ export function IssueCreatePage() {
             </select>
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('issueCreate.assignee')}</label>
+            <label htmlFor="issue-assignee" className="text-sm font-medium">
+              {t('issueCreate.assignee')}
+            </label>
             <select
+              id="issue-assignee"
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={assignee_id}
               onChange={(e) => setAssigneeId(e.target.value)}
+              disabled={usersQuery.isLoading}
             >
               <option value="">{t('issueCreate.unassigned')}</option>
-              <option value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11">Demo User</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.display_name || u.username || u.email}
+                </option>
+              ))}
             </select>
           </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium">{t('issueCreate.reporter')}</label>
-          <Input type="text" value="me (read-only)" disabled />
+          <label htmlFor="issue-reporter" className="text-sm font-medium">
+            {t('issueCreate.reporter')}
+          </label>
+          <Input id="issue-reporter" type="text" value={t('issueCreate.me')} disabled />
         </div>
 
-        <div className="flex flex-wrap gap-2 pt-2">
+        <div className="flex gap-2 pt-2">
           <Button type="submit" disabled={isPending || !userId} className="gap-1">
             <Plus className="h-4 w-4" />
-            {isPending ? `${t('issueCreate.create')}…` : t('issueCreate.create')}
+            {isPending ? t('common.creating') : t('issueCreate.submit')}
           </Button>
-          <Button type="button" variant="outline">
-            {t('issueCreate.createAnother')}
-          </Button>
-          <Button variant="outline" asChild>
-            <Link to={`/projects/${project_key}/backlog`}>{t('issueCreate.cancel')}</Link>
+          <Button type="button" variant="outline" onClick={() => navigate(-1)}>
+            {t('common.cancel')}
           </Button>
         </div>
       </form>

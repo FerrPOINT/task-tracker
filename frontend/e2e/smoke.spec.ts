@@ -30,6 +30,24 @@ test.describe('smoke', () => {
       }),
     )
     await page.route('**/api/v1/dashboard', (route) => routeJson(route, { assigned_issues: [] }))
+    await page.route('**/api/v1/users/me', (route) =>
+      routeJson(route, {
+        id: mockUser.id,
+        email: 'demo@example.com',
+        username: 'demo',
+        display_name: 'Demo User',
+      }),
+    )
+    await page.route('**/api/v1/statuses', (route) =>
+      routeJson(route, [
+        { id: 'todo', name: 'To Do', category: 'todo', position: 0, is_default: true, is_closed: false },
+        { id: 'inprogress', name: 'In Progress', category: 'inprogress', position: 1, is_default: false, is_closed: false },
+        { id: 'done', name: 'Done', category: 'done', position: 2, is_default: false, is_closed: true },
+      ]),
+    )
+    await page.route('**/api/v1/transitions', (route) => routeJson(route, []))
+    await page.route('**/api/v1/users', (route) => routeJson(route, []))
+    await page.route('**/api/v1/issue-types', (route) => routeJson(route, []))
     await page.route('**/api/v1/projects', (route) =>
       routeJson(route, {
         projects: [
