@@ -10,8 +10,8 @@ use domain::{
     WorkflowTransitionId, WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QueryOrder, QuerySelect, Set,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use shared::{
     AppError, BoardId, CommentId, IssueId, IssueKey, IssueType, IssueTypeId, LabelId, Priority,
@@ -826,7 +826,38 @@ impl ProjectMemberRepository for ProjectMemberRepo {
             role: Set(member.role.as_str().to_string()),
             joined_at: Set(member.joined_at),
         };
-        active.insert(&*self.db).await.map_err(AppError::database)?;
+        // Upsert: re-adding an existing member updates the role instead of failing.
+        let insert = sea_orm::sea_query::Query::insert()
+            .into_table(project_member::Entity)
+            .columns([
+                project_member::Column::ProjectId,
+                project_member::Column::UserId,
+                project_member::Column::Role,
+                project_member::Column::JoinedAt,
+            ])
+            .values_panic([
+                member.project_id.as_uuid().into(),
+                member.user_id.as_uuid().into(),
+                member.role.as_str().into(),
+                member.joined_at.into(),
+            ])
+            .on_conflict(
+                sea_orm::sea_query::OnConflict::columns([
+                    project_member::Column::ProjectId,
+                    project_member::Column::UserId,
+                ])
+                .update_columns([project_member::Column::Role])
+                .to_owned(),
+            )
+            .to_owned();
+        self.db
+            .execute(sea_orm::Statement::from_sql_and_values(
+                self.db.get_database_backend(),
+                insert.to_string(sea_orm::sea_query::PostgresQueryBuilder),
+                [],
+            ))
+            .await
+            .map_err(AppError::database)?;
         Ok(())
     }
 

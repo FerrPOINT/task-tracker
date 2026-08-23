@@ -271,6 +271,12 @@ impl MigrationTrait for Migration {
                             .string_len(16)
                             .not_null(),
                     )
+                    .col(
+                        ColumnDef::new(ProjectMembers::JoinedAt)
+                            .timestamp_with_time_zone()
+                            .not_null()
+                            .default(SimpleExpr::Keyword(Keyword::CurrentTimestamp)),
+                    )
                     .primary_key(
                         Index::create()
                             .name("pk_project_members")
@@ -578,4 +584,5 @@ enum ProjectMembers {
     ProjectId,
     UserId,
     Role,
+    JoinedAt,
 }

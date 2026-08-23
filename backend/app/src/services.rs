@@ -1059,6 +1059,14 @@ impl ProjectMemberService for ProjectMemberServiceImpl {
     ) -> Result<ProjectMemberDto, AppError> {
         let role = ProjectRole::from_str(&cmd.role).unwrap_or_default();
         let _ = self.users.get_by_id(cmd.user_id).await?;
+        if let Ok(existing) = self.members.get(cmd.project_id, cmd.user_id).await {
+            return Ok(ProjectMemberDto {
+                project_id: existing.project_id.to_string(),
+                user_id: existing.user_id.to_string(),
+                role: existing.role.as_str().to_string(),
+                joined_at: existing.joined_at,
+            });
+        }
         let member = ProjectMember {
             project_id: cmd.project_id,
             user_id: cmd.user_id,
