@@ -22,6 +22,7 @@ import { LogWorkDialog } from '@/features/time-tracking/ui/LogWorkDialog'
 import { CommentsPanel } from '@/features/comments/ui/CommentList'
 import { useComments } from '@/features/comments/model/use-comments'
 import { ActivityFeed } from '@/features/issue-detail/ui/ActivityFeed'
+import { AttachmentPanel } from '@/features/issue-detail/ui/AttachmentPanel'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
@@ -185,6 +186,7 @@ return (
                 <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
                 <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
                 <TabsTrigger value="worklog">{t('timeTracking.worklog.title')}</TabsTrigger>
+                <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
               </TabsList>
               <TabsContent value="activity">
                 <ActivityFeed
@@ -202,6 +204,9 @@ return (
                   onDelete={handleDelete}
                   currentUserId={currentUserId ?? ''}
                 />
+              </TabsContent>
+              <TabsContent value="attachments">
+                <AttachmentPanel issueId={id} />
               </TabsContent>
             </Tabs>
           </div>

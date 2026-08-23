@@ -11,6 +11,23 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub server: ServerConfig,
     pub auth: AuthConfig,
+    #[serde(default)]
+    pub storage: StorageConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageConfig {
+    pub dir: String,
+    pub max_upload_bytes: usize,
+}
+
+impl Default for StorageConfig {
+    fn default() -> Self {
+        Self {
+            dir: "/var/lib/tasktracker/uploads".to_string(),
+            max_upload_bytes: 25 * 1024 * 1024,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +85,8 @@ impl AppConfig {
             .set_default("auth.refresh_cookie_same_site", "Lax")?
             .set_default("auth.refresh_cookie_domain", Option::<String>::None)?
             .set_default("auth.refresh_cookie_path", "/api/v1/auth")?
+            .set_default("storage.dir", "/var/lib/tasktracker/uploads")?
+            .set_default("storage.max_upload_bytes", 26214400u64)?
             .build()?;
 
         let mut cfg: AppConfig = Config::builder()

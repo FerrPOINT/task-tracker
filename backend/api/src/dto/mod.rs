@@ -313,3 +313,19 @@ pub struct IssueTypeResponse {
     pub is_subtask: bool,
     pub hierarchy_level: i16,
 }
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AttachmentResponse {
+    pub id: String,
+    pub issue_id: String,
+    pub author_id: String,
+    pub file_name: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AttachmentListResponse {
+    pub attachments: Vec<AttachmentResponse>,
+}

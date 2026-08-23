@@ -47,6 +47,10 @@ pub use routes::*;
         routes::issues::delete_issue,
         routes::transitions::transition_issue,
         routes::search::search_global,
+        routes::attachments::list_attachments,
+        routes::attachments::upload_attachment,
+        routes::attachments::download_attachment,
+        routes::attachments::delete_attachment,
         routes::workflow::list_statuses,
         routes::workflow::list_transitions,
         routes::workflow::list_issue_types,
@@ -101,6 +105,8 @@ pub use routes::*;
         dto::StatusResponse,
         dto::TransitionResponse,
         dto::IssueTypeResponse,
+        crate::dto::AttachmentResponse,
+        crate::dto::AttachmentListResponse,
     ))
 )]
 pub struct ApiDoc;
@@ -173,6 +179,18 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route(
             "/projects/{project_key}/board",
             get(routes::board::get_board),
+        )
+        .route(
+            "/issues/{issue_id}/attachments",
+            get(routes::attachments::list_attachments).post(routes::attachments::upload_attachment),
+        )
+        .route(
+            "/attachments/{id}/download",
+            get(routes::attachments::download_attachment),
+        )
+        .route(
+            "/attachments/{id}",
+            delete(routes::attachments::delete_attachment),
         )
         .route("/statuses", get(routes::workflow::list_statuses))
         .route("/transitions", get(routes::workflow::list_transitions))

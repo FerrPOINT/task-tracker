@@ -4,6 +4,38 @@
  */
 
 export interface paths {
+    "/api/v1/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_attachment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/attachments/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["download_attachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -174,6 +206,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["transition_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_attachments"];
+        put?: never;
+        post: operations["upload_attachment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -524,6 +572,19 @@ export interface components {
             role: string;
             user_id: string;
         };
+        AttachmentListResponse: {
+            attachments: components["schemas"]["AttachmentResponse"][];
+        };
+        AttachmentResponse: {
+            author_id: string;
+            content_type: string;
+            created_at: string;
+            file_name: string;
+            id: string;
+            issue_id: string;
+            /** Format: int64 */
+            size_bytes: number;
+        };
         AuthResponse: {
             access_token: string;
             email: string;
@@ -788,6 +849,78 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    delete_attachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Attachment ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Attachment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    download_attachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Attachment ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description File bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Attachment not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -1188,6 +1321,92 @@ export interface operations {
                 };
             };
             /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Issue not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_attachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachments listed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Issue not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    upload_attachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description Multipart form with a `file` field */
+        requestBody?: {
+            content: {
+                "": unknown;
+            };
+        };
+        responses: {
+            /** @description Attachment uploaded */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AttachmentResponse"];
+                };
+            };
+            /** @description Bad request (missing file, empty file, too large) */
             400: {
                 headers: {
                     [name: string]: unknown;

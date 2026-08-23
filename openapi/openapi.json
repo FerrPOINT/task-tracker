@@ -9,6 +9,79 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/attachments/{id}": {
+      "delete": {
+        "tags": [
+          "attachments"
+        ],
+        "operationId": "delete_attachment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Attachment ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Attachment deleted"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Attachment not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/attachments/{id}/download": {
+      "get": {
+        "tags": [
+          "attachments"
+        ],
+        "operationId": "download_attachment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Attachment ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File bytes",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Attachment not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -527,6 +600,97 @@
           },
           "400": {
             "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Issue not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{issue_id}/attachments": {
+      "get": {
+        "tags": [
+          "attachments"
+        ],
+        "operationId": "list_attachments",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Issue ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attachments listed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Issue not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "attachments"
+        ],
+        "operationId": "upload_attachment",
+        "parameters": [
+          {
+            "name": "issue_id",
+            "in": "path",
+            "description": "Issue ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Multipart form with a `file` field",
+          "content": {
+            "": {}
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Attachment uploaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (missing file, empty file, too large)"
           },
           "401": {
             "description": "Unauthorized"
@@ -1723,6 +1887,56 @@
           },
           "user_id": {
             "type": "string"
+          }
+        }
+      },
+      "AttachmentListResponse": {
+        "type": "object",
+        "required": [
+          "attachments"
+        ],
+        "properties": {
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentResponse"
+            }
+          }
+        }
+      },
+      "AttachmentResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "issue_id",
+          "author_id",
+          "file_name",
+          "content_type",
+          "size_bytes",
+          "created_at"
+        ],
+        "properties": {
+          "author_id": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "issue_id": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

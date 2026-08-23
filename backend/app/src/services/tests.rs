@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+type TestStorage = domain::InMemoryStorage;
 use domain::{
     Board, BoardColumn, BoardRepository, Issue, IssueQuery, IssueRepository, MemoryBoardRepository,
     MemoryIssueRepository, MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository,
@@ -43,6 +44,7 @@ fn test_config() -> Arc<AppConfig> {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/".to_string(),
         },
+        storage: shared::StorageConfig::default(),
     })
 }
 
@@ -126,9 +128,21 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         statuses: Arc::new(domain::StubStatusRepository),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
+        attachments: Arc::new(domain::StubAttachmentRepository),
     });
-    AppContext::new(test_config(), repos.clone());
-    (AppContext::new(test_config(), repos.clone()), user_copy)
+    AppContext::new(
+        test_config(),
+        repos.clone(),
+        Arc::new(TestStorage::default()),
+    );
+    (
+        AppContext::new(
+            test_config(),
+            repos.clone(),
+            Arc::new(TestStorage::default()),
+        ),
+        user_copy,
+    )
 }
 
 #[tokio::test]
@@ -856,8 +870,9 @@ fn failing_context() -> AppContext {
         statuses: Arc::new(domain::StubStatusRepository),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
+        attachments: Arc::new(domain::StubAttachmentRepository),
     });
-    AppContext::new(test_config(), repos)
+    AppContext::new(test_config(), repos, Arc::new(TestStorage::default()))
 }
 
 fn assert_internal(err: Result<impl std::fmt::Debug, AppError>) {

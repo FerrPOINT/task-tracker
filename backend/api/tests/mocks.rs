@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use domain::{
-    Board, BoardRepository, Issue, IssueQuery, IssueRepository, Project, ProjectQuery,
-    ProjectRepository, Sprint, SprintRepository, User, UserRepository,
+    Board, BoardRepository, InMemoryStorage, Issue, IssueQuery, IssueRepository, Project,
+    ProjectQuery, ProjectRepository, Sprint, SprintRepository, User, UserRepository,
 };
 use shared::{AppError, BoardId, IssueId, ProjectId, ProjectKey, SprintId, UserId};
 use std::sync::Arc;
@@ -153,8 +153,13 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
         statuses: Arc::new(domain::StubStatusRepository),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
+        attachments: Arc::new(domain::StubAttachmentRepository),
     });
-    Arc::new(app::AppContext::new(config, repos))
+    Arc::new(app::AppContext::new(
+        config,
+        repos,
+        Arc::new(InMemoryStorage::default()),
+    ))
 }
 
 pub fn failing_context() -> Arc<app::AppContext> {
@@ -172,6 +177,7 @@ pub fn failing_context() -> Arc<app::AppContext> {
         statuses: Arc::new(domain::StubStatusRepository),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
+        attachments: Arc::new(domain::StubAttachmentRepository),
     });
     Arc::new(app::AppContext::new(
         Arc::new(shared::AppConfig {
@@ -187,7 +193,9 @@ pub fn failing_context() -> Arc<app::AppContext> {
                 refresh_cookie_domain: None,
                 refresh_cookie_path: "/api/v1/auth".to_string(),
             },
+            storage: shared::StorageConfig::default(),
         }),
         repos,
+        Arc::new(InMemoryStorage::default()),
     ))
 }

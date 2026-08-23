@@ -176,7 +176,8 @@
     "cancel": "Отмена",
     "delete": "Удалить",
     "theme": "Тема: {{theme}}",
-    "creating": "Создание…"
+    "creating": "Создание…",
+    "loading": "Загрузка…"
   },
   "comments": {
     "title": "Комментарии",
@@ -202,5 +203,14 @@
     "story": "История",
     "epic": "Эпик",
     "sub-task": "Подзадача"
+  },
+  "attachments": {
+    "title": "Вложения",
+    "upload": "Прикрепить файл",
+    "uploading": "Загрузка…",
+    "empty": "Файлов нет",
+    "download": "Скачать {{name}}",
+    "delete": "Удалить {{name}}",
+    "uploadFailed": "Не удалось загрузить файл"
   }
 }

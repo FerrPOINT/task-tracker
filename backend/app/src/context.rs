@@ -15,7 +15,9 @@ use crate::services::{
     ProjectMemberService, ProjectMemberServiceImpl, ProjectServiceImpl, SearchServiceImpl,
     SprintService, SprintServiceImpl, WorklogServiceImpl,
 };
-use shared::{AppConfig, AppError, CommentId, IssueId, ProjectKey, StatusId, UserId, WorklogId};
+use shared::{
+    AppConfig, AppError, AttachmentId, CommentId, IssueId, ProjectKey, StatusId, UserId, WorklogId,
+};
 
 #[derive(Clone)]
 pub struct AppContext {
@@ -39,10 +41,15 @@ pub struct Services {
     pub status: Arc<dyn StatusService>,
     pub workflow: Arc<dyn WorkflowService>,
     pub issue_type: Arc<dyn IssueTypeService>,
+    pub attachment: Arc<dyn AttachmentService>,
 }
 
 impl AppContext {
-    pub fn new(config: Arc<AppConfig>, repos: Arc<domain::Repositories>) -> Self {
+    pub fn new(
+        config: Arc<AppConfig>,
+        repos: Arc<domain::Repositories>,
+        storage: Arc<dyn domain::FileStorage>,
+    ) -> Self {
         let auth: Arc<dyn AuthService> = Arc::new(JwtAuthService::new(
             config.auth.clone(),
             repos.users.clone(),
@@ -116,6 +123,11 @@ impl AppContext {
                 )),
                 issue_type: Arc::new(crate::services::IssueTypeServiceImpl::new(
                     repos.issue_types.clone(),
+                )),
+                attachment: Arc::new(crate::services::AttachmentServiceImpl::new(
+                    repos.attachments.clone(),
+                    repos.issues.clone(),
+                    storage,
                 )),
                 sprint,
             },
@@ -240,4 +252,33 @@ pub trait SearchService: Send + Sync {
 #[async_trait]
 pub trait DashboardService: Send + Sync {
     async fn get_dashboard(&self, user_id: UserId) -> Result<DashboardDto, AppError>;
+}
+
+#[async_trait]
+pub trait AttachmentService: Send + Sync {
+    async fn upload(
+        &self,
+        issue_id: IssueId,
+        author_id: UserId,
+        file_name: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+    ) -> Result<AttachmentDto, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<AttachmentDto>, AppError>;
+    async fn download(
+        &self,
+        attachment_id: AttachmentId,
+    ) -> Result<(AttachmentDto, Vec<u8>), AppError>;
+    async fn delete(&self, attachment_id: AttachmentId, requester: UserId) -> Result<(), AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AttachmentDto {
+    pub id: String,
+    pub issue_id: String,
+    pub author_id: String,
+    pub file_name: String,
+    pub content_type: String,
+    pub size_bytes: i64,
+    pub created_at: String,
 }

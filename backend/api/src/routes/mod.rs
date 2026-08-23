@@ -11,5 +11,6 @@ pub mod sprints;
 pub mod transitions;
 pub mod worklogs;
 
+pub mod attachments;
 pub mod users;
 pub mod workflow;

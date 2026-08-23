@@ -517,3 +517,58 @@ impl ProjectMemberRepository for MemoryProjectMemberRepository {
         Ok(())
     }
 }
+
+pub struct MemoryAttachmentRepository {
+    attachments: Arc<Mutex<Vec<crate::Attachment>>>,
+}
+
+impl MemoryAttachmentRepository {
+    pub fn new() -> Self {
+        Self {
+            attachments: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
+impl Default for MemoryAttachmentRepository {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl crate::AttachmentRepository for MemoryAttachmentRepository {
+    async fn get_by_id(&self, id: shared::AttachmentId) -> Result<crate::Attachment, AppError> {
+        let items = self.attachments.lock().unwrap();
+        items
+            .iter()
+            .find(|a| a.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("attachment", id))
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError> {
+        let items = self.attachments.lock().unwrap();
+        Ok(items
+            .iter()
+            .filter(|a| a.issue_id == issue_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn save(&self, attachment: &crate::Attachment) -> Result<shared::AttachmentId, AppError> {
+        let mut items = self.attachments.lock().unwrap();
+        if let Some(idx) = items.iter().position(|a| a.id == attachment.id) {
+            items[idx] = attachment.clone();
+        } else {
+            items.push(attachment.clone());
+        }
+        Ok(attachment.id)
+    }
+
+    async fn delete(&self, id: shared::AttachmentId) -> Result<(), AppError> {
+        let mut items = self.attachments.lock().unwrap();
+        items.retain(|a| a.id != id);
+        Ok(())
+    }
+}

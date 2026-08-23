@@ -3,24 +3,25 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use domain::{
-    Board, BoardColumn, BoardRepository, Comment, CommentRepository, Issue, IssueQuery,
-    IssueRepository, IssueTypeEntity, IssueTypeRepository, Project, ProjectMember,
-    ProjectMemberRepository, ProjectRepository, ProjectRole, Sprint, SprintRepository, SprintState,
-    Status, StatusCategory, StatusRepository, User, UserRepository, WorkflowTransition,
-    WorkflowTransitionId, WorkflowTransitionRepository, Worklog, WorklogRepository,
+    Attachment, AttachmentRepository, Board, BoardColumn, BoardRepository, Comment,
+    CommentRepository, Issue, IssueQuery, IssueRepository, IssueTypeEntity, IssueTypeRepository,
+    Project, ProjectMember, ProjectMemberRepository, ProjectRepository, ProjectRole, Sprint,
+    SprintRepository, SprintState, Status, StatusCategory, StatusRepository, User, UserRepository,
+    WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository, Worklog,
+    WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
 };
 use shared::{
-    AppError, BoardId, CommentId, IssueId, IssueKey, IssueType, IssueTypeId, LabelId, Priority,
-    ProjectId, ProjectKey, SprintId, StatusId, UserId, WorklogId,
+    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueType, IssueTypeId, LabelId,
+    Priority, ProjectId, ProjectKey, SprintId, StatusId, UserId, WorklogId,
 };
 use uuid::Uuid;
 
 use crate::entities::{
-    board, comment, issue, issue_type, project, project_member, sprint, status, user,
+    attachment, board, comment, issue, issue_type, project, project_member, sprint, status, user,
     workflow_transition, worklog,
 };
 
@@ -71,6 +72,7 @@ pub struct SeaOrmRepositories {
     pub statuses: Arc<dyn StatusRepository>,
     pub transitions: Arc<dyn WorkflowTransitionRepository>,
     pub issue_types: Arc<dyn IssueTypeRepository>,
+    pub attachments: Arc<dyn AttachmentRepository>,
 }
 
 impl SeaOrmRepositories {
@@ -88,6 +90,7 @@ impl SeaOrmRepositories {
             statuses: Arc::new(StatusRepo { db: db.clone() }),
             transitions: Arc::new(TransitionRepo { db: db.clone() }),
             issue_types: Arc::new(IssueTypeRepo { db: db.clone() }),
+            attachments: Arc::new(AttachmentRepo { db }),
         }
     }
 }
@@ -648,6 +651,70 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         statuses: sea.statuses,
         transitions: sea.transitions,
         issue_types: sea.issue_types,
+        attachments: sea.attachments,
+    }
+}
+
+struct AttachmentRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl AttachmentRepository for AttachmentRepo {
+    async fn get_by_id(&self, id: AttachmentId) -> Result<Attachment, AppError> {
+        let model = attachment::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_attachment)
+            .ok_or_else(|| AppError::not_found("attachment", id))
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Attachment>, AppError> {
+        let models = attachment::Entity::find()
+            .filter(attachment::Column::IssueId.eq(issue_id.as_uuid()))
+            .order_by_asc(attachment::Column::CreatedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_attachment).collect())
+    }
+
+    async fn save(&self, attachment: &Attachment) -> Result<AttachmentId, AppError> {
+        let active = attachment::ActiveModel {
+            id: Set(attachment.id.as_uuid()),
+            issue_id: Set(attachment.issue_id.as_uuid()),
+            author_id: Set(attachment.author_id.as_uuid()),
+            file_name: Set(attachment.file_name.as_ref().to_string()),
+            content_type: Set(attachment.content_type.as_ref().to_string()),
+            size_bytes: Set(attachment.size_bytes),
+            storage_key: Set(attachment.storage_key.as_ref().to_string()),
+            created_at: Set(attachment.created_at),
+        };
+        active.insert(&*self.db).await.map_err(AppError::database)?;
+        Ok(attachment.id)
+    }
+
+    async fn delete(&self, id: AttachmentId) -> Result<(), AppError> {
+        attachment::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+fn map_attachment(m: attachment::Model) -> Attachment {
+    Attachment {
+        id: AttachmentId::from_uuid(m.id),
+        issue_id: IssueId::from_uuid(m.issue_id),
+        author_id: UserId::from_uuid(m.author_id),
+        file_name: m.file_name.into(),
+        content_type: m.content_type.into(),
+        size_bytes: m.size_bytes,
+        storage_key: m.storage_key.into(),
+        created_at: m.created_at,
     }
 }
 
@@ -820,12 +887,6 @@ impl ProjectMemberRepository for ProjectMemberRepo {
     }
 
     async fn save(&self, member: &ProjectMember) -> Result<(), AppError> {
-        let active = project_member::ActiveModel {
-            project_id: Set(member.project_id.as_uuid()),
-            user_id: Set(member.user_id.as_uuid()),
-            role: Set(member.role.as_str().to_string()),
-            joined_at: Set(member.joined_at),
-        };
         // Upsert: re-adding an existing member updates the role instead of failing.
         let insert = sea_orm::sea_query::Query::insert()
             .into_table(project_member::Entity)

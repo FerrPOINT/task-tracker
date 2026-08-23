@@ -18,7 +18,8 @@ pub async fn run(
             .await
             .expect("failed to build repos"),
     );
-    let ctx = Arc::new(AppContext::new(config.clone(), repos));
+    let storage: Arc<dyn domain::FileStorage> = Arc::new(infra::FileStorage::new(&config.storage));
+    let ctx = Arc::new(AppContext::new(config.clone(), repos, storage));
 
     let address = format!("{}:{}", config.server.address, config.server.port);
     let listener = tokio::net::TcpListener::bind(address)

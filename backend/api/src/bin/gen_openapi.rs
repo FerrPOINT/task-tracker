@@ -20,8 +20,13 @@ fn main() {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         },
+        storage: shared::StorageConfig::default(),
     });
-    let ctx = Arc::new(AppContext::new(config, Arc::new(Repositories::default())));
+    let ctx = Arc::new(AppContext::new(
+        config,
+        Arc::new(Repositories::default()),
+        Arc::new(domain::InMemoryStorage::default()),
+    ));
     let _ = ctx; // keep alive to avoid dead_code warning
     let openapi = ApiDoc::openapi();
     let json = serde_json::to_string_pretty(&openapi).expect("serialize openapi");

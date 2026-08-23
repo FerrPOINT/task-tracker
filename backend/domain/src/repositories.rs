@@ -11,8 +11,8 @@ use crate::{
 };
 use shared::IssueTypeId;
 use shared::{
-    AppError, BoardId, CommentId, IssueId, IssueKey, ProjectId, ProjectKey, SprintId, StatusId,
-    UserId, WorklogId,
+    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, ProjectId, ProjectKey, SprintId,
+    StatusId, UserId, WorklogId,
 };
 
 #[async_trait]
@@ -115,6 +115,14 @@ pub trait WorklogRepository: Send + Sync {
 }
 
 #[async_trait]
+pub trait AttachmentRepository: Send + Sync {
+    async fn get_by_id(&self, id: AttachmentId) -> Result<crate::Attachment, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError>;
+    async fn save(&self, attachment: &crate::Attachment) -> Result<AttachmentId, AppError>;
+    async fn delete(&self, id: AttachmentId) -> Result<(), AppError>;
+}
+
+#[async_trait]
 pub trait UnitOfWork: Send + Sync {
     async fn with_transaction<F, T>(&self, f: F) -> Result<T, AppError>
     where
@@ -145,6 +153,7 @@ pub struct Repositories {
     pub statuses: Arc<dyn StatusRepository>,
     pub transitions: Arc<dyn WorkflowTransitionRepository>,
     pub issue_types: Arc<dyn IssueTypeRepository>,
+    pub attachments: Arc<dyn AttachmentRepository>,
 }
 
 impl Default for Repositories {
@@ -161,6 +170,7 @@ impl Default for Repositories {
             statuses: Arc::new(StubStatusRepository),
             transitions: Arc::new(StubWorkflowTransitionRepository),
             issue_types: Arc::new(StubIssueTypeRepository),
+            attachments: Arc::new(StubAttachmentRepository),
         }
     }
 }
@@ -185,6 +195,23 @@ impl ProjectMemberRepository for StubProjectMemberRepository {
         Ok(())
     }
     async fn delete(&self, _project_id: ProjectId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubAttachmentRepository;
+#[async_trait]
+impl AttachmentRepository for StubAttachmentRepository {
+    async fn get_by_id(&self, _id: AttachmentId) -> Result<crate::Attachment, AppError> {
+        Err(AppError::not_found("attachment", "stub"))
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _attachment: &crate::Attachment) -> Result<AttachmentId, AppError> {
+        Ok(AttachmentId::new())
+    }
+    async fn delete(&self, _id: AttachmentId) -> Result<(), AppError> {
         Ok(())
     }
 }
@@ -396,4 +423,46 @@ pub trait ProjectMemberRepository: Send + Sync {
     async fn get(&self, project_id: ProjectId, user_id: UserId) -> Result<ProjectMember, AppError>;
     async fn save(&self, member: &ProjectMember) -> Result<(), AppError>;
     async fn delete(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait FileStorage: Send + Sync {
+    async fn put(&self, issue_id: &str, key: &str, bytes: Vec<u8>) -> Result<(), AppError>;
+    async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError>;
+    async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError>;
+}
+
+/// In-memory FileStorage for tests.
+#[derive(Default)]
+pub struct InMemoryStorage {
+    files: std::sync::Mutex<std::collections::HashMap<(String, String), Vec<u8>>>,
+}
+
+#[async_trait]
+impl FileStorage for InMemoryStorage {
+    async fn put(&self, issue_id: &str, key: &str, bytes: Vec<u8>) -> Result<(), AppError> {
+        if bytes.is_empty() {
+            return Err(AppError::invalid_input("file is empty"));
+        }
+        self.files
+            .lock()
+            .unwrap()
+            .insert((issue_id.to_string(), key.to_string()), bytes);
+        Ok(())
+    }
+    async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError> {
+        self.files
+            .lock()
+            .unwrap()
+            .get(&(issue_id.to_string(), key.to_string()))
+            .cloned()
+            .ok_or_else(|| AppError::not_found("attachment file", key))
+    }
+    async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError> {
+        self.files
+            .lock()
+            .unwrap()
+            .remove(&(issue_id.to_string(), key.to_string()));
+        Ok(())
+    }
 }

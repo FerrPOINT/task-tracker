@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use domain::{
-    Board, BoardColumn, BoardRepository, MemoryBoardRepository, MemoryCommentRepository,
-    MemoryIssueRepository, MemoryProjectMemberRepository, MemoryProjectRepository,
-    MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository, Project,
-    ProjectRepository, StatusCategory, User, UserRepository,
+    Board, BoardColumn, BoardRepository, InMemoryStorage, MemoryAttachmentRepository,
+    MemoryBoardRepository, MemoryCommentRepository, MemoryIssueRepository,
+    MemoryProjectMemberRepository, MemoryProjectRepository, MemorySprintRepository,
+    MemoryUserRepository, MemoryWorklogRepository, Project, ProjectRepository, StatusCategory,
+    User, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -37,6 +38,7 @@ fn test_config() -> Arc<AppConfig> {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         },
+        storage: shared::StorageConfig::default(),
     })
 }
 
@@ -121,9 +123,14 @@ async fn spawn_server() -> (String, reqwest::Client) {
         statuses: Arc::new(domain::StubStatusRepository),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
+        attachments: Arc::new(MemoryAttachmentRepository::default()),
     });
 
-    let ctx = Arc::new(AppContext::new(test_config(), repos));
+    let ctx = Arc::new(AppContext::new(
+        test_config(),
+        repos,
+        Arc::new(InMemoryStorage::default()),
+    ));
     let router = api::router(ctx.clone()).with_state(ctx);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -843,4 +850,180 @@ async fn users_me_returns_current_user() {
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["email"], "me@example.com");
     assert_eq!(body["username"], "meuser");
+}
+
+// ===== Attachment tests =====
+
+async fn create_issue_via_api(url: &str, client: &reqwest::Client, token: &str) -> String {
+    let res = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "summary": "attachment test issue",
+            "reporter_id": "00000000-0000-0000-0000-000000000001"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    body["id"].as_str().unwrap().to_string()
+}
+
+fn multipart_file(
+    name: &str,
+    content_type: &str,
+    bytes: &'static [u8],
+) -> reqwest::multipart::Form {
+    let part = reqwest::multipart::Part::bytes(bytes)
+        .file_name(name.to_string())
+        .mime_str(content_type)
+        .unwrap();
+    reqwest::multipart::Form::new().part("file", part)
+}
+
+#[tokio::test]
+async fn attachment_upload_download_delete_flow() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let auth = |req: reqwest::RequestBuilder| req.bearer_auth(&token);
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    // upload
+    let res = auth(client.post(format!("{}/api/v1/issues/{}/attachments", url, issue_id)))
+        .multipart(multipart_file(
+            "notes.txt",
+            "text/plain",
+            b"hello attachment",
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let id = body["id"].as_str().unwrap().to_string();
+    assert_eq!(body["file_name"], "notes.txt");
+    assert_eq!(body["size_bytes"], 16);
+
+    // list
+    let res = auth(client.get(format!("{}/api/v1/issues/{}/attachments", url, issue_id)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let list: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(list["attachments"].as_array().unwrap().len(), 1);
+
+    // download
+    let res = auth(client.get(format!("{}/api/v1/attachments/{}/download", url, id)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let bytes = res.bytes().await.unwrap();
+    assert_eq!(&bytes[..], b"hello attachment");
+
+    // delete
+    let res = auth(client.delete(format!("{}/api/v1/attachments/{}", url, id)))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204);
+
+    // list empty after delete
+    let res = auth(client.get(format!("{}/api/v1/issues/{}/attachments", url, issue_id)))
+        .send()
+        .await
+        .unwrap();
+    let list: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(list["attachments"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn attachment_upload_requires_file_field() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let empty = reqwest::multipart::Form::new();
+    let res = client
+        .post(format!(
+            "{}/api/v1/issues/00000000-0000-0000-0000-000000000101/attachments",
+            url
+        ))
+        .bearer_auth(token)
+        .multipart(empty)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn attachment_upload_unknown_issue_404() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .post(format!(
+            "{}/api/v1/issues/00000000-0000-0000-0000-00c0ffee0001/attachments",
+            url
+        ))
+        .bearer_auth(token)
+        .multipart(multipart_file("x.txt", "text/plain", b"data"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+// (unknown-issue test uses a random UUID above)
+
+#[tokio::test]
+async fn attachment_download_unknown_404() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .get(format!(
+            "{}/api/v1/attachments/00000000-0000-0000-0000-00c0ffee0002/download",
+            url
+        ))
+        .bearer_auth(token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn attachment_upload_empty_file_400() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/attachments", url, issue_id))
+        .bearer_auth(token)
+        .multipart(multipart_file("empty.txt", "text/plain", b""))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn attachments_require_auth() {
+    let (url, client) = spawn_server().await;
+    let res = client
+        .get(format!(
+            "{}/api/v1/issues/00000000-0000-0000-0000-000000000101/attachments",
+            url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
 }

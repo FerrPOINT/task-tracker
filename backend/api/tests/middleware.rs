@@ -1,3 +1,4 @@
+use domain::InMemoryStorage;
 use std::sync::Arc;
 
 use axum::{
@@ -20,6 +21,7 @@ fn test_config() -> Arc<shared::AppConfig> {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         },
+        storage: shared::StorageConfig::default(),
     })
 }
 
@@ -41,8 +43,13 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
         statuses: Arc::new(domain::StubStatusRepository),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
+        attachments: Arc::new(domain::StubAttachmentRepository),
     });
-    let ctx = Arc::new(app::context::AppContext::new(test_config(), repos));
+    let ctx = Arc::new(app::context::AppContext::new(
+        test_config(),
+        repos,
+        Arc::new(InMemoryStorage::default()),
+    ));
     ctx.services
         .auth
         .register(app::commands::RegisterCommand {

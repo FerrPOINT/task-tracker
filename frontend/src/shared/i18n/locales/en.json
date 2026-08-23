@@ -176,7 +176,8 @@
     "cancel": "Cancel",
     "delete": "Delete",
     "theme": "Theme: {{theme}}",
-    "creating": "Creating…"
+    "creating": "Creating…",
+    "loading": "Loading…"
   },
   "comments": {
     "title": "Comments",
@@ -202,5 +203,14 @@
     "story": "Story",
     "epic": "Epic",
     "sub-task": "Sub-task"
+  },
+  "attachments": {
+    "title": "Attachments",
+    "upload": "Attach file",
+    "uploading": "Uploading…",
+    "empty": "No files",
+    "download": "Download {{name}}",
+    "delete": "Delete {{name}}",
+    "uploadFailed": "Failed to upload file"
   }
 }

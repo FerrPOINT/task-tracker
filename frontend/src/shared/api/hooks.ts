@@ -27,6 +27,7 @@ import {
   type UpdateSprintRequest,
 } from '@/api/sprint'
 import { listStatuses, listTransitions, listIssueTypes } from '@/api/workflow'
+import { listAttachments, uploadAttachment, deleteAttachment } from '@/api/attachment'
 
 export const workflowKeys = {
   statuses: ['statuses'] as const,
@@ -44,6 +45,34 @@ export function useTransitions() {
 
 export function useIssueTypes() {
   return useQuery({ queryKey: workflowKeys.issueTypes, queryFn: listIssueTypes, staleTime: 5 * 60 * 1000 })
+}
+
+export const attachmentKeys = {
+  list: (issueId: string) => ['attachments', issueId] as const,
+}
+
+export function useAttachments(issueId: string | undefined) {
+  return useQuery({
+    queryKey: attachmentKeys.list(issueId ?? ''),
+    queryFn: () => listAttachments(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useUploadAttachment(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (file: File) => uploadAttachment(issueId, file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: attachmentKeys.list(issueId) }),
+  })
+}
+
+export function useDeleteAttachment(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => deleteAttachment(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: attachmentKeys.list(issueId) }),
+  })
 }
 
 export const projectKeys = {
