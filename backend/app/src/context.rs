@@ -408,7 +408,11 @@ pub trait SavedFilterService: Send + Sync {
         jql: String,
         is_public: bool,
     ) -> Result<SavedFilterDto, AppError>;
-    async fn get_filter(&self, id: String) -> Result<SavedFilterDto, AppError>;
+    async fn get_filter(
+        &self,
+        id: String,
+        requester_id: UserId,
+    ) -> Result<SavedFilterDto, AppError>;
     async fn delete_filter(&self, id: String, owner_id: UserId) -> Result<(), AppError>;
     async fn execute_filter(&self, id: String, user_id: UserId) -> Result<Vec<IssueDto>, AppError>;
 }

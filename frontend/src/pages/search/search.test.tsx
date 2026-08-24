@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
 import SearchPage from './'
@@ -7,37 +7,78 @@ import SearchPage from './'
 const useIssues = vi.hoisted(() => vi.fn())
 const useProjects = vi.hoisted(() => vi.fn())
 const useUsers = vi.hoisted(() => vi.fn())
+const createSavedFilter = vi.hoisted(() => vi.fn())
 vi.mock('@/shared/api/hooks', () => ({
   useIssues,
   useProjects,
   useUsers,
 }))
+vi.mock('@/api/saved-filters', () => ({ createSavedFilter }))
 
 function wrapper(children: React.ReactNode) {
   return <MemoryRouter>{children}</MemoryRouter>
 }
 
+function mockHooks() {
+  useIssues.mockReturnValue({
+    data: [
+      {
+        id: 'i1',
+        key: 'TT-1',
+        summary: 'Fix tests',
+        status: 'In Progress',
+        priority: 'High',
+        assignee_name: 'Ivan',
+      },
+    ],
+    isLoading: false,
+    error: null,
+  })
+  useProjects.mockReturnValue({ data: [] })
+  useUsers.mockReturnValue({ data: [] })
+}
+
 describe('SearchPage', () => {
-  it('renders search form and results', async () => {
-    useIssues.mockReturnValue({
-      data: [
-        {
-          id: 'i1',
-          key: 'TT-1',
-          summary: 'Fix tests',
-          status: 'In Progress',
-          priority: 'High',
-          assignee_name: 'Ivan',
-        },
-      ],
-      isLoading: false,
-      error: null,
-    })
-    useProjects.mockReturnValue({ data: [] })
-    useUsers.mockReturnValue({ data: [] })
+  it('renders search form and results', () => {
+    mockHooks()
 
     render(wrapper(<SearchPage />))
+
     expect(screen.getByText(/поиск задач|search issues/i)).toBeInTheDocument()
     expect(screen.getByText('TT-1')).toBeInTheDocument()
+  })
+
+  it('passes JQL input to the search hook', () => {
+    mockHooks()
+
+    render(wrapper(<SearchPage />))
+    fireEvent.change(screen.getByPlaceholderText(/например: project|for example: project/i), {
+      target: { value: 'project = TT' },
+    })
+
+    expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ jql: 'project = TT' }))
+  })
+
+  it('saves a named JQL filter', async () => {
+    mockHooks()
+    createSavedFilter.mockResolvedValue({ id: 'filter-1' })
+
+    render(wrapper(<SearchPage />))
+    fireEvent.change(screen.getByPlaceholderText(/например: project|for example: project/i), {
+      target: { value: 'project = TT' },
+    })
+    fireEvent.click(screen.getByTestId('saved-filter-toggle'))
+    fireEvent.change(screen.getByPlaceholderText(/мои задачи|my high priority/i), {
+      target: { value: 'My work' },
+    })
+    fireEvent.click(screen.getByTestId('saved-filter-submit'))
+
+    await waitFor(() => {
+      expect(createSavedFilter).toHaveBeenCalledWith({
+        name: 'My work',
+        jql: 'project = TT',
+        is_public: false,
+      })
+    })
   })
 })

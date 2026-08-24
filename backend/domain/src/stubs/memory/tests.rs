@@ -1,11 +1,11 @@
 use crate::memory::{
     MemoryBoardRepository, MemoryEventBus, MemoryIssueRepository, MemoryProjectRepository,
-    MemorySprintRepository, MemoryUnitOfWork, MemoryUserRepository,
+    MemorySavedFilterRepository, MemorySprintRepository, MemoryUnitOfWork, MemoryUserRepository,
 };
 use crate::{
     Board, BoardRepository, EventBus, Issue, IssueQuery, IssueRepository, Project, ProjectEvent,
-    ProjectQuery, ProjectRepository, Repositories, Sprint, SprintRepository, SprintState,
-    UnitOfWork, User, UserRepository,
+    ProjectQuery, ProjectRepository, Repositories, SavedFilterRepository, Sprint, SprintRepository,
+    SprintState, UnitOfWork, User, UserRepository,
 };
 use shared::{BoardId, IssueType, Priority, ProjectId, ProjectKey, SprintId, StatusId, UserId};
 use std::str::FromStr;
@@ -223,4 +223,46 @@ async fn memory_unit_of_work_and_event_bus() {
     .await
     .unwrap();
     assert_eq!(bus.drained().len(), 1);
+}
+
+#[tokio::test]
+async fn memory_saved_filter_repository_lifecycle() {
+    let repo = MemorySavedFilterRepository::default();
+    let owner = UserId::new();
+    let other = UserId::new();
+    let now = shared::now();
+    let filter = crate::SavedFilter {
+        id: shared::SavedFilterId::new(),
+        name: "My work".into(),
+        jql: "assignee = currentUser()".to_string(),
+        owner_id: owner,
+        is_public: true,
+        created_at: now,
+        updated_at: now,
+    };
+
+    // Saved filters return a 404 for unknown IDs, matching the persistent repository contract.
+    assert!(repo.get_by_id(filter.id).await.is_err());
+    repo.save(&filter).await.unwrap();
+    assert_eq!(
+        repo.get_by_id(filter.id).await.unwrap().name.as_ref(),
+        "My work"
+    );
+    assert_eq!(repo.list_by_owner(owner).await.unwrap().len(), 1);
+    assert!(repo.list_by_owner(other).await.unwrap().is_empty());
+    assert_eq!(repo.list_public().await.unwrap().len(), 1);
+
+    let mut updated = filter.clone();
+    updated.is_public = false;
+    updated.name = "Private work".into();
+    repo.save(&updated).await.unwrap();
+    assert_eq!(repo.list_public().await.unwrap().len(), 0);
+    assert_eq!(
+        repo.get_by_id(filter.id).await.unwrap().name.as_ref(),
+        "Private work"
+    );
+
+    repo.delete(filter.id).await.unwrap();
+    assert!(repo.get_by_id(filter.id).await.is_err());
+    assert!(repo.delete(filter.id).await.is_err());
 }

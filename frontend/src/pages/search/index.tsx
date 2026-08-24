@@ -249,7 +249,14 @@ export default function SearchPage() {
               onChange={(e) => setJql(e.target.value)}
               className="flex-1 font-mono text-sm"
             />
-            <Button variant="outline" size="icon" onClick={() => setShowSaveDialog(!showSaveDialog)} disabled={!jql}>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={t('filters.save')}
+              data-testid="saved-filter-toggle"
+              onClick={() => setShowSaveDialog(!showSaveDialog)}
+              disabled={!jql}
+            >
               <Save className="h-4 w-4" />
             </Button>
           </div>
@@ -269,7 +276,7 @@ export default function SearchPage() {
                 {t('filters.isPublic')}
               </label>
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleSaveFilter} disabled={!filterName.trim()}>
+                <Button data-testid="saved-filter-submit" size="sm" onClick={handleSaveFilter} disabled={!filterName.trim()}>
                   {t('filters.save')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowSaveDialog(false)}>

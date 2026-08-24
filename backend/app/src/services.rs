@@ -1539,6 +1539,7 @@ impl crate::context::SavedFilterService for SavedFilterServiceImpl {
         jql: String,
         is_public: bool,
     ) -> Result<crate::context::SavedFilterDto, AppError> {
+        domain::jql::parse(&jql).map_err(|e| AppError::invalid_input(e.to_string()))?;
         let now = shared::now();
         let filter = domain::SavedFilter {
             id: shared::SavedFilterId::new(),
@@ -1553,11 +1554,18 @@ impl crate::context::SavedFilterService for SavedFilterServiceImpl {
         Ok(Self::to_dto(&filter))
     }
 
-    async fn get_filter(&self, id: String) -> Result<crate::context::SavedFilterDto, AppError> {
+    async fn get_filter(
+        &self,
+        id: String,
+        requester_id: UserId,
+    ) -> Result<crate::context::SavedFilterDto, AppError> {
         let filter_id = id
             .parse::<shared::SavedFilterId>()
             .map_err(|_| AppError::invalid_input("invalid filter id"))?;
         let filter = self.filters.get_by_id(filter_id).await?;
+        if filter.owner_id != requester_id && !filter.is_public {
+            return Err(AppError::Forbidden);
+        }
         Ok(Self::to_dto(&filter))
     }
 

@@ -59,9 +59,13 @@ pub async fn create_filter(
 )]
 pub async fn get_filter(
     State(ctx): State<Arc<app::AppContext>>,
+    claims: axum::Extension<app::auth::UserClaims>,
     Path(id): Path<String>,
 ) -> Result<Json<SavedFilterResponse>, AppError> {
-    let filter = ctx.services.saved_filter.get_filter(id).await?;
+    let user_id = uuid::Uuid::parse_str(&claims.0.sub)
+        .map(shared::UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id"))?;
+    let filter = ctx.services.saved_filter.get_filter(id, user_id).await?;
     Ok(Json(map_filter(filter)))
 }
 

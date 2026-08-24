@@ -390,4 +390,116 @@ mod tests {
 
         assert!(error.to_string().contains("function"));
     }
+
+    #[test]
+    fn compiles_is_empty_and_is_not_empty() {
+        let expr = parse("assignee IS EMPTY").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert_eq!(query.predicate, "(i.assignee_id IS NULL)");
+        assert!(query.parameters.is_empty());
+
+        let expr = parse("sprint IS NOT EMPTY").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert_eq!(query.predicate, "(i.sprint_id IS NOT NULL)");
+    }
+
+    #[test]
+    fn compiles_not_expression() {
+        let expr = parse("NOT (project = TT)").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert_eq!(query.predicate, "NOT ((p.key = $1))");
+        assert_eq!(query.parameters, vec![JqlParameter::Text("TT".into())]);
+    }
+
+    #[test]
+    fn compiles_labels_clause() {
+        let expr = parse("labels = backend").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert!(
+            query
+                .predicate
+                .contains("EXISTS (SELECT 1 FROM issue_labels")
+        );
+        assert!(query.predicate.contains("l.name = $1"));
+        assert_eq!(query.parameters, vec![JqlParameter::Text("backend".into())]);
+    }
+
+    #[test]
+    fn compiles_sprint_clause() {
+        let expr = parse("sprint = \"Sprint 1\"").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert!(query.predicate.contains("EXISTS (SELECT 1 FROM sprints sp"));
+        assert!(query.predicate.contains("sp.name = $1"));
+    }
+
+    #[test]
+    fn compiles_status_category_clause() {
+        let expr = parse("statusCategory = done").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert!(query.predicate.contains(
+            "EXISTS (SELECT 1 FROM statuses s WHERE s.id = i.status_id AND (s.category = $1))"
+        ));
+        assert_eq!(query.parameters, vec![JqlParameter::Text("done".into())]);
+    }
+
+    #[test]
+    fn compiles_key_and_issue_type_clauses() {
+        let expr = parse("key = TT-42 AND issueType = Bug").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert!(query.predicate.contains("i.key = $1"));
+        assert!(query.predicate.contains("i.issue_type = $2"));
+    }
+
+    #[test]
+    fn compiles_timestamp_with_cast() {
+        let expr = parse("created >= 2026-01-01").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert!(query.predicate.contains("i.created_at >= $1::timestamptz"));
+    }
+
+    #[test]
+    fn rejects_contains_on_date_field() {
+        let expr = parse("created ~ \"text\"").expect("valid JQL syntax");
+        let error = compile(&expr, UserId::new()).expect_err("date fields don't support ~");
+        assert!(error.to_string().contains("date fields"));
+    }
+
+    #[test]
+    fn rejects_is_empty_on_non_nullable_field() {
+        let expr = parse("priority IS EMPTY").expect("valid JQL syntax");
+        let error = compile(&expr, UserId::new()).expect_err("priority can't be empty");
+        assert!(error.to_string().contains("IS EMPTY"));
+    }
+
+    #[test]
+    fn compiles_in_and_not_in() {
+        let expr = parse("priority IN (high, medium, low)").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert!(query.predicate.contains("i.priority IN ($1, $2, $3)"));
+        assert_eq!(query.parameters.len(), 3);
+
+        let expr = parse("priority NOT IN (high, urgent)").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert!(query.predicate.contains("i.priority NOT IN ($1, $2)"));
+    }
+
+    #[test]
+    fn compiles_reporter_with_uuid() {
+        let expr = parse("reporter = 22222222-2222-2222-2222-222222222222").expect("valid JQL");
+        let query = compile(&expr, UserId::new()).expect("compiles");
+        assert!(query.predicate.contains("i.reporter_id = $1"));
+        assert_eq!(
+            query.parameters,
+            vec![JqlParameter::Uuid(
+                Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap()
+            )]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_uuid_for_user_field() {
+        let expr = parse("assignee = not-a-uuid").expect("valid JQL syntax");
+        let error = compile(&expr, UserId::new()).expect_err("invalid UUID");
+        assert!(error.to_string().contains("UUID"));
+    }
 }
