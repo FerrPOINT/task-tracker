@@ -4,9 +4,9 @@
 
 План разработки от пустого репозитория до production-ready Jira-like таск-трекера. Каждая фаза — отдельный milestone, заканчивается рабочим коммитом и проверкой.
 
-## Статус (обновлено 2026-08-23)
+## Статус (обновлено 2026-08-24)
 
-**Фазы 0–4 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time).
+**Фазы 0–5 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests).
 
 Реализовано сверх плана фаз 0–4:
 
@@ -15,9 +15,18 @@
 - Labels: CRUD на уровне проекта, привязка к задачам.
 - Issue links: `blocks` / `duplicates` / `relates`.
 - Real-time: SSE `GET /api/v1/events` + инвалидация TanStack Query на фронте (вместо WebSocket из плана — выбран SSE как проще и достаточно для invalidation-модели).
-- Тесты: 43 api integration, 25 backend suites, vitest 24, Playwright E2E (smoke/integration/time-tracking/attachments/labels-links/members/realtime); coverage-гейт `scripts/run-e2e-tests.sh` (lines ≥ 77 / regions ≥ 70 / functions ≥ 63).
+- Тесты: 49 api integration, 40+40 backend unit/domain, 26 vitest, Playwright E2E (smoke/integration/time-tracking/attachments/labels-links/members/realtime); coverage-гейт `scripts/run-e2e-tests.sh` (lines ≥ 77 / regions ≥ 70 / functions ≥ 63).
 
-Отложено до поздних фаз: JQL (фаза 5), уведомления/email (фаза 6), «Корзина»/soft-delete (фаза 6+, ссылка из сайдбара убрана), watcher/vote, версии/компоненты, кастомные поля, админка.
+**Phase 5: Search + Filters (завершена):**
+
+- JQL parser: lexer + recursive descent → AST, 15 unit-тестов (operators, NOT IN, IS EMPTY/NOT EMPTY, chaining, nested parens, error cases).
+- JQL → SQL compiler: parameterized SQL, 15 unit-тестов (all fields, IS EMPTY, NOT, labels/sprint EXISTS, timestamp cast, injection safety, UUID validation).
+- Full-text search: PostgreSQL `tsvector` + GIN index + triggers (migration 000018).
+- Saved filters: migration 000019, CRUD API (`GET/POST /filters`, `GET/DELETE /filters/{id}`, `GET /filters/{id}/execute`), visibility/ownership enforcement, JQL validation at creation.
+- Frontend: JQL input, save-filter dialog, saved-filters API client, i18n (ru/en).
+- OpenAPI: 5 новых endpoints, generated TypeScript client.
+
+Отложено до поздних фаз: уведомления/email (фаза 6), «Корзина»/soft-delete (фаза 6+, ссылка из сайдбара убрана), watcher/vote, версии/компоненты, кастомные поля, админка.
 
 ## 2. Phase 0: Bootstrap (M0)
 
@@ -76,12 +85,12 @@
 
 **Цель**: JQL-поиск и сохранённые фильтры.
 
-- [ ] JQL parser (AST).
-- [ ] JQL → SQL builder.
-- [ ] Full-text search (`tsvector`).
-- [ ] Saved filters CRUD.
-- [ ] Frontend: issue navigator, JQL input, filter list.
-- [ ] Verification: JQL tests, search performance.
+- [x] JQL parser (AST).
+- [x] JQL → SQL builder.
+- [x] Full-text search (`tsvector`).
+- [x] Saved filters CRUD.
+- [x] Frontend: issue navigator, JQL input, filter list.
+- [x] Verification: JQL tests, search performance.
 
 ## 8. Phase 6: Notifications + Email (M6)
 
