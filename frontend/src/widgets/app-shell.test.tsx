@@ -39,6 +39,21 @@ function mockHooks(notifications: Notification[] | undefined) {
 }
 
 describe('AppShell notifications', () => {
+  it('includes the administration link in the desktop sidebar', () => {
+    mockHooks([])
+
+    render(
+      <MemoryRouter>
+        <AppShell />
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('link', { name: /администрирование|administration/i })).toHaveAttribute(
+      'href',
+      '/admin',
+    )
+  })
+
   it('opens an empty notification dropdown without a badge', async () => {
     const user = userEvent.setup()
     mockHooks([])
@@ -84,14 +99,10 @@ describe('AppShell notifications', () => {
     await user.click(trigger)
 
     expect(await screen.findByText('Issue updated')).toBeInTheDocument()
-    await user.click(
-      screen.getByRole('button', { name: /отметить прочитанным|mark as read/i }),
-    )
+    await user.click(screen.getByRole('button', { name: /отметить прочитанным|mark as read/i }))
     expect(markRead).toHaveBeenCalledWith('notification-1')
 
-    await user.click(
-      screen.getByRole('button', { name: /прочитать все|mark all as read/i }),
-    )
+    await user.click(screen.getByRole('button', { name: /прочитать все|mark all as read/i }))
     await waitFor(() => expect(markAll).toHaveBeenCalledTimes(1))
     const viewAllLink = screen.getByRole('menuitem', {
       name: /все уведомления|view all notifications/i,

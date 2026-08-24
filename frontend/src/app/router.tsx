@@ -10,6 +10,7 @@ import { LoginPage } from '@/pages/login'
 import { RegisterPage } from '@/pages/register'
 import { NotificationsPage } from '@/pages/notifications'
 import { ReportsPage } from '@/pages/reports'
+import { AdminPage } from '@/pages/admin'
 import { AppShell } from '@/widgets/app-shell'
 import { RequireAuth } from '@/shared/auth/require-auth'
 
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
           { path: '/search', element: <SearchPage /> },
           { path: '/notifications', element: <NotificationsPage /> },
           { path: '/reports', element: <ReportsPage /> },
+          { path: '/admin', element: <AdminPage /> },
           { path: '/issues/create', element: <IssueCreatePage /> },
           { path: '/issues/:id', element: <IssueDetailPage /> },
         ],

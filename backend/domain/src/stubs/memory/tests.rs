@@ -1,13 +1,14 @@
 use crate::memory::{
-    MemoryBoardRepository, MemoryEventBus, MemoryIssueRepository, MemoryNotificationRepository,
-    MemoryProjectRepository, MemorySavedFilterRepository, MemorySprintRepository, MemoryUnitOfWork,
-    MemoryUserRepository,
+    MemoryAuditLogRepository, MemoryBoardRepository, MemoryEventBus, MemoryIssueRepository,
+    MemoryNotificationRepository, MemoryProjectRepository, MemorySavedFilterRepository,
+    MemorySprintRepository, MemorySystemSettingRepository, MemoryUnitOfWork, MemoryUserRepository,
 };
 use crate::{
-    Board, BoardRepository, EventBus, Issue, IssueQuery, IssueRepository, Notification,
-    NotificationRepository, NotificationUserSettings, Project, ProjectEvent, ProjectQuery,
-    ProjectRepository, Repositories, SavedFilterRepository, Sprint, SprintRepository, SprintState,
-    UnitOfWork, User, UserNotificationSettingsRepository, UserRepository,
+    AuditLog, AuditLogRepository, Board, BoardRepository, EventBus, Issue, IssueQuery,
+    IssueRepository, Notification, NotificationRepository, NotificationUserSettings, Project,
+    ProjectEvent, ProjectQuery, ProjectRepository, Repositories, SavedFilterRepository, Sprint,
+    SprintRepository, SprintState, SystemSetting, SystemSettingRepository, UnitOfWork, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{
     BoardId, IssueId, IssueType, NotificationId, Priority, ProjectId, ProjectKey, SprintId,
@@ -23,6 +24,8 @@ fn sample_user() -> User {
         display_name: "User".into(),
         password_hash: "hash".into(),
         refresh_token_hash: None,
+        is_system_admin: false,
+        is_active: true,
         created_at: shared::now(),
         updated_at: shared::now(),
     }
@@ -361,4 +364,62 @@ async fn memory_notification_settings_repository_round_trips_user_preferences() 
     };
     repo.save_settings(&updated).await.unwrap();
     assert_eq!(repo.get_settings(user_id).await.unwrap(), updated);
+}
+
+#[tokio::test]
+async fn memory_audit_log_repository_filters_by_actor_and_limits_newest_entries() {
+    let repo = MemoryAuditLogRepository::default();
+    let actor = UserId::new();
+    let other_actor = UserId::new();
+    let older = AuditLog {
+        id: shared::AuditLogId::new(),
+        actor_id: actor,
+        action: "issue.created".into(),
+        entity_type: "issue".into(),
+        entity_id: None,
+        metadata: serde_json::Value::Null,
+        created_at: shared::now() - chrono::Duration::seconds(1),
+    };
+    let newer = AuditLog {
+        id: shared::AuditLogId::new(),
+        action: "issue.updated".into(),
+        created_at: shared::now(),
+        ..older.clone()
+    };
+    let unrelated = AuditLog {
+        id: shared::AuditLogId::new(),
+        actor_id: other_actor,
+        ..newer.clone()
+    };
+
+    repo.save(&older).await.unwrap();
+    repo.save(&newer).await.unwrap();
+    repo.save(&unrelated).await.unwrap();
+
+    assert_eq!(repo.list(Some(actor), 1).await.unwrap(), vec![newer]);
+    assert_eq!(
+        repo.list(Some(other_actor), 10).await.unwrap(),
+        vec![unrelated]
+    );
+}
+
+#[tokio::test]
+async fn memory_system_setting_repository_replaces_existing_keys() {
+    let repo = MemorySystemSettingRepository::default();
+    let setting = SystemSetting {
+        key: "auth.session_ttl".into(),
+        value: serde_json::json!(3600),
+        updated_at: shared::now(),
+    };
+    repo.save(&setting).await.unwrap();
+    assert_eq!(repo.get("auth.session_ttl").await.unwrap(), setting);
+
+    let updated = SystemSetting {
+        value: serde_json::json!(7200),
+        updated_at: shared::now(),
+        ..setting.clone()
+    };
+    repo.save(&updated).await.unwrap();
+    assert_eq!(repo.list().await.unwrap(), vec![updated]);
+    assert!(repo.get("unknown").await.is_err());
 }

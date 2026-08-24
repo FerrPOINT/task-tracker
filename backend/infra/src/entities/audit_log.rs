@@ -1,20 +1,17 @@
 use sea_orm::entity::prelude::*;
+use serde_json::Value as JsonValue;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-#[sea_orm(table_name = "users")]
+#[sea_orm(table_name = "audit_logs")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub email: String,
-    #[sea_orm(unique)]
-    pub username: String,
-    pub display_name: String,
-    pub password_hash: String,
-    pub refresh_token_hash: Option<String>,
-    pub is_system_admin: bool,
-    pub is_active: bool,
+    pub actor_id: Uuid,
+    pub action: String,
+    pub entity_type: String,
+    pub entity_id: Option<Uuid>,
+    pub metadata: JsonValue,
     pub created_at: DateTimeWithTimeZone,
-    pub updated_at: DateTimeWithTimeZone,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

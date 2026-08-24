@@ -1,4 +1,5 @@
 pub use super::attachment::Entity as Attachment;
+pub use super::audit_log::Entity as AuditLog;
 pub use super::board::Entity as Board;
 pub use super::comment::Entity as Comment;
 pub use super::issue::Entity as Issue;
@@ -11,4 +12,5 @@ pub use super::project::Entity as Project;
 pub use super::project_member::Entity as ProjectMember;
 pub use super::saved_filter::Entity as SavedFilter;
 pub use super::sprint::Entity as Sprint;
+pub use super::system_setting::Entity as SystemSetting;
 pub use super::user::Entity as User;

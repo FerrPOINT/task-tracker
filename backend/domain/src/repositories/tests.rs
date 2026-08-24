@@ -1,8 +1,9 @@
 use crate::{
-    BoardRepository, EventBus, IssueRepository, ProjectQuery, ProjectRepository, Repositories,
-    SprintRepository, StubBoardRepository, StubEventBus, StubIssueRepository,
-    StubProjectRepository, StubSprintRepository, StubUnitOfWork, StubUserRepository, UnitOfWork,
-    UserRepository,
+    AuditLogRepository, BoardRepository, EventBus, IssueRepository, ProjectQuery,
+    ProjectRepository, Repositories, SprintRepository, StubAuditLogRepository, StubBoardRepository,
+    StubEventBus, StubIssueRepository, StubProjectRepository, StubSprintRepository,
+    StubSystemSettingRepository, StubUnitOfWork, StubUserRepository, SystemSettingRepository,
+    UnitOfWork, UserRepository,
 };
 use shared::{AppError, BoardId, IssueId, ProjectId, ProjectKey, SprintId, UserId};
 
@@ -26,6 +27,8 @@ async fn stub_user_repository() {
             display_name: "A B".into(),
             password_hash: "h".into(),
             refresh_token_hash: None,
+            is_system_admin: false,
+            is_active: true,
             created_at: shared::now(),
             updated_at: shared::now(),
         })
@@ -131,4 +134,21 @@ async fn stub_event_bus() {
         .await
         .is_ok()
     );
+}
+
+#[tokio::test]
+async fn stub_audit_log_and_system_setting_repositories_are_safe_defaults() {
+    let audit_logs = StubAuditLogRepository;
+    let settings = StubSystemSettingRepository;
+
+    assert!(audit_logs.list(None, 10).await.unwrap().is_empty());
+    assert!(settings.get("missing").await.is_err());
+    assert!(settings.list().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn repositories_default_wires_audit_log_and_system_setting_repositories() {
+    let repos = Repositories::default();
+    assert!(repos.audit_logs.list(None, 10).await.unwrap().is_empty());
+    assert!(repos.system_settings.list().await.unwrap().is_empty());
 }

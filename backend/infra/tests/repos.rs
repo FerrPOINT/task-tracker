@@ -44,6 +44,8 @@ fn test_user() -> User {
         display_name: "Repo Test".into(),
         password_hash: "$argon2id$v=19$m=65536,t=3,p=4$stN/enhZ9yOvgWC9E8Y6BA$IL9I0WONb/I6zoT4rdmdkrPcIFADFxsLCjrO0ySSl0Y".into(),
         refresh_token_hash: None,
+        is_system_admin: false,
+        is_active: true,
         created_at: now(),
         updated_at: now(),
     }

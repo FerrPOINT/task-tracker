@@ -34,6 +34,8 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
     let sprints = Arc::new(domain::MemorySprintRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
+        audit_logs: Arc::new(domain::StubAuditLogRepository),
+        system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: projects.clone(),
         issues: issues.clone(),
         boards: boards.clone(),

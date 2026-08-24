@@ -11,6 +11,8 @@ fn sample_user() -> User {
         display_name: "A B".into(),
         password_hash: "h".into(),
         refresh_token_hash: None,
+        is_system_admin: false,
+        is_active: true,
         created_at: shared::now(),
         updated_at: shared::now(),
     }

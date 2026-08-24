@@ -11,6 +11,7 @@ pub mod sprints;
 pub mod transitions;
 pub mod worklogs;
 
+pub mod admin;
 pub mod attachments;
 pub mod events;
 pub mod labels;

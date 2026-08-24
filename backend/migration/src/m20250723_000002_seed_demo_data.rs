@@ -35,7 +35,7 @@ impl MigrationTrait for Migration {
 
         let sqls = vec![
             format!(
-                "INSERT INTO users (id, email, username, display_name, password_hash, created_at, updated_at) VALUES ('{}', 'demo@example.com', 'demo', 'Demo User', '{}', NOW(), NOW()) ON CONFLICT (id) DO NOTHING",
+                "INSERT INTO users (id, email, username, display_name, password_hash, is_system_admin, is_active, created_at, updated_at) VALUES ('{}', 'demo@example.com', 'demo', 'Demo User', '{}', true, true, NOW(), NOW()) ON CONFLICT (id) DO NOTHING",
                 demo_user_id, password_hash
             ),
             format!(

@@ -22,6 +22,8 @@ fn test_user() -> User {
         display_name: "Demo User".into(),
         password_hash: "$argon2id$v=19$m=65536,t=3,p=4$stN/enhZ9yOvgWC9E8Y6BA$IL9I0WONb/I6zoT4rdmdkrPcIFADFxsLCjrO0ySSl0Y".into(),
         refresh_token_hash: None,
+        is_system_admin: false,
+        is_active: true,
         created_at: shared::now(),
         updated_at: shared::now(),
     }
@@ -124,6 +126,8 @@ async fn spawn_server_with_notifications()
     let notifications = Arc::new(MemoryNotificationRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
+        audit_logs: Arc::new(domain::StubAuditLogRepository),
+        system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: projects.clone(),
         issues: issues.clone(),
         boards: boards.clone(),
@@ -2122,6 +2126,8 @@ async fn spawn_server_with_reports() -> (
 
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
+        audit_logs: Arc::new(domain::StubAuditLogRepository),
+        system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: projects.clone(),
         issues: issues.clone(),
         boards: boards.clone(),

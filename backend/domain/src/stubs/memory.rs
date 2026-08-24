@@ -6,12 +6,13 @@ use std::sync::{Arc, Mutex};
 mod tests;
 
 use crate::{
-    Board, BoardRepository, Comment, CommentRepository, EventBus, Issue, IssueQuery,
-    IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository, Notification,
-    NotificationRepository, NotificationUserSettings, Project, ProjectMember,
+    AuditLog, AuditLogRepository, Board, BoardRepository, Comment, CommentRepository, EventBus,
+    Issue, IssueQuery, IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository,
+    Notification, NotificationRepository, NotificationUserSettings, Project, ProjectMember,
     ProjectMemberRepository, ProjectQuery, ProjectRepository, SavedFilter, SavedFilterRepository,
-    Sprint, SprintRepository, Status, StatusRepository, UnitOfWork, User,
-    UserNotificationSettingsRepository, UserRepository, Worklog, WorklogRepository,
+    Sprint, SprintRepository, Status, StatusRepository, SystemSetting, SystemSettingRepository,
+    UnitOfWork, User, UserNotificationSettingsRepository, UserRepository, Worklog,
+    WorklogRepository,
 };
 use shared::{
     AppError, BoardId, CommentId, IssueId, NotificationId, ProjectId, ProjectKey, SavedFilterId,
@@ -965,5 +966,69 @@ impl MemoryIssueStatusHistoryRepository {
             history.push(entry.clone());
             project_ids.push(project_id);
         }
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryAuditLogRepository {
+    entries: Arc<Mutex<Vec<AuditLog>>>,
+}
+
+#[async_trait]
+impl AuditLogRepository for MemoryAuditLogRepository {
+    async fn save(&self, entry: &AuditLog) -> Result<(), AppError> {
+        self.entries.lock().unwrap().push(entry.clone());
+        Ok(())
+    }
+
+    async fn list(&self, actor_id: Option<UserId>, limit: u64) -> Result<Vec<AuditLog>, AppError> {
+        let mut entries: Vec<_> = self
+            .entries
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|entry| actor_id.is_none_or(|actor| entry.actor_id == actor))
+            .cloned()
+            .collect();
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.created_at));
+        entries.truncate(limit as usize);
+        Ok(entries)
+    }
+}
+
+#[derive(Default)]
+pub struct MemorySystemSettingRepository {
+    settings: Arc<Mutex<Vec<SystemSetting>>>,
+}
+
+#[async_trait]
+impl SystemSettingRepository for MemorySystemSettingRepository {
+    async fn get(&self, key: &str) -> Result<SystemSetting, AppError> {
+        self.settings
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|setting| setting.key.as_ref() == key)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("system setting", key))
+    }
+
+    async fn list(&self) -> Result<Vec<SystemSetting>, AppError> {
+        let mut settings = self.settings.lock().unwrap().clone();
+        settings.sort_by(|left, right| left.key.cmp(&right.key));
+        Ok(settings)
+    }
+
+    async fn save(&self, setting: &SystemSetting) -> Result<(), AppError> {
+        let mut settings = self.settings.lock().unwrap();
+        if let Some(index) = settings
+            .iter()
+            .position(|existing| existing.key == setting.key)
+        {
+            settings[index] = setting.clone();
+        } else {
+            settings.push(setting.clone());
+        }
+        Ok(())
     }
 }

@@ -143,6 +143,8 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
 
     let repos = Arc::new(Repositories {
         users: Arc::new(FailingUserRepository),
+        audit_logs: Arc::new(domain::StubAuditLogRepository),
+        system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: Arc::new(FailingProjectRepository),
         issues: Arc::new(FailingIssueRepository),
         boards: Arc::new(FailingBoardRepository),
@@ -173,6 +175,8 @@ pub fn failing_context() -> Arc<app::AppContext> {
 
     let repos = Arc::new(Repositories {
         users: Arc::new(FailingUserRepository),
+        audit_logs: Arc::new(domain::StubAuditLogRepository),
+        system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: Arc::new(FailingProjectRepository),
         issues: Arc::new(FailingIssueRepository),
         boards: Arc::new(FailingBoardRepository),

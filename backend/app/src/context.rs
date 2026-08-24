@@ -12,7 +12,7 @@ use crate::dto::{
     AuthDto, BacklogDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto, WorklogDto,
 };
 use crate::services::{
-    BoardServiceImpl, CommentServiceImpl, DashboardServiceImpl, IssueServiceImpl,
+    AdminServiceImpl, BoardServiceImpl, CommentServiceImpl, DashboardServiceImpl, IssueServiceImpl,
     ProjectMemberService, ProjectMemberServiceImpl, ProjectServiceImpl, SearchServiceImpl,
     SprintService, SprintServiceImpl, WorklogServiceImpl,
 };
@@ -75,6 +75,7 @@ pub struct Services {
     pub saved_filter: Arc<dyn SavedFilterService>,
     pub notification: Arc<dyn NotificationService>,
     pub report: Arc<dyn ReportService>,
+    pub admin: Arc<dyn AdminService>,
 }
 
 impl AppContext {
@@ -200,6 +201,11 @@ impl AppContext {
                     repos.sprints.clone(),
                     repos.statuses.clone(),
                     repos.issue_status_history.clone(),
+                )),
+                admin: Arc::new(AdminServiceImpl::new(
+                    repos.users.clone(),
+                    repos.audit_logs.clone(),
+                    repos.system_settings.clone(),
                 )),
                 sprint,
             },
@@ -540,4 +546,134 @@ pub struct CumulativeFlowPointDto {
 pub struct ControlChartPointDto {
     pub issue_key: String,
     pub cycle_time_days: f64,
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8: Admin service
+// ---------------------------------------------------------------------------
+
+/// Admin user DTO — includes `is_system_admin` and `is_active` flags that the
+/// regular [`crate::dto::UserDto`] intentionally omits.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AdminUserDto {
+    pub id: String,
+    pub email: String,
+    pub username: String,
+    pub display_name: String,
+    pub is_system_admin: bool,
+    pub is_active: bool,
+}
+
+impl From<domain::User> for AdminUserDto {
+    fn from(user: domain::User) -> Self {
+        Self {
+            id: user.id.to_string(),
+            email: user.email.as_ref().to_string(),
+            username: user.username.as_ref().to_string(),
+            display_name: user.display_name.as_ref().to_string(),
+            is_system_admin: user.is_system_admin,
+            is_active: user.is_active,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AuditLogDto {
+    pub id: String,
+    pub actor_id: String,
+    pub action: String,
+    pub entity_type: String,
+    pub entity_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: String,
+}
+
+impl From<domain::AuditLog> for AuditLogDto {
+    fn from(entry: domain::AuditLog) -> Self {
+        Self {
+            id: entry.id.to_string(),
+            actor_id: entry.actor_id.to_string(),
+            action: entry.action.as_ref().to_string(),
+            entity_type: entry.entity_type.as_ref().to_string(),
+            entity_id: entry.entity_id.map(|id| id.to_string()),
+            metadata: entry.metadata,
+            created_at: entry.created_at.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SystemSettingDto {
+    pub key: String,
+    pub value: serde_json::Value,
+    pub updated_at: String,
+}
+
+impl From<domain::SystemSetting> for SystemSettingDto {
+    fn from(setting: domain::SystemSetting) -> Self {
+        Self {
+            key: setting.key.as_ref().to_string(),
+            value: setting.value,
+            updated_at: setting.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+/// Command for creating a new user from the admin panel.
+/// The password is hashed before storage and never persisted in plaintext.
+#[derive(Debug, Clone)]
+pub struct AdminCreateUserCommand {
+    pub email: String,
+    pub username: String,
+    pub display_name: String,
+    pub password: String,
+    pub is_system_admin: bool,
+}
+
+#[async_trait]
+pub trait AdminService: Send + Sync {
+    /// List all users. `requester_id` must be a system admin.
+    async fn list_users(&self, requester_id: UserId) -> Result<Vec<AdminUserDto>, AppError>;
+
+    /// Create a new user. `requester_id` must be a system admin. The password
+    /// is hashed via argon2; the plaintext is never logged or persisted.
+    async fn create_user(
+        &self,
+        requester_id: UserId,
+        cmd: AdminCreateUserCommand,
+    ) -> Result<AdminUserDto, AppError>;
+
+    /// Update a user's active status. `requester_id` must be a system admin.
+    /// Prevents deactivating the last active system admin.
+    async fn update_user_status(
+        &self,
+        requester_id: UserId,
+        user_id: UserId,
+        is_active: bool,
+    ) -> Result<AdminUserDto, AppError>;
+
+    /// List audit log entries (most recent first). `requester_id` must be a
+    /// system admin.
+    async fn list_audit_logs(
+        &self,
+        requester_id: UserId,
+        limit: u64,
+    ) -> Result<Vec<AuditLogDto>, AppError>;
+
+    /// List all system settings. `requester_id` must be a system admin. Only
+    /// safe keys are returned.
+    async fn list_system_settings(
+        &self,
+        requester_id: UserId,
+    ) -> Result<Vec<SystemSettingDto>, AppError>;
+
+    /// Update a system setting. `requester_id` must be a system admin. The key
+    /// must be on the safe allowlist and the JSON value must be within the size
+    /// limit.
+    async fn update_system_setting(
+        &self,
+        requester_id: UserId,
+        key: String,
+        value: serde_json::Value,
+    ) -> Result<SystemSettingDto, AppError>;
 }

@@ -9,7 +9,8 @@
     "board": "Board",
     "trash": "Trash",
     "logout": "Log out",
-    "reports": "Reports"
+    "reports": "Reports",
+    "admin": "Administration"
   },
   "auth": {
     "login": "Log in",
@@ -324,6 +325,54 @@
     "delete": "Delete filter",
     "execute": "Apply filter",
     "manage": "Manage filters"
+  },
+  "admin": {
+    "title": "Administration",
+    "description": "Manage users, safe instance settings, and audit events.",
+    "loading": "Loading administration data...",
+    "error": "Unable to load or update administration data.",
+    "empty": "No records found.",
+    "tabs": { "users": "Users", "settings": "Instance settings", "audit": "Audit log" },
+    "users": {
+      "title": "Users",
+      "create": "Create user",
+      "name": "Name",
+      "email": "Email",
+      "username": "Username",
+      "displayName": "Display name",
+      "password": "Password",
+      "role": "Role",
+      "status": "Status",
+      "actions": "Actions",
+      "systemAdmin": "System administrator",
+      "member": "Member",
+      "active": "Active",
+      "inactive": "Inactive",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "activateTitle": "Activate user?",
+      "deactivateTitle": "Deactivate user?",
+      "statusDescription": "Change access for {{name}}."
+    },
+    "settings": {
+      "title": "Instance settings",
+      "update": "Add or update setting",
+      "key": "Setting key",
+      "value": "Value",
+      "updated": "Updated",
+      "jsonValue": "JSON value",
+      "save": "Save setting",
+      "invalidJson": "Enter valid JSON."
+    },
+    "audit": {
+      "title": "Audit log",
+      "action": "Action",
+      "entity": "Entity",
+      "actor": "Actor",
+      "changes": "Changes",
+      "time": "Time",
+      "system": "System"
+    }
   },
   "reports": {
     "title": "Reports",

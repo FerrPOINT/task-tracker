@@ -6,15 +6,28 @@ use std::sync::Arc;
 mod tests;
 
 use crate::{
-    Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity, Label,
-    Notification, NotificationUserSettings, Project, ProjectMember, SavedFilter, Sprint, Status,
-    User, WorkflowTransition, Worklog,
+    AuditLog, Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity,
+    Label, Notification, NotificationUserSettings, Project, ProjectMember, SavedFilter, Sprint,
+    Status, SystemSetting, User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
     AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, LabelId, ProjectId,
     ProjectKey, SavedFilterId, SprintId, StatusId, UserId, WorklogId,
 };
+
+#[async_trait]
+pub trait AuditLogRepository: Send + Sync {
+    async fn save(&self, entry: &AuditLog) -> Result<(), AppError>;
+    async fn list(&self, actor_id: Option<UserId>, limit: u64) -> Result<Vec<AuditLog>, AppError>;
+}
+
+#[async_trait]
+pub trait SystemSettingRepository: Send + Sync {
+    async fn get(&self, key: &str) -> Result<SystemSetting, AppError>;
+    async fn list(&self) -> Result<Vec<SystemSetting>, AppError>;
+    async fn save(&self, setting: &SystemSetting) -> Result<(), AppError>;
+}
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
@@ -167,6 +180,8 @@ pub trait EventBus: Send + Sync {
 #[derive(Clone)]
 pub struct Repositories {
     pub users: Arc<dyn UserRepository>,
+    pub audit_logs: Arc<dyn AuditLogRepository>,
+    pub system_settings: Arc<dyn SystemSettingRepository>,
     pub projects: Arc<dyn ProjectRepository>,
     pub issues: Arc<dyn IssueRepository>,
     pub boards: Arc<dyn BoardRepository>,
@@ -190,6 +205,8 @@ impl Default for Repositories {
     fn default() -> Self {
         Self {
             users: Arc::new(StubUserRepository),
+            audit_logs: Arc::new(StubAuditLogRepository),
+            system_settings: Arc::new(StubSystemSettingRepository),
             projects: Arc::new(StubProjectRepository),
             issues: Arc::new(StubIssueRepository),
             boards: Arc::new(StubBoardRepository),
@@ -590,6 +607,35 @@ impl SavedFilterRepository for StubSavedFilterRepository {
     }
 
     async fn delete(&self, _id: SavedFilterId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubAuditLogRepository;
+#[async_trait]
+impl AuditLogRepository for StubAuditLogRepository {
+    async fn save(&self, _entry: &AuditLog) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn list(
+        &self,
+        _actor_id: Option<UserId>,
+        _limit: u64,
+    ) -> Result<Vec<AuditLog>, AppError> {
+        Ok(vec![])
+    }
+}
+
+pub struct StubSystemSettingRepository;
+#[async_trait]
+impl SystemSettingRepository for StubSystemSettingRepository {
+    async fn get(&self, key: &str) -> Result<SystemSetting, AppError> {
+        Err(AppError::not_found("system setting", key))
+    }
+    async fn list(&self) -> Result<Vec<SystemSetting>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _setting: &SystemSetting) -> Result<(), AppError> {
         Ok(())
     }
 }

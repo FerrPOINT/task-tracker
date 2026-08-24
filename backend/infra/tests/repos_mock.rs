@@ -78,6 +78,8 @@ async fn user_save_database_error() {
         display_name: "X".into(),
         password_hash: "h".into(),
         refresh_token_hash: None,
+        is_system_admin: false,
+        is_active: true,
         created_at: shared::now(),
         updated_at: shared::now(),
     };
@@ -159,4 +161,16 @@ async fn issue_list_database_error() {
 async fn project_list_database_error() {
     let repos = mock_db_with_query_error();
     assert_database_error(repos.projects.list(domain::ProjectQuery::default()).await);
+}
+
+#[tokio::test]
+async fn audit_log_list_database_error() {
+    let repos = mock_db_with_query_error();
+    assert_database_error(repos.audit_logs.list(None, 10).await);
+}
+
+#[tokio::test]
+async fn system_setting_get_database_error() {
+    let repos = mock_db_with_query_error();
+    assert_database_error(repos.system_settings.get("auth.session_ttl").await);
 }

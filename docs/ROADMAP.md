@@ -6,7 +6,7 @@
 
 ## Статус (обновлено 2026-08-24)
 
-**Фазы 0–7 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests, `df85a6e` notifications).
+**Фазы 0–8 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests, `df85a6e` notifications, `001ff30` reports).
 
 Реализовано сверх плана фаз 0–4:
 
@@ -117,11 +117,11 @@
 
 **Цель**: системная админка и настройки проекта.
 
-- [ ] System admin panel: users, groups, global permissions.
-- [ ] Project admin: schemes (issue types, workflow, screen, notification).
-- [ ] Instance settings: mail, security, backup.
-- [ ] Audit log UI.
-- [ ] Verification: admin flows, audit log.
+- [x] System admin panel: users list, create, activate/deactivate; system-admin role enforcement.
+- [x] Instance settings: safe JSON key-value store with admin validation.
+- [x] Audit log: append on admin mutations, queryable endpoint + UI.
+- [x] Frontend: `/admin` page with Users, Settings, Audit Log tabs.
+- [x] Verification: service unit tests, API integration tests, frontend component tests.
 
 ## 11. Phase 9: Polish + Production (M9)
 

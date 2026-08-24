@@ -35,6 +35,8 @@ impl crate::context::AuthService for JwtAuthService {
             display_name: cmd.name.into(),
             password_hash: password_hash.into(),
             refresh_token_hash: None,
+            is_system_admin: false,
+            is_active: true,
             created_at: shared::now(),
             updated_at: shared::now(),
         };
@@ -193,6 +195,8 @@ mod tests {
             display_name: "T".into(),
             password_hash: "$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$invalid".into(),
             refresh_token_hash: None,
+            is_system_admin: false,
+            is_active: true,
             created_at: now(),
             updated_at: now(),
         }

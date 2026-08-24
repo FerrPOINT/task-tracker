@@ -3,30 +3,31 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use domain::{
-    Attachment, AttachmentRepository, Board, BoardColumn, BoardRepository, Comment,
-    CommentRepository, Issue, IssueLink, IssueLinkRepository, IssueQuery, IssueRepository,
-    IssueStatusHistory, IssueStatusHistoryRepository, IssueTypeEntity, IssueTypeRepository, Label,
-    LabelRepository, LinkType, Notification, NotificationRepository, NotificationUserSettings,
-    Project, ProjectMember, ProjectMemberRepository, ProjectRepository, ProjectRole, SavedFilter,
-    SavedFilterRepository, Sprint, SprintRepository, SprintState, Status, StatusCategory,
-    StatusRepository, User, UserNotificationSettingsRepository, UserRepository, WorkflowTransition,
-    WorkflowTransitionId, WorkflowTransitionRepository, Worklog, WorklogRepository,
+    Attachment, AttachmentRepository, AuditLog, AuditLogRepository, Board, BoardColumn,
+    BoardRepository, Comment, CommentRepository, Issue, IssueLink, IssueLinkRepository, IssueQuery,
+    IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository, IssueTypeEntity,
+    IssueTypeRepository, Label, LabelRepository, LinkType, Notification, NotificationRepository,
+    NotificationUserSettings, Project, ProjectMember, ProjectMemberRepository, ProjectRepository,
+    ProjectRole, SavedFilter, SavedFilterRepository, Sprint, SprintRepository, SprintState, Status,
+    StatusCategory, StatusRepository, SystemSetting, SystemSettingRepository, User,
+    UserNotificationSettingsRepository, UserRepository, WorkflowTransition, WorkflowTransitionId,
+    WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 use shared::{
-    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId,
+    AppError, AttachmentId, AuditLogId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId,
     IssueStatusHistoryId, IssueType, IssueTypeId, LabelId, NotificationId, Priority, ProjectId,
     ProjectKey, SavedFilterId, SprintId, StatusId, UserId, WorklogId,
 };
 use uuid::Uuid;
 
 use crate::entities::{
-    attachment, board, comment, issue, issue_label, issue_link, issue_status_history, issue_type,
-    label, notification, notification_user_settings, project, project_member, saved_filter, sprint,
-    status, user, workflow_transition, worklog,
+    attachment, audit_log, board, comment, issue, issue_label, issue_link, issue_status_history,
+    issue_type, label, notification, notification_user_settings, project, project_member,
+    saved_filter, sprint, status, system_setting, user, workflow_transition, worklog,
 };
 
 fn map_status(m: status::Model) -> Status {
@@ -66,6 +67,8 @@ fn map_issue_type(m: issue_type::Model) -> IssueTypeEntity {
 }
 pub struct SeaOrmRepositories {
     pub users: Arc<dyn UserRepository>,
+    pub audit_logs: Arc<dyn AuditLogRepository>,
+    pub system_settings: Arc<dyn SystemSettingRepository>,
     pub projects: Arc<dyn ProjectRepository>,
     pub issues: Arc<dyn IssueRepository>,
     pub boards: Arc<dyn BoardRepository>,
@@ -90,6 +93,8 @@ impl SeaOrmRepositories {
         let db = Arc::new(db);
         Self {
             users: Arc::new(UserRepo { db: db.clone() }),
+            audit_logs: Arc::new(AuditLogRepo { db: db.clone() }),
+            system_settings: Arc::new(SystemSettingRepo { db: db.clone() }),
             projects: Arc::new(ProjectRepo { db: db.clone() }),
             issues: Arc::new(IssueRepo { db: db.clone() }),
             boards: Arc::new(BoardRepo { db: db.clone() }),
@@ -160,6 +165,8 @@ impl UserRepository for UserRepo {
                 .refresh_token_hash
                 .as_ref()
                 .map(|h| h.as_ref().to_string())),
+            is_system_admin: Set(user.is_system_admin),
+            is_active: Set(user.is_active),
             created_at: Set(user.created_at),
             updated_at: Set(shared::now()),
         };
@@ -603,6 +610,8 @@ fn map_user(m: user::Model) -> User {
         display_name: m.display_name.into(),
         password_hash: m.password_hash.into(),
         refresh_token_hash: m.refresh_token_hash.map(|h| h.into()),
+        is_system_admin: m.is_system_admin,
+        is_active: m.is_active,
         created_at: m.created_at,
         updated_at: m.updated_at,
     }
@@ -707,6 +716,8 @@ fn map_sprint(m: sprint::Model) -> Sprint {
 pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
     domain::Repositories {
         users: sea.users,
+        audit_logs: sea.audit_logs,
+        system_settings: sea.system_settings,
         projects: sea.projects,
         issues: sea.issues,
         boards: sea.boards,
@@ -1566,5 +1577,106 @@ impl IssueStatusHistoryRepository for IssueStatusHistoryRepo {
             .await
             .map_err(AppError::database)?;
         Ok(())
+    }
+}
+
+struct AuditLogRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl AuditLogRepository for AuditLogRepo {
+    async fn save(&self, entry: &AuditLog) -> Result<(), AppError> {
+        audit_log::ActiveModel {
+            id: Set(entry.id.as_uuid()),
+            actor_id: Set(entry.actor_id.as_uuid()),
+            action: Set(entry.action.to_string()),
+            entity_type: Set(entry.entity_type.to_string()),
+            entity_id: Set(entry.entity_id),
+            metadata: Set(entry.metadata.clone()),
+            created_at: Set(entry.created_at),
+        }
+        .insert(&*self.db)
+        .await
+        .map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn list(&self, actor_id: Option<UserId>, limit: u64) -> Result<Vec<AuditLog>, AppError> {
+        let mut query = audit_log::Entity::find().order_by_desc(audit_log::Column::CreatedAt);
+        if let Some(actor_id) = actor_id {
+            query = query.filter(audit_log::Column::ActorId.eq(actor_id.as_uuid()));
+        }
+        let models = query
+            .limit(limit)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_audit_log).collect())
+    }
+}
+
+fn map_audit_log(m: audit_log::Model) -> AuditLog {
+    AuditLog {
+        id: AuditLogId::from_uuid(m.id),
+        actor_id: UserId::from_uuid(m.actor_id),
+        action: m.action.into(),
+        entity_type: m.entity_type.into(),
+        entity_id: m.entity_id,
+        metadata: m.metadata,
+        created_at: m.created_at,
+    }
+}
+
+struct SystemSettingRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl SystemSettingRepository for SystemSettingRepo {
+    async fn get(&self, key: &str) -> Result<SystemSetting, AppError> {
+        let model = system_setting::Entity::find_by_id(key)
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .ok_or_else(|| AppError::not_found("system setting", key))?;
+        Ok(map_system_setting(model))
+    }
+
+    async fn list(&self) -> Result<Vec<SystemSetting>, AppError> {
+        let models = system_setting::Entity::find()
+            .order_by_asc(system_setting::Column::Key)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_system_setting).collect())
+    }
+
+    async fn save(&self, setting: &SystemSetting) -> Result<(), AppError> {
+        system_setting::Entity::insert(system_setting::ActiveModel {
+            key: Set(setting.key.to_string()),
+            value: Set(setting.value.clone()),
+            updated_at: Set(setting.updated_at),
+        })
+        .on_conflict(
+            sea_orm::sea_query::OnConflict::column(system_setting::Column::Key)
+                .update_columns([
+                    system_setting::Column::Value,
+                    system_setting::Column::UpdatedAt,
+                ])
+                .to_owned(),
+        )
+        .exec(&*self.db)
+        .await
+        .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+fn map_system_setting(m: system_setting::Model) -> SystemSetting {
+    SystemSetting {
+        key: m.key.into(),
+        value: m.value,
+        updated_at: m.updated_at,
     }
 }

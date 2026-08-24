@@ -94,6 +94,12 @@ pub use routes::*;
         routes::reports::get_burndown_report,
         routes::reports::get_cumulative_flow_report,
         routes::reports::get_control_chart_report,
+        routes::admin::list_users,
+        routes::admin::create_user,
+        routes::admin::update_user_status,
+        routes::admin::list_audit_logs,
+        routes::admin::list_system_settings,
+        routes::admin::update_system_setting,
     ),
     components(schemas(
         dto::RegisterRequest,
@@ -143,6 +149,15 @@ pub use routes::*;
         routes::reports::CumulativeFlowPointResponse,
         routes::reports::ControlChartResponse,
         routes::reports::ControlChartPointResponse,
+        routes::admin::AdminUserResponse,
+        routes::admin::AdminUserListResponse,
+        routes::admin::AdminCreateUserRequest,
+        routes::admin::UpdateUserStatusRequest,
+        routes::admin::AuditLogResponse,
+        routes::admin::AuditLogListResponse,
+        routes::admin::SystemSettingResponse,
+        routes::admin::SystemSettingListResponse,
+        routes::admin::UpdateSystemSettingRequest,
     ))
 )]
 pub struct ApiDoc;
@@ -365,6 +380,19 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route(
             "/reports/control-chart",
             get(routes::reports::get_control_chart_report),
+        )
+        .route(
+            "/admin/users",
+            get(routes::admin::list_users).post(routes::admin::create_user),
+        )
+        .route(
+            "/admin/users/{id}/status",
+            put(routes::admin::update_user_status),
+        )
+        .route("/admin/audit-log", get(routes::admin::list_audit_logs))
+        .route(
+            "/admin/system-settings",
+            get(routes::admin::list_system_settings).put(routes::admin::update_system_setting),
         )
         .route_layer(auth);
 

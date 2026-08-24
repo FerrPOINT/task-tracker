@@ -28,7 +28,13 @@ import {
 } from '@/api/sprint'
 import { listStatuses, listTransitions, listIssueTypes } from '@/api/workflow'
 import { listAttachments, uploadAttachment, deleteAttachment } from '@/api/attachment'
-import { listProjectLabels, createLabel, listIssueLabels, attachLabel, detachLabel } from '@/api/label'
+import {
+  listProjectLabels,
+  createLabel,
+  listIssueLabels,
+  attachLabel,
+  detachLabel,
+} from '@/api/label'
 import { listIssueLinks, createIssueLink, deleteIssueLink } from '@/api/link'
 import {
   getVelocityReport,
@@ -44,6 +50,71 @@ import {
   updateNotificationSettings,
   type UpdateNotificationSettingsInput,
 } from '@/api/notifications'
+import {
+  createAdminUser,
+  listAdminAuditLog,
+  listAdminSettings,
+  listAdminUsers,
+  updateAdminSetting,
+  updateAdminUserStatus,
+  type CreateAdminUserInput,
+  type UpdateSystemSettingInput,
+} from '@/api/admin'
+
+export const adminKeys = {
+  all: ['admin'] as const,
+  users: ['admin', 'users'] as const,
+  settings: ['admin', 'settings'] as const,
+  auditLog: (limit?: number) => ['admin', 'audit-log', limit ?? 100] as const,
+}
+
+export function useAdminUsers() {
+  return useQuery({ queryKey: adminKeys.users, queryFn: listAdminUsers })
+}
+
+export function useCreateAdminUser() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateAdminUserInput) => createAdminUser(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.users })
+      qc.invalidateQueries({ queryKey: adminKeys.auditLog() })
+    },
+  })
+}
+
+export function useUpdateAdminUserStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: updateAdminUserStatus,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.users })
+      qc.invalidateQueries({ queryKey: adminKeys.auditLog() })
+    },
+  })
+}
+
+export function useAdminSettings() {
+  return useQuery({ queryKey: adminKeys.settings, queryFn: listAdminSettings })
+}
+
+export function useUpdateAdminSetting() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateSystemSettingInput) => updateAdminSetting(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminKeys.settings })
+      qc.invalidateQueries({ queryKey: adminKeys.auditLog() })
+    },
+  })
+}
+
+export function useAdminAuditLog(limit = 100) {
+  return useQuery({
+    queryKey: adminKeys.auditLog(limit),
+    queryFn: () => listAdminAuditLog(limit),
+  })
+}
 
 export const notificationKeys = {
   list: ['notifications'] as const,
@@ -89,15 +160,27 @@ export const workflowKeys = {
 }
 
 export function useStatuses() {
-  return useQuery({ queryKey: workflowKeys.statuses, queryFn: listStatuses, staleTime: 5 * 60 * 1000 })
+  return useQuery({
+    queryKey: workflowKeys.statuses,
+    queryFn: listStatuses,
+    staleTime: 5 * 60 * 1000,
+  })
 }
 
 export function useTransitions() {
-  return useQuery({ queryKey: workflowKeys.transitions, queryFn: listTransitions, staleTime: 5 * 60 * 1000 })
+  return useQuery({
+    queryKey: workflowKeys.transitions,
+    queryFn: listTransitions,
+    staleTime: 5 * 60 * 1000,
+  })
 }
 
 export function useIssueTypes() {
-  return useQuery({ queryKey: workflowKeys.issueTypes, queryFn: listIssueTypes, staleTime: 5 * 60 * 1000 })
+  return useQuery({
+    queryKey: workflowKeys.issueTypes,
+    queryFn: listIssueTypes,
+    staleTime: 5 * 60 * 1000,
+  })
 }
 
 export const attachmentKeys = {
@@ -308,7 +391,6 @@ export function useMoveIssue(projectKey: string) {
   })
 }
 
-
 export function useUsers() {
   return useQuery({
     queryKey: ['users'],
@@ -445,7 +527,8 @@ export function useProjectLabels(projectKey: string | undefined) {
 export function useCreateLabel(projectKey: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ name, color }: { name: string; color: string }) => createLabel(projectKey, name, color),
+    mutationFn: ({ name, color }: { name: string; color: string }) =>
+      createLabel(projectKey, name, color),
     onSuccess: () => qc.invalidateQueries({ queryKey: labelKeys.project(projectKey) }),
   })
 }
@@ -507,10 +590,8 @@ export const reportKeys = {
   velocity: (projectId: string, count: number) =>
     ['reports', 'velocity', projectId, count] as const,
   burndown: (sprintId: string) => ['reports', 'burndown', sprintId] as const,
-  cumulativeFlow: (projectId: string) =>
-    ['reports', 'cumulative-flow', projectId] as const,
-  controlChart: (projectId: string) =>
-    ['reports', 'control-chart', projectId] as const,
+  cumulativeFlow: (projectId: string) => ['reports', 'cumulative-flow', projectId] as const,
+  controlChart: (projectId: string) => ['reports', 'control-chart', projectId] as const,
 }
 
 export function useVelocityReport(projectId: string | undefined, count = 6) {

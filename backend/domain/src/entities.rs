@@ -1,9 +1,9 @@
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use shared::{
-    AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, IssueStatusHistoryId,
-    IssueType, IssueTypeId, LabelId, NotificationId, Priority, ProjectId, ProjectKey, SprintId,
-    StatusId, Timestamp, UserId, WorkflowTransitionId, WorklogId,
+    AttachmentId, AuditLogId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId,
+    IssueStatusHistoryId, IssueType, IssueTypeId, LabelId, NotificationId, Priority, ProjectId,
+    ProjectKey, SprintId, StatusId, Timestamp, UserId, WorkflowTransitionId, WorklogId,
 };
 use std::str::FromStr;
 
@@ -20,6 +20,8 @@ pub struct User {
     pub display_name: ArcStr,
     pub password_hash: ArcStr,
     pub refresh_token_hash: Option<ArcStr>,
+    pub is_system_admin: bool,
+    pub is_active: bool,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
 }
@@ -430,4 +432,22 @@ pub struct NotificationUserSettings {
     pub email_frequency: ArcStr,
     pub disabled_event_types: Vec<ArcStr>,
     pub notify_own_changes: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AuditLog {
+    pub id: AuditLogId,
+    pub actor_id: UserId,
+    pub action: ArcStr,
+    pub entity_type: ArcStr,
+    pub entity_id: Option<uuid::Uuid>,
+    pub metadata: serde_json::Value,
+    pub created_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SystemSetting {
+    pub key: ArcStr,
+    pub value: serde_json::Value,
+    pub updated_at: Timestamp,
 }

@@ -1,6 +1,7 @@
 pub mod prelude;
 
 pub mod attachment;
+pub mod audit_log;
 pub mod board;
 pub mod comment;
 pub mod issue;
@@ -16,11 +17,13 @@ pub mod project_member;
 pub mod saved_filter;
 pub mod sprint;
 pub mod status;
+pub mod system_setting;
 pub mod user;
 pub mod workflow_transition;
 pub mod worklog;
 
 pub use attachment::Entity as Attachment;
+pub use audit_log::Entity as AuditLog;
 pub use board::Entity as Board;
 pub use comment::Entity as Comment;
 pub use issue::Entity as Issue;
@@ -36,6 +39,7 @@ pub use project_member::Entity as ProjectMember;
 pub use saved_filter::Entity as SavedFilter;
 pub use sprint::Entity as Sprint;
 pub use status::Entity as Status;
+pub use system_setting::Entity as SystemSetting;
 pub use user::Entity as User;
 pub use workflow_transition::Entity as WorkflowTransition;
 pub use worklog::Entity as Worklog;

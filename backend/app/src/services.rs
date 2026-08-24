@@ -23,6 +23,9 @@ use shared::{
 
 mod helpers;
 
+pub mod admin;
+pub use admin::AdminServiceImpl;
+
 #[cfg(test)]
 mod tests;
 

@@ -16,6 +16,7 @@ import {
   X,
   LogOut,
   BarChart3,
+  ShieldCheck,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
@@ -93,6 +94,7 @@ export function AppShell() {
     { to: '/projects', icon: FolderKanban, labelKey: 'navigation.projects' },
     { to: '/search', icon: Search, labelKey: 'navigation.search' },
     { to: '/reports', icon: BarChart3, labelKey: 'navigation.reports' },
+    { to: '/admin', icon: ShieldCheck, labelKey: 'navigation.admin' },
   ]
 
   const projectItems = [
@@ -200,12 +202,20 @@ export function AppShell() {
                       {notification.action_url ? (
                         <Link to={notification.action_url} className="block hover:text-accent">
                           <div className="truncate font-medium">{notification.title}</div>
-                          {notification.body && <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">{notification.body}</div>}
+                          {notification.body && (
+                            <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+                              {notification.body}
+                            </div>
+                          )}
                         </Link>
                       ) : (
                         <>
                           <div className="truncate font-medium">{notification.title}</div>
-                          {notification.body && <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">{notification.body}</div>}
+                          {notification.body && (
+                            <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+                              {notification.body}
+                            </div>
+                          )}
                         </>
                       )}
                     </div>
@@ -225,7 +235,9 @@ export function AppShell() {
                   </DropdownMenuItem>
                 ))}
                 {notifications.length === 0 && (
-                  <p className="px-3 py-6 text-center text-sm text-text-muted">{t('notifications.empty')}</p>
+                  <p className="px-3 py-6 text-center text-sm text-text-muted">
+                    {t('notifications.empty')}
+                  </p>
                 )}
               </div>
               <div className="border-t border-border p-1">
@@ -248,7 +260,10 @@ export function AppShell() {
                 {user?.display_name ?? user?.email ?? 'User'}
               </div>
               <div className="px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
-              <DropdownMenuItem onClick={() => logout.mutate()} className="gap-2 text-text-secondary">
+              <DropdownMenuItem
+                onClick={() => logout.mutate()}
+                className="gap-2 text-text-secondary"
+              >
                 <LogOut className="h-4 w-4" />
                 <span>{t('navigation.logout')}</span>
               </DropdownMenuItem>

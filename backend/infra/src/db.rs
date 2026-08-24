@@ -15,6 +15,8 @@ pub async fn build_repositories(config: DatabaseConfig) -> Result<Repositories, 
 
     Ok(Repositories {
         users: repos.users,
+        audit_logs: repos.audit_logs,
+        system_settings: repos.system_settings,
         projects: repos.projects,
         issues: repos.issues,
         boards: repos.boards,

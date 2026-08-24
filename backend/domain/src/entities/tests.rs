@@ -1,4 +1,4 @@
-use crate::{Board, Issue, Project, SprintState, StatusCategory, User};
+use crate::{AuditLog, Board, Issue, Project, SprintState, StatusCategory, SystemSetting, User};
 use shared::{BoardId, IssueKey, IssueType, Priority, ProjectId, ProjectKey, StatusId, UserId};
 use std::str::FromStr;
 
@@ -23,6 +23,8 @@ fn demo_user() -> User {
         display_name: "Demo".into(),
         password_hash: "x".into(),
         refresh_token_hash: None,
+        is_system_admin: false,
+        is_active: true,
         created_at: shared::now(),
         updated_at: shared::now(),
     }
@@ -181,4 +183,39 @@ fn board_default_has_columns() {
 #[test]
 fn column_category_default() {
     assert_eq!(StatusCategory::default(), StatusCategory::Todo);
+}
+
+#[test]
+fn user_has_system_admin_and_active_flags() {
+    let user = demo_user();
+    assert!(!user.is_system_admin);
+    assert!(user.is_active);
+}
+
+#[test]
+fn audit_log_construction() {
+    let actor = demo_user();
+    let entry = AuditLog {
+        id: shared::AuditLogId::new(),
+        actor_id: actor.id,
+        action: "user.login".into(),
+        entity_type: "user".into(),
+        entity_id: Some(actor.id.as_uuid()),
+        metadata: serde_json::Value::Null,
+        created_at: shared::now(),
+    };
+    assert_eq!(entry.action.as_ref(), "user.login");
+    assert_eq!(entry.entity_type.as_ref(), "user");
+    assert_eq!(entry.entity_id, Some(actor.id.as_uuid()));
+}
+
+#[test]
+fn system_setting_construction() {
+    let setting = SystemSetting {
+        key: "smtp.host".into(),
+        value: serde_json::json!({"host": "smtp.example.com"}),
+        updated_at: shared::now(),
+    };
+    assert_eq!(setting.key.as_ref(), "smtp.host");
+    assert_eq!(setting.value["host"], "smtp.example.com");
 }
