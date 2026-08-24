@@ -5,28 +5,28 @@ use async_trait::async_trait;
 use domain::{
     Attachment, AttachmentRepository, Board, BoardColumn, BoardRepository, Comment,
     CommentRepository, Issue, IssueLink, IssueLinkRepository, IssueQuery, IssueRepository,
-    IssueTypeEntity, IssueTypeRepository, Label, LabelRepository, LinkType, Notification,
-    NotificationRepository, NotificationUserSettings, Project, ProjectMember,
-    ProjectMemberRepository, ProjectRepository, ProjectRole, SavedFilter, SavedFilterRepository,
-    Sprint, SprintRepository, SprintState, Status, StatusCategory, StatusRepository, User,
-    UserNotificationSettingsRepository, UserRepository, WorkflowTransition, WorkflowTransitionId,
-    WorkflowTransitionRepository, Worklog, WorklogRepository,
+    IssueStatusHistory, IssueStatusHistoryRepository, IssueTypeEntity, IssueTypeRepository, Label,
+    LabelRepository, LinkType, Notification, NotificationRepository, NotificationUserSettings,
+    Project, ProjectMember, ProjectMemberRepository, ProjectRepository, ProjectRole, SavedFilter,
+    SavedFilterRepository, Sprint, SprintRepository, SprintState, Status, StatusCategory,
+    StatusRepository, User, UserNotificationSettingsRepository, UserRepository, WorkflowTransition,
+    WorkflowTransitionId, WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 use shared::{
-    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, IssueType,
-    IssueTypeId, LabelId, NotificationId, Priority, ProjectId, ProjectKey, SavedFilterId, SprintId,
-    StatusId, UserId, WorklogId,
+    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId,
+    IssueStatusHistoryId, IssueType, IssueTypeId, LabelId, NotificationId, Priority, ProjectId,
+    ProjectKey, SavedFilterId, SprintId, StatusId, UserId, WorklogId,
 };
 use uuid::Uuid;
 
 use crate::entities::{
-    attachment, board, comment, issue, issue_label, issue_link, issue_type, label, notification,
-    notification_user_settings, project, project_member, saved_filter, sprint, status, user,
-    workflow_transition, worklog,
+    attachment, board, comment, issue, issue_label, issue_link, issue_status_history, issue_type,
+    label, notification, notification_user_settings, project, project_member, saved_filter, sprint,
+    status, user, workflow_transition, worklog,
 };
 
 fn map_status(m: status::Model) -> Status {
@@ -82,6 +82,7 @@ pub struct SeaOrmRepositories {
     pub saved_filters: Arc<dyn SavedFilterRepository>,
     pub notifications: Arc<dyn NotificationRepository>,
     pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
+    pub issue_status_history: Arc<dyn IssueStatusHistoryRepository>,
 }
 
 impl SeaOrmRepositories {
@@ -104,7 +105,8 @@ impl SeaOrmRepositories {
             issue_links: Arc::new(IssueLinkRepo { db: db.clone() }),
             saved_filters: Arc::new(SavedFilterRepo { db: db.clone() }),
             notifications: Arc::new(NotificationRepo { db: db.clone() }),
-            notification_settings: Arc::new(NotificationUserSettingsRepo { db }),
+            notification_settings: Arc::new(NotificationUserSettingsRepo { db: db.clone() }),
+            issue_status_history: Arc::new(IssueStatusHistoryRepo { db }),
         }
     }
 }
@@ -721,6 +723,7 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         saved_filters: sea.saved_filters,
         notifications: sea.notifications,
         notification_settings: sea.notification_settings,
+        issue_status_history: sea.issue_status_history,
     }
 }
 
@@ -1492,5 +1495,76 @@ fn map_notification_user_settings(
         email_frequency: m.email_frequency.into(),
         disabled_event_types,
         notify_own_changes: m.notify_own_changes,
+    }
+}
+
+struct IssueStatusHistoryRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+fn map_issue_status_history(m: issue_status_history::Model) -> IssueStatusHistory {
+    IssueStatusHistory {
+        id: IssueStatusHistoryId::from_uuid(m.id),
+        issue_id: IssueId::from_uuid(m.issue_id),
+        from_status_id: m.from_status_id.map(StatusId::from_uuid),
+        to_status_id: StatusId::from_uuid(m.to_status_id),
+        changed_by_id: UserId::from_uuid(m.changed_by_id),
+        changed_at: m
+            .created_at
+            .with_timezone(&chrono::FixedOffset::east_opt(0).unwrap()),
+    }
+}
+
+#[async_trait]
+impl IssueStatusHistoryRepository for IssueStatusHistoryRepo {
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueStatusHistory>, AppError> {
+        let models = issue_status_history::Entity::find()
+            .filter(issue_status_history::Column::IssueId.eq(issue_id.as_uuid()))
+            .order_by_asc(issue_status_history::Column::CreatedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_issue_status_history).collect())
+    }
+
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<IssueStatusHistory>, AppError> {
+        // Fetch issue IDs belonging to the project, then filter history by those IDs.
+        let issue_ids: Vec<Uuid> = issue::Entity::find()
+            .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
+            .select_only()
+            .column(issue::Column::Id)
+            .into_tuple()
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if issue_ids.is_empty() {
+            return Ok(vec![]);
+        }
+        let models = issue_status_history::Entity::find()
+            .filter(issue_status_history::Column::IssueId.is_in(issue_ids))
+            .order_by_asc(issue_status_history::Column::CreatedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_issue_status_history).collect())
+    }
+
+    async fn save(&self, entry: &IssueStatusHistory) -> Result<(), AppError> {
+        let model = issue_status_history::ActiveModel {
+            id: Set(entry.id.as_uuid()),
+            issue_id: Set(entry.issue_id.as_uuid()),
+            from_status_id: Set(entry.from_status_id.map(|s| s.as_uuid())),
+            to_status_id: Set(entry.to_status_id.as_uuid()),
+            changed_by_id: Set(entry.changed_by_id.as_uuid()),
+            created_at: Set(entry.changed_at),
+        };
+        issue_status_history::Entity::insert(model)
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
     }
 }

@@ -16,6 +16,7 @@ pub mod events;
 pub mod labels;
 pub mod links;
 pub mod notifications;
+pub mod reports;
 pub mod saved_filters;
 pub mod users;
 pub mod workflow;

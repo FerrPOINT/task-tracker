@@ -9,6 +9,7 @@ import { IssueCreatePage } from '@/pages/issue-create'
 import { LoginPage } from '@/pages/login'
 import { RegisterPage } from '@/pages/register'
 import { NotificationsPage } from '@/pages/notifications'
+import { ReportsPage } from '@/pages/reports'
 import { AppShell } from '@/widgets/app-shell'
 import { RequireAuth } from '@/shared/auth/require-auth'
 
@@ -25,6 +26,7 @@ export const router = createBrowserRouter([
           { path: '/projects/:projectKey/backlog', element: <ProjectBacklogPage /> },
           { path: '/search', element: <SearchPage /> },
           { path: '/notifications', element: <NotificationsPage /> },
+          { path: '/reports', element: <ReportsPage /> },
           { path: '/issues/create', element: <IssueCreatePage /> },
           { path: '/issues/:id', element: <IssueDetailPage /> },
         ],

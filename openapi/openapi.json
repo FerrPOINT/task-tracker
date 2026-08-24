@@ -2337,6 +2337,136 @@
         }
       }
     },
+    "/api/v1/reports/burndown": {
+      "get": {
+        "tags": [
+          "routes::reports"
+        ],
+        "operationId": "get_burndown_report",
+        "parameters": [
+          {
+            "name": "sprintId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BurndownResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/control-chart": {
+      "get": {
+        "tags": [
+          "routes::reports"
+        ],
+        "operationId": "get_control_chart_report",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlChartResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/cumulative-flow": {
+      "get": {
+        "tags": [
+          "routes::reports"
+        ],
+        "operationId": "get_cumulative_flow_report",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CumulativeFlowResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/reports/velocity": {
+      "get": {
+        "tags": [
+          "routes::reports"
+        ],
+        "operationId": "get_velocity_report",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "count",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VelocityResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/search": {
       "get": {
         "tags": [
@@ -2815,6 +2945,40 @@
           }
         }
       },
+      "BurndownPointResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "remaining"
+        ],
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "remaining": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "BurndownResponse": {
+        "type": "object",
+        "required": [
+          "sprint_name",
+          "points"
+        ],
+        "properties": {
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BurndownPointResponse"
+            }
+          },
+          "sprint_name": {
+            "type": "string"
+          }
+        }
+      },
       "CommentListResponse": {
         "type": "object",
         "required": [
@@ -2865,6 +3029,36 @@
           "updated_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "ControlChartPointResponse": {
+        "type": "object",
+        "required": [
+          "issue_key",
+          "cycle_time_days"
+        ],
+        "properties": {
+          "cycle_time_days": {
+            "type": "number",
+            "format": "double"
+          },
+          "issue_key": {
+            "type": "string"
+          }
+        }
+      },
+      "ControlChartResponse": {
+        "type": "object",
+        "required": [
+          "points"
+        ],
+        "properties": {
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ControlChartPointResponse"
+            }
           }
         }
       },
@@ -3044,6 +3238,46 @@
           "started_at": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "CumulativeFlowPointResponse": {
+        "type": "object",
+        "required": [
+          "date",
+          "todo",
+          "in_progress",
+          "done"
+        ],
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "done": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "in_progress": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "todo": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "CumulativeFlowResponse": {
+        "type": "object",
+        "required": [
+          "points"
+        ],
+        "properties": {
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CumulativeFlowPointResponse"
+            }
           }
         }
       },
@@ -3933,6 +4167,41 @@
             "type": "string"
           },
           "username": {
+            "type": "string"
+          }
+        }
+      },
+      "VelocityResponse": {
+        "type": "object",
+        "required": [
+          "sprints"
+        ],
+        "properties": {
+          "sprints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VelocitySprintResponse"
+            }
+          }
+        }
+      },
+      "VelocitySprintResponse": {
+        "type": "object",
+        "required": [
+          "name",
+          "committed",
+          "completed"
+        ],
+        "properties": {
+          "committed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
             "type": "string"
           }
         }

@@ -7,9 +7,10 @@ mod tests;
 
 use crate::{
     Board, BoardRepository, Comment, CommentRepository, EventBus, Issue, IssueQuery,
-    IssueRepository, Notification, NotificationRepository, NotificationUserSettings, Project,
-    ProjectMember, ProjectMemberRepository, ProjectQuery, ProjectRepository, SavedFilter,
-    SavedFilterRepository, Sprint, SprintRepository, UnitOfWork, User,
+    IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository, Notification,
+    NotificationRepository, NotificationUserSettings, Project, ProjectMember,
+    ProjectMemberRepository, ProjectQuery, ProjectRepository, SavedFilter, SavedFilterRepository,
+    Sprint, SprintRepository, Status, StatusRepository, UnitOfWork, User,
     UserNotificationSettingsRepository, UserRepository, Worklog, WorklogRepository,
 };
 use shared::{
@@ -308,6 +309,51 @@ impl SprintRepository for MemorySprintRepository {
             sprints.push(sprint.clone());
         }
         Ok(sprint.id)
+    }
+}
+
+pub struct MemoryStatusRepository {
+    statuses: Arc<Mutex<Vec<Status>>>,
+}
+
+impl MemoryStatusRepository {
+    pub fn new(statuses: Vec<Status>) -> Self {
+        Self {
+            statuses: Arc::new(Mutex::new(statuses)),
+        }
+    }
+}
+
+impl Default for MemoryStatusRepository {
+    fn default() -> Self {
+        Self::new(vec![])
+    }
+}
+
+#[async_trait]
+impl StatusRepository for MemoryStatusRepository {
+    async fn get_by_id(&self, id: shared::StatusId) -> Result<Status, AppError> {
+        self.statuses
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|s| s.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("status", id))
+    }
+
+    async fn list_all(&self) -> Result<Vec<Status>, AppError> {
+        Ok(self.statuses.lock().unwrap().clone())
+    }
+
+    async fn get_default(&self) -> Result<Status, AppError> {
+        self.statuses
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|s| s.is_default)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("status", "default"))
     }
 }
 
@@ -855,5 +901,69 @@ impl UserNotificationSettingsRepository for MemoryNotificationRepository {
             all_settings.push(settings.clone());
         }
         Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryIssueStatusHistoryRepository {
+    history: Arc<Mutex<Vec<IssueStatusHistory>>>,
+    /// Parallel vector of project_id per entry (index-aligned with `history`).
+    project_ids: Arc<Mutex<Vec<ProjectId>>>,
+}
+
+#[async_trait]
+impl IssueStatusHistoryRepository for MemoryIssueStatusHistoryRepository {
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueStatusHistory>, AppError> {
+        let history = self.history.lock().unwrap();
+        Ok(history
+            .iter()
+            .filter(|h| h.issue_id == issue_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<IssueStatusHistory>, AppError> {
+        let history = self.history.lock().unwrap();
+        let project_ids = self.project_ids.lock().unwrap();
+        Ok(history
+            .iter()
+            .zip(project_ids.iter())
+            .filter(|(_, pid)| **pid == project_id)
+            .map(|(h, _)| h.clone())
+            .collect())
+    }
+
+    async fn save(&self, entry: &IssueStatusHistory) -> Result<(), AppError> {
+        let mut history = self.history.lock().unwrap();
+        let mut project_ids = self.project_ids.lock().unwrap();
+        if let Some(idx) = history.iter().position(|h| h.id == entry.id) {
+            history[idx] = entry.clone();
+            // project_ids stays aligned by index
+        } else {
+            history.push(entry.clone());
+            // Project ID is not stored on IssueStatusHistory directly; caller must
+            // set it via set_project. For simplicity, we store ProjectId::nil() and
+            // rely on the caller using the variant below.
+            project_ids.push(ProjectId::nil());
+        }
+        Ok(())
+    }
+}
+
+impl MemoryIssueStatusHistoryRepository {
+    /// Save a history entry with its associated project_id for `list_by_project`.
+    pub fn save_with_project(&self, entry: &IssueStatusHistory, project_id: ProjectId) {
+        let mut history = self.history.lock().unwrap();
+        let mut project_ids = self.project_ids.lock().unwrap();
+        if let Some(idx) = history.iter().position(|h| h.id == entry.id) {
+            history[idx] = entry.clone();
+            project_ids[idx] = project_id;
+        } else {
+            history.push(entry.clone());
+            project_ids.push(project_id);
+        }
     }
 }

@@ -74,6 +74,7 @@ pub struct Services {
     pub issue_link: Arc<dyn IssueLinkService>,
     pub saved_filter: Arc<dyn SavedFilterService>,
     pub notification: Arc<dyn NotificationService>,
+    pub report: Arc<dyn ReportService>,
 }
 
 impl AppContext {
@@ -193,6 +194,12 @@ impl AppContext {
                 notification: Arc::new(crate::services::NotificationServiceImpl::new(
                     repos.notifications.clone(),
                     repos.notification_settings.clone(),
+                )),
+                report: Arc::new(crate::services::ReportServiceImpl::new(
+                    repos.issues.clone(),
+                    repos.sprints.clone(),
+                    repos.statuses.clone(),
+                    repos.issue_status_history.clone(),
                 )),
                 sprint,
             },
@@ -482,4 +489,55 @@ pub struct SavedFilterDto {
     pub is_public: bool,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[async_trait]
+pub trait ReportService: Send + Sync {
+    async fn get_velocity(
+        &self,
+        project_id: shared::ProjectId,
+        count: u32,
+    ) -> Result<Vec<VelocitySprintDto>, AppError>;
+    async fn get_burndown(&self, sprint_id: shared::SprintId) -> Result<BurndownDto, AppError>;
+    async fn get_cumulative_flow(
+        &self,
+        project_id: shared::ProjectId,
+    ) -> Result<Vec<CumulativeFlowPointDto>, AppError>;
+    async fn get_control_chart(
+        &self,
+        project_id: shared::ProjectId,
+    ) -> Result<Vec<ControlChartPointDto>, AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VelocitySprintDto {
+    pub name: String,
+    pub committed: usize,
+    pub completed: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BurndownDto {
+    pub sprint_name: String,
+    pub points: Vec<BurndownPointDto>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BurndownPointDto {
+    pub date: String,
+    pub remaining: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CumulativeFlowPointDto {
+    pub date: String,
+    pub todo: usize,
+    pub in_progress: usize,
+    pub done: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ControlChartPointDto {
+    pub issue_key: String,
+    pub cycle_time_days: f64,
 }

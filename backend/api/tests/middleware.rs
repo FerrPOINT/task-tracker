@@ -50,6 +50,7 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
+        issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
     });
     let ctx = Arc::new(app::context::AppContext::new(
         test_config(),

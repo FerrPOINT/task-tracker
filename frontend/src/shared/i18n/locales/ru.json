@@ -8,7 +8,8 @@
     "backlog": "Бэклог",
     "board": "Доска",
     "trash": "Корзина",
-    "logout": "Выйти"
+    "logout": "Выйти",
+    "reports": "Отчёты"
   },
   "auth": {
     "login": "Войти",
@@ -323,5 +324,49 @@
     "delete": "Удалить фильтр",
     "execute": "Применить фильтр",
     "manage": "Управление фильтрами"
+  },
+  "reports": {
+    "title": "Отчёты",
+    "project": "Проект",
+    "selectProject": "Выберите проект",
+    "sprintId": "ID спринта",
+    "sprintIdPlaceholder": "UUID спринта",
+    "tabVelocity": "Скорость",
+    "tabBurndown": "Burndown",
+    "tabCumulativeFlow": "Кумулятивный поток",
+    "tabControlChart": "Контрольная диаграмма",
+    "velocity": {
+      "title": "Скорость",
+      "subtitle": "Запланированные и завершённые story points по спринтам",
+      "committed": "Запланировано",
+      "completed": "Завершено",
+      "sprint": "Спринт",
+      "empty": "Нет данных о скорости."
+    },
+    "burndown": {
+      "title": "Burndown",
+      "subtitle": "Оставшиеся задачи по дням",
+      "remaining": "Осталось",
+      "date": "Дата",
+      "empty": "Нет данных burndown."
+    },
+    "cumulativeFlow": {
+      "title": "Кумулятивный поток",
+      "subtitle": "Количество задач по статусам по дням",
+      "todo": "К выполнению",
+      "inProgress": "В работе",
+      "done": "Готово",
+      "date": "Дата",
+      "empty": "Нет данных кумулятивного потока."
+    },
+    "controlChart": {
+      "title": "Контрольная диаграмма",
+      "subtitle": "Время цикла по задачам",
+      "cycleTime": "Время цикла (дни)",
+      "issue": "Задача",
+      "empty": "Нет данных контрольной диаграммы."
+    },
+    "loading": "Загрузка отчёта…",
+    "noProject": "Выберите проект для просмотра отчётов."
   }
 }

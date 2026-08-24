@@ -693,6 +693,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/reports/burndown": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_burndown_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/control-chart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_control_chart_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/cumulative-flow": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_cumulative_flow_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/reports/velocity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_velocity_report"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -843,6 +907,14 @@ export interface components {
             project_key: string;
             sprint: components["schemas"]["SprintResponse"];
         };
+        BurndownPointResponse: {
+            date: string;
+            remaining: number;
+        };
+        BurndownResponse: {
+            points: components["schemas"]["BurndownPointResponse"][];
+            sprint_name: string;
+        };
         CommentListResponse: {
             comments: components["schemas"]["CommentResponse"][];
         };
@@ -856,6 +928,14 @@ export interface components {
             issue_id: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        ControlChartPointResponse: {
+            /** Format: double */
+            cycle_time_days: number;
+            issue_key: string;
+        };
+        ControlChartResponse: {
+            points: components["schemas"]["ControlChartPointResponse"][];
         };
         CreateCommentRequest: {
             body: string;
@@ -902,6 +982,15 @@ export interface components {
             duration_seconds: number;
             /** Format: date-time */
             started_at: string;
+        };
+        CumulativeFlowPointResponse: {
+            date: string;
+            done: number;
+            in_progress: number;
+            todo: number;
+        };
+        CumulativeFlowResponse: {
+            points: components["schemas"]["CumulativeFlowPointResponse"][];
         };
         DashboardResponse: {
             assigned_issues: components["schemas"]["IssueResponse"][];
@@ -1127,6 +1216,14 @@ export interface components {
             email: string;
             id: string;
             username: string;
+        };
+        VelocityResponse: {
+            sprints: components["schemas"]["VelocitySprintResponse"][];
+        };
+        VelocitySprintResponse: {
+            committed: number;
+            completed: number;
+            name: string;
         };
         WorklogListResponse: {
             worklogs: components["schemas"]["WorklogResponse"][];
@@ -3055,6 +3152,91 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SprintResponse"];
+                };
+            };
+        };
+    };
+    get_burndown_report: {
+        parameters: {
+            query: {
+                sprintId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BurndownResponse"];
+                };
+            };
+        };
+    };
+    get_control_chart_report: {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlChartResponse"];
+                };
+            };
+        };
+    };
+    get_cumulative_flow_report: {
+        parameters: {
+            query: {
+                projectId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CumulativeFlowResponse"];
+                };
+            };
+        };
+    };
+    get_velocity_report: {
+        parameters: {
+            query: {
+                projectId: string;
+                count?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VelocityResponse"];
                 };
             };
         };

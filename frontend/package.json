@@ -32,6 +32,7 @@
     "i18next-http-backend": "^3.0.2",
     "lucide-react": "^0.487.0",
     "openapi-fetch": "^0.13.5",
+    "recharts": "^2.15.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.55.0",

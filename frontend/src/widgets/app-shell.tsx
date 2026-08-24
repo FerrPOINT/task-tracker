@@ -15,6 +15,7 @@ import {
   Menu,
   X,
   LogOut,
+  BarChart3,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
@@ -91,6 +92,7 @@ export function AppShell() {
     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
     { to: '/projects', icon: FolderKanban, labelKey: 'navigation.projects' },
     { to: '/search', icon: Search, labelKey: 'navigation.search' },
+    { to: '/reports', icon: BarChart3, labelKey: 'navigation.reports' },
   ]
 
   const projectItems = [
@@ -144,6 +146,13 @@ export function AppShell() {
           >
             <Search className="h-4 w-4" />
             <span>{t('navigation.search')}</span>
+          </Link>
+          <Link
+            to="/reports"
+            className="hidden items-center gap-2 rounded-md px-2 py-1 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
+          >
+            <BarChart3 className="h-4 w-4" />
+            <span>{t('navigation.reports')}</span>
           </Link>
         </div>
         <div className="flex items-center gap-2 md:gap-3">

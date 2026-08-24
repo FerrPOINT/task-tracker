@@ -138,6 +138,7 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
+        issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
     });
     AppContext::new(
         test_config(),
@@ -885,6 +886,7 @@ fn failing_context() -> AppContext {
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
+        issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
     });
     AppContext::new(test_config(), repos, Arc::new(TestStorage::default()))
 }
@@ -1051,4 +1053,385 @@ async fn notification_service_returns_default_settings_and_persists_valid_update
             .await
             .is_err()
     );
+}
+// ─── Report service tests ───────────────────────────────────────────
+
+use crate::context::ReportService;
+use crate::services::ReportServiceImpl;
+use domain::{
+    IssueStatusHistory, MemoryIssueStatusHistoryRepository, MemoryStatusRepository, Status,
+};
+
+fn make_status(id: &str, category: StatusCategory, is_closed: bool) -> Status {
+    Status {
+        id: StatusId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
+        name: "status".into(),
+        category,
+        position: 0,
+        is_default: false,
+        is_closed,
+    }
+}
+
+fn make_sprint(
+    id: &str,
+    project_id: ProjectId,
+    name: &str,
+    state: domain::SprintState,
+    start: chrono::DateTime<chrono::FixedOffset>,
+    end: chrono::DateTime<chrono::FixedOffset>,
+) -> Sprint {
+    Sprint {
+        id: SprintId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
+        project_id,
+        name: name.into(),
+        goal: None,
+        state,
+        start_date: Some(start),
+        end_date: Some(end),
+        velocity: None,
+    }
+}
+
+fn make_issue(
+    id: &str,
+    project_id: ProjectId,
+    key_num: u32,
+    status_id: StatusId,
+    sprint_id: Option<SprintId>,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
+) -> Issue {
+    Issue {
+        id: IssueId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
+        project_id,
+        key: IssueKey::new(ProjectKey::new("TT"), key_num),
+        issue_type: IssueType::Task,
+        status_id,
+        summary: "test".into(),
+        description: None,
+        assignee_id: None,
+        reporter_id: UserId::new(),
+        priority: Priority::Medium,
+        labels: vec![],
+        sprint_id,
+        position: 0.0,
+        due_date: None,
+        original_estimate_seconds: None,
+        remaining_estimate_seconds: None,
+        time_spent_seconds: 0,
+        created_at,
+        updated_at: created_at,
+        events: vec![],
+    }
+}
+
+fn make_history(
+    id: &str,
+    issue_id: IssueId,
+    to_status_id: StatusId,
+    changed_at: chrono::DateTime<chrono::FixedOffset>,
+) -> IssueStatusHistory {
+    IssueStatusHistory {
+        id: shared::IssueStatusHistoryId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
+        issue_id,
+        from_status_id: None,
+        to_status_id,
+        changed_by_id: UserId::new(),
+        changed_at,
+    }
+}
+
+#[allow(clippy::type_complexity)]
+fn report_test_setup() -> (
+    Arc<MemoryIssueRepository>,
+    Arc<MemorySprintRepository>,
+    Arc<MemoryStatusRepository>,
+    Arc<MemoryIssueStatusHistoryRepository>,
+    ProjectId,
+    StatusId,
+    StatusId,
+    StatusId,
+) {
+    let todo =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let in_progress =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap());
+    let done =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap());
+
+    let statuses = vec![
+        make_status(
+            "00000000-0000-0000-0000-000000000001",
+            StatusCategory::Todo,
+            false,
+        ),
+        make_status(
+            "00000000-0000-0000-0000-000000000002",
+            StatusCategory::InProgress,
+            false,
+        ),
+        make_status(
+            "00000000-0000-0000-0000-000000000003",
+            StatusCategory::Done,
+            true,
+        ),
+    ];
+    let status_repo = Arc::new(MemoryStatusRepository::new(statuses));
+    let issue_repo = Arc::new(MemoryIssueRepository::default());
+    let sprint_repo = Arc::new(MemorySprintRepository::default());
+    let history_repo = Arc::new(MemoryIssueStatusHistoryRepository::default());
+    let project_id = ProjectId::new();
+
+    (
+        issue_repo,
+        sprint_repo,
+        status_repo,
+        history_repo,
+        project_id,
+        todo,
+        in_progress,
+        done,
+    )
+}
+
+#[tokio::test]
+async fn report_velocity_counts_committed_vs_completed() {
+    let (issues, sprints, statuses, _history, project_id, todo, _ip, done) = report_test_setup();
+
+    // Two closed sprints
+    let s1 = make_sprint(
+        "aaaaaaaa-0000-0000-0000-000000000001",
+        project_id,
+        "Sprint 1",
+        domain::SprintState::Closed,
+        shared::now() - chrono::Duration::days(20),
+        shared::now() - chrono::Duration::days(10),
+    );
+    let s2 = make_sprint(
+        "aaaaaaaa-0000-0000-0000-000000000002",
+        project_id,
+        "Sprint 2",
+        domain::SprintState::Closed,
+        shared::now() - chrono::Duration::days(10),
+        shared::now(),
+    );
+    sprints.save(&s1).await.unwrap();
+    sprints.save(&s2).await.unwrap();
+
+    // Sprint 1: 3 issues committed, 2 completed (done status)
+    for i in 1..=3 {
+        let st = if i <= 2 { done } else { todo };
+        let issue = make_issue(
+            &format!("bbbbbbbb-0000-0000-0000-00000000000{i}"),
+            project_id,
+            i,
+            st,
+            Some(s1.id),
+            shared::now() - chrono::Duration::days(15),
+        );
+        issues.save(&issue).await.unwrap();
+    }
+
+    // Sprint 2: 2 issues committed, 1 completed
+    for i in 4..=5 {
+        let st = if i == 4 { done } else { todo };
+        let issue = make_issue(
+            &format!("bbbbbbbb-0000-0000-0000-00000000000{i}"),
+            project_id,
+            i,
+            st,
+            Some(s2.id),
+            shared::now() - chrono::Duration::days(5),
+        );
+        issues.save(&issue).await.unwrap();
+    }
+
+    let service = ReportServiceImpl::new(
+        issues.clone(),
+        sprints.clone(),
+        statuses.clone(),
+        Arc::new(domain::StubIssueStatusHistoryRepository),
+    );
+    let result = service.get_velocity(project_id, 6).await.unwrap();
+    assert_eq!(result.len(), 2);
+    // Most recent first (sprint 2)
+    assert_eq!(result[0].name, "Sprint 2");
+    assert_eq!(result[0].committed, 2);
+    assert_eq!(result[0].completed, 1);
+    assert_eq!(result[1].name, "Sprint 1");
+    assert_eq!(result[1].committed, 3);
+    assert_eq!(result[1].completed, 2);
+}
+
+#[tokio::test]
+async fn report_burndown_computes_remaining_per_day() {
+    let (issues, sprints, _statuses, _history, project_id, _todo, _ip, _done) = report_test_setup();
+
+    let start = shared::now() - chrono::Duration::days(2);
+    let end = shared::now() + chrono::Duration::days(2);
+    let sprint = make_sprint(
+        "cccccccc-0000-0000-0000-000000000001",
+        project_id,
+        "Active Sprint",
+        domain::SprintState::Active,
+        start,
+        end,
+    );
+    sprints.save(&sprint).await.unwrap();
+
+    // 5 issues in sprint, all still open (todo)
+    for i in 1..=5 {
+        let issue = make_issue(
+            &format!("dddddddd-0000-0000-0000-00000000000{i}"),
+            project_id,
+            i,
+            StatusId::from_uuid(
+                uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+            ),
+            Some(sprint.id),
+            start,
+        );
+        issues.save(&issue).await.unwrap();
+    }
+
+    let service = ReportServiceImpl::new(
+        issues.clone(),
+        sprints.clone(),
+        Arc::new(domain::StubStatusRepository),
+        Arc::new(domain::StubIssueStatusHistoryRepository),
+    );
+    let result = service.get_burndown(sprint.id).await.unwrap();
+    assert_eq!(result.sprint_name, "Active Sprint");
+    // Should have at least 3 days (start, start+1, today)
+    assert!(!result.points.is_empty());
+    // First point = 5 (all committed)
+    assert_eq!(result.points[0].remaining, 5);
+}
+
+#[tokio::test]
+async fn report_cumulative_flow_snapshots_status_categories() {
+    let (issues, _sprints, statuses, history, project_id, todo, in_progress, done) =
+        report_test_setup();
+
+    let issue = make_issue(
+        "eeeeeeee-0000-0000-0000-000000000001",
+        project_id,
+        1,
+        done,
+        None,
+        shared::now() - chrono::Duration::days(3),
+    );
+    issues.save(&issue).await.unwrap();
+
+    // History: created -> todo, todo -> in_progress, in_progress -> done
+    let t0 = shared::now() - chrono::Duration::days(3);
+    let t1 = shared::now() - chrono::Duration::days(2);
+    let t2 = shared::now() - chrono::Duration::days(1);
+
+    history.save_with_project(
+        &make_history("11111111-0000-0000-0000-000000000001", issue.id, todo, t0),
+        project_id,
+    );
+    history.save_with_project(
+        &make_history(
+            "11111111-0000-0000-0000-000000000002",
+            issue.id,
+            in_progress,
+            t1,
+        ),
+        project_id,
+    );
+    history.save_with_project(
+        &make_history("11111111-0000-0000-0000-000000000003", issue.id, done, t2),
+        project_id,
+    );
+
+    let service = ReportServiceImpl::new(
+        issues.clone(),
+        Arc::new(domain::StubSprintRepository),
+        statuses.clone(),
+        history.clone(),
+    );
+    let result = service.get_cumulative_flow(project_id).await.unwrap();
+    assert!(!result.is_empty());
+    // After the last transition, done should be 1, todo and in_progress 0
+    let last = result.last().unwrap();
+    assert_eq!(last.done, 1);
+    assert_eq!(last.todo, 0);
+    assert_eq!(last.in_progress, 0);
+}
+
+#[tokio::test]
+async fn report_control_chart_computes_cycle_time() {
+    let (issues, _sprints, statuses, history, project_id, todo, _ip, done) = report_test_setup();
+
+    let created = shared::now() - chrono::Duration::days(5);
+    let done_time = shared::now() - chrono::Duration::days(1);
+
+    let issue = make_issue(
+        "ffffffff-0000-0000-0000-000000000001",
+        project_id,
+        1,
+        done,
+        None,
+        created,
+    );
+    issues.save(&issue).await.unwrap();
+
+    // History: created -> todo, then todo -> done after 4 days
+    history.save_with_project(
+        &make_history(
+            "22222222-0000-0000-0000-000000000001",
+            issue.id,
+            todo,
+            created,
+        ),
+        project_id,
+    );
+    history.save_with_project(
+        &make_history(
+            "22222222-0000-0000-0000-000000000002",
+            issue.id,
+            done,
+            done_time,
+        ),
+        project_id,
+    );
+
+    let service = ReportServiceImpl::new(
+        issues.clone(),
+        Arc::new(domain::StubSprintRepository),
+        statuses.clone(),
+        history.clone(),
+    );
+    let result = service.get_control_chart(project_id).await.unwrap();
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].issue_key, issue.key.to_string());
+    // 4 days cycle time (5 - 1 = 4)
+    assert!((result[0].cycle_time_days - 4.0).abs() < 0.1);
+}
+
+#[tokio::test]
+async fn report_control_chart_skips_issues_without_done_transition() {
+    let (issues, _sprints, statuses, history, project_id, todo, _ip, _done) = report_test_setup();
+
+    let issue = make_issue(
+        "33333333-0000-0000-0000-000000000001",
+        project_id,
+        1,
+        todo,
+        None,
+        shared::now() - chrono::Duration::days(5),
+    );
+    issues.save(&issue).await.unwrap();
+
+    let service = ReportServiceImpl::new(
+        issues.clone(),
+        Arc::new(domain::StubSprintRepository),
+        statuses.clone(),
+        history.clone(),
+    );
+    let result = service.get_control_chart(project_id).await.unwrap();
+    // No done transition → not included
+    assert!(result.is_empty());
 }

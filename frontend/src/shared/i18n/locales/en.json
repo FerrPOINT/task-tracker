@@ -8,7 +8,8 @@
     "backlog": "Backlog",
     "board": "Board",
     "trash": "Trash",
-    "logout": "Log out"
+    "logout": "Log out",
+    "reports": "Reports"
   },
   "auth": {
     "login": "Log in",
@@ -323,5 +324,49 @@
     "delete": "Delete filter",
     "execute": "Apply filter",
     "manage": "Manage filters"
+  },
+  "reports": {
+    "title": "Reports",
+    "project": "Project",
+    "selectProject": "Select a project",
+    "sprintId": "Sprint ID",
+    "sprintIdPlaceholder": "Sprint UUID",
+    "tabVelocity": "Velocity",
+    "tabBurndown": "Burndown",
+    "tabCumulativeFlow": "Cumulative Flow",
+    "tabControlChart": "Control Chart",
+    "velocity": {
+      "title": "Velocity",
+      "subtitle": "Committed vs completed story points per sprint",
+      "committed": "Committed",
+      "completed": "Completed",
+      "sprint": "Sprint",
+      "empty": "No velocity data yet."
+    },
+    "burndown": {
+      "title": "Burndown",
+      "subtitle": "Remaining issues over time",
+      "remaining": "Remaining",
+      "date": "Date",
+      "empty": "No burndown data yet."
+    },
+    "cumulativeFlow": {
+      "title": "Cumulative Flow",
+      "subtitle": "Issue count by status over time",
+      "todo": "To Do",
+      "inProgress": "In Progress",
+      "done": "Done",
+      "date": "Date",
+      "empty": "No cumulative flow data yet."
+    },
+    "controlChart": {
+      "title": "Control Chart",
+      "subtitle": "Cycle time per issue",
+      "cycleTime": "Cycle time (days)",
+      "issue": "Issue",
+      "empty": "No control chart data yet."
+    },
+    "loading": "Loading report…",
+    "noProject": "Select a project to view reports."
   }
 }

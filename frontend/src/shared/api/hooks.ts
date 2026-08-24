@@ -31,6 +31,12 @@ import { listAttachments, uploadAttachment, deleteAttachment } from '@/api/attac
 import { listProjectLabels, createLabel, listIssueLabels, attachLabel, detachLabel } from '@/api/label'
 import { listIssueLinks, createIssueLink, deleteIssueLink } from '@/api/link'
 import {
+  getVelocityReport,
+  getBurndownReport,
+  getCumulativeFlowReport,
+  getControlChartReport,
+} from '@/api/reports'
+import {
   getNotificationSettings,
   listNotifications,
   markAllNotificationsRead,
@@ -494,5 +500,47 @@ export function useDeleteIssueLink(issueId: string) {
   return useMutation({
     mutationFn: (id: string) => deleteIssueLink(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: linkKeys.issue(issueId) }),
+  })
+}
+
+export const reportKeys = {
+  velocity: (projectId: string, count: number) =>
+    ['reports', 'velocity', projectId, count] as const,
+  burndown: (sprintId: string) => ['reports', 'burndown', sprintId] as const,
+  cumulativeFlow: (projectId: string) =>
+    ['reports', 'cumulative-flow', projectId] as const,
+  controlChart: (projectId: string) =>
+    ['reports', 'control-chart', projectId] as const,
+}
+
+export function useVelocityReport(projectId: string | undefined, count = 6) {
+  return useQuery({
+    queryKey: reportKeys.velocity(projectId ?? '', count),
+    queryFn: () => getVelocityReport(projectId!, count),
+    enabled: !!projectId,
+  })
+}
+
+export function useBurndownReport(sprintId: string | undefined) {
+  return useQuery({
+    queryKey: reportKeys.burndown(sprintId ?? ''),
+    queryFn: () => getBurndownReport(sprintId!),
+    enabled: !!sprintId,
+  })
+}
+
+export function useCumulativeFlowReport(projectId: string | undefined) {
+  return useQuery({
+    queryKey: reportKeys.cumulativeFlow(projectId ?? ''),
+    queryFn: () => getCumulativeFlowReport(projectId!),
+    enabled: !!projectId,
+  })
+}
+
+export function useControlChartReport(projectId: string | undefined) {
+  return useQuery({
+    queryKey: reportKeys.controlChart(projectId ?? ''),
+    queryFn: () => getControlChartReport(projectId!),
+    enabled: !!projectId,
   })
 }

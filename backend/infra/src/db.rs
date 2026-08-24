@@ -31,6 +31,7 @@ pub async fn build_repositories(config: DatabaseConfig) -> Result<Repositories, 
         saved_filters: repos.saved_filters,
         notifications: repos.notifications,
         notification_settings: repos.notification_settings,
+        issue_status_history: repos.issue_status_history,
     })
 }
 

@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use domain::{
-    Board, BoardColumn, BoardRepository, InMemoryStorage, MemoryAttachmentRepository,
-    MemoryBoardRepository, MemoryCommentRepository, MemoryIssueLinkRepository,
-    MemoryIssueRepository, MemoryLabelRepository, MemoryNotificationRepository,
-    MemoryProjectMemberRepository, MemoryProjectRepository, MemorySavedFilterRepository,
-    MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository, Notification,
-    NotificationRepository, Project, ProjectRepository, StatusCategory, User,
-    UserNotificationSettingsRepository, UserRepository,
+    Board, BoardColumn, BoardRepository, InMemoryStorage, IssueRepository,
+    MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
+    MemoryIssueLinkRepository, MemoryIssueRepository, MemoryIssueStatusHistoryRepository,
+    MemoryLabelRepository, MemoryNotificationRepository, MemoryProjectMemberRepository,
+    MemoryProjectRepository, MemorySavedFilterRepository, MemorySprintRepository,
+    MemoryUserRepository, MemoryWorklogRepository, Notification, NotificationRepository, Project,
+    ProjectRepository, SprintRepository, StatusCategory, User, UserNotificationSettingsRepository,
+    UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -139,6 +140,7 @@ async fn spawn_server_with_notifications()
         saved_filters: Arc::new(MemorySavedFilterRepository::default()),
         notifications: notifications.clone(),
         notification_settings: notifications.clone(),
+        issue_status_history: Arc::new(domain::MemoryIssueStatusHistoryRepository::default()),
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -2045,6 +2047,401 @@ async fn notification_settings_patch_invalid_frequency_returns_400() {
             "disabled_event_types": [],
             "notify_own_changes": false
         }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+// ─── Report integration tests ──────────────────────────────────────
+
+async fn spawn_server_with_reports() -> (
+    String,
+    reqwest::Client,
+    Arc<MemoryIssueRepository>,
+    Arc<MemorySprintRepository>,
+    Arc<MemoryIssueStatusHistoryRepository>,
+) {
+    let user = test_user();
+    let project_id = shared::ProjectId::from_uuid(
+        uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+    );
+    let project = Project {
+        id: project_id,
+        key: ProjectKey::new("TT"),
+        name: "Task Tracker".into(),
+        description: None,
+        owner_id: user.id,
+        default_board_id: shared::BoardId::new(),
+        created_at: shared::now(),
+        updated_at: shared::now(),
+    };
+
+    let todo =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let in_progress =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap());
+    let done =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap());
+
+    let statuses = vec![
+        domain::Status {
+            id: todo,
+            name: "Todo".into(),
+            category: StatusCategory::Todo,
+            position: 0,
+            is_default: true,
+            is_closed: false,
+        },
+        domain::Status {
+            id: in_progress,
+            name: "In Progress".into(),
+            category: StatusCategory::InProgress,
+            position: 1,
+            is_default: false,
+            is_closed: false,
+        },
+        domain::Status {
+            id: done,
+            name: "Done".into(),
+            category: StatusCategory::Done,
+            position: 2,
+            is_default: false,
+            is_closed: true,
+        },
+    ];
+    let status_repo = Arc::new(domain::MemoryStatusRepository::new(statuses));
+
+    let users = Arc::new(MemoryUserRepository::default());
+    users.save(&user).await.unwrap();
+    let projects = Arc::new(MemoryProjectRepository::default());
+    projects.save(&project).await.unwrap();
+    let issues = Arc::new(MemoryIssueRepository::default());
+    let boards = Arc::new(MemoryBoardRepository::default());
+    let sprints = Arc::new(MemorySprintRepository::default());
+    let history = Arc::new(MemoryIssueStatusHistoryRepository::default());
+
+    let repos = Arc::new(domain::Repositories {
+        users: users.clone(),
+        projects: projects.clone(),
+        issues: issues.clone(),
+        boards: boards.clone(),
+        sprints: sprints.clone(),
+        comments: Arc::new(MemoryCommentRepository::default()),
+        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        members: Arc::new(MemoryProjectMemberRepository::default()),
+        statuses: status_repo,
+        transitions: Arc::new(domain::StubWorkflowTransitionRepository),
+        issue_types: Arc::new(domain::StubIssueTypeRepository),
+        attachments: Arc::new(MemoryAttachmentRepository::default()),
+        labels: Arc::new(MemoryLabelRepository::default()),
+        issue_links: Arc::new(MemoryIssueLinkRepository::default()),
+        saved_filters: Arc::new(MemorySavedFilterRepository::default()),
+        notifications: Arc::new(MemoryNotificationRepository::default()),
+        notification_settings: Arc::new(MemoryNotificationRepository::default()),
+        issue_status_history: history.clone(),
+    });
+
+    let ctx = Arc::new(AppContext::new(
+        test_config(),
+        repos,
+        Arc::new(InMemoryStorage::default()),
+    ));
+    let router = api::router(ctx.clone()).with_state(ctx);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}");
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let client = reqwest::Client::new();
+    (url, client, issues, sprints, history)
+}
+
+fn make_test_issue(
+    id: &str,
+    project_id: shared::ProjectId,
+    num: u32,
+    status_id: StatusId,
+    sprint_id: Option<shared::SprintId>,
+    created_at: shared::Timestamp,
+) -> domain::Issue {
+    domain::Issue {
+        id: shared::IssueId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
+        project_id,
+        key: shared::IssueKey::new(ProjectKey::new("TT"), num),
+        issue_type: shared::IssueType::Task,
+        status_id,
+        summary: "test issue".into(),
+        description: None,
+        assignee_id: None,
+        reporter_id: test_user().id,
+        priority: shared::Priority::Medium,
+        labels: vec![],
+        sprint_id,
+        position: 0.0,
+        due_date: None,
+        original_estimate_seconds: None,
+        remaining_estimate_seconds: None,
+        time_spent_seconds: 0,
+        created_at,
+        updated_at: created_at,
+        events: vec![],
+    }
+}
+
+#[tokio::test]
+async fn reports_velocity_requires_auth() {
+    let (url, client, _issues, _sprints, _history) = spawn_server_with_reports().await;
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/velocity?projectId=22222222-2222-2222-2222-222222222222"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
+}
+
+#[tokio::test]
+async fn reports_velocity_returns_data() {
+    let (url, client, issues, sprints, _history) = spawn_server_with_reports().await;
+    let token = login_token(&url, &client).await;
+    let project_id = shared::ProjectId::from_uuid(
+        uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+    );
+    let done =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap());
+    let todo =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+
+    let sprint = domain::Sprint {
+        id: shared::SprintId::new(),
+        project_id,
+        name: "Sprint 1".into(),
+        goal: None,
+        state: domain::SprintState::Closed,
+        start_date: Some(shared::now() - chrono::Duration::days(10)),
+        end_date: Some(shared::now()),
+        velocity: None,
+    };
+    sprints.save(&sprint).await.unwrap();
+
+    for i in 1..=3u32 {
+        let st = if i <= 2 { done } else { todo };
+        let issue = make_test_issue(
+            &format!("aaaa0000-0000-0000-0000-00000000000{i}"),
+            project_id,
+            i,
+            st,
+            Some(sprint.id),
+            shared::now() - chrono::Duration::days(5),
+        );
+        issues.save(&issue).await.unwrap();
+    }
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/velocity?projectId=22222222-2222-2222-2222-222222222222&count=6"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let sprints_arr = body["sprints"].as_array().unwrap();
+    assert_eq!(sprints_arr.len(), 1);
+    assert_eq!(sprints_arr[0]["name"], "Sprint 1");
+    assert_eq!(sprints_arr[0]["committed"], 3);
+    assert_eq!(sprints_arr[0]["completed"], 2);
+}
+
+#[tokio::test]
+async fn reports_burndown_returns_data() {
+    let (url, client, issues, sprints, _history) = spawn_server_with_reports().await;
+    let token = login_token(&url, &client).await;
+    let project_id = shared::ProjectId::from_uuid(
+        uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+    );
+    let todo =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+
+    let sprint = domain::Sprint {
+        id: shared::SprintId::new(),
+        project_id,
+        name: "Active Sprint".into(),
+        goal: None,
+        state: domain::SprintState::Active,
+        start_date: Some(shared::now() - chrono::Duration::days(2)),
+        end_date: Some(shared::now() + chrono::Duration::days(2)),
+        velocity: None,
+    };
+    sprints.save(&sprint).await.unwrap();
+
+    for i in 1..=5u32 {
+        let issue = make_test_issue(
+            &format!("bbbb0000-0000-0000-0000-00000000000{i}"),
+            project_id,
+            i,
+            todo,
+            Some(sprint.id),
+            shared::now() - chrono::Duration::days(2),
+        );
+        issues.save(&issue).await.unwrap();
+    }
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/burndown?sprintId={}",
+            sprint.id
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["sprint_name"], "Active Sprint");
+    assert!(!body["points"].as_array().unwrap().is_empty());
+    assert_eq!(body["points"][0]["remaining"], 5);
+}
+
+#[tokio::test]
+async fn reports_cumulative_flow_returns_data() {
+    let (url, client, issues, _sprints, history) = spawn_server_with_reports().await;
+    let token = login_token(&url, &client).await;
+    let project_id = shared::ProjectId::from_uuid(
+        uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+    );
+    let todo =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let done =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap());
+
+    let created = shared::now() - chrono::Duration::days(2);
+    let issue = make_test_issue(
+        "cccc0000-0000-0000-0000-000000000001",
+        project_id,
+        1,
+        done,
+        None,
+        created,
+    );
+    issues.save(&issue).await.unwrap();
+
+    history.save_with_project(
+        &domain::IssueStatusHistory {
+            id: shared::IssueStatusHistoryId::new(),
+            issue_id: issue.id,
+            from_status_id: None,
+            to_status_id: todo,
+            changed_by_id: test_user().id,
+            changed_at: created,
+        },
+        project_id,
+    );
+    history.save_with_project(
+        &domain::IssueStatusHistory {
+            id: shared::IssueStatusHistoryId::new(),
+            issue_id: issue.id,
+            from_status_id: Some(todo),
+            to_status_id: done,
+            changed_by_id: test_user().id,
+            changed_at: shared::now() - chrono::Duration::days(1),
+        },
+        project_id,
+    );
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/cumulative-flow?projectId=22222222-2222-2222-2222-222222222222"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let points = body["points"].as_array().unwrap();
+    assert!(!points.is_empty());
+    let last = points.last().unwrap();
+    assert_eq!(last["done"], 1);
+}
+
+#[tokio::test]
+async fn reports_control_chart_returns_data() {
+    let (url, client, issues, _sprints, history) = spawn_server_with_reports().await;
+    let token = login_token(&url, &client).await;
+    let project_id = shared::ProjectId::from_uuid(
+        uuid::Uuid::parse_str("22222222-2222-2222-2222-222222222222").unwrap(),
+    );
+    let todo =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let done =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap());
+
+    let created = shared::now() - chrono::Duration::days(5);
+    let done_time = shared::now() - chrono::Duration::days(1);
+    let issue = make_test_issue(
+        "dddd0000-0000-0000-0000-000000000001",
+        project_id,
+        1,
+        done,
+        None,
+        created,
+    );
+    issues.save(&issue).await.unwrap();
+
+    history.save_with_project(
+        &domain::IssueStatusHistory {
+            id: shared::IssueStatusHistoryId::new(),
+            issue_id: issue.id,
+            from_status_id: None,
+            to_status_id: todo,
+            changed_by_id: test_user().id,
+            changed_at: created,
+        },
+        project_id,
+    );
+    history.save_with_project(
+        &domain::IssueStatusHistory {
+            id: shared::IssueStatusHistoryId::new(),
+            issue_id: issue.id,
+            from_status_id: Some(todo),
+            to_status_id: done,
+            changed_by_id: test_user().id,
+            changed_at: done_time,
+        },
+        project_id,
+    );
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/control-chart?projectId=22222222-2222-2222-2222-222222222222"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let points = body["points"].as_array().unwrap();
+    assert_eq!(points.len(), 1);
+    assert!(points[0]["issue_key"].as_str().unwrap().starts_with("TT-"));
+    let cycle = points[0]["cycle_time_days"].as_f64().unwrap();
+    assert!((cycle - 4.0).abs() < 0.2);
+}
+
+#[tokio::test]
+async fn reports_velocity_invalid_project_id_returns_400() {
+    let (url, client, _issues, _sprints, _history) = spawn_server_with_reports().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/velocity?projectId=not-a-uuid"
+        ))
+        .bearer_auth(&token)
         .send()
         .await
         .unwrap();

@@ -77,7 +77,30 @@ pub trait IssueTypeRepository: Send + Sync {
 #[async_trait]
 pub trait IssueStatusHistoryRepository: Send + Sync {
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueStatusHistory>, AppError>;
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<IssueStatusHistory>, AppError>;
     async fn save(&self, entry: &IssueStatusHistory) -> Result<(), AppError>;
+}
+
+pub struct StubIssueStatusHistoryRepository;
+#[async_trait]
+impl IssueStatusHistoryRepository for StubIssueStatusHistoryRepository {
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueStatusHistory>, AppError> {
+        Ok(vec![])
+    }
+
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<IssueStatusHistory>, AppError> {
+        Ok(vec![])
+    }
+
+    async fn save(&self, _entry: &IssueStatusHistory) -> Result<(), AppError> {
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -160,6 +183,7 @@ pub struct Repositories {
     pub saved_filters: Arc<dyn SavedFilterRepository>,
     pub notifications: Arc<dyn NotificationRepository>,
     pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
+    pub issue_status_history: Arc<dyn IssueStatusHistoryRepository>,
 }
 
 impl Default for Repositories {
@@ -182,6 +206,7 @@ impl Default for Repositories {
             saved_filters: Arc::new(StubSavedFilterRepository),
             notifications: Arc::new(StubNotificationRepository),
             notification_settings: Arc::new(StubUserNotificationSettingsRepository),
+            issue_status_history: Arc::new(StubIssueStatusHistoryRepository),
         }
     }
 }

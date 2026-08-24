@@ -90,6 +90,10 @@ pub use routes::*;
         routes::notifications::mark_all_notifications_read,
         routes::notifications::get_notification_settings,
         routes::notifications::update_notification_settings,
+        routes::reports::get_velocity_report,
+        routes::reports::get_burndown_report,
+        routes::reports::get_cumulative_flow_report,
+        routes::reports::get_control_chart_report,
     ),
     components(schemas(
         dto::RegisterRequest,
@@ -131,6 +135,14 @@ pub use routes::*;
         routes::notifications::NotificationListResponse,
         routes::notifications::NotificationSettingsResponse,
         routes::notifications::UpdateNotificationSettingsRequest,
+        routes::reports::VelocityResponse,
+        routes::reports::VelocitySprintResponse,
+        routes::reports::BurndownResponse,
+        routes::reports::BurndownPointResponse,
+        routes::reports::CumulativeFlowResponse,
+        routes::reports::CumulativeFlowPointResponse,
+        routes::reports::ControlChartResponse,
+        routes::reports::ControlChartPointResponse,
     ))
 )]
 pub struct ApiDoc;
@@ -337,6 +349,22 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route(
             "/projects/{project_key}/sprints/{sprint_id}/remove-issue",
             post(routes::sprints::remove_issue_from_sprint),
+        )
+        .route(
+            "/reports/velocity",
+            get(routes::reports::get_velocity_report),
+        )
+        .route(
+            "/reports/burndown",
+            get(routes::reports::get_burndown_report),
+        )
+        .route(
+            "/reports/cumulative-flow",
+            get(routes::reports::get_cumulative_flow_report),
+        )
+        .route(
+            "/reports/control-chart",
+            get(routes::reports::get_control_chart_report),
         )
         .route_layer(auth);
 

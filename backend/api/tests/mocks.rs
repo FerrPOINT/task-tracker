@@ -159,6 +159,7 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
+        issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
     });
     Arc::new(app::AppContext::new(
         config,
@@ -188,6 +189,7 @@ pub fn failing_context() -> Arc<app::AppContext> {
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
+        issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
     });
     Arc::new(app::AppContext::new(
         Arc::new(shared::AppConfig {

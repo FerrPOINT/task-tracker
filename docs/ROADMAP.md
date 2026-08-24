@@ -6,7 +6,7 @@
 
 ## Статус (обновлено 2026-08-24)
 
-**Фазы 0–6 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests).
+**Фазы 0–7 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests, `df85a6e` notifications).
 
 Реализовано сверх плана фаз 0–4:
 
@@ -108,10 +108,10 @@
 
 **Цель**: базовые agile-отчёты.
 
-- [ ] Sprint/Scrum support: `sprints`, `sprint_issues`.
-- [ ] Reports: burndown, velocity, cumulative flow, control chart.
-- [ ] Frontend: reports hub, charts with `recharts`.
-- [ ] Verification: report data accuracy.
+- [x] Sprint/Scrum support: `sprints`, `sprint_issues` (уже реализовано в Phase 4).
+- [x] Reports: velocity, burndown, cumulative flow, control chart.
+- [x] Frontend: reports hub, charts with `recharts`.
+- [x] Verification: report service unit tests, API integration tests, frontend component tests.
 
 ## 10. Phase 8: Admin + Settings (M8)
 
