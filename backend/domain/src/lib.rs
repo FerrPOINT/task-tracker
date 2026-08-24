@@ -1,5 +1,6 @@
 pub mod entities;
 pub mod events;
+pub mod jql;
 pub mod repositories;
 pub mod stubs;
 pub mod value_objects;
