@@ -120,7 +120,11 @@ pub async fn get_issue(
 pub async fn search_issues(
     State(ctx): State<Arc<app::AppContext>>,
     Query(q): Query<SearchQuery>,
+    claims: axum::Extension<app::auth::UserClaims>,
 ) -> Result<Json<IssueListResponse>, AppError> {
+    let user_id = uuid::Uuid::parse_str(&claims.0.sub)
+        .map(shared::UserId::from_uuid)
+        .ok();
     let items = ctx
         .services
         .issue
@@ -131,6 +135,8 @@ pub async fn search_issues(
             assignee_id: q.assignee_id,
             sort_by: q.sort_by,
             sort_order: q.sort_order,
+            jql: q.jql,
+            user_id: user_id.map(|u| u.to_string()),
         })
         .await?;
     Ok(Json(IssueListResponse {

@@ -6,9 +6,10 @@ use domain::{
     Attachment, AttachmentRepository, Board, BoardColumn, BoardRepository, Comment,
     CommentRepository, Issue, IssueLink, IssueLinkRepository, IssueQuery, IssueRepository,
     IssueTypeEntity, IssueTypeRepository, Label, LabelRepository, LinkType, Project, ProjectMember,
-    ProjectMemberRepository, ProjectRepository, ProjectRole, Sprint, SprintRepository, SprintState,
-    Status, StatusCategory, StatusRepository, User, UserRepository, WorkflowTransition,
-    WorkflowTransitionId, WorkflowTransitionRepository, Worklog, WorklogRepository,
+    ProjectMemberRepository, ProjectRepository, ProjectRole, SavedFilter, SavedFilterRepository,
+    Sprint, SprintRepository, SprintState, Status, StatusCategory, StatusRepository, User,
+    UserRepository, WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository,
+    Worklog, WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
@@ -16,13 +17,14 @@ use sea_orm::{
 };
 use shared::{
     AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, IssueType,
-    IssueTypeId, LabelId, Priority, ProjectId, ProjectKey, SprintId, StatusId, UserId, WorklogId,
+    IssueTypeId, LabelId, Priority, ProjectId, ProjectKey, SavedFilterId, SprintId, StatusId,
+    UserId, WorklogId,
 };
 use uuid::Uuid;
 
 use crate::entities::{
     attachment, board, comment, issue, issue_label, issue_link, issue_type, label, project,
-    project_member, sprint, status, user, workflow_transition, worklog,
+    project_member, saved_filter, sprint, status, user, workflow_transition, worklog,
 };
 
 fn map_status(m: status::Model) -> Status {
@@ -75,6 +77,7 @@ pub struct SeaOrmRepositories {
     pub attachments: Arc<dyn AttachmentRepository>,
     pub labels: Arc<dyn LabelRepository>,
     pub issue_links: Arc<dyn IssueLinkRepository>,
+    pub saved_filters: Arc<dyn SavedFilterRepository>,
 }
 
 impl SeaOrmRepositories {
@@ -94,7 +97,8 @@ impl SeaOrmRepositories {
             issue_types: Arc::new(IssueTypeRepo { db: db.clone() }),
             attachments: Arc::new(AttachmentRepo { db: db.clone() }),
             labels: Arc::new(LabelRepo { db: db.clone() }),
-            issue_links: Arc::new(IssueLinkRepo { db }),
+            issue_links: Arc::new(IssueLinkRepo { db: db.clone() }),
+            saved_filters: Arc::new(SavedFilterRepo { db }),
         }
     }
 }
@@ -272,6 +276,48 @@ struct IssueRepo {
     db: Arc<DatabaseConnection>,
 }
 
+impl IssueRepo {
+    async fn search_by_jql(
+        &self,
+        compiled: &crate::jql::CompiledJql,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Issue>, AppError> {
+        use sea_orm::FromQueryResult;
+        let mut params: Vec<sea_orm::Value> = compiled
+            .parameters
+            .iter()
+            .map(|p| match p {
+                crate::jql::JqlParameter::Text(s) => {
+                    sea_orm::Value::String(Some(Box::new(s.clone())))
+                }
+                crate::jql::JqlParameter::Uuid(u) => sea_orm::Value::Uuid(Some(Box::new(*u))),
+            })
+            .collect();
+        params.push(sea_orm::Value::Unsigned(Some(limit as u32)));
+        params.push(sea_orm::Value::Unsigned(Some(offset as u32)));
+
+        let sql = format!(
+            "SELECT i.* FROM issues i JOIN projects p ON i.project_id = p.id \
+             WHERE {} ORDER BY i.created_at DESC LIMIT ${} OFFSET ${}",
+            compiled.predicate,
+            params.len() - 1,
+            params.len()
+        );
+
+        let stmt = sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            sql,
+            params,
+        );
+        let rows = <issue::Model as FromQueryResult>::find_by_statement(stmt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(rows.into_iter().map(map_issue).collect())
+    }
+}
+
 #[async_trait]
 impl IssueRepository for IssueRepo {
     async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError> {
@@ -296,6 +342,14 @@ impl IssueRepository for IssueRepo {
     }
 
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError> {
+        if let Some(jql_expr) = &query.jql {
+            let user_id = query.jql_user_id.unwrap_or_default();
+            let compiled = crate::jql::compile(jql_expr, user_id)
+                .map_err(|e| AppError::invalid_input(e.to_string()))?;
+            return self
+                .search_by_jql(&compiled, query.limit, query.offset)
+                .await;
+        }
         let mut select = issue::Entity::find();
         if let Some(pid) = query.project_id {
             select = select.filter(issue::Column::ProjectId.eq(pid.as_uuid()));
@@ -658,6 +712,7 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         attachments: sea.attachments,
         labels: sea.labels,
         issue_links: sea.issue_links,
+        saved_filters: sea.saved_filters,
     }
 }
 
@@ -1197,5 +1252,76 @@ impl IssueTypeRepository for IssueTypeRepo {
         model
             .map(map_issue_type)
             .ok_or_else(|| AppError::not_found("issue type", id))
+    }
+}
+
+struct SavedFilterRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl SavedFilterRepository for SavedFilterRepo {
+    async fn get_by_id(&self, id: SavedFilterId) -> Result<SavedFilter, AppError> {
+        let model = saved_filter::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .ok_or_else(|| AppError::not_found("saved_filter", id))?;
+        Ok(map_saved_filter(model))
+    }
+
+    async fn list_by_owner(&self, owner_id: UserId) -> Result<Vec<SavedFilter>, AppError> {
+        let models = saved_filter::Entity::find()
+            .filter(saved_filter::Column::OwnerId.eq(owner_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_saved_filter).collect())
+    }
+
+    async fn list_public(&self) -> Result<Vec<SavedFilter>, AppError> {
+        let models = saved_filter::Entity::find()
+            .filter(saved_filter::Column::IsPublic.eq(true))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_saved_filter).collect())
+    }
+
+    async fn save(&self, filter: &SavedFilter) -> Result<SavedFilterId, AppError> {
+        let model = saved_filter::ActiveModel {
+            id: sea_orm::ActiveValue::Set(filter.id.as_uuid()),
+            name: sea_orm::ActiveValue::Set(filter.name.as_ref().to_string()),
+            jql: sea_orm::ActiveValue::Set(filter.jql.clone()),
+            owner_id: sea_orm::ActiveValue::Set(filter.owner_id.as_uuid()),
+            is_public: sea_orm::ActiveValue::Set(filter.is_public),
+            created_at: sea_orm::ActiveValue::Set(filter.created_at),
+            updated_at: sea_orm::ActiveValue::Set(filter.updated_at),
+        };
+        let result = saved_filter::Entity::insert(model)
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(SavedFilterId::from_uuid(result.last_insert_id))
+    }
+
+    async fn delete(&self, id: SavedFilterId) -> Result<(), AppError> {
+        saved_filter::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+fn map_saved_filter(m: saved_filter::Model) -> SavedFilter {
+    SavedFilter {
+        id: SavedFilterId::from_uuid(m.id),
+        name: m.name.into(),
+        jql: m.jql,
+        owner_id: UserId::from_uuid(m.owner_id),
+        is_public: m.is_public,
+        created_at: m.created_at,
+        updated_at: m.updated_at,
     }
 }

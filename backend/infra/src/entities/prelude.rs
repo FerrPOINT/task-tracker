@@ -7,5 +7,6 @@ pub use super::issue_link::Entity as IssueLinkEntity;
 pub use super::label::Entity as Label;
 pub use super::project::Entity as Project;
 pub use super::project_member::Entity as ProjectMember;
+pub use super::saved_filter::Entity as SavedFilter;
 pub use super::sprint::Entity as Sprint;
 pub use super::user::Entity as User;

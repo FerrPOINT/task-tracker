@@ -2,6 +2,7 @@ pub mod cache;
 pub mod db;
 pub mod entities;
 pub mod event_bus;
+pub mod jql;
 pub mod repos;
 pub mod storage;
 

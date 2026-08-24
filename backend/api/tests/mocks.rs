@@ -156,6 +156,7 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
         attachments: Arc::new(domain::StubAttachmentRepository),
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
+        saved_filters: Arc::new(domain::StubSavedFilterRepository),
     });
     Arc::new(app::AppContext::new(
         config,
@@ -182,6 +183,7 @@ pub fn failing_context() -> Arc<app::AppContext> {
         attachments: Arc::new(domain::StubAttachmentRepository),
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
+        saved_filters: Arc::new(domain::StubSavedFilterRepository),
     });
     Arc::new(app::AppContext::new(
         Arc::new(shared::AppConfig {

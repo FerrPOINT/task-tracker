@@ -71,6 +71,7 @@ pub struct Services {
     pub attachment: Arc<dyn AttachmentService>,
     pub label: Arc<dyn LabelService>,
     pub issue_link: Arc<dyn IssueLinkService>,
+    pub saved_filter: Arc<dyn SavedFilterService>,
 }
 
 impl AppContext {
@@ -180,6 +181,12 @@ impl AppContext {
                 issue_link: Arc::new(crate::services::IssueLinkServiceImpl::new(
                     repos.issue_links.clone(),
                     repos.issues.clone(),
+                )),
+                saved_filter: Arc::new(crate::services::SavedFilterServiceImpl::new(
+                    repos.saved_filters.clone(),
+                    repos.issues.clone(),
+                    repos.projects.clone(),
+                    repos.users.clone(),
                 )),
                 sprint,
             },
@@ -294,6 +301,8 @@ pub struct SearchFilters {
     pub assignee_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
+    pub jql: Option<String>,
+    pub user_id: Option<String>,
 }
 
 #[async_trait]
@@ -389,6 +398,21 @@ pub trait IssueLinkService: Send + Sync {
     async fn delete(&self, link_id: IssueLinkId, requester: UserId) -> Result<(), AppError>;
 }
 
+#[async_trait]
+pub trait SavedFilterService: Send + Sync {
+    async fn list_filters(&self, owner_id: UserId) -> Result<Vec<SavedFilterDto>, AppError>;
+    async fn create_filter(
+        &self,
+        owner_id: UserId,
+        name: String,
+        jql: String,
+        is_public: bool,
+    ) -> Result<SavedFilterDto, AppError>;
+    async fn get_filter(&self, id: String) -> Result<SavedFilterDto, AppError>;
+    async fn delete_filter(&self, id: String, owner_id: UserId) -> Result<(), AppError>;
+    async fn execute_filter(&self, id: String, user_id: UserId) -> Result<Vec<IssueDto>, AppError>;
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct IssueLinkDto {
     pub id: String,
@@ -397,4 +421,14 @@ pub struct IssueLinkDto {
     pub target_id: String,
     pub target_key: String,
     pub link_type: String,
+}
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SavedFilterDto {
+    pub id: String,
+    pub name: String,
+    pub jql: String,
+    pub owner_id: String,
+    pub is_public: bool,
+    pub created_at: String,
+    pub updated_at: String,
 }

@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router'
-import { Search, X, ArrowUpDown } from 'lucide-react'
+import { Search, X, ArrowUpDown, Filter, Save } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState, useMemo, useEffect } from 'react'
 import { Button } from '@/shared/ui/button'
@@ -28,6 +28,10 @@ export default function SearchPage() {
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
+  const [jql, setJql] = useState(() => searchParams.get('jql') ?? '')
+  const [showSaveDialog, setShowSaveDialog] = useState(false)
+  const [filterName, setFilterName] = useState('')
+  const [isPublic, setIsPublic] = useState(false)
 
   const projectKey = searchParams.get('project_key') ?? undefined
   const status = searchParams.get('status') ?? undefined
@@ -47,6 +51,15 @@ export default function SearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query])
 
+  useEffect(() => {
+    setSearchParams((prev) => {
+      if (jql) prev.set('jql', jql)
+      else prev.delete('jql')
+      return prev
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jql])
+
   const filters = useMemo(
     () => ({
       q: query || undefined,
@@ -56,8 +69,9 @@ export default function SearchPage() {
       priority,
       sort_by: sort.split('_')[0],
       sort_order: sort.split('_')[1] ?? 'desc',
+      jql: jql || undefined,
     }),
-    [query, projectKey, status, assigneeId, priority, sort]
+    [query, projectKey, status, assigneeId, priority, sort, jql]
   )
 
   const { data: issues, isLoading } = useIssues(filters)
@@ -66,9 +80,9 @@ export default function SearchPage() {
 
   const filtered = useMemo(() => {
     let list = issues ?? []
-    if (status) list = list.filter((i: Issue) => i.status === status)
+    if (status && !jql) list = list.filter((i: Issue) => i.status === status)
     return list
-  }, [issues, status])
+  }, [issues, status, jql])
 
   const setFilter = (key: string, value: string | undefined) => {
     setSearchParams((prev) => {
@@ -80,16 +94,30 @@ export default function SearchPage() {
 
   const clearFilters = () => {
     setQuery('')
+    setJql('')
     setSearchParams(new URLSearchParams())
   }
 
-  const hasFilters = projectKey || status || assigneeId || priority || sort !== 'created_desc' || query
+  const hasFilters = projectKey || status || assigneeId || priority || sort !== 'created_desc' || query || jql
 
   const projectName = projects?.find((p) => p.key === projectKey)?.name ?? projectKey ?? t('search.project')
   const statusLabel = status ?? t('search.status')
   const priorityLabel = priority ? t(`priority.${priority}`) : t('search.priority')
   const assigneeName = users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
   const sortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? t('search.sort')
+
+  const handleSaveFilter = async () => {
+    if (!filterName.trim() || !jql.trim()) return
+    try {
+      const { createSavedFilter } = await import('@/api/saved-filters')
+      await createSavedFilter({ name: filterName, jql, is_public: isPublic })
+      setShowSaveDialog(false)
+      setFilterName('')
+      setIsPublic(false)
+    } catch {
+      // ignore error
+    }
+  }
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -204,6 +232,53 @@ export default function SearchPage() {
               <X className="h-4 w-4" />
             </Button>
           )}
+        </CardContent>
+      </Card>
+
+      {/* JQL Search Section */}
+      <Card className="mb-6">
+        <CardContent className="flex flex-col gap-3 pt-6">
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">{t('jql.title')}</span>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              placeholder={t('jql.placeholder')}
+              value={jql}
+              onChange={(e) => setJql(e.target.value)}
+              className="flex-1 font-mono text-sm"
+            />
+            <Button variant="outline" size="icon" onClick={() => setShowSaveDialog(!showSaveDialog)} disabled={!jql}>
+              <Save className="h-4 w-4" />
+            </Button>
+          </div>
+          {showSaveDialog && jql && (
+            <div className="flex flex-col gap-2 rounded-md border p-3">
+              <Input
+                placeholder={t('filters.namePlaceholder')}
+                value={filterName}
+                onChange={(e) => setFilterName(e.target.value)}
+              />
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                />
+                {t('filters.isPublic')}
+              </label>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={handleSaveFilter} disabled={!filterName.trim()}>
+                  {t('filters.save')}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowSaveDialog(false)}>
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            </div>
+          )}
+          <p className="text-xs text-muted-foreground">{t('jql.help')}</p>
         </CardContent>
       </Card>
 

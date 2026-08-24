@@ -285,5 +285,23 @@
       "relates": "relates to"
     },
     "submit": "Link"
+  },
+  "jql": {
+    "title": "JQL Query",
+    "placeholder": "e.g. project = TT AND priority = high",
+    "help": "Use JQL for advanced search",
+    "invalid": "Invalid JQL query",
+    "execute": "Execute"
+  },
+  "filters": {
+    "title": "Saved Filters",
+    "save": "Save filter",
+    "name": "Filter name",
+    "namePlaceholder": "My high priority issues",
+    "isPublic": "Public",
+    "empty": "No saved filters",
+    "delete": "Delete filter",
+    "execute": "Apply filter",
+    "manage": "Manage filters"
   }
 }

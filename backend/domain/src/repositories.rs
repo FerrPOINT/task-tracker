@@ -7,12 +7,12 @@ mod tests;
 
 use crate::{
     Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity, Label,
-    Project, ProjectMember, Sprint, Status, User, WorkflowTransition, Worklog,
+    Project, ProjectMember, SavedFilter, Sprint, Status, User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
     AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, LabelId, ProjectId,
-    ProjectKey, SprintId, StatusId, UserId, WorklogId,
+    ProjectKey, SavedFilterId, SprintId, StatusId, UserId, WorklogId,
 };
 
 #[async_trait]
@@ -156,6 +156,7 @@ pub struct Repositories {
     pub attachments: Arc<dyn AttachmentRepository>,
     pub labels: Arc<dyn LabelRepository>,
     pub issue_links: Arc<dyn IssueLinkRepository>,
+    pub saved_filters: Arc<dyn SavedFilterRepository>,
 }
 
 impl Default for Repositories {
@@ -175,6 +176,7 @@ impl Default for Repositories {
             attachments: Arc::new(StubAttachmentRepository),
             labels: Arc::new(StubLabelRepository),
             issue_links: Arc::new(StubIssueLinkRepository),
+            saved_filters: Arc::new(StubSavedFilterRepository),
         }
     }
 }
@@ -525,6 +527,35 @@ impl IssueLinkRepository for StubIssueLinkRepository {
         Ok(vec![])
     }
     async fn delete(&self, _id: IssueLinkId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait SavedFilterRepository: Send + Sync {
+    async fn get_by_id(&self, id: SavedFilterId) -> Result<SavedFilter, AppError>;
+    async fn list_by_owner(&self, owner_id: UserId) -> Result<Vec<SavedFilter>, AppError>;
+    async fn list_public(&self) -> Result<Vec<SavedFilter>, AppError>;
+    async fn save(&self, filter: &SavedFilter) -> Result<SavedFilterId, AppError>;
+    async fn delete(&self, id: SavedFilterId) -> Result<(), AppError>;
+}
+
+pub struct StubSavedFilterRepository;
+#[async_trait]
+impl SavedFilterRepository for StubSavedFilterRepository {
+    async fn get_by_id(&self, _id: SavedFilterId) -> Result<SavedFilter, AppError> {
+        Err(AppError::not_found("saved_filter", "stub"))
+    }
+    async fn list_by_owner(&self, _owner_id: UserId) -> Result<Vec<SavedFilter>, AppError> {
+        Ok(vec![])
+    }
+    async fn list_public(&self) -> Result<Vec<SavedFilter>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _filter: &SavedFilter) -> Result<SavedFilterId, AppError> {
+        Ok(SavedFilterId::new())
+    }
+    async fn delete(&self, _id: SavedFilterId) -> Result<(), AppError> {
         Ok(())
     }
 }

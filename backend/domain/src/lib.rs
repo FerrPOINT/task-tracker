@@ -24,6 +24,8 @@ pub struct IssueQuery {
     pub search_text: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
+    pub jql: Option<crate::jql::Expr>,
+    pub jql_user_id: Option<shared::UserId>,
     pub limit: u64,
     pub offset: u64,
 }
@@ -39,6 +41,8 @@ impl Default for IssueQuery {
             search_text: None,
             sort_by: None,
             sort_order: None,
+            jql: None,
+            jql_user_id: None,
             limit: 1000,
             offset: 0,
         }

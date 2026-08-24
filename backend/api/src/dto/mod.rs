@@ -170,6 +170,30 @@ pub struct SearchQuery {
     pub assignee_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
+    pub jql: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SavedFilterResponse {
+    pub id: String,
+    pub name: String,
+    pub jql: String,
+    pub owner_id: String,
+    pub is_public: bool,
+    pub created_at: DateTime<FixedOffset>,
+    pub updated_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SavedFilterListResponse {
+    pub filters: Vec<SavedFilterResponse>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateSavedFilterRequest {
+    pub name: String,
+    pub jql: String,
+    pub is_public: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

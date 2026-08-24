@@ -149,6 +149,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/filters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_filters"];
+        put?: never;
+        post: operations["create_filter"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/filters/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_filter"];
+        put?: never;
+        post?: never;
+        delete: operations["delete_filter"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/filters/{id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["execute_filter"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/health": {
         parameters: {
             query?: never;
@@ -771,6 +819,11 @@ export interface components {
             key: string;
             name: string;
         };
+        CreateSavedFilterRequest: {
+            is_public?: boolean | null;
+            jql: string;
+            name: string;
+        };
         CreateSprintRequest: {
             /** Format: date-time */
             end_date?: string | null;
@@ -884,6 +937,20 @@ export interface components {
             email: string;
             password: string;
             username: string;
+        };
+        SavedFilterListResponse: {
+            filters: components["schemas"]["SavedFilterResponse"][];
+        };
+        SavedFilterResponse: {
+            /** Format: date-time */
+            created_at: string;
+            id: string;
+            is_public: boolean;
+            jql: string;
+            name: string;
+            owner_id: string;
+            /** Format: date-time */
+            updated_at: string;
         };
         SprintListResponse: {
             sprints: components["schemas"]["SprintResponse"][];
@@ -1307,6 +1374,118 @@ export interface operations {
             };
         };
     };
+    list_filters: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedFilterListResponse"];
+                };
+            };
+        };
+    };
+    create_filter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSavedFilterRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedFilterResponse"];
+                };
+            };
+        };
+    };
+    get_filter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Filter id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SavedFilterResponse"];
+                };
+            };
+        };
+    };
+    delete_filter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Filter id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    execute_filter: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Filter id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueListResponse"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;
@@ -1390,6 +1569,7 @@ export interface operations {
                 assignee_id?: string | null;
                 sort_by?: string | null;
                 sort_order?: string | null;
+                jql?: string | null;
             };
             header?: never;
             path?: never;
@@ -2681,6 +2861,7 @@ export interface operations {
                 assignee_id?: string | null;
                 sort_by?: string | null;
                 sort_order?: string | null;
+                jql?: string | null;
             };
             header?: never;
             path?: never;

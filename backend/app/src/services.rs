@@ -834,6 +834,16 @@ impl crate::context::SearchService for SearchServiceImpl {
                 .map_err(|e| AppError::invalid_input(e.to_string()))?;
             query.assignee_id = Some(UserId::from_uuid(uuid));
         }
+        if let Some(jql_str) = filters.jql.as_deref().filter(|s| !s.is_empty()) {
+            let expr =
+                domain::jql::parse(jql_str).map_err(|e| AppError::invalid_input(e.to_string()))?;
+            query.jql = Some(expr);
+            if let Some(uid_str) = filters.user_id.as_deref().filter(|s| !s.is_empty()) {
+                let uuid = uuid::Uuid::parse_str(uid_str)
+                    .map_err(|e| AppError::invalid_input(e.to_string()))?;
+                query.jql_user_id = Some(UserId::from_uuid(uuid));
+            }
+        }
         let issues = self.issues.list(query).await?;
         helpers::build_issue_dtos_with_projects(
             Arc::clone(&self.projects),
@@ -1468,5 +1478,121 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
     ) -> Result<(), AppError> {
         self.links.delete(link_id).await?;
         Ok(())
+    }
+}
+pub struct SavedFilterServiceImpl {
+    filters: Arc<dyn domain::SavedFilterRepository>,
+    issues: Arc<dyn IssueRepository>,
+    projects: Arc<dyn ProjectRepository>,
+    users: Arc<dyn domain::UserRepository>,
+}
+
+impl SavedFilterServiceImpl {
+    pub fn new(
+        filters: Arc<dyn domain::SavedFilterRepository>,
+        issues: Arc<dyn IssueRepository>,
+        projects: Arc<dyn ProjectRepository>,
+        users: Arc<dyn domain::UserRepository>,
+    ) -> Self {
+        Self {
+            filters,
+            issues,
+            projects,
+            users,
+        }
+    }
+
+    fn to_dto(f: &domain::SavedFilter) -> crate::context::SavedFilterDto {
+        crate::context::SavedFilterDto {
+            id: f.id.to_string(),
+            name: f.name.as_ref().to_string(),
+            jql: f.jql.clone(),
+            owner_id: f.owner_id.to_string(),
+            is_public: f.is_public,
+            created_at: f.created_at.to_rfc3339(),
+            updated_at: f.updated_at.to_rfc3339(),
+        }
+    }
+}
+
+#[async_trait]
+impl crate::context::SavedFilterService for SavedFilterServiceImpl {
+    async fn list_filters(
+        &self,
+        owner_id: UserId,
+    ) -> Result<Vec<crate::context::SavedFilterDto>, AppError> {
+        let owned = self.filters.list_by_owner(owner_id).await?;
+        let public_filters = self.filters.list_public().await?;
+        let mut all = owned;
+        for f in public_filters {
+            if !all.iter().any(|existing| existing.id == f.id) {
+                all.push(f);
+            }
+        }
+        Ok(all.iter().map(Self::to_dto).collect())
+    }
+
+    async fn create_filter(
+        &self,
+        owner_id: UserId,
+        name: String,
+        jql: String,
+        is_public: bool,
+    ) -> Result<crate::context::SavedFilterDto, AppError> {
+        let now = shared::now();
+        let filter = domain::SavedFilter {
+            id: shared::SavedFilterId::new(),
+            name: name.into(),
+            jql,
+            owner_id,
+            is_public,
+            created_at: now,
+            updated_at: now,
+        };
+        self.filters.save(&filter).await?;
+        Ok(Self::to_dto(&filter))
+    }
+
+    async fn get_filter(&self, id: String) -> Result<crate::context::SavedFilterDto, AppError> {
+        let filter_id = id
+            .parse::<shared::SavedFilterId>()
+            .map_err(|_| AppError::invalid_input("invalid filter id"))?;
+        let filter = self.filters.get_by_id(filter_id).await?;
+        Ok(Self::to_dto(&filter))
+    }
+
+    async fn delete_filter(&self, id: String, owner_id: UserId) -> Result<(), AppError> {
+        let filter_id = id
+            .parse::<shared::SavedFilterId>()
+            .map_err(|_| AppError::invalid_input("invalid filter id"))?;
+        let filter = self.filters.get_by_id(filter_id).await?;
+        if filter.owner_id != owner_id {
+            return Err(AppError::Forbidden);
+        }
+        self.filters.delete(filter_id).await
+    }
+
+    async fn execute_filter(&self, id: String, user_id: UserId) -> Result<Vec<IssueDto>, AppError> {
+        let filter_id = id
+            .parse::<shared::SavedFilterId>()
+            .map_err(|_| AppError::invalid_input("invalid filter id"))?;
+        let filter = self.filters.get_by_id(filter_id).await?;
+        if filter.owner_id != user_id && !filter.is_public {
+            return Err(AppError::Forbidden);
+        }
+        let expr =
+            domain::jql::parse(&filter.jql).map_err(|e| AppError::invalid_input(e.to_string()))?;
+        let query = IssueQuery {
+            jql: Some(expr),
+            jql_user_id: Some(user_id),
+            ..Default::default()
+        };
+        let issues = self.issues.list(query).await?;
+        crate::services::helpers::build_issue_dtos_with_projects(
+            Arc::clone(&self.projects),
+            Arc::clone(&self.users),
+            issues,
+        )
+        .await
     }
 }

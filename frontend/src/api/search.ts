@@ -11,6 +11,7 @@ export interface SearchFilters {
   priority?: string
   sort_by?: string
   sort_order?: string
+  jql?: string
 }
 
 export async function searchIssues(filters: SearchFilters = {}): Promise<Issue[]> {
@@ -24,6 +25,7 @@ export async function searchIssues(filters: SearchFilters = {}): Promise<Issue[]
           priority: filters.priority,
           sort_by: filters.sort_by,
           sort_order: filters.sort_order,
+          jql: filters.jql,
         }).filter(([, v]) => v !== undefined && v !== ''),
       ),
     },

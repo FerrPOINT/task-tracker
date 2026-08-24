@@ -329,6 +329,141 @@
         ]
       }
     },
+    "/api/v1/filters": {
+      "get": {
+        "tags": [
+          "routes::saved_filters"
+        ],
+        "operationId": "list_filters",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilterListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "routes::saved_filters"
+        ],
+        "operationId": "create_filter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSavedFilterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilterResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/filters/{id}": {
+      "get": {
+        "tags": [
+          "routes::saved_filters"
+        ],
+        "operationId": "get_filter",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Filter id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedFilterResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "routes::saved_filters"
+        ],
+        "operationId": "delete_filter",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Filter id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/filters/{id}/execute": {
+      "get": {
+        "tags": [
+          "routes::saved_filters"
+        ],
+        "operationId": "execute_filter",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Filter id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssueListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -471,6 +606,17 @@
           },
           {
             "name": "sort_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "jql",
             "in": "query",
             "required": false,
             "schema": {
@@ -2149,6 +2295,17 @@
                 "null"
               ]
             }
+          },
+          {
+            "name": "jql",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -2701,6 +2858,27 @@
           }
         }
       },
+      "CreateSavedFilterRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "jql"
+        ],
+        "properties": {
+          "is_public": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "jql": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "CreateSprintRequest": {
         "type": "object",
         "required": [
@@ -3156,6 +3334,57 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "SavedFilterListResponse": {
+        "type": "object",
+        "required": [
+          "filters"
+        ],
+        "properties": {
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SavedFilterResponse"
+            }
+          }
+        }
+      },
+      "SavedFilterResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "jql",
+          "owner_id",
+          "is_public",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "is_public": {
+            "type": "boolean"
+          },
+          "jql": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

@@ -27,6 +27,8 @@ pub struct Model {
     pub time_spent_seconds: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    #[sea_orm(ignore)]
+    pub tsv_search: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

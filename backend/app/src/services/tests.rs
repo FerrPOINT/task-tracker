@@ -131,6 +131,7 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         attachments: Arc::new(domain::StubAttachmentRepository),
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
+        saved_filters: Arc::new(domain::StubSavedFilterRepository),
     });
     AppContext::new(
         test_config(),
@@ -875,6 +876,7 @@ fn failing_context() -> AppContext {
         attachments: Arc::new(domain::StubAttachmentRepository),
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
+        saved_filters: Arc::new(domain::StubSavedFilterRepository),
     });
     AppContext::new(test_config(), repos, Arc::new(TestStorage::default()))
 }

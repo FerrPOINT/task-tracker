@@ -80,6 +80,11 @@ pub use routes::*;
         routes::sprints::close_sprint,
         routes::sprints::move_issue_to_sprint,
         routes::sprints::remove_issue_from_sprint,
+        routes::saved_filters::list_filters,
+        routes::saved_filters::create_filter,
+        routes::saved_filters::get_filter,
+        routes::saved_filters::delete_filter,
+        routes::saved_filters::execute_filter,
     ),
     components(schemas(
         dto::RegisterRequest,
@@ -267,6 +272,18 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             patch(routes::worklogs::update_worklog).delete(routes::worklogs::delete_worklog),
         )
         .route("/search", get(routes::search::search_global))
+        .route(
+            "/filters",
+            get(routes::saved_filters::list_filters).post(routes::saved_filters::create_filter),
+        )
+        .route(
+            "/filters/{id}",
+            get(routes::saved_filters::get_filter).delete(routes::saved_filters::delete_filter),
+        )
+        .route(
+            "/filters/{id}/execute",
+            get(routes::saved_filters::execute_filter),
+        )
         .route("/dashboard", get(routes::dashboard::get_dashboard))
         .route("/auth/refresh", post(routes::auth::refresh))
         .route("/auth/logout", post(routes::auth::logout))

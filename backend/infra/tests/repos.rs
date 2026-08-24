@@ -183,6 +183,8 @@ async fn issue_repo_crud_and_query() {
             sort_order: None,
             limit: 10,
             offset: 0,
+            jql: None,
+            jql_user_id: None,
         })
         .await
         .unwrap();

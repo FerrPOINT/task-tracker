@@ -126,6 +126,7 @@ async fn spawn_server() -> (String, reqwest::Client) {
         attachments: Arc::new(MemoryAttachmentRepository::default()),
         labels: Arc::new(MemoryLabelRepository::default()),
         issue_links: Arc::new(MemoryIssueLinkRepository::default()),
+        saved_filters: Arc::new(domain::StubSavedFilterRepository),
     });
 
     let ctx = Arc::new(AppContext::new(

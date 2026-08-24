@@ -46,6 +46,7 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
         attachments: Arc::new(domain::StubAttachmentRepository),
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
+        saved_filters: Arc::new(domain::StubSavedFilterRepository),
     });
     let ctx = Arc::new(app::context::AppContext::new(
         test_config(),
