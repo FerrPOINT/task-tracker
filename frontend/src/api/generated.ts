@@ -405,6 +405,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notification-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_notification_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_notification_settings"];
+        trace?: never;
+    };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_notifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["mark_all_notifications_read"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["mark_notification_read"];
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -904,6 +968,28 @@ export interface components {
         MoveIssueToSprintRequest: {
             issue_id: string;
         };
+        NotificationListResponse: {
+            notifications: components["schemas"]["NotificationResponse"][];
+            unread_count: number;
+        };
+        NotificationResponse: {
+            action_url?: string | null;
+            actor_id?: string | null;
+            body?: string | null;
+            created_at: string;
+            entity_id?: string | null;
+            entity_type: string;
+            event_type: string;
+            id: string;
+            is_read: boolean;
+            metadata: unknown;
+            title: string;
+        };
+        NotificationSettingsResponse: {
+            disabled_event_types: string[];
+            email_frequency: string;
+            notify_own_changes: boolean;
+        };
         ProjectListResponse: {
             projects: components["schemas"]["ProjectResponse"][];
         };
@@ -1008,6 +1094,11 @@ export interface components {
         UpdateLabelRequest: {
             color: string;
             name: string;
+        };
+        UpdateNotificationSettingsRequest: {
+            disabled_event_types: string[];
+            email_frequency: string;
+            notify_own_changes: boolean;
         };
         UpdateProjectRequest: {
             description?: string | null;
@@ -2260,6 +2351,122 @@ export interface operations {
                 content?: never;
             };
             /** @description Label not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    get_notification_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsResponse"];
+                };
+            };
+        };
+    };
+    update_notification_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNotificationSettingsRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationSettingsResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_notifications: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListResponse"];
+                };
+            };
+        };
+    };
+    mark_all_notifications_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    mark_notification_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Notification id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             404: {
                 headers: {
                     [name: string]: unknown;

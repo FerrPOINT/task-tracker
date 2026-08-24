@@ -3,7 +3,7 @@ use std::sync::Arc;
 use api::ApiDoc;
 use app::context::AppContext;
 use domain::Repositories;
-use shared::{AppConfig, AuthConfig, DatabaseConfig, ServerConfig};
+use shared::{AppConfig, AuthConfig, DatabaseConfig, EmailConfig, ServerConfig};
 use utoipa::OpenApi;
 
 fn main() {
@@ -21,6 +21,7 @@ fn main() {
             refresh_cookie_path: "/api/v1/auth".to_string(),
         },
         storage: shared::StorageConfig::default(),
+        email: EmailConfig::default(),
     });
     let ctx = Arc::new(AppContext::new(
         config,

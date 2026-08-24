@@ -1,5 +1,6 @@
 pub mod cache;
 pub mod db;
+pub mod email;
 pub mod entities;
 pub mod event_bus;
 pub mod jql;

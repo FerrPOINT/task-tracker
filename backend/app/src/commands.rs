@@ -130,3 +130,10 @@ pub struct TransitionIssueCommand {
     pub issue_id: IssueId,
     pub target_status_id: StatusId,
 }
+
+#[derive(Debug, Clone)]
+pub struct UpdateNotificationSettingsCommand {
+    pub email_frequency: domain::ArcStr,
+    pub disabled_event_types: Vec<domain::ArcStr>,
+    pub notify_own_changes: bool,
+}

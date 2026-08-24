@@ -85,6 +85,11 @@ pub use routes::*;
         routes::saved_filters::get_filter,
         routes::saved_filters::delete_filter,
         routes::saved_filters::execute_filter,
+        routes::notifications::list_notifications,
+        routes::notifications::mark_notification_read,
+        routes::notifications::mark_all_notifications_read,
+        routes::notifications::get_notification_settings,
+        routes::notifications::update_notification_settings,
     ),
     components(schemas(
         dto::RegisterRequest,
@@ -123,6 +128,9 @@ pub use routes::*;
         dto::IssueTypeResponse,
         crate::dto::AttachmentResponse,
         crate::dto::AttachmentListResponse,
+        routes::notifications::NotificationListResponse,
+        routes::notifications::NotificationSettingsResponse,
+        routes::notifications::UpdateNotificationSettingsRequest,
     ))
 )]
 pub struct ApiDoc;
@@ -283,6 +291,23 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route(
             "/filters/{id}/execute",
             get(routes::saved_filters::execute_filter),
+        )
+        .route(
+            "/notifications",
+            get(routes::notifications::list_notifications),
+        )
+        .route(
+            "/notifications/{id}/read",
+            patch(routes::notifications::mark_notification_read),
+        )
+        .route(
+            "/notifications/read-all",
+            post(routes::notifications::mark_all_notifications_read),
+        )
+        .route(
+            "/notification-settings",
+            get(routes::notifications::get_notification_settings)
+                .patch(routes::notifications::update_notification_settings),
         )
         .route("/dashboard", get(routes::dashboard::get_dashboard))
         .route("/auth/refresh", post(routes::auth::refresh))

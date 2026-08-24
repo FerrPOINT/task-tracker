@@ -5,7 +5,8 @@ use crate::auth::{JwtAuthService, UserClaims};
 use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateWorklogCommand,
     LoginCommand, ProjectQueryDto, RegisterCommand, TransitionIssueCommand, UpdateCommentCommand,
-    UpdateIssueCommand, UpdateProjectCommand, UpdateWorklogCommand,
+    UpdateIssueCommand, UpdateNotificationSettingsCommand, UpdateProjectCommand,
+    UpdateWorklogCommand,
 };
 use crate::dto::{
     AuthDto, BacklogDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto, WorklogDto,
@@ -72,6 +73,7 @@ pub struct Services {
     pub label: Arc<dyn LabelService>,
     pub issue_link: Arc<dyn IssueLinkService>,
     pub saved_filter: Arc<dyn SavedFilterService>,
+    pub notification: Arc<dyn NotificationService>,
 }
 
 impl AppContext {
@@ -187,6 +189,10 @@ impl AppContext {
                     repos.issues.clone(),
                     repos.projects.clone(),
                     repos.users.clone(),
+                )),
+                notification: Arc::new(crate::services::NotificationServiceImpl::new(
+                    repos.notifications.clone(),
+                    repos.notification_settings.clone(),
                 )),
                 sprint,
             },
@@ -415,6 +421,47 @@ pub trait SavedFilterService: Send + Sync {
     ) -> Result<SavedFilterDto, AppError>;
     async fn delete_filter(&self, id: String, owner_id: UserId) -> Result<(), AppError>;
     async fn execute_filter(&self, id: String, user_id: UserId) -> Result<Vec<IssueDto>, AppError>;
+}
+
+#[async_trait]
+pub trait NotificationService: Send + Sync {
+    async fn list_unread(&self, user_id: UserId) -> Result<NotificationListDto, AppError>;
+    async fn mark_read(&self, id: String, user_id: UserId) -> Result<(), AppError>;
+    async fn mark_all_read(&self, user_id: UserId) -> Result<(), AppError>;
+    async fn get_settings(&self, user_id: UserId) -> Result<NotificationSettingsDto, AppError>;
+    async fn update_settings(
+        &self,
+        user_id: UserId,
+        cmd: UpdateNotificationSettingsCommand,
+    ) -> Result<NotificationSettingsDto, AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NotificationDto {
+    pub id: String,
+    pub event_type: String,
+    pub entity_type: String,
+    pub entity_id: Option<String>,
+    pub actor_id: Option<String>,
+    pub title: String,
+    pub body: Option<String>,
+    pub is_read: bool,
+    pub action_url: Option<String>,
+    pub metadata: serde_json::Value,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NotificationListDto {
+    pub notifications: Vec<NotificationDto>,
+    pub unread_count: usize,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NotificationSettingsDto {
+    pub email_frequency: String,
+    pub disabled_event_types: Vec<String>,
+    pub notify_own_changes: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

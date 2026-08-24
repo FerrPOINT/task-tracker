@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serial_test::serial;
 use server::run;
-use shared::{AppConfig, AuthConfig, DatabaseConfig, ServerConfig};
+use shared::{AppConfig, AuthConfig, DatabaseConfig, EmailConfig, ServerConfig};
 
 fn test_config() -> Arc<AppConfig> {
     let url = std::env::var("TASKTRACKER_DATABASE_URL")
@@ -31,6 +31,7 @@ fn test_config() -> Arc<AppConfig> {
             refresh_cookie_path: "/api/v1/auth".to_string(),
         },
         storage: shared::StorageConfig::default(),
+        email: EmailConfig::default(),
     })
 }
 

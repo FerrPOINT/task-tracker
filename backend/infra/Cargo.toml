@@ -24,6 +24,8 @@ anyhow.workspace = true
 moka.workspace = true
 redis.workspace = true
 migration = { path = "../migration" }
+lettre.workspace = true
 
 [dev-dependencies]
 serial_test = "3.2"
+tokio = { workspace = true, features = ["macros", "rt"] }

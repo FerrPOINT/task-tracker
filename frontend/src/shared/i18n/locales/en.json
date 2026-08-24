@@ -22,6 +22,26 @@
     "loginDemo": "MVP demo: any login/password works.",
     "registerDemo": "MVP demo: registration without confirmation."
   },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Keep up with work that needs your attention.",
+    "open": "Open notifications",
+    "viewAll": "View all notifications",
+    "all": "All",
+    "unread": "Unread ({{count}})",
+    "markRead": "Mark as read",
+    "markAllRead": "Mark all as read",
+    "empty": "No notifications yet.",
+    "emptyUnread": "No unread notifications.",
+    "loading": "Loading notifications...",
+    "preferences": "Preferences",
+    "frequency": "Email frequency",
+    "frequencyImmediate": "Immediately",
+    "frequencyHourly": "Hourly digest",
+    "frequencyDaily": "Daily digest",
+    "frequencyNone": "Never",
+    "ownChanges": "Notify about my own changes"
+  },
   "dashboard": {
     "title": "Team Dashboard",
     "addWidget": "Add widget",

@@ -67,6 +67,7 @@ uuid_id!(IssueTypeId);
 uuid_id!(WorkflowTransitionId);
 uuid_id!(IssueStatusHistoryId);
 uuid_id!(SavedFilterId);
+uuid_id!(NotificationId);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProjectKey(Arc<str>);

@@ -1411,6 +1411,120 @@
         ]
       }
     },
+    "/api/v1/notification-settings": {
+      "get": {
+        "tags": [
+          "routes::notifications"
+        ],
+        "operationId": "get_notification_settings",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "routes::notifications"
+        ],
+        "operationId": "update_notification_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNotificationSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationSettingsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications": {
+      "get": {
+        "tags": [
+          "routes::notifications"
+        ],
+        "operationId": "list_notifications",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/read-all": {
+      "post": {
+        "tags": [
+          "routes::notifications"
+        ],
+        "operationId": "mark_all_notifications_read",
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{id}/read": {
+      "patch": {
+        "tags": [
+          "routes::notifications"
+        ],
+        "operationId": "mark_notification_read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Notification id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          },
+          "400": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          }
+        }
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "tags": [
@@ -3208,6 +3322,104 @@
           }
         }
       },
+      "NotificationListResponse": {
+        "type": "object",
+        "required": [
+          "notifications",
+          "unread_count"
+        ],
+        "properties": {
+          "notifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationResponse"
+            }
+          },
+          "unread_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "NotificationResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "event_type",
+          "entity_type",
+          "title",
+          "is_read",
+          "metadata",
+          "created_at"
+        ],
+        "properties": {
+          "action_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "actor_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "entity_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "entity_type": {
+            "type": "string"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "is_read": {
+            "type": "boolean"
+          },
+          "metadata": {},
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "NotificationSettingsResponse": {
+        "type": "object",
+        "required": [
+          "email_frequency",
+          "disabled_event_types",
+          "notify_own_changes"
+        ],
+        "properties": {
+          "disabled_event_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "email_frequency": {
+            "type": "string"
+          },
+          "notify_own_changes": {
+            "type": "boolean"
+          }
+        }
+      },
       "ProjectListResponse": {
         "type": "object",
         "required": [
@@ -3590,6 +3802,28 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateNotificationSettingsRequest": {
+        "type": "object",
+        "required": [
+          "email_frequency",
+          "disabled_event_types",
+          "notify_own_changes"
+        ],
+        "properties": {
+          "disabled_event_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "email_frequency": {
+            "type": "string"
+          },
+          "notify_own_changes": {
+            "type": "boolean"
           }
         }
       },

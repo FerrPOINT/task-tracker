@@ -3,10 +3,11 @@ use std::sync::Arc;
 use domain::{
     Board, BoardColumn, BoardRepository, InMemoryStorage, MemoryAttachmentRepository,
     MemoryBoardRepository, MemoryCommentRepository, MemoryIssueLinkRepository,
-    MemoryIssueRepository, MemoryLabelRepository, MemoryProjectMemberRepository,
-    MemoryProjectRepository, MemorySavedFilterRepository, MemorySprintRepository,
-    MemoryUserRepository, MemoryWorklogRepository, Project, ProjectRepository, StatusCategory,
-    User, UserRepository,
+    MemoryIssueRepository, MemoryLabelRepository, MemoryNotificationRepository,
+    MemoryProjectMemberRepository, MemoryProjectRepository, MemorySavedFilterRepository,
+    MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository, Notification,
+    NotificationRepository, Project, ProjectRepository, StatusCategory, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -40,10 +41,17 @@ fn test_config() -> Arc<AppConfig> {
             refresh_cookie_path: "/api/v1/auth".to_string(),
         },
         storage: shared::StorageConfig::default(),
+        email: shared::EmailConfig::default(),
     })
 }
 
 async fn spawn_server() -> (String, reqwest::Client) {
+    let (url, client, _) = spawn_server_with_notifications().await;
+    (url, client)
+}
+
+async fn spawn_server_with_notifications()
+-> (String, reqwest::Client, Arc<MemoryNotificationRepository>) {
     let user = test_user();
     let mut project = Project {
         id: shared::ProjectId::from_uuid(
@@ -112,6 +120,7 @@ async fn spawn_server() -> (String, reqwest::Client) {
     boards.save(&board).await.unwrap();
     let sprints = Arc::new(MemorySprintRepository::default());
 
+    let notifications = Arc::new(MemoryNotificationRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         projects: projects.clone(),
@@ -128,6 +137,8 @@ async fn spawn_server() -> (String, reqwest::Client) {
         labels: Arc::new(MemoryLabelRepository::default()),
         issue_links: Arc::new(MemoryIssueLinkRepository::default()),
         saved_filters: Arc::new(MemorySavedFilterRepository::default()),
+        notifications: notifications.clone(),
+        notification_settings: notifications.clone(),
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -143,7 +154,7 @@ async fn spawn_server() -> (String, reqwest::Client) {
         axum::serve(listener, router).await.unwrap();
     });
     let client = reqwest::Client::new();
-    (url, client)
+    (url, client, notifications)
 }
 
 #[tokio::test]
@@ -1837,4 +1848,205 @@ async fn sse_query_token_rejected_for_other_paths() {
         .await
         .unwrap();
     assert_eq!(res.status(), 401);
+}
+
+fn make_notification(recipient: UserId, offset_secs: i64, title: &str) -> Notification {
+    Notification {
+        id: shared::NotificationId::new(),
+        recipient_id: recipient,
+        event_type: "issue_assigned".into(),
+        entity_type: "issue".into(),
+        entity_id: Some(shared::IssueId::new().as_uuid()),
+        actor_id: Some(UserId::new()),
+        title: title.into(),
+        body: Some("body".into()),
+        is_read: false,
+        read_at: None,
+        action_url: Some("/issues/TT-1".into()),
+        metadata: serde_json::Value::Null,
+        created_at: shared::now() + chrono::Duration::seconds(offset_secs),
+    }
+}
+
+#[tokio::test]
+async fn notifications_list_returns_newest_ten_with_unread_count() {
+    let (url, client, repo) = spawn_server_with_notifications().await;
+    let token = login_token(&url, &client).await;
+    let user_id = test_user().id;
+
+    for i in 0..12 {
+        repo.save(&make_notification(user_id, i, &format!("N{i}")))
+            .await
+            .unwrap();
+    }
+
+    let res = client
+        .get(format!("{url}/api/v1/notifications"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["unread_count"], 12);
+    let list = body["notifications"].as_array().unwrap();
+    assert_eq!(list.len(), 10);
+    assert_eq!(list[0]["title"], "N11");
+    assert_eq!(list[9]["title"], "N2");
+}
+
+#[tokio::test]
+async fn notifications_read_marks_only_own_unread_and_isolates_ownership() {
+    let (url, client, repo) = spawn_server_with_notifications().await;
+    let token = login_token(&url, &client).await;
+    let user_id = test_user().id;
+    let other = UserId::new();
+    let own = make_notification(user_id, 0, "own");
+    let foreign = make_notification(other, 0, "foreign");
+    repo.save(&own).await.unwrap();
+    repo.save(&foreign).await.unwrap();
+
+    // malformed UUID → 400
+    let bad = client
+        .patch(format!("{url}/api/v1/notifications/not-a-uuid/read"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad.status(), 400);
+
+    // foreign notification → 404
+    let foreign_res = client
+        .patch(format!("{url}/api/v1/notifications/{}/read", foreign.id))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(foreign_res.status(), 404);
+
+    // own notification → 204
+    let own_res = client
+        .patch(format!("{url}/api/v1/notifications/{}/read", own.id))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(own_res.status(), 204);
+
+    // after read, list is empty for own user
+    let list = client
+        .get(format!("{url}/api/v1/notifications"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = list.json().await.unwrap();
+    assert_eq!(body["unread_count"], 0);
+}
+
+#[tokio::test]
+async fn notifications_read_all_marks_all_own_read() {
+    let (url, client, repo) = spawn_server_with_notifications().await;
+    let token = login_token(&url, &client).await;
+    let user_id = test_user().id;
+    let other = UserId::new();
+    repo.save(&make_notification(user_id, 0, "a"))
+        .await
+        .unwrap();
+    repo.save(&make_notification(user_id, 1, "b"))
+        .await
+        .unwrap();
+    repo.save(&make_notification(other, 0, "c")).await.unwrap();
+
+    let res = client
+        .post(format!("{url}/api/v1/notifications/read-all"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204);
+
+    let list = client
+        .get(format!("{url}/api/v1/notifications"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = list.json().await.unwrap();
+    assert_eq!(body["unread_count"], 0);
+    // other user's notifications untouched
+    assert_eq!(repo.list_unread(other).await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn notification_settings_get_returns_defaults_without_persisting() {
+    let (url, client, repo) = spawn_server_with_notifications().await;
+    let token = login_token(&url, &client).await;
+    let user_id = test_user().id;
+
+    let res = client
+        .get(format!("{url}/api/v1/notification-settings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["email_frequency"], "immediate");
+    assert_eq!(body["disabled_event_types"].as_array().unwrap().len(), 0);
+    assert_eq!(body["notify_own_changes"], false);
+    // not persisted
+    assert!(repo.get_settings(user_id).await.is_err());
+}
+
+#[tokio::test]
+async fn notification_settings_patch_persists_and_round_trips() {
+    let (url, client, _repo) = spawn_server_with_notifications().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .patch(format!("{url}/api/v1/notification-settings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "email_frequency": "daily",
+            "disabled_event_types": ["issue_commented"],
+            "notify_own_changes": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["email_frequency"], "daily");
+    assert_eq!(body["notify_own_changes"], true);
+
+    // GET after PATCH returns persisted values
+    let get_res = client
+        .get(format!("{url}/api/v1/notification-settings"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let get_body: serde_json::Value = get_res.json().await.unwrap();
+    assert_eq!(get_body["email_frequency"], "daily");
+    assert_eq!(get_body["notify_own_changes"], true);
+}
+
+#[tokio::test]
+async fn notification_settings_patch_invalid_frequency_returns_400() {
+    let (url, client, _repo) = spawn_server_with_notifications().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .patch(format!("{url}/api/v1/notification-settings"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "email_frequency": "weekly",
+            "disabled_event_types": [],
+            "notify_own_changes": false
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
 }

@@ -24,6 +24,14 @@ fn clear_env() {
         "TASKTRACKER_AUTH__REFRESH_COOKIE_SAME_SITE",
         "TASKTRACKER_AUTH__REFRESH_COOKIE_DOMAIN",
         "TASKTRACKER_AUTH__REFRESH_COOKIE_PATH",
+        "TASKTRACKER_EMAIL__ENABLED",
+        "TASKTRACKER_EMAIL__HOST",
+        "TASKTRACKER_EMAIL__PORT",
+        "TASKTRACKER_EMAIL__USERNAME",
+        "TASKTRACKER_EMAIL__PASSWORD",
+        "TASKTRACKER_EMAIL__FROM_ADDRESS",
+        "TASKTRACKER_EMAIL__FROM_NAME",
+        "TASKTRACKER_EMAIL__STARTTLS",
     ] {
         unsafe { env::remove_var(key) };
     }
@@ -97,6 +105,60 @@ fn config_defaults_implemented() {
     assert_eq!(cfg.server.port, 3456);
     assert_eq!(cfg.database.max_connections, 20);
     assert_eq!(cfg.auth.jwt_secret, "[CHANGE_ME]");
+}
+
+#[test]
+fn email_defaults_are_disabled_and_safe() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    clear_env();
+    set_env("TASKTRACKER_JWT_SECRET", "test-secret-32-chars-long!!!!!");
+
+    let cfg = AppConfig::from_path("/nonexistent.toml").unwrap();
+
+    assert!(!cfg.email.enabled);
+    assert_eq!(cfg.email.host, "");
+    assert_eq!(cfg.email.port, 587);
+    assert_eq!(cfg.email.username, None);
+    assert_eq!(cfg.email.password, None);
+    assert_eq!(cfg.email.from_address, "");
+    assert_eq!(cfg.email.from_name, "Task Tracker");
+    assert!(cfg.email.starttls);
+
+    clear_env();
+}
+
+#[test]
+fn enabled_email_requires_a_complete_valid_configuration() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    clear_env();
+    set_env("TASKTRACKER_JWT_SECRET", "test-secret-32-chars-long!!!!!");
+    set_env("TASKTRACKER_EMAIL__ENABLED", "true");
+    set_env("TASKTRACKER_EMAIL__FROM_ADDRESS", "noreply@example.test");
+
+    let err = AppConfig::from_path("/nonexistent.toml").unwrap_err();
+    assert!(err.to_string().contains("email.host"));
+
+    set_env("TASKTRACKER_EMAIL__HOST", "smtp.example.test");
+    set_env("TASKTRACKER_EMAIL__FROM_ADDRESS", "not an email");
+    let err = AppConfig::from_path("/nonexistent.toml").unwrap_err();
+    assert!(err.to_string().contains("email.from_address"));
+
+    set_env("TASKTRACKER_EMAIL__FROM_ADDRESS", "noreply@example.test");
+    set_env("TASKTRACKER_EMAIL__USERNAME", "mailer");
+    let err = AppConfig::from_path("/nonexistent.toml").unwrap_err();
+    assert!(
+        err.to_string()
+            .contains("email.username and email.password")
+    );
+
+    set_env("TASKTRACKER_EMAIL__PASSWORD", "test-password");
+    let cfg = AppConfig::from_path("/nonexistent.toml").unwrap();
+    assert!(cfg.email.enabled);
+    assert_eq!(cfg.email.host, "smtp.example.test");
+    assert_eq!(cfg.email.username.as_deref(), Some("mailer"));
+    assert_eq!(cfg.email.password.as_deref(), Some("test-password"));
+
+    clear_env();
 }
 
 #[test]

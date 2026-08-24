@@ -22,6 +22,7 @@ fn test_config() -> Arc<shared::AppConfig> {
             refresh_cookie_path: "/api/v1/auth".to_string(),
         },
         storage: shared::StorageConfig::default(),
+        email: shared::EmailConfig::default(),
     })
 }
 
@@ -47,6 +48,8 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
+        notifications: Arc::new(domain::StubNotificationRepository),
+        notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
     });
     let ctx = Arc::new(app::context::AppContext::new(
         test_config(),

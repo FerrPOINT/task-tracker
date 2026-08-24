@@ -7,7 +7,8 @@ mod tests;
 
 use crate::{
     Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity, Label,
-    Project, ProjectMember, SavedFilter, Sprint, Status, User, WorkflowTransition, Worklog,
+    Notification, NotificationUserSettings, Project, ProjectMember, SavedFilter, Sprint, Status,
+    User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
@@ -157,6 +158,8 @@ pub struct Repositories {
     pub labels: Arc<dyn LabelRepository>,
     pub issue_links: Arc<dyn IssueLinkRepository>,
     pub saved_filters: Arc<dyn SavedFilterRepository>,
+    pub notifications: Arc<dyn NotificationRepository>,
+    pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
 }
 
 impl Default for Repositories {
@@ -177,6 +180,8 @@ impl Default for Repositories {
             labels: Arc::new(StubLabelRepository),
             issue_links: Arc::new(StubIssueLinkRepository),
             saved_filters: Arc::new(StubSavedFilterRepository),
+            notifications: Arc::new(StubNotificationRepository),
+            notification_settings: Arc::new(StubUserNotificationSettingsRepository),
         }
     }
 }
@@ -546,16 +551,74 @@ impl SavedFilterRepository for StubSavedFilterRepository {
     async fn get_by_id(&self, _id: SavedFilterId) -> Result<SavedFilter, AppError> {
         Err(AppError::not_found("saved_filter", "stub"))
     }
+
     async fn list_by_owner(&self, _owner_id: UserId) -> Result<Vec<SavedFilter>, AppError> {
         Ok(vec![])
     }
+
     async fn list_public(&self) -> Result<Vec<SavedFilter>, AppError> {
         Ok(vec![])
     }
+
     async fn save(&self, _filter: &SavedFilter) -> Result<SavedFilterId, AppError> {
         Ok(SavedFilterId::new())
     }
+
     async fn delete(&self, _id: SavedFilterId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait NotificationRepository: Send + Sync {
+    async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError>;
+    async fn list_unread(&self, recipient_id: UserId) -> Result<Vec<Notification>, AppError>;
+    async fn mark_read(
+        &self,
+        id: shared::NotificationId,
+        recipient_id: UserId,
+    ) -> Result<(), AppError>;
+    async fn mark_all_read(&self, recipient_id: UserId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait UserNotificationSettingsRepository: Send + Sync {
+    async fn get_settings(&self, user_id: UserId) -> Result<NotificationUserSettings, AppError>;
+    async fn save_settings(&self, settings: &NotificationUserSettings) -> Result<(), AppError>;
+}
+
+pub struct StubNotificationRepository;
+#[async_trait]
+impl NotificationRepository for StubNotificationRepository {
+    async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError> {
+        Ok(notification.id)
+    }
+
+    async fn list_unread(&self, _recipient_id: UserId) -> Result<Vec<Notification>, AppError> {
+        Ok(vec![])
+    }
+
+    async fn mark_read(
+        &self,
+        id: shared::NotificationId,
+        _recipient_id: UserId,
+    ) -> Result<(), AppError> {
+        Err(AppError::not_found("notification", id))
+    }
+
+    async fn mark_all_read(&self, _recipient_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubUserNotificationSettingsRepository;
+#[async_trait]
+impl UserNotificationSettingsRepository for StubUserNotificationSettingsRepository {
+    async fn get_settings(&self, user_id: UserId) -> Result<NotificationUserSettings, AppError> {
+        Err(AppError::not_found("notification settings", user_id))
+    }
+
+    async fn save_settings(&self, _settings: &NotificationUserSettings) -> Result<(), AppError> {
         Ok(())
     }
 }

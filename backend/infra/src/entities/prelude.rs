@@ -5,6 +5,8 @@ pub use super::issue::Entity as Issue;
 pub use super::issue_label::Entity as IssueLabel;
 pub use super::issue_link::Entity as IssueLinkEntity;
 pub use super::label::Entity as Label;
+pub use super::notification::Entity as Notification;
+pub use super::notification_user_settings::Entity as NotificationUserSettings;
 pub use super::project::Entity as Project;
 pub use super::project_member::Entity as ProjectMember;
 pub use super::saved_filter::Entity as SavedFilter;

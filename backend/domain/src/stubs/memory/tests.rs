@@ -1,13 +1,18 @@
 use crate::memory::{
-    MemoryBoardRepository, MemoryEventBus, MemoryIssueRepository, MemoryProjectRepository,
-    MemorySavedFilterRepository, MemorySprintRepository, MemoryUnitOfWork, MemoryUserRepository,
+    MemoryBoardRepository, MemoryEventBus, MemoryIssueRepository, MemoryNotificationRepository,
+    MemoryProjectRepository, MemorySavedFilterRepository, MemorySprintRepository, MemoryUnitOfWork,
+    MemoryUserRepository,
 };
 use crate::{
-    Board, BoardRepository, EventBus, Issue, IssueQuery, IssueRepository, Project, ProjectEvent,
-    ProjectQuery, ProjectRepository, Repositories, SavedFilterRepository, Sprint, SprintRepository,
-    SprintState, UnitOfWork, User, UserRepository,
+    Board, BoardRepository, EventBus, Issue, IssueQuery, IssueRepository, Notification,
+    NotificationRepository, NotificationUserSettings, Project, ProjectEvent, ProjectQuery,
+    ProjectRepository, Repositories, SavedFilterRepository, Sprint, SprintRepository, SprintState,
+    UnitOfWork, User, UserNotificationSettingsRepository, UserRepository,
 };
-use shared::{BoardId, IssueType, Priority, ProjectId, ProjectKey, SprintId, StatusId, UserId};
+use shared::{
+    BoardId, IssueId, IssueType, NotificationId, Priority, ProjectId, ProjectKey, SprintId,
+    StatusId, UserId,
+};
 use std::str::FromStr;
 
 fn sample_user() -> User {
@@ -265,4 +270,95 @@ async fn memory_saved_filter_repository_lifecycle() {
     repo.delete(filter.id).await.unwrap();
     assert!(repo.get_by_id(filter.id).await.is_err());
     assert!(repo.delete(filter.id).await.is_err());
+}
+
+#[tokio::test]
+async fn memory_notification_repository_lists_unread_and_marks_recipient_notifications_read() {
+    let repo = MemoryNotificationRepository::default();
+    let recipient = UserId::new();
+    let other_recipient = UserId::new();
+    let now = shared::now();
+    let unread = Notification {
+        id: NotificationId::new(),
+        recipient_id: recipient,
+        event_type: "issue_assigned".into(),
+        entity_type: "issue".into(),
+        entity_id: Some(IssueId::new().as_uuid()),
+        actor_id: Some(UserId::new()),
+        title: "Assigned to you".into(),
+        body: Some("Review the issue".into()),
+        is_read: false,
+        read_at: None,
+        action_url: Some("/issues/TT-1".into()),
+        metadata: serde_json::json!({"priority": "high"}),
+        created_at: now,
+    };
+    let already_read = Notification {
+        id: NotificationId::new(),
+        recipient_id: recipient,
+        event_type: "issue_commented".into(),
+        entity_type: "issue".into(),
+        entity_id: Some(IssueId::new().as_uuid()),
+        actor_id: None,
+        title: "New comment".into(),
+        body: None,
+        is_read: true,
+        read_at: Some(now),
+        action_url: None,
+        metadata: serde_json::Value::Null,
+        created_at: now,
+    };
+    let someone_elses = Notification {
+        id: NotificationId::new(),
+        recipient_id: other_recipient,
+        ..unread.clone()
+    };
+
+    repo.save(&unread).await.unwrap();
+    repo.save(&already_read).await.unwrap();
+    repo.save(&someone_elses).await.unwrap();
+
+    assert_eq!(
+        repo.list_unread(recipient).await.unwrap(),
+        vec![unread.clone()]
+    );
+
+    repo.mark_read(unread.id, recipient).await.unwrap();
+    assert!(repo.list_unread(recipient).await.unwrap().is_empty());
+    assert!(repo.mark_read(unread.id, other_recipient).await.is_err());
+
+    let second_unread = Notification {
+        id: NotificationId::new(),
+        ..unread.clone()
+    };
+    repo.save(&second_unread).await.unwrap();
+    repo.mark_all_read(recipient).await.unwrap();
+    assert!(repo.list_unread(recipient).await.unwrap().is_empty());
+    assert_eq!(
+        repo.list_unread(other_recipient).await.unwrap(),
+        vec![someone_elses]
+    );
+}
+
+#[tokio::test]
+async fn memory_notification_settings_repository_round_trips_user_preferences() {
+    let repo = MemoryNotificationRepository::default();
+    let user_id = UserId::new();
+    let settings = NotificationUserSettings {
+        user_id,
+        email_frequency: "daily".into(),
+        disabled_event_types: vec!["issue_updated".into(), "issue_commented".into()],
+        notify_own_changes: false,
+    };
+
+    assert!(repo.get_settings(user_id).await.is_err());
+    repo.save_settings(&settings).await.unwrap();
+    assert_eq!(repo.get_settings(user_id).await.unwrap(), settings);
+
+    let updated = NotificationUserSettings {
+        email_frequency: "immediate".into(),
+        ..settings.clone()
+    };
+    repo.save_settings(&updated).await.unwrap();
+    assert_eq!(repo.get_settings(user_id).await.unwrap(), updated);
 }

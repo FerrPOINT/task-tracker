@@ -157,6 +157,8 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
+        notifications: Arc::new(domain::StubNotificationRepository),
+        notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
     });
     Arc::new(app::AppContext::new(
         config,
@@ -184,6 +186,8 @@ pub fn failing_context() -> Arc<app::AppContext> {
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
+        notifications: Arc::new(domain::StubNotificationRepository),
+        notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
     });
     Arc::new(app::AppContext::new(
         Arc::new(shared::AppConfig {
@@ -200,6 +204,7 @@ pub fn failing_context() -> Arc<app::AppContext> {
                 refresh_cookie_path: "/api/v1/auth".to_string(),
             },
             storage: shared::StorageConfig::default(),
+            email: shared::EmailConfig::default(),
         }),
         repos,
         Arc::new(InMemoryStorage::default()),

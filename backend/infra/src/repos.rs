@@ -5,26 +5,28 @@ use async_trait::async_trait;
 use domain::{
     Attachment, AttachmentRepository, Board, BoardColumn, BoardRepository, Comment,
     CommentRepository, Issue, IssueLink, IssueLinkRepository, IssueQuery, IssueRepository,
-    IssueTypeEntity, IssueTypeRepository, Label, LabelRepository, LinkType, Project, ProjectMember,
+    IssueTypeEntity, IssueTypeRepository, Label, LabelRepository, LinkType, Notification,
+    NotificationRepository, NotificationUserSettings, Project, ProjectMember,
     ProjectMemberRepository, ProjectRepository, ProjectRole, SavedFilter, SavedFilterRepository,
     Sprint, SprintRepository, SprintState, Status, StatusCategory, StatusRepository, User,
-    UserRepository, WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository,
-    Worklog, WorklogRepository,
+    UserNotificationSettingsRepository, UserRepository, WorkflowTransition, WorkflowTransitionId,
+    WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 use shared::{
     AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, IssueType,
-    IssueTypeId, LabelId, Priority, ProjectId, ProjectKey, SavedFilterId, SprintId, StatusId,
-    UserId, WorklogId,
+    IssueTypeId, LabelId, NotificationId, Priority, ProjectId, ProjectKey, SavedFilterId, SprintId,
+    StatusId, UserId, WorklogId,
 };
 use uuid::Uuid;
 
 use crate::entities::{
-    attachment, board, comment, issue, issue_label, issue_link, issue_type, label, project,
-    project_member, saved_filter, sprint, status, user, workflow_transition, worklog,
+    attachment, board, comment, issue, issue_label, issue_link, issue_type, label, notification,
+    notification_user_settings, project, project_member, saved_filter, sprint, status, user,
+    workflow_transition, worklog,
 };
 
 fn map_status(m: status::Model) -> Status {
@@ -78,6 +80,8 @@ pub struct SeaOrmRepositories {
     pub labels: Arc<dyn LabelRepository>,
     pub issue_links: Arc<dyn IssueLinkRepository>,
     pub saved_filters: Arc<dyn SavedFilterRepository>,
+    pub notifications: Arc<dyn NotificationRepository>,
+    pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
 }
 
 impl SeaOrmRepositories {
@@ -98,7 +102,9 @@ impl SeaOrmRepositories {
             attachments: Arc::new(AttachmentRepo { db: db.clone() }),
             labels: Arc::new(LabelRepo { db: db.clone() }),
             issue_links: Arc::new(IssueLinkRepo { db: db.clone() }),
-            saved_filters: Arc::new(SavedFilterRepo { db }),
+            saved_filters: Arc::new(SavedFilterRepo { db: db.clone() }),
+            notifications: Arc::new(NotificationRepo { db: db.clone() }),
+            notification_settings: Arc::new(NotificationUserSettingsRepo { db }),
         }
     }
 }
@@ -713,6 +719,8 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         labels: sea.labels,
         issue_links: sea.issue_links,
         saved_filters: sea.saved_filters,
+        notifications: sea.notifications,
+        notification_settings: sea.notification_settings,
     }
 }
 
@@ -1323,5 +1331,166 @@ fn map_saved_filter(m: saved_filter::Model) -> SavedFilter {
         is_public: m.is_public,
         created_at: m.created_at,
         updated_at: m.updated_at,
+    }
+}
+
+struct NotificationRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait::async_trait]
+impl NotificationRepository for NotificationRepo {
+    async fn save(&self, notification: &Notification) -> Result<NotificationId, AppError> {
+        let model = notification::ActiveModel {
+            id: sea_orm::ActiveValue::Set(notification.id.as_uuid()),
+            recipient_id: sea_orm::ActiveValue::Set(notification.recipient_id.as_uuid()),
+            event_type: sea_orm::ActiveValue::Set(notification.event_type.as_ref().to_string()),
+            entity_type: sea_orm::ActiveValue::Set(notification.entity_type.as_ref().to_string()),
+            entity_id: sea_orm::ActiveValue::Set(notification.entity_id),
+            actor_id: sea_orm::ActiveValue::Set(notification.actor_id.map(|id| id.as_uuid())),
+            title: sea_orm::ActiveValue::Set(notification.title.as_ref().to_string()),
+            body: sea_orm::ActiveValue::Set(
+                notification.body.as_ref().map(|s| s.as_ref().to_string()),
+            ),
+            is_read: sea_orm::ActiveValue::Set(notification.is_read),
+            read_at: sea_orm::ActiveValue::Set(notification.read_at),
+            action_url: sea_orm::ActiveValue::Set(
+                notification
+                    .action_url
+                    .as_ref()
+                    .map(|s| s.as_ref().to_string()),
+            ),
+            metadata: sea_orm::ActiveValue::Set(notification.metadata.clone()),
+            created_at: sea_orm::ActiveValue::Set(notification.created_at),
+        };
+        notification::Entity::insert(model)
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(notification.id)
+    }
+
+    async fn list_unread(&self, recipient_id: UserId) -> Result<Vec<Notification>, AppError> {
+        let models = notification::Entity::find()
+            .filter(notification::Column::RecipientId.eq(recipient_id.as_uuid()))
+            .filter(notification::Column::IsRead.eq(false))
+            .order_by_asc(notification::Column::CreatedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_notification).collect())
+    }
+
+    async fn mark_read(&self, id: NotificationId, recipient_id: UserId) -> Result<(), AppError> {
+        let result = notification::Entity::update_many()
+            .col_expr(notification::Column::IsRead, Expr::value(true))
+            .col_expr(
+                notification::Column::ReadAt,
+                Expr::current_timestamp().into(),
+            )
+            .filter(notification::Column::Id.eq(id.as_uuid()))
+            .filter(notification::Column::RecipientId.eq(recipient_id.as_uuid()))
+            .filter(notification::Column::IsRead.eq(false))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if result.rows_affected == 0 {
+            return Err(AppError::not_found("notification", id));
+        }
+        Ok(())
+    }
+
+    async fn mark_all_read(&self, recipient_id: UserId) -> Result<(), AppError> {
+        notification::Entity::update_many()
+            .col_expr(notification::Column::IsRead, Expr::value(true))
+            .col_expr(
+                notification::Column::ReadAt,
+                Expr::current_timestamp().into(),
+            )
+            .filter(notification::Column::RecipientId.eq(recipient_id.as_uuid()))
+            .filter(notification::Column::IsRead.eq(false))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+fn map_notification(m: notification::Model) -> Notification {
+    Notification {
+        id: NotificationId::from_uuid(m.id),
+        recipient_id: UserId::from_uuid(m.recipient_id),
+        event_type: m.event_type.into(),
+        entity_type: m.entity_type.into(),
+        entity_id: m.entity_id,
+        actor_id: m.actor_id.map(UserId::from_uuid),
+        title: m.title.into(),
+        body: m.body.map(Into::into),
+        is_read: m.is_read,
+        read_at: m.read_at,
+        action_url: m.action_url.map(Into::into),
+        metadata: m.metadata,
+        created_at: m.created_at,
+    }
+}
+
+struct NotificationUserSettingsRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait::async_trait]
+impl UserNotificationSettingsRepository for NotificationUserSettingsRepo {
+    async fn get_settings(&self, user_id: UserId) -> Result<NotificationUserSettings, AppError> {
+        let model = notification_user_settings::Entity::find_by_id(user_id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .ok_or_else(|| AppError::not_found("notification settings", user_id))?;
+        Ok(map_notification_user_settings(model))
+    }
+
+    async fn save_settings(&self, settings: &NotificationUserSettings) -> Result<(), AppError> {
+        let model = notification_user_settings::ActiveModel {
+            user_id: sea_orm::ActiveValue::Set(settings.user_id.as_uuid()),
+            email_frequency: sea_orm::ActiveValue::Set(settings.email_frequency.to_string()),
+            disabled_event_types: sea_orm::ActiveValue::Set(serde_json::Value::Array(
+                settings
+                    .disabled_event_types
+                    .iter()
+                    .map(|event_type| serde_json::Value::String(event_type.to_string()))
+                    .collect(),
+            )),
+            notify_own_changes: sea_orm::ActiveValue::Set(settings.notify_own_changes),
+        };
+        notification_user_settings::Entity::insert(model)
+            .on_conflict(
+                sea_orm::sea_query::OnConflict::column(notification_user_settings::Column::UserId)
+                    .update_columns([
+                        notification_user_settings::Column::EmailFrequency,
+                        notification_user_settings::Column::DisabledEventTypes,
+                        notification_user_settings::Column::NotifyOwnChanges,
+                    ])
+                    .to_owned(),
+            )
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+fn map_notification_user_settings(
+    m: notification_user_settings::Model,
+) -> NotificationUserSettings {
+    let disabled_event_types = serde_json::from_value::<Vec<String>>(m.disabled_event_types)
+        .unwrap_or_default()
+        .into_iter()
+        .map(Into::into)
+        .collect();
+    NotificationUserSettings {
+        user_id: UserId::from_uuid(m.user_id),
+        email_frequency: m.email_frequency.into(),
+        disabled_event_types,
+        notify_own_changes: m.notify_own_changes,
     }
 }

@@ -6,7 +6,7 @@
 
 ## Статус (обновлено 2026-08-24)
 
-**Фазы 0–5 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests).
+**Фазы 0–6 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests).
 
 Реализовано сверх плана фаз 0–4:
 
@@ -26,7 +26,7 @@
 - Frontend: JQL input, save-filter dialog, saved-filters API client, i18n (ru/en).
 - OpenAPI: 5 новых endpoints, generated TypeScript client.
 
-Отложено до поздних фаз: уведомления/email (фаза 6), «Корзина»/soft-delete (фаза 6+, ссылка из сайдбара убрана), watcher/vote, версии/компоненты, кастомные поля, админка.
+Отложено до поздних фаз: генерация уведомлений из issue-событий и digest-рассылки, «Корзина»/soft-delete (ссылка из сайдбара убрана), watcher/vote, версии/компоненты, кастомные поля, админка.
 
 ## 2. Phase 0: Bootstrap (M0)
 
@@ -96,11 +96,13 @@
 
 **Цель**: уведомления и почтовые оповещения.
 
-- [ ] Migrations: `notification_events`, `notification_rules`, `notification_deliveries`.
-- [ ] In-app notification center.
-- [ ] SMTP integration, email templates.
-- [ ] WebSocket push notifications.
-- [ ] Verification: trigger notification, receive email.
+- [x] Migrations: `notifications`, `notification_user_settings` (000020).
+- [x] In-app notification center: unread list, ownership-safe read/mark-all, user settings, bell dropdown and `/notifications`.
+- [x] SMTP integration, HTML/plain-text templates, escaping and disabled-mode no-op.
+- [x] OpenAPI + generated frontend client for notification endpoints.
+- [x] Verification: repository/service/API/frontend/config/template tests.
+- [ ] Генерация уведомлений из issue-событий, email digest и production delivery flow.
+- [ ] Real-time push for notification center (SSE/WebSocket).
 
 ## 9. Phase 7: Reports (M7)
 

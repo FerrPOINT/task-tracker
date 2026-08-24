@@ -13,6 +13,35 @@ pub struct AppConfig {
     pub auth: AuthConfig,
     #[serde(default)]
     pub storage: StorageConfig,
+    #[serde(default)]
+    pub email: EmailConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailConfig {
+    pub enabled: bool,
+    pub host: String,
+    pub port: u16,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub from_address: String,
+    pub from_name: String,
+    pub starttls: bool,
+}
+
+impl Default for EmailConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            host: String::new(),
+            port: 587,
+            username: None,
+            password: None,
+            from_address: String::new(),
+            from_name: "Task Tracker".to_string(),
+            starttls: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +116,14 @@ impl AppConfig {
             .set_default("auth.refresh_cookie_path", "/api/v1/auth")?
             .set_default("storage.dir", "/var/lib/tasktracker/uploads")?
             .set_default("storage.max_upload_bytes", 26214400u64)?
+            .set_default("email.enabled", false)?
+            .set_default("email.host", "")?
+            .set_default("email.port", 587u16)?
+            .set_default("email.username", Option::<String>::None)?
+            .set_default("email.password", Option::<String>::None)?
+            .set_default("email.from_address", "")?
+            .set_default("email.from_name", "Task Tracker")?
+            .set_default("email.starttls", true)?
             .build()?;
 
         let mut cfg: AppConfig = Config::builder()
@@ -112,8 +149,39 @@ impl AppConfig {
             ));
         }
 
+        if cfg.email.enabled {
+            if cfg.email.host.trim().is_empty() {
+                return Err(ConfigError::Message(
+                    "email.host must be set when email is enabled".to_string(),
+                ));
+            }
+            if !is_valid_mail_address(&cfg.email.from_address) {
+                return Err(ConfigError::Message(
+                    "email.from_address must be a valid mail address".to_string(),
+                ));
+            }
+            let has_user = cfg.email.username.is_some();
+            let has_pass = cfg.email.password.is_some();
+            if has_user != has_pass {
+                return Err(ConfigError::Message(
+                    "email.username and email.password must be set together or both omitted"
+                        .to_string(),
+                ));
+            }
+        }
+
         Ok(cfg)
     }
+}
+
+/// Minimal RFC-ish local@domain sanity check for the from-address.
+fn is_valid_mail_address(addr: &str) -> bool {
+    let addr = addr.trim();
+    if addr.is_empty() || !addr.contains('@') {
+        return false;
+    }
+    let (local, domain) = addr.split_once('@').unwrap();
+    !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
 }
 
 impl Default for DatabaseConfig {

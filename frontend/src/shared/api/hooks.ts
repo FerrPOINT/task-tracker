@@ -30,6 +30,51 @@ import { listStatuses, listTransitions, listIssueTypes } from '@/api/workflow'
 import { listAttachments, uploadAttachment, deleteAttachment } from '@/api/attachment'
 import { listProjectLabels, createLabel, listIssueLabels, attachLabel, detachLabel } from '@/api/label'
 import { listIssueLinks, createIssueLink, deleteIssueLink } from '@/api/link'
+import {
+  getNotificationSettings,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  updateNotificationSettings,
+  type UpdateNotificationSettingsInput,
+} from '@/api/notifications'
+
+export const notificationKeys = {
+  list: ['notifications'] as const,
+  settings: ['notification-settings'] as const,
+}
+
+export function useNotifications() {
+  return useQuery({ queryKey: notificationKeys.list, queryFn: listNotifications })
+}
+
+export function useMarkNotificationRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: markNotificationRead,
+    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.list }),
+  })
+}
+
+export function useMarkAllNotificationsRead() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: markAllNotificationsRead,
+    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.list }),
+  })
+}
+
+export function useNotificationSettings() {
+  return useQuery({ queryKey: notificationKeys.settings, queryFn: getNotificationSettings })
+}
+
+export function useUpdateNotificationSettings() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: UpdateNotificationSettingsInput) => updateNotificationSettings(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.settings }),
+  })
+}
 
 export const workflowKeys = {
   statuses: ['statuses'] as const,

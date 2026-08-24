@@ -2,8 +2,8 @@ use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 use shared::{
     AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, IssueStatusHistoryId,
-    IssueType, IssueTypeId, LabelId, Priority, ProjectId, ProjectKey, SprintId, StatusId,
-    Timestamp, UserId, WorkflowTransitionId, WorklogId,
+    IssueType, IssueTypeId, LabelId, NotificationId, Priority, ProjectId, ProjectKey, SprintId,
+    StatusId, Timestamp, UserId, WorkflowTransitionId, WorklogId,
 };
 use std::str::FromStr;
 
@@ -405,4 +405,29 @@ pub struct SavedFilter {
     pub is_public: bool,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Notification {
+    pub id: NotificationId,
+    pub recipient_id: UserId,
+    pub event_type: ArcStr,
+    pub entity_type: ArcStr,
+    pub entity_id: Option<uuid::Uuid>,
+    pub actor_id: Option<UserId>,
+    pub title: ArcStr,
+    pub body: Option<ArcStr>,
+    pub is_read: bool,
+    pub read_at: Option<Timestamp>,
+    pub action_url: Option<ArcStr>,
+    pub metadata: serde_json::Value,
+    pub created_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotificationUserSettings {
+    pub user_id: UserId,
+    pub email_frequency: ArcStr,
+    pub disabled_event_types: Vec<ArcStr>,
+    pub notify_own_changes: bool,
 }

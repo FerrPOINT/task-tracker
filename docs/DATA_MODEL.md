@@ -1417,8 +1417,8 @@ CREATE TABLE notifications (
     is_read BOOLEAN DEFAULT false,
     read_at TIMESTAMPTZ,
     action_url TEXT,
-    metadata JSONB,
-    created_at TIMESTAMPTZ DEFAULT now()
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
@@ -1427,9 +1427,9 @@ CREATE TABLE notifications (
 ```sql
 CREATE TABLE notification_user_settings (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    email_frequency TEXT DEFAULT 'immediate',
-    disabled_event_types TEXT[] DEFAULT '{}',
-    notify_own_changes BOOLEAN DEFAULT false
+    email_frequency TEXT NOT NULL DEFAULT 'immediate',
+    disabled_event_types JSONB NOT NULL DEFAULT '[]'::jsonb,
+    notify_own_changes BOOLEAN NOT NULL DEFAULT false
 );
 ```
 

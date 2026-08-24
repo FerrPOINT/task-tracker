@@ -1007,17 +1007,38 @@ Query: `?page=0&size=20`
 
 ## Notifications
 
+All notification endpoints require authentication.
+
 ### GET /notifications
 
-Query: `?unreadOnly=true&page=0&size=20`
+Returns up to 10 unread notifications for the current user, newest first.
 
-### PUT /notifications/{id}/read
+**Response:** `{ "notifications": [...], "unread_count": 2 }`
 
-### PUT /notifications/read-all
+### PATCH /notifications/{id}/read
 
-### GET /notifications/settings
+Marks one unread notification as read. The notification must belong to the current user. Returns `204`; malformed IDs return `400`, unavailable/foreign IDs return `404`.
 
-### PUT /notifications/settings
+### POST /notifications/read-all
+
+Marks every unread notification for the current user as read. Returns `204`.
+
+### GET /notification-settings
+
+Returns saved preferences or defaults without creating a row: `email_frequency: "immediate"`, empty `disabled_event_types`, and `notify_own_changes: false`.
+
+### PATCH /notification-settings
+
+**Body:**
+```json
+{
+  "email_frequency": "immediate",
+  "disabled_event_types": [],
+  "notify_own_changes": false
+}
+```
+
+Allowed email frequencies: `immediate`, `hourly`, `daily`, `never`.
 
 ---
 

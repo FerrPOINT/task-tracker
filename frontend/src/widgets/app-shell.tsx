@@ -20,7 +20,13 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
-import { useCurrentUser, useLogout } from '@/shared/api/hooks'
+import {
+  useCurrentUser,
+  useLogout,
+  useMarkAllNotificationsRead,
+  useMarkNotificationRead,
+  useNotifications,
+} from '@/shared/api/hooks'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -74,8 +80,12 @@ export function AppShell() {
   const projectKey = useCurrentProjectKey()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { data: user } = useCurrentUser()
+  const { data: notifications = [] } = useNotifications()
+  const markNotificationRead = useMarkNotificationRead()
+  const markAllNotificationsRead = useMarkAllNotificationsRead()
   useTrackerEvents()
   const logout = useLogout()
+  const unreadNotifications = notifications.filter((notification) => !notification.is_read)
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
@@ -144,9 +154,80 @@ export function AppShell() {
             </Link>
           </Button>
           <ThemeToggle />
-          <Button variant="ghost" size="icon" className="hidden h-8 w-8 sm:inline-flex">
-            <Bell className="h-[18px] w-[18px]" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-8 w-8"
+                aria-label={t('notifications.open')}
+                data-testid="notification-trigger"
+              >
+                <Bell className="h-[18px] w-[18px]" />
+                {unreadNotifications.length > 0 && (
+                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4 text-white">
+                    {unreadNotifications.length}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80 p-0">
+              <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                <span className="text-sm font-semibold">{t('notifications.title')}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2"
+                  onClick={() => markAllNotificationsRead.mutate()}
+                  disabled={unreadNotifications.length === 0 || markAllNotificationsRead.isPending}
+                >
+                  {t('notifications.markAllRead')}
+                </Button>
+              </div>
+              <div className="max-h-96 overflow-y-auto p-1">
+                {notifications.slice(0, 10).map((notification) => (
+                  <DropdownMenuItem key={notification.id} className="items-start gap-2 p-2">
+                    <div className="min-w-0 flex-1">
+                      {notification.action_url ? (
+                        <Link to={notification.action_url} className="block hover:text-accent">
+                          <div className="truncate font-medium">{notification.title}</div>
+                          {notification.body && <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">{notification.body}</div>}
+                        </Link>
+                      ) : (
+                        <>
+                          <div className="truncate font-medium">{notification.title}</div>
+                          {notification.body && <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">{notification.body}</div>}
+                        </>
+                      )}
+                    </div>
+                    {!notification.is_read && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 shrink-0 px-2"
+                        onClick={(event) => {
+                          event.preventDefault()
+                          markNotificationRead.mutate(notification.id)
+                        }}
+                      >
+                        {t('notifications.markRead')}
+                      </Button>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+                {notifications.length === 0 && (
+                  <p className="px-3 py-6 text-center text-sm text-text-muted">{t('notifications.empty')}</p>
+                )}
+              </div>
+              <div className="border-t border-border p-1">
+                <DropdownMenuItem asChild>
+                  <Link to="/notifications" className="justify-center text-accent">
+                    {t('notifications.viewAll')}
+                  </Link>
+                </DropdownMenuItem>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8">

@@ -3,19 +3,22 @@ use std::sync::Arc;
 type TestStorage = domain::InMemoryStorage;
 use domain::{
     Board, BoardColumn, BoardRepository, Issue, IssueQuery, IssueRepository, MemoryBoardRepository,
-    MemoryIssueRepository, MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository,
-    Project, ProjectQuery, ProjectRepository, Sprint, SprintRepository, StatusCategory, User,
-    UserRepository,
+    MemoryIssueRepository, MemoryNotificationRepository, MemoryProjectRepository,
+    MemorySprintRepository, MemoryUserRepository, Notification, NotificationRepository, Project,
+    ProjectQuery, ProjectRepository, Sprint, SprintRepository, StatusCategory, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{
-    AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, Priority,
-    ProjectId, ProjectKey, ServerConfig, SprintId, StatusId, UserId,
+    AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, NotificationId,
+    Priority, ProjectId, ProjectKey, ServerConfig, SprintId, StatusId, UserId,
 };
 
 use crate::commands::{
     CreateIssueCommand, CreateProjectCommand, LoginCommand, RegisterCommand, UpdateIssueCommand,
+    UpdateNotificationSettingsCommand,
 };
-use crate::context::AppContext;
+use crate::context::{AppContext, NotificationService};
+use crate::services::NotificationServiceImpl;
 
 fn test_user() -> User {
     User {
@@ -45,6 +48,7 @@ fn test_config() -> Arc<AppConfig> {
             refresh_cookie_path: "/".to_string(),
         },
         storage: shared::StorageConfig::default(),
+        email: shared::EmailConfig::default(),
     })
 }
 
@@ -132,6 +136,8 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
+        notifications: Arc::new(domain::StubNotificationRepository),
+        notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
     });
     AppContext::new(
         test_config(),
@@ -877,6 +883,8 @@ fn failing_context() -> AppContext {
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
+        notifications: Arc::new(domain::StubNotificationRepository),
+        notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
     });
     AppContext::new(test_config(), repos, Arc::new(TestStorage::default()))
 }
@@ -940,4 +948,107 @@ async fn dashboard_get_propagates_repo_error() {
 async fn search_propagates_repo_error() {
     let ctx = failing_context();
     assert_internal(ctx.services.search.search(Default::default()).await);
+}
+
+fn notification(recipient_id: UserId, created_at: shared::Timestamp) -> Notification {
+    Notification {
+        id: NotificationId::new(),
+        recipient_id,
+        event_type: "issue_assigned".into(),
+        entity_type: "issue".into(),
+        entity_id: Some(IssueId::new().as_uuid()),
+        actor_id: Some(UserId::new()),
+        title: "Assigned to you".into(),
+        body: Some("Review this issue".into()),
+        is_read: false,
+        read_at: None,
+        action_url: Some("/issues/TT-1".into()),
+        metadata: serde_json::Value::Null,
+        created_at,
+    }
+}
+
+#[tokio::test]
+async fn notification_service_lists_newest_ten_and_counts_all_unread() {
+    let user_id = UserId::new();
+    let repo = Arc::new(MemoryNotificationRepository::default());
+    let service = NotificationServiceImpl::new(repo.clone(), repo.clone());
+    let now = shared::now();
+
+    for offset in 0..12 {
+        let mut item = notification(user_id, now + chrono::Duration::seconds(offset));
+        item.title = format!("Notification {offset}").into();
+        repo.save(&item).await.unwrap();
+    }
+
+    let result = service.list_unread(user_id).await.unwrap();
+    assert_eq!(result.unread_count, 12);
+    assert_eq!(result.notifications.len(), 10);
+    assert_eq!(result.notifications[0].title, "Notification 11");
+    assert_eq!(result.notifications[9].title, "Notification 2");
+}
+
+#[tokio::test]
+async fn notification_service_marks_only_recipients_unread_notification_read() {
+    let user_id = UserId::new();
+    let other_user_id = UserId::new();
+    let repo = Arc::new(MemoryNotificationRepository::default());
+    let service = NotificationServiceImpl::new(repo.clone(), repo.clone());
+    let item = notification(other_user_id, shared::now());
+    repo.save(&item).await.unwrap();
+
+    assert!(
+        service
+            .mark_read(item.id.to_string(), user_id)
+            .await
+            .is_err()
+    );
+    assert_eq!(repo.list_unread(other_user_id).await.unwrap().len(), 1);
+    assert!(
+        service
+            .mark_read("not-a-uuid".to_string(), user_id)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn notification_service_returns_default_settings_and_persists_valid_updates() {
+    let user_id = UserId::new();
+    let repo = Arc::new(MemoryNotificationRepository::default());
+    let service = NotificationServiceImpl::new(repo.clone(), repo.clone());
+
+    let defaults = service.get_settings(user_id).await.unwrap();
+    assert_eq!(defaults.email_frequency, "immediate");
+    assert!(defaults.disabled_event_types.is_empty());
+    assert!(!defaults.notify_own_changes);
+    assert!(repo.get_settings(user_id).await.is_err());
+
+    let updated = service
+        .update_settings(
+            user_id,
+            UpdateNotificationSettingsCommand {
+                email_frequency: "daily".into(),
+                disabled_event_types: vec!["issue_commented".into()],
+                notify_own_changes: true,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated.email_frequency, "daily");
+    assert_eq!(updated.disabled_event_types, vec!["issue_commented"]);
+    assert!(updated.notify_own_changes);
+    assert!(
+        service
+            .update_settings(
+                user_id,
+                UpdateNotificationSettingsCommand {
+                    email_frequency: "weekly".into(),
+                    disabled_event_types: vec![],
+                    notify_own_changes: false,
+                },
+            )
+            .await
+            .is_err()
+    );
 }

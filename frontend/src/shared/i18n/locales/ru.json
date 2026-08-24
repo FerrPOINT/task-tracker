@@ -22,6 +22,26 @@
     "loginDemo": "MVP-демо: любой логин/пароль работает.",
     "registerDemo": "MVP-демо: регистрация без подтверждения."
   },
+  "notifications": {
+    "title": "Уведомления",
+    "description": "Следите за тем, что требует вашего внимания.",
+    "open": "Открыть уведомления",
+    "viewAll": "Все уведомления",
+    "all": "Все",
+    "unread": "Непрочитанные ({{count}})",
+    "markRead": "Отметить прочитанным",
+    "markAllRead": "Прочитать все",
+    "empty": "Пока нет уведомлений.",
+    "emptyUnread": "Нет непрочитанных уведомлений.",
+    "loading": "Загрузка уведомлений...",
+    "preferences": "Настройки",
+    "frequency": "Частота email",
+    "frequencyImmediate": "Немедленно",
+    "frequencyHourly": "Ежечасно",
+    "frequencyDaily": "Ежедневно",
+    "frequencyNone": "Никогда",
+    "ownChanges": "Уведомлять о моих изменениях"
+  },
   "dashboard": {
     "title": "Командный дашборд",
     "addWidget": "Добавить виджет",

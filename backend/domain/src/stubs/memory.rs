@@ -7,13 +7,14 @@ mod tests;
 
 use crate::{
     Board, BoardRepository, Comment, CommentRepository, EventBus, Issue, IssueQuery,
-    IssueRepository, Project, ProjectMember, ProjectMemberRepository, ProjectQuery,
-    ProjectRepository, SavedFilter, SavedFilterRepository, Sprint, SprintRepository, UnitOfWork,
-    User, UserRepository, Worklog, WorklogRepository,
+    IssueRepository, Notification, NotificationRepository, NotificationUserSettings, Project,
+    ProjectMember, ProjectMemberRepository, ProjectQuery, ProjectRepository, SavedFilter,
+    SavedFilterRepository, Sprint, SprintRepository, UnitOfWork, User,
+    UserNotificationSettingsRepository, UserRepository, Worklog, WorklogRepository,
 };
 use shared::{
-    AppError, BoardId, CommentId, IssueId, ProjectId, ProjectKey, SavedFilterId, SprintId, UserId,
-    WorklogId,
+    AppError, BoardId, CommentId, IssueId, NotificationId, ProjectId, ProjectKey, SavedFilterId,
+    SprintId, UserId, WorklogId,
 };
 
 #[derive(Default)]
@@ -766,6 +767,93 @@ impl SavedFilterRepository for MemorySavedFilterRepository {
             return Err(AppError::not_found("saved_filter", id));
         };
         filters.remove(index);
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryNotificationRepository {
+    notifications: Arc<Mutex<Vec<Notification>>>,
+    settings: Arc<Mutex<Vec<NotificationUserSettings>>>,
+}
+
+#[async_trait]
+impl NotificationRepository for MemoryNotificationRepository {
+    async fn save(&self, notification: &Notification) -> Result<NotificationId, AppError> {
+        let mut notifications = self.notifications.lock().unwrap();
+        if let Some(index) = notifications
+            .iter()
+            .position(|existing| existing.id == notification.id)
+        {
+            notifications[index] = notification.clone();
+        } else {
+            notifications.push(notification.clone());
+        }
+        Ok(notification.id)
+    }
+
+    async fn list_unread(&self, recipient_id: UserId) -> Result<Vec<Notification>, AppError> {
+        let mut notifications: Vec<_> = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|notification| {
+                notification.recipient_id == recipient_id && !notification.is_read
+            })
+            .cloned()
+            .collect();
+        notifications.sort_by_key(|notification| notification.created_at);
+        Ok(notifications)
+    }
+
+    async fn mark_read(&self, id: NotificationId, recipient_id: UserId) -> Result<(), AppError> {
+        let mut notifications = self.notifications.lock().unwrap();
+        let notification = notifications
+            .iter_mut()
+            .find(|notification| notification.id == id && notification.recipient_id == recipient_id)
+            .ok_or_else(|| AppError::not_found("notification", id))?;
+        if !notification.is_read {
+            notification.is_read = true;
+            notification.read_at = Some(shared::now());
+        }
+        Ok(())
+    }
+
+    async fn mark_all_read(&self, recipient_id: UserId) -> Result<(), AppError> {
+        let now = shared::now();
+        for notification in self.notifications.lock().unwrap().iter_mut() {
+            if notification.recipient_id == recipient_id && !notification.is_read {
+                notification.is_read = true;
+                notification.read_at = Some(now);
+            }
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl UserNotificationSettingsRepository for MemoryNotificationRepository {
+    async fn get_settings(&self, user_id: UserId) -> Result<NotificationUserSettings, AppError> {
+        self.settings
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|settings| settings.user_id == user_id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("notification settings", user_id))
+    }
+
+    async fn save_settings(&self, settings: &NotificationUserSettings) -> Result<(), AppError> {
+        let mut all_settings = self.settings.lock().unwrap();
+        if let Some(index) = all_settings
+            .iter()
+            .position(|existing| existing.user_id == settings.user_id)
+        {
+            all_settings[index] = settings.clone();
+        } else {
+            all_settings.push(settings.clone());
+        }
         Ok(())
     }
 }
