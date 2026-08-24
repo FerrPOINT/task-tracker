@@ -22,5 +22,23 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          recharts: ['recharts'],
+          vendor: ['react', 'react-dom', 'react-router'],
+          query: ['@tanstack/react-query'],
+          forms: ['react-hook-form', '@hookform/resolvers'],
+          radix: [
+            '@radix-ui/react-alert-dialog',
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-label',
+            '@radix-ui/react-slot',
+            '@radix-ui/react-tabs',
+          ],
+        },
+      },
+    },
   },
 })

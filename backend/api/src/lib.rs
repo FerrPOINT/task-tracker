@@ -1,14 +1,61 @@
 use axum::{
     Router,
+    http::HeaderName,
     http::HeaderValue,
     http::Method,
     middleware::from_fn_with_state,
     routing::{delete, get, patch, post, put},
 };
-use std::sync::Arc;
+use axum_prometheus::{GenericMetricLayer, PrometheusMetricLayer};
+use metrics_exporter_prometheus::PrometheusHandle;
+use std::sync::{Arc, OnceLock};
+use tower::ServiceBuilder;
+use tower_governor::GovernorLayer;
+use tower_governor::governor::GovernorConfigBuilder;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
+
+/// Global Prometheus metrics handle — initialized once, reused across router builds.
+static METRIC_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
+
+/// Return the global Prometheus handle, initializing the recorder on first call.
+fn metric_handle() -> PrometheusHandle {
+    METRIC_HANDLE
+        .get_or_init(|| {
+            let recorder = metrics_exporter_prometheus::PrometheusBuilder::new().build_recorder();
+            let handle = recorder.handle();
+            metrics::set_global_recorder(Box::new(recorder))
+                .expect("failed to set global metrics recorder");
+            handle
+        })
+        .clone()
+}
+
+/// A key extractor for tower-governor that tries to get the client IP from
+/// `X-Forwarded-For`, `X-Real-Ip`, `Forwarded` headers, then `ConnectInfo`,
+/// and finally falls back to `0.0.0.0` instead of returning an error.
+///
+/// This is more lenient than `PeerIpKeyExtractor` / `SmartIpKeyExtractor`
+/// and ensures the rate limiter never produces a 500 when IP extraction
+/// fails (e.g. in test environments without real connections).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FallbackIpKeyExtractor;
+
+impl tower_governor::key_extractor::KeyExtractor for FallbackIpKeyExtractor {
+    type Key = std::net::IpAddr;
+
+    fn extract<T>(
+        &self,
+        req: &axum::http::Request<T>,
+    ) -> Result<Self::Key, tower_governor::GovernorError> {
+        // Try SmartIpKeyExtractor logic first, fall back to 0.0.0.0.
+        Ok(tower_governor::key_extractor::SmartIpKeyExtractor
+            .extract(req)
+            .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED)))
+    }
+}
 
 pub mod dto;
 pub mod middleware;
@@ -201,10 +248,29 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             .allow_headers(Any)
     };
 
-    let public = Router::new()
-        .route("/health", get(routes::health::health))
+    // Rate limiter for auth endpoints: 5 requests per 15 seconds per IP.
+    let auth_limiter = GovernorConfigBuilder::default()
+        .key_extractor(FallbackIpKeyExtractor)
+        .period(std::time::Duration::from_secs(15))
+        .burst_size(5)
+        .finish()
+        .expect("valid auth rate limit config");
+
+    // General rate limiter for all API endpoints: 60 requests per 60 seconds per IP.
+    let general_limiter = GovernorConfigBuilder::default()
+        .key_extractor(FallbackIpKeyExtractor)
+        .period(std::time::Duration::from_secs(60))
+        .burst_size(60)
+        .finish()
+        .expect("valid general rate limit config");
+
+    let public = Router::new().route("/health", get(routes::health::health));
+
+    // Auth endpoints get stricter rate limiting: 5 requests per 15 seconds per IP.
+    let auth_routes = Router::new()
         .route("/auth/register", post(routes::auth::register))
-        .route("/auth/login", post(routes::auth::login));
+        .route("/auth/login", post(routes::auth::login))
+        .layer(GovernorLayer::new(auth_limiter));
 
     let auth = from_fn_with_state(ctx.clone(), middleware::auth::bearer_auth);
 
@@ -396,11 +462,49 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route_layer(auth);
 
-    let api = public.merge(protected);
+    let api = public.merge(auth_routes).merge(protected);
+
+    // Prometheus metrics layer + handle for the /metrics endpoint.
+    let handle = metric_handle();
+    let prometheus_layer: PrometheusMetricLayer = GenericMetricLayer::new();
 
     Router::new()
-        .nest("/api/v1", api)
+        .route("/metrics", get(move || std::future::ready(handle.render())))
+        .nest(
+            "/api/v1",
+            api.layer(GovernorLayer::new(general_limiter)),
+        )
         .merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", ApiDoc::openapi()))
+        .layer(
+            ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::overriding(
+                    axum::http::header::X_CONTENT_TYPE_OPTIONS,
+                    HeaderValue::from_static("nosniff"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    HeaderName::from_static("x-frame-options"),
+                    HeaderValue::from_static("DENY"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    HeaderName::from_static("x-xss-protection"),
+                    HeaderValue::from_static("1; mode=block"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    HeaderName::from_static("referrer-policy"),
+                    HeaderValue::from_static("no-referrer"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    HeaderName::from_static("content-security-policy"),
+                    HeaderValue::from_static(
+                        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'",
+                    ),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    HeaderName::from_static("strict-transport-security"),
+                    HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+                )),
+        )
+        .layer(prometheus_layer)
         .layer(cors)
 }
 

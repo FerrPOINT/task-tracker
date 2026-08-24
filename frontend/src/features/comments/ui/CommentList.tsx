@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -79,7 +79,12 @@ interface CommentItemProps {
   onDelete: (commentId: string) => void
 }
 
-export function CommentItem({ comment, currentUserId, onEdit, onDelete }: CommentItemProps) {
+export const CommentItem = memo(function CommentItem({
+  comment,
+  currentUserId,
+  onEdit,
+  onDelete,
+}: CommentItemProps) {
   const { t } = useTranslation()
   const isAuthor = currentUserId ? comment.authorId === currentUserId : false
   const date = new Date(comment.createdAt).toLocaleString()
@@ -117,7 +122,7 @@ export function CommentItem({ comment, currentUserId, onEdit, onDelete }: Commen
       <div className="whitespace-pre-wrap text-sm text-text-secondary">{comment.body}</div>
     </div>
   )
-}
+})
 
 interface CommentListProps {
   comments: Comment[]

@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import type { UpdateNotificationSettingsInput } from '@/api/notifications'
+import type { NotificationItem, UpdateNotificationSettingsInput } from '@/api/notifications'
 import {
   useMarkAllNotificationsRead,
   useNotificationSettings,
@@ -11,6 +11,30 @@ import {
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Label } from '@/shared/ui/label'
+
+const NotificationCard = memo(function NotificationCard({
+  notification,
+}: {
+  notification: NotificationItem
+}) {
+  return (
+    <Card className={!notification.is_read ? 'border-l-4 border-l-accent' : undefined}>
+      <CardContent className="p-4">
+        {notification.action_url ? (
+          <Link to={notification.action_url} className="block hover:text-accent">
+            <h2 className="font-semibold">{notification.title}</h2>
+            {notification.body && <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>}
+          </Link>
+        ) : (
+          <>
+            <h2 className="font-semibold">{notification.title}</h2>
+            {notification.body && <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+})
 
 export function NotificationsPage() {
   const { t } = useTranslation()
@@ -81,21 +105,7 @@ export function NotificationsPage() {
             </p>
           ) : (
             visibleNotifications.map((notification) => (
-              <Card key={notification.id} className={!notification.is_read ? 'border-l-4 border-l-accent' : undefined}>
-                <CardContent className="p-4">
-                  {notification.action_url ? (
-                    <Link to={notification.action_url} className="block hover:text-accent">
-                      <h2 className="font-semibold">{notification.title}</h2>
-                      {notification.body && <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>}
-                    </Link>
-                  ) : (
-                    <>
-                      <h2 className="font-semibold">{notification.title}</h2>
-                      {notification.body && <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>}
-                    </>
-                  )}
-                </CardContent>
-              </Card>
+              <NotificationCard key={notification.id} notification={notification} />
             ))
           )}
         </section>

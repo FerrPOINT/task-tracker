@@ -17,7 +17,13 @@ axum-extra = { version = "0.10", features = ["cookie"] }
 tokio.workspace = true
 futures-util.workspace = true
 tokio-stream.workspace = true
+tower.workspace = true
 tower-http.workspace = true
+tower_governor.workspace = true
+governor.workspace = true
+axum-prometheus.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 serde.workspace = true

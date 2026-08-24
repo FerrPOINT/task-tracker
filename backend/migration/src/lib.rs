@@ -7,6 +7,7 @@ pub mod m20250723_000001_create_tables;
 pub mod m20250723_000002_seed_demo_data;
 pub mod m20260824_0000020_notifications;
 pub mod m20260824_0000021_admin_audit_settings;
+pub mod m20260824_0000022_performance_indexes;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -24,6 +25,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20250723_0000019_saved_filters::Migration),
             Box::new(m20260824_0000020_notifications::Migration),
             Box::new(m20260824_0000021_admin_audit_settings::Migration),
+            Box::new(m20260824_0000022_performance_indexes::Migration),
             Box::new(m20250723_000002_seed_demo_data::Migration),
         ]
     }

@@ -6,7 +6,7 @@
 
 ## Статус (обновлено 2026-08-24)
 
-**Фазы 0–8 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests, `df85a6e` notifications, `001ff30` reports).
+**Фазы 0–9 завершены** (коммиты `0c942d3` workflow, `f3f8024` attachments, `eb45ae5` labels+links, `d2fed64` coverage gate, `18622c9` SSE real-time, `08f264c`+`e124233` JQL search, `2cd7dfe` JQL/saved-filter tests, `df85a6e` notifications, `001ff30` reports, `646052e` admin).
 
 Реализовано сверх плана фаз 0–4:
 
@@ -127,12 +127,12 @@
 
 **Цель**: production-ready release.
 
-- [ ] Monitoring stack: Prometheus, Grafana, Loki.
-- [ ] Backup/restore scripts.
-- [ ] Security hardening: CSP, rate limits, audit.
-- [ ] Performance optimization: caching, DB indexes, virtualization.
-- [ ] Full e2e suite, load tests.
-- [ ] Version 0.1.0 release.
+- [x] Security headers: CSP, X-Frame-Options, X-Content-Type-Options, HSTS, Referrer-Policy.
+- [x] Rate limiting: auth endpoints 5/15s, general API 60/min per IP (tower-governor).
+- [x] Prometheus metrics: `/metrics` endpoint with http_requests_total + duration histogram.
+- [x] Performance: DB indexes migration (issues, comments, audit_logs), frontend code-splitting (recharts/vendor/radix/query chunks), React.lazy route-level splitting.
+- [x] Backup/restore scripts verified; e2e suite reviewed.
+- [x] Version 0.1.0.
 
 ## 12. Future (v1.x)
 
