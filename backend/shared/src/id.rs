@@ -66,7 +66,6 @@ uuid_id!(WorklogId);
 uuid_id!(IssueTypeId);
 uuid_id!(WorkflowTransitionId);
 uuid_id!(IssueStatusHistoryId);
-uuid_id!(SavedFilterId);
 uuid_id!(NotificationId);
 uuid_id!(AuditLogId);
 uuid_id!(ProjectComponentId);

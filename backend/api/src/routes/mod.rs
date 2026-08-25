@@ -20,7 +20,6 @@ pub mod labels;
 pub mod links;
 pub mod notifications;
 pub mod reports;
-pub mod saved_filters;
 pub mod users;
 pub mod watchers_votes;
 pub mod workflow;

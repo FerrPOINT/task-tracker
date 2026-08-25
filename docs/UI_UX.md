@@ -568,8 +568,6 @@ Time tracking
 | `/projects/:id/backlog` | Backlog |
 | `/issues/:id` | Issue detail |
 | `/issues/new?projectId=` | Create issue |
-| `/filters` | Saved filters |
-| `/filters/:id` | Filter results |
 | `/dashboards` | Dashboards |
 | `/dashboards/:id` | Dashboard |
 | `/admin/users` | User admin |

@@ -5,10 +5,9 @@ use domain::{
     MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
     MemoryIssueLinkRepository, MemoryIssueRepository, MemoryIssueStatusHistoryRepository,
     MemoryLabelRepository, MemoryNotificationRepository, MemoryProjectMemberRepository,
-    MemoryProjectRepository, MemorySavedFilterRepository, MemorySprintRepository,
-    MemoryUserRepository, MemoryWorklogRepository, Notification, NotificationRepository, Project,
-    ProjectRepository, SprintRepository, StatusCategory, User, UserNotificationSettingsRepository,
-    UserRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
+    Notification, NotificationRepository, Project, ProjectRepository, SprintRepository,
+    StatusCategory, User, UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{AppConfig, AuthConfig, DatabaseConfig, ProjectKey, ServerConfig, StatusId, UserId};
 
@@ -141,7 +140,6 @@ async fn spawn_server_with_notifications()
         attachments: Arc::new(MemoryAttachmentRepository::default()),
         labels: Arc::new(MemoryLabelRepository::default()),
         issue_links: Arc::new(MemoryIssueLinkRepository::default()),
-        saved_filters: Arc::new(MemorySavedFilterRepository::default()),
         notifications: notifications.clone(),
         notification_settings: notifications.clone(),
         issue_status_history: Arc::new(domain::MemoryIssueStatusHistoryRepository::default()),
@@ -1764,90 +1762,6 @@ async fn sse_accepts_query_token() {
 }
 
 #[tokio::test]
-async fn saved_filters_reject_invalid_jql() {
-    let (url, client) = spawn_server().await;
-    let token = login_token(&url, &client).await;
-
-    let response = client
-        .post(format!("{url}/api/v1/filters"))
-        .bearer_auth(&token)
-        .json(&serde_json::json!({
-            "name": "Broken filter",
-            "jql": "project =",
-            "is_public": false
-        }))
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), 400);
-}
-
-#[tokio::test]
-async fn saved_filters_enforce_visibility_and_ownership() {
-    let (url, client) = spawn_server().await;
-    let owner_token = login_token(&url, &client).await;
-
-    let created = client
-        .post(format!("{url}/api/v1/filters"))
-        .bearer_auth(&owner_token)
-        .json(&serde_json::json!({
-            "name": "My private work",
-            "jql": "project = TT",
-            "is_public": false
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(created.status(), 200);
-    let filter_id = created.json::<serde_json::Value>().await.unwrap()["id"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let other = client
-        .post(format!("{url}/api/v1/auth/register"))
-        .json(&serde_json::json!({
-            "email": "other@example.com",
-            "username": "other-user",
-            "name": "Other User",
-            "password": "secret123"
-        }))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(other.status(), 201);
-    let other_token = other.json::<serde_json::Value>().await.unwrap()["access_token"]
-        .as_str()
-        .unwrap()
-        .to_string();
-
-    let forbidden_get = client
-        .get(format!("{url}/api/v1/filters/{filter_id}"))
-        .bearer_auth(&other_token)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(forbidden_get.status(), 403);
-
-    let forbidden_delete = client
-        .delete(format!("{url}/api/v1/filters/{filter_id}"))
-        .bearer_auth(&other_token)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(forbidden_delete.status(), 403);
-
-    let owner_get = client
-        .get(format!("{url}/api/v1/filters/{filter_id}"))
-        .bearer_auth(&owner_token)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(owner_get.status(), 200);
-}
-
-#[tokio::test]
 async fn sse_query_token_rejected_for_other_paths() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
@@ -2146,7 +2060,6 @@ async fn spawn_server_with_reports() -> (
         attachments: Arc::new(MemoryAttachmentRepository::default()),
         labels: Arc::new(MemoryLabelRepository::default()),
         issue_links: Arc::new(MemoryIssueLinkRepository::default()),
-        saved_filters: Arc::new(MemorySavedFilterRepository::default()),
         notifications: Arc::new(MemoryNotificationRepository::default()),
         notification_settings: Arc::new(MemoryNotificationRepository::default()),
         issue_status_history: history.clone(),

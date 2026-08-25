@@ -8,14 +8,14 @@ mod tests;
 use crate::{
     AuditLog, Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity,
     IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, Project,
-    ProjectComponent, ProjectMember, ProjectVersion, SavedFilter, Sprint, Status, SystemSetting,
-    User, WorkflowTransition, Worklog,
+    ProjectComponent, ProjectMember, ProjectVersion, Sprint, Status, SystemSetting, User,
+    WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
     AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, LabelId,
-    ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SavedFilterId, SprintId, StatusId,
-    UserId, WorklogId,
+    ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId, UserId,
+    WorklogId,
 };
 
 #[async_trait]
@@ -217,7 +217,6 @@ pub struct Repositories {
     pub attachments: Arc<dyn AttachmentRepository>,
     pub labels: Arc<dyn LabelRepository>,
     pub issue_links: Arc<dyn IssueLinkRepository>,
-    pub saved_filters: Arc<dyn SavedFilterRepository>,
     pub notifications: Arc<dyn NotificationRepository>,
     pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
     pub issue_status_history: Arc<dyn IssueStatusHistoryRepository>,
@@ -247,7 +246,6 @@ impl Default for Repositories {
             attachments: Arc::new(StubAttachmentRepository),
             labels: Arc::new(StubLabelRepository),
             issue_links: Arc::new(StubIssueLinkRepository),
-            saved_filters: Arc::new(StubSavedFilterRepository),
             notifications: Arc::new(StubNotificationRepository),
             notification_settings: Arc::new(StubUserNotificationSettingsRepository),
             issue_status_history: Arc::new(StubIssueStatusHistoryRepository),
@@ -615,39 +613,6 @@ impl IssueLinkRepository for StubIssueLinkRepository {
         Ok(vec![])
     }
     async fn delete(&self, _id: IssueLinkId) -> Result<(), AppError> {
-        Ok(())
-    }
-}
-
-#[async_trait]
-pub trait SavedFilterRepository: Send + Sync {
-    async fn get_by_id(&self, id: SavedFilterId) -> Result<SavedFilter, AppError>;
-    async fn list_by_owner(&self, owner_id: UserId) -> Result<Vec<SavedFilter>, AppError>;
-    async fn list_public(&self) -> Result<Vec<SavedFilter>, AppError>;
-    async fn save(&self, filter: &SavedFilter) -> Result<SavedFilterId, AppError>;
-    async fn delete(&self, id: SavedFilterId) -> Result<(), AppError>;
-}
-
-pub struct StubSavedFilterRepository;
-#[async_trait]
-impl SavedFilterRepository for StubSavedFilterRepository {
-    async fn get_by_id(&self, _id: SavedFilterId) -> Result<SavedFilter, AppError> {
-        Err(AppError::not_found("saved_filter", "stub"))
-    }
-
-    async fn list_by_owner(&self, _owner_id: UserId) -> Result<Vec<SavedFilter>, AppError> {
-        Ok(vec![])
-    }
-
-    async fn list_public(&self) -> Result<Vec<SavedFilter>, AppError> {
-        Ok(vec![])
-    }
-
-    async fn save(&self, _filter: &SavedFilter) -> Result<SavedFilterId, AppError> {
-        Ok(SavedFilterId::new())
-    }
-
-    async fn delete(&self, _id: SavedFilterId) -> Result<(), AppError> {
         Ok(())
     }
 }

@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from 'react-router'
-import { Search, X, ArrowUpDown, Filter, Save } from 'lucide-react'
+import { Search, X, ArrowUpDown, Filter } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState, useMemo, useEffect } from 'react'
 import { Button } from '@/shared/ui/button'
@@ -29,9 +29,6 @@ export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [jql, setJql] = useState(() => searchParams.get('jql') ?? '')
-  const [showSaveDialog, setShowSaveDialog] = useState(false)
-  const [filterName, setFilterName] = useState('')
-  const [isPublic, setIsPublic] = useState(false)
 
   const projectKey = searchParams.get('project_key') ?? undefined
   const status = searchParams.get('status') ?? undefined
@@ -105,19 +102,6 @@ export default function SearchPage() {
   const priorityLabel = priority ? t(`priority.${priority}`) : t('search.priority')
   const assigneeName = users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
   const sortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? t('search.sort')
-
-  const handleSaveFilter = async () => {
-    if (!filterName.trim() || !jql.trim()) return
-    try {
-      const { createSavedFilter } = await import('@/api/saved-filters')
-      await createSavedFilter({ name: filterName, jql, is_public: isPublic })
-      setShowSaveDialog(false)
-      setFilterName('')
-      setIsPublic(false)
-    } catch {
-      // ignore error
-    }
-  }
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -249,42 +233,7 @@ export default function SearchPage() {
               onChange={(e) => setJql(e.target.value)}
               className="flex-1 font-mono text-sm"
             />
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label={t('filters.save')}
-              data-testid="saved-filter-toggle"
-              onClick={() => setShowSaveDialog(!showSaveDialog)}
-              disabled={!jql}
-            >
-              <Save className="h-4 w-4" />
-            </Button>
           </div>
-          {showSaveDialog && jql && (
-            <div className="flex flex-col gap-2 rounded-md border p-3">
-              <Input
-                placeholder={t('filters.namePlaceholder')}
-                value={filterName}
-                onChange={(e) => setFilterName(e.target.value)}
-              />
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isPublic}
-                  onChange={(e) => setIsPublic(e.target.checked)}
-                />
-                {t('filters.isPublic')}
-              </label>
-              <div className="flex gap-2">
-                <Button data-testid="saved-filter-submit" size="sm" onClick={handleSaveFilter} disabled={!filterName.trim()}>
-                  {t('filters.save')}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowSaveDialog(false)}>
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            </div>
-          )}
           <p className="text-xs text-muted-foreground">{t('jql.help')}</p>
         </CardContent>
       </Card>

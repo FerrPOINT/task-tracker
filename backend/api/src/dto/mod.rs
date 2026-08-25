@@ -174,29 +174,6 @@ pub struct SearchQuery {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct SavedFilterResponse {
-    pub id: String,
-    pub name: String,
-    pub jql: String,
-    pub owner_id: String,
-    pub is_public: bool,
-    pub created_at: DateTime<FixedOffset>,
-    pub updated_at: DateTime<FixedOffset>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct SavedFilterListResponse {
-    pub filters: Vec<SavedFilterResponse>,
-}
-
-#[derive(Debug, Clone, Deserialize, ToSchema)]
-pub struct CreateSavedFilterRequest {
-    pub name: String,
-    pub jql: String,
-    pub is_public: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CommentResponse {
     pub id: String,
     pub issue_id: String,

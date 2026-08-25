@@ -10,14 +10,14 @@ use crate::{
     Issue, IssueQuery, IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository,
     IssueVote, IssueWatcher, Notification, NotificationRepository, NotificationUserSettings,
     Project, ProjectComponent, ProjectComponentRepository, ProjectMember, ProjectMemberRepository,
-    ProjectQuery, ProjectRepository, ProjectVersion, ProjectVersionRepository, SavedFilter,
-    SavedFilterRepository, Sprint, SprintRepository, Status, StatusRepository, SystemSetting,
-    SystemSettingRepository, UnitOfWork, User, UserNotificationSettingsRepository, UserRepository,
-    VoteRepository, WatcherRepository, Worklog, WorklogRepository,
+    ProjectQuery, ProjectRepository, ProjectVersion, ProjectVersionRepository, Sprint,
+    SprintRepository, Status, StatusRepository, SystemSetting, SystemSettingRepository, UnitOfWork,
+    User, UserNotificationSettingsRepository, UserRepository, VoteRepository, WatcherRepository,
+    Worklog, WorklogRepository,
 };
 use shared::{
     AppError, BoardId, CommentId, IssueId, NotificationId, ProjectComponentId, ProjectId,
-    ProjectKey, ProjectVersionId, SavedFilterId, SprintId, UserId, WorklogId,
+    ProjectKey, ProjectVersionId, SprintId, UserId, WorklogId,
 };
 
 #[derive(Default)]
@@ -807,65 +807,6 @@ impl crate::IssueLinkRepository for MemoryIssueLinkRepository {
 
     async fn delete(&self, id: shared::IssueLinkId) -> Result<(), AppError> {
         self.links.lock().unwrap().retain(|l| l.id != id);
-        Ok(())
-    }
-}
-
-#[derive(Default)]
-pub struct MemorySavedFilterRepository {
-    filters: Arc<Mutex<Vec<SavedFilter>>>,
-}
-
-#[async_trait]
-impl SavedFilterRepository for MemorySavedFilterRepository {
-    async fn get_by_id(&self, id: SavedFilterId) -> Result<SavedFilter, AppError> {
-        self.filters
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|filter| filter.id == id)
-            .cloned()
-            .ok_or_else(|| AppError::not_found("saved_filter", id))
-    }
-
-    async fn list_by_owner(&self, owner_id: UserId) -> Result<Vec<SavedFilter>, AppError> {
-        Ok(self
-            .filters
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|filter| filter.owner_id == owner_id)
-            .cloned()
-            .collect())
-    }
-
-    async fn list_public(&self) -> Result<Vec<SavedFilter>, AppError> {
-        Ok(self
-            .filters
-            .lock()
-            .unwrap()
-            .iter()
-            .filter(|filter| filter.is_public)
-            .cloned()
-            .collect())
-    }
-
-    async fn save(&self, filter: &SavedFilter) -> Result<SavedFilterId, AppError> {
-        let mut filters = self.filters.lock().unwrap();
-        if let Some(index) = filters.iter().position(|existing| existing.id == filter.id) {
-            filters[index] = filter.clone();
-        } else {
-            filters.push(filter.clone());
-        }
-        Ok(filter.id)
-    }
-
-    async fn delete(&self, id: SavedFilterId) -> Result<(), AppError> {
-        let mut filters = self.filters.lock().unwrap();
-        let Some(index) = filters.iter().position(|filter| filter.id == id) else {
-            return Err(AppError::not_found("saved_filter", id));
-        };
-        filters.remove(index);
         Ok(())
     }
 }

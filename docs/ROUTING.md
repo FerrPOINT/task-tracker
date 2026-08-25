@@ -77,8 +77,6 @@
 
 | Route | Page | Notes |
 |-------|------|-------|
-| `/filters` | `pages/filters` | Saved filters |
-| `/filters/:filterId` | `pages/search` | Load saved filter |
 | `/dashboards` | `pages/dashboards` | Dashboard list |
 | `/dashboards/:dashboardId` | `pages/dashboard` | Dashboard |
 
@@ -135,7 +133,6 @@ export const router = createBrowserRouter([
           { path: "/projects/:key/*", element: <ProjectShellPage /> },
           { path: "/issues", element: <SearchPage /> },
           { path: "/issues/:key", element: <IssuePage /> },
-          { path: "/filters/*", element: <FiltersPage /> },
           { path: "/dashboards/*", element: <DashboardsPage /> },
         ],
       },

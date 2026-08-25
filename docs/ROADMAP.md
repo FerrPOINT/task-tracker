@@ -22,9 +22,6 @@
 - JQL parser: lexer + recursive descent → AST, 15 unit-тестов (operators, NOT IN, IS EMPTY/NOT EMPTY, chaining, nested parens, error cases).
 - JQL → SQL compiler: parameterized SQL, 15 unit-тестов (all fields, IS EMPTY, NOT, labels/sprint EXISTS, timestamp cast, injection safety, UUID validation).
 - Full-text search: PostgreSQL `tsvector` + GIN index + triggers (migration 000018).
-- Saved filters: migration 000019, CRUD API (`GET/POST /filters`, `GET/DELETE /filters/{id}`, `GET /filters/{id}/execute`), visibility/ownership enforcement, JQL validation at creation.
-- Frontend: JQL input, save-filter dialog, saved-filters API client, i18n (ru/en).
-- OpenAPI: 5 новых endpoints, generated TypeScript client.
 
 Отложено до поздних фаз: генерация уведомлений из issue-событий и digest-рассылки, «Корзина»/soft-delete (ссылка из сайдбара убрана), watcher/vote, версии/компоненты, кастомные поля, админка.
 
@@ -81,15 +78,14 @@
 - [x] Frontend: kanban board (HTML5 drag-and-drop без внешних зависимостей).
 - [x] Verification: screenshots mobile/Full HD/2K, WS real-time.
 
-## 7. Phase 5: Search + Filters (M5)
+## 7. Phase 5: Search (M5)
 
-**Цель**: JQL-поиск и сохранённые фильтры.
+**Цель**: JQL-поиск.
 
 - [x] JQL parser (AST).
 - [x] JQL → SQL builder.
 - [x] Full-text search (`tsvector`).
-- [x] Saved filters CRUD.
-- [x] Frontend: issue navigator, JQL input, filter list.
+- [x] Frontend: issue navigator, JQL input.
 - [x] Verification: JQL tests, search performance.
 
 ## 8. Phase 6: Notifications + Email (M6)

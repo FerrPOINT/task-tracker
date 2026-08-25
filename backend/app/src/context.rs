@@ -73,7 +73,6 @@ pub struct Services {
     pub attachment: Arc<dyn AttachmentService>,
     pub label: Arc<dyn LabelService>,
     pub issue_link: Arc<dyn IssueLinkService>,
-    pub saved_filter: Arc<dyn SavedFilterService>,
     pub notification: Arc<dyn NotificationService>,
     pub report: Arc<dyn ReportService>,
     pub admin: Arc<dyn AdminService>,
@@ -200,12 +199,6 @@ impl AppContext {
                 issue_link: Arc::new(crate::services::IssueLinkServiceImpl::new(
                     repos.issue_links.clone(),
                     repos.issues.clone(),
-                )),
-                saved_filter: Arc::new(crate::services::SavedFilterServiceImpl::new(
-                    repos.saved_filters.clone(),
-                    repos.issues.clone(),
-                    repos.projects.clone(),
-                    repos.users.clone(),
                 )),
                 notification: Arc::new(crate::services::NotificationServiceImpl::new(
                     repos.notifications.clone(),
@@ -465,25 +458,6 @@ pub trait IssueLinkService: Send + Sync {
 }
 
 #[async_trait]
-pub trait SavedFilterService: Send + Sync {
-    async fn list_filters(&self, owner_id: UserId) -> Result<Vec<SavedFilterDto>, AppError>;
-    async fn create_filter(
-        &self,
-        owner_id: UserId,
-        name: String,
-        jql: String,
-        is_public: bool,
-    ) -> Result<SavedFilterDto, AppError>;
-    async fn get_filter(
-        &self,
-        id: String,
-        requester_id: UserId,
-    ) -> Result<SavedFilterDto, AppError>;
-    async fn delete_filter(&self, id: String, owner_id: UserId) -> Result<(), AppError>;
-    async fn execute_filter(&self, id: String, user_id: UserId) -> Result<Vec<IssueDto>, AppError>;
-}
-
-#[async_trait]
 pub trait NotificationService: Send + Sync {
     async fn list_unread(&self, user_id: UserId) -> Result<NotificationListDto, AppError>;
     async fn mark_read(&self, id: String, user_id: UserId) -> Result<(), AppError>;
@@ -533,17 +507,6 @@ pub struct IssueLinkDto {
     pub target_key: String,
     pub link_type: String,
 }
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct SavedFilterDto {
-    pub id: String,
-    pub name: String,
-    pub jql: String,
-    pub owner_id: String,
-    pub is_public: bool,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
 #[async_trait]
 pub trait ReportService: Send + Sync {
     async fn get_velocity(

@@ -89,7 +89,6 @@ async fn spawn_admin_server() -> (String, reqwest::Client, String, String) {
         attachments: Arc::new(domain::StubAttachmentRepository),
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
-        saved_filters: Arc::new(domain::StubSavedFilterRepository),
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
         issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),

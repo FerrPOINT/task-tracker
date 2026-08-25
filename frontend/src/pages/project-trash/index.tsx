@@ -12,7 +12,7 @@ export function ProjectTrashPage() {
   const purgeMutation = usePurgeIssue()
 
   if (!projectKey) {
-    return <div className="text-text-muted">No project selected.</div>
+    return <div className="text-text-muted">{t('trash.noProject')}</div>
   }
 
   return (
@@ -30,12 +30,12 @@ export function ProjectTrashPage() {
       </div>
 
       {isLoading && (
-        <div className="py-8 text-center text-sm text-text-muted">Loading…</div>
+        <div className="py-8 text-center text-sm text-text-muted">{t('trash.loading')}</div>
       )}
 
       {!isLoading && trashedIssues.length === 0 && (
         <div className="py-16 text-center text-sm text-text-muted">
-          {t('trash.empty', 'Trash is empty.')}
+          {t('trash.noIssues')}
         </div>
       )}
 
@@ -44,11 +44,11 @@ export function ProjectTrashPage() {
           <table className="w-full text-sm">
             <thead className="border-b border-border bg-surface-raised text-text-secondary">
               <tr>
-                <th className="px-4 py-2 text-left font-medium">Key</th>
-                <th className="px-4 py-2 text-left font-medium">Summary</th>
-                <th className="px-4 py-2 text-left font-medium">Type</th>
-                <th className="px-4 py-2 text-left font-medium">Priority</th>
-                <th className="px-4 py-2 text-right font-medium">Actions</th>
+                <th className="px-4 py-2 text-left font-medium">{t('trash.key')}</th>
+                <th className="px-4 py-2 text-left font-medium">{t('trash.summary')}</th>
+                <th className="px-4 py-2 text-left font-medium">{t('trash.type')}</th>
+                <th className="px-4 py-2 text-left font-medium">{t('trash.priority')}</th>
+                <th className="px-4 py-2 text-right font-medium">{t('trash.actions')}</th>
               </tr>
             </thead>
             <tbody>

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 
 import SearchPage from './'
@@ -7,13 +7,11 @@ import SearchPage from './'
 const useIssues = vi.hoisted(() => vi.fn())
 const useProjects = vi.hoisted(() => vi.fn())
 const useUsers = vi.hoisted(() => vi.fn())
-const createSavedFilter = vi.hoisted(() => vi.fn())
 vi.mock('@/shared/api/hooks', () => ({
   useIssues,
   useProjects,
   useUsers,
 }))
-vi.mock('@/api/saved-filters', () => ({ createSavedFilter }))
 
 function wrapper(children: React.ReactNode) {
   return <MemoryRouter>{children}</MemoryRouter>
@@ -57,28 +55,5 @@ describe('SearchPage', () => {
     })
 
     expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ jql: 'project = TT' }))
-  })
-
-  it('saves a named JQL filter', async () => {
-    mockHooks()
-    createSavedFilter.mockResolvedValue({ id: 'filter-1' })
-
-    render(wrapper(<SearchPage />))
-    fireEvent.change(screen.getByPlaceholderText(/например: project|for example: project/i), {
-      target: { value: 'project = TT' },
-    })
-    fireEvent.click(screen.getByTestId('saved-filter-toggle'))
-    fireEvent.change(screen.getByPlaceholderText(/мои задачи|my high priority/i), {
-      target: { value: 'My work' },
-    })
-    fireEvent.click(screen.getByTestId('saved-filter-submit'))
-
-    await waitFor(() => {
-      expect(createSavedFilter).toHaveBeenCalledWith({
-        name: 'My work',
-        jql: 'project = TT',
-        is_public: false,
-      })
-    })
   })
 })

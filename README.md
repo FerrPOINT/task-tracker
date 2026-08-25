@@ -70,7 +70,7 @@ Self-hosted таск-трекер: Rust (axum + SeaORM + PostgreSQL) + React (Vi
 ### Администрирование
 - Admin panel: users, instance settings, audit log
 - Security headers, rate limiting, Prometheus metrics
-- JQL-поиск, saved filters
+- JQL-поиск.
 
 ## Быстрый старт
 

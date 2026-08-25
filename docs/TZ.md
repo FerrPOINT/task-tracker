@@ -741,18 +741,6 @@ status CHANGED TO "Done" AFTER startOfWeek()
 sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 ```
 
-### 16.4. Сохранённые фильтры
-
-| Поле | Описание |
-|------|----------|
-| `id` | UUID |
-| `owner_id` | — |
-| `name` | — |
-| `jql` | строка запроса |
-| `description` | — |
-| `is_public` | bool |
-| `subscriptions` | подписчики |
-
 ---
 
 ## 17. Dashboard
@@ -1173,15 +1161,6 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 - `DELETE /api/v1/custom-fields/{id}`
 - `GET /api/v1/custom-fields/{id}/options`
 - `POST /api/v1/custom-fields/{id}/options`
-
-### 27.16. Filters (JQL)
-
-- `GET /api/v1/filters`
-- `POST /api/v1/filters`
-- `GET /api/v1/filters/{id}`
-- `PUT /api/v1/filters/{id}`
-- `DELETE /api/v1/filters/{id}`
-- `POST /api/v1/filters/{id}/execute`
 
 ### 27.17. Dashboards
 

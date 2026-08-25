@@ -332,7 +332,11 @@
     "loading": "Loading administration data...",
     "error": "Unable to load or update administration data.",
     "empty": "No records found.",
-    "tabs": { "users": "Users", "settings": "Instance settings", "audit": "Audit log" },
+    "tabs": {
+      "users": "Users",
+      "settings": "Instance settings",
+      "audit": "Audit log"
+    },
     "users": {
       "title": "Users",
       "create": "Create user",
@@ -417,5 +421,33 @@
     },
     "loading": "Loading report…",
     "noProject": "Select a project to view reports."
+  },
+  "customFields": {
+    "title": "Custom fields",
+    "description": "Configure fields that appear on issues in {{projectKey}}.",
+    "addTitle": "Add custom field",
+    "fieldName": "Field name",
+    "fieldType": "Field type",
+    "options": "Options, separated by commas",
+    "required": "Required",
+    "addButton": "Add field",
+    "adding": "Adding...",
+    "configuredTitle": "Configured fields",
+    "noFields": "No custom fields configured.",
+    "loading": "Loading...",
+    "selectPlaceholder": "Select..."
+  },
+  "trash": {
+    "title": "Trash",
+    "noProject": "No project selected.",
+    "loading": "Loading…",
+    "noIssues": "Trash is empty.",
+    "restore": "Restore",
+    "purge": "Delete permanently",
+    "key": "Key",
+    "summary": "Summary",
+    "type": "Type",
+    "priority": "Priority",
+    "actions": "Actions"
   }
 }

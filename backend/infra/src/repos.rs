@@ -10,11 +10,11 @@ use domain::{
     IssueTypeRepository, IssueVote, IssueWatcher, Label, LabelRepository, LinkType, Notification,
     NotificationRepository, NotificationUserSettings, Project, ProjectComponent,
     ProjectComponentRepository, ProjectMember, ProjectMemberRepository, ProjectRepository,
-    ProjectRole, ProjectVersion, ProjectVersionRepository, SavedFilter, SavedFilterRepository,
-    Sprint, SprintRepository, SprintState, Status, StatusCategory, StatusRepository, SystemSetting,
-    SystemSettingRepository, User, UserNotificationSettingsRepository, UserRepository,
-    VoteRepository, WatcherRepository, WorkflowTransition, WorkflowTransitionId,
-    WorkflowTransitionRepository, Worklog, WorklogRepository,
+    ProjectRole, ProjectVersion, ProjectVersionRepository, Sprint, SprintRepository, SprintState,
+    Status, StatusCategory, StatusRepository, SystemSetting, SystemSettingRepository, User,
+    UserNotificationSettingsRepository, UserRepository, VoteRepository, WatcherRepository,
+    WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository, Worklog,
+    WorklogRepository,
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
@@ -23,8 +23,8 @@ use sea_orm::{
 use shared::{
     AppError, AttachmentId, AuditLogId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey,
     IssueLinkId, IssueStatusHistoryId, IssueType, IssueTypeId, LabelId, NotificationId, Priority,
-    ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SavedFilterId, SprintId, StatusId,
-    UserId, WorklogId,
+    ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId, UserId,
+    WorklogId,
 };
 use uuid::Uuid;
 
@@ -32,8 +32,7 @@ use crate::entities::{
     attachment, audit_log, board, comment, custom_field, issue, issue_custom_field_value,
     issue_label, issue_link, issue_status_history, issue_type, issue_vote, issue_watcher, label,
     notification, notification_user_settings, project, project_component, project_member,
-    project_version, saved_filter, sprint, status, system_setting, user, workflow_transition,
-    worklog,
+    project_version, sprint, status, system_setting, user, workflow_transition, worklog,
 };
 
 fn map_status(m: status::Model) -> Status {
@@ -91,7 +90,6 @@ pub struct SeaOrmRepositories {
     pub versions: Arc<dyn domain::ProjectVersionRepository>,
     pub custom_fields: Arc<dyn CustomFieldRepository>,
     pub issue_links: Arc<dyn IssueLinkRepository>,
-    pub saved_filters: Arc<dyn SavedFilterRepository>,
     pub notifications: Arc<dyn NotificationRepository>,
     pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
     pub issue_status_history: Arc<dyn IssueStatusHistoryRepository>,
@@ -122,7 +120,6 @@ impl SeaOrmRepositories {
             versions: Arc::new(ProjectVersionRepo { db: db.clone() }),
             custom_fields: Arc::new(CustomFieldRepo { db: db.clone() }),
             issue_links: Arc::new(IssueLinkRepo { db: db.clone() }),
-            saved_filters: Arc::new(SavedFilterRepo { db: db.clone() }),
             notifications: Arc::new(NotificationRepo { db: db.clone() }),
             notification_settings: Arc::new(NotificationUserSettingsRepo { db: db.clone() }),
             issue_status_history: Arc::new(IssueStatusHistoryRepo { db: db.clone() }),
@@ -833,7 +830,6 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         labels: sea.labels,
         custom_fields: sea.custom_fields,
         issue_links: sea.issue_links,
-        saved_filters: sea.saved_filters,
         notifications: sea.notifications,
         notification_settings: sea.notification_settings,
         issue_status_history: sea.issue_status_history,
@@ -1508,77 +1504,6 @@ impl IssueTypeRepository for IssueTypeRepo {
         model
             .map(map_issue_type)
             .ok_or_else(|| AppError::not_found("issue type", id))
-    }
-}
-
-struct SavedFilterRepo {
-    db: Arc<DatabaseConnection>,
-}
-
-#[async_trait]
-impl SavedFilterRepository for SavedFilterRepo {
-    async fn get_by_id(&self, id: SavedFilterId) -> Result<SavedFilter, AppError> {
-        let model = saved_filter::Entity::find_by_id(id.as_uuid())
-            .one(&*self.db)
-            .await
-            .map_err(AppError::database)?
-            .ok_or_else(|| AppError::not_found("saved_filter", id))?;
-        Ok(map_saved_filter(model))
-    }
-
-    async fn list_by_owner(&self, owner_id: UserId) -> Result<Vec<SavedFilter>, AppError> {
-        let models = saved_filter::Entity::find()
-            .filter(saved_filter::Column::OwnerId.eq(owner_id.as_uuid()))
-            .all(&*self.db)
-            .await
-            .map_err(AppError::database)?;
-        Ok(models.into_iter().map(map_saved_filter).collect())
-    }
-
-    async fn list_public(&self) -> Result<Vec<SavedFilter>, AppError> {
-        let models = saved_filter::Entity::find()
-            .filter(saved_filter::Column::IsPublic.eq(true))
-            .all(&*self.db)
-            .await
-            .map_err(AppError::database)?;
-        Ok(models.into_iter().map(map_saved_filter).collect())
-    }
-
-    async fn save(&self, filter: &SavedFilter) -> Result<SavedFilterId, AppError> {
-        let model = saved_filter::ActiveModel {
-            id: sea_orm::ActiveValue::Set(filter.id.as_uuid()),
-            name: sea_orm::ActiveValue::Set(filter.name.as_ref().to_string()),
-            jql: sea_orm::ActiveValue::Set(filter.jql.clone()),
-            owner_id: sea_orm::ActiveValue::Set(filter.owner_id.as_uuid()),
-            is_public: sea_orm::ActiveValue::Set(filter.is_public),
-            created_at: sea_orm::ActiveValue::Set(filter.created_at),
-            updated_at: sea_orm::ActiveValue::Set(filter.updated_at),
-        };
-        let result = saved_filter::Entity::insert(model)
-            .exec(&*self.db)
-            .await
-            .map_err(AppError::database)?;
-        Ok(SavedFilterId::from_uuid(result.last_insert_id))
-    }
-
-    async fn delete(&self, id: SavedFilterId) -> Result<(), AppError> {
-        saved_filter::Entity::delete_by_id(id.as_uuid())
-            .exec(&*self.db)
-            .await
-            .map_err(AppError::database)?;
-        Ok(())
-    }
-}
-
-fn map_saved_filter(m: saved_filter::Model) -> SavedFilter {
-    SavedFilter {
-        id: SavedFilterId::from_uuid(m.id),
-        name: m.name.into(),
-        jql: m.jql,
-        owner_id: UserId::from_uuid(m.owner_id),
-        is_public: m.is_public,
-        created_at: m.created_at,
-        updated_at: m.updated_at,
     }
 }
 

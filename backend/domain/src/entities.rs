@@ -488,17 +488,6 @@ impl std::str::FromStr for LinkType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SavedFilter {
-    pub id: shared::SavedFilterId,
-    pub name: ArcStr,
-    pub jql: String,
-    pub owner_id: UserId,
-    pub is_public: bool,
-    pub created_at: Timestamp,
-    pub updated_at: Timestamp,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Notification {
     pub id: NotificationId,

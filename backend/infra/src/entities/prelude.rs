@@ -14,7 +14,6 @@ pub use super::project::Entity as Project;
 pub use super::project_component::Entity as ProjectComponent;
 pub use super::project_member::Entity as ProjectMember;
 pub use super::project_version::Entity as ProjectVersion;
-pub use super::saved_filter::Entity as SavedFilter;
 pub use super::sprint::Entity as Sprint;
 pub use super::system_setting::Entity as SystemSetting;
 pub use super::user::Entity as User;
