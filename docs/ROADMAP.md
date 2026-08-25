@@ -101,8 +101,9 @@
 - [x] SMTP integration, HTML/plain-text templates, escaping and disabled-mode no-op.
 - [x] OpenAPI + generated frontend client for notification endpoints.
 - [x] Verification: repository/service/API/frontend/config/template tests.
-- [ ] Генерация уведомлений из issue-событий, email digest и production delivery flow.
-- [ ] Real-time push for notification center (SSE/WebSocket).
+- [x] Генерация уведомлений из issue-событий: issue_assigned (create/update), issue_moved (transition), issue_commented (comment). NotificationCreated SSE event → frontend auto-refetch.
+- [ ] Email digest и production delivery flow.
+- [x] Real-time push for notification center (NotificationCreated SSE event, frontend auto-refetch notifications).
 
 ## 9. Phase 7: Reports (M7)
 

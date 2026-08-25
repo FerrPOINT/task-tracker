@@ -8,7 +8,9 @@ use std::sync::Arc;
 use crate::dto::{
     CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery, UpdateIssueRequest,
 };
+use app::auth::UserClaims;
 use app::commands::{CreateIssueCommand, UpdateIssueCommand};
+use axum::Extension;
 use shared::{AppError, IssueId, ProjectKey};
 use std::str::FromStr;
 
@@ -20,8 +22,12 @@ use std::str::FromStr;
 )]
 pub async fn create_issue(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Json(req): Json<CreateIssueRequest>,
 ) -> Result<Json<IssueResponse>, AppError> {
+    let actor_id = shared::UserId::from_uuid(
+        uuid::Uuid::parse_str(&claims.sub).map_err(|_| AppError::invalid_input("invalid token"))?,
+    );
     let cmd = CreateIssueCommand {
         project_key: ProjectKey::from_str(&req.project_key)
             .map_err(|e| AppError::invalid_input(e.to_string()))?,
@@ -39,6 +45,7 @@ pub async fn create_issue(
             .ok()
             .map(shared::UserId::from_uuid)
             .ok_or(AppError::invalid_input("reporter_id"))?,
+        actor_id,
     };
     let i = ctx.services.issue.create(cmd).await?;
     Ok(Json(map_issue(i)))
@@ -53,9 +60,13 @@ pub async fn create_issue(
 )]
 pub async fn update_issue(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
     Json(req): Json<UpdateIssueRequest>,
 ) -> Result<Json<IssueResponse>, AppError> {
+    let actor_id = shared::UserId::from_uuid(
+        uuid::Uuid::parse_str(&claims.sub).map_err(|_| AppError::invalid_input("invalid token"))?,
+    );
     let issue_id = id
         .parse()
         .ok()
@@ -87,6 +98,7 @@ pub async fn update_issue(
                 Some(Some(shared::SprintId::from_uuid(uuid)))
             }
         },
+        actor_id,
     };
     let i = ctx.services.issue.update(issue_id, cmd).await?;
     Ok(Json(map_issue(i)))

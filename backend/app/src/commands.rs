@@ -72,6 +72,7 @@ pub struct CreateIssueCommand {
     pub reporter_id: shared::UserId,
     pub priority: shared::Priority,
     pub assignee_id: Option<shared::UserId>,
+    pub actor_id: shared::UserId,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -82,6 +83,7 @@ pub struct UpdateIssueCommand {
     pub status_id: Option<String>,
     pub assignee_id: Option<Option<shared::UserId>>,
     pub sprint_id: Option<Option<shared::SprintId>>,
+    pub actor_id: shared::UserId,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -89,6 +91,7 @@ pub struct CreateCommentCommand {
     pub issue_id: shared::IssueId,
     pub author_id: shared::UserId,
     pub body: String,
+    pub actor_id: shared::UserId,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -129,6 +132,7 @@ pub struct UpdateProjectCommand {
 pub struct TransitionIssueCommand {
     pub issue_id: IssueId,
     pub target_status_id: StatusId,
+    pub actor_id: shared::UserId,
 }
 
 #[derive(Debug, Clone)]

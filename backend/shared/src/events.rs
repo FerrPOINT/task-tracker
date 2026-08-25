@@ -30,6 +30,9 @@ pub enum TrackerEvent {
     SprintChanged {
         project_key: String,
     },
+    NotificationCreated {
+        recipient_id: String,
+    },
 }
 
 impl TrackerEvent {
@@ -41,6 +44,7 @@ impl TrackerEvent {
             | TrackerEvent::IssueDeleted { project_key, .. }
             | TrackerEvent::IssueCommented { project_key, .. }
             | TrackerEvent::SprintChanged { project_key } => project_key,
+            TrackerEvent::NotificationCreated { .. } => "",
         }
     }
 }

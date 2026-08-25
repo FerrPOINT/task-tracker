@@ -6,6 +6,7 @@ type TrackerEvent = {
   type: string
   issue_id?: string
   project_key?: string
+  recipient_id?: string
 }
 
 /**
@@ -52,6 +53,9 @@ export function useTrackerEvents() {
           break
         case 'sprint_changed':
           qc.invalidateQueries({ queryKey: ['sprints'] })
+          break
+        case 'notification_created':
+          qc.invalidateQueries({ queryKey: ['notifications'] })
           break
       }
     })

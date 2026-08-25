@@ -241,6 +241,7 @@ async fn issue_service_create() {
             status_id,
             reporter_id: user.id,
             assignee_id: None,
+            actor_id: user.id,
         })
         .await
         .unwrap();
@@ -275,6 +276,7 @@ async fn issue_service_update_and_move() {
             status_id: todo_id,
             reporter_id: user.id,
             assignee_id: None,
+            actor_id: user.id,
         })
         .await
         .unwrap();
@@ -291,6 +293,7 @@ async fn issue_service_update_and_move() {
                 status_id: Some(in_progress_id.clone()),
                 assignee_id: Some(Some(user.id)),
                 sprint_id: None,
+                actor_id: user.id,
             },
         )
         .await
@@ -340,6 +343,7 @@ async fn dashboard_lists_assigned_issues() {
             status_id,
             reporter_id: user.id,
             assignee_id: Some(user.id),
+            actor_id: user.id,
         })
         .await
         .unwrap();
@@ -369,6 +373,7 @@ async fn search_finds_issue() {
             status_id,
             reporter_id: user.id,
             assignee_id: None,
+            actor_id: user.id,
         })
         .await
         .unwrap();
@@ -470,6 +475,7 @@ async fn board_service_backlog() {
             status_id,
             reporter_id: user.id,
             assignee_id: None,
+            actor_id: user.id,
         })
         .await
         .unwrap();
@@ -512,6 +518,7 @@ async fn issue_service_create_fails_for_missing_project() {
             status_id: "00000000-0000-0000-0000-000000000001".to_string(),
             reporter_id: user.id,
             assignee_id: None,
+            actor_id: user.id,
         })
         .await;
     assert!(err.is_err());
@@ -532,6 +539,7 @@ async fn issue_service_create_fails_for_invalid_status_id() {
             status_id: "not-a-uuid".to_string(),
             reporter_id: user.id,
             assignee_id: None,
+            actor_id: user.id,
         })
         .await;
     assert!(err.is_err());
@@ -558,6 +566,7 @@ async fn issue_service_update_fails_for_invalid_status_id() {
             status_id: board.columns[0].id.to_string(),
             reporter_id: user.id,
             assignee_id: None,
+            actor_id: user.id,
         })
         .await
         .unwrap();
@@ -574,6 +583,7 @@ async fn issue_service_update_fails_for_invalid_status_id() {
                 status_id: Some("not-a-uuid".to_string()),
                 assignee_id: None,
                 sprint_id: None,
+                actor_id: shared::UserId::new(),
             },
         )
         .await;
@@ -595,6 +605,7 @@ async fn issue_service_update_fails_for_missing_issue() {
                 status_id: None,
                 assignee_id: None,
                 sprint_id: None,
+                actor_id: shared::UserId::new(),
             },
         )
         .await;
@@ -935,6 +946,7 @@ async fn issue_create_propagates_repo_error() {
                 status_id: "00000000-0000-0000-0000-000000000001".to_string(),
                 reporter_id: UserId::new(),
                 assignee_id: None,
+                actor_id: UserId::new(),
             })
             .await,
     );

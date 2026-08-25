@@ -8,6 +8,7 @@ use crate::dto::{IssueResponse, TransitionIssueRequest};
 use app::auth::UserClaims;
 use app::context::AppContext;
 use shared::{AppError, IssueId, StatusId};
+use std::str::FromStr;
 
 #[utoipa::path(
     post,
@@ -25,7 +26,7 @@ use shared::{AppError, IssueId, StatusId};
 )]
 pub async fn transition_issue(
     State(ctx): State<Arc<AppContext>>,
-    Extension(_claims): Extension<UserClaims>,
+    Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
     Json(body): Json<TransitionIssueRequest>,
 ) -> Result<Json<crate::dto::IssueResponse>, AppError> {
@@ -36,9 +37,12 @@ pub async fn transition_issue(
         .target_status_id
         .parse::<StatusId>()
         .map_err(|_| AppError::invalid_input("invalid status id"))?;
+    let actor_id = shared::UserId::from_str(&claims.sub)
+        .map_err(|_| shared::AppError::invalid_input("invalid token"))?;
     let cmd = app::commands::TransitionIssueCommand {
         issue_id,
         target_status_id,
+        actor_id,
     };
     let dto = ctx.services.issue.transition(cmd).await?;
     Ok(Json(crate::dto::IssueResponse {

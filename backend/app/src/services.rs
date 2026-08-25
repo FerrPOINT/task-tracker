@@ -150,9 +150,11 @@ pub struct IssueServiceImpl {
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
     events: crate::context::EventBus,
+    notifications: Arc<dyn domain::NotificationRepository>,
 }
 
 impl IssueServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
@@ -161,6 +163,7 @@ impl IssueServiceImpl {
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
         events: crate::context::EventBus,
+        notifications: Arc<dyn domain::NotificationRepository>,
     ) -> Self {
         Self {
             issues,
@@ -170,6 +173,18 @@ impl IssueServiceImpl {
             users,
             statuses,
             transitions,
+            notifications,
+        }
+    }
+
+    /// Create a notification and publish a real-time SSE event.
+    async fn create_notification(&self, notification: domain::Notification) {
+        let recipient_id = notification.recipient_id;
+        if let Ok(_id) = self.notifications.save(&notification).await {
+            self.events
+                .publish(shared::TrackerEvent::NotificationCreated {
+                    recipient_id: recipient_id.to_string(),
+                });
         }
     }
 }
@@ -224,6 +239,30 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue_id: issue.id.to_string(),
             project_key: project.key.to_string(),
         });
+        // Notify assignee if assigned and not the reporter
+        if let Some(assignee_id) = issue.assignee_id {
+            if assignee_id != cmd.reporter_id {
+                let key = issue.key.to_string();
+                self.create_notification(domain::Notification {
+                    id: shared::NotificationId::new(),
+                    recipient_id: assignee_id,
+                    event_type: "issue_assigned".into(),
+                    entity_type: "issue".into(),
+                    entity_id: Some(issue.id.as_uuid()),
+                    actor_id: Some(cmd.reporter_id),
+                    title: format!("You were assigned to {}", key).into(),
+                    body: Some(issue.summary.as_ref().to_string().into()),
+                    is_read: false,
+                    read_at: None,
+                    action_url: Some(
+                        format!("/projects/{}/issues/{}", project.key, issue.id).into(),
+                    ),
+                    metadata: serde_json::json!({"issue_key": key}),
+                    created_at: shared::now(),
+                })
+                .await;
+            }
+        }
         Ok(IssueDto::from_issue(
             issue,
             project.name.as_ref().to_string(),
@@ -275,6 +314,26 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue_id: updated.id.to_string(),
             project_key: project.key.to_string(),
         });
+        // Notify reporter of status change
+        if updated.reporter_id != cmd.actor_id {
+            let key = updated.key.to_string();
+            self.create_notification(domain::Notification {
+                id: shared::NotificationId::new(),
+                recipient_id: updated.reporter_id,
+                event_type: "issue_moved".into(),
+                entity_type: "issue".into(),
+                entity_id: Some(updated.id.as_uuid()),
+                actor_id: Some(cmd.actor_id),
+                title: format!("{} moved to {}", key, status).into(),
+                body: None,
+                is_read: false,
+                read_at: None,
+                action_url: Some(format!("/projects/{}/issues/{}", project.key, updated.id).into()),
+                metadata: serde_json::json!({"issue_key": key, "status": status}),
+                created_at: shared::now(),
+            })
+            .await;
+        }
         Ok(IssueDto::from_issue(
             updated,
             project.name.as_ref().to_string(),
@@ -337,6 +396,30 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue_id: issue.id.to_string(),
             project_key: project.key.to_string(),
         });
+        // Notify assignee if assignment changed
+        if let Some(new_assignee) = cmd.assignee_id.flatten() {
+            if new_assignee != issue.reporter_id {
+                let key = issue.key.to_string();
+                self.create_notification(domain::Notification {
+                    id: shared::NotificationId::new(),
+                    recipient_id: new_assignee,
+                    event_type: "issue_assigned".into(),
+                    entity_type: "issue".into(),
+                    entity_id: Some(issue.id.as_uuid()),
+                    actor_id: Some(cmd.actor_id),
+                    title: format!("You were assigned to {}", key).into(),
+                    body: Some(issue.summary.as_ref().to_string().into()),
+                    is_read: false,
+                    read_at: None,
+                    action_url: Some(
+                        format!("/projects/{}/issues/{}", project.key, issue.id).into(),
+                    ),
+                    metadata: serde_json::json!({"issue_key": key}),
+                    created_at: shared::now(),
+                })
+                .await;
+            }
+        }
         Ok(IssueDto::from_issue(
             issue,
             project.name.as_ref().to_string(),
@@ -864,6 +947,7 @@ pub struct CommentServiceImpl {
     issues: Arc<dyn domain::IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     events: crate::context::EventBus,
+    notifications: Arc<dyn domain::NotificationRepository>,
 }
 
 impl CommentServiceImpl {
@@ -873,6 +957,7 @@ impl CommentServiceImpl {
         issues: Arc<dyn domain::IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
         events: crate::context::EventBus,
+        notifications: Arc<dyn domain::NotificationRepository>,
     ) -> Self {
         Self {
             comments,
@@ -880,6 +965,18 @@ impl CommentServiceImpl {
             issues,
             projects,
             events,
+            notifications,
+        }
+    }
+
+    /// Create a notification and publish a real-time SSE event.
+    async fn create_notification(&self, notification: domain::Notification) {
+        let recipient_id = notification.recipient_id;
+        if let Ok(_id) = self.notifications.save(&notification).await {
+            self.events
+                .publish(shared::TrackerEvent::NotificationCreated {
+                    recipient_id: recipient_id.to_string(),
+                });
         }
     }
 }
@@ -922,6 +1019,32 @@ impl crate::context::CommentService for CommentServiceImpl {
                     issue_id: cmd.issue_id.to_string(),
                     project_key: project.key.to_string(),
                 });
+                // Notify reporter and assignee about new comment (if different from author)
+                let key = issue.key.to_string();
+                let action_url = format!("/projects/{}/issues/{}", project.key, issue.id);
+                for recipient in [
+                    issue.reporter_id,
+                    issue.assignee_id.unwrap_or(issue.reporter_id),
+                ] {
+                    if recipient != cmd.author_id {
+                        self.create_notification(domain::Notification {
+                            id: shared::NotificationId::new(),
+                            recipient_id: recipient,
+                            event_type: "issue_commented".into(),
+                            entity_type: "issue".into(),
+                            entity_id: Some(issue.id.as_uuid()),
+                            actor_id: Some(cmd.author_id),
+                            title: format!("New comment on {}", key).into(),
+                            body: None,
+                            is_read: false,
+                            read_at: None,
+                            action_url: Some(action_url.clone().into()),
+                            metadata: serde_json::json!({"issue_key": key}),
+                            created_at: shared::now(),
+                        })
+                        .await;
+                    }
+                }
             }
         }
         Ok(CommentDto::from_comment(

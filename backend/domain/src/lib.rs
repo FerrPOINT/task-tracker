@@ -1,3 +1,4 @@
+pub mod email_port;
 pub mod entities;
 pub mod events;
 pub mod jql;
@@ -5,6 +6,7 @@ pub mod repositories;
 pub mod stubs;
 pub mod value_objects;
 
+pub use email_port::*;
 pub use entities::*;
 pub use events::*;
 pub use repositories::*;

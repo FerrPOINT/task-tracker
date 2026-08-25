@@ -52,6 +52,7 @@ pub struct AppContext {
     pub services: Services,
     pub repos: Arc<domain::Repositories>,
     pub events: EventBus,
+    pub email: Arc<dyn domain::EmailPort>,
 }
 
 #[derive(Clone)]
@@ -84,7 +85,7 @@ impl AppContext {
         repos: Arc<domain::Repositories>,
         storage: Arc<dyn domain::FileStorage>,
     ) -> Self {
-        Self::with_events(config, repos, storage, EventBus::default())
+        Self::with_events(config, repos, storage, EventBus::default(), Arc::new(domain::StubEmailPort))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -93,6 +94,7 @@ impl AppContext {
         repos: Arc<domain::Repositories>,
         storage: Arc<dyn domain::FileStorage>,
         events: EventBus,
+        email: Arc<dyn domain::EmailPort>,
     ) -> Self {
         let auth: Arc<dyn AuthService> = Arc::new(JwtAuthService::new(
             config.auth.clone(),
@@ -112,6 +114,7 @@ impl AppContext {
             repos.statuses.clone(),
             repos.transitions.clone(),
             events.clone(),
+            repos.notifications.clone(),
         ));
         let board: Arc<dyn BoardService> = Arc::new(BoardServiceImpl::new(
             repos.boards.clone(),
@@ -153,6 +156,7 @@ impl AppContext {
                     repos.issues.clone(),
                     repos.projects.clone(),
                     events.clone(),
+                    repos.notifications.clone(),
                 )),
                 worklog: Arc::new(WorklogServiceImpl::new(
                     repos.worklogs.clone(),
@@ -210,6 +214,8 @@ impl AppContext {
                 sprint,
             },
             repos,
+            events: events.clone(),
+            email,
         }
     }
 }

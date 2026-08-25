@@ -92,6 +92,12 @@ pub async fn create_comment(
                 .map_err(|_| AppError::invalid_input("invalid user id"))?,
         ),
         body: body.body,
+        actor_id: UserId::from_uuid(
+            claims
+                .sub
+                .parse()
+                .map_err(|_| AppError::invalid_input("invalid user id"))?,
+        ),
     };
     let c = ctx.services.comment.create(cmd).await?;
     Ok((
