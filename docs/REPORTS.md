@@ -125,26 +125,11 @@
 - Нераспределённые vs назначенные задачи.
 - Workload per assignee.
 
-## 8. Dashboard Gadgets
+## 8. Dashboard
 
-### 8.1 Built-in Gadgets
+Текущий дашборд (`GET /api/v1/dashboard`) показывает задачи, назначенные на текущего пользователя.
 
-| Gadget | Описание |
-|--------|----------|
-| `assigned_to_me` | Список задач, назначенных текущему пользователю |
-| `watched_issues` | Отслеживаемые задачи |
-| `activity_stream` | Последние события |
-| `sprint_burndown` | Burndown активного спринта |
-| `sprint_health` | Здоровье спринта |
-| `created_vs_resolved` | График создано/решено |
-| `pie_chart` | Пирог по статусу/типу/assignee |
-| `statistics` | Count задач по фильтру |
-
-### 8.2 Dashboard Layout
-
-- Grid 2/3 columns.
-- Drag-and-drop позиционирование.
-- Layout сохраняется в `user_dashboard_layout` JSONB.
+Планируемые виджеты: burndown активного спринта, velocity, activity stream.
 
 ## 9. Export
 

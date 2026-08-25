@@ -15,14 +15,14 @@ import { useIssues, useProjects, useUsers } from '@/shared/api/hooks'
 import type { Issue } from '@/api/search'
 
 const SORT_OPTIONS = [
-  { value: 'created_desc', label: 'Newest first' },
-  { value: 'created_asc', label: 'Oldest first' },
-  { value: 'updated_desc', label: 'Recently updated' },
-  { value: 'priority_desc', label: 'Priority' },
+  { value: 'created_desc', labelKey: 'search.sortNewest' },
+  { value: 'created_asc', labelKey: 'search.sortOldest' },
+  { value: 'updated_desc', labelKey: 'search.sortUpdated' },
+  { value: 'priority_desc', labelKey: 'search.sortPriority' },
 ]
 
 const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
-const STATUS_OPTIONS = ['To Do', 'In Progress', 'Review', 'Done']
+const STATUS_OPTIONS = ['todo', 'in_progress', 'review', 'done']
 
 export default function SearchPage() {
   const { t } = useTranslation()
@@ -101,7 +101,7 @@ export default function SearchPage() {
   const statusLabel = status ?? t('search.status')
   const priorityLabel = priority ? t(`priority.${priority}`) : t('search.priority')
   const assigneeName = users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
-  const sortLabel = SORT_OPTIONS.find((o) => o.value === sort)?.label ?? t('search.sort')
+  const sortLabel = SORT_OPTIONS.find((o) => o.value === sort) ? t(SORT_OPTIONS.find((o) => o.value === sort)!.labelKey) : t('search.sort')
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -153,7 +153,7 @@ export default function SearchPage() {
               </DropdownMenuItem>
               {STATUS_OPTIONS.map((s) => (
                 <DropdownMenuItem key={s} onClick={() => setFilter('status', s)}>
-                  {s}
+                  {t(`status.${s}`)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -205,7 +205,7 @@ export default function SearchPage() {
             <DropdownMenuContent align="start">
               {SORT_OPTIONS.map((o) => (
                 <DropdownMenuItem key={o.value} onClick={() => setFilter('sort', o.value)}>
-                  {o.label}
+                  {t(o.labelKey)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

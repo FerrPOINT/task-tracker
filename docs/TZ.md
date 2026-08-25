@@ -745,30 +745,18 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 
 ## 17. Dashboard
 
-### 17.1. Dashboard
+### 17.1. Endpoint
 
-| Поле | Описание |
-|------|----------|
-| `id` | UUID |
-| `owner_id` | — |
-| `name` | — |
-| `layout` | JSON конфигурация |
-| `is_system` | bool |
+`GET /api/v1/dashboard` — возвращает задачи, назначенные на текущего пользователя.
 
-### 17.2. Gadgets
+### 17.2. Gadgets (планируемые)
 
 | Gadget | Описание |
 |--------|----------|
-| Filter results | Таблица задач по JQL |
-| Pie chart | Распределение по полю |
-| Bar chart | Задачи по статусу/assignee |
-| Burndown | Для активного спринта |
-| Velocity | По завершённым спринтам |
 | Assigned to me | Мои задачи |
 | Activity stream | Последние события |
-| Calendar | Задачи по due date |
-| Roadmap | Timeline эпиков/версий |
-| WIP limits | Состояние kanban-колонок |
+| Burndown | Для активного спринта |
+| Velocity | По завершённым спринтам |
 
 ---
 
@@ -1162,13 +1150,9 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 - `GET /api/v1/custom-fields/{id}/options`
 - `POST /api/v1/custom-fields/{id}/options`
 
-### 27.17. Dashboards
+### 27.17. Dashboard
 
-- `GET /api/v1/dashboards`
-- `POST /api/v1/dashboards`
-- `GET /api/v1/dashboards/{id}`
-- `PUT /api/v1/dashboards/{id}`
-- `DELETE /api/v1/dashboards/{id}`
+- `GET /api/v1/dashboard`
 
 ### 27.18. Notifications
 

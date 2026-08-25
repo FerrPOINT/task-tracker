@@ -73,12 +73,11 @@
 | `/create-issue` | `pages/create-issue` | Global create issue |
 | `/projects/:key/create-issue` | `pages/create-issue` | Create issue in project |
 
-## 7. Filters and Dashboards
+## 7. Dashboards
 
 | Route | Page | Notes |
 |-------|------|-------|
-| `/dashboards` | `pages/dashboards` | Dashboard list |
-| `/dashboards/:dashboardId` | `pages/dashboard` | Dashboard |
+| `/` | `pages/dashboard` | Team dashboard |
 
 ## 8. Admin
 
@@ -133,7 +132,6 @@ export const router = createBrowserRouter([
           { path: "/projects/:key/*", element: <ProjectShellPage /> },
           { path: "/issues", element: <SearchPage /> },
           { path: "/issues/:key", element: <IssuePage /> },
-          { path: "/dashboards/*", element: <DashboardsPage /> },
         ],
       },
       {

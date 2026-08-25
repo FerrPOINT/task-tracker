@@ -139,7 +139,11 @@
     "noResults": "Ничего не найдено",
     "placeholder": "Поиск задач…",
     "project": "Проект",
-    "sort": "Сортировка"
+    "sort": "Сортировка",
+    "sortNewest": "Сначала новые",
+    "sortOldest": "Сначала старые",
+    "sortUpdated": "Недавно обновлённые",
+    "sortPriority": "По приоритету"
   },
   "issueCreate": {
     "title": "Создать задачу",
@@ -449,5 +453,11 @@
     "type": "Тип",
     "priority": "Приоритет",
     "actions": "Действия"
+  },
+  "status": {
+    "todo": "К выполнению",
+    "in_progress": "В работе",
+    "review": "Ревью",
+    "done": "Готово"
   }
 }

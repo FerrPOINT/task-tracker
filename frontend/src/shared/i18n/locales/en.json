@@ -139,7 +139,11 @@
     "noResults": "No results",
     "placeholder": "Search issues…",
     "project": "Project",
-    "sort": "Sort"
+    "sort": "Sort",
+    "sortNewest": "Newest first",
+    "sortOldest": "Oldest first",
+    "sortUpdated": "Recently updated",
+    "sortPriority": "Priority"
   },
   "issueCreate": {
     "title": "Create issue",
@@ -449,5 +453,11 @@
     "type": "Type",
     "priority": "Priority",
     "actions": "Actions"
+  },
+  "status": {
+    "todo": "To Do",
+    "in_progress": "In Progress",
+    "review": "Review",
+    "done": "Done"
   }
 }

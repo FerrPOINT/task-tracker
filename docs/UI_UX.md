@@ -568,12 +568,6 @@ Time tracking
 | `/projects/:id/backlog` | Backlog |
 | `/issues/:id` | Issue detail |
 | `/issues/new?projectId=` | Create issue |
-| `/dashboards` | Dashboards |
-| `/dashboards/:id` | Dashboard |
-| `/admin/users` | User admin |
-| `/admin/schemes` | Scheme admin |
-| `/settings/profile` | User settings |
-| `/notifications` | Notifications |
 | `/trash` | Trash |
 
 ---
