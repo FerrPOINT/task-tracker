@@ -140,14 +140,14 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
         saved_filters: Arc::new(domain::StubSavedFilterRepository),
-        notifications: Arc::new(domain::StubNotificationRepository),
+        notifications: Arc::new(MemoryNotificationRepository::default()),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
         issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
-        watchers: Arc::new(domain::StubWatcherRepository),
-        votes: Arc::new(domain::StubVoteRepository),
-        components: Arc::new(domain::StubProjectComponentRepository),
-        versions: Arc::new(domain::StubProjectVersionRepository),
-        custom_fields: Arc::new(domain::StubCustomFieldRepository),
+        watchers: Arc::new(domain::MemoryWatcherRepository::default()),
+        votes: Arc::new(domain::MemoryVoteRepository::default()),
+        components: Arc::new(domain::MemoryProjectComponentRepository::default()),
+        versions: Arc::new(domain::MemoryProjectVersionRepository::default()),
+        custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
     });
     AppContext::new(
         test_config(),
@@ -1100,6 +1100,461 @@ async fn notification_service_returns_default_settings_and_persists_valid_update
             .is_err()
     );
 }
+// ─── v0.2.0 feature tests ────────────────────────────────────────────
+
+#[tokio::test]
+async fn watcher_add_and_list() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Watched issue".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    ctx.services
+        .watcher
+        .watch(issue.id.parse().unwrap(), user.id)
+        .await
+        .unwrap();
+
+    let watchers = ctx
+        .services
+        .watcher
+        .list_watchers(issue.id.parse().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(watchers.len(), 1);
+    assert_eq!(watchers[0].user_id, user.id.to_string());
+}
+
+#[tokio::test]
+async fn watcher_remove() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Watched issue".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services.watcher.watch(issue_id, user.id).await.unwrap();
+
+    ctx.services
+        .watcher
+        .unwatch(issue_id, user.id)
+        .await
+        .unwrap();
+
+    let watchers = ctx.services.watcher.list_watchers(issue_id).await.unwrap();
+    assert_eq!(watchers.len(), 0);
+}
+
+#[tokio::test]
+async fn vote_add_and_count() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Voted issue".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services.vote.vote(issue_id, user.id).await.unwrap();
+
+    let count = ctx.services.vote.count_votes(issue_id).await.unwrap();
+    assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn vote_remove() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Voted issue".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services.vote.vote(issue_id, user.id).await.unwrap();
+    ctx.services.vote.unvote(issue_id, user.id).await.unwrap();
+
+    let count = ctx.services.vote.count_votes(issue_id).await.unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn custom_field_create_and_list() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let field = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Priority Override",
+            "text",
+            &[],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(field.name, "Priority Override");
+    assert_eq!(field.field_type, "text");
+
+    let fields = ctx
+        .services
+        .custom_field
+        .list_fields(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    assert_eq!(fields.len(), 1);
+    assert_eq!(fields[0].name, "Priority Override");
+    assert_eq!(fields[0].field_type, "text");
+}
+
+#[tokio::test]
+async fn custom_field_set_and_get_value() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let field = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Effort",
+            "text",
+            &[],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Issue with custom field".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let field_id: shared::CustomFieldId = field.id.parse().unwrap();
+    ctx.services
+        .custom_field
+        .set_value(issue_id, field_id, serde_json::json!("high"), user.id)
+        .await
+        .unwrap();
+
+    let values = ctx
+        .services
+        .custom_field
+        .get_values_for_issue(issue_id)
+        .await
+        .unwrap();
+    assert_eq!(values.len(), 1);
+    assert_eq!(values[0].field_id, field.id);
+    assert_eq!(values[0].value, serde_json::json!("high"));
+}
+
+#[tokio::test]
+async fn component_create_and_list() {
+    let (ctx, _user) = ctx_with_demo_data().await;
+    ctx.services
+        .component
+        .create(&ProjectKey::new("TT"), "Backend", Some("Backend services"))
+        .await
+        .unwrap();
+
+    let components = ctx
+        .services
+        .component
+        .list_by_project(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    assert_eq!(components.len(), 1);
+    assert_eq!(components[0].name, "Backend");
+}
+
+#[tokio::test]
+async fn version_create_and_list() {
+    let (ctx, _user) = ctx_with_demo_data().await;
+    ctx.services
+        .version
+        .create(
+            &ProjectKey::new("TT"),
+            "v1.0",
+            Some("Initial release"),
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let versions = ctx
+        .services
+        .version
+        .list_by_project(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    assert_eq!(versions.len(), 1);
+    assert_eq!(versions[0].name, "v1.0");
+}
+
+#[tokio::test]
+async fn issue_soft_delete_and_restore() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Soft delete me".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services.issue.delete(issue_id).await.unwrap();
+
+    // After soft-delete, normal get should fail.
+    let err = ctx.services.issue.get_by_id(issue_id).await;
+    assert!(err.is_err());
+
+    // Restore and get should succeed.
+    let restored = ctx.services.issue.restore(issue_id).await.unwrap();
+    assert_eq!(restored.id, issue.id);
+}
+
+#[tokio::test]
+async fn issue_soft_delete_lists_in_trash() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Trashed issue".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services.issue.delete(issue_id).await.unwrap();
+
+    let trash = ctx
+        .services
+        .issue
+        .list_trash(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    assert_eq!(trash.len(), 1);
+    assert_eq!(trash[0].id, issue.id);
+}
+
+#[tokio::test]
+async fn issue_purge_from_trash() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Purge me".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services.issue.delete(issue_id).await.unwrap();
+    ctx.services.issue.purge(issue_id).await.unwrap();
+
+    let trash = ctx
+        .services
+        .issue
+        .list_trash(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    assert_eq!(trash.len(), 0);
+
+    // Restore should fail after purge.
+    let err = ctx.services.issue.restore(issue_id).await;
+    assert!(err.is_err());
+}
+
+#[tokio::test]
+async fn notification_created_on_issue_assign() {
+    let (ctx, user) = ctx_with_demo_data().await;
+
+    // Register a second user to use as assignee (notifications are only
+    // created when assignee != reporter).
+    let assignee = ctx
+        .services
+        .auth
+        .register(RegisterCommand {
+            email: "assignee@example.com".to_string(),
+            username: "assignee".to_string(),
+            name: "Assignee User".to_string(),
+            password: "secret123".to_string(),
+        })
+        .await
+        .unwrap();
+    let assignee_id: UserId = assignee.user.id.parse().unwrap();
+
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    ctx.services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Assigned issue".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: Some(assignee_id),
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let notifications = ctx
+        .services
+        .notification
+        .list_unread(assignee_id)
+        .await
+        .unwrap();
+    assert_eq!(notifications.unread_count, 1);
+    assert_eq!(notifications.notifications[0].event_type, "issue_assigned");
+}
+
 // ─── Report service tests ───────────────────────────────────────────
 
 use crate::context::ReportService;

@@ -8,7 +8,6 @@ use shared::AppError;
 
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
-#[serde(rename_all = "camelCase")]
 pub struct VelocityQuery {
     pub project_id: String,
     #[serde(default = "default_count")]
@@ -21,21 +20,18 @@ fn default_count() -> u32 {
 
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
-#[serde(rename_all = "camelCase")]
 pub struct BurndownQuery {
     pub sprint_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
-#[serde(rename_all = "camelCase")]
 pub struct CumulativeFlowQuery {
     pub project_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 #[into_params(parameter_in = Query)]
-#[serde(rename_all = "camelCase")]
 pub struct ControlChartQuery {
     pub project_id: String,
 }

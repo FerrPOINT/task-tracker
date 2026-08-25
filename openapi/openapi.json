@@ -351,6 +351,31 @@
         ]
       }
     },
+    "/api/v1/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "get_me",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/refresh": {
       "post": {
         "tags": [
@@ -3489,7 +3514,7 @@
         "operationId": "get_burndown_report",
         "parameters": [
           {
-            "name": "sprintId",
+            "name": "sprint_id",
             "in": "query",
             "required": true,
             "schema": {
@@ -3519,7 +3544,7 @@
         "operationId": "get_control_chart_report",
         "parameters": [
           {
-            "name": "projectId",
+            "name": "project_id",
             "in": "query",
             "required": true,
             "schema": {
@@ -3549,7 +3574,7 @@
         "operationId": "get_cumulative_flow_report",
         "parameters": [
           {
-            "name": "projectId",
+            "name": "project_id",
             "in": "query",
             "required": true,
             "schema": {
@@ -3579,7 +3604,7 @@
         "operationId": "get_velocity_report",
         "parameters": [
           {
-            "name": "projectId",
+            "name": "project_id",
             "in": "query",
             "required": true,
             "schema": {
@@ -3781,7 +3806,7 @@
         "tags": [
           "routes::users"
         ],
-        "operationId": "get_me",
+        "operationId": "get_users_me",
         "responses": {
           "200": {
             "description": "",

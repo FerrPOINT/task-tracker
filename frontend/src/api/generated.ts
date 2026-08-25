@@ -132,6 +132,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/refresh": {
         parameters: {
             query?: never;
@@ -1132,7 +1148,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["get_me"];
+        get: operations["get_users_me"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2068,6 +2084,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserResponse"];
+                };
             };
         };
     };
@@ -4555,7 +4590,7 @@ export interface operations {
     get_burndown_report: {
         parameters: {
             query: {
-                sprintId: string;
+                sprint_id: string;
             };
             header?: never;
             path?: never;
@@ -4576,7 +4611,7 @@ export interface operations {
     get_control_chart_report: {
         parameters: {
             query: {
-                projectId: string;
+                project_id: string;
             };
             header?: never;
             path?: never;
@@ -4597,7 +4632,7 @@ export interface operations {
     get_cumulative_flow_report: {
         parameters: {
             query: {
-                projectId: string;
+                project_id: string;
             };
             header?: never;
             path?: never;
@@ -4618,7 +4653,7 @@ export interface operations {
     get_velocity_report: {
         parameters: {
             query: {
-                projectId: string;
+                project_id: string;
                 count?: number;
             };
             header?: never;
@@ -4723,7 +4758,7 @@ export interface operations {
             };
         };
     };
-    get_me: {
+    get_users_me: {
         parameters: {
             query?: never;
             header?: never;

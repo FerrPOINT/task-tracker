@@ -2214,7 +2214,7 @@ async fn reports_velocity_requires_auth() {
     let (url, client, _issues, _sprints, _history) = spawn_server_with_reports().await;
     let res = client
         .get(format!(
-            "{url}/api/v1/reports/velocity?projectId=22222222-2222-2222-2222-222222222222"
+            "{url}/api/v1/reports/velocity?project_id=22222222-2222-2222-2222-222222222222"
         ))
         .send()
         .await
@@ -2261,7 +2261,7 @@ async fn reports_velocity_returns_data() {
 
     let res = client
         .get(format!(
-            "{url}/api/v1/reports/velocity?projectId=22222222-2222-2222-2222-222222222222&count=6"
+            "{url}/api/v1/reports/velocity?project_id=22222222-2222-2222-2222-222222222222&count=6"
         ))
         .bearer_auth(&token)
         .send()
@@ -2312,7 +2312,7 @@ async fn reports_burndown_returns_data() {
 
     let res = client
         .get(format!(
-            "{url}/api/v1/reports/burndown?sprintId={}",
+            "{url}/api/v1/reports/burndown?sprint_id={}",
             sprint.id
         ))
         .bearer_auth(&token)
@@ -2374,7 +2374,7 @@ async fn reports_cumulative_flow_returns_data() {
 
     let res = client
         .get(format!(
-            "{url}/api/v1/reports/cumulative-flow?projectId=22222222-2222-2222-2222-222222222222"
+            "{url}/api/v1/reports/cumulative-flow?project_id=22222222-2222-2222-2222-222222222222"
         ))
         .bearer_auth(&token)
         .send()
@@ -2437,7 +2437,7 @@ async fn reports_control_chart_returns_data() {
 
     let res = client
         .get(format!(
-            "{url}/api/v1/reports/control-chart?projectId=22222222-2222-2222-2222-222222222222"
+            "{url}/api/v1/reports/control-chart?project_id=22222222-2222-2222-2222-222222222222"
         ))
         .bearer_auth(&token)
         .send()
@@ -2459,7 +2459,7 @@ async fn reports_velocity_invalid_project_id_returns_400() {
 
     let res = client
         .get(format!(
-            "{url}/api/v1/reports/velocity?projectId=not-a-uuid"
+            "{url}/api/v1/reports/velocity?project_id=not-a-uuid"
         ))
         .bearer_auth(&token)
         .send()

@@ -6,8 +6,10 @@ use shared::UserId;
 
 #[utoipa::path(
     get,
-    path = "/api/v1/users/me",
-    responses((status = 200, body = UserResponse))
+    path = "/api/v1/auth/me",
+    tag = "auth",
+    responses((status = 200, body = UserResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_me(
     State(ctx): State<Arc<app::AppContext>>,
@@ -24,6 +26,18 @@ pub async fn get_me(
         username: user.username,
         display_name: user.display_name,
     }))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/users/me",
+    responses((status = 200, body = UserResponse))
+)]
+pub async fn get_users_me(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
+) -> Result<Json<UserResponse>, shared::AppError> {
+    get_me(State(ctx), Extension(claims)).await
 }
 
 #[utoipa::path(

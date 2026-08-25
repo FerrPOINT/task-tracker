@@ -121,6 +121,7 @@ pub use routes::*;
         routes::worklogs::delete_worklog,
         routes::dashboard::get_dashboard,
         routes::users::get_me,
+        routes::users::get_users_me,
         routes::users::list_users,
         routes::sprints::list_sprints,
         routes::sprints::create_sprint,
@@ -468,7 +469,8 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route("/dashboard", get(routes::dashboard::get_dashboard))
         .route("/auth/refresh", post(routes::auth::refresh))
         .route("/auth/logout", post(routes::auth::logout))
-        .route("/users/me", get(routes::users::get_me))
+        .route("/auth/me", get(routes::users::get_me))
+        .route("/users/me", get(routes::users::get_users_me))
         .route("/users", get(routes::users::list_users))
         .route(
             "/projects/{project_key}/sprints",

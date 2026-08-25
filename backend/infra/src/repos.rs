@@ -8,8 +8,9 @@ use domain::{
     CustomFieldType, CustomFieldValue, Issue, IssueLink, IssueLinkRepository, IssueQuery,
     IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository, IssueTypeEntity,
     IssueTypeRepository, IssueVote, IssueWatcher, Label, LabelRepository, LinkType, Notification,
-    NotificationRepository, NotificationUserSettings, Project, ProjectMember,
-    ProjectMemberRepository, ProjectRepository, ProjectRole, SavedFilter, SavedFilterRepository,
+    NotificationRepository, NotificationUserSettings, Project, ProjectComponent,
+    ProjectComponentRepository, ProjectMember, ProjectMemberRepository, ProjectRepository,
+    ProjectRole, ProjectVersion, ProjectVersionRepository, SavedFilter, SavedFilterRepository,
     Sprint, SprintRepository, SprintState, Status, StatusCategory, StatusRepository, SystemSetting,
     SystemSettingRepository, User, UserNotificationSettingsRepository, UserRepository,
     VoteRepository, WatcherRepository, WorkflowTransition, WorkflowTransitionId,
@@ -22,15 +23,17 @@ use sea_orm::{
 use shared::{
     AppError, AttachmentId, AuditLogId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey,
     IssueLinkId, IssueStatusHistoryId, IssueType, IssueTypeId, LabelId, NotificationId, Priority,
-    ProjectId, ProjectKey, SavedFilterId, SprintId, StatusId, UserId, WorklogId,
+    ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SavedFilterId, SprintId, StatusId,
+    UserId, WorklogId,
 };
 use uuid::Uuid;
 
 use crate::entities::{
     attachment, audit_log, board, comment, custom_field, issue, issue_custom_field_value,
     issue_label, issue_link, issue_status_history, issue_type, issue_vote, issue_watcher, label,
-    notification, notification_user_settings, project, project_member, saved_filter, sprint,
-    status, system_setting, user, workflow_transition, worklog,
+    notification, notification_user_settings, project, project_component, project_member,
+    project_version, saved_filter, sprint, status, system_setting, user, workflow_transition,
+    worklog,
 };
 
 fn map_status(m: status::Model) -> Status {
@@ -115,8 +118,8 @@ impl SeaOrmRepositories {
             issue_types: Arc::new(IssueTypeRepo { db: db.clone() }),
             attachments: Arc::new(AttachmentRepo { db: db.clone() }),
             labels: Arc::new(LabelRepo { db: db.clone() }),
-            components: Arc::new(domain::StubProjectComponentRepository),
-            versions: Arc::new(domain::StubProjectVersionRepository),
+            components: Arc::new(ProjectComponentRepo { db: db.clone() }),
+            versions: Arc::new(ProjectVersionRepo { db: db.clone() }),
             custom_fields: Arc::new(CustomFieldRepo { db: db.clone() }),
             issue_links: Arc::new(IssueLinkRepo { db: db.clone() }),
             saved_filters: Arc::new(SavedFilterRepo { db: db.clone() }),
@@ -2074,5 +2077,162 @@ impl VoteRepository for VoteRepo {
             .await
             .map_err(AppError::database)?;
         Ok(count > 0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SeaORM repository: project_components
+// ---------------------------------------------------------------------------
+
+struct ProjectComponentRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+fn map_project_component(m: project_component::Model) -> ProjectComponent {
+    ProjectComponent {
+        id: ProjectComponentId::from_uuid(m.id),
+        project_id: ProjectId::from_uuid(m.project_id),
+        name: m.name.into(),
+        description: m.description.map(domain::ArcStr::from),
+        created_at: m.created_at,
+    }
+}
+
+#[async_trait]
+impl ProjectComponentRepository for ProjectComponentRepo {
+    async fn get_by_id(&self, id: ProjectComponentId) -> Result<ProjectComponent, AppError> {
+        let model = project_component::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_project_component)
+            .ok_or_else(|| AppError::not_found("component", id))
+    }
+
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<ProjectComponent>, AppError> {
+        let models = project_component::Entity::find()
+            .filter(project_component::Column::ProjectId.eq(project_id.as_uuid()))
+            .order_by_asc(project_component::Column::Name)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_project_component).collect())
+    }
+
+    async fn save(&self, component: &ProjectComponent) -> Result<ProjectComponentId, AppError> {
+        let existing = project_component::Entity::find_by_id(component.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        let active = project_component::ActiveModel {
+            id: Set(component.id.as_uuid()),
+            project_id: Set(component.project_id.as_uuid()),
+            name: Set(component.name.as_ref().to_string()),
+            description: Set(component
+                .description
+                .as_ref()
+                .map(|d| d.as_ref().to_string())),
+            created_at: Set(existing
+                .as_ref()
+                .map(|m| m.created_at)
+                .unwrap_or_else(|| component.created_at)),
+        };
+        let saved = if existing.is_some() {
+            active.update(&*self.db).await.map_err(AppError::database)?
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?
+        };
+        Ok(ProjectComponentId::from_uuid(saved.id))
+    }
+
+    async fn delete(&self, id: ProjectComponentId) -> Result<(), AppError> {
+        project_component::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SeaORM repository: project_versions
+// ---------------------------------------------------------------------------
+
+struct ProjectVersionRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+fn map_project_version(m: project_version::Model) -> ProjectVersion {
+    ProjectVersion {
+        id: ProjectVersionId::from_uuid(m.id),
+        project_id: ProjectId::from_uuid(m.project_id),
+        name: m.name.into(),
+        description: m.description.map(domain::ArcStr::from),
+        released: m.released,
+        release_date: m.release_date,
+        created_at: m.created_at,
+    }
+}
+
+#[async_trait]
+impl ProjectVersionRepository for ProjectVersionRepo {
+    async fn get_by_id(&self, id: ProjectVersionId) -> Result<ProjectVersion, AppError> {
+        let model = project_version::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_project_version)
+            .ok_or_else(|| AppError::not_found("version", id))
+    }
+
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<ProjectVersion>, AppError> {
+        let models = project_version::Entity::find()
+            .filter(project_version::Column::ProjectId.eq(project_id.as_uuid()))
+            .order_by_asc(project_version::Column::Name)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_project_version).collect())
+    }
+
+    async fn save(&self, version: &ProjectVersion) -> Result<ProjectVersionId, AppError> {
+        let existing = project_version::Entity::find_by_id(version.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        let active = project_version::ActiveModel {
+            id: Set(version.id.as_uuid()),
+            project_id: Set(version.project_id.as_uuid()),
+            name: Set(version.name.as_ref().to_string()),
+            description: Set(version.description.as_ref().map(|d| d.as_ref().to_string())),
+            released: Set(version.released),
+            release_date: Set(version.release_date),
+            created_at: Set(existing
+                .as_ref()
+                .map(|m| m.created_at)
+                .unwrap_or_else(|| version.created_at)),
+        };
+        let saved = if existing.is_some() {
+            active.update(&*self.db).await.map_err(AppError::database)?
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?
+        };
+        Ok(ProjectVersionId::from_uuid(saved.id))
+    }
+
+    async fn delete(&self, id: ProjectVersionId) -> Result<(), AppError> {
+        project_version::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
     }
 }
