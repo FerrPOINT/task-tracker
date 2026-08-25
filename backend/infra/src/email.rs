@@ -145,6 +145,30 @@ impl EmailSender for SmtpEmailSender {
     }
 }
 
+/// Adapter implementing the domain [`EmailPort`] trait by delegating to
+/// [`SmtpEmailSender`] (which implements the infra [`EmailSender`] trait).
+///
+/// This is the glue that lets the application layer depend on
+/// `domain::EmailPort` without knowing about SMTP/Letre details.
+#[async_trait::async_trait]
+impl domain::EmailPort for SmtpEmailSender {
+    fn is_enabled(&self) -> bool {
+        SmtpEmailSender::is_enabled(self)
+    }
+
+    async fn send(&self, notification: &domain::EmailNotification) -> Result<(), AppError> {
+        // Translate the domain value object into the infra value object.
+        let infra_notification = EmailNotification {
+            recipient_address: notification.recipient_address.clone(),
+            recipient_name: notification.recipient_name.clone(),
+            subject: notification.subject.clone(),
+            body: notification.body.clone(),
+            action_url: notification.action_url.clone(),
+        };
+        EmailSender::send_notification(self, &infra_notification).await
+    }
+}
+
 impl SmtpEmailSender {
     async fn send_via_lettre(&self, notification: &EmailNotification) -> Result<(), AppError> {
         use lettre::message::header::ContentType;

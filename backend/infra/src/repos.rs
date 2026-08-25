@@ -4,13 +4,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use domain::{
     Attachment, AttachmentRepository, AuditLog, AuditLogRepository, Board, BoardColumn,
-    BoardRepository, Comment, CommentRepository, Issue, IssueLink, IssueLinkRepository, IssueQuery,
+    BoardRepository, Comment, CommentRepository, CustomField, CustomFieldRepository,
+    CustomFieldType, CustomFieldValue, Issue, IssueLink, IssueLinkRepository, IssueQuery,
     IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository, IssueTypeEntity,
-    IssueTypeRepository, Label, LabelRepository, LinkType, Notification, NotificationRepository,
-    NotificationUserSettings, Project, ProjectMember, ProjectMemberRepository, ProjectRepository,
-    ProjectRole, SavedFilter, SavedFilterRepository, Sprint, SprintRepository, SprintState, Status,
-    StatusCategory, StatusRepository, SystemSetting, SystemSettingRepository, User,
-    UserNotificationSettingsRepository, UserRepository, WorkflowTransition, WorkflowTransitionId,
+    IssueTypeRepository, IssueVote, IssueWatcher, Label, LabelRepository, LinkType, Notification,
+    NotificationRepository, NotificationUserSettings, Project, ProjectMember,
+    ProjectMemberRepository, ProjectRepository, ProjectRole, SavedFilter, SavedFilterRepository,
+    Sprint, SprintRepository, SprintState, Status, StatusCategory, StatusRepository, SystemSetting,
+    SystemSettingRepository, User, UserNotificationSettingsRepository, UserRepository,
+    VoteRepository, WatcherRepository, WorkflowTransition, WorkflowTransitionId,
     WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::{
@@ -18,16 +20,17 @@ use sea_orm::{
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, sea_query::Expr,
 };
 use shared::{
-    AppError, AttachmentId, AuditLogId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId,
-    IssueStatusHistoryId, IssueType, IssueTypeId, LabelId, NotificationId, Priority, ProjectId,
-    ProjectKey, SavedFilterId, SprintId, StatusId, UserId, WorklogId,
+    AppError, AttachmentId, AuditLogId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey,
+    IssueLinkId, IssueStatusHistoryId, IssueType, IssueTypeId, LabelId, NotificationId, Priority,
+    ProjectId, ProjectKey, SavedFilterId, SprintId, StatusId, UserId, WorklogId,
 };
 use uuid::Uuid;
 
 use crate::entities::{
-    attachment, audit_log, board, comment, issue, issue_label, issue_link, issue_status_history,
-    issue_type, label, notification, notification_user_settings, project, project_member,
-    saved_filter, sprint, status, system_setting, user, workflow_transition, worklog,
+    attachment, audit_log, board, comment, custom_field, issue, issue_custom_field_value,
+    issue_label, issue_link, issue_status_history, issue_type, issue_vote, issue_watcher, label,
+    notification, notification_user_settings, project, project_member, saved_filter, sprint,
+    status, system_setting, user, workflow_transition, worklog,
 };
 
 fn map_status(m: status::Model) -> Status {
@@ -81,11 +84,16 @@ pub struct SeaOrmRepositories {
     pub issue_types: Arc<dyn IssueTypeRepository>,
     pub attachments: Arc<dyn AttachmentRepository>,
     pub labels: Arc<dyn LabelRepository>,
+    pub components: Arc<dyn domain::ProjectComponentRepository>,
+    pub versions: Arc<dyn domain::ProjectVersionRepository>,
+    pub custom_fields: Arc<dyn CustomFieldRepository>,
     pub issue_links: Arc<dyn IssueLinkRepository>,
     pub saved_filters: Arc<dyn SavedFilterRepository>,
     pub notifications: Arc<dyn NotificationRepository>,
     pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
     pub issue_status_history: Arc<dyn IssueStatusHistoryRepository>,
+    pub watchers: Arc<dyn WatcherRepository>,
+    pub votes: Arc<dyn VoteRepository>,
 }
 
 impl SeaOrmRepositories {
@@ -107,11 +115,16 @@ impl SeaOrmRepositories {
             issue_types: Arc::new(IssueTypeRepo { db: db.clone() }),
             attachments: Arc::new(AttachmentRepo { db: db.clone() }),
             labels: Arc::new(LabelRepo { db: db.clone() }),
+            components: Arc::new(domain::StubProjectComponentRepository),
+            versions: Arc::new(domain::StubProjectVersionRepository),
+            custom_fields: Arc::new(CustomFieldRepo { db: db.clone() }),
             issue_links: Arc::new(IssueLinkRepo { db: db.clone() }),
             saved_filters: Arc::new(SavedFilterRepo { db: db.clone() }),
             notifications: Arc::new(NotificationRepo { db: db.clone() }),
             notification_settings: Arc::new(NotificationUserSettingsRepo { db: db.clone() }),
-            issue_status_history: Arc::new(IssueStatusHistoryRepo { db }),
+            issue_status_history: Arc::new(IssueStatusHistoryRepo { db: db.clone() }),
+            watchers: Arc::new(WatcherRepo { db: db.clone() }),
+            votes: Arc::new(VoteRepo { db }),
         }
     }
 }
@@ -292,11 +305,14 @@ struct IssueRepo {
 }
 
 impl IssueRepo {
+    /// `deleted_filter`: "exclude" = only live issues, "only" = only trashed,
+    /// "include" = both.
     async fn search_by_jql(
         &self,
         compiled: &crate::jql::CompiledJql,
         limit: u64,
         offset: u64,
+        deleted_filter: &str,
     ) -> Result<Vec<Issue>, AppError> {
         use sea_orm::FromQueryResult;
         let mut params: Vec<sea_orm::Value> = compiled
@@ -312,9 +328,14 @@ impl IssueRepo {
         params.push(sea_orm::Value::Unsigned(Some(limit as u32)));
         params.push(sea_orm::Value::Unsigned(Some(offset as u32)));
 
+        let deleted_clause = match deleted_filter {
+            "only" => " AND i.deleted_at IS NOT NULL",
+            "include" => "",
+            _ => " AND i.deleted_at IS NULL",
+        };
         let sql = format!(
             "SELECT i.* FROM issues i JOIN projects p ON i.project_id = p.id \
-             WHERE {} ORDER BY i.created_at DESC LIMIT ${} OFFSET ${}",
+             WHERE {}{deleted_clause} ORDER BY i.created_at DESC LIMIT ${} OFFSET ${}",
             compiled.predicate,
             params.len() - 1,
             params.len()
@@ -337,6 +358,17 @@ impl IssueRepo {
 impl IssueRepository for IssueRepo {
     async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError> {
         let model = issue::Entity::find_by_id(id.as_uuid())
+            .filter(issue::Column::DeletedAt.is_null())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(map_issue)
+            .ok_or_else(|| AppError::not_found("issue", id))
+    }
+
+    async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError> {
+        let model = issue::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
@@ -348,6 +380,7 @@ impl IssueRepository for IssueRepo {
     async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError> {
         let model = issue::Entity::find()
             .filter(issue::Column::Key.eq(key.to_string()))
+            .filter(issue::Column::DeletedAt.is_null())
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
@@ -357,15 +390,32 @@ impl IssueRepository for IssueRepo {
     }
 
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError> {
+        let deleted_filter = if query.deleted_only {
+            "only"
+        } else if query.include_deleted {
+            "include"
+        } else {
+            "exclude"
+        };
         if let Some(jql_expr) = &query.jql {
             let user_id = query.jql_user_id.unwrap_or_default();
             let compiled = crate::jql::compile(jql_expr, user_id)
                 .map_err(|e| AppError::invalid_input(e.to_string()))?;
             return self
-                .search_by_jql(&compiled, query.limit, query.offset)
+                .search_by_jql(&compiled, query.limit, query.offset, deleted_filter)
                 .await;
         }
         let mut select = issue::Entity::find();
+        // Soft-delete filtering.
+        match deleted_filter {
+            "only" => {
+                select = select.filter(issue::Column::DeletedAt.is_not_null());
+            }
+            "exclude" => {
+                select = select.filter(issue::Column::DeletedAt.is_null());
+            }
+            _ => {}
+        }
         if let Some(pid) = query.project_id {
             select = select.filter(issue::Column::ProjectId.eq(pid.as_uuid()));
         }
@@ -436,6 +486,9 @@ impl IssueRepository for IssueRepo {
             priority: Set(format!("{:?}", issue.priority)),
             labels: Set(serde_json::to_value(labels).unwrap_or_default()),
             sprint_id: Set(issue.sprint_id.map(|id| id.as_uuid())),
+            component_id: Set(issue.component_id.map(|id| id.as_uuid())),
+            affected_version_id: Set(issue.affected_version_id.map(|id| id.as_uuid())),
+            fix_version_id: Set(issue.fix_version_id.map(|id| id.as_uuid())),
             position: Set(issue.position),
             due_date: Set(issue.due_date),
             original_estimate_seconds: Set(issue.original_estimate_seconds),
@@ -443,6 +496,7 @@ impl IssueRepository for IssueRepo {
             time_spent_seconds: Set(issue.time_spent_seconds),
             created_at: Set(issue.created_at),
             updated_at: Set(shared::now()),
+            deleted_at: Set(issue.deleted_at),
         };
         if exists {
             active.update(&*self.db).await.map_err(AppError::database)?;
@@ -451,8 +505,46 @@ impl IssueRepository for IssueRepo {
         }
         Ok(issue.id)
     }
+
     async fn delete(&self, id: IssueId) -> Result<(), AppError> {
-        let res = issue::Entity::delete_by_id(id.as_uuid())
+        // Soft-delete: set deleted_at. Only live issues can be soft-deleted.
+        let res = issue::Entity::update_many()
+            .col_expr(issue::Column::DeletedAt, Expr::current_timestamp().into())
+            .filter(issue::Column::Id.eq(id.as_uuid()))
+            .filter(issue::Column::DeletedAt.is_null())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if res.rows_affected == 0 {
+            // Either the issue doesn't exist or it's already deleted.
+            return Err(AppError::not_found("issue", id));
+        }
+        Ok(())
+    }
+
+    async fn restore(&self, id: IssueId) -> Result<(), AppError> {
+        // Clear deleted_at. Only trashed issues can be restored.
+        let res = issue::Entity::update_many()
+            .col_expr(
+                issue::Column::DeletedAt,
+                Expr::value(None::<chrono::DateTime<chrono::FixedOffset>>),
+            )
+            .filter(issue::Column::Id.eq(id.as_uuid()))
+            .filter(issue::Column::DeletedAt.is_not_null())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if res.rows_affected == 0 {
+            return Err(AppError::not_found("issue", id));
+        }
+        Ok(())
+    }
+
+    async fn purge(&self, id: IssueId) -> Result<(), AppError> {
+        // Permanent delete: only works on already soft-deleted (trashed) issues.
+        let res = issue::Entity::delete_many()
+            .filter(issue::Column::Id.eq(id.as_uuid()))
+            .filter(issue::Column::DeletedAt.is_not_null())
             .exec(&*self.db)
             .await
             .map_err(AppError::database)?;
@@ -659,8 +751,14 @@ fn map_issue(m: issue::Model) -> Issue {
         original_estimate_seconds: m.original_estimate_seconds,
         remaining_estimate_seconds: m.remaining_estimate_seconds,
         time_spent_seconds: m.time_spent_seconds,
+        component_id: m.component_id.map(shared::ProjectComponentId::from_uuid),
+        affected_version_id: m
+            .affected_version_id
+            .map(shared::ProjectVersionId::from_uuid),
+        fix_version_id: m.fix_version_id.map(shared::ProjectVersionId::from_uuid),
         created_at: m.created_at,
         updated_at: m.updated_at,
+        deleted_at: m.deleted_at,
         events: Vec::new(),
     }
 }
@@ -730,11 +828,16 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
         issue_types: sea.issue_types,
         attachments: sea.attachments,
         labels: sea.labels,
+        custom_fields: sea.custom_fields,
         issue_links: sea.issue_links,
         saved_filters: sea.saved_filters,
         notifications: sea.notifications,
         notification_settings: sea.notification_settings,
         issue_status_history: sea.issue_status_history,
+        watchers: sea.watchers,
+        votes: sea.votes,
+        components: sea.components,
+        versions: sea.versions,
     }
 }
 
@@ -903,6 +1006,134 @@ impl LabelRepository for LabelRepo {
         issue_label::Entity::delete_many()
             .filter(issue_label::Column::IssueId.eq(issue_id.as_uuid()))
             .filter(issue_label::Column::LabelId.eq(label_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+struct CustomFieldRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+fn map_custom_field(m: custom_field::Model) -> CustomField {
+    let options = match m.options {
+        serde_json::Value::Array(values) => values
+            .into_iter()
+            .filter_map(|value| value.as_str().map(Into::into))
+            .collect(),
+        _ => Vec::new(),
+    };
+    CustomField {
+        id: CustomFieldId::from_uuid(m.id),
+        project_id: ProjectId::from_uuid(m.project_id),
+        name: m.name.into(),
+        field_type: m.field_type.parse().unwrap_or(CustomFieldType::Text),
+        options,
+        is_required: m.is_required,
+        created_at: m.created_at,
+    }
+}
+
+#[async_trait]
+impl CustomFieldRepository for CustomFieldRepo {
+    async fn get_by_id(&self, id: CustomFieldId) -> Result<CustomField, AppError> {
+        custom_field::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .map(map_custom_field)
+            .ok_or_else(|| AppError::not_found("custom field", id))
+    }
+
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<CustomField>, AppError> {
+        let models = custom_field::Entity::find()
+            .filter(custom_field::Column::ProjectId.eq(project_id.as_uuid()))
+            .order_by_asc(custom_field::Column::CreatedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_custom_field).collect())
+    }
+
+    async fn save(&self, field: &CustomField) -> Result<CustomFieldId, AppError> {
+        let existing = custom_field::Entity::find_by_id(field.id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        let active = custom_field::ActiveModel {
+            id: Set(field.id.as_uuid()),
+            project_id: Set(field.project_id.as_uuid()),
+            name: Set(field.name.as_ref().to_string()),
+            field_type: Set(field.field_type.as_str().to_string()),
+            options: Set(serde_json::json!(field.options)),
+            is_required: Set(field.is_required),
+            created_at: Set(field.created_at),
+        };
+        let saved = if existing.is_some() {
+            active.update(&*self.db).await.map_err(AppError::database)?
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?
+        };
+        Ok(CustomFieldId::from_uuid(saved.id))
+    }
+
+    async fn delete(&self, id: CustomFieldId) -> Result<(), AppError> {
+        custom_field::Entity::delete_by_id(id.as_uuid())
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn set_value(
+        &self,
+        issue_id: IssueId,
+        field_id: CustomFieldId,
+        value: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        let existing = issue_custom_field_value::Entity::find()
+            .filter(issue_custom_field_value::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_custom_field_value::Column::FieldId.eq(field_id.as_uuid()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        let active = issue_custom_field_value::ActiveModel {
+            issue_id: Set(issue_id.as_uuid()),
+            field_id: Set(field_id.as_uuid()),
+            value: Set(value.clone()),
+        };
+        if existing.is_some() {
+            active.update(&*self.db).await.map_err(AppError::database)?;
+        } else {
+            active.insert(&*self.db).await.map_err(AppError::database)?;
+        }
+        Ok(())
+    }
+
+    async fn get_values_for_issue(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<CustomFieldValue>, AppError> {
+        let models = issue_custom_field_value::Entity::find()
+            .filter(issue_custom_field_value::Column::IssueId.eq(issue_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .map(|m| CustomFieldValue {
+                issue_id: IssueId::from_uuid(m.issue_id),
+                field_id: CustomFieldId::from_uuid(m.field_id),
+                value: m.value,
+            })
+            .collect())
+    }
+
+    async fn delete_values_for_issue(&self, issue_id: IssueId) -> Result<(), AppError> {
+        issue_custom_field_value::Entity::delete_many()
+            .filter(issue_custom_field_value::Column::IssueId.eq(issue_id.as_uuid()))
             .exec(&*self.db)
             .await
             .map_err(AppError::database)?;
@@ -1395,6 +1626,16 @@ impl NotificationRepository for NotificationRepo {
         Ok(models.into_iter().map(map_notification).collect())
     }
 
+    async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError> {
+        let models = notification::Entity::find()
+            .filter(notification::Column::IsRead.eq(false))
+            .order_by_asc(notification::Column::CreatedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_notification).collect())
+    }
+
     async fn mark_read(&self, id: NotificationId, recipient_id: UserId) -> Result<(), AppError> {
         let result = notification::Entity::update_many()
             .col_expr(notification::Column::IsRead, Expr::value(true))
@@ -1678,5 +1919,160 @@ fn map_system_setting(m: system_setting::Model) -> SystemSetting {
         key: m.key.into(),
         value: m.value,
         updated_at: m.updated_at,
+    }
+}
+
+struct WatcherRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl WatcherRepository for WatcherRepo {
+    async fn add(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        let existing = issue_watcher::Entity::find()
+            .filter(issue_watcher::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_watcher::Column::UserId.eq(user_id.as_uuid()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if existing.is_some() {
+            return Ok(());
+        }
+        let active = issue_watcher::ActiveModel {
+            issue_id: Set(issue_id.as_uuid()),
+            user_id: Set(user_id.as_uuid()),
+        };
+        active.insert(&*self.db).await.map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn remove(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        issue_watcher::Entity::delete_many()
+            .filter(issue_watcher::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_watcher::Column::UserId.eq(user_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueWatcher>, AppError> {
+        let models = issue_watcher::Entity::find()
+            .filter(issue_watcher::Column::IssueId.eq(issue_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .map(|m| IssueWatcher {
+                issue_id: IssueId::from_uuid(m.issue_id),
+                user_id: UserId::from_uuid(m.user_id),
+            })
+            .collect())
+    }
+
+    async fn is_watching(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError> {
+        let count = issue_watcher::Entity::find()
+            .filter(issue_watcher::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_watcher::Column::UserId.eq(user_id.as_uuid()))
+            .count(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(count > 0)
+    }
+
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<IssueWatcher>, AppError> {
+        let models = issue_watcher::Entity::find()
+            .filter(issue_watcher::Column::UserId.eq(user_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .map(|m| IssueWatcher {
+                issue_id: IssueId::from_uuid(m.issue_id),
+                user_id: UserId::from_uuid(m.user_id),
+            })
+            .collect())
+    }
+}
+
+struct VoteRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+#[async_trait]
+impl VoteRepository for VoteRepo {
+    async fn add(&self, issue_id: IssueId, user_id: UserId) -> Result<IssueVote, AppError> {
+        let existing = issue_vote::Entity::find()
+            .filter(issue_vote::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_vote::Column::UserId.eq(user_id.as_uuid()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if let Some(m) = existing {
+            return Ok(IssueVote {
+                issue_id: IssueId::from_uuid(m.issue_id),
+                user_id: UserId::from_uuid(m.user_id),
+                voted_at: m.voted_at,
+            });
+        }
+        let now = chrono::Utc::now().fixed_offset();
+        let active = issue_vote::ActiveModel {
+            issue_id: Set(issue_id.as_uuid()),
+            user_id: Set(user_id.as_uuid()),
+            voted_at: Set(now),
+        };
+        active.insert(&*self.db).await.map_err(AppError::database)?;
+        Ok(IssueVote {
+            issue_id,
+            user_id,
+            voted_at: now,
+        })
+    }
+
+    async fn remove(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        issue_vote::Entity::delete_many()
+            .filter(issue_vote::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_vote::Column::UserId.eq(user_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueVote>, AppError> {
+        let models = issue_vote::Entity::find()
+            .filter(issue_vote::Column::IssueId.eq(issue_id.as_uuid()))
+            .order_by_asc(issue_vote::Column::VotedAt)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .map(|m| IssueVote {
+                issue_id: IssueId::from_uuid(m.issue_id),
+                user_id: UserId::from_uuid(m.user_id),
+                voted_at: m.voted_at,
+            })
+            .collect())
+    }
+
+    async fn count_by_issue(&self, issue_id: IssueId) -> Result<u64, AppError> {
+        issue_vote::Entity::find()
+            .filter(issue_vote::Column::IssueId.eq(issue_id.as_uuid()))
+            .count(&*self.db)
+            .await
+            .map_err(AppError::database)
+    }
+
+    async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError> {
+        let count = issue_vote::Entity::find()
+            .filter(issue_vote::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_vote::Column::UserId.eq(user_id.as_uuid()))
+            .count(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(count > 0)
     }
 }

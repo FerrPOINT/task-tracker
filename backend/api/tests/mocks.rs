@@ -86,6 +86,18 @@ impl IssueRepository for FailingIssueRepository {
     async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
         Err(AppError::Internal("failing issue repo".into()))
     }
+
+    async fn get_by_id_include_deleted(&self, _id: IssueId) -> Result<Issue, AppError> {
+        Err(AppError::Internal("failing issue repo".into()))
+    }
+
+    async fn restore(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::Internal("failing issue repo".into()))
+    }
+
+    async fn purge(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::Internal("failing issue repo".into()))
+    }
 }
 
 #[derive(Default)]
@@ -162,6 +174,11 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
         issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
+        watchers: Arc::new(domain::StubWatcherRepository),
+        votes: Arc::new(domain::StubVoteRepository),
+        components: Arc::new(domain::StubProjectComponentRepository),
+        versions: Arc::new(domain::StubProjectVersionRepository),
+        custom_fields: Arc::new(domain::StubCustomFieldRepository),
     });
     Arc::new(app::AppContext::new(
         config,
@@ -194,6 +211,11 @@ pub fn failing_context() -> Arc<app::AppContext> {
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
         issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
+        watchers: Arc::new(domain::StubWatcherRepository),
+        votes: Arc::new(domain::StubVoteRepository),
+        components: Arc::new(domain::StubProjectComponentRepository),
+        versions: Arc::new(domain::StubProjectVersionRepository),
+        custom_fields: Arc::new(domain::StubCustomFieldRepository),
     });
     Arc::new(app::AppContext::new(
         Arc::new(shared::AppConfig {

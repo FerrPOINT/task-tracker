@@ -77,6 +77,11 @@ pub struct Services {
     pub notification: Arc<dyn NotificationService>,
     pub report: Arc<dyn ReportService>,
     pub admin: Arc<dyn AdminService>,
+    pub watcher: Arc<dyn WatcherService>,
+    pub vote: Arc<dyn VoteService>,
+    pub component: Arc<dyn ComponentService>,
+    pub version: Arc<dyn VersionService>,
+    pub custom_field: Arc<dyn CustomFieldService>,
 }
 
 impl AppContext {
@@ -85,7 +90,13 @@ impl AppContext {
         repos: Arc<domain::Repositories>,
         storage: Arc<dyn domain::FileStorage>,
     ) -> Self {
-        Self::with_events(config, repos, storage, EventBus::default(), Arc::new(domain::StubEmailPort))
+        Self::with_events(
+            config,
+            repos,
+            storage,
+            EventBus::default(),
+            Arc::new(domain::StubEmailPort),
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -211,10 +222,33 @@ impl AppContext {
                     repos.audit_logs.clone(),
                     repos.system_settings.clone(),
                 )),
+                watcher: Arc::new(crate::services::WatcherServiceImpl::new(
+                    repos.watchers.clone(),
+                    repos.issues.clone(),
+                    repos.users.clone(),
+                    repos.projects.clone(),
+                    events.clone(),
+                )),
+                vote: Arc::new(crate::services::VoteServiceImpl::new(
+                    repos.votes.clone(),
+                    repos.issues.clone(),
+                )),
+                component: Arc::new(crate::services::ComponentServiceImpl::new(
+                    repos.components.clone(),
+                    repos.projects.clone(),
+                )),
+                version: Arc::new(crate::services::VersionServiceImpl::new(
+                    repos.versions.clone(),
+                    repos.projects.clone(),
+                )),
+                custom_field: Arc::new(crate::services::CustomFieldServiceImpl::new(
+                    repos.custom_fields.clone(),
+                    repos.projects.clone(),
+                    repos.issues.clone(),
+                )),
                 sprint,
             },
             repos,
-            events: events.clone(),
             email,
         }
     }
@@ -303,7 +337,14 @@ pub trait IssueService: Send + Sync {
         &self,
         filters: crate::context::SearchFilters,
     ) -> Result<Vec<IssueDto>, AppError>;
+    /// Soft-delete an issue (move to trash).
     async fn delete(&self, id: IssueId) -> Result<(), AppError>;
+    /// Restore a soft-deleted issue from trash.
+    async fn restore(&self, id: IssueId) -> Result<IssueDto, AppError>;
+    /// Permanently delete a trashed issue.
+    async fn purge(&self, id: IssueId) -> Result<(), AppError>;
+    /// List soft-deleted (trashed) issues for a project.
+    async fn list_trash(&self, project_key: &ProjectKey) -> Result<Vec<IssueDto>, AppError>;
 }
 
 #[async_trait]
@@ -552,6 +593,157 @@ pub struct CumulativeFlowPointDto {
 pub struct ControlChartPointDto {
     pub issue_key: String,
     pub cycle_time_days: f64,
+}
+
+#[async_trait]
+pub trait WatcherService: Send + Sync {
+    async fn watch(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn unwatch(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn list_watchers(&self, issue_id: IssueId) -> Result<Vec<WatcherDto>, AppError>;
+    async fn is_watching(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WatcherDto {
+    pub user_id: String,
+    pub username: String,
+    pub display_name: String,
+}
+
+#[async_trait]
+pub trait VoteService: Send + Sync {
+    async fn vote(&self, issue_id: IssueId, user_id: UserId) -> Result<VoteDto, AppError>;
+    async fn unvote(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn list_votes(&self, issue_id: IssueId) -> Result<Vec<VoteDto>, AppError>;
+    async fn count_votes(&self, issue_id: IssueId) -> Result<u64, AppError>;
+    async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VoteDto {
+    pub user_id: String,
+    pub username: String,
+    pub display_name: String,
+    pub voted_at: String,
+}
+
+#[async_trait]
+pub trait CustomFieldService: Send + Sync {
+    async fn create_field(
+        &self,
+        project_key: &ProjectKey,
+        name: &str,
+        field_type: &str,
+        options: &[String],
+        is_required: bool,
+        requester: UserId,
+    ) -> Result<CustomFieldDto, AppError>;
+    async fn list_fields(&self, project_key: &ProjectKey) -> Result<Vec<CustomFieldDto>, AppError>;
+    async fn update_field(
+        &self,
+        field_id: shared::CustomFieldId,
+        name: &str,
+        field_type: &str,
+        options: &[String],
+        is_required: bool,
+        requester: UserId,
+    ) -> Result<CustomFieldDto, AppError>;
+    async fn delete_field(
+        &self,
+        field_id: shared::CustomFieldId,
+        requester: UserId,
+    ) -> Result<(), AppError>;
+    async fn set_value(
+        &self,
+        issue_id: IssueId,
+        field_id: shared::CustomFieldId,
+        value: serde_json::Value,
+        requester: UserId,
+    ) -> Result<(), AppError>;
+    async fn get_values_for_issue(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<CustomFieldValueDto>, AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CustomFieldDto {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub field_type: String,
+    pub options: Vec<String>,
+    pub is_required: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CustomFieldValueDto {
+    pub field_id: String,
+    pub value: serde_json::Value,
+}
+
+#[async_trait]
+pub trait ComponentService: Send + Sync {
+    async fn create(
+        &self,
+        project_key: &ProjectKey,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<ComponentDto, AppError>;
+    async fn list_by_project(
+        &self,
+        project_key: &ProjectKey,
+    ) -> Result<Vec<ComponentDto>, AppError>;
+    async fn update(
+        &self,
+        id: shared::ProjectComponentId,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<ComponentDto, AppError>;
+    async fn delete(&self, id: shared::ProjectComponentId) -> Result<(), AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ComponentDto {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub created_at: String,
+}
+
+#[async_trait]
+pub trait VersionService: Send + Sync {
+    async fn create(
+        &self,
+        project_key: &ProjectKey,
+        name: &str,
+        description: Option<&str>,
+        released: bool,
+        release_date: Option<chrono::DateTime<chrono::FixedOffset>>,
+    ) -> Result<VersionDto, AppError>;
+    async fn list_by_project(&self, project_key: &ProjectKey) -> Result<Vec<VersionDto>, AppError>;
+    async fn update(
+        &self,
+        id: shared::ProjectVersionId,
+        name: &str,
+        description: Option<&str>,
+        released: bool,
+        release_date: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
+    ) -> Result<VersionDto, AppError>;
+    async fn delete(&self, id: shared::ProjectVersionId) -> Result<(), AppError>;
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VersionDto {
+    pub id: String,
+    pub project_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub released: bool,
+    pub release_date: Option<String>,
+    pub created_at: String,
 }
 
 // ---------------------------------------------------------------------------

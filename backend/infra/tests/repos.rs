@@ -187,6 +187,8 @@ async fn issue_repo_crud_and_query() {
             offset: 0,
             jql: None,
             jql_user_id: None,
+            deleted_only: false,
+            include_deleted: false,
         })
         .await
         .unwrap();

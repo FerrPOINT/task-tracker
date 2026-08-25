@@ -53,6 +53,11 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
         issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
+        watchers: Arc::new(domain::StubWatcherRepository),
+        votes: Arc::new(domain::StubVoteRepository),
+        components: Arc::new(domain::StubProjectComponentRepository),
+        versions: Arc::new(domain::StubProjectVersionRepository),
+        custom_fields: Arc::new(domain::StubCustomFieldRepository),
     });
     let ctx = Arc::new(app::context::AppContext::new(
         test_config(),

@@ -394,6 +394,9 @@ async fn update_issue_invalid_assignee_id_returns_400() {
         status_id: None,
         assignee_id: Some("not-a-uuid".to_string()),
         sprint_id: None,
+        component_id: None,
+        affected_version_id: None,
+        fix_version_id: None,
     };
     let response = app
         .oneshot(

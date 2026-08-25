@@ -5,7 +5,7 @@ import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/boar
 import { searchIssues, type SearchFilters } from '@/api/search'
 import { login, register, getCurrentUser, listUsers, logout } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
-import { updateIssue, deleteIssue } from '@/api/issue'
+import { updateIssue, deleteIssue, restoreIssue, purgeIssue, listTrash } from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
 import { useAuthStore } from '@/shared/auth/store'
 import {
@@ -36,6 +36,14 @@ import {
   detachLabel,
 } from '@/api/label'
 import { listIssueLinks, createIssueLink, deleteIssueLink } from '@/api/link'
+import {
+  createCustomField,
+  deleteCustomField,
+  listCustomFields,
+  listIssueCustomFieldValues,
+  setIssueCustomFieldValue,
+  type CustomFieldInput,
+} from '@/api/custom-fields'
 import {
   getVelocityReport,
   getBurndownReport,
@@ -483,6 +491,37 @@ export function useDeleteIssue() {
   })
 }
 
+export function useTrash(projectKey: string | undefined) {
+  return useQuery({
+    queryKey: ['trash', projectKey],
+    queryFn: () => listTrash(projectKey!),
+    enabled: !!projectKey,
+  })
+}
+
+export function useRestoreIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: restoreIssue,
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['trash'] })
+      qc.invalidateQueries({ queryKey: projectKeys.all })
+      qc.setQueryData(['issue', data.id], data)
+    },
+  })
+}
+
+export function usePurgeIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: purgeIssue,
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['trash'] })
+      qc.removeQueries({ queryKey: ['issue', id] })
+    },
+  })
+}
+
 export function useProjectMembers(projectId: string) {
   return useQuery({
     queryKey: ['project-members', projectId],
@@ -623,5 +662,51 @@ export function useControlChartReport(projectId: string | undefined) {
     queryKey: reportKeys.controlChart(projectId ?? ''),
     queryFn: () => getControlChartReport(projectId!),
     enabled: !!projectId,
+  })
+}
+
+export const customFieldKeys = {
+  project: (projectKey: string) => ['custom-fields', projectKey] as const,
+  issue: (issueId: string) => ['issue-custom-fields', issueId] as const,
+}
+
+export function useProjectCustomFields(projectKey: string | undefined) {
+  return useQuery({
+    queryKey: customFieldKeys.project(projectKey ?? ''),
+    queryFn: () => listCustomFields(projectKey!),
+    enabled: !!projectKey,
+  })
+}
+
+export function useCreateCustomField(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CustomFieldInput) => createCustomField(projectKey, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: customFieldKeys.project(projectKey) }),
+  })
+}
+
+export function useDeleteCustomField(projectKey: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: deleteCustomField,
+    onSuccess: () => qc.invalidateQueries({ queryKey: customFieldKeys.project(projectKey) }),
+  })
+}
+
+export function useIssueCustomFieldValues(issueId: string | undefined) {
+  return useQuery({
+    queryKey: customFieldKeys.issue(issueId ?? ''),
+    queryFn: () => listIssueCustomFieldValues(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useSetIssueCustomFieldValue(issueId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ fieldId, value }: { fieldId: string; value: unknown }) =>
+      setIssueCustomFieldValue(issueId, fieldId, value),
+    onSuccess: () => qc.invalidateQueries({ queryKey: customFieldKeys.issue(issueId) }),
   })
 }

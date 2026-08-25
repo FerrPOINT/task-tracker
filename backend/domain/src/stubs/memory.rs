@@ -8,15 +8,16 @@ mod tests;
 use crate::{
     AuditLog, AuditLogRepository, Board, BoardRepository, Comment, CommentRepository, EventBus,
     Issue, IssueQuery, IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository,
-    Notification, NotificationRepository, NotificationUserSettings, Project, ProjectMember,
-    ProjectMemberRepository, ProjectQuery, ProjectRepository, SavedFilter, SavedFilterRepository,
-    Sprint, SprintRepository, Status, StatusRepository, SystemSetting, SystemSettingRepository,
-    UnitOfWork, User, UserNotificationSettingsRepository, UserRepository, Worklog,
-    WorklogRepository,
+    IssueVote, IssueWatcher, Notification, NotificationRepository, NotificationUserSettings,
+    Project, ProjectComponent, ProjectComponentRepository, ProjectMember, ProjectMemberRepository,
+    ProjectQuery, ProjectRepository, ProjectVersion, ProjectVersionRepository, SavedFilter,
+    SavedFilterRepository, Sprint, SprintRepository, Status, StatusRepository, SystemSetting,
+    SystemSettingRepository, UnitOfWork, User, UserNotificationSettingsRepository, UserRepository,
+    VoteRepository, WatcherRepository, Worklog, WorklogRepository,
 };
 use shared::{
-    AppError, BoardId, CommentId, IssueId, NotificationId, ProjectId, ProjectKey, SavedFilterId,
-    SprintId, UserId, WorklogId,
+    AppError, BoardId, CommentId, IssueId, NotificationId, ProjectComponentId, ProjectId,
+    ProjectKey, ProjectVersionId, SavedFilterId, SprintId, UserId, WorklogId,
 };
 
 #[derive(Default)]
@@ -151,6 +152,15 @@ impl IssueRepository for MemoryIssueRepository {
         let issues = self.issues.lock().unwrap();
         issues
             .iter()
+            .find(|i| i.id == id && i.deleted_at.is_none())
+            .cloned()
+            .ok_or_else(|| AppError::not_found("issue", id))
+    }
+
+    async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError> {
+        let issues = self.issues.lock().unwrap();
+        issues
+            .iter()
             .find(|i| i.id == id)
             .cloned()
             .ok_or_else(|| AppError::not_found("issue", id))
@@ -160,7 +170,7 @@ impl IssueRepository for MemoryIssueRepository {
         let issues = self.issues.lock().unwrap();
         issues
             .iter()
-            .find(|i| &i.key == key)
+            .find(|i| &i.key == key && i.deleted_at.is_none())
             .cloned()
             .ok_or_else(|| AppError::not_found("issue", key))
     }
@@ -169,6 +179,17 @@ impl IssueRepository for MemoryIssueRepository {
         let issues = self.issues.lock().unwrap();
         let mut result: Vec<Issue> = issues
             .iter()
+            // Soft-delete filtering: by default exclude trashed issues.
+            // `include_deleted` returns everything; `deleted_only` returns only trashed.
+            .filter(|i| {
+                if query.deleted_only {
+                    i.deleted_at.is_some()
+                } else if query.include_deleted {
+                    true
+                } else {
+                    i.deleted_at.is_none()
+                }
+            })
             .filter(|i| query.project_id.is_none_or(|pid| i.project_id == pid))
             .filter(|i| query.status_id.is_none_or(|sid| i.status_id == sid))
             .filter(|i| {
@@ -210,6 +231,37 @@ impl IssueRepository for MemoryIssueRepository {
     async fn delete(&self, id: IssueId) -> Result<(), AppError> {
         let mut issues = self.issues.lock().unwrap();
         if let Some(idx) = issues.iter().position(|i| i.id == id) {
+            if issues[idx].deleted_at.is_some() {
+                return Err(AppError::invalid_input("issue already deleted"));
+            }
+            issues[idx].deleted_at = Some(shared::now());
+            Ok(())
+        } else {
+            Err(AppError::not_found("issue", id))
+        }
+    }
+
+    async fn restore(&self, id: IssueId) -> Result<(), AppError> {
+        let mut issues = self.issues.lock().unwrap();
+        if let Some(idx) = issues.iter().position(|i| i.id == id) {
+            if issues[idx].deleted_at.is_none() {
+                return Err(AppError::invalid_input("issue is not deleted"));
+            }
+            issues[idx].deleted_at = None;
+            Ok(())
+        } else {
+            Err(AppError::not_found("issue", id))
+        }
+    }
+
+    async fn purge(&self, id: IssueId) -> Result<(), AppError> {
+        let mut issues = self.issues.lock().unwrap();
+        if let Some(idx) = issues.iter().position(|i| i.id == id) {
+            if issues[idx].deleted_at.is_none() {
+                return Err(AppError::invalid_input(
+                    "issue is not deleted; soft-delete before purging",
+                ));
+            }
             issues.remove(idx);
             Ok(())
         } else {
@@ -854,6 +906,19 @@ impl NotificationRepository for MemoryNotificationRepository {
         Ok(notifications)
     }
 
+    async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError> {
+        let mut notifications: Vec<_> = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|notification| !notification.is_read)
+            .cloned()
+            .collect();
+        notifications.sort_by_key(|notification| notification.created_at);
+        Ok(notifications)
+    }
+
     async fn mark_read(&self, id: NotificationId, recipient_id: UserId) -> Result<(), AppError> {
         let mut notifications = self.notifications.lock().unwrap();
         let notification = notifications
@@ -1029,6 +1094,306 @@ impl SystemSettingRepository for MemorySystemSettingRepository {
         } else {
             settings.push(setting.clone());
         }
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryWatcherRepository {
+    watchers: Arc<Mutex<Vec<(IssueId, UserId)>>>,
+}
+
+#[async_trait]
+impl WatcherRepository for MemoryWatcherRepository {
+    async fn add(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        let mut watchers = self.watchers.lock().unwrap();
+        if !watchers.contains(&(issue_id, user_id)) {
+            watchers.push((issue_id, user_id));
+        }
+        Ok(())
+    }
+
+    async fn remove(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        self.watchers
+            .lock()
+            .unwrap()
+            .retain(|(iid, uid)| !(*iid == issue_id && *uid == user_id));
+        Ok(())
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueWatcher>, AppError> {
+        Ok(self
+            .watchers
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(iid, _)| *iid == issue_id)
+            .map(|(iid, uid)| IssueWatcher {
+                issue_id: *iid,
+                user_id: *uid,
+            })
+            .collect())
+    }
+
+    async fn is_watching(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError> {
+        Ok(self.watchers.lock().unwrap().contains(&(issue_id, user_id)))
+    }
+
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<IssueWatcher>, AppError> {
+        Ok(self
+            .watchers
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, uid)| *uid == user_id)
+            .map(|(iid, uid)| IssueWatcher {
+                issue_id: *iid,
+                user_id: *uid,
+            })
+            .collect())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryVoteRepository {
+    votes: Arc<Mutex<Vec<IssueVote>>>,
+}
+
+#[async_trait]
+impl VoteRepository for MemoryVoteRepository {
+    async fn add(&self, issue_id: IssueId, user_id: UserId) -> Result<IssueVote, AppError> {
+        let mut votes = self.votes.lock().unwrap();
+        if let Some(existing) = votes
+            .iter()
+            .find(|v| v.issue_id == issue_id && v.user_id == user_id)
+        {
+            return Ok(existing.clone());
+        }
+        let vote = IssueVote {
+            issue_id,
+            user_id,
+            voted_at: shared::now(),
+        };
+        votes.push(vote.clone());
+        Ok(vote)
+    }
+
+    async fn remove(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        self.votes
+            .lock()
+            .unwrap()
+            .retain(|v| !(v.issue_id == issue_id && v.user_id == user_id));
+        Ok(())
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueVote>, AppError> {
+        Ok(self
+            .votes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.issue_id == issue_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn count_by_issue(&self, issue_id: IssueId) -> Result<u64, AppError> {
+        Ok(self
+            .votes
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.issue_id == issue_id)
+            .count() as u64)
+    }
+
+    async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError> {
+        Ok(self
+            .votes
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|v| v.issue_id == issue_id && v.user_id == user_id))
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryCustomFieldRepository {
+    fields: Arc<Mutex<Vec<crate::CustomField>>>,
+    values: Arc<Mutex<Vec<crate::CustomFieldValue>>>,
+}
+
+#[async_trait]
+impl crate::CustomFieldRepository for MemoryCustomFieldRepository {
+    async fn get_by_id(&self, id: shared::CustomFieldId) -> Result<crate::CustomField, AppError> {
+        self.fields
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|f| f.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("custom field", id))
+    }
+
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<crate::CustomField>, AppError> {
+        Ok(self
+            .fields
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|f| f.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn save(&self, field: &crate::CustomField) -> Result<shared::CustomFieldId, AppError> {
+        let mut fields = self.fields.lock().unwrap();
+        if let Some(idx) = fields.iter().position(|f| f.id == field.id) {
+            fields[idx] = field.clone();
+        } else {
+            fields.push(field.clone());
+        }
+        Ok(field.id)
+    }
+
+    async fn delete(&self, id: shared::CustomFieldId) -> Result<(), AppError> {
+        self.fields.lock().unwrap().retain(|f| f.id != id);
+        self.values.lock().unwrap().retain(|v| v.field_id != id);
+        Ok(())
+    }
+
+    async fn set_value(
+        &self,
+        issue_id: IssueId,
+        field_id: shared::CustomFieldId,
+        value: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        let mut values = self.values.lock().unwrap();
+        if let Some(idx) = values
+            .iter()
+            .position(|v| v.issue_id == issue_id && v.field_id == field_id)
+        {
+            values[idx].value = value.clone();
+        } else {
+            values.push(crate::CustomFieldValue {
+                issue_id,
+                field_id,
+                value: value.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    async fn get_values_for_issue(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<crate::CustomFieldValue>, AppError> {
+        Ok(self
+            .values
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.issue_id == issue_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn delete_values_for_issue(&self, issue_id: IssueId) -> Result<(), AppError> {
+        self.values
+            .lock()
+            .unwrap()
+            .retain(|v| v.issue_id != issue_id);
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryProjectComponentRepository {
+    components: Arc<Mutex<Vec<ProjectComponent>>>,
+}
+
+#[async_trait]
+impl ProjectComponentRepository for MemoryProjectComponentRepository {
+    async fn get_by_id(&self, id: ProjectComponentId) -> Result<ProjectComponent, AppError> {
+        self.components
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|c| c.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("component", id))
+    }
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<ProjectComponent>, AppError> {
+        Ok(self
+            .components
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+    async fn save(&self, component: &ProjectComponent) -> Result<ProjectComponentId, AppError> {
+        let mut components = self.components.lock().unwrap();
+        if let Some(idx) = components.iter().position(|c| c.id == component.id) {
+            components[idx] = component.clone();
+        } else {
+            components.push(component.clone());
+        }
+        Ok(component.id)
+    }
+    async fn delete(&self, id: ProjectComponentId) -> Result<(), AppError> {
+        self.components.lock().unwrap().retain(|c| c.id != id);
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryProjectVersionRepository {
+    versions: Arc<Mutex<Vec<ProjectVersion>>>,
+}
+
+#[async_trait]
+impl ProjectVersionRepository for MemoryProjectVersionRepository {
+    async fn get_by_id(&self, id: ProjectVersionId) -> Result<ProjectVersion, AppError> {
+        self.versions
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|v| v.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("version", id))
+    }
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<ProjectVersion>, AppError> {
+        Ok(self
+            .versions
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|v| v.project_id == project_id)
+            .cloned()
+            .collect())
+    }
+    async fn save(&self, version: &ProjectVersion) -> Result<ProjectVersionId, AppError> {
+        let mut versions = self.versions.lock().unwrap();
+        if let Some(idx) = versions.iter().position(|v| v.id == version.id) {
+            versions[idx] = version.clone();
+        } else {
+            versions.push(version.clone());
+        }
+        Ok(version.id)
+    }
+    async fn delete(&self, id: ProjectVersionId) -> Result<(), AppError> {
+        self.versions.lock().unwrap().retain(|v| v.id != id);
         Ok(())
     }
 }

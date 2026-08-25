@@ -17,6 +17,12 @@ const ProjectBoardPage = lazy(() =>
 const ProjectBacklogPage = lazy(() =>
   import('@/pages/project-backlog').then((m) => ({ default: m.ProjectBacklogPage })),
 )
+const ProjectTrashPage = lazy(() =>
+  import('@/pages/project-trash').then((m) => ({ default: m.ProjectTrashPage })),
+)
+const ProjectCustomFieldsPage = lazy(() =>
+  import('@/pages/project-custom-fields').then((m) => ({ default: m.ProjectCustomFieldsPage })),
+)
 const SearchPage = lazy(() => import('@/pages/search'))
 const IssueCreatePage = lazy(() =>
   import('@/pages/issue-create').then((m) => ({ default: m.IssueCreatePage })),
@@ -63,6 +69,8 @@ export const router = createBrowserRouter([
           { path: '/projects', element: withSuspense(<ProjectsPage />) },
           { path: '/projects/:projectKey/board', element: withSuspense(<ProjectBoardPage />) },
           { path: '/projects/:projectKey/backlog', element: withSuspense(<ProjectBacklogPage />) },
+          { path: '/projects/:projectKey/trash', element: withSuspense(<ProjectTrashPage />) },
+          { path: '/projects/:projectKey/settings/custom-fields', element: withSuspense(<ProjectCustomFieldsPage />) },
           { path: '/search', element: withSuspense(<SearchPage />) },
           { path: '/notifications', element: withSuspense(<NotificationsPage />) },
           { path: '/reports', element: withSuspense(<ReportsPage />) },

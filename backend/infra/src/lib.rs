@@ -9,6 +9,7 @@ pub mod storage;
 
 pub use cache::*;
 pub use db::*;
+pub use email::*;
 pub use entities::*;
 pub use event_bus::*;
 pub use repos::*;

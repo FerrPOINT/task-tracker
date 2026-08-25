@@ -25,6 +25,7 @@ import { ActivityFeed } from '@/features/issue-detail/ui/ActivityFeed'
 import { AttachmentPanel } from '@/features/issue-detail/ui/AttachmentPanel'
 import { LabelEditor } from '@/features/issue-detail/ui/LabelEditor'
 import { LinkEditor } from '@/features/issue-detail/ui/LinkEditor'
+import { CustomFieldsPanel } from '@/features/issue-detail/ui/CustomFieldsPanel'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
@@ -234,6 +235,15 @@ return (
               </CardHeader>
               <CardContent>
                 <LabelEditor issueId={id} projectKey={issueQuery.data?.project_key ?? ''} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Custom fields</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
               </CardContent>
             </Card>
 

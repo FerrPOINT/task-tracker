@@ -30,6 +30,13 @@ pub struct IssueQuery {
     pub jql_user_id: Option<shared::UserId>,
     pub limit: u64,
     pub offset: u64,
+    /// When `true`, include soft-deleted (trashed) issues in the result set.
+    /// Defaults to `false` so normal board/backlog/search/dashboard queries
+    /// automatically exclude trashed issues.
+    pub include_deleted: bool,
+    /// When `true`, return *only* soft-deleted (trashed) issues. Mutually
+    /// exclusive with `include_deleted`; used by the trash listing query.
+    pub deleted_only: bool,
 }
 
 impl Default for IssueQuery {
@@ -47,6 +54,8 @@ impl Default for IssueQuery {
             jql_user_id: None,
             limit: 1000,
             offset: 0,
+            include_deleted: false,
+            deleted_only: false,
         }
     }
 }

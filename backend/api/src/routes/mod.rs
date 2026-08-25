@@ -1,6 +1,8 @@
 pub mod auth;
 pub mod board;
 pub mod comments;
+pub mod components_versions;
+pub mod custom_fields;
 pub mod dashboard;
 pub mod health;
 pub mod issues;
@@ -20,4 +22,5 @@ pub mod notifications;
 pub mod reports;
 pub mod saved_filters;
 pub mod users;
+pub mod watchers_votes;
 pub mod workflow;

@@ -82,6 +82,9 @@ pub struct IssueDto {
     pub time_spent_seconds: i64,
     pub position: f64,
     pub sprint_id: Option<String>,
+    pub component_id: Option<String>,
+    pub affected_version_id: Option<String>,
+    pub fix_version_id: Option<String>,
     pub created_at: DateTime<FixedOffset>,
     pub updated_at: DateTime<FixedOffset>,
 }
@@ -120,6 +123,9 @@ impl IssueDto {
             time_spent_seconds: issue.time_spent_seconds,
             position: issue.position,
             sprint_id: issue.sprint_id.map(|id| id.to_string()),
+            component_id: issue.component_id.map(|id| id.to_string()),
+            affected_version_id: issue.affected_version_id.map(|id| id.to_string()),
+            fix_version_id: issue.fix_version_id.map(|id| id.to_string()),
             created_at: issue.created_at,
             updated_at: issue.updated_at,
         }

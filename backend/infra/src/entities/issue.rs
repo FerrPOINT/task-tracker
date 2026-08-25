@@ -20,6 +20,9 @@ pub struct Model {
     pub priority: String,
     pub labels: JsonValue,
     pub sprint_id: Option<Uuid>,
+    pub component_id: Option<Uuid>,
+    pub affected_version_id: Option<Uuid>,
+    pub fix_version_id: Option<Uuid>,
     pub position: f64,
     pub due_date: Option<DateTimeWithTimeZone>,
     pub original_estimate_seconds: Option<i64>,
@@ -27,6 +30,7 @@ pub struct Model {
     pub time_spent_seconds: i64,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
+    pub deleted_at: Option<DateTimeWithTimeZone>,
     #[sea_orm(ignore)]
     pub tsv_search: Option<String>,
 }

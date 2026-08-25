@@ -9,6 +9,9 @@ pub struct UpdateIssueRequest {
     pub status_id: Option<String>,
     pub assignee_id: Option<String>,
     pub sprint_id: Option<Option<String>>,
+    pub component_id: Option<Option<String>>,
+    pub affected_version_id: Option<Option<String>>,
+    pub fix_version_id: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

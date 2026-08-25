@@ -36,10 +36,9 @@ import {
   DropdownMenuTrigger,
 } from '@/shared/ui/dropdown-menu'
 
-// /trash навигация появится вместе с фазой архива (soft-delete)
 const systemItems: Array<{ to: string; icon: typeof Trash2; labelKey: string }> = []
 
-const projectKeyPattern = /^\/projects\/([^/]+)\/(board|backlog)$/
+const projectKeyPattern = /^\/projects\/([^/]+)\/(board|backlog|trash)$/
 
 function useCurrentProjectKey() {
   const location = useLocation()
@@ -100,6 +99,7 @@ export function AppShell() {
   const projectItems = [
     { to: `/projects/${projectKey ?? 'TT'}/backlog`, icon: List, labelKey: 'navigation.backlog' },
     { to: `/projects/${projectKey ?? 'TT'}/board`, icon: Columns2, labelKey: 'navigation.board' },
+    { to: `/projects/${projectKey ?? 'TT'}/trash`, icon: Trash2, labelKey: 'trash.title' },
   ]
 
   function isActive(path: string) {

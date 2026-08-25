@@ -7,13 +7,15 @@ mod tests;
 
 use crate::{
     AuditLog, Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity,
-    Label, Notification, NotificationUserSettings, Project, ProjectMember, SavedFilter, Sprint,
-    Status, SystemSetting, User, WorkflowTransition, Worklog,
+    IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, Project,
+    ProjectComponent, ProjectMember, ProjectVersion, SavedFilter, Sprint, Status, SystemSetting,
+    User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
-    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, LabelId, ProjectId,
-    ProjectKey, SavedFilterId, SprintId, StatusId, UserId, WorklogId,
+    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, LabelId,
+    ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SavedFilterId, SprintId, StatusId,
+    UserId, WorklogId,
 };
 
 #[async_trait]
@@ -57,11 +59,31 @@ pub struct ProjectQuery {
 
 #[async_trait]
 pub trait IssueRepository: Send + Sync {
+    /// Fetch a live (non-deleted) issue by id. Returns `NotFound` for
+    /// soft-deleted issues — use [`get_by_id_include_deleted`] to access
+    /// trashed issues.
+    ///
+    /// [`get_by_id_include_deleted`]: IssueRepository::get_by_id_include_deleted
     async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError>;
+    /// Fetch an issue by id regardless of soft-delete state. Used by restore
+    /// and permanent-delete operations that need to act on trashed issues.
+    async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError>;
     async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError>;
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError>;
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError>;
+    /// Soft-delete: set `deleted_at` to the current timestamp. The row is
+    /// kept and can be restored via [`restore`] or permanently removed via
+    /// [`purge`].
+    ///
+    /// [`restore`]: IssueRepository::restore
+    /// [`purge`]: IssueRepository::purge
     async fn delete(&self, id: IssueId) -> Result<(), AppError>;
+    /// Restore a soft-deleted issue: clear `deleted_at`.
+    async fn restore(&self, id: IssueId) -> Result<(), AppError>;
+    /// Permanently delete an issue row from the database. Only works on
+    /// already soft-deleted (trashed) issues; returns `InvalidInput` for
+    /// live issues to prevent accidental hard deletes.
+    async fn purge(&self, id: IssueId) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -199,6 +221,11 @@ pub struct Repositories {
     pub notifications: Arc<dyn NotificationRepository>,
     pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
     pub issue_status_history: Arc<dyn IssueStatusHistoryRepository>,
+    pub watchers: Arc<dyn WatcherRepository>,
+    pub votes: Arc<dyn VoteRepository>,
+    pub components: Arc<dyn ProjectComponentRepository>,
+    pub versions: Arc<dyn ProjectVersionRepository>,
+    pub custom_fields: Arc<dyn CustomFieldRepository>,
 }
 
 impl Default for Repositories {
@@ -224,6 +251,11 @@ impl Default for Repositories {
             notifications: Arc::new(StubNotificationRepository),
             notification_settings: Arc::new(StubUserNotificationSettingsRepository),
             issue_status_history: Arc::new(StubIssueStatusHistoryRepository),
+            watchers: Arc::new(StubWatcherRepository),
+            votes: Arc::new(StubVoteRepository),
+            components: Arc::new(StubProjectComponentRepository),
+            versions: Arc::new(StubProjectVersionRepository),
+            custom_fields: Arc::new(StubCustomFieldRepository),
         }
     }
 }
@@ -380,6 +412,9 @@ impl IssueRepository for StubIssueRepository {
     async fn get_by_id(&self, _id: IssueId) -> Result<Issue, AppError> {
         Err(AppError::not_found("issue", "stub"))
     }
+    async fn get_by_id_include_deleted(&self, _id: IssueId) -> Result<Issue, AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
     async fn get_by_key(&self, _key: &shared::IssueKey) -> Result<Issue, AppError> {
         Err(AppError::not_found("issue", "stub"))
     }
@@ -390,6 +425,12 @@ impl IssueRepository for StubIssueRepository {
         Ok(IssueId::new())
     }
     async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+    async fn restore(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+    async fn purge(&self, _id: IssueId) -> Result<(), AppError> {
         Err(AppError::not_found("issue", "stub"))
     }
 }
@@ -644,6 +685,7 @@ impl SystemSettingRepository for StubSystemSettingRepository {
 pub trait NotificationRepository: Send + Sync {
     async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError>;
     async fn list_unread(&self, recipient_id: UserId) -> Result<Vec<Notification>, AppError>;
+    async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError>;
     async fn mark_read(
         &self,
         id: shared::NotificationId,
@@ -669,6 +711,10 @@ impl NotificationRepository for StubNotificationRepository {
         Ok(vec![])
     }
 
+    async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError> {
+        Ok(vec![])
+    }
+
     async fn mark_read(
         &self,
         id: shared::NotificationId,
@@ -690,6 +736,187 @@ impl UserNotificationSettingsRepository for StubUserNotificationSettingsReposito
     }
 
     async fn save_settings(&self, _settings: &NotificationUserSettings) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait WatcherRepository: Send + Sync {
+    async fn add(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn remove(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueWatcher>, AppError>;
+    async fn is_watching(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<IssueWatcher>, AppError>;
+}
+
+pub struct StubWatcherRepository;
+#[async_trait]
+impl WatcherRepository for StubWatcherRepository {
+    async fn add(&self, _issue_id: IssueId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn remove(&self, _issue_id: IssueId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueWatcher>, AppError> {
+        Ok(vec![])
+    }
+    async fn is_watching(&self, _issue_id: IssueId, _user_id: UserId) -> Result<bool, AppError> {
+        Ok(false)
+    }
+    async fn list_by_user(&self, _user_id: UserId) -> Result<Vec<IssueWatcher>, AppError> {
+        Ok(vec![])
+    }
+}
+
+#[async_trait]
+pub trait VoteRepository: Send + Sync {
+    async fn add(&self, issue_id: IssueId, user_id: UserId) -> Result<IssueVote, AppError>;
+    async fn remove(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueVote>, AppError>;
+    async fn count_by_issue(&self, issue_id: IssueId) -> Result<u64, AppError>;
+    async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
+}
+
+pub struct StubVoteRepository;
+#[async_trait]
+impl VoteRepository for StubVoteRepository {
+    async fn add(&self, issue_id: IssueId, _user_id: UserId) -> Result<IssueVote, AppError> {
+        Ok(IssueVote {
+            issue_id,
+            user_id: _user_id,
+            voted_at: shared::now(),
+        })
+    }
+    async fn remove(&self, _issue_id: IssueId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueVote>, AppError> {
+        Ok(vec![])
+    }
+    async fn count_by_issue(&self, _issue_id: IssueId) -> Result<u64, AppError> {
+        Ok(0)
+    }
+    async fn has_voted(&self, _issue_id: IssueId, _user_id: UserId) -> Result<bool, AppError> {
+        Ok(false)
+    }
+}
+
+#[async_trait]
+pub trait ProjectComponentRepository: Send + Sync {
+    async fn get_by_id(&self, id: ProjectComponentId) -> Result<ProjectComponent, AppError>;
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<ProjectComponent>, AppError>;
+    async fn save(&self, component: &ProjectComponent) -> Result<ProjectComponentId, AppError>;
+    async fn delete(&self, id: ProjectComponentId) -> Result<(), AppError>;
+}
+
+pub struct StubProjectComponentRepository;
+#[async_trait]
+impl ProjectComponentRepository for StubProjectComponentRepository {
+    async fn get_by_id(&self, _id: ProjectComponentId) -> Result<ProjectComponent, AppError> {
+        Err(AppError::not_found("component", "stub"))
+    }
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<ProjectComponent>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _component: &ProjectComponent) -> Result<ProjectComponentId, AppError> {
+        Ok(ProjectComponentId::new())
+    }
+    async fn delete(&self, _id: ProjectComponentId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait ProjectVersionRepository: Send + Sync {
+    async fn get_by_id(&self, id: ProjectVersionId) -> Result<ProjectVersion, AppError>;
+    async fn list_by_project(&self, project_id: ProjectId)
+    -> Result<Vec<ProjectVersion>, AppError>;
+    async fn save(&self, version: &ProjectVersion) -> Result<ProjectVersionId, AppError>;
+    async fn delete(&self, id: ProjectVersionId) -> Result<(), AppError>;
+}
+
+pub struct StubProjectVersionRepository;
+#[async_trait]
+impl ProjectVersionRepository for StubProjectVersionRepository {
+    async fn get_by_id(&self, _id: ProjectVersionId) -> Result<ProjectVersion, AppError> {
+        Err(AppError::not_found("version", "stub"))
+    }
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<ProjectVersion>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _version: &ProjectVersion) -> Result<ProjectVersionId, AppError> {
+        Ok(ProjectVersionId::new())
+    }
+    async fn delete(&self, _id: ProjectVersionId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait CustomFieldRepository: Send + Sync {
+    async fn get_by_id(&self, id: shared::CustomFieldId) -> Result<crate::CustomField, AppError>;
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<crate::CustomField>, AppError>;
+    async fn save(&self, field: &crate::CustomField) -> Result<shared::CustomFieldId, AppError>;
+    async fn delete(&self, id: shared::CustomFieldId) -> Result<(), AppError>;
+    async fn set_value(
+        &self,
+        issue_id: IssueId,
+        field_id: shared::CustomFieldId,
+        value: &serde_json::Value,
+    ) -> Result<(), AppError>;
+    async fn get_values_for_issue(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<crate::CustomFieldValue>, AppError>;
+    async fn delete_values_for_issue(&self, issue_id: IssueId) -> Result<(), AppError>;
+}
+
+pub struct StubCustomFieldRepository;
+#[async_trait]
+impl CustomFieldRepository for StubCustomFieldRepository {
+    async fn get_by_id(&self, _id: shared::CustomFieldId) -> Result<crate::CustomField, AppError> {
+        Err(AppError::not_found("custom field", "stub"))
+    }
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<crate::CustomField>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _field: &crate::CustomField) -> Result<shared::CustomFieldId, AppError> {
+        Ok(shared::CustomFieldId::new())
+    }
+    async fn delete(&self, _id: shared::CustomFieldId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn set_value(
+        &self,
+        _issue_id: IssueId,
+        _field_id: shared::CustomFieldId,
+        _value: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn get_values_for_issue(
+        &self,
+        _issue_id: IssueId,
+    ) -> Result<Vec<crate::CustomFieldValue>, AppError> {
+        Ok(vec![])
+    }
+    async fn delete_values_for_issue(&self, _issue_id: IssueId) -> Result<(), AppError> {
         Ok(())
     }
 }

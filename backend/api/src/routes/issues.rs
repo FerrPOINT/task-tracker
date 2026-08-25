@@ -98,10 +98,29 @@ pub async fn update_issue(
                 Some(Some(shared::SprintId::from_uuid(uuid)))
             }
         },
+        component_id: parse_optional_uuid(req.component_id, "component_id")?
+            .map(|value| value.map(shared::ProjectComponentId::from_uuid)),
+        affected_version_id: parse_optional_uuid(req.affected_version_id, "affected_version_id")?
+            .map(|value| value.map(shared::ProjectVersionId::from_uuid)),
+        fix_version_id: parse_optional_uuid(req.fix_version_id, "fix_version_id")?
+            .map(|value| value.map(shared::ProjectVersionId::from_uuid)),
         actor_id,
     };
     let i = ctx.services.issue.update(issue_id, cmd).await?;
     Ok(Json(map_issue(i)))
+}
+
+fn parse_optional_uuid(
+    value: Option<Option<String>>,
+    field: &str,
+) -> Result<Option<Option<uuid::Uuid>>, AppError> {
+    value
+        .map(|inner| {
+            inner
+                .map(|raw| raw.parse().map_err(|_| AppError::invalid_input(field)))
+                .transpose()
+        })
+        .transpose()
 }
 
 #[utoipa::path(
@@ -191,4 +210,56 @@ pub async fn delete_issue(
         .map_err(|_| shared::AppError::invalid_input("id"))?;
     ctx.services.issue.delete(issue_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/issues/{id}/restore",
+    params(("id" = String, Path, description = "Issue id")),
+    responses((status = 200, body = IssueResponse), (status = 404))
+)]
+pub async fn restore_issue(
+    State(ctx): State<Arc<app::AppContext>>,
+    Path(id): Path<String>,
+) -> Result<Json<IssueResponse>, AppError> {
+    let issue_id = id
+        .parse::<IssueId>()
+        .map_err(|_| shared::AppError::invalid_input("id"))?;
+    let i = ctx.services.issue.restore(issue_id).await?;
+    Ok(Json(map_issue(i)))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/v1/issues/{id}/trash",
+    params(("id" = String, Path, description = "Issue id")),
+    responses((status = 204), (status = 404))
+)]
+pub async fn purge_issue(
+    State(ctx): State<Arc<app::AppContext>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, shared::AppError> {
+    let issue_id = id
+        .parse::<IssueId>()
+        .map_err(|_| shared::AppError::invalid_input("id"))?;
+    ctx.services.issue.purge(issue_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/projects/{key}/trash",
+    params(("key" = String, Path, description = "Project key")),
+    responses((status = 200, body = IssueListResponse))
+)]
+pub async fn list_trash(
+    State(ctx): State<Arc<app::AppContext>>,
+    Path(key): Path<String>,
+) -> Result<Json<IssueListResponse>, AppError> {
+    let project_key =
+        ProjectKey::from_str(&key).map_err(|e| AppError::invalid_input(e.to_string()))?;
+    let items = ctx.services.issue.list_trash(&project_key).await?;
+    Ok(Json(IssueListResponse {
+        issues: items.into_iter().map(map_issue).collect(),
+    }))
 }

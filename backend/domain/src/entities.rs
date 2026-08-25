@@ -66,6 +66,13 @@ pub struct Issue {
     pub time_spent_seconds: i64,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
+    /// Soft-delete timestamp: `None` for live issues, `Some(ts)` once moved to trash.
+    /// Soft-deleted issues are filtered out of all normal queries unless
+    /// `IssueQuery::include_deleted` is set.
+    pub deleted_at: Option<Timestamp>,
+    pub component_id: Option<shared::ProjectComponentId>,
+    pub affected_version_id: Option<shared::ProjectVersionId>,
+    pub fix_version_id: Option<shared::ProjectVersionId>,
     #[serde(skip)]
     pub events: Vec<crate::IssueEvent>,
 }
@@ -103,6 +110,10 @@ impl Issue {
             time_spent_seconds: 0,
             created_at: now,
             updated_at: now,
+            deleted_at: None,
+            component_id: None,
+            affected_version_id: None,
+            fix_version_id: None,
             events: Vec::new(),
         };
         issue.events.push(crate::IssueEvent::Created {
@@ -178,6 +189,65 @@ pub struct Label {
     pub color: ArcStr,
 }
 
+/// Field type for a project-level custom field definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CustomFieldType {
+    Text,
+    Number,
+    Select,
+    MultiSelect,
+    Date,
+}
+
+impl std::str::FromStr for CustomFieldType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "text" => Ok(Self::Text),
+            "number" => Ok(Self::Number),
+            "select" => Ok(Self::Select),
+            "multi-select" => Ok(Self::MultiSelect),
+            "date" => Ok(Self::Date),
+            other => Err(format!("unknown custom field type: {other}")),
+        }
+    }
+}
+
+impl CustomFieldType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Number => "number",
+            Self::Select => "select",
+            Self::MultiSelect => "multi-select",
+            Self::Date => "date",
+        }
+    }
+}
+
+/// Project-level custom field definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomField {
+    pub id: shared::CustomFieldId,
+    pub project_id: ProjectId,
+    pub name: ArcStr,
+    pub field_type: CustomFieldType,
+    /// Select / multi-select option labels. Empty for other field types.
+    pub options: Vec<ArcStr>,
+    pub is_required: bool,
+    pub created_at: Timestamp,
+}
+
+/// Issue-level value for a custom field. `value` is JSONB; the shape depends
+/// on the field type (string, number, array of strings, ISO date string, …).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomFieldValue {
+    pub issue_id: IssueId,
+    pub field_id: shared::CustomFieldId,
+    pub value: serde_json::Value,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Sprint {
     pub id: SprintId,
@@ -210,6 +280,26 @@ impl FromStr for SprintState {
             _ => Err(format!("unknown sprint state: {}", s)),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectComponent {
+    pub id: shared::ProjectComponentId,
+    pub project_id: ProjectId,
+    pub name: ArcStr,
+    pub description: Option<ArcStr>,
+    pub created_at: Timestamp,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectVersion {
+    pub id: shared::ProjectVersionId,
+    pub project_id: ProjectId,
+    pub name: ArcStr,
+    pub description: Option<ArcStr>,
+    pub released: bool,
+    pub release_date: Option<Timestamp>,
+    pub created_at: Timestamp,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -450,4 +540,17 @@ pub struct SystemSetting {
     pub key: ArcStr,
     pub value: serde_json::Value,
     pub updated_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueWatcher {
+    pub issue_id: IssueId,
+    pub user_id: UserId,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssueVote {
+    pub issue_id: IssueId,
+    pub user_id: UserId,
+    pub voted_at: Timestamp,
 }

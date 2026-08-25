@@ -92,6 +92,9 @@ pub use routes::*;
         routes::issues::get_issue,
         routes::issues::update_issue,
         routes::issues::delete_issue,
+        routes::issues::restore_issue,
+        routes::issues::purge_issue,
+        routes::issues::list_trash,
         routes::transitions::transition_issue,
         routes::search::search_global,
         routes::attachments::list_attachments,
@@ -147,6 +150,26 @@ pub use routes::*;
         routes::admin::list_audit_logs,
         routes::admin::list_system_settings,
         routes::admin::update_system_setting,
+        routes::watchers_votes::watch_issue,
+        routes::watchers_votes::unwatch_issue,
+        routes::watchers_votes::list_watchers,
+        routes::custom_fields::list_custom_fields,
+        routes::custom_fields::create_custom_field,
+        routes::custom_fields::update_custom_field,
+        routes::custom_fields::delete_custom_field,
+        routes::custom_fields::list_issue_custom_field_values,
+        routes::custom_fields::set_custom_field_value,
+        routes::watchers_votes::vote_issue,
+        routes::watchers_votes::unvote_issue,
+        routes::watchers_votes::list_votes,
+        routes::components_versions::list_components,
+        routes::components_versions::create_component,
+        routes::components_versions::update_component,
+        routes::components_versions::delete_component,
+        routes::components_versions::list_versions,
+        routes::components_versions::create_version,
+        routes::components_versions::update_version,
+        routes::components_versions::delete_version,
     ),
     components(schemas(
         dto::RegisterRequest,
@@ -205,6 +228,27 @@ pub use routes::*;
         routes::admin::SystemSettingResponse,
         routes::admin::SystemSettingListResponse,
         routes::admin::UpdateSystemSettingRequest,
+        routes::watchers_votes::WatchRequest,
+        routes::watchers_votes::WatcherResponse,
+        routes::watchers_votes::WatcherListResponse,
+        routes::custom_fields::CreateCustomFieldRequest,
+        routes::custom_fields::UpdateCustomFieldRequest,
+        routes::custom_fields::SetCustomFieldValueRequest,
+        routes::custom_fields::CustomFieldResponse,
+        routes::custom_fields::CustomFieldListResponse,
+        routes::custom_fields::CustomFieldValueResponse,
+        routes::custom_fields::CustomFieldValueListResponse,
+        routes::watchers_votes::VoteResponse,
+        routes::watchers_votes::VoteListResponse,
+        routes::watchers_votes::VoteCountResponse,
+        routes::watchers_votes::WatchStatusResponse,
+        routes::watchers_votes::VoteStatusResponse,
+        routes::components_versions::ComponentRequest,
+        routes::components_versions::ComponentResponse,
+        routes::components_versions::ComponentListResponse,
+        routes::components_versions::VersionRequest,
+        routes::components_versions::VersionResponse,
+        routes::components_versions::VersionListResponse,
     ))
 )]
 pub struct ApiDoc;
@@ -323,6 +367,22 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route("/issue-links/{id}", delete(routes::links::delete_link))
         .route(
+            "/issues/{issue_id}/watch",
+            post(routes::watchers_votes::watch_issue).delete(routes::watchers_votes::unwatch_issue),
+        )
+        .route(
+            "/issues/{issue_id}/watchers",
+            get(routes::watchers_votes::list_watchers),
+        )
+        .route(
+            "/issues/{issue_id}/vote",
+            post(routes::watchers_votes::vote_issue).delete(routes::watchers_votes::unvote_issue),
+        )
+        .route(
+            "/issues/{issue_id}/votes",
+            get(routes::watchers_votes::list_votes),
+        )
+        .route(
             "/attachments/{id}/download",
             get(routes::attachments::download_attachment),
         )
@@ -338,6 +398,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/projects/{project_key}/backlog",
             get(routes::board::get_backlog),
         )
+        .route("/projects/{key}/trash", get(routes::issues::list_trash))
         .route(
             "/projects/{project_key}/board/move",
             post(routes::board::move_issue),
@@ -352,6 +413,8 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
                 .patch(routes::issues::update_issue)
                 .delete(routes::issues::delete_issue),
         )
+        .route("/issues/{id}/restore", post(routes::issues::restore_issue))
+        .route("/issues/{id}/trash", delete(routes::issues::purge_issue))
         .route(
             "/issues/{id}/transition",
             post(routes::transitions::transition_issue),
@@ -459,6 +522,44 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route(
             "/admin/system-settings",
             get(routes::admin::list_system_settings).put(routes::admin::update_system_setting),
+        )
+        .route(
+            "/projects/{project_key}/components",
+            get(routes::components_versions::list_components)
+                .post(routes::components_versions::create_component),
+        )
+        .route(
+            "/projects/{project_key}/components/{component_id}",
+            put(routes::components_versions::update_component)
+                .delete(routes::components_versions::delete_component),
+        )
+        .route(
+            "/projects/{project_key}/versions",
+            get(routes::components_versions::list_versions)
+                .post(routes::components_versions::create_version),
+        )
+        .route(
+            "/projects/{project_key}/versions/{version_id}",
+            put(routes::components_versions::update_version)
+                .delete(routes::components_versions::delete_version),
+        )
+        .route(
+            "/projects/{project_key}/custom-fields",
+            get(routes::custom_fields::list_custom_fields)
+                .post(routes::custom_fields::create_custom_field),
+        )
+        .route(
+            "/custom-fields/{id}",
+            put(routes::custom_fields::update_custom_field)
+                .delete(routes::custom_fields::delete_custom_field),
+        )
+        .route(
+            "/issues/{issue_id}/custom-fields",
+            get(routes::custom_fields::list_issue_custom_field_values),
+        )
+        .route(
+            "/issues/{issue_id}/custom-fields/{field_id}/value",
+            put(routes::custom_fields::set_custom_field_value),
         )
         .route_layer(auth);
 

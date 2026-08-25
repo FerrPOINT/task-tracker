@@ -143,6 +143,11 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
         issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
+        watchers: Arc::new(domain::StubWatcherRepository),
+        votes: Arc::new(domain::StubVoteRepository),
+        components: Arc::new(domain::StubProjectComponentRepository),
+        versions: Arc::new(domain::StubProjectVersionRepository),
+        custom_fields: Arc::new(domain::StubCustomFieldRepository),
     });
     AppContext::new(
         test_config(),
@@ -293,6 +298,9 @@ async fn issue_service_update_and_move() {
                 status_id: Some(in_progress_id.clone()),
                 assignee_id: Some(Some(user.id)),
                 sprint_id: None,
+                component_id: None,
+                affected_version_id: None,
+                fix_version_id: None,
                 actor_id: user.id,
             },
         )
@@ -583,6 +591,9 @@ async fn issue_service_update_fails_for_invalid_status_id() {
                 status_id: Some("not-a-uuid".to_string()),
                 assignee_id: None,
                 sprint_id: None,
+                component_id: None,
+                affected_version_id: None,
+                fix_version_id: None,
                 actor_id: shared::UserId::new(),
             },
         )
@@ -605,6 +616,9 @@ async fn issue_service_update_fails_for_missing_issue() {
                 status_id: None,
                 assignee_id: None,
                 sprint_id: None,
+                component_id: None,
+                affected_version_id: None,
+                fix_version_id: None,
                 actor_id: shared::UserId::new(),
             },
         )
@@ -807,6 +821,9 @@ fn failing_context() -> AppContext {
         async fn get_by_id(&self, _id: IssueId) -> Result<Issue, AppError> {
             Err(AppError::Internal("x".into()))
         }
+        async fn get_by_id_include_deleted(&self, _id: IssueId) -> Result<Issue, AppError> {
+            Err(AppError::Internal("x".into()))
+        }
         async fn get_by_key(&self, _key: &IssueKey) -> Result<Issue, AppError> {
             Err(AppError::Internal("x".into()))
         }
@@ -817,6 +834,12 @@ fn failing_context() -> AppContext {
             Err(AppError::Internal("x".into()))
         }
         async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
+            Err(AppError::Internal("x".into()))
+        }
+        async fn restore(&self, _id: IssueId) -> Result<(), AppError> {
+            Err(AppError::Internal("x".into()))
+        }
+        async fn purge(&self, _id: IssueId) -> Result<(), AppError> {
             Err(AppError::Internal("x".into()))
         }
     }
@@ -904,6 +927,11 @@ fn failing_context() -> AppContext {
         notifications: Arc::new(domain::StubNotificationRepository),
         notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
         issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
+        watchers: Arc::new(domain::StubWatcherRepository),
+        votes: Arc::new(domain::StubVoteRepository),
+        components: Arc::new(domain::StubProjectComponentRepository),
+        versions: Arc::new(domain::StubProjectVersionRepository),
+        custom_fields: Arc::new(domain::StubCustomFieldRepository),
     });
     AppContext::new(test_config(), repos, Arc::new(TestStorage::default()))
 }
@@ -1132,6 +1160,9 @@ fn make_issue(
         priority: Priority::Medium,
         labels: vec![],
         sprint_id,
+        component_id: None,
+        affected_version_id: None,
+        fix_version_id: None,
         position: 0.0,
         due_date: None,
         original_estimate_seconds: None,
@@ -1139,6 +1170,7 @@ fn make_issue(
         time_spent_seconds: 0,
         created_at,
         updated_at: created_at,
+        deleted_at: None,
         events: vec![],
     }
 }

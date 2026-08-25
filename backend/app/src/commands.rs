@@ -83,6 +83,9 @@ pub struct UpdateIssueCommand {
     pub status_id: Option<String>,
     pub assignee_id: Option<Option<shared::UserId>>,
     pub sprint_id: Option<Option<shared::SprintId>>,
+    pub component_id: Option<Option<shared::ProjectComponentId>>,
+    pub affected_version_id: Option<Option<shared::ProjectVersionId>>,
+    pub fix_version_id: Option<Option<shared::ProjectVersionId>>,
     pub actor_id: shared::UserId,
 }
 

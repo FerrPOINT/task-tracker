@@ -382,6 +382,18 @@ impl crate::context::IssueService for IssueServiceImpl {
         if let Some(sprint_id) = cmd.sprint_id {
             issue.sprint_id = sprint_id;
         }
+        if let Some(component_id) = cmd.component_id {
+            issue.component_id = component_id;
+            issue.updated_at = shared::now();
+        }
+        if let Some(affected_version_id) = cmd.affected_version_id {
+            issue.affected_version_id = affected_version_id;
+            issue.updated_at = shared::now();
+        }
+        if let Some(fix_version_id) = cmd.fix_version_id {
+            issue.fix_version_id = fix_version_id;
+            issue.updated_at = shared::now();
+        }
 
         self.issues.save(&issue).await?;
         let statuses = self.statuses.list_all().await.unwrap_or_default();
@@ -467,6 +479,42 @@ impl crate::context::IssueService for IssueServiceImpl {
 
     async fn delete(&self, id: IssueId) -> Result<(), AppError> {
         self.issues.delete(id).await
+    }
+
+    async fn restore(&self, id: IssueId) -> Result<IssueDto, AppError> {
+        self.issues.restore(id).await?;
+        let issue = self.issues.get_by_id(id).await?;
+        helpers::build_issue_dtos_with_projects(
+            Arc::clone(&self.projects),
+            Arc::clone(&self.users),
+            vec![issue],
+        )
+        .await
+        .map(|mut v| v.remove(0))
+    }
+
+    async fn purge(&self, id: IssueId) -> Result<(), AppError> {
+        self.issues.purge(id).await
+    }
+
+    async fn list_trash(&self, project_key: &ProjectKey) -> Result<Vec<IssueDto>, AppError> {
+        let project = self
+            .projects
+            .get_by_key(project_key)
+            .await
+            .map_err(|_| AppError::not_found("project", project_key))?;
+        let query = IssueQuery {
+            project_id: Some(project.id),
+            deleted_only: true,
+            ..Default::default()
+        };
+        let issues = self.issues.list(query).await?;
+        helpers::build_issue_dtos_with_projects(
+            Arc::clone(&self.projects),
+            Arc::clone(&self.users),
+            issues,
+        )
+        .await
     }
 }
 
@@ -1606,6 +1654,135 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         Ok(())
     }
 }
+pub struct WatcherServiceImpl {
+    watchers: Arc<dyn domain::WatcherRepository>,
+    issues: Arc<dyn IssueRepository>,
+    users: Arc<dyn domain::UserRepository>,
+    projects: Arc<dyn ProjectRepository>,
+    events: crate::context::EventBus,
+}
+
+impl WatcherServiceImpl {
+    pub fn new(
+        watchers: Arc<dyn domain::WatcherRepository>,
+        issues: Arc<dyn IssueRepository>,
+        users: Arc<dyn domain::UserRepository>,
+        projects: Arc<dyn ProjectRepository>,
+        events: crate::context::EventBus,
+    ) -> Self {
+        Self {
+            watchers,
+            issues,
+            users,
+            projects,
+            events,
+        }
+    }
+}
+
+#[async_trait]
+impl crate::context::WatcherService for WatcherServiceImpl {
+    async fn watch(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        // Verify the issue exists
+        self.issues.get_by_id(issue_id).await?;
+        // Verify the user exists
+        self.users.get_by_id(user_id).await?;
+        self.watchers.add(issue_id, user_id).await?;
+        let issue = self.issues.get_by_id(issue_id).await?;
+        let project = self.projects.get_by_id(issue.project_id).await?;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue_id.to_string(),
+            project_key: project.key.to_string(),
+        });
+        Ok(())
+    }
+
+    async fn unwatch(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        self.watchers.remove(issue_id, user_id).await?;
+        Ok(())
+    }
+
+    async fn list_watchers(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<crate::context::WatcherDto>, AppError> {
+        let watchers = self.watchers.list_by_issue(issue_id).await?;
+        let mut dtos = Vec::with_capacity(watchers.len());
+        for w in watchers {
+            let user = self.users.get_by_id(w.user_id).await?;
+            dtos.push(crate::context::WatcherDto {
+                user_id: w.user_id.to_string(),
+                username: user.username.as_ref().to_string(),
+                display_name: user.display_name.as_ref().to_string(),
+            });
+        }
+        Ok(dtos)
+    }
+
+    async fn is_watching(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError> {
+        self.watchers.is_watching(issue_id, user_id).await
+    }
+}
+
+pub struct VoteServiceImpl {
+    votes: Arc<dyn domain::VoteRepository>,
+    issues: Arc<dyn IssueRepository>,
+}
+
+impl VoteServiceImpl {
+    pub fn new(votes: Arc<dyn domain::VoteRepository>, issues: Arc<dyn IssueRepository>) -> Self {
+        Self { votes, issues }
+    }
+}
+
+#[async_trait]
+impl crate::context::VoteService for VoteServiceImpl {
+    async fn vote(
+        &self,
+        issue_id: IssueId,
+        user_id: UserId,
+    ) -> Result<crate::context::VoteDto, AppError> {
+        // Verify the issue exists
+        self.issues.get_by_id(issue_id).await?;
+        let vote = self.votes.add(issue_id, user_id).await?;
+        Ok(crate::context::VoteDto {
+            user_id: vote.user_id.to_string(),
+            username: String::new(),
+            display_name: String::new(),
+            voted_at: vote.voted_at.to_rfc3339(),
+        })
+    }
+
+    async fn unvote(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        self.votes.remove(issue_id, user_id).await?;
+        Ok(())
+    }
+
+    async fn list_votes(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<crate::context::VoteDto>, AppError> {
+        let votes = self.votes.list_by_issue(issue_id).await?;
+        Ok(votes
+            .into_iter()
+            .map(|v| crate::context::VoteDto {
+                user_id: v.user_id.to_string(),
+                username: String::new(),
+                display_name: String::new(),
+                voted_at: v.voted_at.to_rfc3339(),
+            })
+            .collect())
+    }
+
+    async fn count_votes(&self, issue_id: IssueId) -> Result<u64, AppError> {
+        self.votes.count_by_issue(issue_id).await
+    }
+
+    async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError> {
+        self.votes.has_voted(issue_id, user_id).await
+    }
+}
+
 pub struct SavedFilterServiceImpl {
     filters: Arc<dyn domain::SavedFilterRepository>,
     issues: Arc<dyn IssueRepository>,
@@ -2077,5 +2254,308 @@ impl crate::context::ReportService for ReportServiceImpl {
             }
         }
         Ok(result)
+    }
+}
+
+pub struct CustomFieldServiceImpl {
+    fields: Arc<dyn domain::CustomFieldRepository>,
+    projects: Arc<dyn ProjectRepository>,
+    issues: Arc<dyn IssueRepository>,
+}
+
+impl CustomFieldServiceImpl {
+    pub fn new(
+        fields: Arc<dyn domain::CustomFieldRepository>,
+        projects: Arc<dyn ProjectRepository>,
+        issues: Arc<dyn IssueRepository>,
+    ) -> Self {
+        Self {
+            fields,
+            projects,
+            issues,
+        }
+    }
+
+    fn to_dto(f: &domain::CustomField) -> crate::context::CustomFieldDto {
+        crate::context::CustomFieldDto {
+            id: f.id.to_string(),
+            project_id: f.project_id.to_string(),
+            name: f.name.as_ref().to_string(),
+            field_type: f.field_type.as_str().to_string(),
+            options: f.options.iter().map(|o| o.as_ref().to_string()).collect(),
+            is_required: f.is_required,
+            created_at: f.created_at.to_rfc3339(),
+        }
+    }
+}
+
+#[async_trait]
+impl crate::context::CustomFieldService for CustomFieldServiceImpl {
+    async fn create_field(
+        &self,
+        project_key: &ProjectKey,
+        name: &str,
+        field_type: &str,
+        options: &[String],
+        is_required: bool,
+        _requester: UserId,
+    ) -> Result<crate::context::CustomFieldDto, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        if name.trim().is_empty() {
+            return Err(AppError::invalid_input("field name must not be empty"));
+        }
+        let ft: domain::CustomFieldType = field_type.parse().map_err(AppError::invalid_input)?;
+        let field = domain::CustomField {
+            id: shared::CustomFieldId::new(),
+            project_id: project.id,
+            name: name.trim().to_string().into(),
+            field_type: ft,
+            options: options
+                .iter()
+                .map(|s| s.trim().to_string().into())
+                .collect(),
+            is_required,
+            created_at: shared::now(),
+        };
+        self.fields.save(&field).await?;
+        Ok(Self::to_dto(&field))
+    }
+
+    async fn list_fields(
+        &self,
+        project_key: &ProjectKey,
+    ) -> Result<Vec<crate::context::CustomFieldDto>, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        let items = self.fields.list_by_project(project.id).await?;
+        Ok(items.iter().map(Self::to_dto).collect())
+    }
+
+    async fn update_field(
+        &self,
+        field_id: shared::CustomFieldId,
+        name: &str,
+        field_type: &str,
+        options: &[String],
+        is_required: bool,
+        _requester: UserId,
+    ) -> Result<crate::context::CustomFieldDto, AppError> {
+        let mut field = self.fields.get_by_id(field_id).await?;
+        if !name.trim().is_empty() {
+            field.name = name.trim().to_string().into();
+        }
+        field.field_type = field_type.parse().map_err(AppError::invalid_input)?;
+        field.options = options
+            .iter()
+            .map(|s| s.trim().to_string().into())
+            .collect();
+        field.is_required = is_required;
+        self.fields.save(&field).await?;
+        Ok(Self::to_dto(&field))
+    }
+
+    async fn delete_field(
+        &self,
+        field_id: shared::CustomFieldId,
+        _requester: UserId,
+    ) -> Result<(), AppError> {
+        self.fields.delete(field_id).await?;
+        Ok(())
+    }
+
+    async fn set_value(
+        &self,
+        issue_id: IssueId,
+        field_id: shared::CustomFieldId,
+        value: serde_json::Value,
+        _requester: UserId,
+    ) -> Result<(), AppError> {
+        // Validate the issue and field exist.
+        let _issue = self.issues.get_by_id(issue_id).await?;
+        let _field = self.fields.get_by_id(field_id).await?;
+        self.fields.set_value(issue_id, field_id, &value).await?;
+        Ok(())
+    }
+
+    async fn get_values_for_issue(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<crate::context::CustomFieldValueDto>, AppError> {
+        let values = self.fields.get_values_for_issue(issue_id).await?;
+        Ok(values
+            .into_iter()
+            .map(|v| crate::context::CustomFieldValueDto {
+                field_id: v.field_id.to_string(),
+                value: v.value,
+            })
+            .collect())
+    }
+}
+
+pub struct ComponentServiceImpl {
+    components: Arc<dyn domain::ProjectComponentRepository>,
+    projects: Arc<dyn ProjectRepository>,
+}
+
+impl ComponentServiceImpl {
+    pub fn new(
+        components: Arc<dyn domain::ProjectComponentRepository>,
+        projects: Arc<dyn ProjectRepository>,
+    ) -> Self {
+        Self {
+            components,
+            projects,
+        }
+    }
+
+    fn to_dto(c: &domain::ProjectComponent) -> crate::context::ComponentDto {
+        crate::context::ComponentDto {
+            id: c.id.to_string(),
+            project_id: c.project_id.to_string(),
+            name: c.name.as_ref().to_string(),
+            description: c.description.as_ref().map(|d| d.as_ref().to_string()),
+            created_at: c.created_at.to_rfc3339(),
+        }
+    }
+}
+
+#[async_trait]
+impl crate::context::ComponentService for ComponentServiceImpl {
+    async fn create(
+        &self,
+        project_key: &ProjectKey,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<crate::context::ComponentDto, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        if name.trim().is_empty() {
+            return Err(AppError::invalid_input("component name must not be empty"));
+        }
+        let component = domain::ProjectComponent {
+            id: shared::ProjectComponentId::new(),
+            project_id: project.id,
+            name: name.trim().to_string().into(),
+            description: description.map(|d| d.to_string().into()),
+            created_at: shared::now(),
+        };
+        self.components.save(&component).await?;
+        Ok(Self::to_dto(&component))
+    }
+
+    async fn list_by_project(
+        &self,
+        project_key: &ProjectKey,
+    ) -> Result<Vec<crate::context::ComponentDto>, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        let items = self.components.list_by_project(project.id).await?;
+        Ok(items.iter().map(Self::to_dto).collect())
+    }
+
+    async fn update(
+        &self,
+        id: shared::ProjectComponentId,
+        name: &str,
+        description: Option<&str>,
+    ) -> Result<crate::context::ComponentDto, AppError> {
+        let mut component = self.components.get_by_id(id).await?;
+        if !name.trim().is_empty() {
+            component.name = name.trim().to_string().into();
+        }
+        component.description = description.map(|d| d.to_string().into());
+        self.components.save(&component).await?;
+        Ok(Self::to_dto(&component))
+    }
+
+    async fn delete(&self, id: shared::ProjectComponentId) -> Result<(), AppError> {
+        self.components.delete(id).await?;
+        Ok(())
+    }
+}
+
+pub struct VersionServiceImpl {
+    versions: Arc<dyn domain::ProjectVersionRepository>,
+    projects: Arc<dyn ProjectRepository>,
+}
+
+impl VersionServiceImpl {
+    pub fn new(
+        versions: Arc<dyn domain::ProjectVersionRepository>,
+        projects: Arc<dyn ProjectRepository>,
+    ) -> Self {
+        Self { versions, projects }
+    }
+
+    fn to_dto(v: &domain::ProjectVersion) -> crate::context::VersionDto {
+        crate::context::VersionDto {
+            id: v.id.to_string(),
+            project_id: v.project_id.to_string(),
+            name: v.name.as_ref().to_string(),
+            description: v.description.as_ref().map(|d| d.as_ref().to_string()),
+            released: v.released,
+            release_date: v.release_date.map(|d| d.to_rfc3339()),
+            created_at: v.created_at.to_rfc3339(),
+        }
+    }
+}
+
+#[async_trait]
+impl crate::context::VersionService for VersionServiceImpl {
+    async fn create(
+        &self,
+        project_key: &ProjectKey,
+        name: &str,
+        description: Option<&str>,
+        released: bool,
+        release_date: Option<chrono::DateTime<chrono::FixedOffset>>,
+    ) -> Result<crate::context::VersionDto, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        if name.trim().is_empty() {
+            return Err(AppError::invalid_input("version name must not be empty"));
+        }
+        let version = domain::ProjectVersion {
+            id: shared::ProjectVersionId::new(),
+            project_id: project.id,
+            name: name.trim().to_string().into(),
+            description: description.map(|d| d.to_string().into()),
+            released,
+            release_date,
+            created_at: shared::now(),
+        };
+        self.versions.save(&version).await?;
+        Ok(Self::to_dto(&version))
+    }
+
+    async fn list_by_project(
+        &self,
+        project_key: &ProjectKey,
+    ) -> Result<Vec<crate::context::VersionDto>, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        let items = self.versions.list_by_project(project.id).await?;
+        Ok(items.iter().map(Self::to_dto).collect())
+    }
+
+    async fn update(
+        &self,
+        id: shared::ProjectVersionId,
+        name: &str,
+        description: Option<&str>,
+        released: bool,
+        release_date: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
+    ) -> Result<crate::context::VersionDto, AppError> {
+        let mut version = self.versions.get_by_id(id).await?;
+        if !name.trim().is_empty() {
+            version.name = name.trim().to_string().into();
+        }
+        version.description = description.map(|d| d.to_string().into());
+        version.released = released;
+        if let Some(rd) = release_date {
+            version.release_date = rd;
+        }
+        self.versions.save(&version).await?;
+        Ok(Self::to_dto(&version))
+    }
+
+    async fn delete(&self, id: shared::ProjectVersionId) -> Result<(), AppError> {
+        self.versions.delete(id).await?;
+        Ok(())
     }
 }

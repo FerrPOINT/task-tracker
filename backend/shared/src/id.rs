@@ -69,6 +69,9 @@ uuid_id!(IssueStatusHistoryId);
 uuid_id!(SavedFilterId);
 uuid_id!(NotificationId);
 uuid_id!(AuditLogId);
+uuid_id!(ProjectComponentId);
+uuid_id!(ProjectVersionId);
+uuid_id!(CustomFieldId);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProjectKey(Arc<str>);

@@ -145,6 +145,11 @@ async fn spawn_server_with_notifications()
         notifications: notifications.clone(),
         notification_settings: notifications.clone(),
         issue_status_history: Arc::new(domain::MemoryIssueStatusHistoryRepository::default()),
+        watchers: Arc::new(domain::MemoryWatcherRepository::default()),
+        votes: Arc::new(domain::MemoryVoteRepository::default()),
+        components: Arc::new(domain::StubProjectComponentRepository),
+        versions: Arc::new(domain::StubProjectVersionRepository),
+        custom_fields: Arc::new(domain::StubCustomFieldRepository),
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -2145,6 +2150,11 @@ async fn spawn_server_with_reports() -> (
         notifications: Arc::new(MemoryNotificationRepository::default()),
         notification_settings: Arc::new(MemoryNotificationRepository::default()),
         issue_status_history: history.clone(),
+        watchers: Arc::new(domain::MemoryWatcherRepository::default()),
+        votes: Arc::new(domain::MemoryVoteRepository::default()),
+        components: Arc::new(domain::StubProjectComponentRepository),
+        versions: Arc::new(domain::StubProjectVersionRepository),
+        custom_fields: Arc::new(domain::StubCustomFieldRepository),
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -2189,8 +2199,12 @@ fn make_test_issue(
         original_estimate_seconds: None,
         remaining_estimate_seconds: None,
         time_spent_seconds: 0,
+        component_id: None,
+        affected_version_id: None,
+        fix_version_id: None,
         created_at,
         updated_at: created_at,
+        deleted_at: None,
         events: vec![],
     }
 }
