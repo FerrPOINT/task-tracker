@@ -4,7 +4,6 @@ pub mod m20250723_0000017_issue_links;
 pub mod m20250723_0000018_fulltext_search;
 pub mod m20250723_0000019_saved_filters;
 pub mod m20250723_000001_create_tables;
-pub mod m20250723_000002_seed_demo_data;
 pub mod m20260824_0000020_notifications;
 pub mod m20260824_0000021_admin_audit_settings;
 pub mod m20260824_0000022_performance_indexes;
@@ -34,7 +33,6 @@ impl MigratorTrait for Migrator {
             Box::new(m20260825_0000024_issue_soft_delete::Migration),
             Box::new(m20260825_0000025_components_versions::Migration),
             Box::new(m20260825_0000026_custom_fields::Migration),
-            Box::new(m20250723_000002_seed_demo_data::Migration),
         ]
     }
 }
