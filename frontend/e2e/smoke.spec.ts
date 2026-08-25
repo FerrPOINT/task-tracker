@@ -99,6 +99,10 @@ test.describe('smoke', () => {
         },
       }),
     )
+    await page.route('**/api/v1/notifications', (route) => routeJson(route, { items: [], unread_count: 0 }))
+    await page.route('**/api/v1/events**', (route) => routeJson(route, ''))
+    await page.route('**/api/v1/auth/refresh', (route) => routeJson(route, { access_token: 'demo-token', token_type: 'Bearer' }))
+    await page.route('**/api/v1/notifications**', (route) => routeJson(route, { items: [], unread_count: 0 }))
 
     page.on('request', (req) => console.log('request', req.method(), req.url()))
     page.on('response', (res) => console.log('response', res.status(), res.url()))
