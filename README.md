@@ -2,6 +2,19 @@
 
 Self-hosted таск-трекер: Rust (axum + SeaORM + PostgreSQL) + React (Vite + Tailwind). Env-префикс `TASKTRACKER_`.
 
+## Скриншоты
+
+| Экран | Скриншот |
+|---|---|
+| Login | ![Login](docs/screenshots/01-login.png) |
+| Проекты | ![Projects](docs/screenshots/02-projects.png) |
+| Канбан-доска | ![Board](docs/screenshots/03-board.png) |
+| Бэклог | ![Backlog](docs/screenshots/04-backlog.png) |
+| Корзина | ![Trash](docs/screenshots/06-trash.png) |
+| Кастомные поля | ![Custom Fields](docs/screenshots/07-custom-fields.png) |
+| Уведомления | ![Notifications](docs/screenshots/08-notifications.png) |
+| Отчёты | ![Reports](docs/screenshots/09-reports.png) |
+
 ## Порты по умолчанию
 
 | Сервис | Внешний порт | Описание |
@@ -10,14 +23,54 @@ Self-hosted таск-трекер: Rust (axum + SeaORM + PostgreSQL) + React (Vi
 | Backend | `3456` | API |
 | PostgreSQL | `3457` | БД |
 | Redis | `6379` | Кеш/сессии |
-| Traefik (профиль) | `8080` | Reverse proxy |
 
-## Текущее состояние MVP
+## Функциональность
 
-- Проекты, канбан-доска, бэклог, поиск, дашборд, создание задач, детальная страница задачи.
-- Авторизация JWT (access + refresh cookie).
-- OpenAPI: `openapi/openapi.json`, TypeScript клиент — `pnpm generate:api`.
-- E2E и скриншоты: Playwright (375 / 1920 / 2560, светлая/тёмная тема).
+### Проекты и задачи
+- Проекты с канбан-досками, бэклогом, поиском, дашбордом
+- Задачи: создание, редактирование, переход по статусам, комментарии, вложения
+- Приоритеты, метки, типы задач, связи между задачами
+- Назначение исполнителей, учёт времени (worklog)
+
+### Канбан и спринты
+- Канбан-доска с drag-and-drop колонками
+- Спринты с планированием и отчётами
+- Отчёты: velocity, burndown, cumulative flow, control chart
+
+### Уведомления
+- In-app notification center с непрочитанными
+- SSE real-time push (NotificationCreated event)
+- Email digest (hourly/daily background task, SMTP)
+- Per-user настройки: email_frequency, disabled_event_types, notify_own_changes
+
+### Watchers и голосования
+- Watch: подписка на изменения задачи
+- Vote: голосование за задачу, счётчик голосов
+
+### Кастомные поля
+- Project-level определения: text, number, select, multi-select, date
+- Issue-level значения, required flag
+- Управление через проектные настройки
+
+### Компоненты и версии
+- Project components (Frontend, Backend, Database, ...)
+- Project versions (релизы/milestones с released/release_date)
+- Issue: component, affected_version, fix_version
+
+### Soft-delete и корзина
+- Задачи помечаются `deleted_at` вместо удаления
+- Корзина: восстановление и permanent purge
+
+### CLI
+- `task-tracker` binary — управление через API
+- 12 групп команд: auth, project, issue, board, sprint, comment, label, search, notification, report, admin, member
+- 3 формата вывода: json, table, compact
+- Skill для AI-управления: `cli/SKILL.md`
+
+### Администрирование
+- Admin panel: users, instance settings, audit log
+- Security headers, rate limiting, Prometheus metrics
+- JQL-поиск, saved filters
 
 ## Быстрый старт
 
@@ -25,7 +78,7 @@ Self-hosted таск-трекер: Rust (axum + SeaORM + PostgreSQL) + React (Vi
 # 1. Скопировать env
 cp .env.example .env
 
-# 2. Поднять инфраструктуру и backend
+# 2. Поднять инфраструктуру
 docker compose up -d
 
 # 3. Проверить API
@@ -40,6 +93,24 @@ pnpm dev
 
 Frontend dev откроется на `http://localhost:5173`, API проксируется через Vite dev server.
 
+## CLI
+
+```bash
+# Сборка
+cd backend && cargo build --bin task-tracker
+
+# Использование
+export TASKTRACKER_API_URL=http://localhost:3456
+export TASKTRACKER_TOKEN=<jwt_token>
+
+./target/debug/task-tracker project list
+./target/debug/task-tracker issue create --project DEMO --summary "Fix bug" --priority high
+./target/debug/task-tracker issue list --project DEMO --output table
+./target/debug/task-tracker board show --project DEMO
+```
+
+Документация команд: `cli/SKILL.md`.
+
 ## Команды
 
 Основные команды завёрнуты в `justfile`:
@@ -48,7 +119,7 @@ Frontend dev откроется на `http://localhost:5173`, API проксир
 |---|---|
 | `just setup` | Установить зависимости backend + frontend |
 | `just setup-env` | Создать `.env` из `.env.example` |
-| `just db-up` | Поднять Docker Compose (`postgres`, `redis`, `backend`, `frontend`) |
+| `just db-up` | Поднять Docker Compose |
 | `just db-down` | Остановить Docker Compose |
 | `just backend-dev` | Поднять backend + БД в Docker |
 | `just frontend-dev` | Запустить frontend dev server |
@@ -86,17 +157,19 @@ services:
 
 - `backend/` — Rust workspace (`api`, `app`, `domain`, `infra`, `shared`, `server`, `cli`, `migration`)
 - `frontend/` — React SPA (`src/pages/`, `src/api/`, `src/widgets/`)
+- `cli/` — CLI binary + AI skill (`SKILL.md`)
 - `openapi/` — канонический `openapi.json`
-- `docs/` — архитектура, ТЗ, дата-модель, UI/UX, deployment, AGENTS.md
+- `docs/` — архитектура, ТЗ, дата-модель, API, deployment, AGENTS.md
 
 ## Документы
 
 - [Архитектура](docs/ARCHITECTURE.md)
 - [Техническое задание](docs/TZ.md)
 - [Дата-модель](docs/DATA_MODEL.md)
-- [UI/UX](docs/UI_UX.md)
+- [API](docs/API.md)
 - [Deployment](docs/DEPLOYMENT.md)
 - [Testing](docs/TESTING.md)
+- [Roadmap](docs/ROADMAP.md)
 - [AGENTS.md](docs/AGENTS.md)
 
 ## Лицензия

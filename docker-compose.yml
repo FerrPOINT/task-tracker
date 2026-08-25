@@ -31,6 +31,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    restart: unless-stopped
     environment:
       TASKTRACKER_DATABASE__URL: ${TASKTRACKER_DATABASE_URL}
       TASKTRACKER_SERVER_ADDRESS: 0.0.0.0
@@ -54,6 +55,7 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+    restart: unless-stopped
     environment:
       NODE_ENV: production
     ports:
