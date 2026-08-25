@@ -102,7 +102,7 @@
 - [x] OpenAPI + generated frontend client for notification endpoints.
 - [x] Verification: repository/service/API/frontend/config/template tests.
 - [x] Генерация уведомлений из issue-событий: issue_assigned (create/update), issue_moved (transition), issue_commented (comment). NotificationCreated SSE event → frontend auto-refetch.
-- [ ] Email digest и production delivery flow.
+- [x] Email digest и production delivery flow: hourly background task собирает непрочитанные уведомления, группирует по recipient, отправляет HTML digest через SMTP, помечает доставленные как прочитанные. respects per-user email_frequency (immediate/hourly/daily), shutdown-cancelled tokio task.
 - [x] Real-time push for notification center (NotificationCreated SSE event, frontend auto-refetch notifications).
 
 ## 9. Phase 7: Reports (M7)
@@ -145,6 +145,16 @@
 - Public boards (read-only).
 - Mobile app (PWA/capacitor).
 - Plugin system.
+
+## 12.1. Implemented post-v0.1.0 (v0.2.0)
+
+- [x] Issue watchers: watch/unwatch, notifications on watched issue changes.
+- [x] Issue votes: vote/unvote, vote count.
+- [x] Custom fields: project-level definitions (text/number/select/multi-select/date), issue-level values.
+- [x] Project components: CRUD, issue component assignment.
+- [x] Project versions: CRUD (released/release_date), issue affected/fix version.
+- [x] Soft-delete/trash: deleted_at on issues, restore, permanent purge, trash UI.
+- [x] CLI: task-tracker binary, 12 command groups, AI-usable skill documentation.
 
 ## 13. Definitions of Done
 

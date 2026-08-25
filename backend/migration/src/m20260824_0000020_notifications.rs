@@ -41,7 +41,7 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(Notifications::Metadata)
                             .json()
                             .not_null()
-                            .default("'{}'::jsonb"),
+                            .default(SimpleExpr::Custom("'{}'::jsonb".to_owned())),
                     )
                     .col(
                         ColumnDef::new(Notifications::CreatedAt)
@@ -100,7 +100,7 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(NotificationUserSettings::DisabledEventTypes)
                             .json()
                             .not_null()
-                            .default("'[]'::jsonb"),
+                            .default(SimpleExpr::Custom("'[]'::jsonb".to_owned())),
                     )
                     .col(
                         ColumnDef::new(NotificationUserSettings::NotifyOwnChanges)

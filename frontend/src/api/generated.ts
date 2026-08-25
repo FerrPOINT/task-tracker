@@ -180,6 +180,22 @@ export interface paths {
         patch: operations["update_comment"];
         trace?: never;
     };
+    "/api/v1/custom-fields/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_custom_field"];
+        post?: never;
+        delete: operations["delete_custom_field"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dashboard": {
         parameters: {
             query?: never;
@@ -357,38 +373,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/issues/{id}/trash": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete: operations["purge_issue"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/projects/{key}/trash": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["list_trash"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/issues/{id}/transition": {
         parameters: {
             query?: never;
@@ -400,6 +384,22 @@ export interface paths {
         put?: never;
         post: operations["transition_issue"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{id}/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["purge_issue"];
         options?: never;
         head?: never;
         patch?: never;
@@ -431,6 +431,38 @@ export interface paths {
         get: operations["list_comments"];
         put?: never;
         post: operations["create_comment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/custom-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_issue_custom_field_values"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/custom-fields/{field_id}/value": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["set_custom_field_value"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -479,6 +511,70 @@ export interface paths {
         get: operations["list_links"];
         put?: never;
         post: operations["create_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/vote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["vote_issue"];
+        delete: operations["unvote_issue"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/votes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_votes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["watch_issue"];
+        delete: operations["unwatch_issue"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/issues/{issue_id}/watchers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_watchers"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -597,6 +693,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{key}/trash": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_trash"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/members": {
         parameters: {
             query?: never;
@@ -687,6 +799,54 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["move_issue"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/components": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_components"];
+        put?: never;
+        post: operations["create_component"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/components/{component_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_component"];
+        post?: never;
+        delete: operations["delete_component"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/custom-fields": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_custom_fields"];
+        put?: never;
+        post: operations["create_custom_field"];
         delete?: never;
         options?: never;
         head?: never;
@@ -800,6 +960,38 @@ export interface paths {
         put?: never;
         post: operations["start_sprint"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_versions"];
+        put?: never;
+        post: operations["create_version"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_key}/versions/{version_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_version"];
+        post?: never;
+        delete: operations["delete_version"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1072,6 +1264,20 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        ComponentListResponse: {
+            components: components["schemas"]["ComponentResponse"][];
+        };
+        ComponentRequest: {
+            description?: string | null;
+            name: string;
+        };
+        ComponentResponse: {
+            created_at: string;
+            description?: string | null;
+            id: string;
+            name: string;
+            project_id: string;
+        };
         ControlChartPointResponse: {
             /** Format: double */
             cycle_time_days: number;
@@ -1082,6 +1288,12 @@ export interface components {
         };
         CreateCommentRequest: {
             body: string;
+        };
+        CreateCustomFieldRequest: {
+            field_type: string;
+            is_required?: boolean;
+            name: string;
+            options?: string[];
         };
         CreateIssueRequest: {
             assignee_id?: string | null;
@@ -1134,6 +1346,25 @@ export interface components {
         };
         CumulativeFlowResponse: {
             points: components["schemas"]["CumulativeFlowPointResponse"][];
+        };
+        CustomFieldListResponse: {
+            fields: components["schemas"]["CustomFieldResponse"][];
+        };
+        CustomFieldResponse: {
+            created_at: string;
+            field_type: string;
+            id: string;
+            is_required: boolean;
+            name: string;
+            options: string[];
+            project_id: string;
+        };
+        CustomFieldValueListResponse: {
+            values: components["schemas"]["CustomFieldValueResponse"][];
+        };
+        CustomFieldValueResponse: {
+            field_id: string;
+            value: unknown;
         };
         DashboardResponse: {
             assigned_issues: components["schemas"]["IssueResponse"][];
@@ -1270,6 +1501,9 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        SetCustomFieldValueRequest: {
+            value: unknown;
+        };
         SprintListResponse: {
             sprints: components["schemas"]["SprintResponse"][];
         };
@@ -1323,9 +1557,18 @@ export interface components {
         UpdateCommentRequest: {
             body: string;
         };
+        UpdateCustomFieldRequest: {
+            field_type: string;
+            is_required?: boolean;
+            name: string;
+            options?: string[];
+        };
         UpdateIssueRequest: {
+            affected_version_id?: string | null;
             assignee_id?: string | null;
+            component_id?: string | null;
             description?: string | null;
+            fix_version_id?: string | null;
             priority?: string | null;
             sprint_id?: string | null;
             status_id?: string | null;
@@ -1382,6 +1625,59 @@ export interface components {
             committed: number;
             completed: number;
             name: string;
+        };
+        VersionListResponse: {
+            versions: components["schemas"]["VersionResponse"][];
+        };
+        VersionRequest: {
+            description?: string | null;
+            name: string;
+            /** Format: date-time */
+            release_date?: string | null;
+            released?: boolean;
+        };
+        VersionResponse: {
+            created_at: string;
+            description?: string | null;
+            id: string;
+            name: string;
+            project_id: string;
+            release_date?: string | null;
+            released: boolean;
+        };
+        VoteCountResponse: {
+            /** Format: int64 */
+            count: number;
+        };
+        VoteListResponse: {
+            /** Format: int64 */
+            count: number;
+            votes: components["schemas"]["VoteResponse"][];
+        };
+        VoteResponse: {
+            display_name: string;
+            user_id: string;
+            username: string;
+            voted_at: string;
+        };
+        VoteStatusResponse: {
+            /** Format: int64 */
+            count: number;
+            has_voted: boolean;
+        };
+        WatchRequest: {
+            user_id?: string | null;
+        };
+        WatchStatusResponse: {
+            is_watching: boolean;
+        };
+        WatcherListResponse: {
+            watchers: components["schemas"]["WatcherResponse"][];
+        };
+        WatcherResponse: {
+            display_name: string;
+            user_id: string;
+            username: string;
         };
         WorklogListResponse: {
             worklogs: components["schemas"]["WorklogResponse"][];
@@ -1913,6 +2209,89 @@ export interface operations {
             };
         };
     };
+    update_custom_field: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Custom field ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCustomFieldRequest"];
+            };
+        };
+        responses: {
+            /** @description Custom field updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Custom field not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_custom_field: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Custom field ID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Custom field deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Custom field not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     get_dashboard: {
         parameters: {
             query?: never;
@@ -2240,6 +2619,32 @@ export interface operations {
             };
         };
     };
+    update_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateIssueRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueResponse"];
+                };
+            };
+        };
+    };
     restore_issue: {
         parameters: {
             query?: never;
@@ -2265,80 +2670,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
-            };
-        };
-    };
-    purge_issue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Issue id */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    list_trash: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Project key */
-                key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssueListResponse"];
-                };
-            };
-        };
-    };
-    update_issue: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Issue id */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateIssueRequest"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssueResponse"];
-                };
             };
         };
     };
@@ -2382,6 +2713,32 @@ export interface operations {
                 content?: never;
             };
             /** @description Issue not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    purge_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2553,6 +2910,91 @@ export interface operations {
                 content?: never;
             };
             /** @description Issue not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_issue_custom_field_values: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Custom field values listed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldValueListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Issue not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_custom_field_value: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+                /** @description Custom field ID */
+                field_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCustomFieldValueRequest"];
+            };
+        };
+        responses: {
+            /** @description Value set */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Issue or field not found */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2752,6 +3194,198 @@ export interface operations {
             };
             /** @description Source or target issue not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    vote_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vote added */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoteResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Issue not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unvote_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Vote removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_votes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Votes listed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VoteListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    watch_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Now watching the issue */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Issue not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    unwatch_issue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stopped watching the issue */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_watchers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Issue ID */
+                issue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Watchers listed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatcherListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -3085,6 +3719,28 @@ export interface operations {
             };
         };
     };
+    list_trash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueListResponse"];
+                };
+            };
+        };
+    };
     list_members: {
         parameters: {
             query?: never;
@@ -3335,6 +3991,183 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["BoardResponse"];
                 };
+            };
+        };
+    };
+    list_components: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentListResponse"];
+                };
+            };
+        };
+    };
+    create_component: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComponentRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentResponse"];
+                };
+            };
+        };
+    };
+    update_component: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ComponentRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComponentResponse"];
+                };
+            };
+        };
+    };
+    delete_component: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+                component_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    list_custom_fields: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Custom fields listed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldListResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    create_custom_field: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project key */
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCustomFieldRequest"];
+            };
+        };
+        responses: {
+            /** @description Custom field created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomFieldResponse"];
+                };
+            };
+            /** @description Bad request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Project not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3624,6 +4457,98 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SprintResponse"];
                 };
+            };
+        };
+    };
+    list_versions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionListResponse"];
+                };
+            };
+        };
+    };
+    create_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionResponse"];
+                };
+            };
+        };
+    };
+    update_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionResponse"];
+                };
+            };
+        };
+    };
+    delete_version: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_key: string;
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

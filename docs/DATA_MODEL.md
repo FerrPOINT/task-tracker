@@ -1,8 +1,10 @@
 # Дата-модель Task Tracker
 
-## 0. Фактическая схема реализованных таблиц (миграции 000001–000017)
+## 0. Фактическая схема реализованных таблиц (миграции 000001–000026)
 
 Раздел 4 описывает целевую полную модель (фазы 5+). Ниже — таблицы, реально существующие в текущих миграциях (`backend/migration/src/`), полученные из живой БД. При расхождении приоритет у миграций.
+
+> **v0.2.0** (миграции 000023–000026): добавлены таблицы `issue_watchers`, `issue_votes`, `project_components`, `project_versions`, `custom_fields`, `issue_custom_field_values`; в таблицу `issues` добавлены колонки `deleted_at`, `component_id`, `affected_version_id`, `fix_version_id`.
 
 ### statuses
 ```
@@ -120,6 +122,126 @@ Indexes:
 Foreign-key constraints:
     "fk_issue_links_source" FOREIGN KEY (source_id) REFERENCES issues(id) ON DELETE CASCADE
     "fk_issue_links_target" FOREIGN KEY (target_id) REFERENCES issues(id) ON DELETE CASCADE
+```
+
+### issue_watchers
+```
+          Table "public.issue_watchers"
+  Column  | Type | Collation | Nullable | Default
+----------+------+-----------+----------+---------
+ issue_id | uuid |           | not null |
+ user_id  | uuid |           | not null |
+Indexes:
+    "pk_issue_watchers" PRIMARY KEY, btree (issue_id, user_id)
+    "idx_issue_watchers_user" btree (user_id)
+Foreign-key constraints:
+    "fk_issue_watchers_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_issue_watchers_user" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+```
+
+### issue_votes
+```
+           Table "public.issue_votes"
+  Column  |           Type           | Collation | Nullable |      Default
+----------+--------------------------+-----------+----------+-------------------
+ issue_id | uuid                     |           | not null |
+ user_id  | uuid                     |           | not null |
+ voted_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "pk_issue_votes" PRIMARY KEY, btree (issue_id, user_id)
+    "idx_issue_votes_user" btree (user_id)
+Foreign-key constraints:
+    "fk_issue_votes_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_issue_votes_user" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+```
+
+### project_components
+```
+                      Table "public.project_components"
+   Column    |           Type           | Collation | Nullable |      Default
+-------------+--------------------------+-----------+----------+-------------------
+ id          | uuid                     |           | not null | gen_random_uuid()
+ project_id  | uuid                     |           | not null |
+ name        | character varying        |           | not null |
+ description | text                     |           |          |
+ created_at  | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "project_components_pkey" PRIMARY KEY, btree (id)
+    "idx_project_components_project" btree (project_id)
+Foreign-key constraints:
+    "fk_project_components_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+```
+
+### project_versions
+```
+                      Table "public.project_versions"
+   Column     |           Type           | Collation | Nullable |      Default
+--------------+--------------------------+-----------+----------+-------------------
+ id           | uuid                     |           | not null | gen_random_uuid()
+ project_id   | uuid                     |           | not null |
+ name         | character varying        |           | not null |
+ description  | text                     |           |          |
+ released     | boolean                  |           | not null | false
+ release_date | timestamp with time zone |           |          |
+ created_at   | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "project_versions_pkey" PRIMARY KEY, btree (id)
+    "idx_project_versions_project" btree (project_id)
+Foreign-key constraints:
+    "fk_project_versions_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+```
+
+### custom_fields
+```
+                     Table "public.custom_fields"
+   Column    |           Type           | Collation | Nullable |      Default
+-------------+--------------------------+-----------+----------+-------------------
+ id          | uuid                     |           | not null | gen_random_uuid()
+ project_id  | uuid                     |           | not null |
+ name        | character varying        |           | not null |
+ field_type  | character varying        |           | not null |
+ options     | jsonb                    |           | not null | '[]'::jsonb
+ is_required | boolean                  |           | not null | false
+ created_at  | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "custom_fields_pkey" PRIMARY KEY, btree (id)
+    "idx_custom_fields_project" btree (project_id)
+Foreign-key constraints:
+    "fk_custom_fields_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+```
+
+### issue_custom_field_values
+```
+        Table "public.issue_custom_field_values"
+  Column  | Type | Collation | Nullable |   Default
+----------+------+-----------+----------+------------
+ issue_id | uuid |           | not null |
+ field_id | uuid |           | not null |
+ value    | jsonb|           | not null | 'null'::jsonb
+Indexes:
+    "pk_issue_custom_field_values" PRIMARY KEY, btree (issue_id, field_id)
+Foreign-key constraints:
+    "fk_issue_custom_field_values_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_issue_custom_field_values_field" FOREIGN KEY (field_id) REFERENCES custom_fields(id) ON DELETE CASCADE
+```
+
+### issues (новые колонки v0.2.0)
+
+Миграции 000024 и 000025 добавили в таблицу `issues` следующие колонки:
+
+```
+       Column          |           Type           | Collation | Nullable | Default
+-----------------------+--------------------------+-----------+----------+---------
+ deleted_at            | timestamp with time zone |           |          |
+ component_id          | uuid                     |           |          |
+ affected_version_id   | uuid                     |           |          |
+ fix_version_id        | uuid                     |           |          |
+Indexes:
+    "idx_issues_deleted_at" btree (deleted_at)
+Foreign-key constraints:
+    "fk_issues_component" FOREIGN KEY (component_id) REFERENCES project_components(id) ON DELETE SET NULL
+    "fk_issues_affected_version" FOREIGN KEY (affected_version_id) REFERENCES project_versions(id) ON DELETE SET NULL
+    "fk_issues_fix_version" FOREIGN KEY (fix_version_id) REFERENCES project_versions(id) ON DELETE SET NULL
 ```
 
 ---
@@ -897,6 +1019,9 @@ CREATE TABLE issues (
     resolution TEXT,
     resolution_date TIMESTAMPTZ,
     labels TEXT[] DEFAULT '{}',
+    component_id UUID REFERENCES project_components(id) ON DELETE SET NULL,
+    affected_version_id UUID REFERENCES project_versions(id) ON DELETE SET NULL,
+    fix_version_id UUID REFERENCES project_versions(id) ON DELETE SET NULL,
     deleted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
@@ -914,6 +1039,9 @@ CREATE TABLE issues (
 - `rank`
 - `key` (unique)
 - `deleted_at` (для фильтрации)
+- `component_id`
+- `affected_version_id`
+- `fix_version_id`
 - GIN `labels`
 - GIN full-text `tsv_summary_description` (generated)
 

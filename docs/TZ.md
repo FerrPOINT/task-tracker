@@ -184,12 +184,70 @@ Epic
 
 Каждый ресурс API содержит поле `self` с полным URL: `https://host:19876/api/v1/{resource}/{id}`.
 
-### 5.5. Issue watchers / votes
+### 5.5. Issue watchers
 
-- Watch: `POST /issues/{id}/watch` (toggle).
-- `GET /issues/{id}/watchers` — список наблюдателей.
-- Vote: `POST /issues/{id}/vote` (toggle).
-- `GET /issues/{id}/votes` — счётчик и статус текущего пользователя.
+Пользователи могут подписываться на задачи (watch) и отписываться от них (unwatch), чтобы получать уведомления об изменениях.
+
+#### 5.5.1. Модель данных
+
+Таблица `issue_watchers`:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `issue_id` | UUID | Задача |
+| `user_id` | UUID | Наблюдатель |
+
+- Первичный ключ: `(issue_id, user_id)` — один watch на пользователя/задачу.
+- Индекс `idx_issue_watchers_user` по `user_id` — быстрый поиск «что я смотрю».
+- `ON DELETE CASCADE` для обоих FK — при удалении задачи или пользователя watch автоматически удаляется.
+
+#### 5.5.2. API
+
+| Метод | Путь | Назначение |
+|-------|------|-----------|
+| `POST` | `/api/v1/issues/{issue_id}/watch` | Подписка на задачу (текущий пользователь) |
+| `DELETE` | `/api/v1/issues/{issue_id}/watch` | Отписка от задачи (текущий пользователь) |
+| `GET` | `/api/v1/issues/{issue_id}/watchers` | Список наблюдателей задачи |
+
+#### 5.5.3. Поведение
+
+- При изменении задачи (status, assignee, comment, и др.) все watchers получают уведомление согласно notification scheme (см. раздел 18).
+- Автор изменения (reporter/assignee) не получает уведомление о собственном действии, если не указано иное в настройках.
+- Watcher автоматически становится получателем уведомлений о: смене статуса, новом комментарии, новом вложении, связи с другой задачей.
+- JQL: `watchers = currentUser()` — задачи, которые я смотрю.
+
+### 5.6. Issue votes
+
+Пользователи могут голосовать за задачи (vote) и снимать свой голос (unvote). Отображается общее количество голосов.
+
+#### 5.6.1. Модель данных
+
+Таблица `issue_votes`:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `issue_id` | UUID | Задача |
+| `user_id` | UUID | Проголосовавший |
+| `voted_at` | timestamp | Время голосования |
+
+- Первичный ключ: `(issue_id, user_id)` — один голос на пользователя/задачу.
+- Индекс `idx_issue_votes_user` по `user_id` — быстрый поиск «за что я проголосовал».
+- `ON DELETE CASCADE` для обоих FK.
+
+#### 5.6.2. API
+
+| Метод | Путь | Назначение |
+|-------|------|-----------|
+| `POST` | `/api/v1/issues/{issue_id}/vote` | Голосование за задачу (текущий пользователь) |
+| `DELETE` | `/api/v1/issues/{issue_id}/vote` | Снятие голоса (текущий пользователь) |
+| `GET` | `/api/v1/issues/{issue_id}/votes` | Список проголосовавших + счётчик |
+
+#### 5.6.3. Поведение
+
+- Пользователь не может голосовать за собственную задачу (reporter).
+- Повторный `POST /vote` идемпотентен — голос уже учтён.
+- `GET /votes` возвращает `{ votes: N, hasVoted: bool, voters: [...] }`.
+- JQL: `votes >= 5` — задачи с 5+ голосами.
 
 ---
 
@@ -363,67 +421,127 @@ Board Admin создаёт быстрые фильтры на основе JQL:
 - Связь child issues через `epic_id`.
 - Прогресс: % выполненных дочерних задач.
 
-### 9.2. Versions / Fix Versions
+### 9.2. Project versions (релизы / milestones)
 
-| Поле | Описание |
-|------|----------|
-| `id` | UUID |
-| `project_id` | Проект |
-| `name` | v1.0.0 |
-| `description` | — |
-| `start_date`, `release_date` | — |
-| `released` | bool |
-| `archived` | bool |
+Версии проекта — это релизы или milestones, на которые можно ссылаться в задачах. Каждая задача может указывать затронутую версию (affected version) и версию исправления (fix version).
 
-- Задачи связываются через `issue_fix_version` / `issue_affected_version`.
-- Roadmap view: timeline эпиков/версий.
+#### 9.2.1. Модель данных
+
+Таблица `project_versions`:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | Уникальный ID |
+| `project_id` | UUID | Проект |
+| `name` | string | Название версии (`v1.0.0`, `Sprint 42`, `Q3 Release`) |
+| `description` | text | Описание версии |
+| `released` | bool | Выпущена ли версия |
+| `release_date` | timestamp | Дата релиза |
+| `created_at` | timestamp | — |
+
+- Индекс `idx_project_versions_project` по `project_id`.
+- `ON DELETE CASCADE` — при удалении проекта удаляются все его версии.
+
+#### 9.2.2. Связь с задачами
+
+В таблицу `issues` добавлены колонки:
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| `affected_version_id` | UUID? | Затронутая версия (в каком релизе обнаружена проблема) |
+| `fix_version_id` | UUID? | Версия исправления (в каком релизе исправлена) |
+
+- FK на `project_versions(id)` с `ON DELETE SET NULL` — при удалении версии ссылка на задаче обнуляется, задача не теряется.
+- Индекс `idx_issues_deleted_at` (см. раздел 22).
+
+#### 9.2.3. API
+
+| Метод | Путь | Назначение |
+|-------|------|-----------|
+| `GET` | `/api/v1/projects/{project_key}/versions` | Список версий проекта |
+| `POST` | `/api/v1/projects/{project_key}/versions` | Создание версии |
+| `PUT` | `/api/v1/projects/{project_key}/versions/{version_id}` | Обновление версии |
+| `DELETE` | `/api/v1/projects/{project_key}/versions/{version_id}` | Удаление версии |
+
+#### 9.2.4. Поведение
+
+- Project Admin / Project Manager могут создавать и управлять версиями.
+- При создании задачи можно указать `affected_version_id` и `fix_version_id`.
+- Roadmap view: timeline версий с задачами, у которых fix version = эта версия.
+- Отчёт «Release burndown»: прогресс по задачам в рамках версии.
+- JQL: `fixVersion = "v1.0.0"`, `affectedVersion IN (v1.0.0, v1.1.0)`.
+- Задачи, ссылающиеся на версию через `affected_version_id` или `fix_version_id`, не блокируют удаление версии (FK → SET NULL).
 
 ---
 
 ## 10. Кастомные поля
 
-### 10.1. Типы кастомных полей
+Кастомные поля позволяют расширять модель задач проект-специфичными атрибутами. Определения создаются на уровне проекта, значения хранятся на уровне задачи.
+
+### 10.1. Определение поля (project-level)
+
+Таблица `custom_fields`:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | Уникальный ID |
+| `project_id` | UUID | Проект, которому принадлежит поле |
+| `name` | string | Название поля (`Story Points`, `Priority`, `Department`) |
+| `field_type` | string | Тип поля (см. 10.2) |
+| `options` | JSONB | Опции для select/multi-select (`[{"value":"High","color":"red"},...]`) |
+| `is_required` | bool | Обязательное поле — значение должно быть заполнено при создании/редактировании задачи |
+| `created_at` | timestamp | — |
+
+- Индекс `idx_custom_fields_project` по `project_id`.
+- `ON DELETE CASCADE` — при удалении проекта удаляются все кастомные поля и их значения.
+
+### 10.2. Типы полей
 
 | Тип | Хранение | UI |
 |-----|----------|-----|
-| Text (single line) | text | input |
-| Text area (multi-line) | text | textarea |
-| Number | numeric | number input |
-| Date | date | datepicker |
-| DateTime | timestamp | datetime picker |
-| Select (single) | custom_field_option_id | select |
-| Select (multi) | array option ids | multi-select |
-| Checkbox | array option ids | checkboxes |
-| Radio buttons | option id | radio |
-| User picker (single) | user_id | user select |
-| User picker (multi) | array user ids | multi user select |
-| URL | text | url input |
-| Label picker | array text | labels |
-| Boolean | bool | toggle |
-| Cascading select | parent/child option ids | cascader |
+| `text` | text | input (single line) |
+| `number` | numeric | number input |
+| `select` | custom_field_option_id | select (single choice) |
+| `multi_select` | array option ids | multi-select (multiple choices) |
+| `date` | date | datepicker |
 
-### 10.2. Контекст поля
+- Для `select` и `multi_select` в `options` хранится JSON-массив опций: `[{ "value": "Backend", "color": "#blue" }, ...]`.
+- Для `text` и `number` поле `options` пустое (`[]`).
+- Для `date` значение хранится как ISO 8601 строка в JSONB.
 
-- Глобальное (Global context) — для всех проектов.
-- Проектное (Project context) — для конкретных проектов/типов задач.
+### 10.3. Значения полей (issue-level)
 
-### 10.3. Хранение значений
+Таблица `issue_custom_field_values`:
 
-Таблица `issue_custom_field_value`:
-- `issue_id`
-- `custom_field_id`
-- `value_text`
-- `value_number`
-- `value_date`
-- `value_jsonb`
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `issue_id` | UUID | Задача |
+| `field_id` | UUID | Кастомное поле |
+| `value` | JSONB | Значение (строка, число, массив ID опций, дата) |
 
-### 10.4. Field configuration
+- Первичный ключ: `(issue_id, field_id)` — одно значение на поле/задачу.
+- `ON DELETE CASCADE` для обоих FK — при удалении задачи или поля значения удаляются.
+- Значение хранится в JSONB для унификации: `{"value": "High"}`, `{"value": 42}`, `{"value": ["opt1","opt2"]}`, `{"value": "2025-08-25"}`.
 
-- Обязательные поля по issue type.
-- Скрытые поля.
-- Default values.
+### 10.4. Обязательные поля (required flag)
 
-### 10.5. Schema и JQL clause names
+- `is_required = true` — поле обязательно для заполнения.
+- Валидация: при создании задачи без обязательного поля API возвращает 422.
+- При редактировании задачи нельзя очистить обязательное поле (установить в null).
+- Проверка `is_required` выполняется в сервисном слое перед сохранением.
+
+### 10.5. API
+
+| Метод | Путь | Назначение |
+|-------|------|-----------|
+| `GET` | `/api/v1/projects/{project_key}/custom-fields` | Список кастомных полей проекта |
+| `POST` | `/api/v1/projects/{project_key}/custom-fields` | Создание кастомного поля |
+| `PUT` | `/api/v1/custom-fields/{id}` | Обновление кастомного поля (name, options, is_required) |
+| `DELETE` | `/api/v1/custom-fields/{id}` | Удаление кастомного поля |
+| `GET` | `/api/v1/issues/{issue_id}/custom-fields` | Значения кастомных полей задачи |
+| `PUT` | `/api/v1/issues/{issue_id}/custom-fields/{field_id}/value` | Установка значения кастомного поля |
+
+### 10.6. Schema и JQL clause names
 
 Каждое кастомное поле имеет `schema` JSONB:
 
@@ -437,7 +555,7 @@ Board Admin создаёт быстрые фильтры на основе JQL:
 
 `clause_names` — массив имён для JQL: `["Story Points", "cf[10000]"]`.
 
-### 10.6. ADF / ProseMirror
+### 10.7. ADF / ProseMirror
 
 Description и comments хранятся в формате ProseMirror JSON (JSONB).
 API возвращает `renderedFields` expand с HTML-представлением.
@@ -447,16 +565,50 @@ API возвращает `renderedFields` expand с HTML-представлен�
 
 ## 11. Компоненты проекта
 
-| Поле | Описание |
-|------|----------|
-| `id` | UUID |
-| `project_id` | — |
-| `name` | Backend, Frontend, API |
-| `description` | — |
-| `lead_id` | Ответственный |
-| `default_assignee_id` | — |
+Компоненты — это логические части проекта (Backend, Frontend, API, Database), используемые для группировки задач и авто-назначения ответственных.
 
-Используется для группировки задач и авто-назначения.
+### 11.1. Модель данных
+
+Таблица `project_components`:
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `id` | UUID | Уникальный ID |
+| `project_id` | UUID | Проект |
+| `name` | string | Название компонента (`Backend`, `Frontend`, `API`) |
+| `description` | text | Описание компонента |
+| `created_at` | timestamp | — |
+
+- Индекс `idx_project_components_project` по `project_id`.
+- `ON DELETE CASCADE` — при удалении проекта удаляются все компоненты.
+
+### 11.2. Связь с задачами
+
+В таблицу `issues` добавлена колонка:
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| `component_id` | UUID? | Компонент, к которому относится задача |
+
+- FK на `project_components(id)` с `ON DELETE SET NULL` — при удалении компонента ссылка на задаче обнуляется, задача не теряется.
+- В issue detail компонент отображается в системных полях.
+
+### 11.3. API
+
+| Метод | Путь | Назначение |
+|-------|------|-----------|
+| `GET` | `/api/v1/projects/{project_key}/components` | Список компонентов проекта |
+| `POST` | `/api/v1/projects/{project_key}/components` | Создание компонента |
+| `PUT` | `/api/v1/projects/{project_key}/components/{component_id}` | Обновление компонента |
+| `DELETE` | `/api/v1/projects/{project_key}/components/{component_id}` | Удаление компонента |
+
+### 11.4. Поведение
+
+- Project Admin может создавать и управлять компонентами.
+- При создании/редактировании задачи можно указать `component_id`.
+- Используется для группировки задач в фильтрах и отчётах.
+- JQL: `component = "Backend"`, `component IN (Backend, Frontend)`.
+- Задачи, ссылающиеся на компонент, не блокируют удаление компонента (FK → SET NULL).
 
 ---
 
@@ -727,12 +879,40 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 
 ---
 
-## 22. Trash / архивация
+## 22. Soft-delete / Корзина (Trash)
 
-- Soft delete задач в trash на 30 дней.
-- Восстановление Project Admin.
-- Автоочистка через cron.
-- Архивация проектов.
+Задачи не удаляются физически, а помечаются как удалённые (soft delete). Это позволяет восстановить случайно удалённые задачи и хранить историю. Удалённые задачи попадают в корзину проекта, откуда их можно восстановить или удалить безвозвратно.
+
+### 22.1. Модель данных
+
+В таблицу `issues` добавлена колонка:
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| `deleted_at` | timestamp? | Время soft-delete; `NULL` — задача активна |
+
+- Индекс `idx_issues_deleted_at` по `deleted_at` — быстрый поиск удалённых задач.
+- Задача считается удалённой, если `deleted_at IS NOT NULL`.
+- Обычные списки и JQL-запросы исключают удалённые задачи (`WHERE deleted_at IS NULL`).
+
+### 22.2. API
+
+| Метод | Путь | Назначение |
+|-------|------|-----------|
+| `DELETE` | `/api/v1/issues/{id}` | Soft-delete задачи — устанавливает `deleted_at = now()`, перемещение в корзину |
+| `POST` | `/api/v1/issues/{id}/restore` | Восстановление задачи из корзины — сбрасывает `deleted_at = NULL` |
+| `DELETE` | `/api/v1/issues/{id}/trash` | Безвозвратное удаление (permanent purge) — физическое удаление из БД |
+| `GET` | `/api/v1/projects/{key}/trash` | Список удалённых задач проекта (корзина) |
+
+### 22.3. Поведение
+
+- Soft-delete (`DELETE /issues/{id}`): устанавливает `deleted_at = now()`. Задача исчезает из обычных списков, досок и backlog, но остаётся в БД.
+- Restore (`POST /issues/{id}/restore`): сбрасывает `deleted_at = NULL`. Задача возвращается в активные списки, доски и backlog.
+- Permanent purge (`DELETE /issues/{id}/trash`): физически удаляет задачу и все связанные данные (комментарии, вложения, worklog, связи, watchers, votes, custom field values) через `ON DELETE CASCADE`.
+- Trash list (`GET /projects/{key}/trash`): возвращает список задач проекта, у которых `deleted_at IS NOT NULL`.
+- Автоочистка через cron: задачи с `deleted_at` старше retention-периода (по умолчанию 30 дней, см. раздел 30) автоматически удаляются (permanent purge).
+- Архивация проектов — отдельная операция (`status = archived`), не связана с soft-delete задач.
+- Права: `DELETE /issues/{id}` (soft-delete) — требует permission `Delete issue`. `DELETE /issues/{id}/trash` (purge) — требует permission `Admin project` или `Delete issue` (настраивается).
 
 ---
 
@@ -1134,6 +1314,176 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 - Все фичи сначала проектируем в документах, затем API + тесты, затем UI.
 - Каждая фича заканчивается e2e тестом и скриншотами (375/1920/2560).
 - Код не пишем, пока не зафиксирована дата-модель и API-контракт.
+
+---
+
+## 34. CLI (task-tracker)
+
+Бинарник `task-tracker` — CLI-клиент для управления трекером из командной строки. Предназначен как для ручного использования, так и для автоматизации (CI/CD, скрипты, AI-агенты).
+
+### 34.1. Глобальные опции
+
+| Опция | Env | По умолчанию | Описание |
+|-------|-----|-------------|----------|
+| `--api-url` | `TASKTRACKER_API_URL` | `http://localhost:19876` | Базовый URL API |
+| `--token` | `TASKTRACKER_TOKEN` | — | Bearer-токен аутентификации |
+| `--output` | `TASKTRACKER_OUTPUT` | `json` | Формат вывода: `json`, `table`, `compact` |
+| `--version` | — | — | Версия CLI |
+
+### 34.2. Форматы вывода
+
+| Формат | Описание |
+|--------|----------|
+| `json` | Pretty-printed JSON (по умолчанию) |
+| `table` | Табличный вывод с заголовками (TSV — tab-separated values) |
+| `compact` | Компактный: `id | key | name | status` (одна строка на запись) |
+
+### 34.3. Группы команд
+
+CLI содержит 12 групп команд (subcommands):
+
+| # | Группа | Назначение |
+|---|--------|-----------|
+| 1 | `auth` | Аутентификация: register, login, logout, whoami |
+| 2 | `project` | Управление проектами: list, create, get, update, delete |
+| 3 | `issue` | Управление задачами: create, get, update, delete, transition, list |
+| 4 | `board` | Доски / Kanban: get, backlog, move |
+| 5 | `sprint` | Спринты: list, create, get, start, close, add-issue, remove-issue |
+| 6 | `comment` | Комментарии: list, add, update, delete |
+| 7 | `label` | Метки: list, create, delete, attach, detach |
+| 8 | `search` | Поиск: global (текстовый), jql (JQL-запрос) |
+| 9 | `notification` | Уведомления: list, read, read-all, settings, update-settings |
+| 10 | `report` | Отчёты: velocity, burndown, cumulative-flow, control-chart |
+| 11 | `admin` | Админка: list-users, create-user, toggle-user, audit-log, settings, set-setting |
+| 12 | `member` | Участники проекта: list, add, remove |
+
+### 34.4. Команды
+
+#### auth
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `register` | `--email --username --display-name --password` | Регистрация нового пользователя |
+| `login` | `--email --password` | Вход, получение access token |
+| `logout` | — | Инвалидация сессии |
+| `whoami` | — | Текущий пользователь |
+
+#### project
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `list` | — | Список всех проектов |
+| `create` | `--key --name [--description]` | Создание проекта |
+| `get` | `key` | Детали проекта |
+| `update` | `key [--name --description]` | Обновление проекта |
+| `delete` | `key` | Удаление проекта |
+
+#### issue
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `create` | `--project-key --summary [--issue-type --priority --description --assignee-id --status-id]` | Создание задачи |
+| `get` | `key` | Детали задачи |
+| `update` | `key [--summary --description --priority --status-id --assignee-id]` | Обновление задачи |
+| `delete` | `key` | Soft-delete задачи (перемещение в корзину) |
+| `transition` | `key --to` | Смена статуса задачи |
+| `list` | `--project-key` | Список задач проекта |
+
+#### board
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `get` | `--project-key` | Доска (колонки + задачи) |
+| `backlog` | `--project-key` | Бэклог проекта |
+| `move` | `--project-key --issue-id --status-id` | Перемещение задачи в колонку |
+
+#### sprint
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `list` | `--project-key` | Список спринтов |
+| `create` | `--project-key --name [--goal]` | Создание спринта |
+| `get` | `id` | Детали спринта |
+| `start` | `id` | Запуск спринта |
+| `close` | `id` | Закрытие спринта |
+| `add-issue` | `--sprint-id --issue-id` | Добавление задачи в спринт |
+| `remove-issue` | `--sprint-id --issue-id` | Удаление задачи из спринта |
+
+#### comment
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `list` | `issue_id` | Комментарии задачи |
+| `add` | `--issue-id --body` | Добавление комментария |
+| `update` | `--comment-id --body` | Редактирование комментария |
+| `delete` | `comment_id` | Удаление комментария |
+
+#### label
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `list` | `project_key` | Метки проекта |
+| `create` | `--project-key --name [--color]` | Создание метки |
+| `delete` | `label_id` | Удаление метки |
+| `attach` | `--issue-id --label-id` | Привязка метки к задаче |
+| `detach` | `--issue-id --label-id` | Отвязка метки от задачи |
+
+#### search
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `global` | `--q [--project-key --priority --assignee-id]` | Глобальный текстовый поиск |
+| `jql` | `query` | JQL-запрос |
+
+#### notification
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `list` | — | Непрочитанные уведомления |
+| `read` | `id` | Отметить уведомление прочитанным |
+| `read-all` | — | Отметить все прочитанными |
+| `settings` | — | Настройки уведомлений |
+| `update-settings` | `[--email-frequency --notify-own-changes]` | Обновление настроек |
+
+#### report
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `velocity` | `--project-key [--count]` | Отчёт velocity по спринтам |
+| `burndown` | `--sprint-id` | Burndown chart спринта |
+| `cumulative-flow` | `--project-key` | Cumulative flow diagram |
+| `control-chart` | `--project-key` | Control chart (cycle time) |
+
+#### admin
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `list-users` | — | Список пользователей |
+| `create-user` | `--email --username --display-name --password [--is-admin]` | Создание пользователя (admin) |
+| `toggle-user` | `user_id --active` | Активация/деактивация пользователя |
+| `audit-log` | `[--limit]` | Записи audit log |
+| `settings` | — | Системные настройки |
+| `set-setting` | `--key --value` | Обновление системной настройки |
+
+#### member
+
+| Команда | Аргументы | Описание |
+|---------|-----------|----------|
+| `list` | `project_key` | Участники проекта |
+| `add` | `--project-key --user-id [--role]` | Добавление участника |
+| `remove` | `--project-key --user-id` | Удаление участника |
+
+### 34.5. Использование для AI-управления
+
+CLI спроектирован для использования AI-агентами и автоматизации:
+
+- Все команды возвращают машиночитаемый JSON (по умолчанию).
+- Аутентификация через env `TASKTRACKER_TOKEN` — не требует интерактивного ввода.
+- Базовый URL через env `TASKTRACKER_API_URL` — поддержка разных окружений.
+- Идемпотентные операции: повторный вызов не вызывает ошибок.
+- Ошибки возвращаются с ненулевым exit code и описанием в stderr.
+- AI-агенты могут: создавать/обновлять задачи, искать через JQL, управлять спринтами, получать отчёты, без необходимости прямого HTTP-взаимодействия.
+
 ## References
 
 - `docs/ARCHITECTURE.md`

@@ -45,7 +45,7 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(AuditLogs::Metadata)
                             .json()
                             .not_null()
-                            .default("'{}'::jsonb"),
+                            .default(SimpleExpr::Custom("'{}'::jsonb".to_owned())),
                     )
                     .col(
                         ColumnDef::new(AuditLogs::CreatedAt)
@@ -98,7 +98,7 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(SystemSettings::Value)
                             .json()
                             .not_null()
-                            .default("'{}'::jsonb"),
+                            .default(SimpleExpr::Custom("'{}'::jsonb".to_owned())),
                     )
                     .col(
                         ColumnDef::new(SystemSettings::UpdatedAt)

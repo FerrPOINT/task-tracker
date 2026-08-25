@@ -119,6 +119,60 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 |---|---|---|
 | DELETE, PATCH | `/worklogs/{id}` | Правка / удаление записи |
 
+### Issue Watchers
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| POST | `/issues/{issue_id}/watch` | Подписка на задачу |
+| DELETE | `/issues/{issue_id}/watch` | Отписка от задачи |
+| GET | `/issues/{issue_id}/watchers` | Список наблюдателей |
+
+### Issue Votes
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| POST | `/issues/{issue_id}/vote` | Голосование за задачу |
+| DELETE | `/issues/{issue_id}/vote` | Снятие голоса |
+| GET | `/issues/{issue_id}/votes` | Список проголосовавших |
+
+### Custom Fields
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/projects/{project_key}/custom-fields` | Список кастомных полей проекта |
+| POST | `/projects/{project_key}/custom-fields` | Создание кастомного поля |
+| PUT | `/custom-fields/{id}` | Обновление кастомного поля |
+| DELETE | `/custom-fields/{id}` | Удаление кастомного поля |
+| GET | `/issues/{issue_id}/custom-fields` | Значения кастомных полей задачи |
+| PUT | `/issues/{issue_id}/custom-fields/{field_id}/value` | Установка значения кастомного поля |
+
+### Components
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/projects/{project_key}/components` | Список компонентов проекта |
+| POST | `/projects/{project_key}/components` | Создание компонента |
+| PUT | `/projects/{project_key}/components/{component_id}` | Обновление компонента |
+| DELETE | `/projects/{project_key}/components/{component_id}` | Удаление компонента |
+
+### Versions
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/projects/{project_key}/versions` | Список версий проекта |
+| POST | `/projects/{project_key}/versions` | Создание версии |
+| PUT | `/projects/{project_key}/versions/{version_id}` | Обновление версии |
+| DELETE | `/projects/{project_key}/versions/{version_id}` | Удаление версии |
+
+### Trash (Soft-delete)
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| DELETE | `/issues/{id}` | Soft-delete задачи (перемещение в корзину) |
+| POST | `/issues/{id}/restore` | Восстановление задачи из корзины |
+| DELETE | `/issues/{id}/trash` | Безвозвратное удаление задачи |
+| GET | `/projects/{key}/trash` | Список удалённых задач проекта |
+
 ### Workflow — Statuses
 
 | Метод | Путь | Назначение |
@@ -547,30 +601,76 @@ Soft delete → trash.
 
 ### POST /issues/{id}/watch
 
-Toggle watch. Response: `{"isWatching": true}`.
+Подписка текущего пользователя на задачу. Если в теле передан `user_id`, подписывается указанный пользователь (требует прав).
 
-### POST /issues/{id}/vote
+**Body (optional):**
+```json
+{
+  "user_id": "uuid"
+}
+```
 
-Toggle vote. Response: `{"votes": 5, "isVoter": true}`.
+**Response 204:** No content.
+
+### DELETE /issues/{id}/watch
+
+Отписка текущего пользователя от задачи.
+
+**Response 204:** No content.
 
 ### GET /issues/{id}/watchers
 
-Response:
+Список наблюдателей задачи.
+
+**Response 200:**
 ```json
 {
-  "data": [
-    { "id": "uuid", "username": "jdoe", "displayName": "John Doe" }
+  "watchers": [
+    {
+      "user_id": "uuid",
+      "username": "jdoe",
+      "display_name": "John Doe"
+    }
   ]
 }
 ```
 
-### GET /issues/{id}/votes
+### POST /issues/{id}/vote
 
-Response:
+Голосование текущего пользователя за задачу.
+
+**Response 201:**
 ```json
 {
-  "count": 5,
-  "isVoter": false
+  "user_id": "uuid",
+  "username": "jdoe",
+  "display_name": "John Doe",
+  "voted_at": "2026-01-15T10:00:00Z"
+}
+```
+
+### DELETE /issues/{id}/vote
+
+Снятие голоса текущего пользователя.
+
+**Response 204:** No content.
+
+### GET /issues/{id}/votes
+
+Список проголосовавших пользователей.
+
+**Response 200:**
+```json
+{
+  "votes": [
+    {
+      "user_id": "uuid",
+      "username": "jdoe",
+      "display_name": "John Doe",
+      "voted_at": "2026-01-15T10:00:00Z"
+    }
+  ],
+  "count": 5
 }
 ```
 
@@ -886,65 +986,215 @@ Query: `?projectId=uuid&state=active`
 
 ## Versions
 
-### GET /projects/{id}/versions
+### GET /projects/{project_key}/versions
 
-### POST /projects/{id}/versions
+Список версий проекта.
 
-**Body:** `{ "name": "v1.0.0", "releaseDate": "2026-02-01" }`
-
-### PUT /versions/{id}
-
-### DELETE /versions/{id}
-
-### POST /versions/{id}/release
-
-### POST /versions/{id}/archive
-
----
-
-## Components
-
-### GET /projects/{id}/components
-
-### POST /projects/{id}/components
-
-**Body:** `{ "name": "Backend", "leadId": "uuid", "defaultAssigneeId": "uuid" }`
-
-### PUT /components/{id}
-
-### DELETE /components/{id}
-
----
-
-## Custom Fields
-
-### GET /custom-fields
-
-### POST /custom-fields
-
-**Body:**
+**Response 200:**
 ```json
 {
-  "name": "Story Points",
-  "fieldType": "number",
-  "defaultValue": null,
-  "contexts": [
+  "versions": [
     {
-      "name": "Default",
-      "projectIds": ["uuid"],
-      "issueTypeIds": ["uuid-task", "uuid-story"]
+      "id": "uuid",
+      "project_id": "uuid",
+      "name": "v1.0.0",
+      "description": "Initial release",
+      "released": false,
+      "release_date": "2026-02-01T00:00:00Z",
+      "created_at": "2026-01-01T00:00:00Z"
     }
   ]
 }
 ```
 
+### POST /projects/{project_key}/versions
+
+**Body:**
+```json
+{
+  "name": "v1.0.0",
+  "description": "Initial release",
+  "released": false,
+  "release_date": "2026-02-01T00:00:00Z"
+}
+```
+
+**Response 201:** `VersionResponse`
+
+```json
+{
+  "id": "uuid",
+  "project_id": "uuid",
+  "name": "v1.0.0",
+  "description": "Initial release",
+  "released": false,
+  "release_date": "2026-02-01T00:00:00Z",
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### PUT /projects/{project_key}/versions/{version_id}
+
+**Body:** то же, что и POST.
+
+**Response 200:** `VersionResponse`
+
+### DELETE /projects/{project_key}/versions/{version_id}
+
+**Response 204**
+
+---
+
+## Components
+
+### GET /projects/{project_key}/components
+
+Список компонентов проекта.
+
+**Response 200:**
+```json
+{
+  "components": [
+    {
+      "id": "uuid",
+      "project_id": "uuid",
+      "name": "Backend",
+      "description": "Backend services",
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### POST /projects/{project_key}/components
+
+**Body:**
+```json
+{
+  "name": "Backend",
+  "description": "Backend services"
+}
+```
+
+**Response 201:** `ComponentResponse`
+
+```json
+{
+  "id": "uuid",
+  "project_id": "uuid",
+  "name": "Backend",
+  "description": "Backend services",
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+### PUT /projects/{project_key}/components/{component_id}
+
+**Body:** то же, что и POST.
+
+**Response 200:** `ComponentResponse`
+
+### DELETE /projects/{project_key}/components/{component_id}
+
+**Response 204**
+
+---
+
+## Custom Fields
+
+### GET /projects/{project_key}/custom-fields
+
+Список кастомных полей проекта.
+
+**Response 200:**
+```json
+{
+  "fields": [
+    {
+      "id": "uuid",
+      "project_id": "uuid",
+      "name": "Story Points",
+      "field_type": "number",
+      "options": [],
+      "is_required": false,
+      "created_at": "2026-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### POST /projects/{project_key}/custom-fields
+
+**Body:**
+```json
+{
+  "name": "Story Points",
+  "field_type": "number",
+  "options": [],
+  "is_required": false
+}
+```
+
+**Response 201:** `CustomFieldResponse`
+
+```json
+{
+  "id": "uuid",
+  "project_id": "uuid",
+  "name": "Story Points",
+  "field_type": "number",
+  "options": [],
+  "is_required": false,
+  "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
 ### PUT /custom-fields/{id}
+
+**Body:**
+```json
+{
+  "name": "Story Points",
+  "field_type": "number",
+  "options": [],
+  "is_required": true
+}
+```
+
+**Response 200:** `CustomFieldResponse`
 
 ### DELETE /custom-fields/{id}
 
-### GET /custom-fields/{id}/options
+**Response 204**
 
-### POST /custom-fields/{id}/options
+### GET /issues/{issue_id}/custom-fields
+
+Значения кастомных полей задачи.
+
+**Response 200:**
+```json
+{
+  "values": [
+    {
+      "field_id": "uuid",
+      "value": 5
+    }
+  ]
+}
+```
+
+### PUT /issues/{issue_id}/custom-fields/{field_id}/value
+
+Установка значения кастомного поля для задачи. `value` — произвольный JSON.
+
+**Body:**
+```json
+{
+  "value": 5
+}
+```
+
+**Response 204:** No content.
 
 ---
 
@@ -1294,17 +1544,44 @@ multipart/form-data
 
 ---
 
-## Trash
+## Trash (Soft-delete)
 
-### GET /trash
+### DELETE /issues/{id}
 
-Query: `?projectId=uuid&page=0&size=20`
+Soft-delete задачи — перемещение в корзину. Задача не удаляется физически и может быть восстановлена.
 
-### POST /trash/{issueId}/restore
+**Response 204**
 
-### DELETE /trash/{issueId}
+### POST /issues/{id}/restore
 
-Hard delete.
+Восстановление задачи из корзины.
+
+**Response 200:** `IssueResponse`
+
+### DELETE /issues/{id}/trash
+
+Безвозвратное (физическое) удаление задачи из корзины.
+
+**Response 204**
+
+### GET /projects/{key}/trash
+
+Список удалённых задач проекта (находящихся в корзине).
+
+**Response 200:** `IssueListResponse`
+
+```json
+{
+  "issues": [
+    {
+      "id": "uuid",
+      "key": "TT-42",
+      "summary": "Implement auth",
+      ...
+    }
+  ]
+}
+```
 
 ---
 
