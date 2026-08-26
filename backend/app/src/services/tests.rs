@@ -1938,3 +1938,334 @@ async fn report_control_chart_skips_issues_without_done_transition() {
     // No done transition → not included
     assert!(result.is_empty());
 }
+
+// ─── Tests for audit fixes ───────────────────────────────────────────
+
+#[tokio::test]
+async fn restore_non_deleted_issue_returns_error() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Not deleted".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    // Restoring a non-deleted issue should fail.
+    let err = ctx.services.issue.restore(issue_id, user.id).await;
+    assert!(err.is_err());
+}
+
+#[tokio::test]
+async fn board_move_rejects_issue_from_other_project() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+
+    // Create a second project with its own board.
+    let _project2 = ctx
+        .services
+        .project
+        .create(CreateProjectCommand {
+            key: ProjectKey::new("OTHER"),
+            name: "Other Project".to_string(),
+            description: None,
+            owner_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    // Create issue in project OTHER.
+    let board2 = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("OTHER"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("OTHER"),
+            summary: "Cross-project issue".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board2.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    // Try to move the OTHER issue on the TT board — should fail.
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let target_status: shared::StatusId = board.columns[1].id.parse().unwrap();
+    let err = ctx
+        .services
+        .board
+        .move_issue(&ProjectKey::new("TT"), issue_id, target_status)
+        .await;
+    assert!(err.is_err());
+}
+
+#[tokio::test]
+async fn custom_field_set_value_validates_text_type() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let field = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "TextField",
+            "text",
+            &[],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "CF validation test".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let field_id: shared::CustomFieldId = field.id.parse().unwrap();
+
+    // Setting a number on a text field should fail.
+    let err = ctx
+        .services
+        .custom_field
+        .set_value(issue_id, field_id, serde_json::json!(42), user.id)
+        .await;
+    assert!(err.is_err());
+
+    // Setting a string should succeed.
+    ctx.services
+        .custom_field
+        .set_value(issue_id, field_id, serde_json::json!("hello"), user.id)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn custom_field_set_value_validates_select_type() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let options = vec!["low".to_string(), "medium".to_string(), "high".to_string()];
+    let field = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "PrioritySelect",
+            "select",
+            &options,
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Select field test".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let field_id: shared::CustomFieldId = field.id.parse().unwrap();
+
+    // Setting a value not in the options list should fail.
+    let err = ctx
+        .services
+        .custom_field
+        .set_value(issue_id, field_id, serde_json::json!("critical"), user.id)
+        .await;
+    assert!(err.is_err());
+
+    // Setting a valid option should succeed.
+    ctx.services
+        .custom_field
+        .set_value(issue_id, field_id, serde_json::json!("high"), user.id)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn custom_field_set_value_validates_number_type() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let field = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "AgeField",
+            "number",
+            &[],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Number field test".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let field_id: shared::CustomFieldId = field.id.parse().unwrap();
+
+    // Setting a string on a number field should fail.
+    let err = ctx
+        .services
+        .custom_field
+        .set_value(
+            issue_id,
+            field_id,
+            serde_json::json!("not a number"),
+            user.id,
+        )
+        .await;
+    assert!(err.is_err());
+
+    // Setting a number should succeed.
+    ctx.services
+        .custom_field
+        .set_value(issue_id, field_id, serde_json::json!(42), user.id)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn custom_field_set_value_validates_date_type() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let field = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "DueDateField",
+            "date",
+            &[],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(CreateIssueCommand {
+            project_key: ProjectKey::new("TT"),
+            summary: "Date field test".to_string(),
+            description: None,
+            issue_type: IssueType::Task,
+            priority: Priority::Medium,
+            status_id: board.columns[0].id.to_string(),
+            reporter_id: user.id,
+            assignee_id: None,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let field_id: shared::CustomFieldId = field.id.parse().unwrap();
+
+    // Setting a non-date string should fail.
+    let err = ctx
+        .services
+        .custom_field
+        .set_value(issue_id, field_id, serde_json::json!("not a date"), user.id)
+        .await;
+    assert!(err.is_err());
+
+    // Setting a valid RFC 3339 date should succeed.
+    ctx.services
+        .custom_field
+        .set_value(
+            issue_id,
+            field_id,
+            serde_json::json!("2026-12-31T00:00:00Z"),
+            user.id,
+        )
+        .await
+        .unwrap();
+}

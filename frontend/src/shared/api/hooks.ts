@@ -213,8 +213,14 @@ export function useAttachments(issueId: string | undefined) {
 export function useUploadAttachment(issueId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (file: File) => uploadAttachment(issueId, file),
-    onSuccess: () => qc.invalidateQueries({ queryKey: attachmentKeys.list(issueId) }),
+    mutationFn: ({
+      file,
+      onProgress,
+    }: {
+      file: File
+      onProgress?: (loaded: number, total: number) => void
+    }) => uploadAttachment(issueId, file, onProgress),
+    onSettled: () => qc.invalidateQueries({ queryKey: attachmentKeys.list(issueId) }),
   })
 }
 

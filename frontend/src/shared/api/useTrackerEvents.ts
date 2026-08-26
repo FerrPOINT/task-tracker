@@ -37,15 +37,14 @@ export function useTrackerEvents() {
         case 'issue_created':
         case 'issue_updated':
         case 'issue_deleted':
-          qc.invalidateQueries({ queryKey: ['board'] })
-          qc.invalidateQueries({ queryKey: ['issues'] })
-          qc.invalidateQueries({ queryKey: ['backlog'] })
           if (pk) qc.invalidateQueries({ queryKey: ['project', pk] })
+          qc.invalidateQueries({ queryKey: ['search'] })
+          if (pk) qc.invalidateQueries({ queryKey: ['backlog', pk] })
           if (evt.issue_id) qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
           break
         case 'issue_moved':
-          qc.invalidateQueries({ queryKey: ['board'] })
-          qc.invalidateQueries({ queryKey: ['issues'] })
+          if (pk) qc.invalidateQueries({ queryKey: ['project', pk] })
+          qc.invalidateQueries({ queryKey: ['search'] })
           if (evt.issue_id) qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
           break
         case 'issue_commented':

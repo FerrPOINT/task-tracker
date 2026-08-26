@@ -267,7 +267,7 @@ async fn dashboard_and_search() {
         .send()
         .await
         .unwrap();
-    assert_eq!(created.status(), 200);
+    assert_eq!(created.status(), 201);
 
     let search = client
         .get(format!("{}/api/v1/search?q=searchable", url))
@@ -374,7 +374,7 @@ async fn issue_create_validation_errors() {
         .send()
         .await
         .unwrap();
-    assert_eq!(defaults.status(), 200);
+    assert_eq!(defaults.status(), 201);
     let body: serde_json::Value = defaults.json().await.unwrap();
     assert_eq!(body["issue_type"], "task");
     assert_eq!(body["priority"], "Medium");
@@ -514,7 +514,7 @@ async fn board_success_and_move() {
         .send()
         .await
         .unwrap();
-    assert_eq!(created.status(), 200);
+    assert_eq!(created.status(), 201);
     let issue: serde_json::Value = created.json().await.unwrap();
     let issue_id = issue["id"].as_str().unwrap();
 
@@ -552,7 +552,7 @@ async fn dashboard_returns_assigned_issues() {
         .send()
         .await
         .unwrap();
-    assert_eq!(created.status(), 200);
+    assert_eq!(created.status(), 201);
 
     let res = client
         .get(format!("{}/api/v1/dashboard", url))
@@ -616,7 +616,7 @@ async fn comments_crud() {
         .send()
         .await
         .unwrap();
-    assert_eq!(created.status(), 200);
+    assert_eq!(created.status(), 201);
     let issue: serde_json::Value = created.json().await.unwrap();
     let issue_id = issue["id"].as_str().unwrap();
 
@@ -681,7 +681,7 @@ async fn worklogs_crud() {
         .send()
         .await
         .unwrap();
-    assert_eq!(created.status(), 200);
+    assert_eq!(created.status(), 201);
     let issue: serde_json::Value = created.json().await.unwrap();
     let issue_id = issue["id"].as_str().unwrap();
 
@@ -804,7 +804,7 @@ async fn issue_transition() {
         .send()
         .await
         .unwrap();
-    assert_eq!(created.status(), 200);
+    assert_eq!(created.status(), 201);
     let issue: serde_json::Value = created.json().await.unwrap();
     let issue_id = issue["id"].as_str().unwrap();
 
@@ -893,7 +893,7 @@ async fn create_issue_via_api(url: &str, client: &reqwest::Client, token: &str) 
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 200);
+    assert_eq!(res.status(), 201);
     let body: serde_json::Value = res.json().await.unwrap();
     body["id"].as_str().unwrap().to_string()
 }
@@ -1224,7 +1224,7 @@ async fn create_second_issue(
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 200);
+    assert_eq!(res.status(), 201);
     let body: serde_json::Value = res.json().await.unwrap();
     body["id"].as_str().unwrap().to_string()
 }
@@ -1711,7 +1711,7 @@ async fn sse_stream_receives_issue_events() {
         .send()
         .await
         .unwrap();
-    assert_eq!(created.status(), 200);
+    assert_eq!(created.status(), 201);
 
     let mut got_created = false;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);

@@ -26,7 +26,7 @@ pub async fn register(
     let cmd = RegisterCommand {
         email: body.email,
         username: body.username.clone(),
-        name: body.username,
+        name: body.name.unwrap_or(body.username),
         password: body.password,
     };
     let dto = ctx.services.auth.register(cmd).await?;

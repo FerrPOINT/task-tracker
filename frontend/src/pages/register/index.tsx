@@ -16,10 +16,15 @@ export function RegisterPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState('')
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (password !== confirmPassword) return
+    if (password !== confirmPassword) {
+      setPasswordError(t('auth.passwordMismatch'))
+      return
+    }
+    setPasswordError('')
     mutate(
       { username, email, password },
       {
@@ -87,6 +92,7 @@ export function RegisterPage() {
               required
             />
           </div>
+          {passwordError && <ErrorState message={passwordError} />}
           {error && <ErrorState message={error.message} />}
           <Button type="submit" className="w-full" disabled={isPending}>
             {isPending ? `${t('auth.register')}…` : t('auth.register')}

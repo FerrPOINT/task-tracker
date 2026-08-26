@@ -200,7 +200,13 @@ export function AppShell() {
                   <DropdownMenuItem key={notification.id} className="items-start gap-2 p-2">
                     <div className="min-w-0 flex-1">
                       {notification.action_url ? (
-                        <Link to={notification.action_url} className="block hover:text-accent">
+                        <Link
+                          to={notification.action_url}
+                          className="block hover:text-accent"
+                          onClick={() => {
+                            if (!notification.is_read) markNotificationRead.mutate(notification.id)
+                          }}
+                        >
                           <div className="truncate font-medium">{notification.title}</div>
                           {notification.body && (
                             <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">

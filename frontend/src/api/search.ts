@@ -21,6 +21,7 @@ export async function searchIssues(filters: SearchFilters = {}): Promise<Issue[]
         Object.entries({
           q: filters.q,
           project_key: filters.project_key,
+          status: filters.status,
           assignee_id: filters.assignee_id,
           priority: filters.priority,
           sort_by: filters.sort_by,

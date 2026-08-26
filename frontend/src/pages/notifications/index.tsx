@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { NotificationItem, UpdateNotificationSettingsInput } from '@/api/notifications'
 import {
   useMarkAllNotificationsRead,
+  useMarkNotificationRead,
   useNotificationSettings,
   useNotifications,
   useUpdateNotificationSettings,
@@ -14,26 +15,35 @@ import { Label } from '@/shared/ui/label'
 
 const NotificationCard = memo(function NotificationCard({
   notification,
+  onMarkRead,
 }: {
   notification: NotificationItem
+  onMarkRead: (id: string) => void
 }) {
+  const handleClick = () => {
+    if (!notification.is_read) onMarkRead(notification.id)
+  }
   return (
     <Card className={!notification.is_read ? 'border-l-4 border-l-accent' : undefined}>
       <CardContent className="p-4">
         {notification.action_url ? (
-          <Link to={notification.action_url} className="block hover:text-accent">
+          <Link
+            to={notification.action_url}
+            className="block hover:text-accent"
+            onClick={handleClick}
+          >
             <h2 className="font-semibold">{notification.title}</h2>
             {notification.body && (
               <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>
             )}
           </Link>
         ) : (
-          <>
+          <div onClick={handleClick} className="block">
             <h2 className="font-semibold">{notification.title}</h2>
             {notification.body && (
               <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>
             )}
-          </>
+          </div>
         )}
       </CardContent>
     </Card>
@@ -45,6 +55,7 @@ export function NotificationsPage() {
   const [showUnread, setShowUnread] = useState(false)
   const { data: notifications = [], isLoading: notificationsLoading } = useNotifications()
   const { data: settings, isLoading: settingsLoading } = useNotificationSettings()
+  const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
   const updateSettings = useUpdateNotificationSettings()
   const visibleNotifications = showUnread
@@ -109,7 +120,11 @@ export function NotificationsPage() {
             </p>
           ) : (
             visibleNotifications.map((notification) => (
-              <NotificationCard key={notification.id} notification={notification} />
+              <NotificationCard
+                key={notification.id}
+                notification={notification}
+                onMarkRead={(id) => markNotificationRead.mutate(id)}
+              />
             ))
           )}
         </section>

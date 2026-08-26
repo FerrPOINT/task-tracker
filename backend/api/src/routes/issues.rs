@@ -18,13 +18,13 @@ use std::str::FromStr;
     post,
     path = "/api/v1/issues",
     request_body = CreateIssueRequest,
-    responses((status = 200, body = IssueResponse))
+    responses((status = 201, description = "Issue created", body = IssueResponse))
 )]
 pub async fn create_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Json(req): Json<CreateIssueRequest>,
-) -> Result<Json<IssueResponse>, AppError> {
+) -> Result<(StatusCode, Json<IssueResponse>), AppError> {
     let actor_id = shared::UserId::from_uuid(
         uuid::Uuid::parse_str(&claims.sub).map_err(|_| AppError::invalid_input("invalid token"))?,
     );
@@ -48,7 +48,7 @@ pub async fn create_issue(
         actor_id,
     };
     let i = ctx.services.issue.create(cmd).await?;
-    Ok(Json(map_issue(i)))
+    Ok((StatusCode::CREATED, Json(map_issue(i))))
 }
 
 #[utoipa::path(

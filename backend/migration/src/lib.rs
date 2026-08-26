@@ -10,6 +10,7 @@ pub mod m20260825_0000023_watchers_votes;
 pub mod m20260825_0000024_issue_soft_delete;
 pub mod m20260825_0000025_components_versions;
 pub mod m20260825_0000026_custom_fields;
+pub mod m20260826_0000027_fk_indexes;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -31,6 +32,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260825_0000024_issue_soft_delete::Migration),
             Box::new(m20260825_0000025_components_versions::Migration),
             Box::new(m20260825_0000026_custom_fields::Migration),
+            Box::new(m20260826_0000027_fk_indexes::Migration),
         ]
     }
 }

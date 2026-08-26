@@ -645,7 +645,7 @@ async fn run(cli: Cli) -> Result<()> {
                 password,
             } => {
                 let body = api.post("/api/v1/auth/register", json!({
-                    "email": email, "username": username, "display_name": display_name, "password": password
+                    "email": email, "username": username, "name": display_name, "password": password
                 })).await?;
                 print_output(out, &body);
             }
@@ -730,16 +730,11 @@ async fn run(cli: Cli) -> Result<()> {
                 assignee_id,
                 status_id,
             } => {
-                let project = api
-                    .get(&format!("/api/v1/projects/{}", enc(&project_key)))
-                    .await?;
-                let project_id = project["id"].as_str().context("project missing id")?;
                 let mut payload = json!({
-                    "project_id": project_id,
+                    "project_key": project_key,
                     "summary": summary,
                     "issue_type": issue_type,
                     "priority": priority,
-                    "reporter_id": project_id, // will be overridden by auth
                 });
                 if let Some(d) = description {
                     payload["description"] = Value::String(d);
@@ -1040,7 +1035,7 @@ async fn run(cli: Cli) -> Result<()> {
                 print_output(out, &body);
             }
             NotificationCommands::Read { id } => {
-                api.post(
+                api.patch(
                     &format!("/api/v1/notifications/{}/read", enc(&id)),
                     json!({}),
                 )
@@ -1053,7 +1048,7 @@ async fn run(cli: Cli) -> Result<()> {
                 println!("all notifications marked as read");
             }
             NotificationCommands::Settings => {
-                let body = api.get("/api/v1/notifications/settings").await?;
+                let body = api.get("/api/v1/notification-settings").await?;
                 print_output(out, &body);
             }
             NotificationCommands::UpdateSettings {
@@ -1067,7 +1062,7 @@ async fn run(cli: Cli) -> Result<()> {
                 if let Some(b) = notify_own_changes {
                     payload["notify_own_changes"] = Value::Bool(b);
                 }
-                let body = api.patch("/api/v1/notifications/settings", payload).await?;
+                let body = api.patch("/api/v1/notification-settings", payload).await?;
                 print_output(out, &body);
             }
         },

@@ -535,6 +535,16 @@ impl IssueRepository for IssueRepo {
             .await
             .map_err(AppError::database)?;
         if res.rows_affected == 0 {
+            // Distinguish "not found" from "not deleted" for a better error message.
+            let exists = issue::Entity::find_by_id(id.as_uuid())
+                .one(&*self.db)
+                .await
+                .map_err(AppError::database)?;
+            if exists.is_some() {
+                return Err(AppError::invalid_input(
+                    "issue is not deleted; nothing to restore",
+                ));
+            }
             return Err(AppError::not_found("issue", id));
         }
         Ok(())
@@ -542,15 +552,73 @@ impl IssueRepository for IssueRepo {
 
     async fn purge(&self, id: IssueId) -> Result<(), AppError> {
         // Permanent delete: only works on already soft-deleted (trashed) issues.
-        let res = issue::Entity::delete_many()
+        // First verify the issue exists and is trashed.
+        let exists = issue::Entity::find()
+            .filter(issue::Column::Id.eq(id.as_uuid()))
+            .filter(issue::Column::DeletedAt.is_not_null())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if exists.is_none() {
+            return Err(AppError::not_found("issue", id));
+        }
+        // Cascade-delete child rows that reference this issue.
+        comment::Entity::delete_many()
+            .filter(comment::Column::IssueId.eq(id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        worklog::Entity::delete_many()
+            .filter(worklog::Column::IssueId.eq(id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        attachment::Entity::delete_many()
+            .filter(attachment::Column::IssueId.eq(id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        issue_label::Entity::delete_many()
+            .filter(issue_label::Column::IssueId.eq(id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        issue_link::Entity::delete_many()
+            .filter(
+                sea_orm::Condition::any()
+                    .add(issue_link::Column::SourceId.eq(id.as_uuid()))
+                    .add(issue_link::Column::TargetId.eq(id.as_uuid())),
+            )
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        issue_status_history::Entity::delete_many()
+            .filter(issue_status_history::Column::IssueId.eq(id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        issue_custom_field_value::Entity::delete_many()
+            .filter(issue_custom_field_value::Column::IssueId.eq(id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        issue_vote::Entity::delete_many()
+            .filter(issue_vote::Column::IssueId.eq(id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        issue_watcher::Entity::delete_many()
+            .filter(issue_watcher::Column::IssueId.eq(id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        // Finally, hard-delete the issue row.
+        issue::Entity::delete_many()
             .filter(issue::Column::Id.eq(id.as_uuid()))
             .filter(issue::Column::DeletedAt.is_not_null())
             .exec(&*self.db)
             .await
             .map_err(AppError::database)?;
-        if res.rows_affected == 0 {
-            return Err(AppError::not_found("issue", id));
-        }
         Ok(())
     }
 }

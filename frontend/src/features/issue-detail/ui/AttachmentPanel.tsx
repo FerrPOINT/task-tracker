@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-react'
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
@@ -11,16 +11,32 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
+type UploadProgress = {
+  fileName: string
+  loaded: number
+  total: number
+}
+
 export function AttachmentPanel({ issueId }: { issueId: string }) {
   const { t } = useTranslation()
   const { data: attachments = [], isLoading } = useAttachments(issueId)
   const upload = useUploadAttachment(issueId)
   const remove = useDeleteAttachment(issueId)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [progress, setProgress] = useState<UploadProgress | null>(null)
+
+  useEffect(() => {
+    if (!upload.isPending) setProgress(null)
+  }, [upload.isPending])
 
   const onPick = (files: FileList | null) => {
     if (!files) return
-    Array.from(files).forEach((f) => upload.mutate(f))
+    Array.from(files).forEach((f) =>
+      upload.mutate({
+        file: f,
+        onProgress: (loaded, total) => setProgress({ fileName: f.name, loaded, total }),
+      }),
+    )
   }
 
   return (
@@ -58,6 +74,25 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
           </Button>
         </div>
       </div>
+
+      {upload.isPending && progress && (
+        <div className="space-y-1" data-testid="upload-progress">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span className="truncate">{progress.fileName}</span>
+            <span>
+              {formatSize(progress.loaded)} / {formatSize(progress.total)}
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-accent transition-all"
+              style={{
+                width: `${progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 0}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading')}</p>}
 

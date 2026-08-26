@@ -208,7 +208,13 @@ impl crate::context::BoardService for BoardServiceImpl {
         issue_id: IssueId,
         status_id: StatusId,
     ) -> Result<BoardDto, AppError> {
+        let board = self.boards.get_default_by_project_key(project_key).await?;
         let issue = self.issues.get_by_id(issue_id).await?;
+        if issue.project_id != board.project_id {
+            return Err(AppError::invalid_input(
+                "issue does not belong to this project",
+            ));
+        }
         let allowed = self
             .transitions
             .is_allowed(issue.status_id, status_id)

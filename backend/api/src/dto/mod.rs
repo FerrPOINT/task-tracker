@@ -11,6 +11,8 @@ pub struct RegisterRequest {
     pub email: String,
     pub username: String,
     pub password: String,
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

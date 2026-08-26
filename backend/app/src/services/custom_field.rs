@@ -56,6 +56,63 @@ impl CustomFieldServiceImpl {
     }
 }
 
+/// Validate that a JSON value is acceptable for the given custom field type.
+fn validate_custom_field_value(
+    field: &domain::CustomField,
+    value: &serde_json::Value,
+) -> Result<(), AppError> {
+    use domain::CustomFieldType;
+    match field.field_type {
+        CustomFieldType::Text => {
+            if !value.is_string() {
+                return Err(AppError::invalid_input(
+                    "expected a string value for text field",
+                ));
+            }
+        }
+        CustomFieldType::Number => {
+            if !value.is_number() {
+                return Err(AppError::invalid_input(
+                    "expected a number value for number field",
+                ));
+            }
+        }
+        CustomFieldType::Date => {
+            let s = value
+                .as_str()
+                .ok_or_else(|| AppError::invalid_input("expected a date string for date field"))?;
+            chrono::DateTime::parse_from_rfc3339(s)
+                .map_err(|_| AppError::invalid_input("invalid RFC 3339 date for date field"))?;
+        }
+        CustomFieldType::Select => {
+            let s = value.as_str().ok_or_else(|| {
+                AppError::invalid_input("expected a string value for select field")
+            })?;
+            if !field.options.iter().any(|opt| opt.as_ref() == s) {
+                return Err(AppError::invalid_input(
+                    "value is not one of the allowed options",
+                ));
+            }
+        }
+        CustomFieldType::MultiSelect => {
+            let arr = value.as_array().ok_or_else(|| {
+                AppError::invalid_input("expected an array for multi-select field")
+            })?;
+            for item in arr {
+                let s = item
+                    .as_str()
+                    .ok_or_else(|| AppError::invalid_input("multi-select items must be strings"))?;
+                if !field.options.iter().any(|opt| opt.as_ref() == s) {
+                    return Err(AppError::invalid_input(
+                        "value is not one of the allowed options",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 #[async_trait]
 impl crate::context::CustomFieldService for CustomFieldServiceImpl {
     async fn create_field(
@@ -141,7 +198,9 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
     ) -> Result<(), AppError> {
         // Validate the issue and field exist.
         let _issue = self.issues.get_by_id(issue_id).await?;
-        let _field = self.fields.get_by_id(field_id).await?;
+        let field = self.fields.get_by_id(field_id).await?;
+        // Validate the value matches the field type.
+        validate_custom_field_value(&field, &value)?;
         self.fields.set_value(issue_id, field_id, &value).await?;
         Ok(())
     }

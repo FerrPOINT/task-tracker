@@ -88,10 +88,11 @@ export function AdminPage() {
   const [settingKey, setSettingKey] = useState('')
   const [settingValue, setSettingValue] = useState('null')
   const [settingError, setSettingError] = useState<string | null>(null)
+  const [auditLimit, setAuditLimit] = useState(20)
 
   const users = useAdminUsers()
   const settings = useAdminSettings()
-  const auditLog = useAdminAuditLog()
+  const auditLog = useAdminAuditLog(auditLimit)
   const createUser = useCreateAdminUser()
   const updateStatus = useUpdateAdminUserStatus()
   const updateSetting = useUpdateAdminSetting()
@@ -319,6 +320,18 @@ export function AdminPage() {
                     ))}
                   </TableBody>
                 </Table>
+                {(auditLog.data?.length ?? 0) >= auditLimit && (
+                  <div className="flex justify-center pt-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setAuditLimit((prev) => prev + 20)}
+                      disabled={auditLog.isFetching}
+                    >
+                      {auditLog.isFetching ? t('common.loading') : t('admin.audit.loadMore')}
+                    </Button>
+                  </div>
+                )}
               </QueryState>
             </CardContent>
           </Card>

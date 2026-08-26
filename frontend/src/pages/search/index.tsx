@@ -75,11 +75,7 @@ export default function SearchPage() {
   const { data: projects } = useProjects()
   const { data: users } = useUsers()
 
-  const filtered = useMemo(() => {
-    let list = issues ?? []
-    if (status && !jql) list = list.filter((i: Issue) => i.status === status)
-    return list
-  }, [issues, status, jql])
+  const filtered = useMemo(() => issues ?? [], [issues])
 
   const setFilter = (key: string, value: string | undefined) => {
     setSearchParams((prev) => {

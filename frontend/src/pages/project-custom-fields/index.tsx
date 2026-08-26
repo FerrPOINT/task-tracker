@@ -37,6 +37,7 @@ export function ProjectCustomFieldsPage() {
             onSubmit={(e) => {
               e.preventDefault()
               if (!draft.name.trim()) return
+              if (needsOptions && draft.options.length === 0) return
               create.mutate(draft, { onSuccess: () => setDraft(initial) })
             }}
           >
@@ -84,7 +85,13 @@ export function ProjectCustomFieldsPage() {
               />
               {t('customFields.required')}
             </label>
-            <Button type="submit" disabled={create.isPending}>
+            {needsOptions && draft.options.length === 0 && (
+              <p className="text-xs text-danger">{t('customFields.optionsRequired')}</p>
+            )}
+            <Button
+              type="submit"
+              disabled={create.isPending || (needsOptions && draft.options.length === 0)}
+            >
               {create.isPending ? t('customFields.adding') : t('customFields.addButton')}
             </Button>
           </form>

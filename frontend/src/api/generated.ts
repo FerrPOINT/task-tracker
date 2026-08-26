@@ -1447,6 +1447,7 @@ export interface components {
         };
         RegisterRequest: {
             email: string;
+            name?: string | null;
             password: string;
             username: string;
         };
@@ -2418,7 +2419,8 @@ export interface operations {
             };
         };
         responses: {
-            200: {
+            /** @description Issue created */
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };

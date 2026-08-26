@@ -6,12 +6,14 @@ import { NotificationsPage } from './'
 
 const useNotifications = vi.hoisted(() => vi.fn())
 const useNotificationSettings = vi.hoisted(() => vi.fn())
+const useMarkNotificationRead = vi.hoisted(() => vi.fn())
 const useMarkAllNotificationsRead = vi.hoisted(() => vi.fn())
 const useUpdateNotificationSettings = vi.hoisted(() => vi.fn())
 
 vi.mock('@/shared/api/hooks', () => ({
   useNotifications,
   useNotificationSettings,
+  useMarkNotificationRead,
   useMarkAllNotificationsRead,
   useUpdateNotificationSettings,
 }))
@@ -50,6 +52,7 @@ function mockHooks() {
     data: { email_frequency: 'daily', notify_own_changes: false },
     isLoading: false,
   })
+  useMarkNotificationRead.mockReturnValue({ mutate: vi.fn() })
   useMarkAllNotificationsRead.mockReturnValue({ mutate: vi.fn() })
   useUpdateNotificationSettings.mockReturnValue({ mutate: vi.fn() })
 }

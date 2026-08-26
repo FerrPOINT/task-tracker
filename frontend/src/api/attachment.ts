@@ -16,19 +16,44 @@ function authHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-export async function uploadAttachment(issueId: string, file: File): Promise<Attachment> {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await fetch(`/api/v1/issues/${issueId}/attachments`, {
-    method: 'POST',
-    headers: authHeader(),
-    body: form,
+export async function uploadAttachment(
+  issueId: string,
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const form = new FormData()
+    form.append('file', file)
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', `/api/v1/issues/${issueId}/attachments`)
+    const headers = authHeader()
+    for (const [key, value] of Object.entries(headers)) {
+      xhr.setRequestHeader(key, value)
+    }
+    if (onProgress && xhr.upload) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total)
+      }
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText))
+        } catch {
+          reject(new Error('Invalid response'))
+        }
+      } else {
+        try {
+          const body = JSON.parse(xhr.responseText)
+          reject(new Error(body.error ?? 'upload failed'))
+        } catch {
+          reject(new Error('upload failed'))
+        }
+      }
+    }
+    xhr.onerror = () => reject(new Error('upload failed'))
+    xhr.send(form)
   })
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? 'upload failed')
-  }
-  return res.json()
 }
 
 export async function deleteAttachment(id: string): Promise<void> {

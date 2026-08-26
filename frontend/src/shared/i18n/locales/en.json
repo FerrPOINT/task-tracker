@@ -27,7 +27,8 @@
     "createAccount": "Create account",
     "haveAccount": "Already have an account",
     "loginDemo": "MVP demo: any login/password works.",
-    "registerDemo": "MVP demo: registration without confirmation."
+    "registerDemo": "MVP demo: registration without confirmation.",
+    "passwordMismatch": "Passwords do not match"
   },
   "notifications": {
     "title": "Notifications",
@@ -405,7 +406,8 @@
       "actor": "Actor",
       "changes": "Changes",
       "time": "Time",
-      "system": "System"
+      "system": "System",
+      "loadMore": "Load more"
     }
   },
   "reports": {
@@ -465,7 +467,8 @@
     "configuredTitle": "Configured fields",
     "noFields": "No custom fields configured.",
     "loading": "Loading...",
-    "selectPlaceholder": "Select..."
+    "selectPlaceholder": "Select...",
+    "optionsRequired": "Options are required for this field type"
   },
   "trash": {
     "title": "Trash",

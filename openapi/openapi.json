@@ -849,8 +849,8 @@
           "required": true
         },
         "responses": {
-          "200": {
-            "description": "",
+          "201": {
+            "description": "Issue created",
             "content": {
               "application/json": {
                 "schema": {
@@ -5071,6 +5071,12 @@
         "properties": {
           "email": {
             "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "password": {
             "type": "string"
