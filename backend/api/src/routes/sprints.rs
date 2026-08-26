@@ -50,6 +50,7 @@ fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
 )]
 pub async fn list_sprints(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path(key): axum::extract::Path<String>,
 ) -> Result<Json<SprintListResponse>, AppError> {
     let key = ProjectKey::new(key.as_str());
@@ -61,10 +62,14 @@ pub async fn list_sprints(
         .id
         .parse::<uuid::Uuid>()
         .map_err(|_| AppError::invalid_input("project_id"))?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let items = ctx
         .services
         .sprint
-        .list(shared::ProjectId::from_uuid(project_id))
+        .list(shared::ProjectId::from_uuid(project_id), requester)
         .await?;
     Ok(Json(SprintListResponse {
         sprints: items.into_iter().map(map_sprint_response).collect(),
@@ -80,7 +85,7 @@ pub async fn list_sprints(
 )]
 pub async fn create_sprint(
     State(ctx): State<Arc<app::AppContext>>,
-    Extension(_claims): Extension<crate::middleware::auth::UserClaims>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path(key): axum::extract::Path<String>,
     Json(req): Json<CreateSprintRequest>,
 ) -> Result<(StatusCode, Json<SprintResponse>), AppError> {
@@ -100,7 +105,11 @@ pub async fn create_sprint(
         start_date: req.start_date,
         end_date: req.end_date,
     };
-    let dto = ctx.services.sprint.create(cmd).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let dto = ctx.services.sprint.create(cmd, requester).await?;
     Ok((StatusCode::CREATED, Json(map_sprint_response(dto))))
 }
 
@@ -115,6 +124,7 @@ pub async fn create_sprint(
 )]
 pub async fn get_sprint(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path((key, sprint_id)): axum::extract::Path<(String, String)>,
 ) -> Result<Json<SprintResponse>, AppError> {
     let key = ProjectKey::new(key.as_str());
@@ -126,7 +136,11 @@ pub async fn get_sprint(
         .parse::<uuid::Uuid>()
         .map(SprintId::from_uuid)
         .map_err(|_| AppError::invalid_input("sprint_id"))?;
-    let dto = ctx.services.sprint.get_by_id(id).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let dto = ctx.services.sprint.get_by_id(id, requester).await?;
     Ok(Json(map_sprint_response(dto)))
 }
 
@@ -142,6 +156,7 @@ pub async fn get_sprint(
 )]
 pub async fn update_sprint(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path((key, sprint_id)): axum::extract::Path<(String, String)>,
     Json(req): Json<UpdateSprintRequest>,
 ) -> Result<Json<SprintResponse>, AppError> {
@@ -160,7 +175,11 @@ pub async fn update_sprint(
         start_date: req.start_date,
         end_date: req.end_date,
     };
-    let dto = ctx.services.sprint.update(id, cmd).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let dto = ctx.services.sprint.update(id, cmd, requester).await?;
     Ok(Json(map_sprint_response(dto)))
 }
 
@@ -175,6 +194,7 @@ pub async fn update_sprint(
 )]
 pub async fn start_sprint(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path((key, sprint_id)): axum::extract::Path<(String, String)>,
 ) -> Result<Json<SprintResponse>, AppError> {
     let key = ProjectKey::new(key.as_str());
@@ -186,7 +206,11 @@ pub async fn start_sprint(
         .parse::<uuid::Uuid>()
         .map(SprintId::from_uuid)
         .map_err(|_| AppError::invalid_input("sprint_id"))?;
-    let dto = ctx.services.sprint.start(id).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let dto = ctx.services.sprint.start(id, requester).await?;
     Ok(Json(map_sprint_response(dto)))
 }
 
@@ -201,6 +225,7 @@ pub async fn start_sprint(
 )]
 pub async fn close_sprint(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path((key, sprint_id)): axum::extract::Path<(String, String)>,
 ) -> Result<Json<SprintResponse>, AppError> {
     let key = ProjectKey::new(key.as_str());
@@ -212,7 +237,11 @@ pub async fn close_sprint(
         .parse::<uuid::Uuid>()
         .map(SprintId::from_uuid)
         .map_err(|_| AppError::invalid_input("sprint_id"))?;
-    let dto = ctx.services.sprint.close(id).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let dto = ctx.services.sprint.close(id, requester).await?;
     Ok(Json(map_sprint_response(dto)))
 }
 
@@ -228,6 +257,7 @@ pub async fn close_sprint(
 )]
 pub async fn move_issue_to_sprint(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path((key, sprint_id)): axum::extract::Path<(String, String)>,
     Json(req): Json<MoveIssueToSprintRequest>,
 ) -> Result<Json<crate::dto::IssueResponse>, AppError> {
@@ -245,13 +275,20 @@ pub async fn move_issue_to_sprint(
         .parse::<uuid::Uuid>()
         .map(shared::IssueId::from_uuid)
         .map_err(|_| AppError::invalid_input("issue_id"))?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let dto = ctx
         .services
         .sprint
-        .move_issue(app::commands::MoveIssueToSprintCommand {
-            issue_id,
-            sprint_id: Some(sprint_id),
-        })
+        .move_issue(
+            app::commands::MoveIssueToSprintCommand {
+                issue_id,
+                sprint_id: Some(sprint_id),
+            },
+            requester,
+        )
         .await?;
     Ok(Json(map_issue(dto)))
 }
@@ -268,6 +305,7 @@ pub async fn move_issue_to_sprint(
 )]
 pub async fn remove_issue_from_sprint(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path((key, sprint_id)): axum::extract::Path<(String, String)>,
     Json(req): Json<MoveIssueToSprintRequest>,
 ) -> Result<Json<crate::dto::IssueResponse>, AppError> {
@@ -285,13 +323,20 @@ pub async fn remove_issue_from_sprint(
         .parse::<uuid::Uuid>()
         .map(shared::IssueId::from_uuid)
         .map_err(|_| AppError::invalid_input("issue_id"))?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let dto = ctx
         .services
         .sprint
-        .move_issue(app::commands::MoveIssueToSprintCommand {
-            issue_id,
-            sprint_id: None,
-        })
+        .move_issue(
+            app::commands::MoveIssueToSprintCommand {
+                issue_id,
+                sprint_id: None,
+            },
+            requester,
+        )
         .await?;
     Ok(Json(map_issue(dto)))
 }

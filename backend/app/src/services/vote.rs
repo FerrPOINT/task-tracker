@@ -1,17 +1,27 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use domain::IssueRepository;
 use shared::{AppError, IssueId, UserId};
 
 pub struct VoteServiceImpl {
     votes: Arc<dyn domain::VoteRepository>,
     issues: Arc<dyn IssueRepository>,
+    authz: Authz,
 }
 
 impl VoteServiceImpl {
-    pub fn new(votes: Arc<dyn domain::VoteRepository>, issues: Arc<dyn IssueRepository>) -> Self {
-        Self { votes, issues }
+    pub fn new(
+        votes: Arc<dyn domain::VoteRepository>,
+        issues: Arc<dyn IssueRepository>,
+        authz: Authz,
+    ) -> Self {
+        Self {
+            votes,
+            issues,
+            authz,
+        }
     }
 }
 
@@ -22,8 +32,10 @@ impl crate::context::VoteService for VoteServiceImpl {
         issue_id: IssueId,
         user_id: UserId,
     ) -> Result<crate::context::VoteDto, AppError> {
-        // Verify the issue exists
-        self.issues.get_by_id(issue_id).await?;
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, user_id)
+            .await?;
         let vote = self.votes.add(issue_id, user_id).await?;
         Ok(crate::context::VoteDto {
             user_id: vote.user_id.to_string(),
@@ -41,7 +53,12 @@ impl crate::context::VoteService for VoteServiceImpl {
     async fn list_votes(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::VoteDto>, AppError> {
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let votes = self.votes.list_by_issue(issue_id).await?;
         Ok(votes
             .into_iter()

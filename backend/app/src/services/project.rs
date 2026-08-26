@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use crate::dto::ProjectDto;
 use domain::{Board, IssueQuery, IssueRepository, ProjectRepository};
 use shared::{AppError, BoardId, ProjectId, ProjectKey, UserId};
@@ -10,6 +11,7 @@ pub struct ProjectServiceImpl {
     issues: Arc<dyn IssueRepository>,
     users: Arc<dyn domain::UserRepository>,
     boards: Arc<dyn domain::BoardRepository>,
+    authz: Authz,
 }
 
 impl ProjectServiceImpl {
@@ -18,12 +20,14 @@ impl ProjectServiceImpl {
         issues: Arc<dyn IssueRepository>,
         users: Arc<dyn domain::UserRepository>,
         boards: Arc<dyn domain::BoardRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             projects,
             issues,
             users,
             boards,
+            authz,
         }
     }
 }
@@ -91,10 +95,9 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         cmd: crate::commands::UpdateProjectCommand,
         requester_id: UserId,
     ) -> Result<ProjectDto, AppError> {
-        let mut project = self.projects.get_by_key(key).await?;
-        if project.owner_id != requester_id {
-            return Err(AppError::Forbidden);
-        }
+        let project = self.projects.get_by_key(key).await?;
+        self.authz.require_owner(project.id, requester_id).await?;
+        let mut project = project;
         if let Some(name) = cmd.name {
             project.name = name.into();
             project.updated_at = shared::now();
@@ -111,9 +114,7 @@ impl crate::context::ProjectService for ProjectServiceImpl {
 
     async fn delete(&self, key: &ProjectKey, requester_id: UserId) -> Result<(), AppError> {
         let project = self.projects.get_by_key(key).await?;
-        if project.owner_id != requester_id {
-            return Err(AppError::Forbidden);
-        }
+        self.authz.require_owner(project.id, requester_id).await?;
         self.projects.delete(project.id).await
     }
 }

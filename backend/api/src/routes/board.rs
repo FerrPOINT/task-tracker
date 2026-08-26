@@ -1,5 +1,6 @@
+use app::auth::UserClaims;
 use axum::{
-    Json,
+    Extension, Json,
     extract::{Path, State},
 };
 use shared::AppError;
@@ -16,11 +17,13 @@ use std::str::FromStr;
 )]
 pub async fn get_board(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
 ) -> Result<Json<BoardResponse>, AppError> {
     let key = shared::ProjectKey::from_str(&project_key)
         .map_err(|e| AppError::invalid_input(e.to_string()))?;
-    let b = ctx.services.board.get_board(&key).await?;
+    let requester = parse_user_id(&claims)?;
+    let b = ctx.services.board.get_board(&key, requester).await?;
     Ok(Json(map_board(b)))
 }
 
@@ -32,11 +35,13 @@ pub async fn get_board(
 )]
 pub async fn get_backlog(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
 ) -> Result<Json<crate::dto::BacklogResponse>, AppError> {
     let key = shared::ProjectKey::from_str(&project_key)
         .map_err(|e| AppError::invalid_input(e.to_string()))?;
-    let b = ctx.services.board.get_backlog(&key).await?;
+    let requester = parse_user_id(&claims)?;
+    let b = ctx.services.board.get_backlog(&key, requester).await?;
     Ok(Json(map_backlog(b)))
 }
 
@@ -49,6 +54,7 @@ pub async fn get_backlog(
 )]
 pub async fn move_issue(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
     Json(req): Json<MoveIssueRequest>,
 ) -> Result<Json<BoardResponse>, AppError> {
@@ -69,7 +75,7 @@ pub async fn move_issue(
     let b = ctx
         .services
         .board
-        .move_issue(&key, issue_id, status_id)
+        .move_issue(&key, issue_id, status_id, parse_user_id(&claims)?)
         .await?;
     Ok(Json(map_board(b)))
 }
@@ -142,4 +148,12 @@ fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
         project_name: i.project_name,
         sprint_id: i.sprint_id,
     }
+}
+
+fn parse_user_id(claims: &UserClaims) -> Result<shared::UserId, AppError> {
+    claims
+        .sub
+        .parse()
+        .map(shared::UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id"))
 }

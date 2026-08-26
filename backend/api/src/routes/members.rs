@@ -22,12 +22,17 @@ use shared::{AppError, ProjectId, UserId};
 )]
 pub async fn list_members(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_id): Path<String>,
 ) -> Result<Json<ProjectMemberListResponse>, AppError> {
     let project_id = project_id
         .parse::<ProjectId>()
         .map_err(|_| AppError::invalid_input("invalid project id"))?;
-    let items = ctx.services.member.list(project_id).await?;
+    let requester = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let items = ctx.services.member.list(project_id, requester).await?;
     Ok(Json(ProjectMemberListResponse {
         members: items
             .into_iter()
@@ -72,12 +77,16 @@ pub async fn add_member(
         .user_id
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id"))?;
+    let requester = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let cmd = app::commands::AddProjectMemberCommand {
         project_id,
         user_id,
         role: body.role,
     };
-    let m = ctx.services.member.add(cmd).await?;
+    let m = ctx.services.member.add(cmd, requester).await?;
     Ok((
         axum::http::StatusCode::CREATED,
         Json(ProjectMemberResponse {
@@ -109,7 +118,7 @@ pub async fn remove_member(
     Extension(claims): Extension<UserClaims>,
     Path((project_id, user_id)): Path<(String, String)>,
 ) -> Result<axum::http::StatusCode, AppError> {
-    let _actor_id = claims
+    let requester = claims
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
@@ -119,6 +128,9 @@ pub async fn remove_member(
     let user_id = user_id
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id"))?;
-    ctx.services.member.remove(project_id, user_id).await?;
+    ctx.services
+        .member
+        .remove(project_id, user_id, requester)
+        .await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
 }

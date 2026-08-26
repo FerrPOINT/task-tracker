@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use domain::IssueRepository;
 use shared::{AppError, IssueId, UserId};
 
@@ -8,6 +9,7 @@ pub struct AttachmentServiceImpl {
     attachments: Arc<dyn domain::AttachmentRepository>,
     issues: Arc<dyn IssueRepository>,
     storage: Arc<dyn domain::FileStorage>,
+    authz: Authz,
 }
 
 impl AttachmentServiceImpl {
@@ -15,11 +17,13 @@ impl AttachmentServiceImpl {
         attachments: Arc<dyn domain::AttachmentRepository>,
         issues: Arc<dyn IssueRepository>,
         storage: Arc<dyn domain::FileStorage>,
+        authz: Authz,
     ) -> Self {
         Self {
             attachments,
             issues,
             storage,
+            authz,
         }
     }
 
@@ -47,6 +51,9 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         bytes: Vec<u8>,
     ) -> Result<crate::context::AttachmentDto, AppError> {
         let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, author_id)
+            .await?;
         let key = format!("{}-{}", uuid::Uuid::new_v4(), file_name);
         self.storage.put(&issue.id.to_string(), &key, bytes).await?;
         let attachment = domain::Attachment {
@@ -69,7 +76,12 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
     async fn list_by_issue(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::AttachmentDto>, AppError> {
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let items = self.attachments.list_by_issue(issue_id).await?;
         Ok(items.iter().map(Self::to_dto).collect())
     }
@@ -77,8 +89,13 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
     async fn download(
         &self,
         attachment_id: shared::AttachmentId,
+        requester: UserId,
     ) -> Result<(crate::context::AttachmentDto, Vec<u8>), AppError> {
         let a = self.attachments.get_by_id(attachment_id).await?;
+        let issue = self.issues.get_by_id(a.issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let bytes = self
             .storage
             .get(&a.issue_id.to_string(), a.storage_key.as_ref())
@@ -92,6 +109,10 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         requester: UserId,
     ) -> Result<(), AppError> {
         let a = self.attachments.get_by_id(attachment_id).await?;
+        let issue = self.issues.get_by_id(a.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         if a.author_id != requester {
             return Err(AppError::Forbidden);
         }

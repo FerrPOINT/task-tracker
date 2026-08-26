@@ -60,10 +60,12 @@ pub struct AttachLabelRequest {
 )]
 pub async fn list_labels(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
 ) -> Result<Json<LabelListResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
-    let items = ctx.services.label.list_by_project(&key).await?;
+    let requester = parse_user_id(&claims)?;
+    let items = ctx.services.label.list_by_project(&key, requester).await?;
     Ok(Json(LabelListResponse {
         labels: items
             .into_iter()
@@ -191,12 +193,18 @@ pub async fn delete_label(
 )]
 pub async fn list_issue_labels(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
 ) -> Result<Json<LabelListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let items = ctx.services.label.list_for_issue(issue_id).await?;
+    let requester = parse_user_id(&claims)?;
+    let items = ctx
+        .services
+        .label
+        .list_for_issue(issue_id, requester)
+        .await?;
     Ok(Json(LabelListResponse {
         labels: items
             .into_iter()
@@ -285,4 +293,12 @@ fn parse_user(claims: &UserClaims) -> Result<UserId, AppError> {
         .parse()
         .map(UserId::from_uuid)
         .map_err(|_| AppError::invalid_input("invalid user id"))
+}
+
+fn parse_user_id(claims: &UserClaims) -> Result<UserId, AppError> {
+    claims
+        .sub
+        .parse()
+        .map(UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))
 }

@@ -228,7 +228,7 @@ async fn issue_service_create() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
@@ -236,17 +236,20 @@ async fn issue_service_create() {
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Test issue".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id,
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Test issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id,
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -261,7 +264,7 @@ async fn issue_service_update_and_move() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let todo_id = board.columns[0].id.to_string();
@@ -271,17 +274,20 @@ async fn issue_service_update_and_move() {
     let created = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: project_key.clone(),
-            summary: "Move me".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Low,
-            status_id: todo_id,
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: project_key.clone(),
+                summary: "Move me".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Low,
+                status_id: todo_id,
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -302,6 +308,7 @@ async fn issue_service_update_and_move() {
                 fix_version_id: None,
                 actor_id: user.id,
             },
+            user.id,
         )
         .await
         .unwrap();
@@ -318,6 +325,7 @@ async fn issue_service_update_and_move() {
             &project_key,
             created.id.parse().unwrap(),
             in_progress_id.parse().unwrap(),
+            user.id,
         )
         .await
         .unwrap();
@@ -335,23 +343,26 @@ async fn dashboard_lists_assigned_issues() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
     ctx.services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Assigned task".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id,
-            reporter_id: user.id,
-            assignee_id: Some(user.id),
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Assigned task".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id,
+                reporter_id: user.id,
+                assignee_id: Some(user.id),
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -365,30 +376,33 @@ async fn search_finds_issue() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
     ctx.services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Searchable keyword".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id,
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Searchable keyword".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id,
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
     let results = ctx
         .services
         .search
-        .search(Default::default())
+        .search(Default::default(), user.id)
         .await
         .unwrap();
     assert_eq!(results.len(), 1);
@@ -467,29 +481,32 @@ async fn board_service_backlog() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let status_id = board.columns[0].id.to_string();
     ctx.services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Backlog item".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id,
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Backlog item".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id,
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
     let backlog = ctx
         .services
         .board
-        .get_backlog(&ProjectKey::new("TT"))
+        .get_backlog(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     assert_eq!(backlog.backlog_issues.len(), 1);
@@ -516,17 +533,20 @@ async fn issue_service_create_fails_for_missing_project() {
     let err = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("ZZ"),
-            summary: "orphan".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: "00000000-0000-0000-0000-000000000001".to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("ZZ"),
+                summary: "orphan".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await;
     assert!(err.is_err());
 }
@@ -537,17 +557,20 @@ async fn issue_service_create_fails_for_invalid_status_id() {
     let err = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "bad status".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: "not-a-uuid".to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "bad status".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: "not-a-uuid".to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await;
     assert!(err.is_err());
 }
@@ -558,23 +581,26 @@ async fn issue_service_update_fails_for_invalid_status_id() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let created = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Update me".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Low,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Update me".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Low,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -595,6 +621,7 @@ async fn issue_service_update_fails_for_invalid_status_id() {
                 fix_version_id: None,
                 actor_id: shared::UserId::new(),
             },
+            user.id,
         )
         .await;
     assert!(err.is_err());
@@ -620,6 +647,7 @@ async fn issue_service_update_fails_for_missing_issue() {
                 fix_version_id: None,
                 actor_id: shared::UserId::new(),
             },
+            shared::UserId::new(),
         )
         .await;
     assert!(err.is_err());
@@ -637,6 +665,7 @@ async fn board_move_issue_fails_for_missing_issue() {
             StatusId::from_uuid(
                 uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
             ),
+            shared::UserId::new(),
         )
         .await;
     assert!(err.is_err());
@@ -692,7 +721,11 @@ async fn auth_duplicate_registration_fails() {
 #[tokio::test]
 async fn issue_service_get_by_id_fails_for_missing_issue() {
     let (ctx, _user) = ctx_with_demo_data().await;
-    let err = ctx.services.issue.get_by_id(shared::IssueId::new()).await;
+    let err = ctx
+        .services
+        .issue
+        .get_by_id(shared::IssueId::new(), shared::UserId::new())
+        .await;
     assert!(err.is_err());
 }
 
@@ -754,7 +787,11 @@ async fn issue_service_search_fails_when_project_missing() {
     );
     ctx.repos.issues.save(&issue).await.unwrap();
 
-    let err = ctx.services.search.search(Default::default()).await;
+    let err = ctx
+        .services
+        .search
+        .search(Default::default(), user.id)
+        .await;
     assert!(err.is_err());
 }
 
@@ -784,7 +821,7 @@ async fn issue_service_get_by_id_fails_when_project_missing() {
     );
     ctx.repos.issues.save(&issue).await.unwrap();
 
-    let err = ctx.services.issue.get_by_id(issue.id).await;
+    let err = ctx.services.issue.get_by_id(issue.id, user.id).await;
     assert!(err.is_err());
 }
 
@@ -963,17 +1000,20 @@ async fn issue_create_propagates_repo_error() {
     assert_internal(
         ctx.services
             .issue
-            .create(CreateIssueCommand {
-                project_key: ProjectKey::new("TT"),
-                summary: "x".to_string(),
-                description: None,
-                issue_type: IssueType::Task,
-                priority: Priority::Medium,
-                status_id: "00000000-0000-0000-0000-000000000001".to_string(),
-                reporter_id: UserId::new(),
-                assignee_id: None,
-                actor_id: UserId::new(),
-            })
+            .create(
+                CreateIssueCommand {
+                    project_key: ProjectKey::new("TT"),
+                    summary: "x".to_string(),
+                    description: None,
+                    issue_type: IssueType::Task,
+                    priority: Priority::Medium,
+                    status_id: "00000000-0000-0000-0000-000000000001".to_string(),
+                    reporter_id: UserId::new(),
+                    assignee_id: None,
+                    actor_id: UserId::new(),
+                },
+                UserId::new(),
+            )
             .await,
     );
 }
@@ -981,7 +1021,12 @@ async fn issue_create_propagates_repo_error() {
 #[tokio::test]
 async fn board_get_propagates_repo_error() {
     let ctx = failing_context();
-    assert_internal(ctx.services.board.get_board(&ProjectKey::new("TT")).await);
+    assert_internal(
+        ctx.services
+            .board
+            .get_board(&ProjectKey::new("TT"), UserId::new())
+            .await,
+    );
 }
 
 #[tokio::test]
@@ -993,7 +1038,12 @@ async fn dashboard_get_propagates_repo_error() {
 #[tokio::test]
 async fn search_propagates_repo_error() {
     let ctx = failing_context();
-    assert_internal(ctx.services.search.search(Default::default()).await);
+    assert_internal(
+        ctx.services
+            .search
+            .search(Default::default(), UserId::new())
+            .await,
+    );
 }
 
 fn notification(recipient_id: UserId, created_at: shared::Timestamp) -> Notification {
@@ -1106,23 +1156,26 @@ async fn watcher_add_and_list() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Watched issue".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Watched issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1135,7 +1188,7 @@ async fn watcher_add_and_list() {
     let watchers = ctx
         .services
         .watcher
-        .list_watchers(issue.id.parse().unwrap())
+        .list_watchers(issue.id.parse().unwrap(), user.id)
         .await
         .unwrap();
     assert_eq!(watchers.len(), 1);
@@ -1148,23 +1201,26 @@ async fn watcher_remove() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Watched issue".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Watched issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1177,7 +1233,12 @@ async fn watcher_remove() {
         .await
         .unwrap();
 
-    let watchers = ctx.services.watcher.list_watchers(issue_id).await.unwrap();
+    let watchers = ctx
+        .services
+        .watcher
+        .list_watchers(issue_id, user.id)
+        .await
+        .unwrap();
     assert_eq!(watchers.len(), 0);
 }
 
@@ -1187,23 +1248,26 @@ async fn vote_add_and_count() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Voted issue".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Voted issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1220,23 +1284,26 @@ async fn vote_remove() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Voted issue".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Voted issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1271,7 +1338,7 @@ async fn custom_field_create_and_list() {
     let fields = ctx
         .services
         .custom_field
-        .list_fields(&ProjectKey::new("TT"))
+        .list_fields(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     assert_eq!(fields.len(), 1);
@@ -1299,23 +1366,26 @@ async fn custom_field_set_and_get_value() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Issue with custom field".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Issue with custom field".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1330,7 +1400,7 @@ async fn custom_field_set_and_get_value() {
     let values = ctx
         .services
         .custom_field
-        .get_values_for_issue(issue_id)
+        .get_values_for_issue(issue_id, user.id)
         .await
         .unwrap();
     assert_eq!(values.len(), 1);
@@ -1340,17 +1410,22 @@ async fn custom_field_set_and_get_value() {
 
 #[tokio::test]
 async fn component_create_and_list() {
-    let (ctx, _user) = ctx_with_demo_data().await;
+    let (ctx, user) = ctx_with_demo_data().await;
     ctx.services
         .component
-        .create(&ProjectKey::new("TT"), "Backend", Some("Backend services"))
+        .create(
+            &ProjectKey::new("TT"),
+            "Backend",
+            Some("Backend services"),
+            user.id,
+        )
         .await
         .unwrap();
 
     let components = ctx
         .services
         .component
-        .list_by_project(&ProjectKey::new("TT"))
+        .list_by_project(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     assert_eq!(components.len(), 1);
@@ -1359,7 +1434,7 @@ async fn component_create_and_list() {
 
 #[tokio::test]
 async fn version_create_and_list() {
-    let (ctx, _user) = ctx_with_demo_data().await;
+    let (ctx, user) = ctx_with_demo_data().await;
     ctx.services
         .version
         .create(
@@ -1368,6 +1443,7 @@ async fn version_create_and_list() {
             Some("Initial release"),
             false,
             None,
+            user.id,
         )
         .await
         .unwrap();
@@ -1375,7 +1451,7 @@ async fn version_create_and_list() {
     let versions = ctx
         .services
         .version
-        .list_by_project(&ProjectKey::new("TT"))
+        .list_by_project(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     assert_eq!(versions.len(), 1);
@@ -1388,23 +1464,26 @@ async fn issue_soft_delete_and_restore() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Soft delete me".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Soft delete me".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1412,7 +1491,7 @@ async fn issue_soft_delete_and_restore() {
     ctx.services.issue.delete(issue_id, user.id).await.unwrap();
 
     // After soft-delete, normal get should fail.
-    let err = ctx.services.issue.get_by_id(issue_id).await;
+    let err = ctx.services.issue.get_by_id(issue_id, user.id).await;
     assert!(err.is_err());
 
     // Restore and get should succeed.
@@ -1426,23 +1505,26 @@ async fn issue_soft_delete_lists_in_trash() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Trashed issue".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Trashed issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1452,7 +1534,7 @@ async fn issue_soft_delete_lists_in_trash() {
     let trash = ctx
         .services
         .issue
-        .list_trash(&ProjectKey::new("TT"))
+        .list_trash(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     assert_eq!(trash.len(), 1);
@@ -1465,23 +1547,26 @@ async fn issue_purge_from_trash() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Purge me".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Purge me".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1492,7 +1577,7 @@ async fn issue_purge_from_trash() {
     let trash = ctx
         .services
         .issue
-        .list_trash(&ProjectKey::new("TT"))
+        .list_trash(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     assert_eq!(trash.len(), 0);
@@ -1524,22 +1609,25 @@ async fn notification_created_on_issue_assign() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     ctx.services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Assigned issue".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: Some(assignee_id),
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Assigned issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: Some(assignee_id),
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1556,7 +1644,6 @@ async fn notification_created_on_issue_assign() {
 // ─── Report service tests ───────────────────────────────────────────
 
 use crate::context::ReportService;
-use crate::services::ReportServiceImpl;
 use domain::{
     IssueStatusHistory, MemoryIssueStatusHistoryRepository, MemoryStatusRepository, Status,
 };
@@ -1645,6 +1732,39 @@ fn make_history(
 }
 
 #[allow(clippy::type_complexity)]
+async fn report_service(
+    issues: Arc<MemoryIssueRepository>,
+    sprints: Arc<dyn domain::SprintRepository>,
+    statuses: Arc<MemoryStatusRepository>,
+    history: Arc<MemoryIssueStatusHistoryRepository>,
+    project_id: ProjectId,
+    owner: UserId,
+) -> crate::services::ReportServiceImpl {
+    let projects = Arc::new(MemoryProjectRepository::default());
+    projects
+        .save(&domain::Project {
+            id: project_id,
+            key: ProjectKey::new("RP"),
+            name: "Reports".into(),
+            description: None,
+            owner_id: owner,
+            default_board_id: shared::BoardId::new(),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        })
+        .await
+        .unwrap();
+    crate::services::ReportServiceImpl::new(
+        issues,
+        sprints,
+        statuses,
+        history,
+        crate::authz::Authz::new(Arc::new(domain::StubProjectMemberRepository), projects),
+    )
+}
+
+/// Test fixtures returned by [`report_test_setup`].
+#[allow(clippy::type_complexity)]
 fn report_test_setup() -> (
     Arc<MemoryIssueRepository>,
     Arc<MemorySprintRepository>,
@@ -1654,6 +1774,7 @@ fn report_test_setup() -> (
     StatusId,
     StatusId,
     StatusId,
+    UserId,
 ) {
     let todo =
         StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
@@ -1685,6 +1806,7 @@ fn report_test_setup() -> (
     let history_repo = Arc::new(MemoryIssueStatusHistoryRepository::default());
     let project_id = ProjectId::new();
 
+    let owner_id = UserId::new();
     (
         issue_repo,
         sprint_repo,
@@ -1694,12 +1816,14 @@ fn report_test_setup() -> (
         todo,
         in_progress,
         done,
+        owner_id,
     )
 }
 
 #[tokio::test]
 async fn report_velocity_counts_committed_vs_completed() {
-    let (issues, sprints, statuses, _history, project_id, todo, _ip, done) = report_test_setup();
+    let (issues, sprints, statuses, history, project_id, todo, _ip, done, owner) =
+        report_test_setup();
 
     // Two closed sprints
     let s1 = make_sprint(
@@ -1749,13 +1873,16 @@ async fn report_velocity_counts_committed_vs_completed() {
         issues.save(&issue).await.unwrap();
     }
 
-    let service = ReportServiceImpl::new(
+    let service = report_service(
         issues.clone(),
         sprints.clone(),
         statuses.clone(),
-        Arc::new(domain::StubIssueStatusHistoryRepository),
-    );
-    let result = service.get_velocity(project_id, 6).await.unwrap();
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service.get_velocity(project_id, 6, owner).await.unwrap();
     assert_eq!(result.len(), 2);
     // Most recent first (sprint 2)
     assert_eq!(result[0].name, "Sprint 2");
@@ -1768,7 +1895,8 @@ async fn report_velocity_counts_committed_vs_completed() {
 
 #[tokio::test]
 async fn report_burndown_computes_remaining_per_day() {
-    let (issues, sprints, _statuses, _history, project_id, _todo, _ip, _done) = report_test_setup();
+    let (issues, sprints, statuses, history, project_id, _todo, _ip, _done, owner) =
+        report_test_setup();
 
     let start = shared::now() - chrono::Duration::days(2);
     let end = shared::now() + chrono::Duration::days(2);
@@ -1797,13 +1925,16 @@ async fn report_burndown_computes_remaining_per_day() {
         issues.save(&issue).await.unwrap();
     }
 
-    let service = ReportServiceImpl::new(
+    let service = report_service(
         issues.clone(),
         sprints.clone(),
-        Arc::new(domain::StubStatusRepository),
-        Arc::new(domain::StubIssueStatusHistoryRepository),
-    );
-    let result = service.get_burndown(sprint.id).await.unwrap();
+        statuses.clone(),
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service.get_burndown(sprint.id, owner).await.unwrap();
     assert_eq!(result.sprint_name, "Active Sprint");
     // Should have at least 3 days (start, start+1, today)
     assert!(!result.points.is_empty());
@@ -1813,7 +1944,7 @@ async fn report_burndown_computes_remaining_per_day() {
 
 #[tokio::test]
 async fn report_cumulative_flow_snapshots_status_categories() {
-    let (issues, _sprints, statuses, history, project_id, todo, in_progress, done) =
+    let (issues, _sprints, statuses, history, project_id, todo, in_progress, done, owner) =
         report_test_setup();
 
     let issue = make_issue(
@@ -1849,13 +1980,19 @@ async fn report_cumulative_flow_snapshots_status_categories() {
         project_id,
     );
 
-    let service = ReportServiceImpl::new(
+    let service = report_service(
         issues.clone(),
         Arc::new(domain::StubSprintRepository),
         statuses.clone(),
-        history.clone(),
-    );
-    let result = service.get_cumulative_flow(project_id).await.unwrap();
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service
+        .get_cumulative_flow(project_id, owner)
+        .await
+        .unwrap();
     assert!(!result.is_empty());
     // After the last transition, done should be 1, todo and in_progress 0
     let last = result.last().unwrap();
@@ -1866,7 +2003,8 @@ async fn report_cumulative_flow_snapshots_status_categories() {
 
 #[tokio::test]
 async fn report_control_chart_computes_cycle_time() {
-    let (issues, _sprints, statuses, history, project_id, todo, _ip, done) = report_test_setup();
+    let (issues, _sprints, statuses, history, project_id, todo, _ip, done, owner) =
+        report_test_setup();
 
     let created = shared::now() - chrono::Duration::days(5);
     let done_time = shared::now() - chrono::Duration::days(1);
@@ -1901,13 +2039,16 @@ async fn report_control_chart_computes_cycle_time() {
         project_id,
     );
 
-    let service = ReportServiceImpl::new(
+    let service = report_service(
         issues.clone(),
         Arc::new(domain::StubSprintRepository),
         statuses.clone(),
-        history.clone(),
-    );
-    let result = service.get_control_chart(project_id).await.unwrap();
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service.get_control_chart(project_id, owner).await.unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].issue_key, issue.key.to_string());
     // 4 days cycle time (5 - 1 = 4)
@@ -1916,7 +2057,8 @@ async fn report_control_chart_computes_cycle_time() {
 
 #[tokio::test]
 async fn report_control_chart_skips_issues_without_done_transition() {
-    let (issues, _sprints, statuses, history, project_id, todo, _ip, _done) = report_test_setup();
+    let (issues, _sprints, statuses, history, project_id, todo, _ip, _done, owner) =
+        report_test_setup();
 
     let issue = make_issue(
         "33333333-0000-0000-0000-000000000001",
@@ -1928,13 +2070,16 @@ async fn report_control_chart_skips_issues_without_done_transition() {
     );
     issues.save(&issue).await.unwrap();
 
-    let service = ReportServiceImpl::new(
+    let service = report_service(
         issues.clone(),
         Arc::new(domain::StubSprintRepository),
         statuses.clone(),
-        history.clone(),
-    );
-    let result = service.get_control_chart(project_id).await.unwrap();
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service.get_control_chart(project_id, owner).await.unwrap();
     // No done transition → not included
     assert!(result.is_empty());
 }
@@ -1947,23 +2092,26 @@ async fn restore_non_deleted_issue_returns_error() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Not deleted".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Not deleted".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -1979,7 +2127,7 @@ async fn board_move_rejects_issue_from_other_project() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
 
@@ -2000,23 +2148,26 @@ async fn board_move_rejects_issue_from_other_project() {
     let board2 = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("OTHER"))
+        .get_board(&ProjectKey::new("OTHER"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("OTHER"),
-            summary: "Cross-project issue".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board2.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("OTHER"),
+                summary: "Cross-project issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board2.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
 
@@ -2026,7 +2177,7 @@ async fn board_move_rejects_issue_from_other_project() {
     let err = ctx
         .services
         .board
-        .move_issue(&ProjectKey::new("TT"), issue_id, target_status)
+        .move_issue(&ProjectKey::new("TT"), issue_id, target_status, user.id)
         .await;
     assert!(err.is_err());
 }
@@ -2050,23 +2201,26 @@ async fn custom_field_set_value_validates_text_type() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "CF validation test".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "CF validation test".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
     let issue_id: IssueId = issue.id.parse().unwrap();
@@ -2108,23 +2262,26 @@ async fn custom_field_set_value_validates_select_type() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Select field test".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Select field test".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
     let issue_id: IssueId = issue.id.parse().unwrap();
@@ -2165,23 +2322,26 @@ async fn custom_field_set_value_validates_number_type() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Number field test".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Number field test".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
     let issue_id: IssueId = issue.id.parse().unwrap();
@@ -2227,23 +2387,26 @@ async fn custom_field_set_value_validates_date_type() {
     let board = ctx
         .services
         .board
-        .get_board(&ProjectKey::new("TT"))
+        .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
     let issue = ctx
         .services
         .issue
-        .create(CreateIssueCommand {
-            project_key: ProjectKey::new("TT"),
-            summary: "Date field test".to_string(),
-            description: None,
-            issue_type: IssueType::Task,
-            priority: Priority::Medium,
-            status_id: board.columns[0].id.to_string(),
-            reporter_id: user.id,
-            assignee_id: None,
-            actor_id: user.id,
-        })
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Date field test".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
         .await
         .unwrap();
     let issue_id: IssueId = issue.id.parse().unwrap();

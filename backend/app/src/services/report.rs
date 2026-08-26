@@ -1,14 +1,16 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use domain::{IssueQuery, IssueRepository, SprintRepository, StatusCategory, StatusRepository};
-use shared::{AppError, ProjectId, SprintId, StatusId};
+use shared::{AppError, ProjectId, SprintId, StatusId, UserId};
 
 pub struct ReportServiceImpl {
     issues: Arc<dyn IssueRepository>,
     sprints: Arc<dyn SprintRepository>,
     statuses: Arc<dyn StatusRepository>,
     history: Arc<dyn domain::IssueStatusHistoryRepository>,
+    authz: Authz,
 }
 
 impl ReportServiceImpl {
@@ -17,12 +19,14 @@ impl ReportServiceImpl {
         sprints: Arc<dyn SprintRepository>,
         statuses: Arc<dyn StatusRepository>,
         history: Arc<dyn domain::IssueStatusHistoryRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             issues,
             sprints,
             statuses,
             history,
+            authz,
         }
     }
 
@@ -41,7 +45,11 @@ impl crate::context::ReportService for ReportServiceImpl {
         &self,
         project_id: ProjectId,
         count: u32,
+        requester: UserId,
     ) -> Result<Vec<crate::context::VelocitySprintDto>, AppError> {
+        self.authz
+            .require_project_access(project_id, requester)
+            .await?;
         let all_sprints = self.sprints.list_by_project(project_id).await?;
         let mut closed: Vec<_> = all_sprints
             .into_iter()
@@ -85,8 +93,12 @@ impl crate::context::ReportService for ReportServiceImpl {
     async fn get_burndown(
         &self,
         sprint_id: SprintId,
+        requester: UserId,
     ) -> Result<crate::context::BurndownDto, AppError> {
         let sprint = self.sprints.get_by_id(sprint_id).await?;
+        self.authz
+            .require_project_access(sprint.project_id, requester)
+            .await?;
         let project_id = sprint.project_id;
         let issues = self
             .issues
@@ -116,16 +128,12 @@ impl crate::context::ReportService for ReportServiceImpl {
         let mut current = start;
         while current <= effective_end {
             // Count issues that were NOT done as of `current`
-            // (i.e., issues whose first done transition is after `current` or never done)
             let remaining = issues
                 .iter()
                 .filter(|issue| {
                     if !done_status_ids.contains(&issue.status_id) {
                         return true; // still open
                     }
-                    // Issue is currently done; check if it was done by `current`
-                    // For simplicity without per-issue history, assume all done issues
-                    // were completed at their updated_at; if updated_at > current, still remaining.
                     issue.updated_at > current
                 })
                 .count();
@@ -153,7 +161,11 @@ impl crate::context::ReportService for ReportServiceImpl {
     async fn get_cumulative_flow(
         &self,
         project_id: ProjectId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::CumulativeFlowPointDto>, AppError> {
+        self.authz
+            .require_project_access(project_id, requester)
+            .await?;
         let issues = self.issues.list(IssueQuery::project(project_id)).await?;
         let history = self.history.list_by_project(project_id).await?;
         let statuses = self.statuses.list_all().await.unwrap_or_default();
@@ -173,7 +185,6 @@ impl crate::context::ReportService for ReportServiceImpl {
         for &date in &dates {
             let (mut todo, mut in_progress, mut done) = (0usize, 0usize, 0usize);
             for issue in &issues {
-                // Determine the status of the issue at `date` by replaying history
                 let issue_history: Vec<_> = history
                     .iter()
                     .filter(|h| h.issue_id == issue.id && h.changed_at <= date)
@@ -181,10 +192,9 @@ impl crate::context::ReportService for ReportServiceImpl {
                 let status_id = if let Some(last) = issue_history.last() {
                     last.to_status_id
                 } else if issue.created_at <= date {
-                    // Before any history, assume the initial status (todo)
                     issue.status_id
                 } else {
-                    continue; // issue didn't exist yet
+                    continue;
                 };
                 match self.category_of(status_id, &statuses) {
                     StatusCategory::Todo => todo += 1,
@@ -206,7 +216,11 @@ impl crate::context::ReportService for ReportServiceImpl {
     async fn get_control_chart(
         &self,
         project_id: ProjectId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::ControlChartPointDto>, AppError> {
+        self.authz
+            .require_project_access(project_id, requester)
+            .await?;
         let issues = self.issues.list(IssueQuery::project(project_id)).await?;
         let history = self.history.list_by_project(project_id).await?;
         let statuses = self.statuses.list_all().await.unwrap_or_default();
@@ -218,7 +232,6 @@ impl crate::context::ReportService for ReportServiceImpl {
 
         let mut result = Vec::new();
         for issue in &issues {
-            // Find the first transition TO a done status
             let done_transition = history
                 .iter()
                 .filter(|h| h.issue_id == issue.id && done_status_ids.contains(&h.to_status_id))

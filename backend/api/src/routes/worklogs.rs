@@ -97,7 +97,19 @@ pub async fn create_worklog(
         duration_seconds: body.duration_seconds,
         description: body.description,
     };
-    let w = ctx.services.worklog.create(cmd).await?;
+    let w = ctx
+        .services
+        .worklog
+        .create(
+            cmd,
+            UserId::from_uuid(
+                claims
+                    .sub
+                    .parse()
+                    .map_err(|_| AppError::invalid_input("invalid user id"))?,
+            ),
+        )
+        .await?;
     Ok((
         axum::http::StatusCode::CREATED,
         Json(WorklogResponse {

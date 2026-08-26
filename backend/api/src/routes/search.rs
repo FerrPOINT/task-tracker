@@ -18,22 +18,29 @@ pub async fn search_global(
     Query(q): Query<SearchQuery>,
     claims: axum::Extension<app::auth::UserClaims>,
 ) -> Result<Json<IssueListResponse>, AppError> {
-    let user_id = uuid::Uuid::parse_str(&claims.0.sub)
+    let requester = claims
+        .0
+        .sub
+        .parse()
         .map(shared::UserId::from_uuid)
-        .ok();
+        .map_err(|_| AppError::invalid_input("invalid user id"))?;
+    let user_id = Some(requester);
     let items = ctx
         .services
         .search
-        .search(app::context::SearchFilters {
-            q: q.q,
-            project_key: q.project_key,
-            priority: q.priority,
-            assignee_id: q.assignee_id,
-            sort_by: q.sort_by,
-            sort_order: q.sort_order,
-            jql: q.jql,
-            user_id: user_id.map(|u| u.to_string()),
-        })
+        .search(
+            app::context::SearchFilters {
+                q: q.q,
+                project_key: q.project_key,
+                priority: q.priority,
+                assignee_id: q.assignee_id,
+                sort_by: q.sort_by,
+                sort_order: q.sort_order,
+                jql: q.jql,
+                user_id: user_id.map(|u| u.to_string()),
+            },
+            requester,
+        )
         .await?;
     Ok(Json(IssueListResponse {
         issues: items.into_iter().map(map_issue).collect(),

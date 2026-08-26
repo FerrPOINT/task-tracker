@@ -47,7 +47,7 @@ pub async fn create_issue(
             .ok_or(AppError::invalid_input("reporter_id"))?,
         actor_id,
     };
-    let i = ctx.services.issue.create(cmd).await?;
+    let i = ctx.services.issue.create(cmd, actor_id).await?;
     Ok((StatusCode::CREATED, Json(map_issue(i))))
 }
 
@@ -106,7 +106,7 @@ pub async fn update_issue(
             .map(|value| value.map(shared::ProjectVersionId::from_uuid)),
         actor_id,
     };
-    let i = ctx.services.issue.update(issue_id, cmd).await?;
+    let i = ctx.services.issue.update(issue_id, cmd, actor_id).await?;
     Ok(Json(map_issue(i)))
 }
 
@@ -131,6 +131,7 @@ fn parse_optional_uuid(
 )]
 pub async fn get_issue(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<Json<IssueResponse>, AppError> {
     let issue_id = id
@@ -138,7 +139,11 @@ pub async fn get_issue(
         .ok()
         .map(shared::IssueId::from_uuid)
         .ok_or(AppError::invalid_input("id"))?;
-    let i = ctx.services.issue.get_by_id(issue_id).await?;
+    let requester = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let i = ctx.services.issue.get_by_id(issue_id, requester).await?;
     Ok(Json(map_issue(i)))
 }
 
@@ -153,22 +158,28 @@ pub async fn search_issues(
     Query(q): Query<SearchQuery>,
     claims: axum::Extension<app::auth::UserClaims>,
 ) -> Result<Json<IssueListResponse>, AppError> {
-    let user_id = uuid::Uuid::parse_str(&claims.0.sub)
-        .map(shared::UserId::from_uuid)
-        .ok();
+    let requester = claims
+        .0
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let user_id = Some(requester);
     let items = ctx
         .services
         .issue
-        .search(app::context::SearchFilters {
-            q: q.q,
-            project_key: q.project_key,
-            priority: q.priority,
-            assignee_id: q.assignee_id,
-            sort_by: q.sort_by,
-            sort_order: q.sort_order,
-            jql: q.jql,
-            user_id: user_id.map(|u| u.to_string()),
-        })
+        .search(
+            app::context::SearchFilters {
+                q: q.q,
+                project_key: q.project_key,
+                priority: q.priority,
+                assignee_id: q.assignee_id,
+                sort_by: q.sort_by,
+                sort_order: q.sort_order,
+                jql: q.jql,
+                user_id: user_id.map(|u| u.to_string()),
+            },
+            requester,
+        )
         .await?;
     Ok(Json(IssueListResponse {
         issues: items.into_iter().map(map_issue).collect(),
@@ -272,13 +283,17 @@ pub async fn list_trash(
     Extension(claims): Extension<UserClaims>,
     Path(key): Path<String>,
 ) -> Result<Json<IssueListResponse>, AppError> {
-    let _actor_id = claims
+    let requester = claims
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let project_key =
         ProjectKey::from_str(&key).map_err(|e| AppError::invalid_input(e.to_string()))?;
-    let items = ctx.services.issue.list_trash(&project_key).await?;
+    let items = ctx
+        .services
+        .issue
+        .list_trash(&project_key, requester)
+        .await?;
     Ok(Json(IssueListResponse {
         issues: items.into_iter().map(map_issue).collect(),
     }))

@@ -1,14 +1,15 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use domain::{IssueRepository, ProjectMemberRepository, ProjectRepository};
-use shared::{AppError, IssueId, ProjectId, ProjectKey, UserId};
+use crate::authz::Authz;
+use domain::{IssueRepository, ProjectRepository};
+use shared::{AppError, IssueId, ProjectKey, UserId};
 
 pub struct LabelServiceImpl {
     labels: Arc<dyn domain::LabelRepository>,
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
-    members: Arc<dyn ProjectMemberRepository>,
+    authz: Authz,
 }
 
 impl LabelServiceImpl {
@@ -16,13 +17,13 @@ impl LabelServiceImpl {
         labels: Arc<dyn domain::LabelRepository>,
         projects: Arc<dyn ProjectRepository>,
         issues: Arc<dyn IssueRepository>,
-        members: Arc<dyn ProjectMemberRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             labels,
             projects,
             issues,
-            members,
+            authz,
         }
     }
 
@@ -32,23 +33,6 @@ impl LabelServiceImpl {
             project_id: l.project_id.to_string(),
             name: l.name.as_ref().to_string(),
             color: l.color.as_ref().to_string(),
-        }
-    }
-
-    /// Verify the requester is the project owner or a member.
-    async fn check_membership(
-        &self,
-        project_id: ProjectId,
-        requester: UserId,
-    ) -> Result<(), AppError> {
-        let project = self.projects.get_by_id(project_id).await?;
-        if project.owner_id == requester {
-            return Ok(());
-        }
-        match self.members.get(project_id, requester).await {
-            Ok(_) => Ok(()),
-            Err(AppError::NotFound(_)) => Err(AppError::Forbidden),
-            Err(e) => Err(e),
         }
     }
 }
@@ -63,7 +47,9 @@ impl crate::context::LabelService for LabelServiceImpl {
         requester: UserId,
     ) -> Result<crate::context::LabelDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
-        self.check_membership(project.id, requester).await?;
+        self.authz
+            .require_project_edit(project.id, requester)
+            .await?;
         if name.trim().is_empty() {
             return Err(AppError::invalid_input("label name must not be empty"));
         }
@@ -80,8 +66,12 @@ impl crate::context::LabelService for LabelServiceImpl {
     async fn list_by_project(
         &self,
         project_key: &ProjectKey,
+        requester: UserId,
     ) -> Result<Vec<crate::context::LabelDto>, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
+        self.authz
+            .require_project_access(project.id, requester)
+            .await?;
         let items = self.labels.list_by_project(project.id).await?;
         Ok(items.iter().map(Self::to_dto).collect())
     }
@@ -94,7 +84,9 @@ impl crate::context::LabelService for LabelServiceImpl {
         requester: UserId,
     ) -> Result<crate::context::LabelDto, AppError> {
         let label = self.labels.get_by_id(label_id).await?;
-        self.check_membership(label.project_id, requester).await?;
+        self.authz
+            .require_project_edit(label.project_id, requester)
+            .await?;
         let mut label = label;
         if !name.trim().is_empty() {
             label.name = name.trim().to_string().into();
@@ -106,7 +98,9 @@ impl crate::context::LabelService for LabelServiceImpl {
 
     async fn delete(&self, label_id: shared::LabelId, requester: UserId) -> Result<(), AppError> {
         let label = self.labels.get_by_id(label_id).await?;
-        self.check_membership(label.project_id, requester).await?;
+        self.authz
+            .require_project_edit(label.project_id, requester)
+            .await?;
         self.labels.delete(label_id).await?;
         Ok(())
     }
@@ -114,7 +108,12 @@ impl crate::context::LabelService for LabelServiceImpl {
     async fn list_for_issue(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::LabelDto>, AppError> {
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let ids = self.labels.list_ids_by_issue(issue_id).await?;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
@@ -128,9 +127,12 @@ impl crate::context::LabelService for LabelServiceImpl {
         &self,
         issue_id: IssueId,
         label_id: shared::LabelId,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<(), AppError> {
-        let _issue = self.issues.get_by_id(issue_id).await?;
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         let _label = self.labels.get_by_id(label_id).await?;
         self.labels.attach(issue_id, label_id).await?;
         Ok(())
@@ -140,8 +142,12 @@ impl crate::context::LabelService for LabelServiceImpl {
         &self,
         issue_id: IssueId,
         label_id: shared::LabelId,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<(), AppError> {
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         self.labels.detach(issue_id, label_id).await?;
         Ok(())
     }

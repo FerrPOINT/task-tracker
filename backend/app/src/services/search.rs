@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use crate::context::SearchFilters;
 use crate::dto::IssueDto;
 use domain::{IssueQuery, IssueRepository, ProjectRepository};
@@ -10,6 +11,7 @@ pub struct SearchServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    authz: Authz,
 }
 
 impl SearchServiceImpl {
@@ -17,18 +19,24 @@ impl SearchServiceImpl {
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
         users: Arc<dyn domain::UserRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             issues,
             projects,
             users,
+            authz,
         }
     }
 }
 
 #[async_trait]
 impl crate::context::SearchService for SearchServiceImpl {
-    async fn search(&self, filters: SearchFilters) -> Result<Vec<IssueDto>, AppError> {
+    async fn search(
+        &self,
+        filters: SearchFilters,
+        requester: UserId,
+    ) -> Result<Vec<IssueDto>, AppError> {
         let mut query = IssueQuery::default();
         if let Some(q) = filters.q.as_deref().filter(|s| !s.is_empty()) {
             query.search_text = Some(q.to_string());
@@ -45,6 +53,9 @@ impl crate::context::SearchService for SearchServiceImpl {
                 .parse()
                 .map_err(|e: String| AppError::invalid_input(e))?;
             let project = self.projects.get_by_key(&key).await?;
+            self.authz
+                .require_project_access(project.id, requester)
+                .await?;
             query.project_id = Some(project.id);
         }
         if let Some(assignee_id) = filters.assignee_id.as_deref().filter(|s| !s.is_empty()) {

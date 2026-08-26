@@ -16,7 +16,6 @@ use shared::{
 };
 
 use crate::context::filters::SearchFilters;
-
 #[async_trait]
 pub trait AuthService: Send + Sync {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthDto, AppError>;
@@ -52,7 +51,11 @@ pub trait IssueTypeService: Send + Sync {
 pub trait CommentService: Send + Sync {
     async fn list(&self, issue_id: IssueId, requester: UserId)
     -> Result<Vec<CommentDto>, AppError>;
-    async fn create(&self, cmd: CreateCommentCommand) -> Result<CommentDto, AppError>;
+    async fn create(
+        &self,
+        cmd: CreateCommentCommand,
+        requester: UserId,
+    ) -> Result<CommentDto, AppError>;
     async fn update(
         &self,
         id: CommentId,
@@ -66,7 +69,11 @@ pub trait CommentService: Send + Sync {
 pub trait WorklogService: Send + Sync {
     async fn list(&self, issue_id: IssueId, requester: UserId)
     -> Result<Vec<WorklogDto>, AppError>;
-    async fn create(&self, cmd: CreateWorklogCommand) -> Result<WorklogDto, AppError>;
+    async fn create(
+        &self,
+        cmd: CreateWorklogCommand,
+        requester: UserId,
+    ) -> Result<WorklogDto, AppError>;
     async fn update(
         &self,
         id: WorklogId,
@@ -92,13 +99,23 @@ pub trait ProjectService: Send + Sync {
 
 #[async_trait]
 pub trait IssueService: Send + Sync {
-    async fn create(&self, cmd: CreateIssueCommand) -> Result<IssueDto, AppError>;
-    async fn get_by_id(&self, id: IssueId) -> Result<IssueDto, AppError>;
-    async fn update(&self, id: IssueId, cmd: UpdateIssueCommand) -> Result<IssueDto, AppError>;
+    async fn create(
+        &self,
+        cmd: CreateIssueCommand,
+        requester: UserId,
+    ) -> Result<IssueDto, AppError>;
+    async fn get_by_id(&self, id: IssueId, requester: UserId) -> Result<IssueDto, AppError>;
+    async fn update(
+        &self,
+        id: IssueId,
+        cmd: UpdateIssueCommand,
+        requester: UserId,
+    ) -> Result<IssueDto, AppError>;
     async fn transition(&self, cmd: TransitionIssueCommand) -> Result<IssueDto, AppError>;
     async fn search(
         &self,
         filters: crate::context::SearchFilters,
+        requester: UserId,
     ) -> Result<Vec<IssueDto>, AppError>;
     /// Soft-delete an issue (move to trash).
     async fn delete(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError>;
@@ -107,24 +124,41 @@ pub trait IssueService: Send + Sync {
     /// Permanently delete a trashed issue.
     async fn purge(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError>;
     /// List soft-deleted (trashed) issues for a project.
-    async fn list_trash(&self, project_key: &ProjectKey) -> Result<Vec<IssueDto>, AppError>;
+    async fn list_trash(
+        &self,
+        project_key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<Vec<IssueDto>, AppError>;
 }
 
 #[async_trait]
 pub trait BoardService: Send + Sync {
-    async fn get_board(&self, project_key: &ProjectKey) -> Result<BoardDto, AppError>;
-    async fn get_backlog(&self, project_key: &ProjectKey) -> Result<BacklogDto, AppError>;
+    async fn get_board(
+        &self,
+        project_key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<BoardDto, AppError>;
+    async fn get_backlog(
+        &self,
+        project_key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<BacklogDto, AppError>;
     async fn move_issue(
         &self,
         project_key: &ProjectKey,
         issue_id: IssueId,
         status_id: StatusId,
+        requester: UserId,
     ) -> Result<BoardDto, AppError>;
 }
 
 #[async_trait]
 pub trait SearchService: Send + Sync {
-    async fn search(&self, filters: SearchFilters) -> Result<Vec<IssueDto>, AppError>;
+    async fn search(
+        &self,
+        filters: SearchFilters,
+        requester: UserId,
+    ) -> Result<Vec<IssueDto>, AppError>;
 }
 
 #[async_trait]
@@ -145,10 +179,12 @@ pub trait AttachmentService: Send + Sync {
     async fn list_by_issue(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::AttachmentDto>, AppError>;
     async fn download(
         &self,
         attachment_id: AttachmentId,
+        requester: UserId,
     ) -> Result<(crate::context::AttachmentDto, Vec<u8>), AppError>;
     async fn delete(&self, attachment_id: AttachmentId, requester: UserId) -> Result<(), AppError>;
 }
@@ -165,6 +201,7 @@ pub trait LabelService: Send + Sync {
     async fn list_by_project(
         &self,
         project_key: &ProjectKey,
+        requester: UserId,
     ) -> Result<Vec<crate::context::LabelDto>, AppError>;
     async fn update(
         &self,
@@ -177,6 +214,7 @@ pub trait LabelService: Send + Sync {
     async fn list_for_issue(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::LabelDto>, AppError>;
     async fn attach(
         &self,
@@ -204,6 +242,7 @@ pub trait IssueLinkService: Send + Sync {
     async fn list_by_issue(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::IssueLinkDto>, AppError>;
     async fn delete(&self, link_id: IssueLinkId, requester: UserId) -> Result<(), AppError>;
 }
@@ -233,18 +272,22 @@ pub trait ReportService: Send + Sync {
         &self,
         project_id: shared::ProjectId,
         count: u32,
+        requester: UserId,
     ) -> Result<Vec<crate::context::VelocitySprintDto>, AppError>;
     async fn get_burndown(
         &self,
         sprint_id: shared::SprintId,
+        requester: UserId,
     ) -> Result<crate::context::BurndownDto, AppError>;
     async fn get_cumulative_flow(
         &self,
         project_id: shared::ProjectId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::CumulativeFlowPointDto>, AppError>;
     async fn get_control_chart(
         &self,
         project_id: shared::ProjectId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::ControlChartPointDto>, AppError>;
 }
 
@@ -255,6 +298,7 @@ pub trait WatcherService: Send + Sync {
     async fn list_watchers(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::WatcherDto>, AppError>;
     async fn is_watching(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
 }
@@ -267,8 +311,11 @@ pub trait VoteService: Send + Sync {
         user_id: UserId,
     ) -> Result<crate::context::VoteDto, AppError>;
     async fn unvote(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
-    async fn list_votes(&self, issue_id: IssueId)
-    -> Result<Vec<crate::context::VoteDto>, AppError>;
+    async fn list_votes(
+        &self,
+        issue_id: IssueId,
+        requester: UserId,
+    ) -> Result<Vec<crate::context::VoteDto>, AppError>;
     async fn count_votes(&self, issue_id: IssueId) -> Result<u64, AppError>;
     async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
 }
@@ -287,6 +334,7 @@ pub trait CustomFieldService: Send + Sync {
     async fn list_fields(
         &self,
         project_key: &ProjectKey,
+        requester: UserId,
     ) -> Result<Vec<crate::context::CustomFieldDto>, AppError>;
     async fn update_field(
         &self,
@@ -312,6 +360,7 @@ pub trait CustomFieldService: Send + Sync {
     async fn get_values_for_issue(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::CustomFieldValueDto>, AppError>;
 }
 
@@ -322,18 +371,25 @@ pub trait ComponentService: Send + Sync {
         project_key: &ProjectKey,
         name: &str,
         description: Option<&str>,
+        requester: UserId,
     ) -> Result<crate::context::ComponentDto, AppError>;
     async fn list_by_project(
         &self,
         project_key: &ProjectKey,
+        requester: UserId,
     ) -> Result<Vec<crate::context::ComponentDto>, AppError>;
     async fn update(
         &self,
         id: shared::ProjectComponentId,
         name: &str,
         description: Option<&str>,
+        requester: UserId,
     ) -> Result<crate::context::ComponentDto, AppError>;
-    async fn delete(&self, id: shared::ProjectComponentId) -> Result<(), AppError>;
+    async fn delete(
+        &self,
+        id: shared::ProjectComponentId,
+        requester: UserId,
+    ) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -345,10 +401,12 @@ pub trait VersionService: Send + Sync {
         description: Option<&str>,
         released: bool,
         release_date: Option<chrono::DateTime<chrono::FixedOffset>>,
+        requester: UserId,
     ) -> Result<crate::context::VersionDto, AppError>;
     async fn list_by_project(
         &self,
         project_key: &ProjectKey,
+        requester: UserId,
     ) -> Result<Vec<crate::context::VersionDto>, AppError>;
     async fn update(
         &self,
@@ -357,8 +415,10 @@ pub trait VersionService: Send + Sync {
         description: Option<&str>,
         released: bool,
         release_date: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
+        requester: UserId,
     ) -> Result<crate::context::VersionDto, AppError>;
-    async fn delete(&self, id: shared::ProjectVersionId) -> Result<(), AppError>;
+    async fn delete(&self, id: shared::ProjectVersionId, requester: UserId)
+    -> Result<(), AppError>;
 }
 
 // ---------------------------------------------------------------------------

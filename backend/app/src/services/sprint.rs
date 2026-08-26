@@ -1,50 +1,61 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use crate::dto::{IssueDto, SprintDto};
-use domain::{IssueQuery, IssueRepository, ProjectRepository};
-use shared::{AppError, ProjectId, SprintId};
+use domain::{IssueQuery, IssueRepository, ProjectRepository, SprintRepository};
+use shared::{AppError, ProjectId, SprintId, UserId};
 
 #[async_trait]
 pub trait SprintService: Send + Sync {
     async fn create(
         &self,
         cmd: crate::commands::CreateSprintCommand,
+        requester: UserId,
     ) -> Result<SprintDto, AppError>;
-    async fn list(&self, project_id: ProjectId) -> Result<Vec<SprintDto>, AppError>;
-    async fn get_by_id(&self, id: SprintId) -> Result<SprintDto, AppError>;
+    async fn list(
+        &self,
+        project_id: ProjectId,
+        requester: UserId,
+    ) -> Result<Vec<SprintDto>, AppError>;
+    async fn get_by_id(&self, id: SprintId, requester: UserId) -> Result<SprintDto, AppError>;
     async fn update(
         &self,
         id: SprintId,
         cmd: crate::commands::UpdateSprintCommand,
+        requester: UserId,
     ) -> Result<SprintDto, AppError>;
-    async fn start(&self, id: SprintId) -> Result<SprintDto, AppError>;
-    async fn close(&self, id: SprintId) -> Result<SprintDto, AppError>;
+    async fn start(&self, id: SprintId, requester: UserId) -> Result<SprintDto, AppError>;
+    async fn close(&self, id: SprintId, requester: UserId) -> Result<SprintDto, AppError>;
     async fn move_issue(
         &self,
         cmd: crate::commands::MoveIssueToSprintCommand,
+        requester: UserId,
     ) -> Result<IssueDto, AppError>;
 }
 
 pub struct SprintServiceImpl {
-    sprints: Arc<dyn domain::SprintRepository>,
+    sprints: Arc<dyn SprintRepository>,
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    authz: Authz,
 }
 
 impl SprintServiceImpl {
     pub fn new(
-        sprints: Arc<dyn domain::SprintRepository>,
+        sprints: Arc<dyn SprintRepository>,
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
         users: Arc<dyn domain::UserRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             sprints,
             issues,
             projects,
             users,
+            authz,
         }
     }
 
@@ -68,7 +79,11 @@ impl SprintService for SprintServiceImpl {
     async fn create(
         &self,
         cmd: crate::commands::CreateSprintCommand,
+        requester: UserId,
     ) -> Result<SprintDto, AppError> {
+        self.authz
+            .require_project_edit(cmd.project_id, requester)
+            .await?;
         let sprint = domain::Sprint {
             id: SprintId::new(),
             project_id: cmd.project_id,
@@ -83,7 +98,14 @@ impl SprintService for SprintServiceImpl {
         self.sprint_dto(sprint).await
     }
 
-    async fn list(&self, project_id: ProjectId) -> Result<Vec<SprintDto>, AppError> {
+    async fn list(
+        &self,
+        project_id: ProjectId,
+        requester: UserId,
+    ) -> Result<Vec<SprintDto>, AppError> {
+        self.authz
+            .require_project_access(project_id, requester)
+            .await?;
         let sprints = self.sprints.list_by_project(project_id).await?;
         let mut result = Vec::with_capacity(sprints.len());
         for s in sprints {
@@ -92,8 +114,11 @@ impl SprintService for SprintServiceImpl {
         Ok(result)
     }
 
-    async fn get_by_id(&self, id: SprintId) -> Result<SprintDto, AppError> {
+    async fn get_by_id(&self, id: SprintId, requester: UserId) -> Result<SprintDto, AppError> {
         let sprint = self.sprints.get_by_id(id).await?;
+        self.authz
+            .require_project_access(sprint.project_id, requester)
+            .await?;
         self.sprint_dto(sprint).await
     }
 
@@ -101,8 +126,13 @@ impl SprintService for SprintServiceImpl {
         &self,
         id: SprintId,
         cmd: crate::commands::UpdateSprintCommand,
+        requester: UserId,
     ) -> Result<SprintDto, AppError> {
-        let mut sprint = self.sprints.get_by_id(id).await?;
+        let sprint = self.sprints.get_by_id(id).await?;
+        self.authz
+            .require_project_edit(sprint.project_id, requester)
+            .await?;
+        let mut sprint = sprint;
         if let Some(name) = cmd.name {
             sprint.name = name.into();
         }
@@ -119,8 +149,12 @@ impl SprintService for SprintServiceImpl {
         self.sprint_dto(sprint).await
     }
 
-    async fn start(&self, id: SprintId) -> Result<SprintDto, AppError> {
-        let mut sprint = self.sprints.get_by_id(id).await?;
+    async fn start(&self, id: SprintId, requester: UserId) -> Result<SprintDto, AppError> {
+        let sprint = self.sprints.get_by_id(id).await?;
+        self.authz
+            .require_project_edit(sprint.project_id, requester)
+            .await?;
+        let mut sprint = sprint;
         if sprint.state != domain::SprintState::Future {
             return Err(AppError::invalid_input("sprint is not in future state"));
         }
@@ -130,8 +164,12 @@ impl SprintService for SprintServiceImpl {
         self.sprint_dto(sprint).await
     }
 
-    async fn close(&self, id: SprintId) -> Result<SprintDto, AppError> {
-        let mut sprint = self.sprints.get_by_id(id).await?;
+    async fn close(&self, id: SprintId, requester: UserId) -> Result<SprintDto, AppError> {
+        let sprint = self.sprints.get_by_id(id).await?;
+        self.authz
+            .require_project_edit(sprint.project_id, requester)
+            .await?;
+        let mut sprint = sprint;
         if sprint.state != domain::SprintState::Active {
             return Err(AppError::invalid_input("sprint is not active"));
         }
@@ -144,8 +182,12 @@ impl SprintService for SprintServiceImpl {
     async fn move_issue(
         &self,
         cmd: crate::commands::MoveIssueToSprintCommand,
+        requester: UserId,
     ) -> Result<IssueDto, AppError> {
         let mut issue = self.issues.get_by_id(cmd.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         if let Some(sprint_id) = cmd.sprint_id {
             let _ = self.sprints.get_by_id(sprint_id).await?;
             issue.sprint_id = Some(sprint_id);

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use crate::commands::{CreateCommentCommand, UpdateCommentCommand};
 use crate::dto::CommentDto;
 use domain::ProjectRepository;
@@ -13,6 +14,7 @@ pub struct CommentServiceImpl {
     projects: Arc<dyn ProjectRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
+    authz: Authz,
 }
 
 impl CommentServiceImpl {
@@ -23,6 +25,7 @@ impl CommentServiceImpl {
         projects: Arc<dyn ProjectRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             comments,
@@ -31,6 +34,7 @@ impl CommentServiceImpl {
             projects,
             events,
             notifications,
+            authz,
         }
     }
 
@@ -51,9 +55,12 @@ impl crate::context::CommentService for CommentServiceImpl {
     async fn list(
         &self,
         issue_id: IssueId,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<Vec<CommentDto>, AppError> {
-        self.issues.get_by_id(issue_id).await?;
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let comments = self.comments.list_by_issue(issue_id).await?;
         let mut result = Vec::with_capacity(comments.len());
         for c in comments {
@@ -66,8 +73,15 @@ impl crate::context::CommentService for CommentServiceImpl {
         Ok(result)
     }
 
-    async fn create(&self, cmd: CreateCommentCommand) -> Result<CommentDto, AppError> {
-        self.issues.get_by_id(cmd.issue_id).await?;
+    async fn create(
+        &self,
+        cmd: CreateCommentCommand,
+        requester: UserId,
+    ) -> Result<CommentDto, AppError> {
+        let issue = self.issues.get_by_id(cmd.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         let comment = domain::Comment {
             id: shared::CommentId::new(),
             issue_id: cmd.issue_id,
@@ -125,8 +139,12 @@ impl crate::context::CommentService for CommentServiceImpl {
         requester: UserId,
     ) -> Result<CommentDto, AppError> {
         let mut comment = self.comments.get_by_id(id).await?;
+        let issue = self.issues.get_by_id(comment.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         if comment.author_id != requester {
-            return Err(AppError::Unauthorized);
+            return Err(AppError::Forbidden);
         }
         if let Some(body) = cmd.body {
             comment.body = domain::value_objects::RichText::new(body);
@@ -142,8 +160,12 @@ impl crate::context::CommentService for CommentServiceImpl {
 
     async fn delete(&self, id: shared::CommentId, requester: UserId) -> Result<(), AppError> {
         let comment = self.comments.get_by_id(id).await?;
+        let issue = self.issues.get_by_id(comment.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         if comment.author_id != requester {
-            return Err(AppError::Unauthorized);
+            return Err(AppError::Forbidden);
         }
         self.comments.delete(id).await
     }

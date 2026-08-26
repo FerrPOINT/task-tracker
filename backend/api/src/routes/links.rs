@@ -45,12 +45,18 @@ pub struct IssueLinkListResponse {
 )]
 pub async fn list_links(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
 ) -> Result<Json<IssueLinkListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let links = ctx.services.issue_link.list_by_issue(issue_id).await?;
+    let requester = parse_user_id(&claims)?;
+    let links = ctx
+        .services
+        .issue_link
+        .list_by_issue(issue_id, requester)
+        .await?;
     Ok(Json(IssueLinkListResponse {
         links: links
             .into_iter()
@@ -139,4 +145,12 @@ pub async fn delete_link(
         .map_err(|_| AppError::invalid_input("invalid user id"))?;
     ctx.services.issue_link.delete(link_id, requester).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn parse_user_id(claims: &UserClaims) -> Result<UserId, AppError> {
+    claims
+        .sub
+        .parse()
+        .map(UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))
 }

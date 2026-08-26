@@ -1,14 +1,15 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use domain::{IssueRepository, ProjectMemberRepository, ProjectRepository};
-use shared::{AppError, IssueId, ProjectId, ProjectKey, UserId};
+use crate::authz::Authz;
+use domain::{IssueRepository, ProjectRepository};
+use shared::{AppError, IssueId, ProjectKey, UserId};
 
 pub struct CustomFieldServiceImpl {
     fields: Arc<dyn domain::CustomFieldRepository>,
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
-    members: Arc<dyn ProjectMemberRepository>,
+    authz: Authz,
 }
 
 impl CustomFieldServiceImpl {
@@ -16,30 +17,13 @@ impl CustomFieldServiceImpl {
         fields: Arc<dyn domain::CustomFieldRepository>,
         projects: Arc<dyn ProjectRepository>,
         issues: Arc<dyn IssueRepository>,
-        members: Arc<dyn ProjectMemberRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             fields,
             projects,
             issues,
-            members,
-        }
-    }
-
-    /// Verify the requester is the project owner or a member.
-    async fn check_membership(
-        &self,
-        project_id: ProjectId,
-        requester: UserId,
-    ) -> Result<(), AppError> {
-        let project = self.projects.get_by_id(project_id).await?;
-        if project.owner_id == requester {
-            return Ok(());
-        }
-        match self.members.get(project_id, requester).await {
-            Ok(_) => Ok(()),
-            Err(AppError::NotFound(_)) => Err(AppError::Forbidden),
-            Err(e) => Err(e),
+            authz,
         }
     }
 
@@ -125,7 +109,9 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
         requester: UserId,
     ) -> Result<crate::context::CustomFieldDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
-        self.check_membership(project.id, requester).await?;
+        self.authz
+            .require_project_edit(project.id, requester)
+            .await?;
         if name.trim().is_empty() {
             return Err(AppError::invalid_input("field name must not be empty"));
         }
@@ -149,8 +135,12 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
     async fn list_fields(
         &self,
         project_key: &ProjectKey,
+        requester: UserId,
     ) -> Result<Vec<crate::context::CustomFieldDto>, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
+        self.authz
+            .require_project_access(project.id, requester)
+            .await?;
         let items = self.fields.list_by_project(project.id).await?;
         Ok(items.iter().map(Self::to_dto).collect())
     }
@@ -165,7 +155,9 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
         requester: UserId,
     ) -> Result<crate::context::CustomFieldDto, AppError> {
         let field = self.fields.get_by_id(field_id).await?;
-        self.check_membership(field.project_id, requester).await?;
+        self.authz
+            .require_project_edit(field.project_id, requester)
+            .await?;
         let mut field = field;
         if !name.trim().is_empty() {
             field.name = name.trim().to_string().into();
@@ -183,8 +175,12 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
     async fn delete_field(
         &self,
         field_id: shared::CustomFieldId,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<(), AppError> {
+        let field = self.fields.get_by_id(field_id).await?;
+        self.authz
+            .require_project_edit(field.project_id, requester)
+            .await?;
         self.fields.delete(field_id).await?;
         Ok(())
     }
@@ -194,10 +190,12 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
         issue_id: IssueId,
         field_id: shared::CustomFieldId,
         value: serde_json::Value,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<(), AppError> {
-        // Validate the issue and field exist.
-        let _issue = self.issues.get_by_id(issue_id).await?;
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         let field = self.fields.get_by_id(field_id).await?;
         // Validate the value matches the field type.
         validate_custom_field_value(&field, &value)?;
@@ -208,7 +206,12 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
     async fn get_values_for_issue(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::CustomFieldValueDto>, AppError> {
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let values = self.fields.get_values_for_issue(issue_id).await?;
         Ok(values
             .into_iter()

@@ -92,14 +92,15 @@ pub struct ControlChartResponse {
 )]
 pub async fn get_velocity_report(
     State(ctx): State<Arc<app::AppContext>>,
-    _claims: axum::Extension<app::auth::UserClaims>,
+    claims: axum::Extension<app::auth::UserClaims>,
     axum::extract::Query(query): axum::extract::Query<VelocityQuery>,
 ) -> Result<Json<VelocityResponse>, AppError> {
+    let requester = parse_requester(&claims.0)?;
     let project_id = parse_project_id(&query.project_id)?;
     let result = ctx
         .services
         .report
-        .get_velocity(project_id, query.count)
+        .get_velocity(project_id, query.count, requester)
         .await?;
     Ok(Json(VelocityResponse {
         sprints: result
@@ -121,11 +122,16 @@ pub async fn get_velocity_report(
 )]
 pub async fn get_burndown_report(
     State(ctx): State<Arc<app::AppContext>>,
-    _claims: axum::Extension<app::auth::UserClaims>,
+    claims: axum::Extension<app::auth::UserClaims>,
     axum::extract::Query(query): axum::extract::Query<BurndownQuery>,
 ) -> Result<Json<BurndownResponse>, AppError> {
+    let requester = parse_requester(&claims.0)?;
     let sprint_id = parse_sprint_id(&query.sprint_id)?;
-    let result = ctx.services.report.get_burndown(sprint_id).await?;
+    let result = ctx
+        .services
+        .report
+        .get_burndown(sprint_id, requester)
+        .await?;
     Ok(Json(BurndownResponse {
         sprint_name: result.sprint_name,
         points: result
@@ -147,11 +153,16 @@ pub async fn get_burndown_report(
 )]
 pub async fn get_cumulative_flow_report(
     State(ctx): State<Arc<app::AppContext>>,
-    _claims: axum::Extension<app::auth::UserClaims>,
+    claims: axum::Extension<app::auth::UserClaims>,
     axum::extract::Query(query): axum::extract::Query<CumulativeFlowQuery>,
 ) -> Result<Json<CumulativeFlowResponse>, AppError> {
+    let requester = parse_requester(&claims.0)?;
     let project_id = parse_project_id(&query.project_id)?;
-    let result = ctx.services.report.get_cumulative_flow(project_id).await?;
+    let result = ctx
+        .services
+        .report
+        .get_cumulative_flow(project_id, requester)
+        .await?;
     Ok(Json(CumulativeFlowResponse {
         points: result
             .into_iter()
@@ -173,11 +184,16 @@ pub async fn get_cumulative_flow_report(
 )]
 pub async fn get_control_chart_report(
     State(ctx): State<Arc<app::AppContext>>,
-    _claims: axum::Extension<app::auth::UserClaims>,
+    claims: axum::Extension<app::auth::UserClaims>,
     axum::extract::Query(query): axum::extract::Query<ControlChartQuery>,
 ) -> Result<Json<ControlChartResponse>, AppError> {
+    let requester = parse_requester(&claims.0)?;
     let project_id = parse_project_id(&query.project_id)?;
-    let result = ctx.services.report.get_control_chart(project_id).await?;
+    let result = ctx
+        .services
+        .report
+        .get_control_chart(project_id, requester)
+        .await?;
     Ok(Json(ControlChartResponse {
         points: result
             .into_iter()
@@ -187,6 +203,14 @@ pub async fn get_control_chart_report(
             })
             .collect(),
     }))
+}
+
+fn parse_requester(claims: &app::auth::UserClaims) -> Result<shared::UserId, AppError> {
+    claims
+        .sub
+        .parse()
+        .map(shared::UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))
 }
 
 fn parse_project_id(s: &str) -> Result<shared::ProjectId, AppError> {

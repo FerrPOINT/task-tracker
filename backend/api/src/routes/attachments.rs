@@ -26,12 +26,18 @@ use shared::{AppError, AttachmentId, IssueId, UserId};
 )]
 pub async fn list_attachments(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
 ) -> Result<axum::Json<AttachmentListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let items = ctx.services.attachment.list_by_issue(issue_id).await?;
+    let requester = parse_user_id(&claims)?;
+    let items = ctx
+        .services
+        .attachment
+        .list_by_issue(issue_id, requester)
+        .await?;
     Ok(axum::Json(AttachmentListResponse {
         attachments: items
             .into_iter()
@@ -137,12 +143,14 @@ pub async fn upload_attachment(
 )]
 pub async fn download_attachment(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let id = id
         .parse::<AttachmentId>()
         .map_err(|_| AppError::invalid_input("invalid attachment id"))?;
-    let (meta, bytes) = ctx.services.attachment.download(id).await?;
+    let requester = parse_user_id(&claims)?;
+    let (meta, bytes) = ctx.services.attachment.download(id, requester).await?;
 
     let mut resp = Response::new(Body::from(bytes));
     resp.headers_mut().insert(
@@ -189,4 +197,12 @@ pub async fn delete_attachment(
     );
     ctx.services.attachment.delete(id, requester).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn parse_user_id(claims: &UserClaims) -> Result<UserId, AppError> {
+    claims
+        .sub
+        .parse()
+        .map(UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))
 }

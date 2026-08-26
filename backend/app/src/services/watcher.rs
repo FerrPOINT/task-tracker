@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use domain::{IssueRepository, ProjectRepository};
 use shared::{AppError, IssueId, UserId};
 
@@ -10,6 +11,7 @@ pub struct WatcherServiceImpl {
     users: Arc<dyn domain::UserRepository>,
     projects: Arc<dyn ProjectRepository>,
     events: crate::context::EventBus,
+    authz: Authz,
 }
 
 impl WatcherServiceImpl {
@@ -19,6 +21,7 @@ impl WatcherServiceImpl {
         users: Arc<dyn domain::UserRepository>,
         projects: Arc<dyn ProjectRepository>,
         events: crate::context::EventBus,
+        authz: Authz,
     ) -> Self {
         Self {
             watchers,
@@ -26,6 +29,7 @@ impl WatcherServiceImpl {
             users,
             projects,
             events,
+            authz,
         }
     }
 }
@@ -34,7 +38,10 @@ impl WatcherServiceImpl {
 impl crate::context::WatcherService for WatcherServiceImpl {
     async fn watch(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
         // Verify the issue exists
-        self.issues.get_by_id(issue_id).await?;
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, user_id)
+            .await?;
         // Verify the user exists
         self.users.get_by_id(user_id).await?;
         self.watchers.add(issue_id, user_id).await?;
@@ -55,7 +62,12 @@ impl crate::context::WatcherService for WatcherServiceImpl {
     async fn list_watchers(
         &self,
         issue_id: IssueId,
+        requester: UserId,
     ) -> Result<Vec<crate::context::WatcherDto>, AppError> {
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let watchers = self.watchers.list_by_issue(issue_id).await?;
         let mut dtos = Vec::with_capacity(watchers.len());
         for w in watchers {

@@ -85,10 +85,16 @@ fn parse_user(claims: &UserClaims) -> Result<UserId, AppError> {
 )]
 pub async fn list_custom_fields(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
 ) -> Result<Json<CustomFieldListResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
-    let items = ctx.services.custom_field.list_fields(&key).await?;
+    let requester = parse_user_id(&claims)?;
+    let items = ctx
+        .services
+        .custom_field
+        .list_fields(&key, requester)
+        .await?;
     Ok(Json(CustomFieldListResponse {
         fields: items
             .into_iter()
@@ -242,15 +248,17 @@ pub async fn delete_custom_field(
 )]
 pub async fn list_issue_custom_field_values(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
 ) -> Result<Json<CustomFieldValueListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
+    let requester = parse_user_id(&claims)?;
     let values = ctx
         .services
         .custom_field
-        .get_values_for_issue(issue_id)
+        .get_values_for_issue(issue_id, requester)
         .await?;
     Ok(Json(CustomFieldValueListResponse {
         values: values
@@ -298,4 +306,12 @@ pub async fn set_custom_field_value(
         .set_value(issue_id, field_id, body.value, requester)
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn parse_user_id(claims: &UserClaims) -> Result<UserId, AppError> {
+    claims
+        .sub
+        .parse()
+        .map(UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))
 }

@@ -1,26 +1,31 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use crate::commands::{CreateWorklogCommand, UpdateWorklogCommand};
 use crate::dto::WorklogDto;
+use domain::IssueRepository;
 use shared::{AppError, IssueId, UserId};
 
 pub struct WorklogServiceImpl {
     worklogs: Arc<dyn domain::WorklogRepository>,
     users: Arc<dyn domain::UserRepository>,
-    issues: Arc<dyn domain::IssueRepository>,
+    issues: Arc<dyn IssueRepository>,
+    authz: Authz,
 }
 
 impl WorklogServiceImpl {
     pub fn new(
         worklogs: Arc<dyn domain::WorklogRepository>,
         users: Arc<dyn domain::UserRepository>,
-        issues: Arc<dyn domain::IssueRepository>,
+        issues: Arc<dyn IssueRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             worklogs,
             users,
             issues,
+            authz,
         }
     }
 }
@@ -30,9 +35,12 @@ impl crate::context::WorklogService for WorklogServiceImpl {
     async fn list(
         &self,
         issue_id: IssueId,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<Vec<WorklogDto>, AppError> {
-        self.issues.get_by_id(issue_id).await?;
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let worklogs = self.worklogs.list_by_issue(issue_id).await?;
         let mut result = Vec::with_capacity(worklogs.len());
         for w in worklogs {
@@ -45,8 +53,15 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         Ok(result)
     }
 
-    async fn create(&self, cmd: CreateWorklogCommand) -> Result<WorklogDto, AppError> {
-        self.issues.get_by_id(cmd.issue_id).await?;
+    async fn create(
+        &self,
+        cmd: CreateWorklogCommand,
+        requester: UserId,
+    ) -> Result<WorklogDto, AppError> {
+        let issue = self.issues.get_by_id(cmd.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         let worklog = domain::Worklog {
             id: shared::WorklogId::new(),
             issue_id: cmd.issue_id,
@@ -72,8 +87,12 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         requester: UserId,
     ) -> Result<WorklogDto, AppError> {
         let mut worklog = self.worklogs.get_by_id(id).await?;
+        let issue = self.issues.get_by_id(worklog.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         if worklog.author_id != requester {
-            return Err(AppError::Unauthorized);
+            return Err(AppError::Forbidden);
         }
         if let Some(started_at) = cmd.started_at {
             worklog.started_at = started_at;
@@ -95,8 +114,12 @@ impl crate::context::WorklogService for WorklogServiceImpl {
 
     async fn delete(&self, id: shared::WorklogId, requester: UserId) -> Result<(), AppError> {
         let worklog = self.worklogs.get_by_id(id).await?;
+        let issue = self.issues.get_by_id(worklog.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         if worklog.author_id != requester {
-            return Err(AppError::Unauthorized);
+            return Err(AppError::Forbidden);
         }
         self.worklogs.delete(id).await
     }

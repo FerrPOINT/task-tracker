@@ -134,12 +134,18 @@ pub async fn unwatch_issue(
 )]
 pub async fn list_watchers(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
 ) -> Result<Json<WatcherListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let watchers = ctx.services.watcher.list_watchers(issue_id).await?;
+    let requester = parse_user_id(&claims)?;
+    let watchers = ctx
+        .services
+        .watcher
+        .list_watchers(issue_id, requester)
+        .await?;
     Ok(Json(WatcherListResponse {
         watchers: watchers
             .into_iter()
@@ -230,12 +236,14 @@ pub async fn unvote_issue(
 )]
 pub async fn list_votes(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
 ) -> Result<Json<VoteListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let votes = ctx.services.vote.list_votes(issue_id).await?;
+    let requester = parse_user_id(&claims)?;
+    let votes = ctx.services.vote.list_votes(issue_id, requester).await?;
     let count = votes.len() as u64;
     Ok(Json(VoteListResponse {
         votes: votes
@@ -249,4 +257,12 @@ pub async fn list_votes(
             .collect(),
         count,
     }))
+}
+
+fn parse_user_id(claims: &UserClaims) -> Result<UserId, AppError> {
+    claims
+        .sub
+        .parse()
+        .map(UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))
 }

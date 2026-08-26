@@ -1,20 +1,27 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use domain::ProjectRepository;
-use shared::{AppError, ProjectKey};
+use shared::{AppError, ProjectKey, UserId};
 
 pub struct VersionServiceImpl {
     versions: Arc<dyn domain::ProjectVersionRepository>,
     projects: Arc<dyn ProjectRepository>,
+    authz: Authz,
 }
 
 impl VersionServiceImpl {
     pub fn new(
         versions: Arc<dyn domain::ProjectVersionRepository>,
         projects: Arc<dyn ProjectRepository>,
+        authz: Authz,
     ) -> Self {
-        Self { versions, projects }
+        Self {
+            versions,
+            projects,
+            authz,
+        }
     }
 
     fn to_dto(v: &domain::ProjectVersion) -> crate::context::VersionDto {
@@ -39,8 +46,12 @@ impl crate::context::VersionService for VersionServiceImpl {
         description: Option<&str>,
         released: bool,
         release_date: Option<chrono::DateTime<chrono::FixedOffset>>,
+        requester: UserId,
     ) -> Result<crate::context::VersionDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
+        self.authz
+            .require_project_edit(project.id, requester)
+            .await?;
         if name.trim().is_empty() {
             return Err(AppError::invalid_input("version name must not be empty"));
         }
@@ -60,8 +71,12 @@ impl crate::context::VersionService for VersionServiceImpl {
     async fn list_by_project(
         &self,
         project_key: &ProjectKey,
+        requester: UserId,
     ) -> Result<Vec<crate::context::VersionDto>, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
+        self.authz
+            .require_project_access(project.id, requester)
+            .await?;
         let items = self.versions.list_by_project(project.id).await?;
         Ok(items.iter().map(Self::to_dto).collect())
     }
@@ -73,8 +88,12 @@ impl crate::context::VersionService for VersionServiceImpl {
         description: Option<&str>,
         released: bool,
         release_date: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
+        requester: UserId,
     ) -> Result<crate::context::VersionDto, AppError> {
         let mut version = self.versions.get_by_id(id).await?;
+        self.authz
+            .require_project_edit(version.project_id, requester)
+            .await?;
         if !name.trim().is_empty() {
             version.name = name.trim().to_string().into();
         }
@@ -87,7 +106,15 @@ impl crate::context::VersionService for VersionServiceImpl {
         Ok(Self::to_dto(&version))
     }
 
-    async fn delete(&self, id: shared::ProjectVersionId) -> Result<(), AppError> {
+    async fn delete(
+        &self,
+        id: shared::ProjectVersionId,
+        requester: UserId,
+    ) -> Result<(), AppError> {
+        let version = self.versions.get_by_id(id).await?;
+        self.authz
+            .require_project_edit(version.project_id, requester)
+            .await?;
         self.versions.delete(id).await?;
         Ok(())
     }

@@ -1,12 +1,13 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use crate::dto::{BacklogDto, BoardColumnDto, BoardDto, SprintDto};
 use domain::{
-    IssueQuery, IssueRepository, SprintRepository, StatusCategory, StatusRepository,
-    WorkflowTransitionRepository,
+    IssueQuery, IssueRepository, ProjectRepository, SprintRepository, StatusCategory,
+    StatusRepository, WorkflowTransitionRepository,
 };
-use shared::{AppError, IssueId, ProjectKey, StatusId};
+use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
 
 pub struct BoardServiceImpl {
     boards: Arc<dyn domain::BoardRepository>,
@@ -15,9 +16,12 @@ pub struct BoardServiceImpl {
     users: Arc<dyn domain::UserRepository>,
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
+    projects: Arc<dyn ProjectRepository>,
+    authz: Authz,
 }
 
 impl BoardServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         boards: Arc<dyn domain::BoardRepository>,
         issues: Arc<dyn IssueRepository>,
@@ -25,6 +29,8 @@ impl BoardServiceImpl {
         users: Arc<dyn domain::UserRepository>,
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
+        projects: Arc<dyn ProjectRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             boards,
@@ -33,6 +39,8 @@ impl BoardServiceImpl {
             users,
             statuses,
             transitions,
+            projects,
+            authz,
         }
     }
 
@@ -121,11 +129,27 @@ impl BoardServiceImpl {
 
 #[async_trait]
 impl crate::context::BoardService for BoardServiceImpl {
-    async fn get_board(&self, project_key: &ProjectKey) -> Result<BoardDto, AppError> {
+    async fn get_board(
+        &self,
+        project_key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<BoardDto, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        self.authz
+            .require_project_access(project.id, requester)
+            .await?;
         self.build_board_dto(project_key).await
     }
 
-    async fn get_backlog(&self, project_key: &ProjectKey) -> Result<BacklogDto, AppError> {
+    async fn get_backlog(
+        &self,
+        project_key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<BacklogDto, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        self.authz
+            .require_project_access(project.id, requester)
+            .await?;
         let board = self.boards.get_default_by_project_key(project_key).await?;
         let sprint = self.sprints.get_active_by_project(board.project_id).await?;
         let all_issues = self
@@ -207,7 +231,12 @@ impl crate::context::BoardService for BoardServiceImpl {
         project_key: &ProjectKey,
         issue_id: IssueId,
         status_id: StatusId,
+        requester: UserId,
     ) -> Result<BoardDto, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        self.authz
+            .require_project_edit(project.id, requester)
+            .await?;
         let board = self.boards.get_default_by_project_key(project_key).await?;
         let issue = self.issues.get_by_id(issue_id).await?;
         if issue.project_id != board.project_id {

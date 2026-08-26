@@ -99,7 +99,13 @@ pub async fn create_comment(
                 .map_err(|_| AppError::invalid_input("invalid user id"))?,
         ),
     };
-    let c = ctx.services.comment.create(cmd).await?;
+    let requester = UserId::from_uuid(
+        claims
+            .sub
+            .parse()
+            .map_err(|_| AppError::invalid_input("invalid user id"))?,
+    );
+    let c = ctx.services.comment.create(cmd, requester).await?;
     Ok((
         axum::http::StatusCode::CREATED,
         Json(CommentResponse {

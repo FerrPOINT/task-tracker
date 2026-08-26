@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod authz;
 pub mod commands;
 pub mod context;
 pub mod dto;

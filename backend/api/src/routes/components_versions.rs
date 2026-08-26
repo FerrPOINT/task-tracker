@@ -84,10 +84,16 @@ fn version_response(item: VersionDto) -> VersionResponse {
 #[utoipa::path(get, path = "/api/v1/projects/{project_key}/components", tag = "components", params(("project_key" = String, Path)), responses((status = 200, body = ComponentListResponse)), security(("bearer" = [])))]
 pub async fn list_components(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
 ) -> Result<Json<ComponentListResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
-    let components = ctx.services.component.list_by_project(&key).await?;
+    let requester = parse_user_id(&claims)?;
+    let components = ctx
+        .services
+        .component
+        .list_by_project(&key, requester)
+        .await?;
     Ok(Json(ComponentListResponse {
         components: components.into_iter().map(component_response).collect(),
     }))
@@ -96,15 +102,16 @@ pub async fn list_components(
 #[utoipa::path(post, path = "/api/v1/projects/{project_key}/components", tag = "components", params(("project_key" = String, Path)), request_body = ComponentRequest, responses((status = 201, body = ComponentResponse)), security(("bearer" = [])))]
 pub async fn create_component(
     State(ctx): State<Arc<AppContext>>,
-    Extension(_claims): Extension<UserClaims>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
     Json(body): Json<ComponentRequest>,
 ) -> Result<(StatusCode, Json<ComponentResponse>), AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    let requester = parse_user_id(&claims)?;
     let component = ctx
         .services
         .component
-        .create(&key, &body.name, body.description.as_deref())
+        .create(&key, &body.name, body.description.as_deref(), requester)
         .await?;
     Ok((StatusCode::CREATED, Json(component_response(component))))
 }
@@ -112,17 +119,18 @@ pub async fn create_component(
 #[utoipa::path(put, path = "/api/v1/projects/{project_key}/components/{component_id}", tag = "components", params(("project_key" = String, Path), ("component_id" = String, Path)), request_body = ComponentRequest, responses((status = 200, body = ComponentResponse)), security(("bearer" = [])))]
 pub async fn update_component(
     State(ctx): State<Arc<AppContext>>,
-    Extension(_claims): Extension<UserClaims>,
+    Extension(claims): Extension<UserClaims>,
     Path((_project_key, component_id)): Path<(String, String)>,
     Json(body): Json<ComponentRequest>,
 ) -> Result<Json<ComponentResponse>, AppError> {
     let id: ProjectComponentId = component_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid component id"))?;
+    let requester = parse_user_id(&claims)?;
     let component = ctx
         .services
         .component
-        .update(id, &body.name, body.description.as_deref())
+        .update(id, &body.name, body.description.as_deref(), requester)
         .await?;
     Ok(Json(component_response(component)))
 }
@@ -130,23 +138,30 @@ pub async fn update_component(
 #[utoipa::path(delete, path = "/api/v1/projects/{project_key}/components/{component_id}", tag = "components", params(("project_key" = String, Path), ("component_id" = String, Path)), responses((status = 204)), security(("bearer" = [])))]
 pub async fn delete_component(
     State(ctx): State<Arc<AppContext>>,
-    Extension(_claims): Extension<UserClaims>,
+    Extension(claims): Extension<UserClaims>,
     Path((_project_key, component_id)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
     let id: ProjectComponentId = component_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid component id"))?;
-    ctx.services.component.delete(id).await?;
+    let requester = parse_user_id(&claims)?;
+    ctx.services.component.delete(id, requester).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(get, path = "/api/v1/projects/{project_key}/versions", tag = "versions", params(("project_key" = String, Path)), responses((status = 200, body = VersionListResponse)), security(("bearer" = [])))]
 pub async fn list_versions(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
 ) -> Result<Json<VersionListResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
-    let versions = ctx.services.version.list_by_project(&key).await?;
+    let requester = parse_user_id(&claims)?;
+    let versions = ctx
+        .services
+        .version
+        .list_by_project(&key, requester)
+        .await?;
     Ok(Json(VersionListResponse {
         versions: versions.into_iter().map(version_response).collect(),
     }))
@@ -155,11 +170,12 @@ pub async fn list_versions(
 #[utoipa::path(post, path = "/api/v1/projects/{project_key}/versions", tag = "versions", params(("project_key" = String, Path)), request_body = VersionRequest, responses((status = 201, body = VersionResponse)), security(("bearer" = [])))]
 pub async fn create_version(
     State(ctx): State<Arc<AppContext>>,
-    Extension(_claims): Extension<UserClaims>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
     Json(body): Json<VersionRequest>,
 ) -> Result<(StatusCode, Json<VersionResponse>), AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    let requester = parse_user_id(&claims)?;
     let version = ctx
         .services
         .version
@@ -169,6 +185,7 @@ pub async fn create_version(
             body.description.as_deref(),
             body.released,
             body.release_date,
+            requester,
         )
         .await?;
     Ok((StatusCode::CREATED, Json(version_response(version))))
@@ -177,13 +194,14 @@ pub async fn create_version(
 #[utoipa::path(put, path = "/api/v1/projects/{project_key}/versions/{version_id}", tag = "versions", params(("project_key" = String, Path), ("version_id" = String, Path)), request_body = VersionRequest, responses((status = 200, body = VersionResponse)), security(("bearer" = [])))]
 pub async fn update_version(
     State(ctx): State<Arc<AppContext>>,
-    Extension(_claims): Extension<UserClaims>,
+    Extension(claims): Extension<UserClaims>,
     Path((_project_key, version_id)): Path<(String, String)>,
     Json(body): Json<VersionRequest>,
 ) -> Result<Json<VersionResponse>, AppError> {
     let id: ProjectVersionId = version_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid version id"))?;
+    let requester = parse_user_id(&claims)?;
     let version = ctx
         .services
         .version
@@ -193,6 +211,7 @@ pub async fn update_version(
             body.description.as_deref(),
             body.released,
             Some(body.release_date),
+            requester,
         )
         .await?;
     Ok(Json(version_response(version)))
@@ -201,12 +220,21 @@ pub async fn update_version(
 #[utoipa::path(delete, path = "/api/v1/projects/{project_key}/versions/{version_id}", tag = "versions", params(("project_key" = String, Path), ("version_id" = String, Path)), responses((status = 204)), security(("bearer" = [])))]
 pub async fn delete_version(
     State(ctx): State<Arc<AppContext>>,
-    Extension(_claims): Extension<UserClaims>,
+    Extension(claims): Extension<UserClaims>,
     Path((_project_key, version_id)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
     let id: ProjectVersionId = version_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid version id"))?;
-    ctx.services.version.delete(id).await?;
+    let requester = parse_user_id(&claims)?;
+    ctx.services.version.delete(id, requester).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn parse_user_id(claims: &UserClaims) -> Result<shared::UserId, AppError> {
+    claims
+        .sub
+        .parse()
+        .map(shared::UserId::from_uuid)
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))
 }

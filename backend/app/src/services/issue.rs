@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::authz::Authz;
 use crate::commands::{CreateIssueCommand, UpdateIssueCommand};
 use crate::dto::IssueDto;
 use domain::{
@@ -18,6 +19,7 @@ pub struct IssueServiceImpl {
     transitions: Arc<dyn WorkflowTransitionRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
+    authz: Authz,
 }
 
 impl IssueServiceImpl {
@@ -31,6 +33,7 @@ impl IssueServiceImpl {
         transitions: Arc<dyn WorkflowTransitionRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
+        authz: Authz,
     ) -> Self {
         Self {
             issues,
@@ -41,6 +44,7 @@ impl IssueServiceImpl {
             statuses,
             transitions,
             notifications,
+            authz,
         }
     }
 
@@ -58,8 +62,15 @@ impl IssueServiceImpl {
 
 #[async_trait]
 impl crate::context::IssueService for IssueServiceImpl {
-    async fn create(&self, cmd: CreateIssueCommand) -> Result<IssueDto, AppError> {
+    async fn create(
+        &self,
+        cmd: CreateIssueCommand,
+        requester: UserId,
+    ) -> Result<IssueDto, AppError> {
         let project = self.projects.get_by_key(&cmd.project_key).await?;
+        self.authz
+            .require_project_edit(project.id, requester)
+            .await?;
         let status_id = StatusId::from_uuid(
             cmd.status_id
                 .parse()
@@ -144,6 +155,9 @@ impl crate::context::IssueService for IssueServiceImpl {
         cmd: crate::commands::TransitionIssueCommand,
     ) -> Result<IssueDto, AppError> {
         let issue = self.issues.get_by_id(cmd.issue_id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, cmd.actor_id)
+            .await?;
         let board = self.boards.get_default_by_project(issue.project_id).await?;
         let statuses = self.statuses.list_all().await.unwrap_or_default();
         let valid = statuses.iter().any(|s| s.id == cmd.target_status_id)
@@ -210,14 +224,25 @@ impl crate::context::IssueService for IssueServiceImpl {
         ))
     }
 
-    async fn get_by_id(&self, id: IssueId) -> Result<IssueDto, AppError> {
+    async fn get_by_id(&self, id: IssueId, requester: UserId) -> Result<IssueDto, AppError> {
         let issue = self.issues.get_by_id(id).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
         let name = super::helpers::project_name(self.projects.clone(), issue.project_id).await?;
         Ok(super::helpers::build_issue_dto(self.users.clone(), issue, name.as_str()).await)
     }
 
-    async fn update(&self, id: IssueId, cmd: UpdateIssueCommand) -> Result<IssueDto, AppError> {
+    async fn update(
+        &self,
+        id: IssueId,
+        cmd: UpdateIssueCommand,
+        requester: UserId,
+    ) -> Result<IssueDto, AppError> {
         let mut issue = self.issues.get_by_id(id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, requester)
+            .await?;
         let project = self.projects.get_by_id(issue.project_id).await?;
 
         if let Some(summary) = cmd.summary {
@@ -311,6 +336,7 @@ impl crate::context::IssueService for IssueServiceImpl {
     async fn search(
         &self,
         filters: crate::context::SearchFilters,
+        requester: UserId,
     ) -> Result<Vec<IssueDto>, AppError> {
         let mut query = IssueQuery::default();
         if let Some(q) = filters.q.as_deref().filter(|s| !s.is_empty()) {
@@ -328,6 +354,9 @@ impl crate::context::IssueService for IssueServiceImpl {
                 .parse()
                 .map_err(|e: String| AppError::invalid_input(e))?;
             let project = self.projects.get_by_key(&key).await?;
+            self.authz
+                .require_project_access(project.id, requester)
+                .await?;
             query.project_id = Some(project.id);
         }
         if let Some(assignee_id) = filters.assignee_id.as_deref().filter(|s| !s.is_empty()) {
@@ -344,11 +373,19 @@ impl crate::context::IssueService for IssueServiceImpl {
         .await
     }
 
-    async fn delete(&self, id: IssueId, _actor_id: UserId) -> Result<(), AppError> {
+    async fn delete(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError> {
+        let issue = self.issues.get_by_id(id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, actor_id)
+            .await?;
         self.issues.delete(id).await
     }
 
-    async fn restore(&self, id: IssueId, _actor_id: UserId) -> Result<IssueDto, AppError> {
+    async fn restore(&self, id: IssueId, actor_id: UserId) -> Result<IssueDto, AppError> {
+        let issue = self.issues.get_by_id_include_deleted(id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, actor_id)
+            .await?;
         self.issues.restore(id).await?;
         let issue = self.issues.get_by_id(id).await?;
         super::helpers::build_issue_dtos_with_projects(
@@ -360,16 +397,27 @@ impl crate::context::IssueService for IssueServiceImpl {
         .map(|mut v| v.remove(0))
     }
 
-    async fn purge(&self, id: IssueId, _actor_id: UserId) -> Result<(), AppError> {
+    async fn purge(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError> {
+        let issue = self.issues.get_by_id_include_deleted(id).await?;
+        self.authz
+            .require_project_edit(issue.project_id, actor_id)
+            .await?;
         self.issues.purge(id).await
     }
 
-    async fn list_trash(&self, project_key: &ProjectKey) -> Result<Vec<IssueDto>, AppError> {
+    async fn list_trash(
+        &self,
+        project_key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<Vec<IssueDto>, AppError> {
         let project = self
             .projects
             .get_by_key(project_key)
             .await
             .map_err(|_| AppError::not_found("project", project_key))?;
+        self.authz
+            .require_project_access(project.id, requester)
+            .await?;
         let query = IssueQuery {
             project_id: Some(project.id),
             deleted_only: true,

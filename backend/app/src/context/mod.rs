@@ -9,6 +9,7 @@ pub use traits::*;
 use std::sync::Arc;
 
 use crate::auth::JwtAuthService;
+use crate::authz::Authz;
 use crate::services::{
     AdminServiceImpl, BoardServiceImpl, CommentServiceImpl, DashboardServiceImpl, IssueServiceImpl,
     ProjectMemberService, ProjectMemberServiceImpl, ProjectServiceImpl, SearchServiceImpl,
@@ -48,6 +49,7 @@ pub struct AppContext {
     pub repos: Arc<domain::Repositories>,
     pub events: EventBus,
     pub email: Arc<dyn domain::EmailPort>,
+    pub authz: Authz,
 }
 
 #[derive(Clone)]
@@ -101,6 +103,7 @@ impl AppContext {
         events: EventBus,
         email: Arc<dyn domain::EmailPort>,
     ) -> Self {
+        let authz = Authz::new(repos.members.clone(), repos.projects.clone());
         let auth: Arc<dyn AuthService> = Arc::new(JwtAuthService::new(
             config.auth.clone(),
             repos.users.clone(),
@@ -110,6 +113,7 @@ impl AppContext {
             repos.issues.clone(),
             repos.users.clone(),
             repos.boards.clone(),
+            authz.clone(),
         ));
         let issue: Arc<dyn IssueService> = Arc::new(IssueServiceImpl::new(
             repos.issues.clone(),
@@ -120,6 +124,7 @@ impl AppContext {
             repos.transitions.clone(),
             events.clone(),
             repos.notifications.clone(),
+            authz.clone(),
         ));
         let board: Arc<dyn BoardService> = Arc::new(BoardServiceImpl::new(
             repos.boards.clone(),
@@ -128,11 +133,14 @@ impl AppContext {
             repos.users.clone(),
             repos.statuses.clone(),
             repos.transitions.clone(),
+            repos.projects.clone(),
+            authz.clone(),
         ));
         let search: Arc<dyn SearchService> = Arc::new(SearchServiceImpl::new(
             repos.issues.clone(),
             repos.projects.clone(),
             repos.users.clone(),
+            authz.clone(),
         ));
         let dashboard: Arc<dyn DashboardService> = Arc::new(DashboardServiceImpl::new(
             repos.issues.clone(),
@@ -144,10 +152,12 @@ impl AppContext {
             repos.issues.clone(),
             repos.projects.clone(),
             repos.users.clone(),
+            authz.clone(),
         ));
         Self {
             config,
             events: events.clone(),
+            authz: authz.clone(),
             services: Services {
                 auth,
                 project,
@@ -162,15 +172,18 @@ impl AppContext {
                     repos.projects.clone(),
                     events.clone(),
                     repos.notifications.clone(),
+                    authz.clone(),
                 )),
                 worklog: Arc::new(WorklogServiceImpl::new(
                     repos.worklogs.clone(),
                     repos.users.clone(),
                     repos.issues.clone(),
+                    authz.clone(),
                 )),
                 member: Arc::new(ProjectMemberServiceImpl::new(
                     repos.members.clone(),
                     repos.users.clone(),
+                    authz.clone(),
                 )),
                 status: Arc::new(crate::services::StatusServiceImpl::new(
                     repos.statuses.clone(),
@@ -185,16 +198,18 @@ impl AppContext {
                     repos.attachments.clone(),
                     repos.issues.clone(),
                     storage,
+                    authz.clone(),
                 )),
                 label: Arc::new(crate::services::LabelServiceImpl::new(
                     repos.labels.clone(),
                     repos.projects.clone(),
                     repos.issues.clone(),
-                    repos.members.clone(),
+                    authz.clone(),
                 )),
                 issue_link: Arc::new(crate::services::IssueLinkServiceImpl::new(
                     repos.issue_links.clone(),
                     repos.issues.clone(),
+                    authz.clone(),
                 )),
                 notification: Arc::new(crate::services::NotificationServiceImpl::new(
                     repos.notifications.clone(),
@@ -205,6 +220,7 @@ impl AppContext {
                     repos.sprints.clone(),
                     repos.statuses.clone(),
                     repos.issue_status_history.clone(),
+                    authz.clone(),
                 )),
                 admin: Arc::new(AdminServiceImpl::new(
                     repos.users.clone(),
@@ -217,24 +233,28 @@ impl AppContext {
                     repos.users.clone(),
                     repos.projects.clone(),
                     events.clone(),
+                    authz.clone(),
                 )),
                 vote: Arc::new(crate::services::VoteServiceImpl::new(
                     repos.votes.clone(),
                     repos.issues.clone(),
+                    authz.clone(),
                 )),
                 component: Arc::new(crate::services::ComponentServiceImpl::new(
                     repos.components.clone(),
                     repos.projects.clone(),
+                    authz.clone(),
                 )),
                 version: Arc::new(crate::services::VersionServiceImpl::new(
                     repos.versions.clone(),
                     repos.projects.clone(),
+                    authz.clone(),
                 )),
                 custom_field: Arc::new(crate::services::CustomFieldServiceImpl::new(
                     repos.custom_fields.clone(),
                     repos.projects.clone(),
                     repos.issues.clone(),
-                    repos.members.clone(),
+                    authz.clone(),
                 )),
                 sprint,
             },
