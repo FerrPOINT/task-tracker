@@ -28,7 +28,7 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 ## Реализованные эндпоинты (v1, автоген из openapi.json)
 
-Ниже — все 70 путей, фактически реализованных в бэкенде (источник: `openapi/openapi.json`, сгенерирован из `utoipa`-аннотаций). Остальные разделы этого документа описывают целевую полную спецификацию (фазы 5+).
+Ниже — все 70 путей и 99 операций, фактически реализованных в бэкенде (источник: `openapi/openapi.json`, сгенерирован из `utoipa`-аннотаций). Остальные разделы этого документа описывают целевую полную спецификацию (фазы 5+).
 
 ### Health
 
@@ -44,6 +44,7 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 | POST | `/auth/logout` | Выход, отзыв refresh |
 | POST | `/auth/refresh` | Обновление access-токена |
 | POST | `/auth/register` | Регистрация |
+| GET | `/auth/me` | Текущий аутентифицированный пользователь |
 
 ### Users
 
@@ -92,12 +93,16 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 | Метод | Путь | Назначение |
 |---|---|---|
+| GET | `/issues/{issue_id}/comments` | Список комментариев задачи |
+| POST | `/issues/{issue_id}/comments` | Добавление комментария |
 | DELETE, PATCH | `/comments/{id}` | Правка / удаление комментария |
 
 ### Attachments
 
 | Метод | Путь | Назначение |
 |---|---|---|
+| GET | `/issues/{issue_id}/attachments` | Список вложений задачи |
+| POST | `/issues/{issue_id}/attachments` | Загрузка вложения (multipart) |
 | DELETE | `/attachments/{id}` | Метаданные / удаление вложения |
 | GET | `/attachments/{id}/download` | Скачивание файла вложения |
 
@@ -107,16 +112,28 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 |---|---|---|
 | PUT, DELETE | `/labels/{id}` | Метка: обновление / удаление |
 
+### Issue Labels
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/issues/{issue_id}/labels` | Список меток задачи |
+| POST | `/issues/{issue_id}/labels` | Привязка метки к задаче |
+| DELETE | `/issues/{issue_id}/labels/{label_id}` | Отвязка метки от задачи |
+
 ### Issue Links
 
 | Метод | Путь | Назначение |
 |---|---|---|
+| GET | `/issues/{issue_id}/links` | Список связей задачи |
+| POST | `/issues/{issue_id}/links` | Создание связи между задачами |
 | DELETE | `/issue-links/{id}` | Удаление связи |
 
 ### Worklogs
 
 | Метод | Путь | Назначение |
 |---|---|---|
+| GET | `/issues/{issue_id}/worklogs` | Список записей о затраченном времени |
+| POST | `/issues/{issue_id}/worklogs` | Добавление записи о затраченном времени |
 | DELETE, PATCH | `/worklogs/{id}` | Правка / удаление записи |
 
 ### Issue Watchers
@@ -202,6 +219,15 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 | Метод | Путь | Назначение |
 |---|---|---|
 | GET | `/dashboard` | Дашборд текущего пользователя |
+
+### Reports
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/reports/velocity` | Отчёт по скорости спринтов |
+| GET | `/reports/burndown` | Отчёт по сгоранию задач |
+| GET | `/reports/cumulative-flow` | Отчёт по кумулятивному потоку |
+| GET | `/reports/control-chart` | Контрольная диаграмма cycle time |
 
 ### Real-time (SSE)
 
@@ -297,6 +323,21 @@ Refresh из `httpOnly` cookie. Возвращает новый access token и 
 Инвалидирует refresh token и очищает cookie.
 
 **Response 204:** No content.
+
+### GET /auth/me
+
+Возвращает текущего аутентифицированного пользователя.
+
+**Response 200:** `UserResponse`
+
+```json
+{
+  "id": "uuid",
+  "username": "jdoe",
+  "email": "jdoe@example.com",
+  "display_name": "John Doe"
+}
+```
 
 ## Auth Flow
 
@@ -541,6 +582,49 @@ Soft delete → trash.
 
 ---
 
+## Issue Labels
+
+### GET /issues/{issue_id}/labels
+
+Список меток, привязанных к задаче.
+
+**Response 200:** `LabelListResponse`
+
+```json
+{
+  "labels": [
+    {
+      "id": "uuid",
+      "project_id": "uuid",
+      "name": "backend",
+      "color": "#1b67f2"
+    }
+  ]
+}
+```
+
+### POST /issues/{issue_id}/labels
+
+Привязка существующей метки к задаче.
+
+**Body:** `AttachLabelRequest`
+
+```json
+{
+  "label_id": "uuid"
+}
+```
+
+**Response 204:** No content.
+
+### DELETE /issues/{issue_id}/labels/{label_id}
+
+Отвязка метки от задачи.
+
+**Response 204:** No content.
+
+---
+
 ## Issue Expandable Fields
 
 `GET /api/v1/issues/{id}?expand=changelog,renderedFields,operations,editmeta`
@@ -557,13 +641,47 @@ Soft delete → trash.
 
 ### GET /issues/{id}/comments
 
-### POST /issues/{id}/comments
+Список комментариев задачи.
 
-**Body:**
+**Response 200:** `CommentListResponse`
+
 ```json
 {
-  "body": { "type": "doc", "content": [...] },
-  "mentions": ["uuid-user"]
+  "comments": [
+    {
+      "id": "uuid",
+      "issue_id": "uuid",
+      "author_id": "uuid",
+      "author_name": "John Doe",
+      "body": "Looks good",
+      "created_at": "2026-01-15T10:00:00Z",
+      "updated_at": "2026-01-15T10:00:00Z"
+    }
+  ]
+}
+```
+
+### POST /issues/{id}/comments
+
+**Body:** `CreateCommentRequest`
+
+```json
+{
+  "body": "Comment text"
+}
+```
+
+**Response 201:** `CommentResponse`
+
+```json
+{
+  "id": "uuid",
+  "issue_id": "uuid",
+  "author_id": "uuid",
+  "author_name": "John Doe",
+  "body": "Comment text",
+  "created_at": "2026-01-15T10:00:00Z",
+  "updated_at": "2026-01-15T10:00:00Z"
 }
 ```
 
@@ -577,9 +695,43 @@ Soft delete → trash.
 
 ### GET /issues/{id}/attachments
 
+Список вложений задачи.
+
+**Response 200:** `AttachmentListResponse`
+
+```json
+{
+  "attachments": [
+    {
+      "id": "uuid",
+      "issue_id": "uuid",
+      "author_id": "uuid",
+      "file_name": "screenshot.png",
+      "content_type": "image/png",
+      "size_bytes": 102400,
+      "created_at": "2026-01-15T10:00:00Z"
+    }
+  ]
+}
+```
+
 ### POST /issues/{id}/attachments
 
-multipart/form-data
+Multipart-форма с полем `file`.
+
+**Response 201:** `AttachmentResponse`
+
+```json
+{
+  "id": "uuid",
+  "issue_id": "uuid",
+  "author_id": "uuid",
+  "file_name": "screenshot.png",
+  "content_type": "image/png",
+  "size_bytes": 102400,
+  "created_at": "2026-01-15T10:00:00Z"
+}
+```
 
 ### GET /attachments/{id}
 
@@ -593,45 +745,55 @@ Download/stream.
 
 ### GET /issues/{id}/worklogs
 
-**Response 200:**
+Список записей о затраченном времени.
+
+**Response 200:** `WorklogListResponse`
+
 ```json
 {
-  "data": [
+  "worklogs": [
     {
       "id": "uuid",
-      "issueId": "uuid",
-      "userId": "uuid",
-      "userDisplayName": "Ivan",
-      "timeSpentSeconds": 3600,
-      "timeSpent": "1h",
-      "remainingEstimateSeconds": 7200,
-      "remainingEstimate": "2h",
-      "startedAt": "2026-01-15T10:00:00Z",
-      "comment": "Implemented login",
-      "createdAt": "2026-01-15T10:00:00Z",
-      "updatedAt": "2026-01-15T10:00:00Z"
+      "issue_id": "uuid",
+      "author_id": "uuid",
+      "author_name": "Ivan",
+      "started_at": "2026-01-15T10:00:00Z",
+      "duration_seconds": 3600,
+      "description": "Implemented login",
+      "created_at": "2026-01-15T10:00:00Z",
+      "updated_at": "2026-01-15T10:00:00Z"
     }
-  ],
-  "page": 0,
-  "size": 20,
-  "total": 1,
-  "totalPages": 1
+  ]
 }
 ```
 
 ### POST /issues/{id}/worklogs
 
-**Body:**
+**Body:** `CreateWorklogRequest`
+
 ```json
 {
-  "timeSpentSeconds": 3600,
-  "remainingEstimateSeconds": 7200,
-  "startedAt": "2026-01-15T10:00:00Z",
-  "comment": "Implemented login"
+  "started_at": "2026-01-15T10:00:00Z",
+  "duration_seconds": 3600,
+  "description": "Implemented login"
 }
 ```
 
 **Response 201:** `WorklogResponse`
+
+```json
+{
+  "id": "uuid",
+  "issue_id": "uuid",
+  "author_id": "uuid",
+  "author_name": "Ivan",
+  "started_at": "2026-01-15T10:00:00Z",
+  "duration_seconds": 3600,
+  "description": "Implemented login",
+  "created_at": "2026-01-15T10:00:00Z",
+  "updated_at": "2026-01-15T10:00:00Z"
+}
+```
 
 ### PUT /issues/{id}/worklogs/{worklogId}
 
@@ -651,13 +813,46 @@ Download/stream.
 
 ### GET /issues/{id}/links
 
-### POST /issues/{id}/links
+Список связей задачи.
 
-**Body:**
+**Response 200:** `IssueLinkListResponse`
+
 ```json
 {
-  "targetIssueId": "uuid",
-  "linkTypeId": "uuid"
+  "links": [
+    {
+      "id": "uuid",
+      "source_id": "uuid",
+      "source_key": "TT-42",
+      "target_id": "uuid",
+      "target_key": "TT-43",
+      "link_type": "blocks"
+    }
+  ]
+}
+```
+
+### POST /issues/{id}/links
+
+**Body:** `CreateLinkRequest`
+
+```json
+{
+  "target_key": "TT-43",
+  "link_type": "blocks"
+}
+```
+
+**Response 201:** `IssueLinkResponse`
+
+```json
+{
+  "id": "uuid",
+  "source_id": "uuid",
+  "source_key": "TT-42",
+  "target_id": "uuid",
+  "target_key": "TT-43",
+  "link_type": "blocks"
 }
 ```
 
@@ -938,6 +1133,23 @@ Query: `?sprintId=uuid&unit=story_points`
 ### GET /reports/cumulative-flow
 
 Query: `?projectId=uuid&from=...&to=...`
+
+### GET /reports/control-chart
+
+Query: `?projectId=uuid`
+
+**Response 200:** `ControlChartResponse`
+
+```json
+{
+  "points": [
+    {
+      "issue_key": "TT-42",
+      "cycle_time_days": 3.5
+    }
+  ]
+}
+```
 
 ---
 
