@@ -1,7 +1,6 @@
 import type { components } from './generated'
 import { api } from './client'
 
-export type NotificationFrequency = 'immediate' | 'hourly' | 'daily' | 'never'
 export type NotificationItem = components['schemas']['NotificationResponse']
 export type NotificationSettings = components['schemas']['NotificationSettingsResponse']
 export type UpdateNotificationSettingsInput = components['schemas']['UpdateNotificationSettingsRequest']

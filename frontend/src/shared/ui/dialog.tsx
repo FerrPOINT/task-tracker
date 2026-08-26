@@ -44,6 +44,7 @@ const DialogContent = React.forwardRef<
           variant="ghost"
           size="icon"
           className="absolute right-3 top-3 text-text-muted hover:text-text-primary"
+          aria-label="Close"
         >
           <X className="h-4 w-4" />
         </Button>

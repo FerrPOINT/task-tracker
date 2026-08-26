@@ -126,10 +126,10 @@ export function ProjectsPage() {
           ></Input>
         </div>
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="secondary" size="icon" className="h-8 w-8">
+          <Button variant="secondary" size="icon" className="h-8 w-8" aria-label={t('projects.gridView')}>
             <LayoutGrid className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('projects.listView')}>
             <List className="h-4 w-4" />
           </Button>
         </div>
@@ -165,6 +165,7 @@ export function ProjectsPage() {
                         setEditingProject(project)
                         setFormOpen(true)
                       }}
+                      aria-label={t('common.edit')}
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -176,6 +177,7 @@ export function ProjectsPage() {
                         e.preventDefault()
                         setDeletingProject(project)
                       }}
+                      aria-label={t('common.delete')}
                     >
                       <Trash2 className="h-4 w-4 text-rose-500" />
                     </Button>
@@ -183,6 +185,7 @@ export function ProjectsPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                      aria-label={t('projects.favorite')}
                     >
                       <Star className="h-4 w-4" />
                     </Button>
@@ -190,6 +193,7 @@ export function ProjectsPage() {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                      aria-label={t('projects.moreActions')}
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>

@@ -1,7 +1,7 @@
 import { api } from './client'
 import type { components } from './generated'
 
-export type UpdateIssueInput = components['schemas']['UpdateIssueRequest']
+type UpdateIssueInput = components['schemas']['UpdateIssueRequest']
 export type Issue = components['schemas']['IssueResponse']
 
 export async function updateIssue(id: string, input: UpdateIssueInput): Promise<Issue> {

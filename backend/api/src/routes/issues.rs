@@ -11,7 +11,7 @@ use crate::dto::{
 use app::auth::UserClaims;
 use app::commands::{CreateIssueCommand, UpdateIssueCommand};
 use axum::Extension;
-use shared::{AppError, IssueId, ProjectKey};
+use shared::{AppError, IssueId, ProjectKey, UserId};
 use std::str::FromStr;
 
 #[utoipa::path(
@@ -203,12 +203,17 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
 )]
 pub async fn delete_issue(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, shared::AppError> {
     let issue_id = id
         .parse::<IssueId>()
         .map_err(|_| shared::AppError::invalid_input("id"))?;
-    ctx.services.issue.delete(issue_id).await?;
+    let actor_id = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| shared::AppError::invalid_input("invalid user id in token"))?;
+    ctx.services.issue.delete(issue_id, actor_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -220,12 +225,17 @@ pub async fn delete_issue(
 )]
 pub async fn restore_issue(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<Json<IssueResponse>, AppError> {
     let issue_id = id
         .parse::<IssueId>()
         .map_err(|_| shared::AppError::invalid_input("id"))?;
-    let i = ctx.services.issue.restore(issue_id).await?;
+    let actor_id = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| shared::AppError::invalid_input("invalid user id in token"))?;
+    let i = ctx.services.issue.restore(issue_id, actor_id).await?;
     Ok(Json(map_issue(i)))
 }
 
@@ -237,12 +247,17 @@ pub async fn restore_issue(
 )]
 pub async fn purge_issue(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, shared::AppError> {
     let issue_id = id
         .parse::<IssueId>()
         .map_err(|_| shared::AppError::invalid_input("id"))?;
-    ctx.services.issue.purge(issue_id).await?;
+    let actor_id = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| shared::AppError::invalid_input("invalid user id in token"))?;
+    ctx.services.issue.purge(issue_id, actor_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -254,8 +269,13 @@ pub async fn purge_issue(
 )]
 pub async fn list_trash(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(key): Path<String>,
 ) -> Result<Json<IssueListResponse>, AppError> {
+    let _actor_id = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let project_key =
         ProjectKey::from_str(&key).map_err(|e| AppError::invalid_input(e.to_string()))?;
     let items = ctx.services.issue.list_trash(&project_key).await?;

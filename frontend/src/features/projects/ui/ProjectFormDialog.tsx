@@ -64,7 +64,7 @@ export function ProjectFormDialog({
             <Input
               value={key}
               onChange={(e) => setKey(e.target.value.toUpperCase())}
-              placeholder="TT"
+              placeholder={t('projects.keyPlaceholder')}
               disabled={isEdit}
               required
             />

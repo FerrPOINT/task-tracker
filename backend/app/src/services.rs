@@ -477,11 +477,11 @@ impl crate::context::IssueService for IssueServiceImpl {
         .await
     }
 
-    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
+    async fn delete(&self, id: IssueId, _actor_id: UserId) -> Result<(), AppError> {
         self.issues.delete(id).await
     }
 
-    async fn restore(&self, id: IssueId) -> Result<IssueDto, AppError> {
+    async fn restore(&self, id: IssueId, _actor_id: UserId) -> Result<IssueDto, AppError> {
         self.issues.restore(id).await?;
         let issue = self.issues.get_by_id(id).await?;
         helpers::build_issue_dtos_with_projects(
@@ -493,7 +493,7 @@ impl crate::context::IssueService for IssueServiceImpl {
         .map(|mut v| v.remove(0))
     }
 
-    async fn purge(&self, id: IssueId) -> Result<(), AppError> {
+    async fn purge(&self, id: IssueId, _actor_id: UserId) -> Result<(), AppError> {
         self.issues.purge(id).await
     }
 
@@ -1446,9 +1446,12 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
     async fn delete(
         &self,
         attachment_id: shared::AttachmentId,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<(), AppError> {
         let a = self.attachments.get_by_id(attachment_id).await?;
+        if a.author_id != requester {
+            return Err(AppError::Forbidden);
+        }
         self.storage
             .delete(&a.issue_id.to_string(), a.storage_key.as_ref())
             .await?;
@@ -1461,6 +1464,7 @@ pub struct LabelServiceImpl {
     labels: Arc<dyn domain::LabelRepository>,
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
+    members: Arc<dyn ProjectMemberRepository>,
 }
 
 impl LabelServiceImpl {
@@ -1468,11 +1472,13 @@ impl LabelServiceImpl {
         labels: Arc<dyn domain::LabelRepository>,
         projects: Arc<dyn ProjectRepository>,
         issues: Arc<dyn IssueRepository>,
+        members: Arc<dyn ProjectMemberRepository>,
     ) -> Self {
         Self {
             labels,
             projects,
             issues,
+            members,
         }
     }
 
@@ -1484,6 +1490,23 @@ impl LabelServiceImpl {
             color: l.color.as_ref().to_string(),
         }
     }
+
+    /// Verify the requester is the project owner or a member.
+    async fn check_membership(
+        &self,
+        project_id: ProjectId,
+        requester: UserId,
+    ) -> Result<(), AppError> {
+        let project = self.projects.get_by_id(project_id).await?;
+        if project.owner_id == requester {
+            return Ok(());
+        }
+        match self.members.get(project_id, requester).await {
+            Ok(_) => Ok(()),
+            Err(AppError::NotFound(_)) => Err(AppError::Forbidden),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 #[async_trait]
@@ -1493,9 +1516,10 @@ impl crate::context::LabelService for LabelServiceImpl {
         project_key: &ProjectKey,
         name: &str,
         color: &str,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<crate::context::LabelDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
+        self.check_membership(project.id, requester).await?;
         if name.trim().is_empty() {
             return Err(AppError::invalid_input("label name must not be empty"));
         }
@@ -1523,9 +1547,11 @@ impl crate::context::LabelService for LabelServiceImpl {
         label_id: shared::LabelId,
         name: &str,
         color: &str,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<crate::context::LabelDto, AppError> {
-        let mut label = self.labels.get_by_id(label_id).await?;
+        let label = self.labels.get_by_id(label_id).await?;
+        self.check_membership(label.project_id, requester).await?;
+        let mut label = label;
         if !name.trim().is_empty() {
             label.name = name.trim().to_string().into();
         }
@@ -1534,7 +1560,9 @@ impl crate::context::LabelService for LabelServiceImpl {
         Ok(Self::to_dto(&label))
     }
 
-    async fn delete(&self, label_id: shared::LabelId, _requester: UserId) -> Result<(), AppError> {
+    async fn delete(&self, label_id: shared::LabelId, requester: UserId) -> Result<(), AppError> {
+        let label = self.labels.get_by_id(label_id).await?;
+        self.check_membership(label.project_id, requester).await?;
         self.labels.delete(label_id).await?;
         Ok(())
     }
@@ -1648,8 +1676,12 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
     async fn delete(
         &self,
         link_id: shared::IssueLinkId,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<(), AppError> {
+        // IssueLink has no created_by field and the repository has no get_by_id,
+        // so we cannot fully verify ownership. The requester parameter is kept
+        // (not prefixed with _) so it is available for future enforcement.
+        let _ = requester;
         self.links.delete(link_id).await?;
         Ok(())
     }
@@ -2136,6 +2168,7 @@ pub struct CustomFieldServiceImpl {
     fields: Arc<dyn domain::CustomFieldRepository>,
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
+    members: Arc<dyn ProjectMemberRepository>,
 }
 
 impl CustomFieldServiceImpl {
@@ -2143,11 +2176,30 @@ impl CustomFieldServiceImpl {
         fields: Arc<dyn domain::CustomFieldRepository>,
         projects: Arc<dyn ProjectRepository>,
         issues: Arc<dyn IssueRepository>,
+        members: Arc<dyn ProjectMemberRepository>,
     ) -> Self {
         Self {
             fields,
             projects,
             issues,
+            members,
+        }
+    }
+
+    /// Verify the requester is the project owner or a member.
+    async fn check_membership(
+        &self,
+        project_id: ProjectId,
+        requester: UserId,
+    ) -> Result<(), AppError> {
+        let project = self.projects.get_by_id(project_id).await?;
+        if project.owner_id == requester {
+            return Ok(());
+        }
+        match self.members.get(project_id, requester).await {
+            Ok(_) => Ok(()),
+            Err(AppError::NotFound(_)) => Err(AppError::Forbidden),
+            Err(e) => Err(e),
         }
     }
 
@@ -2173,9 +2225,10 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
         field_type: &str,
         options: &[String],
         is_required: bool,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<crate::context::CustomFieldDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
+        self.check_membership(project.id, requester).await?;
         if name.trim().is_empty() {
             return Err(AppError::invalid_input("field name must not be empty"));
         }
@@ -2212,9 +2265,11 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
         field_type: &str,
         options: &[String],
         is_required: bool,
-        _requester: UserId,
+        requester: UserId,
     ) -> Result<crate::context::CustomFieldDto, AppError> {
-        let mut field = self.fields.get_by_id(field_id).await?;
+        let field = self.fields.get_by_id(field_id).await?;
+        self.check_membership(field.project_id, requester).await?;
+        let mut field = field;
         if !name.trim().is_empty() {
             field.name = name.trim().to_string().into();
         }

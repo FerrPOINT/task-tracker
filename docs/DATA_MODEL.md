@@ -244,6 +244,244 @@ Foreign-key constraints:
     "fk_issues_fix_version" FOREIGN KEY (fix_version_id) REFERENCES project_versions(id) ON DELETE SET NULL
 ```
 
+### users
+
+```
+                              Table "public.users"
+     Column      |           Type           | Collation | Nullable |      Default
+-----------------+--------------------------+-----------+----------+-------------------
+ id              | uuid                     |           | not null | gen_random_uuid()
+ email           | character varying        |           | not null |
+ username        | character varying        |           | not null |
+ display_name    | character varying        |           | not null |
+ password_hash   | character varying        |           | not null |
+ refresh_token_hash | character varying     |           |          |
+ is_system_admin | boolean                  |           | not null | false
+ is_active       | boolean                  |           | not null | true
+ created_at      | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+ updated_at      | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "users_pkey" PRIMARY KEY, btree (id)
+    "users_email_key" UNIQUE CONSTRAINT, btree (email)
+    "users_username_key" UNIQUE CONSTRAINT, btree (username)
+```
+
+### projects
+
+```
+                             Table "public.projects"
+      Column       |           Type           | Collation | Nullable |      Default
+-------------------+--------------------------+-----------+----------+-------------------
+ id                | uuid                     |           | not null | gen_random_uuid()
+ key               | character varying(10)    |           | not null |
+ name              | character varying        |           | not null |
+ description       | text                     |           |          |
+ owner_id          | uuid                     |           | not null |
+ default_board_id  | uuid                     |           | not null |
+ created_at        | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+ updated_at        | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "projects_pkey" PRIMARY KEY, btree (id)
+    "projects_key_key" UNIQUE CONSTRAINT, btree (key)
+Foreign-key constraints:
+    "fk_projects_owner" FOREIGN KEY (owner_id) REFERENCES users(id)
+```
+
+### boards
+
+```
+                              Table "public.boards"
+   Column   |           Type           | Collation | Nullable |      Default
+------------+--------------------------+-----------+----------+-------------------
+ id         | uuid                     |           | not null | gen_random_uuid()
+ project_id | uuid                     |           | not null |
+ name       | character varying        |           | not null |
+ columns    | json                     |           | not null |
+ created_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+ updated_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "boards_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "fk_boards_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+```
+
+### sprints
+
+```
+                             Table "public.sprints"
+    Column    |           Type           | Collation | Nullable |      Default
+--------------+--------------------------+-----------+----------+-------------------
+ id           | uuid                     |           | not null | gen_random_uuid()
+ project_id   | uuid                     |           | not null |
+ name         | character varying        |           | not null |
+ goal         | text                     |           |          |
+ state        | character varying(16)    |           | not null |
+ start_date   | timestamp with time zone |           |          |
+ end_date     | timestamp with time zone |           |          |
+ velocity     | bigint                   |           |          |
+ created_at   | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+ updated_at   | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "sprints_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "fk_sprints_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+```
+
+### comments
+
+```
+                             Table "public.comments"
+   Column   |           Type           | Collation | Nullable |      Default
+------------+--------------------------+-----------+----------+-------------------
+ id         | uuid                     |           | not null | gen_random_uuid()
+ issue_id   | uuid                     |           | not null |
+ author_id  | uuid                     |           | not null |
+ body       | text                     |           | not null |
+ created_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+ updated_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "comments_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "fk_comments_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_comments_author" FOREIGN KEY (author_id) REFERENCES users(id)
+```
+
+### project_members
+
+```
+                       Table "public.project_members"
+   Column    |           Type           | Collation | Nullable |      Default
+-------------+--------------------------+-----------+----------+-------------------
+ project_id  | uuid                     |           | not null |
+ user_id     | uuid                     |           | not null |
+ role        | character varying        |           | not null |
+ joined_at   | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "pk_project_members" PRIMARY KEY, btree (project_id, user_id)
+Foreign-key constraints:
+    "fk_project_members_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    "fk_project_members_user" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+```
+
+### worklogs
+
+```
+                             Table "public.worklogs"
+      Column       |           Type           | Collation | Nullable |      Default
+-------------------+--------------------------+-----------+----------+-------------------
+ id                | uuid                     |           | not null | gen_random_uuid()
+ issue_id          | uuid                     |           | not null |
+ author_id         | uuid                     |           | not null |
+ started_at        | timestamp with time zone |           | not null |
+ duration_seconds | integer                  |           | not null |
+ description       | character varying        |           |          |
+ created_at        | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+ updated_at        | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "worklogs_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "fk_worklogs_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_worklogs_author" FOREIGN KEY (author_id) REFERENCES users(id)
+```
+
+### issue_status_history
+
+```
+                       Table "public.issue_status_history"
+    Column     |           Type           | Collation | Nullable |      Default
+---------------+--------------------------+-----------+----------+-------------------
+ id            | uuid                     |           | not null | gen_random_uuid()
+ issue_id      | uuid                     |           | not null |
+ from_status_id | uuid                    |           |          |
+ to_status_id   | uuid                    |           | not null |
+ changed_by_id  | uuid                    |           |          |
+ created_at    | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "issue_status_history_pkey" PRIMARY KEY, btree (id)
+Foreign-key constraints:
+    "fk_ish_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_ish_from_status" FOREIGN KEY (from_status_id) REFERENCES statuses(id)
+    "fk_ish_to_status" FOREIGN KEY (to_status_id) REFERENCES statuses(id)
+    "fk_ish_changed_by" FOREIGN KEY (changed_by_id) REFERENCES users(id)
+```
+
+### audit_logs
+
+```
+                            Table "public.audit_logs"
+   Column    |           Type           | Collation | Nullable |      Default
+-------------+--------------------------+-----------+----------+-------------------
+ id          | uuid                     |           | not null |
+ actor_id    | uuid                     |           | not null |
+ action      | character varying        |           | not null |
+ entity_type | character varying        |           | not null |
+ entity_id   | uuid                     |           |          |
+ metadata    | json                     |           | not null | '{}'::jsonb
+ created_at  | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "audit_logs_pkey" PRIMARY KEY, btree (id)
+    "idx_audit_logs_actor_created" btree (actor_id, created_at)
+    "idx_audit_logs_created" btree (created_at)
+Foreign-key constraints:
+    "fk_audit_logs_actor" FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE RESTRICT
+```
+
+### notifications
+
+```
+                           Table "public.notifications"
+    Column     |           Type           | Collation | Nullable |      Default
+---------------+--------------------------+-----------+----------+-------------------
+ id            | uuid                     |           | not null | gen_random_uuid()
+ recipient_id  | uuid                     |           | not null |
+ event_type    | character varying        |           | not null |
+ entity_type   | character varying        |           | not null |
+ entity_id     | uuid                     |           |          |
+ actor_id      | uuid                     |           |          |
+ title         | character varying        |           | not null |
+ body          | text                     |           |          |
+ is_read       | boolean                  |           | not null | false
+ read_at       | timestamp with time zone |           |          |
+ action_url    | character varying        |           |          |
+ metadata      | json                     |           | not null | '{}'::jsonb
+ created_at    | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "notifications_pkey" PRIMARY KEY, btree (id)
+    "idx_notifications_recipient_unread_created" btree (recipient_id, is_read, created_at)
+Foreign-key constraints:
+    "fk_notifications_recipient" FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
+    "fk_notifications_actor" FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+```
+
+### notification_user_settings
+
+```
+                 Table "public.notification_user_settings"
+       Column        |           Type           | Collation | Nullable |      Default
+---------------------+--------------------------+-----------+----------+-------------------
+ user_id             | uuid                     |           | not null |
+ email_frequency     | character varying        |           | not null | 'immediate'
+ disabled_event_types | json                    |           | not null | '[]'::jsonb
+ notify_own_changes  | boolean                  |           | not null | false
+Indexes:
+    "notification_user_settings_pkey" PRIMARY KEY, btree (user_id)
+Foreign-key constraints:
+    "fk_notification_user_settings_user" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+```
+
+### system_settings
+
+```
+                       Table "public.system_settings"
+   Column   |           Type           | Collation | Nullable |      Default
+------------+--------------------------+-----------+----------+-------------------
+ key        | character varying        |           | not null |
+ value      | json                     |           | not null | '{}'::jsonb
+ updated_at | timestamp with time zone |           | not null | CURRENT_TIMESTAMP
+Indexes:
+    "system_settings_pkey" PRIMARY KEY, btree (key)
+```
+
 ---
 
 ## 1. Общие принципы
@@ -350,21 +588,15 @@ Foreign-key constraints:
 64. `custom_field_context_issue_types`
 65. `custom_field_options`
 
-### Фильтры и дашборды
-66. `saved_filters`
-67. `filter_subscriptions`
-68. `dashboards`
-69. `dashboard_gadgets`
-
 ### Уведомления
-70. `notifications`
-71. `notification_user_settings`
-72. `project_watches`
-73. `issue_watches`
+66. `notifications`
+67. `notification_user_settings`
+68. `project_watches`
+69. `issue_watches`
 
 ### Автоматизация
-74. `automation_rules`
-75. `automation_rule_logs`
+70. `automation_rules`
+71. `automation_rule_logs`
 
 ---
 
@@ -419,8 +651,6 @@ erDiagram
     USERS ||--o{ COMMENTS : author
     USERS ||--o{ WORKLOGS : worker
     USERS ||--o{ NOTIFICATIONS : recipient
-    USERS ||--o{ SAVED_FILTERS : owner
-    USERS ||--o{ DASHBOARDS : owner
 
     SPRINTS ||--o{ SPRINT_ISSUES : contains
     ISSUES ||--o{ SPRINT_ISSUES : in_sprint
@@ -428,9 +658,6 @@ erDiagram
     CUSTOM_FIELDS ||--o{ CUSTOM_FIELD_CONTEXTS : contexts
     CUSTOM_FIELDS ||--o{ CUSTOM_FIELD_OPTIONS : options
     CUSTOM_FIELDS ||--o{ ISSUE_CUSTOM_FIELD_VALUES : values
-
-    SAVED_FILTERS ||--o{ DASHBOARD_GADGETS : source
-    DASHBOARDS ||--o{ DASHBOARD_GADGETS : contains
 
     PERMISSION_SCHEMES ||--o{ PERMISSION_SCHEME_ENTRIES : entries
     NOTIFICATION_SCHEMES ||--o{ NOTIFICATION_SCHEME_EVENTS : events
@@ -1472,65 +1699,7 @@ CREATE TABLE custom_field_options (
 
 ---
 
-### 4.68. saved_filters
-
-```sql
-CREATE TABLE saved_filters (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    description TEXT,
-    jql TEXT NOT NULL,
-    is_public BOOLEAN DEFAULT false,
-    favorite BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
-### 4.69. filter_subscriptions
-
-```sql
-CREATE TABLE filter_subscriptions (
-    filter_id UUID NOT NULL REFERENCES saved_filters(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    frequency TEXT NOT NULL, -- 'immediate','daily','weekly'
-    PRIMARY KEY (filter_id, user_id)
-);
-```
-
-### 4.70. dashboards
-
-```sql
-CREATE TABLE dashboards (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    layout JSONB NOT NULL,
-    is_system BOOLEAN DEFAULT false,
-    is_default BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
-### 4.71. dashboard_gadgets
-
-```sql
-CREATE TABLE dashboard_gadgets (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    dashboard_id UUID NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
-    gadget_type TEXT NOT NULL,
-    title TEXT,
-    position JSONB NOT NULL,
-    config JSONB NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
-);
-```
-
----
-
-### 4.72. notifications
+### 4.68. notifications
 
 ```sql
 CREATE TABLE notifications (
@@ -1550,7 +1719,7 @@ CREATE TABLE notifications (
 );
 ```
 
-### 4.73. notification_user_settings
+### 4.69. notification_user_settings
 
 ```sql
 CREATE TABLE notification_user_settings (
@@ -1561,7 +1730,7 @@ CREATE TABLE notification_user_settings (
 );
 ```
 
-### 4.74. project_watches
+### 4.70. project_watches
 
 ```sql
 CREATE TABLE project_watches (
@@ -1572,7 +1741,7 @@ CREATE TABLE project_watches (
 );
 ```
 
-### 4.75. issue_watches
+### 4.71. issue_watches
 
 ```sql
 CREATE TABLE issue_watches (
@@ -1585,7 +1754,7 @@ CREATE TABLE issue_watches (
 
 ---
 
-### 4.76. automation_rules
+### 4.72. automation_rules
 
 ```sql
 CREATE TABLE automation_rules (
@@ -1603,7 +1772,7 @@ CREATE TABLE automation_rules (
 );
 ```
 
-### 4.77. automation_rule_logs
+### 4.73. automation_rule_logs
 
 ```sql
 CREATE TABLE automation_rule_logs (

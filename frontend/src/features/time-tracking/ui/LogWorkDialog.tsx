@@ -37,21 +37,18 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
           message: t('timeTracking.validation.invalidFormat'),
         },
       ),
-    remainingEstimate: z.string(),
     startedAt: z.string().min(1),
     comment: z.string(),
   })
 
   const form = useForm<{
     timeSpent: string
-    remainingEstimate: string
     startedAt: string
     comment: string
   }>({
     resolver: zodResolver(schema),
     defaultValues: {
       timeSpent: '',
-      remainingEstimate: '',
       startedAt: new Date().toISOString().slice(0, 10),
       comment: '',
     },
@@ -62,10 +59,6 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
       const wl = worklog
       form.reset({
         timeSpent: wl ? formatDuration(wl.timeSpentSeconds) : '',
-        remainingEstimate:
-          wl?.remainingEstimateSeconds !== null && wl?.remainingEstimateSeconds !== undefined
-            ? formatDuration(wl.remainingEstimateSeconds)
-            : '',
         startedAt: wl
           ? new Date(wl.startedAt).toISOString().slice(0, 10)
           : new Date().toISOString().slice(0, 10),
@@ -94,7 +87,6 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
   const handleSubmit = form.handleSubmit((values) => {
     onSubmit({
       timeSpent: values.timeSpent,
-      remainingEstimate: values.remainingEstimate,
       startedAt: new Date(values.startedAt).toISOString(),
       comment: values.comment,
     })
@@ -136,22 +128,17 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="remainingEstimate">{t('timeTracking.fields.remainingEstimate')}</Label>
-            <Input
-              id="remainingEstimate"
-              {...form.register('remainingEstimate')}
-              placeholder="2h"
-            />
-          </div>
-
-          <div className="space-y-1">
             <Label htmlFor="startedAt">{t('timeTracking.fields.startedAt')}</Label>
             <Input id="startedAt" type="date" {...form.register('startedAt')} />
           </div>
 
           <div className="space-y-1">
             <Label htmlFor="comment">{t('timeTracking.fields.comment')}</Label>
-            <Input id="comment" {...form.register('comment')} placeholder="What did you do?" />
+            <Input
+              id="comment"
+              {...form.register('comment')}
+              placeholder={t('timeTracking.fields.commentPlaceholder')}
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-2">

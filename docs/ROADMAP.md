@@ -23,7 +23,7 @@
 - JQL → SQL compiler: parameterized SQL, 15 unit-тестов (all fields, IS EMPTY, NOT, labels/sprint EXISTS, timestamp cast, injection safety, UUID validation).
 - Full-text search: PostgreSQL `tsvector` + GIN index + triggers (migration 000018).
 
-Отложено до поздних фаз: генерация уведомлений из issue-событий и digest-рассылки, «Корзина»/soft-delete (ссылка из сайдбара убрана), watcher/vote, версии/компоненты, кастомные поля, админка.
+Реализовано в фазах 5–9: генерация уведомлений из issue-событий, «Корзина»/soft-delete, watcher/vote, версии/компоненты, кастомные поля, админка (audit log, system settings, user management).
 
 ## 2. Phase 0: Bootstrap (M0)
 

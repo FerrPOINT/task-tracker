@@ -23,9 +23,6 @@ describe('LogWorkDialog', () => {
     fireEvent.change(screen.getByLabelText(/Time spent/i), {
       target: { value: '1h 30m' },
     })
-    fireEvent.change(screen.getByLabelText(/Remaining estimate/i), {
-      target: { value: '2h' },
-    })
     fireEvent.change(screen.getByLabelText(/Started/i), {
       target: { value: '2026-07-20' },
     })
@@ -38,7 +35,6 @@ describe('LogWorkDialog', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     const arg = onSubmit.mock.calls[0]![0]
     expect(arg.timeSpent).toBe('1h 30m')
-    expect(arg.remainingEstimate).toBe('2h')
     expect(arg.comment).toBe('Testing')
   })
 

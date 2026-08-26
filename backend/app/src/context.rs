@@ -195,6 +195,7 @@ impl AppContext {
                     repos.labels.clone(),
                     repos.projects.clone(),
                     repos.issues.clone(),
+                    repos.members.clone(),
                 )),
                 issue_link: Arc::new(crate::services::IssueLinkServiceImpl::new(
                     repos.issue_links.clone(),
@@ -238,6 +239,7 @@ impl AppContext {
                     repos.custom_fields.clone(),
                     repos.projects.clone(),
                     repos.issues.clone(),
+                    repos.members.clone(),
                 )),
                 sprint,
             },
@@ -331,11 +333,11 @@ pub trait IssueService: Send + Sync {
         filters: crate::context::SearchFilters,
     ) -> Result<Vec<IssueDto>, AppError>;
     /// Soft-delete an issue (move to trash).
-    async fn delete(&self, id: IssueId) -> Result<(), AppError>;
+    async fn delete(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError>;
     /// Restore a soft-deleted issue from trash.
-    async fn restore(&self, id: IssueId) -> Result<IssueDto, AppError>;
+    async fn restore(&self, id: IssueId, actor_id: UserId) -> Result<IssueDto, AppError>;
     /// Permanently delete a trashed issue.
-    async fn purge(&self, id: IssueId) -> Result<(), AppError>;
+    async fn purge(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError>;
     /// List soft-deleted (trashed) issues for a project.
     async fn list_trash(&self, project_key: &ProjectKey) -> Result<Vec<IssueDto>, AppError>;
 }

@@ -12,7 +12,7 @@ cargo install --path cli
 ## Глобальные флаги
 
 ```
---api-url   Базовый URL API (env: TASKTRACKER_API_URL, default: http://localhost:19876)
+--api-url   Базовый URL API (env: TASKTRACKER_API_URL, default: http://localhost:3456)
 --token     JWT access token (env: TASKTRACKER_TOKEN)
 ```
 
@@ -48,7 +48,7 @@ task-tracker issue transition PROJ-1 --to <status-uuid>
 
 - Токен передаётся через `--token` или переменную `TASKTRACKER_TOKEN`.
 - Парсинг ключей (`project get PROJ`, `issue get PROJ-1`) происходит на стороне сервера.
-- Остальные команды (миграции, backup, импорт/экспорт, админка) — заглушки в текущей MVP-версии.
+- 12 групп команд полностью реализованы: auth, project, issue, board, sprint, comment, label, search, notification, report, admin, member.
 
 ## Ссылки
 

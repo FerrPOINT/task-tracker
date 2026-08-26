@@ -3,7 +3,7 @@ import { api } from './client'
 
 export type AdminUser = components['schemas']['AdminUserResponse']
 export type CreateAdminUserInput = components['schemas']['AdminCreateUserRequest']
-export type AuditLogEntry = components['schemas']['AuditLogResponse']
+type AuditLogEntry = components['schemas']['AuditLogResponse']
 export type SystemSetting = components['schemas']['SystemSettingResponse']
 export type UpdateSystemSettingInput = components['schemas']['UpdateSystemSettingRequest']
 

@@ -181,7 +181,7 @@ export function ProjectBoardPage() {
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={t('board.columnActions')}>
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </div>
@@ -223,7 +223,7 @@ export function ProjectBoardPage() {
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={t('board.columnActions')}>
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </div>

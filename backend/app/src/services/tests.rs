@@ -1409,14 +1409,14 @@ async fn issue_soft_delete_and_restore() {
         .unwrap();
 
     let issue_id: IssueId = issue.id.parse().unwrap();
-    ctx.services.issue.delete(issue_id).await.unwrap();
+    ctx.services.issue.delete(issue_id, user.id).await.unwrap();
 
     // After soft-delete, normal get should fail.
     let err = ctx.services.issue.get_by_id(issue_id).await;
     assert!(err.is_err());
 
     // Restore and get should succeed.
-    let restored = ctx.services.issue.restore(issue_id).await.unwrap();
+    let restored = ctx.services.issue.restore(issue_id, user.id).await.unwrap();
     assert_eq!(restored.id, issue.id);
 }
 
@@ -1447,7 +1447,7 @@ async fn issue_soft_delete_lists_in_trash() {
         .unwrap();
 
     let issue_id: IssueId = issue.id.parse().unwrap();
-    ctx.services.issue.delete(issue_id).await.unwrap();
+    ctx.services.issue.delete(issue_id, user.id).await.unwrap();
 
     let trash = ctx
         .services
@@ -1486,8 +1486,8 @@ async fn issue_purge_from_trash() {
         .unwrap();
 
     let issue_id: IssueId = issue.id.parse().unwrap();
-    ctx.services.issue.delete(issue_id).await.unwrap();
-    ctx.services.issue.purge(issue_id).await.unwrap();
+    ctx.services.issue.delete(issue_id, user.id).await.unwrap();
+    ctx.services.issue.purge(issue_id, user.id).await.unwrap();
 
     let trash = ctx
         .services
@@ -1498,7 +1498,7 @@ async fn issue_purge_from_trash() {
     assert_eq!(trash.len(), 0);
 
     // Restore should fail after purge.
-    let err = ctx.services.issue.restore(issue_id).await;
+    let err = ctx.services.issue.restore(issue_id, user.id).await;
     assert!(err.is_err());
 }
 

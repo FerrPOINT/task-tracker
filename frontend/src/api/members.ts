@@ -2,7 +2,7 @@ import { api } from './client'
 import type { components } from './generated'
 
 export type ProjectMember = components['schemas']['ProjectMemberResponse']
-export type AddMemberInput = components['schemas']['AddProjectMemberRequest']
+type AddMemberInput = components['schemas']['AddProjectMemberRequest']
 
 export async function listProjectMembers(projectId: string): Promise<{ members: ProjectMember[] }> {
   const { data, error } = await api.GET('/api/v1/projects/{project_id}/members', {

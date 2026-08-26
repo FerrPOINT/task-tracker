@@ -69,7 +69,7 @@ import {
   type UpdateSystemSettingInput,
 } from '@/api/admin'
 
-export const adminKeys = {
+const adminKeys = {
   all: ['admin'] as const,
   users: ['admin', 'users'] as const,
   settings: ['admin', 'settings'] as const,
@@ -124,7 +124,7 @@ export function useAdminAuditLog(limit = 100) {
   })
 }
 
-export const notificationKeys = {
+const notificationKeys = {
   list: ['notifications'] as const,
   settings: ['notification-settings'] as const,
 }
@@ -161,7 +161,7 @@ export function useUpdateNotificationSettings() {
   })
 }
 
-export const workflowKeys = {
+const workflowKeys = {
   statuses: ['statuses'] as const,
   transitions: ['transitions'] as const,
   issueTypes: ['issue-types'] as const,
@@ -191,7 +191,7 @@ export function useIssueTypes() {
   })
 }
 
-export const attachmentKeys = {
+const attachmentKeys = {
   list: (issueId: string) => ['attachments', issueId] as const,
 }
 
@@ -219,7 +219,7 @@ export function useDeleteAttachment(issueId: string) {
   })
 }
 
-export const projectKeys = {
+const projectKeys = {
   all: ['projects'] as const,
   detail: (key: string) => ['project', key] as const,
   sprints: (key: string) => ['sprints', key] as const,
@@ -550,7 +550,7 @@ export function useRemoveProjectMember(projectId: string) {
   })
 }
 
-export const labelKeys = {
+const labelKeys = {
   project: (projectKey: string) => ['labels', projectKey] as const,
   issue: (issueId: string) => ['issue-labels', issueId] as const,
 }
@@ -596,7 +596,7 @@ export function useDetachLabel(issueId: string) {
   })
 }
 
-export const linkKeys = {
+const linkKeys = {
   issue: (issueId: string) => ['issue-links', issueId] as const,
 }
 
@@ -625,7 +625,7 @@ export function useDeleteIssueLink(issueId: string) {
   })
 }
 
-export const reportKeys = {
+const reportKeys = {
   velocity: (projectId: string, count: number) =>
     ['reports', 'velocity', projectId, count] as const,
   burndown: (sprintId: string) => ['reports', 'burndown', sprintId] as const,
@@ -665,7 +665,7 @@ export function useControlChartReport(projectId: string | undefined) {
   })
 }
 
-export const customFieldKeys = {
+const customFieldKeys = {
   project: (projectKey: string) => ['custom-fields', projectKey] as const,
   issue: (issueId: string) => ['issue-custom-fields', issueId] as const,
 }

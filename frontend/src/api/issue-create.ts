@@ -1,7 +1,7 @@
 import { api } from './client'
 import type { components } from './generated'
 
-export type CreateIssueInput = components['schemas']['CreateIssueRequest']
+type CreateIssueInput = components['schemas']['CreateIssueRequest']
 export type Issue = components['schemas']['IssueResponse']
 
 export async function createIssue(input: CreateIssueInput): Promise<Issue> {

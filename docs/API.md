@@ -2,13 +2,13 @@
 
 ## Overview
 
-REST API первой версии Task Tracker. Все endpoint возвращают JSON и используют единую модель пагинации, ошибок и webhook-событий. WebSocket live-updates описаны в разделе 7.
+REST API первой версии Task Tracker. Все endpoint возвращают JSON и используют единую модель пагинации, ошибок и webhook-событий. Real-time обновления через SSE описаны в разделе [Real-time (SSE)](#real-time-sse).
 
 > **Single source of truth:** актуальная OpenAPI-схема лежит в [`openapi/openapi.json`](../openapi/openapi.json). Backend генерирует её из `utoipa`-аннотаций Rust-хендлеров, а фронт получает из неё TypeScript-клиент. Ручная документация ниже — для контекста, но при расхождении приоритет у `openapi/openapi.json`.
 
 ## Базовая информация
 
-- Base URL: `https://{host}:19876/api/v1`
+- Base URL: `https://{host}:3456/api/v1`
 - Content-Type: `application/json`
 - Auth: JWT access в `Authorization: Bearer *** refresh в httpOnly cookie.
 - Версионирование: path-based `/api/v1`.
@@ -28,7 +28,7 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 ## Реализованные эндпоинты (v1, автоген из openapi.json)
 
-Ниже — все 42 пути, фактически реализованные в бэкенде (источник: `openapi/openapi.json`, сгенерирован из `utoipa`-аннонтаций). Остальные разделы этого документа описывают целевую полную спецификацию (фазы 5+).
+Ниже — все 70 путей, фактически реализованных в бэкенде (источник: `openapi/openapi.json`, сгенерирован из `utoipa`-аннотаций). Остальные разделы этого документа описывают целевую полную спецификацию (фазы 5+).
 
 ### Health
 
@@ -319,14 +319,6 @@ Client                          Server
 - Refresh cookie: `httpOnly`, `Secure`, `SameSite=Lax`, path `/api/v1/auth`.
 - Access token хранится в memory; не в localStorage.
 
-### POST /auth/forgot-password
-
-**Body:** `{ "email": "jdoe@example.com" }`
-
-### POST /auth/reset-password
-
-**Body:** `{ "token": "...", "password": "NewP@ss" }`
-
 ---
 
 ## Users
@@ -348,23 +340,9 @@ Client                          Server
 }
 ```
 
-### PUT /users/me
-
-**Body:** partial update displayName, timezone, locale, theme, avatar.
-
-### PUT /users/me/password
-
-**Body:** `{ "currentPassword": "...", "newPassword": "..." }`
-
 ### GET /users
 
 Query: `?q=john&page=0&size=20`
-
-### GET /users/{id}
-
-### POST /users/{id}/avatar
-
-multipart/form-data
 
 ---
 
@@ -388,128 +366,19 @@ Query: `?archived=false&page=0&size=20`
 }
 ```
 
-### GET /projects/{id}
+### GET /projects/{project_key}
 
-### PUT /projects/{id}
-
-### DELETE /projects/{id}
+### DELETE /projects/{project_key}
 
 Soft delete / archive.
 
-### GET /projects/{id}/members
+### GET /projects/{project_id}/members
 
-### POST /projects/{id}/members
+### POST /projects/{project_id}/members
 
 **Body:** `{ "userId": "uuid", "roleName": "developer" }`
 
-### PUT /projects/{id}/members/{userId}
-
-**Body:** `{ "roleName": "manager" }`
-
-### DELETE /projects/{id}/members/{userId}
-
-### GET /projects/{id}/settings
-
-### PUT /projects/{id}/settings
-
----
-
-## Issue Types
-
-### GET /issue-types
-
-### POST /issue-types
-
-**Body:**
-```json
-{
-  "name": "Hotfix",
-  "description": "Production hotfix",
-  "iconUrl": "...",
-  "color": "#ff0000",
-  "isSubtask": false,
-  "hierarchyLevel": 1
-}
-```
-
-### PUT /issue-types/{id}
-
-### DELETE /issue-types/{id}
-
----
-
-## Workflows
-
-### GET /workflows
-
-### POST /workflows
-
-**Body:**
-```json
-{
-  "name": "Approval Workflow",
-  "description": "...",
-  "statuses": ["uuid-todo", "uuid-in-progress", "uuid-done"],
-  "transitions": [
-    {
-      "name": "Start Progress",
-      "fromStatusId": "uuid-todo",
-      "toStatusId": "uuid-in-progress",
-      "conditions": [],
-      "validators": [],
-      "postFunctions": [
-        { "type": "set_field", "config": { "field": "assignee", "value": "current_user" } }
-      ]
-    }
-  ]
-}
-```
-
-### GET /workflows/{id}
-
-### PUT /workflows/{id}
-
-### DELETE /workflows/{id}
-
-### GET /workflows/{id}/transitions
-
-### POST /workflows/{id}/transitions
-
----
-
-## Schemes
-
-### Workflow Schemes
-
-- `GET /workflow-schemes`
-- `POST /workflow-schemes`
-- `GET /workflow-schemes/{id}`
-- `PUT /workflow-schemes/{id}`
-- `DELETE /workflow-schemes/{id}`
-
-### Issue Type Schemes
-
-- `GET /issue-type-schemes`
-- `POST /issue-type-schemes`
-- `GET /issue-type-schemes/{id}`
-- `PUT /issue-type-schemes/{id}`
-- `DELETE /issue-type-schemes/{id}`
-
-### Permission Schemes
-
-- `GET /permission-schemes`
-- `POST /permission-schemes`
-- `GET /permission-schemes/{id}`
-- `PUT /permission-schemes/{id}`
-- `DELETE /permission-schemes/{id}`
-
-### Notification Schemes
-
-- `GET /notification-schemes`
-- `POST /notification-schemes`
-- `GET /notification-schemes/{id}`
-- `PUT /notification-schemes/{id}`
-- `DELETE /notification-schemes/{id}`
+### DELETE /projects/{project_id}/members/{userId}
 
 ---
 
@@ -532,7 +401,7 @@ Query parameters:
 {
   "id": "uuid",
   "key": "TT-42",
-  "self": "https://tasktracker.example.com:19876/api/v1/issues/uuid",
+  "self": "https://tasktracker.example.com:3456/api/v1/issues/uuid",
   "projectId": "uuid",
   "projectKey": "TT",
   "issueType": { "id": "uuid", "name": "Task", "iconUrl": "...", "color": "..." },
@@ -583,10 +452,6 @@ Query parameters:
 ### DELETE /issues/{id}
 
 Soft delete → trash.
-
-### POST /issues/{id}/assign
-
-**Body:** `{ "assigneeId": "uuid" }`
 
 ### POST /issues/{id}/transition
 
@@ -673,14 +538,6 @@ Soft delete → trash.
   "count": 5
 }
 ```
-
-### GET /issues/{id}/activity
-
-### POST /issues/{id}/clone
-
-### POST /issues/{id}/move
-
-**Body:** `{ "targetProjectId": "uuid" }`
 
 ---
 
@@ -786,28 +643,6 @@ Download/stream.
 
 **Response 204**
 
-### GET /worklogs/reports
-
-Query: `?projectId=uuid&userId=uuid&from=...&to=...`
-
-**WorklogResponse includes:**
-```json
-{
-  "id": "uuid",
-  "issueId": "uuid",
-  "userId": "uuid",
-  "userDisplayName": "Ivan",
-  "timeSpentSeconds": 3600,
-  "timeSpent": "1h",
-  "remainingEstimateSeconds": 7200,
-  "remainingEstimate": "2h",
-  "startedAt": "2026-01-15T10:00:00Z",
-  "comment": "Implemented login",
-  "createdAt": "2026-01-15T10:00:00Z",
-  "updatedAt": "2026-01-15T10:00:00Z"
-}
-```
-
 **Права:** создание/редактирование/удаление worklog доступно пользователям с правом `Work On Issues` для проекта. Просмотр — с правом `View Project`.
 
 ---
@@ -827,160 +662,6 @@ Query: `?projectId=uuid&userId=uuid&from=...&to=...`
 ```
 
 ### DELETE /issue-links/{id}
-
----
-
-## Issue Link Types
-
-### GET /issue-link-types
-
-**Response:**
-```json
-{
-  "data": [
-    {
-      "id": "uuid",
-      "name": "Blocks",
-      "inwardName": "is blocked by",
-      "outwardName": "blocks",
-      "isSystem": true,
-      "isActive": true
-    }
-  ]
-}
-```
-
-### POST /issue-link-types
-
-**Body:**
-```json
-{
-  "name": "Relates to",
-  "inwardName": "relates to",
-  "outwardName": "relates to"
-}
-```
-
-### PUT /issue-link-types/{id}
-
-### DELETE /issue-link-types/{id}
-
----
-
-## Boards
-
-### GET /boards
-
-### POST /boards
-
-**Body:**
-```json
-{
-  "projectId": "uuid",
-  "name": "Development Board",
-  "type": "kanban",
-  "filterQuery": "project = TT AND status != Done",
-  "swimlaneField": "epic",
-  "columns": [
-    { "name": "To Do", "statusIds": ["uuid-todo"], "wipLimit": 10 },
-    { "name": "In Progress", "statusIds": ["uuid-in-progress"], "wipLimit": 5 },
-    { "name": "Done", "statusIds": ["uuid-done"], "wipLimit": null }
-  ]
-}
-```
-
-### GET /boards/{id}
-
-### PUT /boards/{id}
-
-### DELETE /boards/{id}
-
-### GET /boards/{id}/issues
-
-Возвращает задачи, сгруппированные по колонкам.
-
-### PUT /boards/{id}/columns/reorder
-
-### GET /boards/{id}/columns/{columnId}/statuses
-
-Возвращает статусы, привязанные к колонке.
-
-### PUT /boards/{id}/columns/{columnId}/statuses
-
-**Body:**
-```json
-{
-  "statusIds": ["uuid-todo", "uuid-in-progress"]
-}
-```
-
-### GET /boards/{id}/quick-filters
-
-### POST /boards/{id}/quick-filters
-
-**Body:**
-```json
-{
-  "name": "My Issues",
-  "jql": "assignee = currentUser()",
-  "position": 0
-}
-```
-
-### PUT /boards/{id}/quick-filters/{quickFilterId}
-
-### DELETE /boards/{id}/quick-filters/{quickFilterId}
-
----
-
-## Sprints
-
-### GET /sprints
-
-Query: `?projectId=uuid&state=active`
-
-### POST /sprints
-
-**Body:**
-```json
-{
-  "projectId": "uuid",
-  "name": "Sprint 1",
-  "goal": "Complete MVP",
-  "startDate": "2026-01-01",
-  "endDate": "2026-01-14"
-}
-```
-
-### GET /sprints/{id}
-
-### PUT /sprints/{id}
-
-### DELETE /sprints/{id}
-
-### POST /sprints/{id}/start
-
-### POST /sprints/{id}/close
-
-**Body:**
-```json
-{
-  "moveIncompleteToBacklog": true,
-  "nextSprintId": "uuid"
-}
-```
-
-### POST /sprints/{id}/issues
-
-**Body:**
-```json
-{
-  "issueIds": ["uuid"],
-  "action": "add" // or "remove"
-}
-```
-
-### GET /sprints/{id}/burndown
 
 ---
 
@@ -1258,10 +939,6 @@ Query: `?sprintId=uuid&unit=story_points`
 
 Query: `?projectId=uuid&from=...&to=...`
 
-### GET /reports/time-tracking
-
-Query: `?projectId=uuid&from=...&to=...&groupBy=user`
-
 ---
 
 ## Admin
@@ -1282,208 +959,76 @@ Query: `?actorId=uuid&entityType=issue&from=...&to=...`
 
 ---
 
-## WebSocket
+## Real-time (SSE)
 
-### Handshake
+### GET /events
 
-`GET /ws/v1/connect` — upgrade to WebSocket.
+Server-Sent Events (SSE) — поток событий реального времени для инвалидации клиентского кэша (TanStack Query). В отличие от WebSocket, SSE — однонаправленный поток (server → client) поверх HTTP, без upgrade-хендшейка.
 
-### Subscribe
+**Content-Type:** `text/event-stream`
 
-После установления соединения клиент отправляет сообщение с подпиской:
+**Auth:** JWT access token в `Authorization: Bearer ...`
 
-```json
-{
-  "type": "subscribe",
-  "topics": ["project:{project_id}", "board:{board_id}", "user:{user_id}:notifications", "issue:{issue_id}"]
-}
+**Подключение:**
+
+```
+GET /api/v1/events
+Accept: text/event-stream
+Authorization: Bearer <access_token>
 ```
 
-Ответ подтверждения:
+**Формат сообщений:**
 
-```json
-{
-  "type": "subscribed",
-  "topics": ["project:{project_id}", "board:{board_id}", "user:{user_id}:notifications", "issue:{issue_id}"]
-}
+Каждое SSE-событие имеет поле `event: tracker` и `data` с JSON-представлением `DomainEvent`:
+
+```
+event: tracker
+data: {"type":"Created","issue_id":"uuid","reporter_id":"uuid"}
+
+event: tracker
+data: {"type":"StatusChanged","issue_id":"uuid","from":"uuid","to":"uuid"}
 ```
 
-### Отписка
+### Типы событий
 
-```json
-{
-  "type": "unsubscribe",
-  "topics": ["board:{board_id}"]
-}
-```
+Сервер публикует события из `DomainEvent` (enum с тегом `type`):
 
-### Heartbeat
-
-```json
-{
-  "type": "ping",
-  "timestamp": "2026-07-13T12:00:00Z"
-}
-```
-
-Сервер отвечает:
-
-```json
-{
-  "type": "pong",
-  "timestamp": "2026-07-13T12:00:00Z"
-}
-```
-
-### События от сервера
-
-#### issue_created
-```json
-{
-  "type": "issue_created",
-  "topic": "project:{project_id}",
-  "payload": {
-    "id": "uuid",
-    "key": "PROJ-123",
-    "summary": "[REDACTED]",
-    "projectId": "uuid",
-    "issueType": { "id": "uuid", "name": "Task" },
-    "status": { "id": "uuid", "name": "To Do" },
-    "priority": { "id": "uuid", "name": "Medium" },
-    "assigneeId": "uuid",
-    "reporterId": "uuid",
-    "createdAt": "2026-07-13T12:00:00Z"
-  }
-}
-```
-
-#### issue_updated
-```json
-{
-  "type": "issue_updated",
-  "topic": "issue:{issue_id}",
-  "payload": {
-    "id": "uuid",
-    "key": "PROJ-123",
-    "changedFields": ["status", "assignee"],
-    "changelog": [
-      { "field": "status", "from": "To Do", "to": "In Progress", "actorId": "uuid", "at": "2026-07-13T12:00:00Z" },
-      { "field": "assignee", "from": "uuid", "to": "uuid", "actorId": "uuid", "at": "2026-07-13T12:00:01Z" }
-    ]
-  }
-}
-```
-
-#### issue_deleted
-```json
-{
-  "type": "issue_deleted",
-  "topic": "project:{project_id}",
-  "payload": { "id": "uuid", "key": "PROJ-123" }
-}
-```
-
-#### issue_commented
-```json
-{
-  "type": "issue_commented",
-  "topic": "issue:{issue_id}",
-  "payload": {
-    "commentId": "uuid",
-    "issueId": "uuid",
-    "issueKey": "PROJ-123",
-    "authorId": "uuid",
-    "body": "[REDACTED]",
-    "createdAt": "2026-07-13T12:00:00Z"
-  }
-}
-```
-
-#### board_updated
-```json
-{
-  "type": "board_updated",
-  "topic": "board:{board_id}",
-  "payload": {
-    "boardId": "uuid",
-    "changed": ["columns", "wip_limits"],
-    "byUserId": "uuid"
-  }
-}
-```
-
-#### sprint_started / sprint_completed
-```json
-{
-  "type": "sprint_started",
-  "topic": "project:{project_id}",
-  "payload": {
-    "sprintId": "uuid",
-    "name": "Sprint 8",
-    "startDate": "2026-07-13",
-    "endDate": "2026-07-27"
-  }
-}
-```
-
-#### notification
-```json
-{
-  "type": "notification",
-  "topic": "user:{user_id}:notifications",
-  "payload": {
-    "notificationId": "uuid",
-    "event": "issue_assigned",
-    "title": "Задача PROJ-123 назначена вам",
-    "body": "...",
-    "link": "/issues/PROJ-123",
-    "read": false,
-    "createdAt": "2026-07-13T12:00:00Z"
-  }
-}
-```
-
-### Ошибки WebSocket
-
-```json
-{
-  "type": "error",
-  "code": "AUTH_REQUIRED",
-  "message": "Access token missing or expired"
-}
-```
-
-Коды ошибок:
-
-| Код | Описание |
-|-----|----------|
-| `AUTH_REQUIRED` | Токен отсутствует/истёк |
-| `TOPIC_NOT_FOUND` | Топик не существует или нет доступа |
-| `RATE_LIMITED` | Слишком много сообщений |
-| `INVALID_MESSAGE` | Невалидный формат сообщения |
+| Event Type | When | Payload Fields |
+|------------|------|----------------|
+| `Created` (IssueEvent) | Создана задача | `issue_id`, `reporter_id` |
+| `StatusChanged` (IssueEvent) | Переход workflow | `issue_id`, `from`, `to` |
+| `Assigned` (IssueEvent) | Назначение assignee | `issue_id`, `assignee_id` |
+| `CommentAdded` (IssueEvent) | Новый комментарий | `issue_id`, `comment_id`, `author_id` |
+| `Created` (ProjectEvent) | Создан проект | `project_id`, `owner_id` |
 
 ### Client-Side Handling
 
-- Подключение к `/ws/v1/connect` с access token в query `?token=...` или header `Authorization: Bearer`.
-- Автоматическое переподключение с exponential backoff (max 30s).
-- Повторная подписка на сохранённые топики после reconnect.
-- `ping` каждые 30 секунд для keepalive.
+- Клиент подключается к `GET /api/v1/events` с access token в заголовке `Authorization`.
+- При получении события клиент инвалидирует соответствующие TanStack Query и рефетчит затронутые данные.
+- Keep-alive: сервер отправляет SSE ping-сообщения по умолчанию (Axum `KeepAlive::default()`).
+- При разрыве соединения клиент автоматически переподключается (браузерный `EventSource` API).
+- Lagged subscribers (при переполнении broadcast-канала) тихо пропускают пропущенные сообщения и рефетчат данные при следующем событии.
 
----
+### Пример (JavaScript)
 
-## Import / Export
+```javascript
+const es = new EventSource('/api/v1/events', {
+  withCredentials: true, // для httpOnly refresh cookie
+});
 
-### POST /import/csv
+es.addEventListener('tracker', (e) => {
+  const event = JSON.parse(e.data);
+  // Инвалидация TanStack Query
+  queryClient.invalidateQueries({ queryKey: ['issues'] });
+  if (event.type === 'StatusChanged') {
+    queryClient.invalidateQueries({ queryKey: ['board'] });
+  }
+});
 
-multipart/form-data
-
-### POST /import/json
-
-### POST /export/csv
-
-**Body:** `{ "jql": "project = TT" }`
-
-### POST /export/json
+es.onerror = () => {
+  // EventSource автоматически переподключается
+};
+```
 
 ---
 
@@ -1543,17 +1088,14 @@ Soft-delete задачи — перемещение в корзину. Зада�
 | 422 | Business rule violation (workflow) |
 | 429 | Rate limit |
 | 500 | Internal error |
-## 11. References
+## References
 
 - `docs/ARCHITECTURE.md` — общая архитектура backend/frontend.
 - `docs/ERROR_HANDLING.md` — формат ошибок и retry-политика.
 - `docs/SECURITY.md` — headers, CORS, CSRF, auth flow.
 - `docs/API_VERSIONING.md` — политика версионирования и deprecation.
 - `docs/API_EDGE_CASES.md` — граничные случаи и поведение в конфликтах.
-- `docs/AUTH_ADVANCED.md` — advanced auth: OAuth, SSO, MFA, sessions.
 - `docs/DATA_MODEL.md` — структура базы данных.
-- `docs/JQL.md` — синтаксис поиска.
 - `docs/WORKFLOW.md` — workflow engine.
 - `docs/NOTIFICATIONS.md` — события и шаблоны уведомлений.
 - `docs/PAGINATION.md` — пагинация, bulk operations, rate limiting headers.
-- `docs/WEBSOCKET_EVENTS.md` — WebSocket payloads и realtime updates.

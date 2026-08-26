@@ -18,7 +18,7 @@
 ### 2. Код
 
 - Backend: слоистая архитектура `controller → service → repository`.
-- DI через `AppContext` / `shaku`.
+- DI через `AppContext`.
 - Все публичные API покрыты OpenAPI через `utoipa-axum`.
 - Rust-хендлеры и DTO — единственный источник правды для схемы; фронт генерирует клиент из `openapi/openapi.json`.
 - Все endpoint тестируются интеграционно через testcontainers.

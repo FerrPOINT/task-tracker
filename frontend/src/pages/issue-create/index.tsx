@@ -152,11 +152,11 @@ export function IssueCreatePage() {
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
             >
-              <option>Medium</option>
-              <option>Highest</option>
-              <option>High</option>
-              <option>Low</option>
-              <option>Lowest</option>
+              <option value="Medium">{t('priority.medium')}</option>
+              <option value="Highest">{t('priority.highest')}</option>
+              <option value="High">{t('priority.high')}</option>
+              <option value="Low">{t('priority.low')}</option>
+              <option value="Lowest">{t('priority.lowest')}</option>
             </select>
           </div>
           <div className="space-y-2">

@@ -18,7 +18,7 @@ export function ProjectTrashPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" asChild>
+        <Button variant="ghost" size="icon" asChild aria-label={t('trash.title')}>
           <Link to={`/projects/${projectKey}/board`}>
             <ArrowLeft className="h-4 w-4" />
           </Link>

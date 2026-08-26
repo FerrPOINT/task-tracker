@@ -91,7 +91,7 @@ docker compose up -d postgres redis backend
 
 ```nginx
 server {
-  listen 19876;
+  listen 19877;
 
   location /api/ {
     proxy_pass http://127.0.0.1:3456;

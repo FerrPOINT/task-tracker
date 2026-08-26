@@ -99,8 +99,11 @@ test(e2e): cover issue transition
 ### 12.1 Pre-commit
 
 ```bash
-# .husky/pre-commit
-pnpm lint-staged
+# lefthook.yml — pre-commit
+pre-commit:
+  commands:
+    lint-staged:
+      run: pnpm lint-staged
 ```
 
 ```json
@@ -114,9 +117,13 @@ pnpm lint-staged
 ### 12.2 Pre-push (optional)
 
 ```bash
-# .husky/pre-push
-cargo test --lib
-pnpm vitest run
+# lefthook.yml — pre-push
+pre-push:
+  commands:
+    cargo-test:
+      run: cargo test --lib
+    vitest:
+      run: pnpm vitest run
 ```
 
 ## 13. Communication

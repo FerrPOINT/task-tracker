@@ -1,5 +1,5 @@
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
-import { parseDuration, formatDuration } from '@/shared/lib/time'
+import { parseDuration } from '@/shared/lib/time'
 import { api } from './client'
 
 function mapDto(w: {
@@ -19,7 +19,6 @@ function mapDto(w: {
     userId: w.author_id,
     userDisplayName: w.author_name ?? '',
     timeSpentSeconds: w.duration_seconds,
-    remainingEstimateSeconds: null,
     startedAt: w.started_at,
     comment: w.description ?? null,
     createdAt: w.created_at,
@@ -76,8 +75,4 @@ export async function deleteWorklog(worklogId: string): Promise<void> {
     params: { path: { id: worklogId } },
   })
   if (error) throw new Error('Failed to delete worklog')
-}
-
-export function toHuman(seconds: number): string {
-  return formatDuration(seconds)
 }

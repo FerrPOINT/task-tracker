@@ -73,6 +73,7 @@ export function IssueDescriptionEditor({
               startEdit()
             }}
             disabled={disabled}
+            aria-label={t('common.edit')}
           >
             <Pencil className="h-4 w-4" />
           </Button>

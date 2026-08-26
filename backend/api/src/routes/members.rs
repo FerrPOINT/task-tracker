@@ -57,9 +57,14 @@ pub async fn list_members(
 )]
 pub async fn add_member(
     State(ctx): State<Arc<AppContext>>,
+    Extension(claims): Extension<UserClaims>,
     Path(project_id): Path<String>,
     Json(body): Json<AddProjectMemberRequest>,
 ) -> Result<(axum::http::StatusCode, Json<ProjectMemberResponse>), AppError> {
+    let _actor_id = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let project_id = project_id
         .parse::<ProjectId>()
         .map_err(|_| AppError::invalid_input("invalid project id"))?;
@@ -101,9 +106,13 @@ pub async fn add_member(
 )]
 pub async fn remove_member(
     State(ctx): State<Arc<AppContext>>,
-    Extension(_claims): Extension<UserClaims>,
+    Extension(claims): Extension<UserClaims>,
     Path((project_id, user_id)): Path<(String, String)>,
 ) -> Result<axum::http::StatusCode, AppError> {
+    let _actor_id = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let project_id = project_id
         .parse::<ProjectId>()
         .map_err(|_| AppError::invalid_input("invalid project id"))?;

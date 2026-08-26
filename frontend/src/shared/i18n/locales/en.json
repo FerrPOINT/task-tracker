@@ -1,4 +1,7 @@
 {
+  "app": {
+    "name": "TaskTracker"
+  },
   "navigation": {
     "projects": "Projects",
     "search": "Search",
@@ -10,7 +13,9 @@
     "trash": "Trash",
     "logout": "Log out",
     "reports": "Reports",
-    "admin": "Administration"
+    "admin": "Administration",
+    "toggleMenu": "Toggle menu",
+    "account": "Account"
   },
   "auth": {
     "login": "Log in",
@@ -77,7 +82,12 @@
     "issues": "Issues",
     "key": "Key",
     "name": "Name",
-    "namePlaceholder": "e.g. Task Tracker"
+    "namePlaceholder": "e.g. Task Tracker",
+    "keyPlaceholder": "e.g. TT",
+    "gridView": "Grid view",
+    "listView": "List view",
+    "favorite": "Add to favorites",
+    "moreActions": "More actions"
   },
   "board": {
     "filters": "Filters",
@@ -91,7 +101,8 @@
     "inProgress": "In Progress",
     "subtitle": "Issues grouped by status columns",
     "title": "Board",
-    "todo": "To Do"
+    "todo": "To Do",
+    "columnActions": "Column actions"
   },
   "backlog": {
     "createSprint": "Create sprint",
@@ -164,6 +175,13 @@
     "noReporter": "Reporter unknown — please log in again.",
     "submit": "Create"
   },
+  "priority": {
+    "highest": "Highest",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "lowest": "Lowest"
+  },
   "issue": {
     "description": "Description",
     "details": "Details",
@@ -191,7 +209,8 @@
     "loggedTime": "logged",
     "noActivity": "No activity yet",
     "summaryRequired": "Summary is required",
-    "unassigned": "Unassigned"
+    "unassigned": "Unassigned",
+    "actions": "Actions"
   },
   "timeTracking": {
     "title": "Time tracking",
@@ -211,7 +230,8 @@
       "timeSpent": "Time spent",
       "remainingEstimate": "Remaining estimate",
       "startedAt": "Started at",
-      "comment": "Comment"
+      "comment": "Comment",
+      "commentPlaceholder": "What did you do?"
     },
     "validation": {
       "timeSpentRequired": "Provide time spent",

@@ -108,7 +108,7 @@ return (
     <div className="min-h-screen bg-background">
       <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
         <div className="flex items-center gap-4">
-          <span className="font-bold text-text-primary">≡ TaskTracker</span>
+          <span className="font-bold text-text-primary">{t('app.name')}</span>
           <span className="text-sm text-text-secondary">{issue.project_name}</span>
         </div>
         <ThemeToggle />
@@ -166,7 +166,7 @@ return (
             >
               {t('issue.delete')}
             </Button>
-            <Button variant="secondary" size="icon">
+            <Button variant="secondary" size="icon" aria-label={t('issue.actions')}>
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </div>
@@ -240,7 +240,7 @@ return (
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Custom fields</CardTitle>
+                <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
               </CardHeader>
               <CardContent>
                 <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />

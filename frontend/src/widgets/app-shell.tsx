@@ -123,7 +123,7 @@ export function AppShell() {
             size="icon"
             className="h-8 w-8 md:hidden"
             onClick={() => setMobileMenuOpen((v) => !v)}
-            aria-label="Toggle menu"
+            aria-label={t('navigation.toggleMenu')}
           >
             {mobileMenuOpen ? (
               <X className="h-[18px] w-[18px]" />
@@ -133,7 +133,7 @@ export function AppShell() {
           </Button>
           <Link to="/" className="flex items-center gap-2 font-bold">
             <Layers className="h-[18px] w-[18px] text-accent" />
-            <span className="hidden sm:inline">TaskTracker</span>
+            <span className="hidden sm:inline">{t('app.name')}</span>
           </Link>
           <Link
             to="/projects"
@@ -251,7 +251,7 @@ export function AppShell() {
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('navigation.account')}>
                 <User className="h-[18px] w-[18px]" />
               </Button>
             </DropdownMenuTrigger>

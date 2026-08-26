@@ -1,4 +1,7 @@
 {
+  "app": {
+    "name": "TaskTracker"
+  },
   "navigation": {
     "projects": "Проекты",
     "search": "Поиск",
@@ -10,7 +13,9 @@
     "trash": "Корзина",
     "logout": "Выйти",
     "reports": "Отчёты",
-    "admin": "Администрирование"
+    "admin": "Администрирование",
+    "toggleMenu": "Открыть/закрыть меню",
+    "account": "Аккаунт"
   },
   "auth": {
     "login": "Войти",
@@ -77,7 +82,12 @@
     "issues": "Задачи",
     "key": "Ключ",
     "name": "Название",
-    "namePlaceholder": "Например, Task Tracker"
+    "namePlaceholder": "Например, Task Tracker",
+    "keyPlaceholder": "Например, TT",
+    "gridView": "Сетка",
+    "listView": "Список",
+    "favorite": "В избранное",
+    "moreActions": "Ещё действия"
   },
   "board": {
     "filters": "Фильтры",
@@ -91,7 +101,8 @@
     "inProgress": "In Progress",
     "subtitle": "Задачи по колонкам статусов",
     "title": "Доска",
-    "todo": "To Do"
+    "todo": "To Do",
+    "columnActions": "Действия с колонкой"
   },
   "backlog": {
     "createSprint": "Создать спринт",
@@ -164,6 +175,13 @@
     "noReporter": "Автор не определён — войдите снова.",
     "submit": "Создать"
   },
+  "priority": {
+    "highest": "Наивысший",
+    "high": "Высокий",
+    "medium": "Средний",
+    "low": "Низкий",
+    "lowest": "Наинизший"
+  },
   "issue": {
     "description": "Описание",
     "details": "Детали",
@@ -191,7 +209,8 @@
     "loggedTime": "затрачено",
     "noActivity": "Активности пока нет",
     "summaryRequired": "Укажите тему задачи",
-    "unassigned": "Не назначен"
+    "unassigned": "Не назначен",
+    "actions": "Действия"
   },
   "timeTracking": {
     "title": "Учёт времени",
@@ -211,7 +230,8 @@
       "timeSpent": "Затрачено времени",
       "remainingEstimate": "Оставшаяся оценка",
       "startedAt": "Начало",
-      "comment": "Комментарий"
+      "comment": "Комментарий",
+      "commentPlaceholder": "Что вы сделали?"
     },
     "validation": {
       "timeSpentRequired": "Укажите затраченное время",
