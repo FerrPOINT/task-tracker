@@ -4,16 +4,57 @@ Self-hosted таск-трекер: Rust (axum + SeaORM + PostgreSQL) + React (Vi
 
 ## Скриншоты
 
-| Экран | Скриншот |
-|---|---|
-| Login | ![Login](docs/screenshots/01-login.png) |
-| Проекты | ![Projects](docs/screenshots/02-projects.png) |
-| Канбан-доска | ![Board](docs/screenshots/03-board.png) |
-| Бэклог | ![Backlog](docs/screenshots/04-backlog.png) |
-| Корзина | ![Trash](docs/screenshots/06-trash.png) |
-| Кастомные поля | ![Custom Fields](docs/screenshots/07-custom-fields.png) |
-| Уведомления | ![Notifications](docs/screenshots/08-notifications.png) |
-| Отчёты | ![Reports](docs/screenshots/09-reports.png) |
+### Вход
+
+![Вход](docs/screenshots/01-login.png)
+
+### Дашборд
+
+![Дашборд](docs/screenshots/02-dashboard.png)
+
+### Проекты
+
+![Проекты](docs/screenshots/03-projects.png)
+
+### Канбан-доска
+
+![Канбан-доска](docs/screenshots/04-board.png)
+
+### Бэклог
+
+![Бэклог](docs/screenshots/05-backlog.png)
+
+### Поиск
+
+![Поиск](docs/screenshots/08-search.png)
+
+### Страница задачи
+
+![Страница задачи](docs/screenshots/13-issue-detail.png)
+
+### Уведомления
+
+![Уведомления](docs/screenshots/09-notifications.png)
+
+### Отчёты
+
+![Отчёты](docs/screenshots/10-reports.png)
+
+### Корзина
+
+![Корзина](docs/screenshots/06-trash.png)
+
+### Кастомные поля
+
+![Кастомные поля](docs/screenshots/07-custom-fields.png)
+
+### Администрирование
+
+![Администрирование](docs/screenshots/11-admin.png)
+
+### Доска на мобильном
+
+![Доска на мобильном](docs/screenshots/15-board-mobile.png)
 
 ## Порты по умолчанию
 
