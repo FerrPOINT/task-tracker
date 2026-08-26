@@ -1,13 +1,11 @@
 import { useParams } from 'react-router'
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Copy, MessageSquare, UserPlus, MoreHorizontal, Pencil } from 'lucide-react'
 import { Toaster, toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
-import { getIssue } from '@/api/issue'
 import {
   useWorklogs,
   useCreateWorklog,
@@ -31,7 +29,7 @@ import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
-import { useBoard, useUpdateIssue, useDeleteIssue, useSprints } from '@/shared/api/hooks'
+import { useBoard, useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
 
 export function IssueDetailPage() {
   const { id = '' } = useParams()
@@ -40,12 +38,7 @@ export function IssueDetailPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingWorklog, setEditingWorklog] = useState<Worklog | undefined>(undefined)
 
-  const issueQuery = useQuery({
-    queryKey: ['issue', id],
-    queryFn: () => getIssue(id),
-    refetchOnWindowFocus: false,
-    staleTime: 0,
-  })
+  const issueQuery = useIssue(id)
   const boardQuery = useBoard(issueQuery.data?.project_key)
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)

@@ -12,6 +12,25 @@ const mockComments = vi.hoisted(() => vi.fn())
 const mockWorklogs = vi.hoisted(() => vi.fn())
 const mockIssueLinks = vi.hoisted(() => vi.fn())
 
+const issueData = {
+  id: 'i1',
+  key: 'TT-1',
+  summary: 'Test issue summary',
+  description: 'Test issue description',
+  status: 'In Progress',
+  status_id: 'in-progress',
+  priority: 'High',
+  issue_type: 'Task',
+  project_key: 'TT',
+  project_name: 'Task Tracker',
+  reporter_id: 'u1',
+  reporter_name: 'Reporter',
+  assignee_id: null,
+  assignee_name: null,
+  labels: [],
+  sprint_id: null,
+}
+
 vi.mock('@/api/issue', () => ({
   getIssue: (...args: unknown[]) => mockGetIssue(...args),
   updateIssue: vi.fn(),
@@ -22,6 +41,11 @@ vi.mock('@/api/issue', () => ({
 }))
 
 vi.mock('@/shared/api/hooks', () => ({
+  useIssue: () => ({
+    data: issueData,
+    isLoading: false,
+    error: null,
+  }),
   useBoard: () => ({
     data: {
       columns: [
@@ -102,25 +126,6 @@ function wrapper(children: React.ReactNode) {
   )
 }
 
-const issueData = {
-  id: 'i1',
-  key: 'TT-1',
-  summary: 'Test issue summary',
-  description: 'Test issue description',
-  status: 'In Progress',
-  status_id: 'in-progress',
-  priority: 'High',
-  issue_type: 'Task',
-  project_key: 'TT',
-  project_name: 'Task Tracker',
-  reporter_id: 'u1',
-  reporter_name: 'Reporter',
-  assignee_id: null,
-  assignee_name: null,
-  labels: [],
-  sprint_id: null,
-}
-
 const commentData = [
   {
     id: 'c1',
@@ -137,7 +142,6 @@ describe('IssueDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
-    mockGetIssue.mockResolvedValue(issueData)
     mockComments.mockReturnValue({
       data: commentData,
       isLoading: false,
