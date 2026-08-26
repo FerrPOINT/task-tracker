@@ -22,7 +22,7 @@
 |------------|--------|------------|------------|
 | [`sea-orm`](https://crates.io/crates/sea-orm) | 2.0.x | Async ORM, миграции, relations | Близка к Spring JPA: Entity → Repository; relations, migrations, eager/lazy loading; SeaORM 2.0 выпущен в январе 2026, production-ready |
 | [`sqlx`](https://crates.io/crates/sqlx) | 0.9.0 | Raw SQL + compile-time проверка | Для сложных JQL-запросов, отчётов, миграций; fallback под SeaORM |
-| [`refinery`](https://crates.io/crates/refinery) | 0.8.14 | Чистые SQL-миграции | Простые файлы `V1__init.sql` → применение на старте; альтернатива SeaORM Migrator |
+| [`sea-orm-migration`](https://crates.io/crates/sea-orm-migration) | 1.1 | Rust-миграции | Типизированные миграции, применение при старте сервера |
 | [`deadpool-postgres`](https://crates.io/crates/deadpool-postgres) | 0.14.0 | Пул соединений PostgreSQL | Можно использовать совместно с sqlx; в SeaORM пул идёт из коробки |
 
 ### 3. Аутентификация / авторизация / безопасность

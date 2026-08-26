@@ -8,7 +8,7 @@
 
 ## 2. Миграции
 
-- Фреймворк — `sqlx migrate` / `refinery` (решение зафиксировано в ADR).
+- Фреймворк — `sea-orm-migration` / `sea-orm-migration` (решение зафиксировано в ADR).
 - Имя файла: `YYYYMMDDHHMMSS_description.sql`.
 - Каждая миграция:
   - оборачивается в `BEGIN; ... COMMIT;`

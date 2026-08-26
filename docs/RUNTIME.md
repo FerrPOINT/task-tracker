@@ -39,7 +39,7 @@
    - Initial delay: 1s.
    - Max delay: 30s.
    - Max retries: 30.
-3. Применение миграций (`refinery`).
+3. Применение миграций (`sea-orm-migration`).
 4. Seed default data (admin, default issue types, workflow).
 5. Подключение к Redis с retry.
 6. Запуск HTTP/WebSocket сервера.

@@ -1234,7 +1234,7 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 
 ## 31. Миграции и совместимость
 
-- Версионирование БД через `refinery`.
+- Версионирование БД через `sea-orm-migration`.
 - Seed-данные: системные issue types, statuses, workflows, admin user.
 - Обратная совместимость API v1 минимум 2 мажорных релиза.
 
