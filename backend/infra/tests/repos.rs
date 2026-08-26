@@ -319,3 +319,61 @@ async fn repo_missing_entities_return_not_found() {
     let missing_issue = repos.issues.get_by_id(shared::IssueId::new()).await;
     assert!(missing_issue.is_err());
 }
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn issue_search_escapes_wildcards_and_folds_unicode_case() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let mk = |n: u32, summary: &str| {
+        let mut i = Issue::create(
+            &project,
+            n,
+            IssueType::Task,
+            status,
+            summary,
+            None,
+            user.id,
+            Priority::Medium,
+        );
+        i.summary = summary.into();
+        i
+    };
+    let a = mk(1, "wild%card probe");
+    let b = mk(2, "Проверка поиска");
+    repos.issues.save(&a).await.unwrap();
+    repos.issues.save(&b).await.unwrap();
+
+    let q = |text: &str| {
+        repos.issues.list(domain::IssueQuery {
+            project_id: Some(project.id),
+            accessible_project_ids: None,
+            status_id: None,
+            assignee_id: None,
+            sprint_id: None,
+            search_text: Some(text.to_string()),
+            priority: None,
+            sort_by: None,
+            sort_order: None,
+            limit: 50,
+            offset: 0,
+            jql: None,
+            jql_user_id: None,
+            deleted_only: false,
+            include_deleted: false,
+        })
+    };
+
+    // Literal % must not act as a wildcard: only the issue containing the literal text matches.
+    let res = q("wild%card").await.unwrap();
+    assert_eq!(res.len(), 1, "literal % must match exactly one issue");
+    // Cyrillic lowercase must match Title-case storage.
+    let res = q("проверка").await.unwrap();
+    assert_eq!(res.len(), 1, "unicode case folding must work");
+}

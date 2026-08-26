@@ -17,12 +17,17 @@ pub struct IssueServiceImpl {
     users: Arc<dyn domain::UserRepository>,
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
+    status_history: Arc<dyn domain::IssueStatusHistoryRepository>,
+    sprints: Arc<dyn domain::SprintRepository>,
+    components: Arc<dyn domain::ProjectComponentRepository>,
+    versions: Arc<dyn domain::ProjectVersionRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
     authz: Authz,
 }
 
 impl IssueServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         issues: Arc<dyn IssueRepository>,
@@ -31,6 +36,10 @@ impl IssueServiceImpl {
         users: Arc<dyn domain::UserRepository>,
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
+        status_history: Arc<dyn domain::IssueStatusHistoryRepository>,
+        sprints: Arc<dyn domain::SprintRepository>,
+        components: Arc<dyn domain::ProjectComponentRepository>,
+        versions: Arc<dyn domain::ProjectVersionRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
         authz: Authz,
@@ -43,6 +52,10 @@ impl IssueServiceImpl {
             users,
             statuses,
             transitions,
+            status_history,
+            sprints,
+            components,
+            versions,
             notifications,
             authz,
         }
@@ -71,6 +84,20 @@ impl crate::context::IssueService for IssueServiceImpl {
         self.authz
             .require_project_edit(project.id, requester)
             .await?;
+        if cmd.summary.trim().is_empty() || cmd.summary.chars().count() > 500 {
+            return Err(AppError::invalid_input(
+                "summary must be between 1 and 500 characters",
+            ));
+        }
+        if cmd
+            .description
+            .as_deref()
+            .is_some_and(|description| description.chars().count() > 100_000)
+        {
+            return Err(AppError::invalid_input(
+                "description must not exceed 100000 characters",
+            ));
+        }
         let status_id = StatusId::from_uuid(
             cmd.status_id
                 .parse()
@@ -251,10 +278,23 @@ impl crate::context::IssueService for IssueServiceImpl {
         let project = self.projects.get_by_id(issue.project_id).await?;
 
         if let Some(summary) = cmd.summary {
+            if summary.trim().is_empty() || summary.chars().count() > 500 {
+                return Err(AppError::invalid_input(
+                    "summary must be between 1 and 500 characters",
+                ));
+            }
             issue.summary = summary.into();
             issue.updated_at = shared::now();
         }
         if let Some(description) = cmd.description {
+            if description
+                .as_deref()
+                .is_some_and(|value| value.chars().count() > 100_000)
+            {
+                return Err(AppError::invalid_input(
+                    "description must not exceed 100000 characters",
+                ));
+            }
             issue.description = description.map(domain::RichText::from);
             issue.updated_at = shared::now();
         }
@@ -271,23 +311,72 @@ impl crate::context::IssueService for IssueServiceImpl {
             if !allowed {
                 return Err(AppError::invalid_input("workflow transition not allowed"));
             }
+            let from_status = issue.status_id;
+            let actor = cmd.actor_id;
             issue.change_status(target);
+            self.status_history
+                .save_for_project(
+                    &domain::IssueStatusHistory {
+                        id: shared::IssueStatusHistoryId::new(),
+                        issue_id: issue.id,
+                        from_status_id: Some(from_status),
+                        to_status_id: target,
+                        changed_by_id: actor,
+                        changed_at: shared::now(),
+                    },
+                    issue.project_id,
+                )
+                .await?;
         }
         if let Some(assignee_id) = cmd.assignee_id {
             issue.assign(assignee_id);
         }
+        // Cross-project references corrupt project-scoped reports/metadata:
+        // every sprint/component/version must belong to the issue's project.
         if let Some(sprint_id) = cmd.sprint_id {
+            if let Some(sid) = sprint_id {
+                let sprint = self.sprints.get_by_id(sid).await?;
+                if sprint.project_id != issue.project_id {
+                    return Err(AppError::invalid_input(
+                        "sprint belongs to a different project",
+                    ));
+                }
+            }
             issue.sprint_id = sprint_id;
         }
         if let Some(component_id) = cmd.component_id {
+            if let Some(cid) = component_id {
+                let component = self.components.get_by_id(cid).await?;
+                if component.project_id != issue.project_id {
+                    return Err(AppError::invalid_input(
+                        "component belongs to a different project",
+                    ));
+                }
+            }
             issue.component_id = component_id;
             issue.updated_at = shared::now();
         }
         if let Some(affected_version_id) = cmd.affected_version_id {
+            if let Some(vid) = affected_version_id {
+                let version = self.versions.get_by_id(vid).await?;
+                if version.project_id != issue.project_id {
+                    return Err(AppError::invalid_input(
+                        "version belongs to a different project",
+                    ));
+                }
+            }
             issue.affected_version_id = affected_version_id;
             issue.updated_at = shared::now();
         }
         if let Some(fix_version_id) = cmd.fix_version_id {
+            if let Some(vid) = fix_version_id {
+                let version = self.versions.get_by_id(vid).await?;
+                if version.project_id != issue.project_id {
+                    return Err(AppError::invalid_input(
+                        "version belongs to a different project",
+                    ));
+                }
+            }
             issue.fix_version_id = fix_version_id;
             issue.updated_at = shared::now();
         }
@@ -344,6 +433,17 @@ impl crate::context::IssueService for IssueServiceImpl {
         requester: UserId,
     ) -> Result<Vec<IssueDto>, AppError> {
         let mut query = IssueQuery::default();
+        // Search is a list endpoint: keep responses bounded and reject a
+        // zero/oversized page instead of silently loading every issue.
+        if let Some(limit) = filters.limit {
+            if !(1..=100).contains(&limit) {
+                return Err(AppError::invalid_input("limit must be between 1 and 100"));
+            }
+            query.limit = limit;
+        } else {
+            query.limit = 50;
+        }
+        query.offset = filters.offset.unwrap_or(0);
         if let Some(q) = filters.q.as_deref().filter(|s| !s.is_empty()) {
             query.search_text = Some(q.to_string());
         }

@@ -27,6 +27,7 @@ export function SprintFormDialog({
   const [goal, setGoal] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [dateError, setDateError] = useState<string | null>(null)
   const isEdit = !!sprint
 
   useEffect(() => {
@@ -40,6 +41,12 @@ export function SprintFormDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    // Server rejects inverted ranges; fail fast in the dialog as well.
+    if (startDate && endDate && endDate < startDate) {
+      setDateError(t('sprints.endBeforeStart', 'Дата окончания не может быть раньше начала'))
+      return
+    }
+    setDateError(null)
     const payload = isEdit
       ? ({
           name: name || undefined,
@@ -105,6 +112,7 @@ export function SprintFormDialog({
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}
             </Button>
+            {dateError && <p className="text-sm text-destructive">{dateError}</p>}
             <Button type="submit" disabled={isPending}>
               {isPending ? t('common.saving') : isEdit ? t('common.save') : t('sprints.create')}
             </Button>

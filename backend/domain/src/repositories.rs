@@ -126,6 +126,16 @@ pub trait IssueStatusHistoryRepository: Send + Sync {
         project_id: ProjectId,
     ) -> Result<Vec<IssueStatusHistory>, AppError>;
     async fn save(&self, entry: &IssueStatusHistory) -> Result<(), AppError>;
+    /// Persist a history entry with its owning project. The SQL backend
+    /// derives the project from the issue row; in-memory backends need it
+    /// explicitly so project-scoped report queries stay truthful.
+    async fn save_for_project(
+        &self,
+        entry: &IssueStatusHistory,
+        _project_id: ProjectId,
+    ) -> Result<(), AppError> {
+        self.save(entry).await
+    }
 }
 
 pub struct StubIssueStatusHistoryRepository;

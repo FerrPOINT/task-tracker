@@ -27,10 +27,12 @@ pub async fn list_comments(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<CommentListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
+    let (limit, offset) = parse_page_params(raw.as_deref());
     let items = ctx
         .services
         .comment
@@ -42,6 +44,8 @@ pub async fn list_comments(
                     .parse()
                     .map_err(|_| AppError::invalid_input("invalid user id"))?,
             ),
+            limit,
+            offset,
         )
         .await?;
     Ok(Json(CommentListResponse {
@@ -203,4 +207,29 @@ pub async fn delete_comment(
         )
         .await?;
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// Parse `limit`/`offset` from a raw query string with strict validation.
+pub(crate) fn parse_page_params(raw: Option<&str>) -> (Option<u64>, u64) {
+    let mut limit = None;
+    let mut offset = 0u64;
+    if let Some(q) = raw {
+        for pair in q.split('&') {
+            let mut it = pair.splitn(2, '=');
+            match (it.next(), it.next()) {
+                (Some("limit"), Some(v)) => {
+                    if let Ok(n) = v.parse::<u64>() {
+                        limit = Some(n);
+                    }
+                }
+                (Some("offset"), Some(v)) => {
+                    if let Ok(n) = v.parse::<u64>() {
+                        offset = n;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    (limit, offset)
 }

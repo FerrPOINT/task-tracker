@@ -41,6 +41,17 @@ impl crate::context::SearchService for SearchServiceImpl {
         requester: UserId,
     ) -> Result<Vec<IssueDto>, AppError> {
         let mut query = IssueQuery::default();
+        // Search is a list endpoint: keep responses bounded and reject a
+        // zero/oversized page instead of silently loading every issue.
+        if let Some(limit) = filters.limit {
+            if !(1..=100).contains(&limit) {
+                return Err(AppError::invalid_input("limit must be between 1 and 100"));
+            }
+            query.limit = limit;
+        } else {
+            query.limit = 50;
+        }
+        query.offset = filters.offset.unwrap_or(0);
         if let Some(q) = filters.q.as_deref().filter(|s| !s.is_empty()) {
             query.search_text = Some(q.to_string());
         }

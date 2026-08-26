@@ -122,6 +122,10 @@ impl AppContext {
             repos.users.clone(),
             repos.statuses.clone(),
             repos.transitions.clone(),
+            repos.issue_status_history.clone(),
+            repos.sprints.clone(),
+            repos.components.clone(),
+            repos.versions.clone(),
             events.clone(),
             repos.notifications.clone(),
             authz.clone(),
@@ -134,6 +138,7 @@ impl AppContext {
             repos.statuses.clone(),
             repos.transitions.clone(),
             repos.projects.clone(),
+            repos.issue_status_history.clone(),
             authz.clone(),
         ));
         let search: Arc<dyn SearchService> = Arc::new(SearchServiceImpl::new(
@@ -239,6 +244,7 @@ impl AppContext {
                 vote: Arc::new(crate::services::VoteServiceImpl::new(
                     repos.votes.clone(),
                     repos.issues.clone(),
+                    repos.users.clone(),
                     authz.clone(),
                 )),
                 component: Arc::new(crate::services::ComponentServiceImpl::new(

@@ -222,12 +222,9 @@ impl IssueRepository for MemoryIssueRepository {
                 query.search_text.as_ref().is_none_or(|q| {
                     i.summary
                         .as_ref()
-                        .to_ascii_lowercase()
-                        .contains(&q.to_ascii_lowercase())
-                        || i.key
-                            .to_string()
-                            .to_ascii_lowercase()
-                            .contains(&q.to_ascii_lowercase())
+                        .to_lowercase()
+                        .contains(&q.to_lowercase())
+                        || i.key.to_string().to_lowercase().contains(&q.to_lowercase())
                 })
             })
             .cloned()
@@ -999,10 +996,38 @@ impl IssueStatusHistoryRepository for MemoryIssueStatusHistoryRepository {
         }
         Ok(())
     }
+
+    async fn save_for_project(
+        &self,
+        entry: &IssueStatusHistory,
+        project_id: ProjectId,
+    ) -> Result<(), AppError> {
+        self.save_for_project_impl(entry, project_id).await
+    }
 }
 
 impl MemoryIssueStatusHistoryRepository {
     /// Save a history entry with its associated project_id for `list_by_project`.
+    pub async fn save_for_project_impl(
+        &self,
+        entry: &IssueStatusHistory,
+        project_id: ProjectId,
+    ) -> Result<(), AppError> {
+        let mut history = self.history.lock().unwrap();
+        let mut project_ids = self.project_ids.lock().unwrap();
+        match history.iter().position(|h| h.id == entry.id) {
+            Some(idx) => {
+                history[idx] = entry.clone();
+                project_ids[idx] = project_id;
+            }
+            None => {
+                history.push(entry.clone());
+                project_ids.push(project_id);
+            }
+        }
+        Ok(())
+    }
+
     pub fn save_with_project(&self, entry: &IssueStatusHistory, project_id: ProjectId) {
         let mut history = self.history.lock().unwrap();
         let mut project_ids = self.project_ids.lock().unwrap();

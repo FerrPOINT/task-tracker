@@ -16,6 +16,7 @@ use domain::{
     WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository, Worklog,
     WorklogRepository,
 };
+use sea_orm::sea_query::extension::postgres::PgExpr as _;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
     PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
@@ -535,12 +536,17 @@ impl IssueRepository for IssueRepo {
             };
         }
         if let Some(q) = query.search_text.as_deref().filter(|s| !s.is_empty()) {
-            let pattern = format!("%{}%", q);
+            // Escape LIKE metacharacters so user input matches literally.
+            let escaped = q
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            let pattern = format!("%{}%", escaped);
             select = select.filter(
                 sea_orm::Condition::any()
-                    .add(issue::Column::Summary.like(&pattern))
-                    .add(issue::Column::Key.like(&pattern))
-                    .add(issue::Column::Description.like(&pattern)),
+                    .add(Expr::col(issue::Column::Summary).ilike(&pattern))
+                    .add(Expr::col(issue::Column::Key).ilike(&pattern))
+                    .add(Expr::col(issue::Column::Description).ilike(&pattern)),
             );
         }
         let models = select

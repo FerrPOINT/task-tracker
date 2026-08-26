@@ -27,10 +27,12 @@ pub async fn list_worklogs(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
+    axum::extract::RawQuery(raw): axum::extract::RawQuery,
 ) -> Result<Json<WorklogListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
+    let (limit, offset) = crate::routes::comments::parse_page_params(raw.as_deref());
     let items = ctx
         .services
         .worklog
@@ -42,6 +44,8 @@ pub async fn list_worklogs(
                     .parse()
                     .map_err(|_| AppError::invalid_input("invalid user id"))?,
             ),
+            limit,
+            offset,
         )
         .await?;
     Ok(Json(WorklogListResponse {

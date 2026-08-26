@@ -310,7 +310,8 @@
     "goalPlaceholder": "What should be done by the end of the sprint",
     "name": "Name",
     "namePlaceholder": "Sprint 1",
-    "startDate": "Start date"
+    "startDate": "Start date",
+    "endBeforeStart": "End date cannot be earlier than start date"
   },
   "labels": {
     "title": "Labels",

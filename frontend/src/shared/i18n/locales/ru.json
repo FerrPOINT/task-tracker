@@ -310,7 +310,8 @@
     "goalPlaceholder": "Что должно быть готово к концу спринта",
     "name": "Название",
     "namePlaceholder": "Спринт 1",
-    "startDate": "Дата начала"
+    "startDate": "Дата начала",
+    "endBeforeStart": "Дата окончания не может быть раньше начала"
   },
   "labels": {
     "title": "Метки",

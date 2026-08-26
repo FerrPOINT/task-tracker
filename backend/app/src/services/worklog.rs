@@ -36,12 +36,24 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         &self,
         issue_id: IssueId,
         requester: UserId,
+        limit: Option<u64>,
+        offset: u64,
     ) -> Result<Vec<WorklogDto>, AppError> {
         let issue = self.issues.get_by_id(issue_id).await?;
         self.authz
             .require_project_access(issue.project_id, requester)
             .await?;
+        let effective_limit = match limit {
+            Some(l) if (1..=500).contains(&l) => l as usize,
+            Some(_) => return Err(AppError::invalid_input("limit must be between 1 and 500")),
+            None => 100,
+        };
         let worklogs = self.worklogs.list_by_issue(issue_id).await?;
+        let worklogs: Vec<_> = worklogs
+            .into_iter()
+            .skip(offset as usize)
+            .take(effective_limit)
+            .collect();
         let mut result = Vec::with_capacity(worklogs.len());
         for w in worklogs {
             let user = self.users.get_by_id(w.author_id).await.ok();
@@ -62,6 +74,12 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
+        // Negative or absurd durations corrupt spent-time aggregation.
+        if cmd.duration_seconds <= 0 || cmd.duration_seconds > 86_400 {
+            return Err(AppError::invalid_input(
+                "duration_seconds must be between 1 and 86400",
+            ));
+        }
         let worklog = domain::Worklog {
             id: shared::WorklogId::new(),
             issue_id: cmd.issue_id,
@@ -98,6 +116,11 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             worklog.started_at = started_at;
         }
         if let Some(duration) = cmd.duration_seconds {
+            if duration <= 0 || duration > 86_400 {
+                return Err(AppError::invalid_input(
+                    "duration_seconds must be between 1 and 86400",
+                ));
+            }
             worklog.duration_seconds = duration;
         }
         if let Some(description) = cmd.description {

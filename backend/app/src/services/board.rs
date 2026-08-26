@@ -17,6 +17,7 @@ pub struct BoardServiceImpl {
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
     projects: Arc<dyn ProjectRepository>,
+    status_history: Arc<dyn domain::IssueStatusHistoryRepository>,
     authz: Authz,
 }
 
@@ -30,6 +31,7 @@ impl BoardServiceImpl {
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
         projects: Arc<dyn ProjectRepository>,
+        status_history: Arc<dyn domain::IssueStatusHistoryRepository>,
         authz: Authz,
     ) -> Self {
         Self {
@@ -40,6 +42,7 @@ impl BoardServiceImpl {
             statuses,
             transitions,
             projects,
+            status_history,
             authz,
         }
     }
@@ -252,8 +255,24 @@ impl crate::context::BoardService for BoardServiceImpl {
             return Err(AppError::invalid_input("workflow transition not allowed"));
         }
         let mut updated = issue.clone();
+        let from_status = updated.status_id;
         updated.change_status(status_id);
         self.issues.save(&updated).await?;
+        // Reports (control chart / cumulative flow) are derived from status
+        // history; persisting it here is what makes them truthful.
+        self.status_history
+            .save_for_project(
+                &domain::IssueStatusHistory {
+                    id: shared::IssueStatusHistoryId::new(),
+                    issue_id: updated.id,
+                    from_status_id: Some(from_status),
+                    to_status_id: status_id,
+                    changed_by_id: requester,
+                    changed_at: shared::now(),
+                },
+                project.id,
+            )
+            .await?;
         self.build_board_dto(project_key).await
     }
 }

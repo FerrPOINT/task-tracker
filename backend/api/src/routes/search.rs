@@ -37,6 +37,8 @@ pub async fn search_global(
                 assignee_id: q.assignee_id,
                 sort_by: q.sort_by,
                 sort_order: q.sort_order,
+                limit: q.limit,
+                offset: q.offset,
                 jql: q.jql,
                 user_id: user_id.map(|u| u.to_string()),
             },

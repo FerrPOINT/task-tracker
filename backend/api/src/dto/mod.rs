@@ -179,6 +179,8 @@ pub struct SearchQuery {
     pub assignee_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
     pub jql: Option<String>,
 }
 

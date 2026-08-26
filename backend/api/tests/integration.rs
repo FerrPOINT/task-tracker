@@ -179,8 +179,8 @@ async fn spawn_server_with_notifications()
         issue_status_history: Arc::new(domain::MemoryIssueStatusHistoryRepository::default()),
         watchers: Arc::new(domain::MemoryWatcherRepository::default()),
         votes: Arc::new(domain::MemoryVoteRepository::default()),
-        components: Arc::new(domain::StubProjectComponentRepository),
-        versions: Arc::new(domain::StubProjectVersionRepository),
+        components: Arc::new(domain::stubs::memory::MemoryProjectComponentRepository::default()),
+        versions: Arc::new(domain::stubs::memory::MemoryProjectVersionRepository::default()),
         custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
     });
 
@@ -2124,8 +2124,8 @@ async fn spawn_server_with_reports() -> (
         issue_status_history: history.clone(),
         watchers: Arc::new(domain::MemoryWatcherRepository::default()),
         votes: Arc::new(domain::MemoryVoteRepository::default()),
-        components: Arc::new(domain::StubProjectComponentRepository),
-        versions: Arc::new(domain::StubProjectVersionRepository),
+        components: Arc::new(domain::stubs::memory::MemoryProjectComponentRepository::default()),
+        versions: Arc::new(domain::stubs::memory::MemoryProjectVersionRepository::default()),
         custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
     });
 
@@ -4265,4 +4265,440 @@ async fn search_priority_any_case() {
         .unwrap();
     let body: serde_json::Value = res.json().await.unwrap();
     assert!(body["issues"].as_array().unwrap().is_empty());
+}
+
+// 20. sprint_rejects_end_before_start (audit r2)
+#[tokio::test]
+async fn sprint_rejects_end_before_start() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .post(format!("{url}/api/v1/projects/TT/sprints"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "name": "date-test",
+            "start_date": "2026-09-10T00:00:00+00:00",
+            "end_date": "2026-09-01T00:00:00+00:00"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400, "end<start must be rejected");
+
+    // equal dates are allowed (single-day sprint)
+    let res = client
+        .post(format!("{url}/api/v1/projects/TT/sprints"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "name": "one-day",
+            "start_date": "2026-09-10T00:00:00+00:00",
+            "end_date": "2026-09-10T00:00:00+00:00"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+}
+
+// 21. worklog_rejects_negative_duration (audit r2)
+#[tokio::test]
+async fn worklog_rejects_negative_duration() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/worklogs"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "description": "neg",
+            "started_at": "2026-08-27T10:00:00Z",
+            "duration_seconds": -3600
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+
+    let res = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/worklogs"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "description": "huge",
+            "started_at": "2026-08-27T10:00:00Z",
+            "duration_seconds": 900000
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+// 22. vote_dto_includes_user_names (audit r2)
+#[tokio::test]
+async fn vote_dto_includes_user_names() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/vote"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["username"], "demo", "vote DTO must enrich username");
+    assert_eq!(body["display_name"], "Demo User");
+
+    let res = client
+        .get(format!("{url}/api/v1/issues/{issue_id}/votes"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    let votes = body["votes"].as_array().unwrap();
+    assert!(!votes.is_empty());
+    assert_eq!(votes[0]["username"], "demo");
+    assert_eq!(votes[0]["display_name"], "Demo User");
+}
+
+// 23. search_pagination_is_bounded_and_honored (audit r2)
+#[tokio::test]
+async fn search_pagination_is_bounded_and_honored() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    for i in 0..3 {
+        create_second_issue(&url, &client, &token, &format!("pagination probe {i}")).await;
+    }
+
+    let res = client
+        .get(format!("{url}/api/v1/search?limit=2&offset=0"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let first: serde_json::Value = res.json().await.unwrap();
+    let first = first["issues"].as_array().unwrap();
+    assert_eq!(first.len(), 2);
+    let first_ids: Vec<_> = first.iter().map(|i| i["id"].clone()).collect();
+
+    let res = client
+        .get(format!("{url}/api/v1/search?limit=2&offset=2"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let second: serde_json::Value = res.json().await.unwrap();
+    let second = second["issues"].as_array().unwrap();
+    assert!(!second.is_empty());
+    assert!(!first_ids.contains(&second[0]["id"]));
+
+    for bad in ["0", "101"] {
+        let res = client
+            .get(format!("{url}/api/v1/search?limit={bad}"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 400, "limit={bad}");
+    }
+}
+
+// 24. issue_rejects_oversized_summary (audit r2)
+#[tokio::test]
+async fn issue_rejects_oversized_summary() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let res = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "summary": "x".repeat(501),
+            "reporter_id": "00000000-0000-0000-0000-000000000001"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+// 25. search_is_case_insensitive_for_unicode (audit r2)
+#[tokio::test]
+async fn search_is_case_insensitive_for_unicode() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let id = create_second_issue(&url, &client, &token, "Проверка Unicode поиска").await;
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/search?q=%D0%BF%D1%80%D0%BE%D0%B2%D0%B5%D1%80%D0%BA%D0%B0"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        body["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["id"].as_str() == Some(id.as_str()))
+    );
+}
+
+// 26. issue_update_rejects_cross_project_refs (audit r2-deleg)
+#[tokio::test]
+async fn issue_update_rejects_cross_project_refs() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    create_project_via_api(&url, &client, &token, "XP2", "Cross Project Two").await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+    // sprint in the OTHER project
+    let res = client
+        .post(format!("{url}/api/v1/projects/XP2/sprints"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "name": "xp2 sprint",
+            "start_date": "2026-09-01T00:00:00+00:00",
+            "end_date": "2026-09-15T00:00:00+00:00"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let sprint_id = res.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = client
+        .patch(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "sprint_id": sprint_id }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400, "cross-project sprint must be rejected");
+
+    // component in the OTHER project
+    let res = client
+        .post(format!("{url}/api/v1/projects/XP2/components"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "name": "xp2 comp" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let comp_id = res.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let res = client
+        .patch(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "component_id": comp_id }))
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    assert_eq!(
+        status, 400,
+        "cross-project component must be rejected: {body}"
+    );
+}
+
+// 27. only_one_active_sprint_per_project (audit r2-deleg)
+#[tokio::test]
+async fn only_one_active_sprint_per_project() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let mk = |name: &str| {
+        serde_json::json!({
+            "name": name,
+            "start_date": "2026-09-01T00:00:00+00:00",
+            "end_date": "2026-09-15T00:00:00+00:00"
+        })
+    };
+    let mut ids = Vec::new();
+    for name in ["alpha sprint", "beta sprint"] {
+        let res = client
+            .post(format!("{url}/api/v1/projects/TT/sprints"))
+            .bearer_auth(&token)
+            .json(&mk(name))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 201);
+        ids.push(
+            res.json::<serde_json::Value>().await.unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+    }
+
+    let res = client
+        .post(format!("{url}/api/v1/projects/TT/sprints/{}/start", ids[0]))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+
+    let res = client
+        .post(format!("{url}/api/v1/projects/TT/sprints/{}/start", ids[1]))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        409,
+        "second sprint in same project must not become active"
+    );
+}
+
+// 28. status_transition_persists_history (audit r2-deleg)
+#[tokio::test]
+async fn status_transition_persists_history() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    // To Do -> In Progress via board move
+    let res = client
+        .post(format!("{url}/api/v1/projects/TT/board/move"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "issue_id": issue_id, "status_id": "00000000-0000-0000-0000-000000000002" }))
+        .send()
+        .await
+        .unwrap();
+    let mv_status = res.status();
+    assert_eq!(mv_status, 200, "board move should succeed");
+
+    // In Progress -> Done: the transition that control chart measures.
+    let res = client
+        .post(format!("{url}/api/v1/projects/TT/board/move"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "issue_id": issue_id, "status_id": "00000000-0000-0000-0000-000000000003" }))
+        .send()
+        .await
+        .unwrap();
+    let mv2_status = res.status();
+    let mv2_body = res.text().await.unwrap_or_default();
+    assert_eq!(
+        mv2_status, 200,
+        "board move to done should succeed: {mv2_body}"
+    );
+
+    // Control chart must now have data derived from the transition history
+    let res = client
+        .get(format!("{url}/api/v1/projects"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let projects: serde_json::Value = res.json().await.unwrap();
+    let project_id = projects["projects"]
+        .as_array()
+        .and_then(|ps| ps.iter().find(|p| p["key"] == "TT").cloned())
+        .or_else(|| {
+            projects
+                .as_array()
+                .and_then(|ps| ps.iter().find(|p| p["key"] == "TT").cloned())
+        })
+        .map(|p| p["id"].as_str().unwrap().to_string())
+        .expect("TT project must exist");
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/control-chart?project_id={project_id}"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let points = body["points"].as_array().cloned().unwrap_or_default();
+    assert!(
+        !points.is_empty(),
+        "control chart must expose transition history points, got: {body}"
+    );
+}
+
+// 29. comment_rejects_oversized_body (audit r2-deleg)
+#[tokio::test]
+async fn comment_rejects_oversized_body() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/comments"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "body": "y".repeat(100_001) }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+
+    let res = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/comments"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "body": "   " }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+// 30. comments_list_is_bounded (audit r2-deleg)
+#[tokio::test]
+async fn comments_list_is_bounded() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+    for i in 0..3 {
+        let res = client
+            .post(format!("{url}/api/v1/issues/{issue_id}/comments"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({ "body": format!("c{i}") }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 201);
+    }
+    let res = client
+        .get(format!("{url}/api/v1/issues/{issue_id}/comments?limit=2"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["comments"].as_array().unwrap().len(), 2);
+
+    let res = client
+        .get(format!("{url}/api/v1/issues/{issue_id}/comments?limit=0"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
 }

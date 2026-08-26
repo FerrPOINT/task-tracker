@@ -49,8 +49,13 @@ pub trait IssueTypeService: Send + Sync {
 
 #[async_trait]
 pub trait CommentService: Send + Sync {
-    async fn list(&self, issue_id: IssueId, requester: UserId)
-    -> Result<Vec<CommentDto>, AppError>;
+    async fn list(
+        &self,
+        issue_id: IssueId,
+        requester: UserId,
+        limit: Option<u64>,
+        offset: u64,
+    ) -> Result<Vec<CommentDto>, AppError>;
     async fn create(
         &self,
         cmd: CreateCommentCommand,
@@ -67,8 +72,13 @@ pub trait CommentService: Send + Sync {
 
 #[async_trait]
 pub trait WorklogService: Send + Sync {
-    async fn list(&self, issue_id: IssueId, requester: UserId)
-    -> Result<Vec<WorklogDto>, AppError>;
+    async fn list(
+        &self,
+        issue_id: IssueId,
+        requester: UserId,
+        limit: Option<u64>,
+        offset: u64,
+    ) -> Result<Vec<WorklogDto>, AppError>;
     async fn create(
         &self,
         cmd: CreateWorklogCommand,

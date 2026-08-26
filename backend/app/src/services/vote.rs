@@ -8,6 +8,7 @@ use shared::{AppError, IssueId, UserId};
 pub struct VoteServiceImpl {
     votes: Arc<dyn domain::VoteRepository>,
     issues: Arc<dyn IssueRepository>,
+    users: Arc<dyn domain::UserRepository>,
     authz: Authz,
 }
 
@@ -15,12 +16,34 @@ impl VoteServiceImpl {
     pub fn new(
         votes: Arc<dyn domain::VoteRepository>,
         issues: Arc<dyn IssueRepository>,
+        users: Arc<dyn domain::UserRepository>,
         authz: Authz,
     ) -> Self {
         Self {
             votes,
             issues,
+            users,
             authz,
+        }
+    }
+
+    async fn vote_dto(&self, v: domain::IssueVote) -> crate::context::VoteDto {
+        let (username, display_name) = self
+            .users
+            .get_by_id(v.user_id)
+            .await
+            .map(|u| {
+                (
+                    u.username.as_ref().to_string(),
+                    u.display_name.as_ref().to_string(),
+                )
+            })
+            .unwrap_or_default();
+        crate::context::VoteDto {
+            user_id: v.user_id.to_string(),
+            username,
+            display_name,
+            voted_at: v.voted_at.to_rfc3339(),
         }
     }
 }
@@ -37,12 +60,7 @@ impl crate::context::VoteService for VoteServiceImpl {
             .require_project_access(issue.project_id, user_id)
             .await?;
         let vote = self.votes.add(issue_id, user_id).await?;
-        Ok(crate::context::VoteDto {
-            user_id: vote.user_id.to_string(),
-            username: String::new(),
-            display_name: String::new(),
-            voted_at: vote.voted_at.to_rfc3339(),
-        })
+        Ok(self.vote_dto(vote).await)
     }
 
     async fn unvote(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
@@ -60,15 +78,11 @@ impl crate::context::VoteService for VoteServiceImpl {
             .require_project_access(issue.project_id, requester)
             .await?;
         let votes = self.votes.list_by_issue(issue_id).await?;
-        Ok(votes
-            .into_iter()
-            .map(|v| crate::context::VoteDto {
-                user_id: v.user_id.to_string(),
-                username: String::new(),
-                display_name: String::new(),
-                voted_at: v.voted_at.to_rfc3339(),
-            })
-            .collect())
+        let mut dtos = Vec::with_capacity(votes.len());
+        for v in votes {
+            dtos.push(self.vote_dto(v).await);
+        }
+        Ok(dtos)
     }
 
     async fn count_votes(&self, issue_id: IssueId) -> Result<u64, AppError> {

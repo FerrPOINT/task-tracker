@@ -56,12 +56,25 @@ impl crate::context::CommentService for CommentServiceImpl {
         &self,
         issue_id: IssueId,
         requester: UserId,
+        limit: Option<u64>,
+        offset: u64,
     ) -> Result<Vec<CommentDto>, AppError> {
         let issue = self.issues.get_by_id(issue_id).await?;
         self.authz
             .require_project_access(issue.project_id, requester)
             .await?;
+        let effective_limit = match limit {
+            Some(l) if (1..=500).contains(&l) => l as usize,
+            Some(_) => return Err(AppError::invalid_input("limit must be between 1 and 500")),
+            None => 100,
+        };
         let comments = self.comments.list_by_issue(issue_id).await?;
+        let page: Vec<_> = comments
+            .into_iter()
+            .skip(offset as usize)
+            .take(effective_limit)
+            .collect();
+        let comments = page;
         let mut result = Vec::with_capacity(comments.len());
         for c in comments {
             let user = self.users.get_by_id(c.author_id).await.ok();
@@ -82,6 +95,11 @@ impl crate::context::CommentService for CommentServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
+        if cmd.body.trim().is_empty() || cmd.body.chars().count() > 100_000 {
+            return Err(AppError::invalid_input(
+                "comment body must be between 1 and 100000 characters",
+            ));
+        }
         let comment = domain::Comment {
             id: shared::CommentId::new(),
             issue_id: cmd.issue_id,
@@ -147,6 +165,11 @@ impl crate::context::CommentService for CommentServiceImpl {
             return Err(AppError::Forbidden);
         }
         if let Some(body) = cmd.body {
+            if body.trim().is_empty() || body.chars().count() > 100_000 {
+                return Err(AppError::invalid_input(
+                    "comment body must be between 1 and 100000 characters",
+                ));
+            }
             comment.body = domain::value_objects::RichText::new(body);
             comment.updated_at = shared::now();
         }
