@@ -1,27 +1,26 @@
 import { test, expect } from '@playwright/test'
+import { apiLogin, apiPost } from './setup'
 
 test.describe('attachments', () => {
-  test('upload → list → delete attachment on issue detail', async ({ page, request }) => {
-    // Seed: login + create issue via API
-    const login = await request.post('/api/v1/auth/login', {
-      data: { email: 'demo@example.com', password: 'demo' },
-    })
-    expect(login.ok()).toBeTruthy()
-    const { access_token: token } = await login.json()
+  test('upload → list → delete attachment on issue detail', async ({ page }) => {
+    // Seed: login + create issue via API (shared seed keeps auth rate-limit happy)
+    const login = await apiLogin()
+    expect(login.status).toBe(200)
+    const token: string = login.data.access_token
 
-    const created = await request.post('/api/v1/issues', {
-      headers: { Authorization: `Bearer ${token}` },
-      data: {
+    const created = await apiPost(
+      '/issues',
+      {
         project_key: 'DEMO',
         issue_type: 'task',
         priority: 'medium',
-        status_id: '00000000-0000-0000-0000-000000000001',
         summary: `Attachment E2E ${Date.now()}`,
-        reporter_id: '00000000-0000-0000-0000-000000000001',
+        reporter_id: login.data.user_id,
       },
-    })
-    expect(created.ok()).toBeTruthy()
-    const issue = await created.json()
+      token,
+    )
+    expect([200, 201]).toContain(created.status)
+    const issue = created.data
 
     // Inject auth into localStorage then reload (zustand persist rehydrates async)
     await page.goto('/login')

@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test'
+import { apiLogin, apiPost } from './setup'
 
 test.describe('real-time board updates (SSE)', () => {
-  test('issue created via API appears on open board without reload', async ({ page, request }) => {
-    const login = await request.post('/api/v1/auth/login', {
-      data: { email: 'demo@example.com', password: 'demo' },
-    })
-    const { access_token: token } = await login.json()
+  test('issue created via API appears on open board without reload', async ({ page }) => {
+    const login = await apiLogin()
+    expect(login.status).toBe(200)
+    const token: string = login.data.access_token
 
     // first tab: open the board
     await page.goto('/login')
@@ -23,18 +23,18 @@ test.describe('real-time board updates (SSE)', () => {
 
     // second "tab": create an issue through the API (same as another user action)
     const summary = `SSE Live ${Date.now() % 100000}`
-    const created = await request.post('/api/v1/issues', {
-      headers: { Authorization: `Bearer ${token}` },
-      data: {
+    const created = await apiPost(
+      '/issues',
+      {
         project_key: 'DEMO',
         issue_type: 'task',
         priority: 'medium',
-        status_id: '00000000-0000-0000-0000-000000000001',
         summary,
-        reporter_id: '00000000-0000-0000-0000-000000000001',
+        reporter_id: login.data.user_id,
       },
-    })
-    expect(created.ok()).toBeTruthy()
+      token,
+    )
+    expect([200, 201]).toContain(created.status)
 
     // board should refresh via SSE invalidation — no page.reload()
     await expect(page.getByText(summary).first()).toBeVisible({ timeout: 15_000 })

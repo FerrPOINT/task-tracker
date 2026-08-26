@@ -5,7 +5,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
 const credentials = {
   email: 'demo@example.com',
-  password: 'demo',
+  password: 'Demo12345',
 }
 
 async function login(page: Page) {
@@ -24,6 +24,7 @@ test.describe('integration against live backend', () => {
   test('login then navigate through dashboard, projects, board, backlog, search, create issue', async ({
     page,
   }) => {
+    const ctx = await seedIntegrationData()
     await login(page)
 
     await expect(
@@ -44,14 +45,14 @@ test.describe('integration against live backend', () => {
     await expect(page.getByRole('link').first()).toBeVisible()
 
     await page.goto(`${baseURL}/projects/DEMO/board`)
-    const todoCard = page.getByText('Smoke issue').first()
+    const todoCard = page.getByText(ctx.issueKey).first()
     await expect(todoCard).toBeVisible()
     // Board move is triggered by ctrl+click on the issue card
     await todoCard.click({ modifiers: ['Control'] })
-    await expect(page.getByText('Smoke issue').first()).toBeVisible()
+    await expect(page.getByText(ctx.issueKey).first()).toBeVisible()
 
     await page.goto(`${baseURL}/search`)
-    await page.getByRole('textbox').fill('Smoke')
+    await page.getByPlaceholder(/поиск задач|search issues/i).fill('Smoke')
     // Debounced URL-param search: wait for results without a submit button
     await expect(page.getByText('Smoke issue').first()).toBeVisible({ timeout: 10_000 })
 

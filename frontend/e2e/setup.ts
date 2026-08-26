@@ -1,13 +1,8 @@
 const API_BASE = process.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3456/api/v1'
 
-const credentials = {
-  email: 'demo@example.com',
-  password: 'demo',
-  username: 'demo',
-  name: 'Demo User',
-}
-
-export type ApiContext = {
+// Single shared seed per test-run (process-wide). Parallel workers/projects reuse it,
+// avoiding simultaneous /auth/register + /auth/login calls that trip the auth rate limiter.
+type ApiContext = {
   token: string
   refreshToken: string
   userId: string
@@ -15,6 +10,8 @@ export type ApiContext = {
   issueId: string
   issueKey: string
 }
+
+let seedPromise: Promise<ApiContext> | null = null
 
 async function post(path: string, body: object, token?: string) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -35,13 +32,36 @@ async function get(path: string, token: string) {
   return { status: res.status, data: await res.json().catch(() => ({})) }
 }
 
-export async function seedIntegrationData(): Promise<ApiContext> {
+async function fetchJsonWithRetry(url: string, init: RequestInit, attempts = 6) {
+  for (let i = 0; i < attempts; i++) {
+    const res = await fetch(url, init)
+    if (res.status === 429) {
+      await new Promise((r) => setTimeout(r, 15_000))
+      continue
+    }
+    return { status: res.status, data: await res.json().catch(() => ({})) }
+  }
+  throw new Error(`persistent 429 for ${url}`)
+}
+
+async function seed(): Promise<ApiContext> {
+  const credentials = {
+    email: 'demo@example.com',
+    password: 'Demo12345',
+    username: 'demo',
+    name: 'Demo User',
+  }
+
   const registerRes = await post('/auth/register', credentials)
   if (registerRes.status !== 201 && registerRes.status !== 409) {
     throw new Error(`register failed: ${registerRes.status} ${JSON.stringify(registerRes.data)}`)
   }
 
-  const loginRes = await post('/auth/login', credentials)
+  const loginRes = await fetchJsonWithRetry(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: credentials.email, password: credentials.password }),
+  })
   if (loginRes.status !== 200) {
     throw new Error(`login failed: ${loginRes.status} ${JSON.stringify(loginRes.data)}`)
   }
@@ -49,10 +69,13 @@ export async function seedIntegrationData(): Promise<ApiContext> {
 
   const projectsRes = await get('/projects', access_token)
   type ProjectItem = { id: string; key: string }
-  let project = (projectsRes.data.projects as ProjectItem[] | undefined)?.find(
+  const project = (projectsRes.data.projects as ProjectItem[] | undefined)?.find(
     (p) => p.key === 'DEMO',
   )
-  if (!project) {
+  let projectId: string
+  if (project) {
+    projectId = project.id
+  } else {
     const createProjectRes = await post(
       '/projects',
       {
@@ -67,46 +90,32 @@ export async function seedIntegrationData(): Promise<ApiContext> {
         `create project failed: ${createProjectRes.status} ${JSON.stringify(createProjectRes.data)}`,
       )
     }
-    project = createProjectRes.data as ProjectItem
+    projectId = (createProjectRes.data as ProjectItem).id
   }
 
-  const issuesRes = await get(`/projects/${project.id}/issues`, access_token)
+  // Fresh issue per run: prevents cross-run worklog accumulation on the seeded issue
   type IssueItem = { id: string; key: string; summary: string }
-  let issue = (issuesRes.data.issues as IssueItem[] | undefined)?.find(
-    (i) => i.summary === 'Smoke issue',
+  const summary = `Smoke issue ${process.pid}-${Date.now() % 100000}`
+  const createIssueRes = await post(
+    '/issues',
+    {
+      project_key: 'DEMO',
+      issue_type: 'task',
+      summary,
+      description: 'Created by E2E setup',
+      priority: 'medium',
+      reporter_id: user_id,
+    },
+    access_token,
   )
-
-  if (!issue) {
-    const createIssueRes = await post(
-      '/issues',
-      {
-        project_key: 'DEMO',
-        issue_type: 'task',
-        summary: 'Smoke issue',
-        description: 'Created by E2E setup',
-        priority: 'medium',
-        status_id: '00000000-0000-0000-0000-000000000001',
-        reporter_id: user_id,
-      },
-      access_token,
+  if (createIssueRes.status !== 200 && createIssueRes.status !== 201) {
+    throw new Error(
+      `create issue failed: ${createIssueRes.status} ${JSON.stringify(createIssueRes.data)}`,
     )
-    if (createIssueRes.status === 200 || createIssueRes.status === 201) {
-      issue = createIssueRes.data as IssueItem
-    } else {
-      // Race: another parallel worker created the issue; re-fetch
-      const retryRes = await get(`/projects/${project.id}/issues`, access_token)
-      issue = (retryRes.data.issues as IssueItem[] | undefined)?.find(
-        (i) => i.summary === 'Smoke issue',
-      )
-      if (!issue) {
-        throw new Error(
-          `create issue failed: ${createIssueRes.status} ${JSON.stringify(createIssueRes.data)}`,
-        )
-      }
-    }
   }
+  const issue = createIssueRes.data as IssueItem
 
-  await post(
+  const worklogRes = await post(
     `/issues/${issue.id}/worklogs`,
     {
       description: 'Initial work',
@@ -115,13 +124,46 @@ export async function seedIntegrationData(): Promise<ApiContext> {
     },
     access_token,
   )
+  if (worklogRes.status !== 200 && worklogRes.status !== 201) {
+    throw new Error(
+      `create worklog failed: ${worklogRes.status} ${JSON.stringify(worklogRes.data)}`,
+    )
+  }
 
   return {
     token: access_token,
     refreshToken: refresh_token,
     userId: user_id,
-    projectId: project.id,
+    projectId,
     issueId: issue.id,
     issueKey: issue.key,
   }
 }
+
+export async function seedIntegrationData(): Promise<ApiContext> {
+  if (!seedPromise) {
+    seedPromise = seed().catch((error) => {
+      seedPromise = null // allow retry on next call after a failure
+      throw error
+    })
+  }
+  return seedPromise
+}
+
+export async function apiLogin() {
+  return fetchJsonWithRetry(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: 'demo@example.com', password: 'Demo12345' }),
+  })
+}
+
+export async function apiGet(path: string, token: string) {
+  return get(path, token)
+}
+
+export async function apiPost(path: string, body: object, token?: string) {
+  return post(path, body, token)
+}
+
+export const API_BASE_URL = API_BASE

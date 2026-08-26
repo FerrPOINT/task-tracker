@@ -288,19 +288,23 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             .allow_headers(Any)
     };
 
-    // Rate limiter for auth endpoints: 5 requests per 15 seconds per IP.
+    // Rate limiter for auth endpoints (configurable, default 5 requests per 15 seconds per IP).
     let auth_limiter = GovernorConfigBuilder::default()
         .key_extractor(FallbackIpKeyExtractor)
-        .period(std::time::Duration::from_secs(15))
-        .burst_size(5)
+        .period(std::time::Duration::from_secs(
+            ctx.config.server.auth_rate_period_secs,
+        ))
+        .burst_size(ctx.config.server.auth_rate_burst)
         .finish()
         .expect("valid auth rate limit config");
 
-    // General rate limiter for all API endpoints: 60 requests per 60 seconds per IP.
+    // General rate limiter for all API endpoints (default 60 requests per 60 seconds per IP).
     let general_limiter = GovernorConfigBuilder::default()
         .key_extractor(FallbackIpKeyExtractor)
-        .period(std::time::Duration::from_secs(60))
-        .burst_size(60)
+        .period(std::time::Duration::from_secs(
+            ctx.config.server.general_rate_period_secs,
+        ))
+        .burst_size(ctx.config.server.general_rate_burst)
         .finish()
         .expect("valid general rate limit config");
 

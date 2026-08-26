@@ -59,6 +59,7 @@ async fn serve_forever_responds_to_request() {
             address: "127.0.0.1".to_string(),
             port: 0,
             cors_allowed_origins: vec!["*".to_string()],
+            ..Default::default()
         },
         auth: AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
@@ -103,6 +104,7 @@ async fn bind_returns_listener_on_valid_addr() {
             address: "127.0.0.1".to_string(),
             port: 0,
             cors_allowed_origins: vec!["*".to_string()],
+            ..Default::default()
         },
         auth: AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),

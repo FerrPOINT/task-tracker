@@ -19,6 +19,7 @@ fn test_config() -> Arc<AppConfig> {
             address: "127.0.0.1".to_string(),
             port: 0,
             cors_allowed_origins: vec!["*".to_string()],
+            ..Default::default()
         },
         auth: AuthConfig {
             jwt_secret: "test-secret".to_string(),
@@ -58,6 +59,17 @@ async fn server_starts_runs_migrations_and_serves_health() {
         .expect("health request failed");
     assert_eq!(res.status(), 200);
     assert_eq!(res.text().await.unwrap(), "ok");
+
+    // A healthy server must outlive the 30-second graceful-shutdown drain
+    // limit. This caught a regression where the serve future itself was timed
+    // out, causing a clean container restart every 30 seconds.
+    tokio::time::sleep(std::time::Duration::from_secs(31)).await;
+    let res = client
+        .get(&url)
+        .send()
+        .await
+        .expect("health request after server lifetime check failed");
+    assert_eq!(res.status(), 200);
 
     let _ = shutdown_tx.send(());
     let result = tokio::time::timeout(std::time::Duration::from_secs(5), handle).await;

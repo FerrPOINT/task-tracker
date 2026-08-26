@@ -1,24 +1,25 @@
 import { test, expect } from '@playwright/test'
+import { apiLogin, apiPost } from './setup'
 
 test.describe('labels and links', () => {
-  test('create label → attach to issue → detach', async ({ page, request }) => {
-    const login = await request.post('/api/v1/auth/login', {
-      data: { email: 'demo@example.com', password: 'demo' },
-    })
-    const { access_token: token } = await login.json()
+  test('create label → attach to issue → detach', async ({ page }) => {
+    const login = await apiLogin()
+    expect(login.status).toBe(200)
+    const token: string = login.data.access_token
 
-    const created = await request.post('/api/v1/issues', {
-      headers: { Authorization: `Bearer ${token}` },
-      data: {
+    const created = await apiPost(
+      '/issues',
+      {
         project_key: 'DEMO',
         issue_type: 'task',
         priority: 'medium',
-        status_id: '00000000-0000-0000-0000-000000000001',
         summary: `Labels E2E ${Date.now()}`,
-        reporter_id: '00000000-0000-0000-0000-000000000001',
+        reporter_id: login.data.user_id,
       },
-    })
-    const issue = await created.json()
+      token,
+    )
+    expect([200, 201]).toContain(created.status)
+    const issue = created.data
 
     await page.goto('/login')
     await page.evaluate(
@@ -53,25 +54,25 @@ test.describe('labels and links', () => {
     await expect(page.getByTestId('issue-label')).toHaveCount(0, { timeout: 10_000 })
   })
 
-  test('create issue link → delete', async ({ page, request }) => {
-    const login = await request.post('/api/v1/auth/login', {
-      data: { email: 'demo@example.com', password: 'demo' },
-    })
-    const { access_token: token } = await login.json()
+  test('create issue link → delete', async ({ page }) => {
+    const login = await apiLogin()
+    expect(login.status).toBe(200)
+    const token: string = login.data.access_token
 
     const mk = async (summary: string) => {
-      const res = await request.post('/api/v1/issues', {
-        headers: { Authorization: `Bearer ${token}` },
-        data: {
+      const res = await apiPost(
+        '/issues',
+        {
           project_key: 'DEMO',
           issue_type: 'task',
           priority: 'medium',
-          status_id: '00000000-0000-0000-0000-000000000001',
           summary,
-          reporter_id: '00000000-0000-0000-0000-000000000001',
+          reporter_id: login.data.user_id,
         },
-      })
-      return res.json()
+        token,
+      )
+      expect([200, 201]).toContain(res.status)
+      return res.data
     }
     const a = await mk(`Link E2E A ${Date.now()}`)
     const b = await mk(`Link E2E B ${Date.now()}`)

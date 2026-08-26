@@ -266,20 +266,22 @@ export default function SearchPage() {
 function SearchResultRow({ issue }: { issue: Issue }) {
   return (
     <Card className="hover:bg-muted/50 transition-colors">
-      <CardContent className="flex items-center justify-between py-3">
-        <div className="flex items-center gap-3">
-          <span className="rounded border px-2 py-0.5 text-xs font-medium">{issue.key}</span>
+      <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="shrink-0 rounded border px-2 py-0.5 text-xs font-medium">
+            {issue.key}
+          </span>
           <Link
             to={`/issues/${issue.id}`}
-            className="font-medium hover:text-primary hover:underline"
+            className="min-w-0 truncate font-medium hover:text-primary hover:underline"
           >
             {issue.summary}
           </Link>
         </div>
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
           <span className="rounded bg-secondary px-2 py-0.5 text-xs">{issue.status}</span>
           <span>{issue.priority}</span>
-          <span>{issue.assignee_name ?? 'Unassigned'}</span>
+          <span className="truncate">{issue.assignee_name ?? 'Unassigned'}</span>
         </div>
       </CardContent>
     </Card>

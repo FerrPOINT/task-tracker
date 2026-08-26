@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{future::IntoFuture, sync::Arc};
 
 use app::AppContext;
 use infra::{SmtpEmailSender, build_repositories, run_migrations};
@@ -6,7 +6,7 @@ use shared::AppConfig;
 use tokio::sync::oneshot;
 use tracing::{error, warn};
 
-/// Maximum time to wait for in-flight requests to complete during graceful shutdown.
+/// Maximum time to drain in-flight requests after a shutdown signal.
 const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Interval at which the email digest background task runs.
@@ -60,15 +60,30 @@ pub async fn run(
         .expect("failed to bind server");
     let bound_addr = listener.local_addr().expect("local addr");
     let _ = ready.send(bound_addr);
+
+    // Signal graceful shutdown immediately, then bound only the drain phase.
+    // This avoids applying a timeout to the server's normal healthy lifetime.
+    let (shutdown_started_tx, shutdown_started_rx) = tokio::sync::oneshot::channel();
     let server = axum::serve(listener, api::router(ctx.clone()).with_state(ctx))
         .with_graceful_shutdown(async move {
             let _ = shutdown.await;
-        });
+            let _ = shutdown_started_tx.send(());
+        })
+        .into_future();
+    tokio::pin!(server);
 
-    // Wrap the server in a 30-second timeout so that even if in-flight
-    // requests hang, the process will exit within SHUTDOWN_TIMEOUT of
-    // receiving the shutdown signal.
-    let _ = tokio::time::timeout(SHUTDOWN_TIMEOUT, server).await;
+    tokio::select! {
+        result = &mut server => {
+            if let Err(e) = result {
+                error!("server error: {e}");
+            }
+        }
+        _ = shutdown_started_rx => {
+            if tokio::time::timeout(SHUTDOWN_TIMEOUT, &mut server).await.is_err() {
+                warn!("graceful shutdown exceeded {SHUTDOWN_TIMEOUT:?}; dropping active connections");
+            }
+        }
+    }
 
     // Cancel the background digest task on shutdown.
     digest_handle.abort();

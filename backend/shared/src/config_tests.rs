@@ -171,3 +171,28 @@ fn config_from_env_uses_default_path() {
     assert_eq!(cfg.server.port, 3456);
     clear_env();
 }
+
+#[test]
+fn rate_limit_defaults_and_env_override() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    clear_env();
+    set_env("TASKTRACKER_JWT_SECRET", "test-secret-32-chars-long!!!!!");
+
+    let cfg = AppConfig::from_path("/nonexistent.toml").unwrap();
+    assert_eq!(cfg.server.auth_rate_burst, 5);
+    assert_eq!(cfg.server.auth_rate_period_secs, 15);
+    assert_eq!(cfg.server.general_rate_burst, 60);
+    assert_eq!(cfg.server.general_rate_period_secs, 60);
+
+    set_env("TASKTRACKER_SERVER__AUTH_RATE_BURST", "100");
+    set_env("TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS", "1");
+    set_env("TASKTRACKER_SERVER__GENERAL_RATE_BURST", "10000");
+    set_env("TASKTRACKER_SERVER__GENERAL_RATE_PERIOD_SECS", "1");
+    set_env("TASKTRACKER_AUTH__JWT_SECRET", "test-secret-123");
+
+    let cfg = AppConfig::from_path("/nonexistent.toml").unwrap();
+    assert_eq!(cfg.server.auth_rate_burst, 100);
+    assert_eq!(cfg.server.auth_rate_period_secs, 1);
+    assert_eq!(cfg.server.general_rate_burst, 10000);
+    assert_eq!(cfg.server.general_rate_period_secs, 1);
+}

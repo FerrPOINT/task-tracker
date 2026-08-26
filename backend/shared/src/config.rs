@@ -73,6 +73,31 @@ pub struct ServerConfig {
     pub address: String,
     pub port: u16,
     pub cors_allowed_origins: Vec<String>,
+    /// Auth endpoints rate limit: burst size (requests per period per IP).
+    #[serde(default = "default_auth_rate_burst")]
+    pub auth_rate_burst: u32,
+    /// Auth endpoints rate limit period in seconds.
+    #[serde(default = "default_auth_rate_period_secs")]
+    pub auth_rate_period_secs: u64,
+    /// General API rate limit: burst size.
+    #[serde(default = "default_general_rate_burst")]
+    pub general_rate_burst: u32,
+    /// General API rate limit period in seconds.
+    #[serde(default = "default_general_rate_period_secs")]
+    pub general_rate_period_secs: u64,
+}
+
+fn default_auth_rate_burst() -> u32 {
+    5
+}
+fn default_auth_rate_period_secs() -> u64 {
+    15
+}
+fn default_general_rate_burst() -> u32 {
+    60
+}
+fn default_general_rate_period_secs() -> u64 {
+    60
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -106,6 +131,10 @@ impl AppConfig {
             .set_default("server.address", "0.0.0.0")?
             .set_default("server.port", 3456u16)?
             .set_default("server.cors_allowed_origins", vec!["*"])?
+            .set_default("server.auth_rate_burst", 5u32)?
+            .set_default("server.auth_rate_period_secs", 15u64)?
+            .set_default("server.general_rate_burst", 60u32)?
+            .set_default("server.general_rate_period_secs", 60u64)?
             .set_default("auth.jwt_secret", "[CHANGE_ME]")?
             .set_default("auth.access_token_ttl_minutes", 15u64)?
             .set_default("auth.refresh_token_ttl_days", 7u64)?
@@ -202,6 +231,10 @@ impl Default for ServerConfig {
             address: "0.0.0.0".to_string(),
             port: 3456,
             cors_allowed_origins: vec!["*".to_string()],
+            auth_rate_burst: default_auth_rate_burst(),
+            auth_rate_period_secs: default_auth_rate_period_secs(),
+            general_rate_burst: default_general_rate_burst(),
+            general_rate_period_secs: default_general_rate_period_secs(),
         }
     }
 }

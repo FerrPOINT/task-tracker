@@ -98,7 +98,12 @@ impl crate::context::IssueService for IssueServiceImpl {
                     issue = Some(candidate);
                     break;
                 }
+                // Key collisions arrive either as a raw DB error naming the
+                // constraint or as the sanitized unique-violation Conflict.
+                // `issues.key` is the only unique constraint on INSERT here,
+                // so any duplicate-entry conflict is de facto a key collision.
                 Err(AppError::Database(msg)) if msg.contains("issues_key_key") => continue,
+                Err(AppError::Conflict(ref msg)) if msg == "duplicate entry" => continue,
                 Err(e) => return Err(e),
             }
         }

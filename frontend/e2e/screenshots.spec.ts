@@ -1,5 +1,5 @@
 import { test, Page } from '@playwright/test'
-import { seedIntegrationData } from './setup'
+import { seedIntegrationData, apiLogin } from './setup'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 const viewports = [
@@ -23,11 +23,9 @@ test.beforeAll(async () => {
 })
 
 async function authenticate(p: Page) {
-  const res = await p.request.post(`${baseURL}/api/v1/auth/login`, {
-    data: { email: 'demo@example.com', password: 'demo' },
-  })
-  if (res.status() !== 200) throw new Error('screenshot auth failed')
-  const { access_token, user_id, email } = await res.json()
+  const res = await apiLogin()
+  if (res.status !== 200) throw new Error('screenshot auth failed')
+  const { access_token, user_id, email } = res.data
   await p.goto(`${baseURL}/login`)
   await p.evaluate(
     (payload: { token: string; userId: string; email: string }) => {
@@ -62,7 +60,11 @@ for (const page of pages) {
         await setThemeAndGoto(p, 'light', page.path, page.marker)
         await p.screenshot({
           path: `/root/.hermes/cache/images/react-${page.name}-${vp.name}.png`,
-          fullPage: true,
+          // Very long live pages (board/search on a narrow screen) can exceed
+          // the browser 32,767px full-page capture limit; those stay
+          // viewport-sized, everything else is captured full-page.
+          fullPage: !((page.name === 'board' || page.name === 'search') && vp.name === 'mobile'),
+          scale: 'css',
         })
       })
     }
@@ -73,6 +75,7 @@ for (const page of pages) {
       await p.screenshot({
         path: `/root/.hermes/cache/images/react-${page.name}-dark.png`,
         fullPage: true,
+        scale: 'css',
       })
     })
   })

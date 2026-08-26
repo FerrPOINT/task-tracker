@@ -1,33 +1,28 @@
 import { test, expect } from '@playwright/test'
+import { apiLogin, apiGet, apiPost } from './setup'
 
 test.describe('project members', () => {
-  test('add member → list → remove via board panel', async ({ page, request }) => {
-    // register a fresh user to invite
+  test('add member → list → remove via board panel', async ({ page }) => {
+    // register a fresh user to invite (single register per run; retried on 429)
     const username = `e2emember${Date.now() % 100000}`
+    const displayName = `E2E Member ${Date.now() % 100000}`
     const email = `${username}@example.com`
-    const reg = await request.post('/api/v1/auth/register', {
-      data: {
-        email,
-        username,
-        name: 'E2E Member',
-        password: 'secret123',
-      },
+    const reg = await apiPost('/auth/register', {
+      email,
+      username,
+      name: displayName,
+      password: 'Secret12345',
     })
-    expect(reg.ok()).toBeTruthy()
-    const newUser = await reg.json()
-    const newUserId: string = newUser.user_id
+    expect([201, 409]).toContain(reg.status)
+    const newUserId: string = reg.data.user_id
 
-    const login = await request.post('/api/v1/auth/login', {
-      data: { email: 'demo@example.com', password: 'demo' },
-    })
-    const { access_token: token } = await login.json()
+    const login = await apiLogin()
+    expect(login.status).toBe(200)
+    const token: string = login.data.access_token
 
-    // find DEMO project id
-    const projects = await request.get('/api/v1/projects', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const projectList = (await projects.json()).projects
-    const demo = projectList.find((p: { key: string }) => p.key === 'DEMO')
+    // members panel works by project key; DEMO must exist (seed guarantees it)
+    const projects = await apiGet('/projects', token)
+    const demo = projects.data.projects.find((p: { key: string }) => p.key === 'DEMO')
     expect(demo).toBeTruthy()
 
     await page.goto('/login')
@@ -48,20 +43,23 @@ test.describe('project members', () => {
       .first()
       .click()
     const combo = page.getByRole('combobox')
-    // option presence is verified implicitly by label-based selection below
     await expect(combo).toBeVisible({ timeout: 10_000 })
 
     // add the new user
     await combo.selectOption(newUserId)
     await page.locator('form button[type="submit"]').click()
+    // The member list shows display_name; the <option> is hidden but the row is visible
     await expect(
-      page.getByRole('dialog').getByText(username, { exact: false }).first(),
+      page.getByRole('dialog').getByText(displayName, { exact: true }).first(),
     ).toBeVisible({ timeout: 10_000 })
 
-    // remove
-    await page.getByRole('button', { name: new RegExp(username) }).click()
-    // member row disappears; username only remains inside the hidden <option> of the select
-    await expect(page.getByRole('dialog').getByText(username, { exact: true })).toHaveCount(0, {
+    // remove — the delete button is aria-labelled with the member name
+    await page
+      .getByRole('button', {
+        name: new RegExp(`удалить.*${displayName}|remove.*${displayName}`, 'i'),
+      })
+      .click()
+    await expect(page.getByRole('dialog').getByText(displayName, { exact: true })).toHaveCount(0, {
       timeout: 10_000,
     })
   })
