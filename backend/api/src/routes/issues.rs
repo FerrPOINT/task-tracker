@@ -28,23 +28,42 @@ pub async fn create_issue(
     let actor_id = shared::UserId::from_uuid(
         uuid::Uuid::parse_str(&claims.sub).map_err(|_| AppError::invalid_input("invalid token"))?,
     );
+    let project_key = ProjectKey::from_str(&req.project_key)
+        .map_err(|e| AppError::invalid_input(e.to_string()))?;
+    let status_id = match req.status_id {
+        Some(status_id) => status_id,
+        None => ctx
+            .services
+            .board
+            .get_board(&project_key, actor_id)
+            .await?
+            .columns
+            .into_iter()
+            .next()
+            .map(|column| column.id)
+            .ok_or_else(|| AppError::invalid_input("project board has no columns"))?,
+    };
+    let reporter_id = req
+        .reporter_id
+        .map(|reporter_id| {
+            reporter_id
+                .parse()
+                .map(shared::UserId::from_uuid)
+                .map_err(|_| AppError::invalid_input("reporter_id"))
+        })
+        .transpose()?
+        .unwrap_or(actor_id);
     let cmd = CreateIssueCommand {
-        project_key: ProjectKey::from_str(&req.project_key)
-            .map_err(|e| AppError::invalid_input(e.to_string()))?,
+        project_key,
         issue_type: shared::IssueType::from_str(&req.issue_type).unwrap_or(shared::IssueType::Task),
         summary: req.summary,
         description: req.description,
         priority: shared::Priority::from_str(&req.priority).unwrap_or(shared::Priority::Medium),
-        status_id: req.status_id,
+        status_id,
         assignee_id: req
             .assignee_id
             .and_then(|s| s.parse().ok().map(shared::UserId::from_uuid)),
-        reporter_id: req
-            .reporter_id
-            .parse()
-            .ok()
-            .map(shared::UserId::from_uuid)
-            .ok_or(AppError::invalid_input("reporter_id"))?,
+        reporter_id,
         actor_id,
     };
     let i = ctx.services.issue.create(cmd, actor_id).await?;

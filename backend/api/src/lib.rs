@@ -326,11 +326,11 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
                 .delete(routes::projects::delete_project),
         )
         .route(
-            "/projects/{project_id}/members",
+            "/projects/{project_key}/members",
             get(routes::members::list_members).post(routes::members::add_member),
         )
         .route(
-            "/projects/{project_id}/members/{user_id}",
+            "/projects/{project_key}/members/{user_id}",
             delete(routes::members::remove_member),
         )
         .route(

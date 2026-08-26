@@ -324,6 +324,30 @@ async fn backlog_requires_auth_and_returns_issues() {
 }
 
 #[tokio::test]
+async fn issue_create_defaults_to_first_board_column_for_reporter() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let created = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "uses Todo by default",
+            "issue_type": "task",
+            "priority": "medium"
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(created.status(), 201);
+    let issue: serde_json::Value = created.json().await.unwrap();
+    assert_eq!(issue["status_id"], "00000000-0000-0000-0000-000000000001");
+    assert_eq!(issue["reporter_id"], test_user().id.to_string());
+}
+
+#[tokio::test]
 async fn issue_create_validation_errors() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
@@ -752,10 +776,10 @@ async fn project_members_crud() {
     assert_eq!(register.status(), 201);
     let user: serde_json::Value = register.json().await.unwrap();
     let user_id = user["user_id"].as_str().unwrap();
-    let project_id = test_project_id();
+    let project_key = "TT";
 
     let list0 = client
-        .get(format!("{}/api/v1/projects/{project_id}/members", url))
+        .get(format!("{}/api/v1/projects/{project_key}/members", url))
         .bearer_auth(&token)
         .send()
         .await
@@ -763,7 +787,7 @@ async fn project_members_crud() {
     assert_eq!(list0.status(), 200);
 
     let add = client
-        .post(format!("{}/api/v1/projects/{project_id}/members", url))
+        .post(format!("{}/api/v1/projects/{project_key}/members", url))
         .bearer_auth(&token)
         .json(&serde_json::json!({"user_id": user_id, "role": "member"}))
         .send()
@@ -775,7 +799,7 @@ async fn project_members_crud() {
 
     let remove = client
         .delete(format!(
-            "{}/api/v1/projects/{project_id}/members/{user_id}",
+            "{}/api/v1/projects/{project_key}/members/{user_id}",
             url
         ))
         .bearer_auth(&token)
@@ -1346,7 +1370,7 @@ async fn issue_link_unknown_target_404() {
 async fn member_readd_is_idempotent_upsert() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
-    let project_id = test_project_id();
+    let project_key = "TT";
 
     // register a second user
     let register = client
@@ -1366,7 +1390,7 @@ async fn member_readd_is_idempotent_upsert() {
     // add twice
     for expected_role in ["member", "admin"] {
         let res = client
-            .post(format!("{}/api/v1/projects/{project_id}/members", url))
+            .post(format!("{}/api/v1/projects/{project_key}/members", url))
             .bearer_auth(&token)
             .json(&serde_json::json!({"user_id": user_id, "role": expected_role}))
             .send()
@@ -1379,7 +1403,7 @@ async fn member_readd_is_idempotent_upsert() {
 
     // list shows exactly one membership with the latest role
     let res = client
-        .get(format!("{}/api/v1/projects/{project_id}/members", url))
+        .get(format!("{}/api/v1/projects/{project_key}/members", url))
         .bearer_auth(&token)
         .send()
         .await
@@ -1400,7 +1424,7 @@ async fn member_add_unknown_project_404() {
     let token = login_token(&url, &client).await;
 
     let res = client
-        .post(format!("{}/api/v1/projects/00000000-0000-0000-0000-00c0ffee7777/members", url))
+        .post(format!("{}/api/v1/projects/UNKNOWN/members", url))
         .bearer_auth(token)
         .json(&serde_json::json!({"user_id": "00000000-0000-0000-0000-000000000001", "role": "member"}))
         .send()
@@ -1413,7 +1437,7 @@ async fn member_add_unknown_project_404() {
 async fn member_remove_returns_204() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
-    let project_id = test_project_id();
+    let project_key = "TT";
 
     let register = client
         .post(format!("{}/api/v1/auth/register", url))
@@ -1430,7 +1454,7 @@ async fn member_remove_returns_204() {
     let user_id = user["user_id"].as_str().unwrap();
 
     let add = client
-        .post(format!("{}/api/v1/projects/{project_id}/members", url))
+        .post(format!("{}/api/v1/projects/{project_key}/members", url))
         .bearer_auth(&token)
         .json(&serde_json::json!({"user_id": user_id, "role": "member"}))
         .send()
@@ -1440,7 +1464,7 @@ async fn member_remove_returns_204() {
 
     let remove = client
         .delete(format!(
-            "{}/api/v1/projects/{project_id}/members/{user_id}",
+            "{}/api/v1/projects/{project_key}/members/{user_id}",
             url
         ))
         .bearer_auth(token)
@@ -3552,11 +3576,11 @@ async fn add_member_via_api(
     url: &str,
     client: &reqwest::Client,
     owner_token: &str,
-    project_id: &str,
+    project_key: &str,
     user_id: &str,
 ) {
     let res = client
-        .post(format!("{url}/api/v1/projects/{project_id}/members"))
+        .post(format!("{url}/api/v1/projects/{project_key}/members"))
         .bearer_auth(owner_token)
         .json(&serde_json::json!({"user_id": user_id, "role": "member"}))
         .send()
@@ -3688,12 +3712,12 @@ async fn non_member_cannot_comment() {
 async fn non_member_cannot_add_member() {
     let (url, client) = spawn_server().await;
     let _a_token = login_token(&url, &client).await;
-    let project_id = test_project_id();
+    let project_key = "TT";
     let (b_id, b_token) = register_user(&url, &client, "b7@example.com", "userb7", "User B7").await;
 
     // B tries to add themselves as a member of A's project → 403 (owner-only)
     let res = client
-        .post(format!("{url}/api/v1/projects/{project_id}/members"))
+        .post(format!("{url}/api/v1/projects/{project_key}/members"))
         .bearer_auth(&b_token)
         .json(&serde_json::json!({"user_id": b_id, "role": "member"}))
         .send()
@@ -3707,17 +3731,17 @@ async fn non_member_cannot_add_member() {
 async fn member_cannot_add_member() {
     let (url, client) = spawn_server().await;
     let a_token = login_token(&url, &client).await;
-    let project_id = test_project_id();
+    let project_key = "TT";
     let (b_id, b_token) = register_user(&url, &client, "b8@example.com", "userb8", "User B8").await;
 
     // A (owner) adds B as a member
-    add_member_via_api(&url, &client, &a_token, &project_id, &b_id).await;
+    add_member_via_api(&url, &client, &a_token, project_key, &b_id).await;
 
     // B (now a member) tries to add another user → 403 (owner-only)
     let (c_id, _c_token) =
         register_user(&url, &client, "c8@example.com", "userc8", "User C8").await;
     let res = client
-        .post(format!("{url}/api/v1/projects/{project_id}/members"))
+        .post(format!("{url}/api/v1/projects/{project_key}/members"))
         .bearer_auth(&b_token)
         .json(&serde_json::json!({"user_id": c_id, "role": "member"}))
         .send()
@@ -3734,9 +3758,9 @@ async fn member_cannot_delete_project() {
     let (b_id, b_token) = register_user(&url, &client, "b9@example.com", "userb9", "User B9").await;
 
     // Create a throwaway project so we don't break the seeded TT for other tests.
-    let (project_id, _key) =
+    let (_project_id, project_key) =
         create_project_via_api(&url, &client, &a_token, "PDEL", "Project To Delete").await;
-    add_member_via_api(&url, &client, &a_token, &project_id, &b_id).await;
+    add_member_via_api(&url, &client, &a_token, &project_key, &b_id).await;
 
     // B (member) tries to delete the project → 403 (owner-only)
     let res = client
@@ -3793,12 +3817,12 @@ async fn non_member_cannot_read_reports() {
 async fn member_can_view_board() {
     let (url, client) = spawn_server().await;
     let a_token = login_token(&url, &client).await;
-    let project_id = test_project_id();
+    let project_key = "TT";
     let (b_id, b_token) =
         register_user(&url, &client, "b12@example.com", "userb12", "User B12").await;
 
     // A (owner) adds B as a member
-    add_member_via_api(&url, &client, &a_token, &project_id, &b_id).await;
+    add_member_via_api(&url, &client, &a_token, project_key, &b_id).await;
 
     // B (now a member) views the board → 200
     let res = client

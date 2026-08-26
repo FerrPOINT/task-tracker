@@ -15,7 +15,7 @@ struct Cli {
     #[arg(
         long,
         env = "TASKTRACKER_API_URL",
-        default_value = "http://localhost:19876"
+        default_value = "http://localhost:3456/api/v1"
     )]
     api_url: String,
 
@@ -481,7 +481,7 @@ impl Api {
 
     fn auth_header(&self) -> Result<String> {
         match &self.token {
-            Some(t) => Ok(format!("Bearer {}", t)),
+            Some(t) => Ok(t.clone()),
             None => bail!("not authenticated: pass --token or TASKTRACKER_TOKEN"),
         }
     }
@@ -507,7 +507,15 @@ impl Api {
     }
 
     async fn request(&self, method: &str, path: &str, payload: Value) -> Result<Value> {
-        let url = format!("{}{}", self.base, path);
+        // Normalize: if base already ends with /api/v1 and path starts with /api/v1,
+        // strip the duplicate prefix from the path.
+        let base_trimmed = self.base.trim_end_matches('/');
+        let path = if base_trimmed.ends_with("/api/v1") && path.starts_with("/api/v1") {
+            &path["/api/v1".len()..]
+        } else {
+            path
+        };
+        let url = format!("{}{}", base_trimmed, path);
         let mut req = match method {
             "GET" => self.client.get(&url),
             "POST" => self.client.post(&url).json(&payload),
@@ -838,12 +846,8 @@ async fn run(cli: Cli) -> Result<()> {
         // ── Sprint ──
         Commands::Sprint { command } => match command {
             SprintCommands::List { project_key } => {
-                let project = api
-                    .get(&format!("/api/v1/projects/{}", enc(&project_key)))
-                    .await?;
-                let pid = project["id"].as_str().context("project missing id")?;
                 let body = api
-                    .get(&format!("/api/v1/sprints?project_id={}", enc(pid)))
+                    .get(&format!("/api/v1/projects/{}/sprints", enc(&project_key)))
                     .await?;
                 print_output(out, &body);
             }
@@ -852,16 +856,15 @@ async fn run(cli: Cli) -> Result<()> {
                 name,
                 goal,
             } => {
-                let project = api
-                    .get(&format!("/api/v1/projects/{}", enc(&project_key)))
-                    .await?;
-                let pid = project["id"].as_str().context("project missing id")?;
                 let mut payload = json!({ "name": name });
                 if let Some(g) = goal {
                     payload["goal"] = Value::String(g);
                 }
                 let body = api
-                    .post(&format!("/api/v1/sprints?project_id={}", enc(pid)), payload)
+                    .post(
+                        &format!("/api/v1/projects/{}/sprints", enc(&project_key)),
+                        payload,
+                    )
                     .await?;
                 print_output(out, &body);
             }

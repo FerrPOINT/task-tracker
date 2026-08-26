@@ -67,7 +67,12 @@ impl AppError {
     }
 
     pub fn database(err: impl std::fmt::Display) -> Self {
-        Self::Database(err.to_string())
+        let msg = err.to_string();
+        // PostgreSQL uses this wording for SQLSTATE 23505 unique violations.
+        if msg.contains("duplicate key value violates unique constraint") {
+            return Self::Conflict("duplicate entry".to_string());
+        }
+        Self::Database(msg)
     }
 
     pub fn internal(err: impl std::fmt::Display) -> Self {

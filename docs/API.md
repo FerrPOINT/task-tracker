@@ -79,8 +79,8 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| GET, POST | `/projects/{project_id}/members` | Участники проекта / добавление (upsert роли) |
-| DELETE | `/projects/{project_id}/members/{user_id}` | Удаление участника |
+| GET, POST | `/projects/{project_key}/members` | Участники проекта / добавление (upsert роли) |
+| DELETE | `/projects/{project_key}/members/{user_id}` | Удаление участника |
 
 ### Issues
 
@@ -413,13 +413,13 @@ Query: `?archived=false&page=0&size=20`
 
 Soft delete / archive.
 
-### GET /projects/{project_id}/members
+### GET /projects/{project_key}/members
 
-### POST /projects/{project_id}/members
+### POST /projects/{project_key}/members
 
 **Body:** `{ "userId": "uuid", "roleName": "developer" }`
 
-### DELETE /projects/{project_id}/members/{userId}
+### DELETE /projects/{project_key}/members/{userId}
 
 ---
 

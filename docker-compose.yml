@@ -33,9 +33,10 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     environment:
-      TASKTRACKER__DATABASE__URL: ${TASKTRACKER__DATABASE__URL}
-      TASKTRACKER__SERVER__ADDRESS: 0.0.0.0
-      TASKTRACKER__SERVER__PORT: 3456
+      # config crate format: TASKTRACKER_ + SECTION__KEY (separator "__", prefix_separator "_")
+      TASKTRACKER_DATABASE__URL: ${TASKTRACKER_DATABASE__URL}
+      TASKTRACKER_SERVER__ADDRESS: 0.0.0.0
+      TASKTRACKER_SERVER__PORT: 3456
       TASKTRACKER_JWT_SECRET: ${TASKTRACKER_JWT_SECRET:-[CHANGE_ME]}
       RUST_LOG: ${RUST_LOG:-info}
     ports:

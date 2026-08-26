@@ -113,9 +113,9 @@ pub struct CreateIssueRequest {
     pub summary: String,
     pub description: Option<String>,
     pub priority: String,
-    pub status_id: String,
+    pub status_id: Option<String>,
     pub assignee_id: Option<String>,
-    pub reporter_id: String,
+    pub reporter_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

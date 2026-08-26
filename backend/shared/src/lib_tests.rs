@@ -15,6 +15,10 @@ fn error_constructors() {
     let e = AppError::database("pg timeout");
     assert!(matches!(e, AppError::Database(_)));
 
+    let duplicate =
+        AppError::database("duplicate key value violates unique constraint \"uq_example\"");
+    assert!(matches!(duplicate, AppError::Conflict(message) if message == "duplicate entry"));
+
     let e = AppError::internal("boom");
     assert!(matches!(e, AppError::Internal(_)));
 }

@@ -7,13 +7,24 @@ use std::sync::Arc;
 use crate::dto::{AddProjectMemberRequest, ProjectMemberListResponse, ProjectMemberResponse};
 use app::auth::UserClaims;
 use app::context::AppContext;
-use shared::{AppError, ProjectId, UserId};
+use shared::{AppError, ProjectId, ProjectKey, UserId};
+use std::str::FromStr;
+
+async fn resolve_project_id(ctx: &AppContext, project_key: String) -> Result<ProjectId, AppError> {
+    let project_key = ProjectKey::from_str(&project_key)
+        .map_err(|error| AppError::invalid_input(error.to_string()))?;
+    let project = ctx.services.project.get_by_key(&project_key).await?;
+    project
+        .id
+        .parse::<ProjectId>()
+        .map_err(|_| AppError::invalid_input("project_id"))
+}
 
 #[utoipa::path(
     get,
-    path = "/api/v1/projects/{project_id}/members",
+    path = "/api/v1/projects/{project_key}/members",
     tag = "projects",
-    params(("project_id" = String, Path, description = "Project ID")),
+    params(("project_key" = String, Path, description = "Project key")),
     responses(
         (status = 200, description = "Members listed", body = ProjectMemberListResponse),
         (status = 401, description = "Unauthorized"),
@@ -23,11 +34,9 @@ use shared::{AppError, ProjectId, UserId};
 pub async fn list_members(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
-    Path(project_id): Path<String>,
+    Path(project_key): Path<String>,
 ) -> Result<Json<ProjectMemberListResponse>, AppError> {
-    let project_id = project_id
-        .parse::<ProjectId>()
-        .map_err(|_| AppError::invalid_input("invalid project id"))?;
+    let project_id = resolve_project_id(&ctx, project_key).await?;
     let requester = claims
         .sub
         .parse::<UserId>()
@@ -48,9 +57,9 @@ pub async fn list_members(
 
 #[utoipa::path(
     post,
-    path = "/api/v1/projects/{project_id}/members",
+    path = "/api/v1/projects/{project_key}/members",
     tag = "projects",
-    params(("project_id" = String, Path, description = "Project ID")),
+    params(("project_key" = String, Path, description = "Project key")),
     request_body = AddProjectMemberRequest,
     responses(
         (status = 201, description = "Member added", body = ProjectMemberResponse),
@@ -63,16 +72,14 @@ pub async fn list_members(
 pub async fn add_member(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
-    Path(project_id): Path<String>,
+    Path(project_key): Path<String>,
     Json(body): Json<AddProjectMemberRequest>,
 ) -> Result<(axum::http::StatusCode, Json<ProjectMemberResponse>), AppError> {
     let _actor_id = claims
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
-    let project_id = project_id
-        .parse::<ProjectId>()
-        .map_err(|_| AppError::invalid_input("invalid project id"))?;
+    let project_id = resolve_project_id(&ctx, project_key).await?;
     let user_id = body
         .user_id
         .parse::<UserId>()
@@ -100,10 +107,10 @@ pub async fn add_member(
 
 #[utoipa::path(
     delete,
-    path = "/api/v1/projects/{project_id}/members/{user_id}",
+    path = "/api/v1/projects/{project_key}/members/{user_id}",
     tag = "projects",
     params(
-        ("project_id" = String, Path, description = "Project ID"),
+        ("project_key" = String, Path, description = "Project key"),
         ("user_id" = String, Path, description = "User ID"),
     ),
     responses(
@@ -116,15 +123,13 @@ pub async fn add_member(
 pub async fn remove_member(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
-    Path((project_id, user_id)): Path<(String, String)>,
+    Path((project_key, user_id)): Path<(String, String)>,
 ) -> Result<axum::http::StatusCode, AppError> {
     let requester = claims
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
-    let project_id = project_id
-        .parse::<ProjectId>()
-        .map_err(|_| AppError::invalid_input("invalid project id"))?;
+    let project_id = resolve_project_id(&ctx, project_key).await?;
     let user_id = user_id
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id"))?;

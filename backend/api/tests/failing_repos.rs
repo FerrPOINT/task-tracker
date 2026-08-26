@@ -276,8 +276,8 @@ async fn issue_create_invalid_project_key_returns_400() {
         description: None,
         issue_type: "task".to_string(),
         priority: "medium".to_string(),
-        status_id: "00000000-0000-0000-0000-000000000000".to_string(),
-        reporter_id: "00000000-0000-0000-0000-000000000000".to_string(),
+        status_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
+        reporter_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
         assignee_id: None,
     };
     let response = app
@@ -304,8 +304,8 @@ async fn issue_create_invalid_reporter_id_returns_400() {
         description: None,
         issue_type: "task".to_string(),
         priority: "medium".to_string(),
-        status_id: "00000000-0000-0000-0000-000000000000".to_string(),
-        reporter_id: "not-a-uuid".to_string(),
+        status_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
+        reporter_id: Some("not-a-uuid".to_string()),
         assignee_id: None,
     };
     let response = app
