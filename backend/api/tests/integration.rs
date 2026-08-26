@@ -3465,3 +3465,347 @@ async fn project_delete_forbidden_for_non_owner() {
         .unwrap();
     assert_eq!(delete.status(), 403);
 }
+
+// ─── Authorization deny-path integration tests ───────────────────────
+//
+// Cross-project denial matrix: user A owns project PA (the seeded "TT"
+// project), user B registers and creates their own project PB. B then
+// attempts to access or modify A's resources. Every gate must return
+// 403 Forbidden (AppError::Forbidden → HTTP 403).
+
+/// Register a brand-new user and return (user_id, access_token).
+async fn register_user(
+    url: &str,
+    client: &reqwest::Client,
+    email: &str,
+    username: &str,
+    name: &str,
+) -> (String, String) {
+    let res = client
+        .post(format!("{url}/api/v1/auth/register"))
+        .json(&serde_json::json!({
+            "email": email,
+            "username": username,
+            "name": name,
+            "password": "secret123"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let body: serde_json::Value = res.json().await.unwrap();
+    (
+        body["user_id"].as_str().unwrap().to_string(),
+        body["access_token"].as_str().unwrap().to_string(),
+    )
+}
+
+/// Create a project via the API and return (project_id_uuid, project_key).
+async fn create_project_via_api(
+    url: &str,
+    client: &reqwest::Client,
+    token: &str,
+    key: &str,
+    name: &str,
+) -> (String, String) {
+    let res = client
+        .post(format!("{url}/api/v1/projects"))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"key": key, "name": name, "description": null}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let body: serde_json::Value = res.json().await.unwrap();
+    (body["id"].as_str().unwrap().to_string(), key.to_string())
+}
+
+/// Create an issue in project `key` and return the issue id (UUID string).
+async fn create_issue_in_project(
+    url: &str,
+    client: &reqwest::Client,
+    token: &str,
+    key: &str,
+    reporter_id: &str,
+) -> String {
+    let res = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(token)
+        .json(&serde_json::json!({
+            "project_key": key,
+            "summary": "authz test issue",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": reporter_id
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let body: serde_json::Value = res.json().await.unwrap();
+    body["id"].as_str().unwrap().to_string()
+}
+
+/// Add a member to a project (owner-only operation).
+async fn add_member_via_api(
+    url: &str,
+    client: &reqwest::Client,
+    owner_token: &str,
+    project_id: &str,
+    user_id: &str,
+) {
+    let res = client
+        .post(format!("{url}/api/v1/projects/{project_id}/members"))
+        .bearer_auth(owner_token)
+        .json(&serde_json::json!({"user_id": user_id, "role": "member"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+}
+
+// 1. non_member_cannot_view_board — B GET /projects/PA/board → 403
+#[tokio::test]
+async fn non_member_cannot_view_board() {
+    let (url, client) = spawn_server().await;
+    let _a_token = login_token(&url, &client).await;
+    let (_b_id, b_token) =
+        register_user(&url, &client, "b1@example.com", "userb1", "User B1").await;
+
+    // B tries to view A's board (project key "TT") → 403
+    let res = client
+        .get(format!("{url}/api/v1/projects/TT/board"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 2. non_member_cannot_view_project_issues — B GET /issues?project_key=TT → 403
+#[tokio::test]
+async fn non_member_cannot_view_project_issues() {
+    let (url, client) = spawn_server().await;
+    let _a_token = login_token(&url, &client).await;
+    let (_b_id, b_token) =
+        register_user(&url, &client, "b2@example.com", "userb2", "User B2").await;
+
+    let res = client
+        .get(format!("{url}/api/v1/issues?project_key=TT"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 3. non_member_cannot_create_issue — B POST /issues with PA's project_key → 403
+#[tokio::test]
+async fn non_member_cannot_create_issue() {
+    let (url, client) = spawn_server().await;
+    let _a_token = login_token(&url, &client).await;
+    let (b_id, b_token) = register_user(&url, &client, "b3@example.com", "userb3", "User B3").await;
+
+    let res = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "B's issue in A's project",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": b_id
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 4. non_member_cannot_update_issue — B PATCH /issues/{A-issue-id} → 403
+#[tokio::test]
+async fn non_member_cannot_update_issue() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let a_id = test_user().id.to_string();
+    let issue_id = create_issue_in_project(&url, &client, &a_token, "TT", &a_id).await;
+    let (_b_id, b_token) =
+        register_user(&url, &client, "b4@example.com", "userb4", "User B4").await;
+
+    let res = client
+        .patch(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"summary": "hacked"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 5. non_member_cannot_delete_issue — B DELETE /issues/{A-issue-id} → 403
+#[tokio::test]
+async fn non_member_cannot_delete_issue() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let a_id = test_user().id.to_string();
+    let issue_id = create_issue_in_project(&url, &client, &a_token, "TT", &a_id).await;
+    let (_b_id, b_token) =
+        register_user(&url, &client, "b5@example.com", "userb5", "User B5").await;
+
+    let res = client
+        .delete(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 6. non_member_cannot_comment — B POST /issues/{A-issue-id}/comments → 403
+#[tokio::test]
+async fn non_member_cannot_comment() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let a_id = test_user().id.to_string();
+    let issue_id = create_issue_in_project(&url, &client, &a_token, "TT", &a_id).await;
+    let (_b_id, b_token) =
+        register_user(&url, &client, "b6@example.com", "userb6", "User B6").await;
+
+    let res = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/comments"))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"body": "sneaky comment"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 7. non_member_cannot_add_member — A's project, B (non-member) POST /members → 403
+#[tokio::test]
+async fn non_member_cannot_add_member() {
+    let (url, client) = spawn_server().await;
+    let _a_token = login_token(&url, &client).await;
+    let project_id = test_project_id();
+    let (b_id, b_token) = register_user(&url, &client, "b7@example.com", "userb7", "User B7").await;
+
+    // B tries to add themselves as a member of A's project → 403 (owner-only)
+    let res = client
+        .post(format!("{url}/api/v1/projects/{project_id}/members"))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"user_id": b_id, "role": "member"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 8. member_cannot_add_member — make B a member first, then B POST /members → 403
+#[tokio::test]
+async fn member_cannot_add_member() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let project_id = test_project_id();
+    let (b_id, b_token) = register_user(&url, &client, "b8@example.com", "userb8", "User B8").await;
+
+    // A (owner) adds B as a member
+    add_member_via_api(&url, &client, &a_token, &project_id, &b_id).await;
+
+    // B (now a member) tries to add another user → 403 (owner-only)
+    let (c_id, _c_token) =
+        register_user(&url, &client, "c8@example.com", "userc8", "User C8").await;
+    let res = client
+        .post(format!("{url}/api/v1/projects/{project_id}/members"))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"user_id": c_id, "role": "member"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 9. member_cannot_delete_project — B (member) DELETE /projects/PA → 403
+#[tokio::test]
+async fn member_cannot_delete_project() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let (b_id, b_token) = register_user(&url, &client, "b9@example.com", "userb9", "User B9").await;
+
+    // Create a throwaway project so we don't break the seeded TT for other tests.
+    let (project_id, _key) =
+        create_project_via_api(&url, &client, &a_token, "PDEL", "Project To Delete").await;
+    add_member_via_api(&url, &client, &a_token, &project_id, &b_id).await;
+
+    // B (member) tries to delete the project → 403 (owner-only)
+    let res = client
+        .delete(format!("{url}/api/v1/projects/PDEL"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 10. owner_can_delete_project — A DELETE /projects/PA → 204 (positive control)
+#[tokio::test]
+async fn owner_can_delete_project() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+
+    // Create a throwaway project (owner = A).
+    let (_project_id, _key) =
+        create_project_via_api(&url, &client, &a_token, "POWN", "Owner Delete").await;
+
+    // A (owner) deletes it → 204
+    let res = client
+        .delete(format!("{url}/api/v1/projects/POWN"))
+        .bearer_auth(&a_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204);
+}
+
+// 11. non_member_cannot_read_reports — B GET /reports/velocity?project_id=PA → 403
+#[tokio::test]
+async fn non_member_cannot_read_reports() {
+    let (url, client) = spawn_server().await;
+    let _a_token = login_token(&url, &client).await;
+    let project_id = test_project_id();
+    let (_b_id, b_token) =
+        register_user(&url, &client, "b11@example.com", "userb11", "User B11").await;
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/velocity?project_id={project_id}"
+        ))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+// 12. member_can_view_board — make B a member, B GET /projects/PA/board → 200
+#[tokio::test]
+async fn member_can_view_board() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let project_id = test_project_id();
+    let (b_id, b_token) =
+        register_user(&url, &client, "b12@example.com", "userb12", "User B12").await;
+
+    // A (owner) adds B as a member
+    add_member_via_api(&url, &client, &a_token, &project_id, &b_id).await;
+
+    // B (now a member) views the board → 200
+    let res = client
+        .get(format!("{url}/api/v1/projects/TT/board"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+}

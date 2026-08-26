@@ -5,8 +5,8 @@ use domain::{
     Board, BoardColumn, BoardRepository, Issue, IssueQuery, IssueRepository, MemoryBoardRepository,
     MemoryIssueRepository, MemoryNotificationRepository, MemoryProjectRepository,
     MemorySprintRepository, MemoryUserRepository, Notification, NotificationRepository, Project,
-    ProjectQuery, ProjectRepository, Sprint, SprintRepository, StatusCategory, User,
-    UserNotificationSettingsRepository, UserRepository,
+    ProjectMemberRepository, ProjectQuery, ProjectRepository, Sprint, SprintRepository,
+    StatusCategory, User, UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{
     AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, NotificationId,
@@ -2431,4 +2431,219 @@ async fn custom_field_set_value_validates_date_type() {
         )
         .await
         .unwrap();
+}
+
+// ─── Authz unit tests ─────────────────────────────────────────────────
+//
+// These tests exercise the centralized Authz policy layer directly through
+// the service layer, using the in-memory stub repositories from the test
+// setup. They prove that require_project_access denies a non-member and
+// require_owner denies a member (who is not the owner).
+
+/// Build a context identical to `ctx_with_demo_data` but swap the stub
+/// member repository for a real `MemoryProjectMemberRepository` so we can
+/// add B as a member and test the owner-only gate.
+async fn ctx_with_real_members() -> (AppContext, User, User, ProjectId) {
+    let user = test_user();
+    let user_copy = user.clone();
+    let mut project = Project {
+        id: shared::ProjectId::new(),
+        key: ProjectKey::new("TT"),
+        name: "Task Tracker".into(),
+        description: None,
+        owner_id: user.id,
+        default_board_id: shared::BoardId::new(),
+        created_at: shared::now(),
+        updated_at: shared::now(),
+    };
+
+    let todo =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let in_progress =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap());
+    let review =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000004").unwrap());
+    let done =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap());
+    project.default_board_id = shared::BoardId::new();
+    let board = Board {
+        id: project.default_board_id,
+        project_id: project.id,
+        name: "TT Kanban".into(),
+        columns: vec![
+            BoardColumn {
+                id: todo,
+                name: "Todo".into(),
+                category: StatusCategory::Todo,
+                wip_limit: None,
+                position: 0,
+            },
+            BoardColumn {
+                id: in_progress,
+                name: "In Progress".into(),
+                category: StatusCategory::InProgress,
+                wip_limit: Some(5),
+                position: 1,
+            },
+            BoardColumn {
+                id: review,
+                name: "Review".into(),
+                category: StatusCategory::InProgress,
+                wip_limit: None,
+                position: 2,
+            },
+            BoardColumn {
+                id: done,
+                name: "Done".into(),
+                category: StatusCategory::Done,
+                wip_limit: None,
+                position: 3,
+            },
+        ],
+    };
+
+    let other = User {
+        id: UserId::new(),
+        email: "other@example.com".into(),
+        username: "other".into(),
+        display_name: "Other User".into(),
+        password_hash: String::new().into(),
+        refresh_token_hash: None,
+        is_system_admin: false,
+        is_active: true,
+        created_at: shared::now(),
+        updated_at: shared::now(),
+    };
+
+    let users = Arc::new(MemoryUserRepository::default());
+    users.save(&user).await.unwrap();
+    users.save(&other).await.unwrap();
+    let projects = Arc::new(MemoryProjectRepository::default());
+    projects.save(&project).await.unwrap();
+    let issues = Arc::new(MemoryIssueRepository::default());
+    let boards = Arc::new(MemoryBoardRepository::default());
+    boards.save(&board).await.unwrap();
+    let sprints = Arc::new(MemorySprintRepository::default());
+
+    let members = Arc::new(domain::MemoryProjectMemberRepository::default());
+    // Add `other` as a member of the project (owner = `user`).
+    members
+        .save(&domain::ProjectMember {
+            project_id: project.id,
+            user_id: other.id,
+            role: domain::ProjectRole::Member,
+            joined_at: shared::now(),
+        })
+        .await
+        .unwrap();
+
+    let notifications = Arc::new(MemoryNotificationRepository::default());
+    let repos = Arc::new(domain::Repositories {
+        users: users.clone(),
+        audit_logs: Arc::new(domain::StubAuditLogRepository),
+        system_settings: Arc::new(domain::StubSystemSettingRepository),
+        projects: projects.clone(),
+        issues: issues.clone(),
+        boards: boards.clone(),
+        sprints: sprints.clone(),
+        comments: Arc::new(domain::StubCommentRepository),
+        worklogs: Arc::new(domain::StubWorklogRepository),
+        members: members.clone(),
+        statuses: Arc::new(domain::StubStatusRepository),
+        transitions: Arc::new(domain::StubWorkflowTransitionRepository),
+        issue_types: Arc::new(domain::StubIssueTypeRepository),
+        attachments: Arc::new(domain::StubAttachmentRepository),
+        labels: Arc::new(domain::StubLabelRepository),
+        issue_links: Arc::new(domain::StubIssueLinkRepository),
+        notifications: notifications.clone(),
+        notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
+        issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
+        watchers: Arc::new(domain::MemoryWatcherRepository::default()),
+        votes: Arc::new(domain::MemoryVoteRepository::default()),
+        components: Arc::new(domain::MemoryProjectComponentRepository::default()),
+        versions: Arc::new(domain::MemoryProjectVersionRepository::default()),
+        custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
+    });
+
+    let ctx = AppContext::new(
+        test_config(),
+        repos.clone(),
+        Arc::new(TestStorage::default()),
+    );
+    (ctx, user_copy, other, project.id)
+}
+
+/// require_project_access denies a non-member: a random user (not owner,
+/// not member) trying to read an issue in the project gets Forbidden.
+#[tokio::test]
+async fn authz_require_project_access_denies_non_member() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+
+    // Create an issue as the owner.
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "authz unit test issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+
+    // A stranger (not owner, not member) tries to read the issue → Forbidden.
+    let stranger = UserId::new();
+    let err = ctx
+        .services
+        .issue
+        .get_by_id(issue_id, stranger)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, AppError::Forbidden),
+        "expected Forbidden for non-member, got {err:?}"
+    );
+}
+
+/// require_owner denies a member: a member (not the owner) trying to add
+/// another member gets Forbidden because add_member requires owner-only.
+#[tokio::test]
+async fn authz_require_owner_denies_member() {
+    let (ctx, _owner, member, project_id) = ctx_with_real_members().await;
+
+    // The member tries to add a third user → Forbidden (owner-only gate).
+    let stranger_id = UserId::new();
+    let err = ctx
+        .services
+        .member
+        .add(
+            crate::commands::AddProjectMemberCommand {
+                project_id,
+                user_id: stranger_id,
+                role: "member".to_string(),
+            },
+            member.id,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, AppError::Forbidden),
+        "expected Forbidden for member calling owner-only gate, got {err:?}"
+    );
 }
