@@ -57,7 +57,7 @@ export function IssueCreatePage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div>
       <h1 className="mb-5 text-xl font-bold sm:text-2xl">{t('issueCreate.title')}</h1>
 
       <form

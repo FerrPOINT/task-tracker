@@ -43,14 +43,14 @@ function wrapper(children: React.ReactNode) {
 
 describe('ProjectMembersPanel', () => {
   it('renders member list in dialog', () => {
-    render(wrapper(<ProjectMembersPanel projectId="p1" />))
+    render(wrapper(<ProjectMembersPanel projectKey="p1" />))
     fireEvent.click(screen.getByText(/members/i))
     expect(screen.getByText('Alice')).toBeInTheDocument()
     expect(screen.getByText('Bob')).toBeInTheDocument()
   })
 
   it('shows remove button for members', () => {
-    render(wrapper(<ProjectMembersPanel projectId="p1" />))
+    render(wrapper(<ProjectMembersPanel projectKey="p1" />))
     fireEvent.click(screen.getByText(/members/i))
     expect(screen.getByLabelText(/remove.*alice/i)).toBeInTheDocument()
   })

@@ -30,6 +30,10 @@ vi.mock('@/shared/api/hooks', () => ({
     error: null,
   }),
   useMoveIssue: () => ({ mutate: vi.fn(), isPending: false }),
+  useProjectMembers: () => ({ data: { members: [] }, isLoading: false, error: null }),
+  useUsers: () => ({ data: [] }),
+  useAddProjectMember: () => ({ mutate: vi.fn(), isPending: false }),
+  useRemoveProjectMember: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 function wrapper(children: React.ReactNode) {

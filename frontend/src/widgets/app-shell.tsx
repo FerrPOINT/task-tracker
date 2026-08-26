@@ -374,7 +374,9 @@ export function AppShell() {
         )}
 
         <main className="min-w-0 flex-1 p-4 md:p-6">
-          <Outlet />
+          <div className="mx-auto w-full max-w-7xl">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

@@ -22,7 +22,7 @@ export function ProjectCustomFieldsPage() {
   const remove = useDeleteCustomField(projectKey)
   const needsOptions = draft.field_type === 'select' || draft.field_type === 'multi-select'
   return (
-    <main className="mx-auto max-w-3xl space-y-6 p-4 md:p-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">{t('customFields.title')}</h1>
         <p className="text-sm text-text-muted">{t('customFields.description', { projectKey })}</p>
@@ -132,6 +132,6 @@ export function ProjectCustomFieldsPage() {
           )}
         </CardContent>
       </Card>
-    </main>
+    </div>
   )
 }

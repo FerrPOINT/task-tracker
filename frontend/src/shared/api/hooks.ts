@@ -544,30 +544,30 @@ export function usePurgeIssue() {
   })
 }
 
-export function useProjectMembers(projectId: string) {
+export function useProjectMembers(projectKey: string) {
   return useQuery({
-    queryKey: ['project-members', projectId],
-    queryFn: () => listProjectMembers(projectId),
-    enabled: !!projectId,
+    queryKey: ['project-members', projectKey],
+    queryFn: () => listProjectMembers(projectKey),
+    enabled: !!projectKey,
   })
 }
 
-export function useAddProjectMember(projectId: string) {
+export function useAddProjectMember(projectKey: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (input: AddProjectMemberInput) => addProjectMember(projectId, input),
+    mutationFn: (input: AddProjectMemberInput) => addProjectMember(projectKey, input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['project-members', projectId] })
+      qc.invalidateQueries({ queryKey: ['project-members', projectKey] })
     },
   })
 }
 
-export function useRemoveProjectMember(projectId: string) {
+export function useRemoveProjectMember(projectKey: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (userId: string) => removeProjectMember(projectId, userId),
+    mutationFn: (userId: string) => removeProjectMember(projectKey, userId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['project-members', projectId] })
+      qc.invalidateQueries({ queryKey: ['project-members', projectKey] })
     },
   })
 }

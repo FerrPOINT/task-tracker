@@ -26,17 +26,17 @@ function Avatar({ name }: { name: string }) {
 }
 
 export function ProjectMembersPanel({
-  projectId,
+  projectKey,
   trigger,
 }: {
-  projectId: string
+  projectKey: string
   trigger?: React.ReactNode
 }) {
   const { t } = useTranslation()
-  const { data, isLoading } = useProjectMembers(projectId)
+  const { data, isLoading } = useProjectMembers(projectKey)
   const { data: users } = useUsers()
-  const add = useAddProjectMember(projectId)
-  const remove = useRemoveProjectMember(projectId)
+  const add = useAddProjectMember(projectKey)
+  const remove = useRemoveProjectMember(projectKey)
   const [open, setOpen] = React.useState(false)
   const [selectedUserId, setSelectedUserId] = React.useState('')
 

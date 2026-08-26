@@ -105,7 +105,7 @@ export default function SearchPage() {
     : t('search.sort')
 
   return (
-    <div className="container mx-auto px-4 py-6">
+    <div className="py-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{t('search.title')}</h1>
         <Button variant="outline" asChild>

@@ -109,7 +109,7 @@ export function IssueDetailPage() {
         <ThemeToggle />
       </header>
 
-      <main className="mx-auto max-w-6xl p-4 md:p-6">
+      <div>
         <div className="mb-2 text-sm text-text-muted">
           {issue.project_name} / {issue.key}
         </div>
@@ -258,7 +258,7 @@ export function IssueDetailPage() {
             </Card>
           </div>
         </div>
-      </main>
+      </div>
 
       <LogWorkDialog
         open={dialogOpen}

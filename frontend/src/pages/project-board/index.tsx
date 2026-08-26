@@ -144,7 +144,7 @@ export function ProjectBoardPage() {
               <span className="hidden sm:inline">{t('board.backlog')}</span>
             </Link>
           </Button>
-          {board?.project_id && <ProjectMembersPanel projectId={board.project_id} />}
+          <ProjectMembersPanel projectKey={key} />
           <Button size="sm" className="gap-1">
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">{t('board.addColumn')}</span>
