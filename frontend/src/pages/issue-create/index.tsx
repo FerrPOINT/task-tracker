@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
@@ -11,13 +11,21 @@ import { useAuthStore } from '@/shared/auth/store'
 export function IssueCreatePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
   const { mutate, isPending, error } = useCreateIssue()
   const userId = useAuthStore((s) => s.userId)
   const projectsQuery = useProjects()
   const usersQuery = useUsers()
   const issueTypesQuery = useIssueTypes()
 
-  const [project_key, setProjectKey] = useState('')
+  // Prefer ?project_key=..., then router state (board "+ Создать"), else first project.
+  const [project_key, setProjectKey] = useState(
+    () =>
+      searchParams.get('project_key') ??
+      (location.state as { project_key?: string } | null)?.project_key ??
+      '',
+  )
   const [type, setType] = useState('Task')
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')

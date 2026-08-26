@@ -1,5 +1,5 @@
 import { Link, useParams } from 'react-router'
-import { Plus, Filter, MoreHorizontal, List } from 'lucide-react'
+import { List } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
@@ -134,10 +134,6 @@ export function ProjectBoardPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-1">
-            <Filter className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('board.filters')}</span>
-          </Button>
           <Button variant="outline" size="sm" className="gap-1" asChild>
             <Link to={`/projects/${key}/backlog`}>
               <List className="h-4 w-4" />
@@ -145,10 +141,6 @@ export function ProjectBoardPage() {
             </Link>
           </Button>
           <ProjectMembersPanel projectKey={key} />
-          <Button size="sm" className="gap-1">
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('board.addColumn')}</span>
-          </Button>
         </div>
       </div>
 
@@ -179,14 +171,6 @@ export function ProjectBoardPage() {
                     )}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  aria-label={t('board.columnActions')}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
               </div>
 
               <div className="flex-1 space-y-2 overflow-y-auto p-2">
@@ -200,9 +184,13 @@ export function ProjectBoardPage() {
                 ))}
               </div>
 
-              <button className="m-2 rounded-md border border-dashed border-border-strong py-1.5 text-sm text-text-muted hover:border-text-muted hover:text-text-secondary">
+              <Link
+                to="/issues/create"
+                state={{ project_key: key }}
+                className="m-2 block rounded-md border border-dashed border-border-strong py-1.5 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary"
+              >
                 + {t('board.create')}
-              </button>
+              </Link>
             </div>
           )
         })}
@@ -226,14 +214,6 @@ export function ProjectBoardPage() {
                     )}
                   </div>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  aria-label={t('board.columnActions')}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
               </div>
 
               <div className="space-y-2 p-2">
@@ -247,9 +227,13 @@ export function ProjectBoardPage() {
                 ))}
               </div>
 
-              <button className="m-2 rounded-md border border-dashed border-border-strong py-1.5 text-sm text-text-muted hover:border-text-muted hover:text-text-secondary">
+              <Link
+                to="/issues/create"
+                state={{ project_key: key }}
+                className="m-2 block rounded-md border border-dashed border-border-strong py-1.5 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary"
+              >
                 + {t('board.create')}
-              </button>
+              </Link>
             </div>
           )
         })}

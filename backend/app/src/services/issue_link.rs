@@ -94,10 +94,13 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         link_id: shared::IssueLinkId,
         requester: UserId,
     ) -> Result<(), AppError> {
-        // IssueLink has no created_by field and the repository has no get_by_id,
-        // so we cannot fully verify ownership. The requester parameter is kept
-        // (not prefixed with _) so it is available for future enforcement.
-        let _ = requester;
+        // Load the link first, then require edit access to the linked issue's
+        // project. Without this any authenticated user could delete any link.
+        let link = self.links.get_by_id(link_id).await?;
+        let source = self.issues.get_by_id(link.source_id).await?;
+        self.authz
+            .require_project_edit(source.project_id, requester)
+            .await?;
         self.links.delete(link_id).await?;
         Ok(())
     }

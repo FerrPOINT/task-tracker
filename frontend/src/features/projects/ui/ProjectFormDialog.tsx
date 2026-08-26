@@ -55,8 +55,11 @@ export function ProjectFormDialog({
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           {error && <div className="text-sm text-rose-500">{error.message}</div>}
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('projects.key')} *</label>
+            <label htmlFor="project-form-key" className="text-sm font-medium">
+              {t('projects.key')} *
+            </label>
             <Input
+              id="project-form-key"
               value={key}
               onChange={(e) => setKey(e.target.value.toUpperCase())}
               placeholder={t('projects.keyPlaceholder')}
@@ -65,8 +68,11 @@ export function ProjectFormDialog({
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('projects.name')} *</label>
+            <label htmlFor="project-form-name" className="text-sm font-medium">
+              {t('projects.name')} *
+            </label>
             <Input
+              id="project-form-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('projects.namePlaceholder')}
@@ -74,8 +80,11 @@ export function ProjectFormDialog({
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('projects.description')}</label>
+            <label htmlFor="project-form-description" className="text-sm font-medium">
+              {t('projects.description')}
+            </label>
             <textarea
+              id="project-form-description"
               className="min-h-[100px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
               value={description}
               onChange={(e) => setDescription(e.target.value)}

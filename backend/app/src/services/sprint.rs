@@ -189,7 +189,14 @@ impl SprintService for SprintServiceImpl {
             .require_project_edit(issue.project_id, requester)
             .await?;
         if let Some(sprint_id) = cmd.sprint_id {
-            let _ = self.sprints.get_by_id(sprint_id).await?;
+            let sprint = self.sprints.get_by_id(sprint_id).await?;
+            // A sprint from another project must never be assignable to this
+            // issue; it would corrupt cross-project reporting.
+            if sprint.project_id != issue.project_id {
+                return Err(AppError::invalid_input(
+                    "sprint belongs to a different project",
+                ));
+            }
             issue.sprint_id = Some(sprint_id);
         } else {
             issue.sprint_id = None;

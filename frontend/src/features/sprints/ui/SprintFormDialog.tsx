@@ -65,8 +65,11 @@ export function SprintFormDialog({
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           {error && <div className="text-sm text-rose-500">{error.message}</div>}
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('sprints.name')} *</label>
+            <label htmlFor="sprint-form-name" className="text-sm font-medium">
+              {t('sprints.name')} *
+            </label>
             <Input
+              id="sprint-form-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('sprints.namePlaceholder')}
@@ -74,7 +77,9 @@ export function SprintFormDialog({
             />
           </div>
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('sprints.goal')}</label>
+            <label htmlFor="sprint-form-goal" className="text-sm font-medium">
+              {t('sprints.goal')}
+            </label>
             <textarea
               className="min-h-[80px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
               value={goal}
@@ -84,11 +89,15 @@ export function SprintFormDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t('sprints.startDate')}</label>
+              <label htmlFor="sprint-form-startdate" className="text-sm font-medium">
+                {t('sprints.startDate')}
+              </label>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t('sprints.endDate')}</label>
+              <label htmlFor="sprint-form-enddate" className="text-sm font-medium">
+                {t('sprints.endDate')}
+              </label>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </div>
           </div>

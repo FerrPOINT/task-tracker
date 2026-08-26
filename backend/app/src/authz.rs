@@ -73,6 +73,30 @@ impl Authz {
 
     // ---- helpers ----
 
+    /// All projects the user may read: owned projects plus memberships.
+    ///
+    /// Used to scope cross-project queries (global search, dashboard) so they
+    /// never return issues from projects the requester has no access to.
+    pub async fn accessible_project_ids(&self, user: UserId) -> Result<Vec<ProjectId>, AppError> {
+        let mut ids: Vec<ProjectId> = self
+            .projects
+            .list(domain::ProjectQuery {
+                owner_id: Some(user),
+                limit: 1000,
+                offset: 0,
+            })
+            .await?
+            .into_iter()
+            .map(|p| p.id)
+            .collect();
+        for m in self.members.list_by_user(user).await? {
+            if !ids.contains(&m.project_id) {
+                ids.push(m.project_id);
+            }
+        }
+        Ok(ids)
+    }
+
     async fn is_owner(&self, project_id: ProjectId, user: UserId) -> Result<bool, AppError> {
         let project = self.projects.get_by_id(project_id).await?;
         Ok(project.owner_id == user)

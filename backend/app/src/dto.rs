@@ -13,6 +13,7 @@ pub struct UserDto {
     pub email: String,
     pub username: String,
     pub display_name: String,
+    pub is_system_admin: bool,
 }
 
 impl From<User> for UserDto {
@@ -22,6 +23,7 @@ impl From<User> for UserDto {
             email: user.email.as_ref().to_string(),
             username: user.username.as_ref().to_string(),
             display_name: user.display_name.as_ref().to_string(),
+            is_system_admin: user.is_system_admin,
         }
     }
 }

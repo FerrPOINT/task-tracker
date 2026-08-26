@@ -5,7 +5,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
 const credentials = {
   email: 'demo@example.com',
-  password: 'Demo12345',
+  password: 'demo',
 }
 
 async function login(page: Page) {

@@ -9,7 +9,7 @@
 ```bash
 docker compose ps
 docker compose logs --tail 100 api
-curl -f https://tasktracker.example.com:19876/health/ready
+curl -f https://tasktracker.example.com:19876/api/v1/health
 curl -f https://tasktracker.example.com:19876/metrics | grep up
 ```
 

@@ -248,13 +248,27 @@ enum SprintCommands {
         goal: Option<String>,
     },
     /// Get sprint details
-    Get { id: String },
+    Get {
+        #[arg(long)]
+        project_key: String,
+        id: String,
+    },
     /// Start a sprint
-    Start { id: String },
+    Start {
+        #[arg(long)]
+        project_key: String,
+        id: String,
+    },
     /// Close a sprint
-    Close { id: String },
+    Close {
+        #[arg(long)]
+        project_key: String,
+        id: String,
+    },
     /// Move issue to sprint
     AddIssue {
+        #[arg(long)]
+        project_key: String,
         #[arg(long)]
         sprint_id: String,
         #[arg(long)]
@@ -262,6 +276,8 @@ enum SprintCommands {
     },
     /// Remove issue from sprint
     RemoveIssue {
+        #[arg(long)]
+        project_key: String,
         #[arg(long)]
         sprint_id: String,
         #[arg(long)]
@@ -868,29 +884,54 @@ async fn run(cli: Cli) -> Result<()> {
                     .await?;
                 print_output(out, &body);
             }
-            SprintCommands::Get { id } => {
-                let body = api.get(&format!("/api/v1/sprints/{}", enc(&id))).await?;
-                print_output(out, &body);
-            }
-            SprintCommands::Start { id } => {
+            SprintCommands::Get { project_key, id } => {
                 let body = api
-                    .post(&format!("/api/v1/sprints/{}/start", enc(&id)), json!({}))
+                    .get(&format!(
+                        "/api/v1/projects/{}/sprints/{}",
+                        enc(&project_key),
+                        enc(&id)
+                    ))
                     .await?;
                 print_output(out, &body);
             }
-            SprintCommands::Close { id } => {
+            SprintCommands::Start { project_key, id } => {
                 let body = api
-                    .post(&format!("/api/v1/sprints/{}/close", enc(&id)), json!({}))
+                    .post(
+                        &format!(
+                            "/api/v1/projects/{}/sprints/{}/start",
+                            enc(&project_key),
+                            enc(&id)
+                        ),
+                        json!({}),
+                    )
+                    .await?;
+                print_output(out, &body);
+            }
+            SprintCommands::Close { project_key, id } => {
+                let body = api
+                    .post(
+                        &format!(
+                            "/api/v1/projects/{}/sprints/{}/close",
+                            enc(&project_key),
+                            enc(&id)
+                        ),
+                        json!({}),
+                    )
                     .await?;
                 print_output(out, &body);
             }
             SprintCommands::AddIssue {
+                project_key,
                 sprint_id,
                 issue_id,
             } => {
                 let body = api
                     .post(
-                        &format!("/api/v1/sprints/{}/issues", enc(&sprint_id)),
+                        &format!(
+                            "/api/v1/projects/{}/sprints/{}/issues",
+                            enc(&project_key),
+                            enc(&sprint_id)
+                        ),
                         json!({
                             "issue_id": issue_id
                         }),
@@ -899,15 +940,21 @@ async fn run(cli: Cli) -> Result<()> {
                 print_output(out, &body);
             }
             SprintCommands::RemoveIssue {
+                project_key,
                 sprint_id,
                 issue_id,
             } => {
                 let body = api
-                    .delete(&format!(
-                        "/api/v1/sprints/{}/issues/{}",
-                        enc(&sprint_id),
-                        enc(&issue_id)
-                    ))
+                    .post(
+                        &format!(
+                            "/api/v1/projects/{}/sprints/{}/remove-issue",
+                            enc(&project_key),
+                            enc(&sprint_id)
+                        ),
+                        json!({
+                            "issue_id": issue_id
+                        }),
+                    )
                     .await?;
                 print_output(out, &body);
             }
@@ -1026,7 +1073,9 @@ async fn run(cli: Cli) -> Result<()> {
                 print_output(out, &body);
             }
             SearchCommands::Jql { query } => {
-                let body = api.post("/api/v1/search", json!({ "jql": query })).await?;
+                let body = api
+                    .get(&format!("/api/v1/search?jql={}", enc(&query)))
+                    .await?;
                 print_output(out, &body);
             }
         },
@@ -1165,13 +1214,13 @@ async fn run(cli: Cli) -> Result<()> {
                 print_output(out, &body);
             }
             AdminCommands::Settings => {
-                let body = api.get("/api/v1/admin/settings").await?;
+                let body = api.get("/api/v1/admin/system-settings").await?;
                 print_output(out, &body);
             }
             AdminCommands::SetSetting { key, value } => {
                 let body = api
                     .put(
-                        "/api/v1/admin/settings",
+                        "/api/v1/admin/system-settings",
                         json!({
                             "key": key, "value": value
                         }),

@@ -20,7 +20,7 @@ cd /opt/dev/task-tracker/backend && cargo build --bin task-tracker
 
 | Env | Flag | Default | Описание |
 |-----|------|---------|----------|
-| `TASKTRACKER_API_URL` | `--api-url` | `http://localhost:3456` | URL API |
+| `TASKTRACKER_API_URL` | `--api-url` | `http://localhost:3456/api/v1` | URL API |
 | `TASKTRACKER_TOKEN` | `--token` | — | Bearer JWT токен |
 | `TASKTRACKER_OUTPUT` | `--output` | `json` | Формат вывода: `json` \| `table` \| `compact` |
 

@@ -141,13 +141,13 @@ Frontend dev откроется на `http://localhost:5173`, API проксир
 cd backend && cargo build --bin task-tracker
 
 # Использование
-export TASKTRACKER_API_URL=http://localhost:3456
+export TASKTRACKER_API_URL=http://localhost:3456/api/v1
 export TASKTRACKER_TOKEN=<jwt_token>
 
 ./target/debug/task-tracker project list
-./target/debug/task-tracker issue create --project DEMO --summary "Fix bug" --priority high
-./target/debug/task-tracker issue list --project DEMO --output table
-./target/debug/task-tracker board show --project DEMO
+./target/debug/task-tracker issue create --project-key DEMO --summary "Fix bug" --priority high
+./target/debug/task-tracker issue list --project-key DEMO --output table
+./target/debug/task-tracker board get --project-key DEMO
 ```
 
 Документация команд: `cli/SKILL.md`.

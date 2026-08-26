@@ -1354,9 +1354,19 @@ export interface components {
             issue_type: string;
             key: string;
             labels: string[];
+            /**
+             * Format: int64
+             * @description Original estimate in seconds. Null when no estimate was set.
+             */
+            original_estimate_seconds?: number | null;
             priority: string;
             project_key: string;
             project_name: string;
+            /**
+             * Format: int64
+             * @description Remaining estimate in seconds, derived from the latest worklog.
+             */
+            remaining_estimate_seconds?: number | null;
             reporter_id: string;
             reporter_name?: string | null;
             sprint_id?: string | null;
@@ -1566,6 +1576,8 @@ export interface components {
             display_name: string;
             email: string;
             id: string;
+            /** @description Whether the user may access admin endpoints. */
+            is_system_admin: boolean;
             username: string;
         };
         VelocityResponse: {
@@ -2385,6 +2397,7 @@ export interface operations {
                 q?: string | null;
                 project_key?: string | null;
                 priority?: string | null;
+                status?: string | null;
                 assignee_id?: string | null;
                 sort_by?: string | null;
                 sort_order?: string | null;
@@ -4501,6 +4514,7 @@ export interface operations {
                 q?: string | null;
                 project_key?: string | null;
                 priority?: string | null;
+                status?: string | null;
                 assignee_id?: string | null;
                 sort_by?: string | null;
                 sort_order?: string | null;

@@ -25,6 +25,7 @@ pub async fn get_me(
         email: user.email,
         username: user.username,
         display_name: user.display_name,
+        is_system_admin: user.is_system_admin,
     }))
 }
 
@@ -57,6 +58,7 @@ pub async fn list_users(
                 email: u.email,
                 username: u.username,
                 display_name: u.display_name,
+                is_system_admin: u.is_system_admin,
             })
             .collect(),
     }))

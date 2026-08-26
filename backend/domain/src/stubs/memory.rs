@@ -100,9 +100,13 @@ impl ProjectRepository for MemoryProjectRepository {
             .ok_or_else(|| AppError::not_found("project", key))
     }
 
-    async fn list(&self, _query: ProjectQuery) -> Result<Vec<Project>, AppError> {
+    async fn list(&self, query: ProjectQuery) -> Result<Vec<Project>, AppError> {
         let projects = self.projects.lock().unwrap();
-        Ok(projects.clone())
+        Ok(projects
+            .iter()
+            .filter(|p| query.owner_id.is_none_or(|owner| p.owner_id == owner))
+            .cloned()
+            .collect())
     }
 
     async fn save(&self, project: &Project) -> Result<ProjectId, AppError> {
@@ -119,6 +123,16 @@ impl ProjectRepository for MemoryProjectRepository {
             projects.push(project.clone());
         }
         Ok(project.id)
+    }
+
+    async fn save_with_board(
+        &self,
+        project: &Project,
+        _board: &Board,
+    ) -> Result<ProjectId, AppError> {
+        // In-memory saves are trivially atomic; board storage lives in
+        // MemoryBoardRepository, which tests register explicitly.
+        self.save(project).await
     }
 
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError> {
@@ -191,6 +205,12 @@ impl IssueRepository for MemoryIssueRepository {
                 }
             })
             .filter(|i| query.project_id.is_none_or(|pid| i.project_id == pid))
+            .filter(|i| {
+                query
+                    .accessible_project_ids
+                    .as_ref()
+                    .is_none_or(|ids| ids.contains(&i.project_id))
+            })
             .filter(|i| query.status_id.is_none_or(|sid| i.status_id == sid))
             .filter(|i| {
                 query
@@ -584,6 +604,17 @@ impl ProjectMemberRepository for MemoryProjectMemberRepository {
             .collect())
     }
 
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<ProjectMember>, AppError> {
+        Ok(self
+            .members
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.user_id == user_id)
+            .cloned()
+            .collect())
+    }
+
     async fn get(&self, project_id: ProjectId, user_id: UserId) -> Result<ProjectMember, AppError> {
         self.members
             .lock()
@@ -784,6 +815,16 @@ impl Default for MemoryIssueLinkRepository {
 
 #[async_trait]
 impl crate::IssueLinkRepository for MemoryIssueLinkRepository {
+    async fn get_by_id(&self, id: shared::IssueLinkId) -> Result<crate::IssueLink, AppError> {
+        self.links
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|l| l.id == id)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("issue link", id))
+    }
+
     async fn save(&self, link: &crate::IssueLink) -> Result<shared::IssueLinkId, AppError> {
         let mut links = self.links.lock().unwrap();
         if let Some(idx) = links.iter().position(|l| l.id == link.id) {

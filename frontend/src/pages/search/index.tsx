@@ -21,7 +21,13 @@ const SORT_OPTIONS = [
   { value: 'priority_desc', labelKey: 'search.sortPriority' },
 ]
 
-const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'urgent']
+// Values must match backend priority values exactly (Title-Case in DB).
+const PRIORITY_OPTIONS = ['lowest', 'low', 'medium', 'high', 'highest']
+
+// i18n keys stay lowercase; the API expects Title-Case values.
+function titleCasePriority(p: string): string {
+  return p.charAt(0).toUpperCase() + p.slice(1)
+}
 const STATUS_OPTIONS = ['todo', 'in_progress', 'review', 'done']
 
 export default function SearchPage() {
@@ -97,7 +103,7 @@ export default function SearchPage() {
   const projectName =
     projects?.find((p) => p.key === projectKey)?.name ?? projectKey ?? t('search.project')
   const statusLabel = status ?? t('search.status')
-  const priorityLabel = priority ? t(`priority.${priority}`) : t('search.priority')
+  const priorityLabel = priority ? t(`priority.${priority.toLowerCase()}`) : t('search.priority')
   const assigneeName =
     users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
   const sortLabel = SORT_OPTIONS.find((o) => o.value === sort)
@@ -118,6 +124,7 @@ export default function SearchPage() {
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
+              aria-label={t('search.placeholder')}
               placeholder={t('search.placeholder')}
               className="pl-9"
               value={query}
@@ -171,7 +178,10 @@ export default function SearchPage() {
                 {t('search.allPriorities')}
               </DropdownMenuItem>
               {PRIORITY_OPTIONS.map((p) => (
-                <DropdownMenuItem key={p} onClick={() => setFilter('priority', p)}>
+                <DropdownMenuItem
+                  key={p}
+                  onClick={() => setFilter('priority', titleCasePriority(p))}
+                >
                   {t(`priority.${p}`)}
                 </DropdownMenuItem>
               ))}
@@ -234,6 +244,7 @@ export default function SearchPage() {
           </div>
           <div className="flex gap-2">
             <Input
+              aria-label={t('jql.placeholder')}
               placeholder={t('jql.placeholder')}
               value={jql}
               onChange={(e) => setJql(e.target.value)}

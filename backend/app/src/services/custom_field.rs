@@ -197,6 +197,12 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
             .require_project_edit(issue.project_id, requester)
             .await?;
         let field = self.fields.get_by_id(field_id).await?;
+        // A field defined in another project must not be settable here.
+        if field.project_id != issue.project_id {
+            return Err(AppError::invalid_input(
+                "custom field belongs to a different project",
+            ));
+        }
         // Validate the value matches the field type.
         validate_custom_field_value(&field, &value)?;
         self.fields.set_value(issue_id, field_id, &value).await?;

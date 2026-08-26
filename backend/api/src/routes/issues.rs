@@ -191,6 +191,7 @@ pub async fn search_issues(
                 q: q.q,
                 project_key: q.project_key,
                 priority: q.priority,
+                status: None,
                 assignee_id: q.assignee_id,
                 sort_by: q.sort_by,
                 sort_order: q.sort_order,
@@ -223,6 +224,8 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
         reporter_name: i.reporter_name,
         project_name: i.project_name,
         sprint_id: i.sprint_id,
+        original_estimate_seconds: i.original_estimate_seconds,
+        remaining_estimate_seconds: i.remaining_estimate_seconds,
     }
 }
 

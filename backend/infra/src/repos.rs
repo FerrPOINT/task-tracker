@@ -18,7 +18,7 @@ use domain::{
 };
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, sea_query::Expr,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
 };
 use shared::{
     AppError, AttachmentId, AuditLogId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey,
@@ -268,6 +268,55 @@ impl ProjectRepository for ProjectRepo {
         Ok(project.id)
     }
 
+    async fn save_with_board(
+        &self,
+        project: &Project,
+        board: &Board,
+    ) -> Result<ProjectId, AppError> {
+        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        let active = project::ActiveModel {
+            id: Set(project.id.as_uuid()),
+            key: Set(project.key.to_string()),
+            name: Set(project.name.as_ref().to_string()),
+            description: Set(project.description.as_ref().map(|d| d.as_ref().to_string())),
+            owner_id: Set(project.owner_id.as_uuid()),
+            default_board_id: Set(project.default_board_id.as_uuid()),
+            created_at: Set(project.created_at),
+            updated_at: Set(shared::now()),
+        };
+        project::Entity::insert(active)
+            .exec(&txn)
+            .await
+            .map_err(AppError::database)?;
+        let columns = serde_json::to_value(
+            board
+                .columns
+                .iter()
+                .map(|c| {
+                    serde_json::json!({
+                        "id": c.id.as_uuid().to_string(),
+                        "name": c.name.as_ref(),
+                        "category": format!("{:?}", c.category),
+                        "wip_limit": c.wip_limit,
+                        "position": c.position,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .unwrap_or_default();
+        board::Entity::insert(board::ActiveModel {
+            id: Set(board.id.as_uuid()),
+            project_id: Set(board.project_id.as_uuid()),
+            name: Set(board.name.as_ref().to_string()),
+            columns: Set(columns),
+        })
+        .exec(&txn)
+        .await
+        .map_err(AppError::database)?;
+        txn.commit().await.map_err(AppError::database)?;
+        Ok(project.id)
+    }
+
     async fn delete(&self, id: ProjectId) -> Result<(), AppError> {
         let res = project::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
@@ -313,6 +362,7 @@ impl IssueRepo {
         limit: u64,
         offset: u64,
         deleted_filter: &str,
+        accessible_project_ids: Option<&[ProjectId]>,
     ) -> Result<Vec<Issue>, AppError> {
         use sea_orm::FromQueryResult;
         let mut params: Vec<sea_orm::Value> = compiled
@@ -325,17 +375,40 @@ impl IssueRepo {
                 crate::jql::JqlParameter::Uuid(u) => sea_orm::Value::Uuid(Some(Box::new(*u))),
             })
             .collect();
-        params.push(sea_orm::Value::Unsigned(Some(limit as u32)));
-        params.push(sea_orm::Value::Unsigned(Some(offset as u32)));
-
         let deleted_clause = match deleted_filter {
             "only" => " AND i.deleted_at IS NOT NULL",
             "include" => "",
             _ => " AND i.deleted_at IS NULL",
         };
+        // The scope parameter must be appended BEFORE limit/offset so the
+        // positional placeholders stay in binding order ($n scope, $n+1
+        // limit, $n+2 offset). Appending it after limit/offset silently
+        // bound the uuid array to OFFSET ("argument of OFFSET must be type
+        // bigint, not type uuid[]").
+        let mut scope_clause = String::new();
+        match accessible_project_ids {
+            Some([]) => {
+                // No accessible projects: the result set is provably empty.
+                scope_clause = " AND FALSE".to_string();
+            }
+            Some(ids) => {
+                scope_clause = format!(" AND i.project_id = ANY(${})", params.len() + 1);
+                params.push(sea_orm::Value::Array(
+                    sea_orm::sea_query::ArrayType::Uuid,
+                    Some(Box::new(
+                        ids.iter()
+                            .map(|id| sea_orm::sea_query::Value::Uuid(Some(Box::new(id.as_uuid()))))
+                            .collect(),
+                    )),
+                ));
+            }
+            None => {}
+        }
+        params.push(sea_orm::Value::Unsigned(Some(limit as u32)));
+        params.push(sea_orm::Value::Unsigned(Some(offset as u32)));
         let sql = format!(
             "SELECT i.* FROM issues i JOIN projects p ON i.project_id = p.id \
-             WHERE {}{deleted_clause} ORDER BY i.created_at DESC LIMIT ${} OFFSET ${}",
+             WHERE {}{deleted_clause}{scope_clause} ORDER BY i.created_at DESC LIMIT ${} OFFSET ${}",
             compiled.predicate,
             params.len() - 1,
             params.len()
@@ -402,7 +475,13 @@ impl IssueRepository for IssueRepo {
             let compiled = crate::jql::compile(jql_expr, user_id)
                 .map_err(|e| AppError::invalid_input(e.to_string()))?;
             return self
-                .search_by_jql(&compiled, query.limit, query.offset, deleted_filter)
+                .search_by_jql(
+                    &compiled,
+                    query.limit,
+                    query.offset,
+                    deleted_filter,
+                    query.accessible_project_ids.as_deref(),
+                )
                 .await;
         }
         let mut select = issue::Entity::find();
@@ -418,6 +497,17 @@ impl IssueRepository for IssueRepo {
         }
         if let Some(pid) = query.project_id {
             select = select.filter(issue::Column::ProjectId.eq(pid.as_uuid()));
+        }
+        if let Some(ids) = query.accessible_project_ids.as_ref() {
+            if ids.is_empty() {
+                // No accessible projects: the result set is provably empty.
+                return Ok(vec![]);
+            }
+            let mut cond = sea_orm::Condition::any();
+            for id in ids {
+                cond = cond.add(issue::Column::ProjectId.eq(id.as_uuid()));
+            }
+            select = select.filter(cond);
         }
         if let Some(sid) = query.status_id {
             select = select.filter(issue::Column::StatusId.eq(sid.as_uuid()));
@@ -552,35 +642,38 @@ impl IssueRepository for IssueRepo {
 
     async fn purge(&self, id: IssueId) -> Result<(), AppError> {
         // Permanent delete: only works on already soft-deleted (trashed) issues.
-        // First verify the issue exists and is trashed.
+        // All child deletions and the issue row itself run in a single
+        // transaction so a mid-cascade failure cannot leave the trashed issue
+        // alive with partially destroyed data.
+        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        // Verify the issue exists and is trashed.
         let exists = issue::Entity::find()
             .filter(issue::Column::Id.eq(id.as_uuid()))
             .filter(issue::Column::DeletedAt.is_not_null())
-            .one(&*self.db)
+            .one(&txn)
             .await
             .map_err(AppError::database)?;
         if exists.is_none() {
             return Err(AppError::not_found("issue", id));
         }
-        // Cascade-delete child rows that reference this issue.
         comment::Entity::delete_many()
             .filter(comment::Column::IssueId.eq(id.as_uuid()))
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         worklog::Entity::delete_many()
             .filter(worklog::Column::IssueId.eq(id.as_uuid()))
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         attachment::Entity::delete_many()
             .filter(attachment::Column::IssueId.eq(id.as_uuid()))
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         issue_label::Entity::delete_many()
             .filter(issue_label::Column::IssueId.eq(id.as_uuid()))
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         issue_link::Entity::delete_many()
@@ -589,36 +682,37 @@ impl IssueRepository for IssueRepo {
                     .add(issue_link::Column::SourceId.eq(id.as_uuid()))
                     .add(issue_link::Column::TargetId.eq(id.as_uuid())),
             )
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         issue_status_history::Entity::delete_many()
             .filter(issue_status_history::Column::IssueId.eq(id.as_uuid()))
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         issue_custom_field_value::Entity::delete_many()
             .filter(issue_custom_field_value::Column::IssueId.eq(id.as_uuid()))
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         issue_vote::Entity::delete_many()
             .filter(issue_vote::Column::IssueId.eq(id.as_uuid()))
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         issue_watcher::Entity::delete_many()
             .filter(issue_watcher::Column::IssueId.eq(id.as_uuid()))
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         // Finally, hard-delete the issue row.
         issue::Entity::delete_many()
             .filter(issue::Column::Id.eq(id.as_uuid()))
             .filter(issue::Column::DeletedAt.is_not_null())
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
+        txn.commit().await.map_err(AppError::database)?;
         Ok(())
     }
 }
@@ -712,6 +806,9 @@ impl SprintRepository for SprintRepo {
     ) -> Result<Option<Sprint>, AppError> {
         let model = sprint::Entity::find()
             .filter(sprint::Column::ProjectId.eq(project_id.as_uuid()))
+            // Only an Active sprint is "the active sprint"; without this a
+            // future or closed sprint could be picked arbitrarily.
+            .filter(sprint::Column::State.eq("Active"))
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
@@ -1214,6 +1311,21 @@ struct IssueLinkRepo {
 
 #[async_trait]
 impl IssueLinkRepository for IssueLinkRepo {
+    async fn get_by_id(&self, id: IssueLinkId) -> Result<IssueLink, AppError> {
+        let model = issue_link::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        model
+            .map(|m| IssueLink {
+                id: IssueLinkId::from_uuid(m.id),
+                source_id: IssueId::from_uuid(m.source_id),
+                target_id: IssueId::from_uuid(m.target_id),
+                link_type: m.link_type.parse().unwrap_or(LinkType::Relates),
+            })
+            .ok_or_else(|| AppError::not_found("issue link", id))
+    }
+
     async fn save(&self, link: &IssueLink) -> Result<IssueLinkId, AppError> {
         let active = issue_link::ActiveModel {
             id: Set(link.id.as_uuid()),
@@ -1408,6 +1520,15 @@ impl ProjectMemberRepository for ProjectMemberRepo {
     async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<ProjectMember>, AppError> {
         let models = project_member::Entity::find()
             .filter(project_member::Column::ProjectId.eq(project_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_project_member).collect())
+    }
+
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<ProjectMember>, AppError> {
+        let models = project_member::Entity::find()
+            .filter(project_member::Column::UserId.eq(user_id.as_uuid()))
             .all(&*self.db)
             .await
             .map_err(AppError::database)?;

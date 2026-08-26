@@ -12,7 +12,7 @@ cargo install --path cli
 ## Глобальные флаги
 
 ```
---api-url   Базовый URL API (env: TASKTRACKER_API_URL, default: http://localhost:3456)
+--api-url   Базовый URL API (env: TASKTRACKER_API_URL, default: http://localhost:3456/api/v1)
 --token     JWT access token (env: TASKTRACKER_TOKEN)
 ```
 

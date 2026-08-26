@@ -19,6 +19,11 @@ pub use shared::{IssueTypeId, ProjectId, SprintId, StatusId, UserId, WorkflowTra
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IssueQuery {
     pub project_id: Option<ProjectId>,
+    /// Authorization scope for cross-project queries (search/dashboard):
+    /// `Some(ids)` restricts results to these projects; `None` leaves the
+    /// query unrestricted (single-project board/backlog paths that already
+    /// authorize via `project_id`).
+    pub accessible_project_ids: Option<Vec<ProjectId>>,
     pub sprint_id: Option<SprintId>,
     pub status_id: Option<StatusId>,
     pub assignee_id: Option<UserId>,
@@ -43,6 +48,7 @@ impl Default for IssueQuery {
     fn default() -> Self {
         Self {
             project_id: None,
+            accessible_project_ids: None,
             sprint_id: None,
             status_id: None,
             assignee_id: None,

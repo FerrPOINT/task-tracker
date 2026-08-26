@@ -128,11 +128,11 @@ build: build-backend build-frontend
 
 # Regenerate OpenAPI client from backend spec
 api-codegen:
-    cd frontend && pnpm generate-api
+    cd frontend && pnpm generate:api
 
 # Open backend API docs (requires running backend)
 api-docs:
-    xdg-open http://127.0.0.1:3456/api-docs 2>/dev/null || open http://127.0.0.1:3456/api-docs
+    xdg-open http://127.0.0.1:3456/swagger-ui/ 2>/dev/null || open http://127.0.0.1:3456/swagger-ui/
 
 # Check git status
 git-status:

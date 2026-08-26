@@ -32,6 +32,10 @@ fn clear_env() {
         "TASKTRACKER_EMAIL__FROM_ADDRESS",
         "TASKTRACKER_EMAIL__FROM_NAME",
         "TASKTRACKER_EMAIL__STARTTLS",
+        "TASKTRACKER_SERVER__AUTH_RATE_BURST",
+        "TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS",
+        "TASKTRACKER_SERVER__GENERAL_RATE_BURST",
+        "TASKTRACKER_SERVER__GENERAL_RATE_PERIOD_SECS",
     ] {
         unsafe { env::remove_var(key) };
     }
@@ -195,4 +199,19 @@ fn rate_limit_defaults_and_env_override() {
     assert_eq!(cfg.server.auth_rate_period_secs, 1);
     assert_eq!(cfg.server.general_rate_burst, 10000);
     assert_eq!(cfg.server.general_rate_period_secs, 1);
+}
+
+#[test]
+fn rate_limit_zero_values_rejected() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    clear_env();
+    unsafe { env::set_var("TASKTRACKER_SERVER__AUTH_RATE_BURST", "0") };
+    let err = AppConfig::from_path("/nonexistent.toml");
+    assert!(err.is_err(), "zero auth burst must be a config error");
+
+    clear_env();
+    unsafe { env::set_var("TASKTRACKER_SERVER__GENERAL_RATE_PERIOD_SECS", "0") };
+    let err = AppConfig::from_path("/nonexistent.toml");
+    assert!(err.is_err(), "zero general period must be a config error");
 }

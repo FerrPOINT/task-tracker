@@ -21,7 +21,7 @@ cd /opt/dev/task-tracker
 cp .env.example .env
 # отредактируй .env под себя
 
-docker compose up -d postgres redis
+docker compose up -d postgres
 cd backend && cargo run --bin server
 cd frontend && pnpm install && pnpm dev
 ```
@@ -33,8 +33,7 @@ cd frontend && pnpm install && pnpm dev
 Основные для локальной разработки:
 
 ```env
-TASKTRACKER_DATABASE_URL=postgres://tasktracker:[CHANGE_ME]@localhost:5432/tasktracker
-TASKTRACKER_REDIS_URL=redis://localhost:6379
+TASKTRACKER_DATABASE__URL=postgres://tasktracker:[CHANGE_ME]@localhost:5432/tasktracker
 TASKTRACKER_JWT_SECRET=[CHANGE_ME_32BYTES_MIN]
 TASKTRACKER_REFRESH_SECRET=[CHANGE_ME_32BYTES_MIN]
 TASKTRACKER_ADMIN_EMAIL=admin@example.com
@@ -54,7 +53,7 @@ cd backend
 cargo build
 
 # Запуск миграций
-cargo run --bin migrator
+cargo run -p migration -- up
 
 # Запуск API сервера
 cargo run --bin server
@@ -81,7 +80,7 @@ pnpm typecheck
 pnpm lint
 
 # Тесты
-pnpm test:unit
+pnpm test
 pnpm test:e2e
 ```
 
@@ -92,7 +91,7 @@ pnpm test:e2e
 docker compose up -d --build
 
 # Только инфраструктура
-docker compose up -d postgres redis
+docker compose up -d postgres
 
 # Пересоздать контейнеры после изменений
 docker compose build
@@ -129,9 +128,9 @@ docker compose logs -f api
 
 | Проблема | Решение |
 |---|---|
-| Порт 19876 занят | `TASKTRACKER_SERVER_PORT` в `.env` / `docker-compose.override.yml` |
+| Порт 19876 занят | `TASKTRACKER_SERVER__PORT` в `.env` / `docker-compose.override.yml` |
 | Postgres не стартует | `docker compose down -v` и пересоздать volume |
-| Redis connection refused | проверить `TASKTRACKER_REDIS_URL` |
+| Redis connection refused | Redis не используется бекендом (event bus in-process); сервис в compose опционален |
 | `cargo` долго компилирует | `sccache` + `cargo nextest` |
 
 Больше диагностики — в `docs/TROUBLESHOOTING.md`.

@@ -88,12 +88,15 @@ export function AppShell() {
   const logout = useLogout()
   const unreadNotifications = notifications.filter((notification) => !notification.is_read)
 
+  // Admin link is only for system admins (checked via /auth/me).
   const navItems = [
     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
     { to: '/projects', icon: FolderKanban, labelKey: 'navigation.projects' },
     { to: '/search', icon: Search, labelKey: 'navigation.search' },
     { to: '/reports', icon: BarChart3, labelKey: 'navigation.reports' },
-    { to: '/admin', icon: ShieldCheck, labelKey: 'navigation.admin' },
+    ...(user?.is_system_admin
+      ? [{ to: '/admin', icon: ShieldCheck, labelKey: 'navigation.admin' }]
+      : []),
   ]
 
   const projectItems = [

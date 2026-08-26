@@ -14,12 +14,17 @@ use app::commands::ProjectQueryDto;
 )]
 pub async fn list_projects(
     State(ctx): State<Arc<app::AppContext>>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
 ) -> Result<Json<ProjectListResponse>, AppError> {
+    let requester = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let query = ProjectQueryDto {
         limit: 100,
         offset: 0,
     };
-    let items = ctx.services.project.list(query).await?;
+    let items = ctx.services.project.list(query, requester).await?;
     Ok(Json(ProjectListResponse {
         projects: items.into_iter().map(map_project_response).collect(),
     }))

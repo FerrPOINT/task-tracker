@@ -140,6 +140,7 @@ impl AppContext {
             repos.issues.clone(),
             repos.projects.clone(),
             repos.users.clone(),
+            repos.statuses.clone(),
             authz.clone(),
         ));
         let dashboard: Arc<dyn DashboardService> = Arc::new(DashboardServiceImpl::new(

@@ -776,6 +776,17 @@
             }
           },
           {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "assignee_id",
             "in": "query",
             "required": false,
@@ -3542,6 +3553,17 @@
             }
           },
           {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "name": "assignee_id",
             "in": "query",
             "required": false,
@@ -4702,6 +4724,14 @@
               "type": "string"
             }
           },
+          "original_estimate_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Original estimate in seconds. Null when no estimate was set."
+          },
           "priority": {
             "type": "string"
           },
@@ -4710,6 +4740,14 @@
           },
           "project_name": {
             "type": "string"
+          },
+          "remaining_estimate_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Remaining estimate in seconds, derived from the latest worklog."
           },
           "reporter_id": {
             "type": "string"
@@ -5516,7 +5554,8 @@
           "id",
           "email",
           "username",
-          "display_name"
+          "display_name",
+          "is_system_admin"
         ],
         "properties": {
           "display_name": {
@@ -5527,6 +5566,10 @@
           },
           "id": {
             "type": "string"
+          },
+          "is_system_admin": {
+            "type": "boolean",
+            "description": "Whether the user may access admin endpoints."
           },
           "username": {
             "type": "string"

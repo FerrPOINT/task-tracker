@@ -35,7 +35,7 @@
 docker compose exec postgres pg_dump -U tasktracker tasktracker | gzip > tasktracker-$(date +%F).sql.gz
 
 # Attachments
-docker compose cp api:/data/attachments ./attachments-backup
+docker compose cp api:/var/lib/tasktracker/uploads ./attachments-backup
 ```
 
 ## 4. Восстановление

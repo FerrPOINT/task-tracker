@@ -43,7 +43,7 @@ pub trait FileStore: Send + Sync {
 
 1. Client POST `/api/v1/issues/{id}/attachments` multipart/form-data.
 2. Server валидирует:
-   - max size (default 50 MB);
+   - max size (default 25 MiB);
    - mime-type whitelist;
    - filename sanity (path traversal).
 3. Server генерирует `attachment_id` UUIDv7.
@@ -131,7 +131,7 @@ fn signed_url(&self, key: &str, expires_in: Duration) -> String
 
 | Entity | Default Limit |
 |--------|---------------|
-| Per attachment | 50 MB |
+| Per attachment | 25 MiB |
 | Total per issue | 500 MB |
 | Total per project | 10 GB |
 | Avatar | 2 MB |

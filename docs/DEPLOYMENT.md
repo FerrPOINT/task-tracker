@@ -76,7 +76,7 @@ pnpm build
 
 ```bash
 docker compose exec -T postgres pg_dump -U tasktracker tasktracker > tasktracker-$(date +%Y%m%d).sql
-docker compose cp task-tracker-backend-1:/data/attachments ./attachments-backup
+docker compose cp task-tracker-backend-1:/var/lib/tasktracker/uploads ./attachments-backup
 ```
 
 ## 10. Update

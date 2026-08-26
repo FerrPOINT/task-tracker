@@ -86,7 +86,11 @@ pub trait WorklogService: Send + Sync {
 #[async_trait]
 pub trait ProjectService: Send + Sync {
     async fn create(&self, cmd: CreateProjectCommand) -> Result<ProjectDto, AppError>;
-    async fn list(&self, query: ProjectQueryDto) -> Result<Vec<ProjectDto>, AppError>;
+    async fn list(
+        &self,
+        query: ProjectQueryDto,
+        requester: UserId,
+    ) -> Result<Vec<ProjectDto>, AppError>;
     async fn get_by_key(&self, key: &ProjectKey) -> Result<ProjectDto, AppError>;
     async fn update(
         &self,

@@ -11,8 +11,21 @@ pub struct FailingUserRepository;
 
 #[async_trait]
 impl UserRepository for FailingUserRepository {
-    async fn get_by_id(&self, _id: UserId) -> Result<User, AppError> {
-        Err(AppError::Internal("failing user repo".into()))
+    async fn get_by_id(&self, id: UserId) -> Result<User, AppError> {
+        // The bearer-auth middleware performs an is_active lookup on every
+        // request; it must succeed for these business-flow failure tests.
+        Ok(User {
+            id,
+            email: "demo@example.com".into(),
+            username: "demo".into(),
+            display_name: "Demo User".into(),
+            password_hash: String::new().into(),
+            refresh_token_hash: None,
+            is_system_admin: false,
+            is_active: true,
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        })
     }
 
     async fn get_by_email(&self, _email: &str) -> Result<User, AppError> {
@@ -53,6 +66,13 @@ impl ProjectRepository for FailingProjectRepository {
         Err(AppError::Internal("failing project repo".into()))
     }
 
+    async fn save_with_board(
+        &self,
+        _project: &domain::Project,
+        _board: &domain::Board,
+    ) -> Result<shared::ProjectId, AppError> {
+        Err(AppError::Internal("failing project repo".into()))
+    }
     async fn delete(&self, _id: ProjectId) -> Result<(), AppError> {
         Err(AppError::Internal("failing project repo".into()))
     }

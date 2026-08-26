@@ -41,6 +41,9 @@ function mockHooks(notifications: Notification[] | undefined) {
 describe('AppShell notifications', () => {
   it('includes the administration link in the desktop sidebar', () => {
     mockHooks([])
+    useCurrentUser.mockReturnValue({
+      data: { email: 'admin@example.test', display_name: 'Admin', is_system_admin: true },
+    })
 
     render(
       <MemoryRouter>

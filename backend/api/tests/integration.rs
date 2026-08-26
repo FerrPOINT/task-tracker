@@ -123,6 +123,40 @@ async fn spawn_server_with_notifications()
     let sprints = Arc::new(MemorySprintRepository::default());
 
     let notifications = Arc::new(MemoryNotificationRepository::default());
+    let status_repo = Arc::new(domain::MemoryStatusRepository::new(vec![
+        domain::Status {
+            id: todo,
+            name: "To Do".into(),
+            category: domain::StatusCategory::Todo,
+            position: 0,
+            is_default: true,
+            is_closed: false,
+        },
+        domain::Status {
+            id: in_progress,
+            name: "In Progress".into(),
+            category: domain::StatusCategory::InProgress,
+            position: 1,
+            is_default: false,
+            is_closed: false,
+        },
+        domain::Status {
+            id: review,
+            name: "Review".into(),
+            category: domain::StatusCategory::InProgress,
+            position: 2,
+            is_default: false,
+            is_closed: false,
+        },
+        domain::Status {
+            id: done,
+            name: "Done".into(),
+            category: domain::StatusCategory::Done,
+            position: 3,
+            is_default: false,
+            is_closed: true,
+        },
+    ]));
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
@@ -134,7 +168,7 @@ async fn spawn_server_with_notifications()
         comments: Arc::new(MemoryCommentRepository::default()),
         worklogs: Arc::new(MemoryWorklogRepository::default()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
-        statuses: Arc::new(domain::StubStatusRepository),
+        statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(MemoryAttachmentRepository::default()),
@@ -147,7 +181,7 @@ async fn spawn_server_with_notifications()
         votes: Arc::new(domain::MemoryVoteRepository::default()),
         components: Arc::new(domain::StubProjectComponentRepository),
         versions: Arc::new(domain::StubProjectVersionRepository),
-        custom_fields: Arc::new(domain::StubCustomFieldRepository),
+        custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -233,8 +267,9 @@ async fn register_and_list_projects() {
     assert_eq!(projects.status(), 200);
     let body: serde_json::Value = projects.json().await.unwrap();
     let list = body["projects"].as_array().unwrap();
-    assert_eq!(list.len(), 1);
-    assert_eq!(list[0]["key"], "TT");
+    // A brand-new user owns nothing and has no memberships: the global
+    // project list must not leak other users' projects.
+    assert!(list.is_empty(), "new user sees {list:?}");
 }
 
 #[tokio::test]
@@ -2091,7 +2126,7 @@ async fn spawn_server_with_reports() -> (
         votes: Arc::new(domain::MemoryVoteRepository::default()),
         components: Arc::new(domain::StubProjectComponentRepository),
         versions: Arc::new(domain::StubProjectVersionRepository),
-        custom_fields: Arc::new(domain::StubCustomFieldRepository),
+        custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -2889,6 +2924,40 @@ async fn spawn_server_with_memory_repos() -> (String, reqwest::Client) {
     let sprints = Arc::new(MemorySprintRepository::default());
 
     let notifications = Arc::new(MemoryNotificationRepository::default());
+    let status_repo = Arc::new(domain::MemoryStatusRepository::new(vec![
+        domain::Status {
+            id: todo,
+            name: "To Do".into(),
+            category: domain::StatusCategory::Todo,
+            position: 0,
+            is_default: true,
+            is_closed: false,
+        },
+        domain::Status {
+            id: in_progress,
+            name: "In Progress".into(),
+            category: domain::StatusCategory::InProgress,
+            position: 1,
+            is_default: false,
+            is_closed: false,
+        },
+        domain::Status {
+            id: review,
+            name: "Review".into(),
+            category: domain::StatusCategory::InProgress,
+            position: 2,
+            is_default: false,
+            is_closed: false,
+        },
+        domain::Status {
+            id: done,
+            name: "done".into(),
+            category: domain::StatusCategory::Done,
+            position: 3,
+            is_default: false,
+            is_closed: true,
+        },
+    ]));
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
@@ -2900,7 +2969,7 @@ async fn spawn_server_with_memory_repos() -> (String, reqwest::Client) {
         comments: Arc::new(MemoryCommentRepository::default()),
         worklogs: Arc::new(MemoryWorklogRepository::default()),
         members: Arc::new(MemoryProjectMemberRepository::default()),
-        statuses: Arc::new(domain::StubStatusRepository),
+        statuses: status_repo,
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(MemoryAttachmentRepository::default()),
@@ -3832,4 +3901,368 @@ async fn member_can_view_board() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
+}
+
+// 13. issue_link_delete_denied_for_outsider — B cannot delete A's link (SEC-1)
+#[tokio::test]
+async fn issue_link_delete_denied_for_outsider() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let (_b_id, b_token) =
+        register_user(&url, &client, "b13@example.com", "userb13", "User B13").await;
+
+    // A creates two issues in their project and links them
+    let a = create_issue_via_api(&url, &client, &a_token).await;
+    let b_id = create_second_issue(&url, &client, &a_token, "link target 13").await;
+    let res = client
+        .get(format!("{url}/api/v1/issues/{b_id}"))
+        .bearer_auth(&a_token)
+        .send()
+        .await
+        .unwrap();
+    let b_key = res.json::<serde_json::Value>().await.unwrap()["key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let res = client
+        .post(format!("{url}/api/v1/issues/{a}/links"))
+        .bearer_auth(&a_token)
+        .json(&serde_json::json!({"target_key": b_key, "link_type": "relates"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let link_id = res.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // B (no membership in A's project) must not be able to delete the link
+    let res = client
+        .delete(format!("{url}/api/v1/issue-links/{link_id}"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+
+    // Link is still listable by A
+    let res = client
+        .get(format!("{url}/api/v1/issues/{a}/links"))
+        .bearer_auth(&a_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let list = res.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(list["links"].as_array().unwrap().len(), 1);
+}
+
+// 14. global_search_scoped_to_accessible_projects — B's unscoped search must
+// not return issues from A's project (SEC-2)
+#[tokio::test]
+async fn global_search_scoped_to_accessible_projects() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let (_b_id, b_token) =
+        register_user(&url, &client, "b14@example.com", "userb14", "User B14").await;
+
+    // A creates an issue with a distinctive summary in their project
+    let secret = "SEC2 secret needle 6f4a";
+    let issue_id = create_second_issue(&url, &client, &a_token, secret).await;
+
+    // B (no membership anywhere) searches without a project filter
+    let res = client
+        .get(format!("{url}/api/v1/search?q=SEC2"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let issues = body["issues"].as_array().unwrap();
+    assert!(
+        !issues
+            .iter()
+            .any(|i| i["summary"].as_str().is_some_and(|s| s.contains("SEC2"))),
+        "B must not see A's issues in global search"
+    );
+
+    // Same leak via the issues route with search text
+    let res = client
+        .get(format!("{url}/api/v1/issues?q=SEC2"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let issues = body["issues"].as_array().unwrap();
+    assert!(
+        !issues
+            .iter()
+            .any(|i| i["summary"].as_str().is_some_and(|s| s.contains("SEC2"))),
+        "B must not see A's issues via /issues?q="
+    );
+
+    // JQL path must be scoped too
+    let res = client
+        .get(format!("{url}/api/v1/search?jql=summary%20~%20%22SEC2%22"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let issues = body["issues"].as_array().unwrap();
+    assert!(
+        !issues
+            .iter()
+            .any(|i| i["summary"].as_str().is_some_and(|s| s.contains("SEC2"))),
+        "B must not see A's issues via JQL search"
+    );
+
+    // A still finds their own issue via the same route
+    let res = client
+        .get(format!("{url}/api/v1/search?q=SEC2"))
+        .bearer_auth(&a_token)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        body["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["id"].as_str() == Some(issue_id.as_str()))
+    );
+}
+
+// 15. watch_ignores_body_user_id — member B cannot add A as watcher (SEC-3)
+#[tokio::test]
+async fn watch_ignores_body_user_id() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let (b_id, b_token) =
+        register_user(&url, &client, "b15@example.com", "userb15", "User B15").await;
+    let project_key = "TT";
+    add_member_via_api(&url, &client, &a_token, project_key, &b_id).await;
+
+    // A (owner) id
+    let res = client
+        .get(format!("{url}/api/v1/users/me"))
+        .bearer_auth(&a_token)
+        .send()
+        .await
+        .unwrap();
+    let a_id = res.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // A creates an issue; B watches it while supplying A's user_id in the body
+    let issue_id = create_issue_via_api(&url, &client, &a_token).await;
+    let res = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/watch"))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"user_id": a_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 204);
+
+    // The watcher list must contain B (the requester), not A
+    let res = client
+        .get(format!("{url}/api/v1/issues/{issue_id}/watchers"))
+        .bearer_auth(&a_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let watchers = res.json::<serde_json::Value>().await.unwrap();
+    let list = watchers["watchers"].as_array().unwrap();
+    assert!(
+        !list
+            .iter()
+            .any(|w| w["user_id"].as_str() == Some(a_id.as_str()))
+    );
+    assert!(
+        list.iter()
+            .any(|w| w["user_id"].as_str() == Some(b_id.as_str()))
+    );
+}
+
+// 16. sprint_from_other_project_rejected (XPROJ-1)
+#[tokio::test]
+async fn sprint_from_other_project_rejected() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let (b_id, b_token) =
+        register_user(&url, &client, "b16@example.com", "userb16", "User B16").await;
+    // A owns project TT; create B's project
+    let (_pb_id, pb_key) =
+        create_project_via_api(&url, &client, &b_token, "PB16", "B Project").await;
+    // B creates a sprint in their project
+    let res = client
+        .post(format!("{url}/api/v1/projects/{pb_key}/sprints"))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"name": "B sprint"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let b_sprint_id = res.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Make B a member of A's project TT so B can edit A's issues
+    add_member_via_api(&url, &client, &a_token, "TT", &b_id).await;
+    let issue_id = create_issue_via_api(&url, &client, &a_token).await;
+
+    // B moves A's issue into B's sprint → must fail
+    let res = client
+        .post(format!(
+            "{url}/api/v1/projects/TT/sprints/{b_sprint_id}/issues"
+        ))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"issue_id": issue_id}))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        res.status() == 400 || res.status() == 403,
+        "got {}",
+        res.status()
+    );
+}
+
+// 17. custom_field_from_other_project_rejected (XPROJ-2)
+#[tokio::test]
+async fn custom_field_from_other_project_rejected() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let (b_id, b_token) =
+        register_user(&url, &client, "b17@example.com", "userb17", "User B17").await;
+    let (_pb_id, pb_key) =
+        create_project_via_api(&url, &client, &b_token, "PB17", "B Project").await;
+    // B creates a text field in their project
+    let res = client
+        .post(format!("{url}/api/v1/projects/{pb_key}/custom-fields"))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"name": "B field", "field_type": "text"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let field_id = res.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    add_member_via_api(&url, &client, &a_token, "TT", &b_id).await;
+    let issue_id = create_issue_via_api(&url, &client, &a_token).await;
+
+    // B sets their field on A's issue → must fail
+    let res = client
+        .put(format!(
+            "{url}/api/v1/issues/{issue_id}/custom-fields/{field_id}/value"
+        ))
+        .bearer_auth(&b_token)
+        .json(&serde_json::json!({"value": "cross"}))
+        .send()
+        .await
+        .unwrap();
+    let status = res.status();
+    let body = res.text().await.unwrap_or_default();
+    assert!(status == 400 || status == 403, "got {status} body={body}");
+}
+
+// 18. search_status_filter_applied (UI-2)
+#[tokio::test]
+async fn search_status_filter_applied() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_second_issue(&url, &client, &token, "status filter probe").await;
+
+    // "todo" is the seeded default status name; "done" differs.
+    let res = client
+        .get(format!("{url}/api/v1/search?status=todo"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        body["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["id"].as_str() == Some(issue_id.as_str()))
+    );
+
+    let res = client
+        .get(format!("{url}/api/v1/search?status=done"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        !body["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["id"].as_str() == Some(issue_id.as_str()))
+    );
+
+    // Unknown status name → empty set, not everything
+    let res = client
+        .get(format!("{url}/api/v1/search?status=bogus"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["issues"].as_array().unwrap().is_empty());
+}
+
+// 19. search_priority_any_case (UI-1)
+#[tokio::test]
+async fn search_priority_any_case() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_second_issue(&url, &client, &token, "priority case probe").await;
+
+    for p in ["medium", "Medium", "MEDIUM"] {
+        let res = client
+            .get(format!("{url}/api/v1/search?priority={p}"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+        let body: serde_json::Value = res.json().await.unwrap();
+        assert!(
+            body["issues"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|i| i["id"].as_str() == Some(issue_id.as_str())),
+            "priority={p} lost the issue"
+        );
+    }
+
+    // Unknown priority → empty, not everything
+    let res = client
+        .get(format!("{url}/api/v1/search?priority=bogus"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["issues"].as_array().unwrap().is_empty());
 }

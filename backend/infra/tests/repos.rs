@@ -176,6 +176,7 @@ async fn issue_repo_crud_and_query() {
         .issues
         .list(domain::IssueQuery {
             project_id: Some(project.id),
+            accessible_project_ids: None,
             status_id: Some(status),
             assignee_id: None,
             sprint_id: None,

@@ -16,7 +16,7 @@ test.describe('time tracking against live backend', () => {
   test('time tracking panel and worklog flow', async ({ page }) => {
     await page.goto(`${baseURL}/login`)
     await page.getByRole('textbox').nth(0).fill('demo@example.com')
-    await page.getByRole('textbox').nth(1).fill('Demo12345')
+    await page.getByRole('textbox').nth(1).fill('demo')
     await page.getByRole('button', { name: /войти|login/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
 
@@ -36,7 +36,7 @@ test.describe('time tracking against live backend', () => {
   test('timer adds time to input', async ({ page }) => {
     await page.goto(`${baseURL}/login`)
     await page.getByRole('textbox').nth(0).fill('demo@example.com')
-    await page.getByRole('textbox').nth(1).fill('Demo12345')
+    await page.getByRole('textbox').nth(1).fill('demo')
     await page.getByRole('button', { name: /войти|login/i }).click()
     await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
 

@@ -62,5 +62,7 @@ pub async fn transition_issue(
         reporter_name: dto.reporter_name,
         project_name: dto.project_name,
         sprint_id: dto.sprint_id,
+        original_estimate_seconds: dto.original_estimate_seconds,
+        remaining_estimate_seconds: dto.remaining_estimate_seconds,
     }))
 }

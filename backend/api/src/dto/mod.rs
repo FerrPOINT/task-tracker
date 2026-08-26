@@ -49,6 +49,8 @@ pub struct UserResponse {
     pub email: String,
     pub username: String,
     pub display_name: String,
+    /// Whether the user may access admin endpoints.
+    pub is_system_admin: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -99,6 +101,10 @@ pub struct IssueResponse {
     pub reporter_name: Option<String>,
     pub project_name: String,
     pub sprint_id: Option<String>,
+    /// Original estimate in seconds. Null when no estimate was set.
+    pub original_estimate_seconds: Option<i64>,
+    /// Remaining estimate in seconds, derived from the latest worklog.
+    pub remaining_estimate_seconds: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -169,6 +175,7 @@ pub struct SearchQuery {
     pub q: Option<String>,
     pub project_key: Option<String>,
     pub priority: Option<String>,
+    pub status: Option<String>,
     pub assignee_id: Option<String>,
     pub sort_by: Option<String>,
     pub sort_order: Option<String>,

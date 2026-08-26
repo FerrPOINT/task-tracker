@@ -85,11 +85,10 @@ pub async fn watch_issue(
         .parse()
         .map(UserId::from_uuid)
         .map_err(|_| AppError::invalid_input("invalid user id"))?;
-    let user_id = body
-        .and_then(|b| b.user_id.clone())
-        .and_then(|s| s.parse::<UserId>().ok())
-        .unwrap_or(requester);
-    ctx.services.watcher.watch(issue_id, user_id).await?;
+    // Always watch as the authenticated requester. Accepting a body-supplied
+    // user_id would let any member add someone else as a watcher.
+    let _ = body;
+    ctx.services.watcher.watch(issue_id, requester).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

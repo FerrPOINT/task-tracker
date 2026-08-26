@@ -40,6 +40,24 @@ pub async fn bearer_auth(
         .auth
         .verify_token(token.as_str())
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    // Reject tokens belonging to deactivated accounts. Without this check a
+    // user disabled by an admin could keep using previously issued tokens.
+    let user_id: shared::UserId = claims
+        .sub
+        .parse()
+        .map(shared::UserId::from_uuid)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let user = ctx
+        .repos
+        .users
+        .get_by_id(user_id)
+        .await
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    if !user.is_active {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
     req.extensions_mut().insert(claims);
     Ok(next.run(req).await)
 }

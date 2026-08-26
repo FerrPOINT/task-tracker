@@ -10,7 +10,6 @@ pub struct ProjectServiceImpl {
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
     users: Arc<dyn domain::UserRepository>,
-    boards: Arc<dyn domain::BoardRepository>,
     authz: Authz,
 }
 
@@ -22,11 +21,13 @@ impl ProjectServiceImpl {
         boards: Arc<dyn domain::BoardRepository>,
         authz: Authz,
     ) -> Self {
+        // `boards` is no longer stored: project creation persists the default
+        // board atomically inside `ProjectRepository::save_with_board`.
+        let _ = boards;
         Self {
             projects,
             issues,
             users,
-            boards,
             authz,
         }
     }
@@ -56,23 +57,28 @@ impl crate::context::ProjectService for ProjectServiceImpl {
             name: "Board".into(),
             columns: super::helpers::default_board_columns(),
         };
-        self.projects.save(&project).await?;
-        self.boards.save(&board).await?;
+        // Project + default board must land atomically: a project whose
+        // default_board_id points at a nonexistent board breaks board reads
+        // and issue creation.
+        self.projects.save_with_board(&project, &board).await?;
         Ok(ProjectDto::from_project(project, 0, 0, 0))
     }
 
     async fn list(
         &self,
         _query: crate::commands::ProjectQueryDto,
+        requester: UserId,
     ) -> Result<Vec<ProjectDto>, AppError> {
-        let projects = self
-            .projects
-            .list(domain::ProjectQuery {
-                owner_id: None,
-                limit: 100,
-                offset: 0,
-            })
-            .await?;
+        // Projects visible to a user: owned by them or with a membership row.
+        // A global list leaks other people's projects into selectors (and then
+        // fails with a bare 403 on first use).
+        let accessible = self.authz.accessible_project_ids(requester).await?;
+        let mut projects = Vec::with_capacity(accessible.len());
+        for pid in accessible {
+            if let Ok(p) = self.projects.get_by_id(pid).await {
+                projects.push(p);
+            }
+        }
         let mut dtos = Vec::new();
         for project in projects {
             let counts = self.issues.list(IssueQuery::project(project.id)).await?;

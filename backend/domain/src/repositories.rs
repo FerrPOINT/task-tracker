@@ -46,6 +46,15 @@ pub trait ProjectRepository: Send + Sync {
     async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError>;
     async fn list(&self, query: ProjectQuery) -> Result<Vec<Project>, AppError>;
     async fn save(&self, project: &Project) -> Result<ProjectId, AppError>;
+    /// Atomically persist a new project together with its default board.
+    /// A crash between the two writes would leave a project whose
+    /// `default_board_id` points at nothing, breaking board reads and issue
+    /// creation.
+    async fn save_with_board(
+        &self,
+        project: &Project,
+        board: &crate::Board,
+    ) -> Result<ProjectId, AppError>;
     async fn delete(&self, id: ProjectId) -> Result<(), AppError>;
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError>;
 }
@@ -267,6 +276,9 @@ impl ProjectMemberRepository for StubProjectMemberRepository {
     ) -> Result<Vec<ProjectMember>, AppError> {
         Ok(vec![])
     }
+    async fn list_by_user(&self, _user_id: UserId) -> Result<Vec<ProjectMember>, AppError> {
+        Ok(vec![])
+    }
     async fn get(
         &self,
         _project_id: ProjectId,
@@ -393,6 +405,13 @@ impl ProjectRepository for StubProjectRepository {
         Ok(vec![])
     }
     async fn save(&self, _project: &Project) -> Result<ProjectId, AppError> {
+        Ok(ProjectId::new())
+    }
+    async fn save_with_board(
+        &self,
+        _project: &Project,
+        _board: &crate::Board,
+    ) -> Result<ProjectId, AppError> {
         Ok(ProjectId::new())
     }
     async fn next_issue_number(&self, _project_id: ProjectId) -> Result<u32, AppError> {
@@ -538,6 +557,7 @@ impl EventBus for StubEventBus {
 #[async_trait]
 pub trait ProjectMemberRepository: Send + Sync {
     async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<ProjectMember>, AppError>;
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<ProjectMember>, AppError>;
     async fn get(&self, project_id: ProjectId, user_id: UserId) -> Result<ProjectMember, AppError>;
     async fn save(&self, member: &ProjectMember) -> Result<(), AppError>;
     async fn delete(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError>;
@@ -599,6 +619,7 @@ pub trait LabelRepository: Send + Sync {
 #[async_trait]
 pub trait IssueLinkRepository: Send + Sync {
     async fn save(&self, link: &IssueLink) -> Result<IssueLinkId, AppError>;
+    async fn get_by_id(&self, id: IssueLinkId) -> Result<IssueLink, AppError>;
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueLink>, AppError>;
     async fn delete(&self, id: IssueLinkId) -> Result<(), AppError>;
 }
@@ -608,6 +629,9 @@ pub struct StubIssueLinkRepository;
 impl IssueLinkRepository for StubIssueLinkRepository {
     async fn save(&self, _link: &IssueLink) -> Result<IssueLinkId, AppError> {
         Ok(IssueLinkId::new())
+    }
+    async fn get_by_id(&self, _id: IssueLinkId) -> Result<IssueLink, AppError> {
+        Err(AppError::not_found("issue link", _id))
     }
     async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueLink>, AppError> {
         Ok(vec![])

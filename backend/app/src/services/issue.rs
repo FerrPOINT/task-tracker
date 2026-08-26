@@ -348,7 +348,21 @@ impl crate::context::IssueService for IssueServiceImpl {
             query.search_text = Some(q.to_string());
         }
         if let Some(priority) = filters.priority.as_deref().filter(|s| !s.is_empty()) {
-            query.priority = Some(priority.to_string());
+            // DB stores canonical Title-Case values; accept any casing.
+            let canonical = ["lowest", "low", "medium", "high", "highest"]
+                .iter()
+                .find(|p| p.eq_ignore_ascii_case(priority))
+                .map(|p| {
+                    let mut c = p.chars();
+                    match c.next() {
+                        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                        None => String::new(),
+                    }
+                });
+            match canonical {
+                Some(p) => query.priority = Some(p),
+                None => return Ok(Vec::new()),
+            }
         }
         if let Some(sort_by) = filters.sort_by.as_deref() {
             query.sort_by = Some(sort_by.to_string());
@@ -363,6 +377,11 @@ impl crate::context::IssueService for IssueServiceImpl {
                 .require_project_access(project.id, requester)
                 .await?;
             query.project_id = Some(project.id);
+        } else {
+            // Cross-project search must never leak issues from projects the
+            // requester does not own or hold membership in.
+            query.accessible_project_ids =
+                Some(self.authz.accessible_project_ids(requester).await?);
         }
         if let Some(assignee_id) = filters.assignee_id.as_deref().filter(|s| !s.is_empty()) {
             let uuid = uuid::Uuid::parse_str(assignee_id)

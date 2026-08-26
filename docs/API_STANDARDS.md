@@ -12,7 +12,7 @@
 
 - Спецификация генерируется из кода через `utoipa-axum`.
 - Источник правды — Rust handlers и dto-структуры.
-- Swagger UI доступен по `/api/v1/docs` в dev-режиме.
+- Swagger UI доступен по `/swagger-ui/` в dev-режиме.
 - На каждый endpoint требуется:
   - summary
   - description (если бизнес-логика нетривиальна)

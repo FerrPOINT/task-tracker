@@ -47,12 +47,16 @@ async function fetchJsonWithRetry(url: string, init: RequestInit, attempts = 6) 
 async function seed(): Promise<ApiContext> {
   const credentials = {
     email: 'demo@example.com',
-    password: 'Demo12345',
+    password: 'demo',
     username: 'demo',
     name: 'Demo User',
   }
 
-  const registerRes = await post('/auth/register', credentials)
+  const registerRes = await fetchJsonWithRetry(`${API_BASE}/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credentials),
+  })
   if (registerRes.status !== 201 && registerRes.status !== 409) {
     throw new Error(`register failed: ${registerRes.status} ${JSON.stringify(registerRes.data)}`)
   }
@@ -154,16 +158,25 @@ export async function apiLogin() {
   return fetchJsonWithRetry(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'demo@example.com', password: 'Demo12345' }),
+    body: JSON.stringify({ email: 'demo@example.com', password: 'demo' }),
   })
 }
 
 export async function apiGet(path: string, token: string) {
-  return get(path, token)
+  return fetchJsonWithRetry(`${API_BASE}${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
 }
 
 export async function apiPost(path: string, body: object, token?: string) {
-  return post(path, body, token)
+  return fetchJsonWithRetry(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  })
 }
 
 export const API_BASE_URL = API_BASE

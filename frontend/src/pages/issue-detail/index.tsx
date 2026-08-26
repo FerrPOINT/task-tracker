@@ -25,7 +25,6 @@ import { AttachmentPanel } from '@/features/issue-detail/ui/AttachmentPanel'
 import { LabelEditor } from '@/features/issue-detail/ui/LabelEditor'
 import { LinkEditor } from '@/features/issue-detail/ui/LinkEditor'
 import { CustomFieldsPanel } from '@/features/issue-detail/ui/CustomFieldsPanel'
-import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
@@ -101,14 +100,6 @@ export function IssueDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
-        <div className="flex items-center gap-4">
-          <span className="font-bold text-text-primary">{t('app.name')}</span>
-          <span className="text-sm text-text-secondary">{issue.project_name}</span>
-        </div>
-        <ThemeToggle />
-      </header>
-
       <div>
         <div className="mb-2 text-sm text-text-muted">
           {issue.project_name} / {issue.key}
@@ -208,7 +199,7 @@ export function IssueDetailPage() {
               <CardContent>
                 <TimeTrackingPanel
                   timeSpentSeconds={timeSpent}
-                  originalEstimateSeconds={0}
+                  originalEstimateSeconds={issue.original_estimate_seconds ?? 0}
                   remainingEstimateSeconds={remainingEstimate}
                   onLogWork={handleLogWork}
                 />

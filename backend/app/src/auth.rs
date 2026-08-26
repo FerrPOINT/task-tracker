@@ -51,6 +51,10 @@ impl crate::context::AuthService for JwtAuthService {
         if !verify_password(&cmd.password, &user.password_hash)? {
             return Err(AppError::Unauthorized);
         }
+        // Deactivated accounts must not receive new tokens.
+        if !user.is_active {
+            return Err(AppError::Unauthorized);
+        }
 
         self.issue_tokens(user).await
     }

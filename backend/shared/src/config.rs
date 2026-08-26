@@ -199,6 +199,19 @@ impl AppConfig {
             }
         }
 
+        // Rate limits: governor panics on a zero period; validate early so a
+        // bad config surfaces as a configuration error, not a startup crash.
+        if cfg.server.auth_rate_period_secs == 0 || cfg.server.general_rate_period_secs == 0 {
+            return Err(ConfigError::Message(
+                "server rate-limit periods must be greater than zero".to_string(),
+            ));
+        }
+        if cfg.server.auth_rate_burst == 0 || cfg.server.general_rate_burst == 0 {
+            return Err(ConfigError::Message(
+                "server rate-limit bursts must be at least 1".to_string(),
+            ));
+        }
+
         Ok(cfg)
     }
 }

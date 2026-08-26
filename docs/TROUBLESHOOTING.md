@@ -41,7 +41,7 @@ sqlx migrate revert
 ### Connection refused to postgres
 
 - Проверить, что контейнер postgres healthy: `docker compose ps`.
-- Проверить `TASKTRACKER_DATABASE_URL` — хост должен быть `localhost` для локального запуска, `postgres` для docker.
+- Проверить `TASKTRACKER_DATABASE__URL` — хост должен быть `localhost` для локального запуска, `postgres` для docker.
 - Проверить credentials в `.env`.
 
 ### Медленные запросы

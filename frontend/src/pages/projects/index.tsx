@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { Plus, Search, LayoutGrid, List, Star, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
@@ -42,6 +42,7 @@ export function ProjectsPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
+  const [search, setSearch] = useState('')
 
   const create = useCreateProject()
   const update = useUpdateProject(editingProject?.key ?? '')
@@ -114,127 +115,91 @@ export function ProjectsPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <select className="h-9 rounded-md border border-border-strong bg-surface-raised px-2 text-sm text-text-primary">
-          <option>{t('projects.all')}</option>
-          <option>{t('projects.active')}</option>
-          <option>{t('projects.archived')}</option>
-        </select>
-        <select className="h-9 rounded-md border border-border-strong bg-surface-raised px-2 text-sm text-text-primary">
-          <option>{t('projects.anyType')}</option>
-          <option>{t('projects.scrum')}</option>
-          <option>{t('projects.kanban')}</option>
-          <option>{t('projects.basic')}</option>
-        </select>
         <div className="relative flex-1 basis-full sm:basis-auto">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <Input
             type="text"
+            aria-label={t('projects.search')}
             placeholder={t('projects.search')}
             className="h-9 w-full pl-9 sm:w-64"
-          ></Input>
-        </div>
-        <div className="ml-auto flex items-center gap-1">
-          <Button
-            variant="secondary"
-            size="icon"
-            className="h-8 w-8"
-            aria-label={t('projects.gridView')}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            aria-label={t('projects.listView')}
-          >
-            <List className="h-4 w-4" />
-          </Button>
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {projects?.map((project) => (
-          <Link key={project.id} to={`/projects/${project.key}/board`}>
-            <Card className="group transition-colors hover:border-border-strong">
-              <CardContent className="p-4">
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <ProjectAvatar projectKey={project.key} />
-                    <div className="min-w-0">
-                      <div className="truncate font-semibold">{project.name}</div>
-                      <div className="text-xs text-text-muted">
-                        {project.key} · {t('projects.lead')}: {project.owner_id} ·{' '}
-                        {project.todo_count + project.in_progress_count + project.done_count}{' '}
-                        {t('projects.issues', {
-                          count:
-                            project.todo_count + project.in_progress_count + project.done_count,
-                        })}
+        {projects
+          ?.filter((project) =>
+            search
+              ? `${project.name} ${project.key}`.toLowerCase().includes(search.toLowerCase())
+              : true,
+          )
+          .map((project) => (
+            <Link key={project.id} to={`/projects/${project.key}/board`}>
+              <Card className="group transition-colors hover:border-border-strong">
+                <CardContent className="p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <ProjectAvatar projectKey={project.key} />
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold">{project.name}</div>
+                        <div className="text-xs text-text-muted">
+                          {project.key} · {t('projects.lead')}: {project.owner_id} ·{' '}
+                          {project.todo_count + project.in_progress_count + project.done_count}{' '}
+                          {t('projects.issues', {
+                            count:
+                              project.todo_count + project.in_progress_count + project.done_count,
+                          })}
+                        </div>
                       </div>
                     </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setEditingProject(project)
+                          setFormOpen(true)
+                        }}
+                        aria-label={t('common.edit')}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 opacity-0 group-hover:opacity-100"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setDeletingProject(project)
+                        }}
+                        aria-label={t('common.delete')}
+                      >
+                        <Trash2 className="h-4 w-4 text-rose-500" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="hidden shrink-0 items-center gap-1 sm:flex">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setEditingProject(project)
-                        setFormOpen(true)
-                      }}
-                      aria-label={t('common.edit')}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setDeletingProject(project)
-                      }}
-                      aria-label={t('common.delete')}
-                    >
-                      <Trash2 className="h-4 w-4 text-rose-500" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                      aria-label={t('projects.favorite')}
-                    >
-                      <Star className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                      aria-label={t('projects.moreActions')}
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs sm:text-sm">
+                    <div className="rounded bg-surface-raised py-1">
+                      <div className="text-text-muted">{t('projects.todo')}</div>
+                      <div className="font-medium">{project.todo_count}</div>
+                    </div>
+                    <div className="rounded bg-surface-raised py-1">
+                      <div className="text-text-muted">{t('projects.inProgress')}</div>
+                      <div className="font-medium">{project.in_progress_count}</div>
+                    </div>
+                    <div className="rounded bg-surface-raised py-1">
+                      <div className="text-text-muted">{t('projects.done')}</div>
+                      <div className="font-medium text-emerald-500">{project.done_count}</div>
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center text-xs sm:text-sm">
-                  <div className="rounded bg-surface-raised py-1">
-                    <div className="text-text-muted">{t('projects.todo')}</div>
-                    <div className="font-medium">{project.todo_count}</div>
-                  </div>
-                  <div className="rounded bg-surface-raised py-1">
-                    <div className="text-text-muted">{t('projects.inProgress')}</div>
-                    <div className="font-medium">{project.in_progress_count}</div>
-                  </div>
-                  <div className="rounded bg-surface-raised py-1">
-                    <div className="text-text-muted">{t('projects.done')}</div>
-                    <div className="font-medium text-emerald-500">{project.done_count}</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
       </div>
     </div>
   )

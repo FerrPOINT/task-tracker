@@ -43,7 +43,11 @@ services:
       TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS: ${TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS:-15}
       TASKTRACKER_SERVER__GENERAL_RATE_BURST: ${TASKTRACKER_SERVER__GENERAL_RATE_BURST:-60}
       TASKTRACKER_SERVER__GENERAL_RATE_PERIOD_SECS: ${TASKTRACKER_SERVER__GENERAL_RATE_PERIOD_SECS:-60}
+      TASKTRACKER_STORAGE__DIR: ${TASKTRACKER_STORAGE__DIR:-/var/lib/tasktracker/uploads}
       RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      # Attachment files must survive container recreation.
+      - uploads:/var/lib/tasktracker/uploads
     ports:
       - "3456:3456"
     depends_on:
@@ -88,3 +92,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads:

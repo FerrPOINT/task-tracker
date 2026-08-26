@@ -11,6 +11,7 @@ pub struct SearchServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    statuses: Arc<dyn domain::StatusRepository>,
     authz: Authz,
 }
 
@@ -19,12 +20,14 @@ impl SearchServiceImpl {
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
         users: Arc<dyn domain::UserRepository>,
+        statuses: Arc<dyn domain::StatusRepository>,
         authz: Authz,
     ) -> Self {
         Self {
             issues,
             projects,
             users,
+            statuses,
             authz,
         }
     }
@@ -42,7 +45,44 @@ impl crate::context::SearchService for SearchServiceImpl {
             query.search_text = Some(q.to_string());
         }
         if let Some(priority) = filters.priority.as_deref().filter(|s| !s.is_empty()) {
-            query.priority = Some(priority.to_string());
+            // DB stores canonical Title-Case values; accept any casing.
+            let canonical = ["lowest", "low", "medium", "high", "highest"]
+                .iter()
+                .find(|p| p.eq_ignore_ascii_case(priority))
+                .map(|p| {
+                    let mut c = p.chars();
+                    match c.next() {
+                        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                        None => String::new(),
+                    }
+                });
+            match canonical {
+                Some(p) => query.priority = Some(p),
+                // Unknown priority: provably empty result set.
+                None => return Ok(Vec::new()),
+            }
+        }
+        if let Some(status) = filters.status.as_deref().filter(|s| !s.is_empty()) {
+            // The UI filters by status name; issues store status ids.
+            // Status names are human-cased ("To Do"); URL filters use
+            // snake_case ("to_do") — normalize both sides.
+            let norm = |v: &str| {
+                v.replace('_', " ")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join("")
+                    .to_lowercase()
+            };
+            let wanted = norm(status);
+            let all = self.statuses.list_all().await?;
+            let matched = all.iter().find(|s| norm(s.name.as_ref()) == wanted);
+            match matched {
+                Some(s) => query.status_id = Some(s.id),
+                None => {
+                    // Unknown status name: provably empty result set.
+                    return Ok(Vec::new());
+                }
+            }
         }
         if let Some(sort_by) = filters.sort_by.as_deref() {
             query.sort_by = Some(sort_by.to_string());
@@ -57,6 +97,11 @@ impl crate::context::SearchService for SearchServiceImpl {
                 .require_project_access(project.id, requester)
                 .await?;
             query.project_id = Some(project.id);
+        } else {
+            // Cross-project search must never leak issues from projects the
+            // requester does not own or hold membership in.
+            query.accessible_project_ids =
+                Some(self.authz.accessible_project_ids(requester).await?);
         }
         if let Some(assignee_id) = filters.assignee_id.as_deref().filter(|s| !s.is_empty()) {
             let uuid = uuid::Uuid::parse_str(assignee_id)
