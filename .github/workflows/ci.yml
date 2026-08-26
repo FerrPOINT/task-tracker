@@ -22,6 +22,38 @@ jobs:
       - run: cargo clippy --workspace -- -D warnings
       - run: cargo test --workspace
 
+  migrations:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_USER: tasktracker
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: tasktracker
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tasktracker"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Apply all migrations to clean DB
+        run: cargo run -p migration -- up
+        env:
+          DATABASE_URL: postgres://tasktracker:test@localhost:5432/tasktracker
+      - name: Verify migration status
+        run: cargo run -p migration -- status
+        env:
+          DATABASE_URL: postgres://tasktracker:test@localhost:5432/tasktracker
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

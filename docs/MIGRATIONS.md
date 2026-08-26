@@ -67,18 +67,23 @@ m{YYYYMMDD}_{NNNNNN}_{description}.rs
 migration::Migrator::up(&db_conn, None).await?;
 ```
 
-Вручную:
+Вручную (через migration CLI):
 
 ```bash
 # Применить все миграции
-cargo run -p migration -- up
+DATABASE_URL=postgres://... cargo run -p migration -- up
 
 # Откатить последнюю
-cargo run -p migration -- down
+DATABASE_URL=postgres://... cargo run -p migration -- down
+
+# Пересоздать БД + применить все миграции
+DATABASE_URL=postgres://... cargo run -p migration -- fresh
 
 # Проверить статус
-cargo run -p migration -- status
+DATABASE_URL=postgres://... cargo run -p migration -- status
 ```
+
+CI проверяет применение всех миграций на чистой PostgreSQL (job `migrations`).
 
 ## 7. History Table
 
