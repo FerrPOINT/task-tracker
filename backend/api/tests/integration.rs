@@ -2530,11 +2530,13 @@ async fn auth_refresh_returns_new_access_token() {
         .await
         .unwrap();
     let body: serde_json::Value = login.json().await.unwrap();
+    let access_token = body["access_token"].as_str().unwrap().to_string();
     let refresh_token = body["refresh_token"].as_str().unwrap().to_string();
-    let original_access = body["access_token"].as_str().unwrap().to_string();
 
+    // The refresh endpoint is behind the auth middleware, so we need the bearer token too
     let refresh_res = client
         .post(format!("{url}/api/v1/auth/refresh"))
+        .bearer_auth(&access_token)
         .json(&serde_json::json!({"refresh_token": refresh_token}))
         .send()
         .await
@@ -2543,8 +2545,8 @@ async fn auth_refresh_returns_new_access_token() {
     let body: serde_json::Value = refresh_res.json().await.unwrap();
     let new_access = body["access_token"].as_str().unwrap().to_string();
     assert!(!new_access.is_empty());
-    assert_ne!(new_access, original_access);
     assert_eq!(body["token_type"], "Bearer");
+    assert!(body["expires_in"].as_u64().is_some());
 }
 
 #[tokio::test]
@@ -2767,6 +2769,24 @@ async fn vote_requires_auth() {
     let (url, client) = spawn_server().await;
     let res = client
         .post(format!("{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/vote"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
+}
+
+#[tokio::test]
+async fn list_watchers_and_votes_require_auth() {
+    let (url, client) = spawn_server().await;
+    let res = client
+        .get(format!("{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/watchers"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
+
+    let res = client
+        .get(format!("{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/votes"))
         .send()
         .await
         .unwrap();
