@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { Button } from '@/shared/ui/button'
 import { Textarea } from '@/shared/ui/textarea'
 import { Label } from '@/shared/ui/label'
+import { ConfirmDialog } from '@/shared/ui/async-states'
 import {
   useComments,
   useCreateComment,
@@ -159,6 +160,8 @@ interface CommentsPanelProps {
 export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState<Comment | null>(null)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const { data: comments, isLoading } = useComments(issueId)
   const create = useCreateComment(issueId)
   const update = useUpdateComment(issueId)
@@ -183,9 +186,8 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   }
 
   const handleDelete = (commentId: string) => {
-    if (confirm(t('comments.deleteConfirm'))) {
-      remove.mutate(commentId)
-    }
+    setPendingDeleteId(commentId)
+    setDeleteConfirmOpen(true)
   }
 
   return (
@@ -205,6 +207,18 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
         currentUserId={currentUserId}
         onEdit={handleEdit}
         onDelete={handleDelete}
+      />
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={t('common.delete')}
+        description={t('comments.deleteConfirm')}
+        onConfirm={() => {
+          if (pendingDeleteId) {
+            remove.mutate(pendingDeleteId)
+          }
+          setDeleteConfirmOpen(false)
+        }}
       />
     </div>
   )

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::dto::DashboardDto;
-use domain::{IssueQuery, IssueRepository, ProjectRepository, UserRepository};
+use domain::{IssueQuery, IssueRepository, ProjectRepository};
 use shared::{AppError, UserId};
 
 pub struct DashboardServiceImpl {

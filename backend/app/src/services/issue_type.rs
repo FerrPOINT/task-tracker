@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use domain::{IssueTypeEntity, IssueTypeRepository};
-use shared::{AppError};
+use shared::AppError;
 
 pub struct IssueTypeServiceImpl {
     issue_types: Arc<dyn IssueTypeRepository>,

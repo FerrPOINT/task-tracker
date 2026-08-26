@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::IssueLinkService;
-use domain::{IssueLinkRepository, IssueRepository};
+use domain::IssueRepository;
 use shared::{AppError, IssueId, IssueKey, UserId};
 
 pub struct IssueLinkServiceImpl {

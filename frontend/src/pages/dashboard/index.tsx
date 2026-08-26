@@ -1,6 +1,7 @@
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
+import { ErrorState } from '@/shared/ui/async-states'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
 
@@ -11,7 +12,7 @@ export function DashboardPage() {
 
   if (dashboardLoading || projectsLoading)
     return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
-  if (dashboardError) return <div className="p-4 text-rose-500">{dashboardError.message}</div>
+  if (dashboardError) return <ErrorState message={dashboardError.message} />
 
   const assigned = dashboard?.assigned_issues ?? []
 

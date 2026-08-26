@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::VoteService;
-use domain::{IssueRepository, VoteRepository};
+use domain::IssueRepository;
 use shared::{AppError, IssueId, UserId};
 
 pub struct VoteServiceImpl {

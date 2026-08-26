@@ -1,7 +1,9 @@
 import { useParams, Link } from 'react-router'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
+import { ConfirmDialog } from '@/shared/ui/async-states'
 import { useTrash, useRestoreIssue, usePurgeIssue } from '@/shared/api/hooks'
 
 export function ProjectTrashPage() {
@@ -10,6 +12,7 @@ export function ProjectTrashPage() {
   const { data: trashedIssues = [], isLoading } = useTrash(projectKey)
   const restoreMutation = useRestoreIssue()
   const purgeMutation = usePurgeIssue()
+  const [purgeConfirmId, setPurgeConfirmId] = useState<string | null>(null)
 
   if (!projectKey) {
     return <div className="text-text-muted">{t('trash.noProject')}</div>
@@ -76,18 +79,7 @@ export function ProjectTrashPage() {
                         size="sm"
                         className="h-7 gap-1 px-2 text-xs text-danger hover:text-danger"
                         disabled={purgeMutation.isPending}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              t(
-                                'trash.purgeConfirm',
-                                'Permanently delete this issue? This action cannot be undone.',
-                              ),
-                            )
-                          ) {
-                            purgeMutation.mutate(issue.id)
-                          }
-                        }}
+                        onClick={() => setPurgeConfirmId(issue.id)}
                       >
                         <Trash2 className="h-3 w-3" />
                         {t('trash.purge', 'Delete forever')}
@@ -100,6 +92,22 @@ export function ProjectTrashPage() {
           </table>
         </div>
       )}
+
+      <ConfirmDialog
+        open={purgeConfirmId !== null}
+        onOpenChange={(open) => !open && setPurgeConfirmId(null)}
+        title={t('trash.purge', 'Delete forever')}
+        description={t(
+          'trash.purgeConfirm',
+          'Permanently delete this issue? This action cannot be undone.',
+        )}
+        onConfirm={() => {
+          if (purgeConfirmId) {
+            purgeMutation.mutate(purgeConfirmId)
+          }
+          setPurgeConfirmId(null)
+        }}
+      />
     </div>
   )
 }

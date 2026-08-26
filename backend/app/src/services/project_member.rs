@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
-use crate::dto::{ProjectMemberDto};
+use crate::dto::ProjectMemberDto;
 use domain::{ProjectMember, ProjectMemberRepository, ProjectRole, UserRepository};
 use shared::{AppError, ProjectId, UserId};
 

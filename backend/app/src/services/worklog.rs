@@ -2,9 +2,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::commands::{CreateWorklogCommand, UpdateWorklogCommand};
-use crate::context::{WorklogService};
-use crate::dto::{WorklogDto};
-use domain::{IssueRepository, UserRepository, WorklogRepository};
+use crate::dto::WorklogDto;
 use shared::{AppError, IssueId, UserId};
 
 pub struct WorklogServiceImpl {

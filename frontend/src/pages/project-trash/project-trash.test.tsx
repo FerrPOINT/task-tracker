@@ -84,11 +84,12 @@ describe('ProjectTrashPage', () => {
   })
 
   it('purges an issue', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     render(wrapper(<ProjectTrashPage />))
     await waitFor(() => expect(screen.getByText('Deleted task')).toBeInTheDocument())
     const purgeButton = screen.getByRole('button', { name: /удалить навсегда/i })
     await userEvent.click(purgeButton)
+    const confirmButton = screen.getByRole('button', { name: /подтвердить/i })
+    await userEvent.click(confirmButton)
     expect(mockPurge).toHaveBeenCalledWith('i1')
   })
 })

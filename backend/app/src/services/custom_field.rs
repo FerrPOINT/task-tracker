@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::CustomFieldService;
-use domain::{CustomFieldRepository, IssueRepository, ProjectMemberRepository, ProjectRepository};
+use domain::{IssueRepository, ProjectMemberRepository, ProjectRepository};
 use shared::{AppError, IssueId, ProjectId, ProjectKey, UserId};
 
 pub struct CustomFieldServiceImpl {

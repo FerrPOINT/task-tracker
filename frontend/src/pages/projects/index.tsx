@@ -48,7 +48,7 @@ export function ProjectsPage() {
   const remove = useDeleteProject()
 
   if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
-  if (error) return <div className="p-4 text-rose-500">{error.message}</div>
+  if (error) return <ErrorState message={error.message} />
 
   const isFormPending = create.isPending || update.isPending
   const formError = create.error ?? update.error

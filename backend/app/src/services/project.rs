@@ -1,9 +1,8 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::{ProjectService};
-use crate::dto::{ProjectDto};
-use domain::{Board, BoardRepository, IssueQuery, IssueRepository, ProjectRepository, UserRepository};
+use crate::dto::ProjectDto;
+use domain::{Board, IssueQuery, IssueRepository, ProjectRepository};
 use shared::{AppError, BoardId, ProjectId, ProjectKey, UserId};
 
 pub struct ProjectServiceImpl {

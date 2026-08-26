@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
+import { ErrorState } from '@/shared/ui/async-states'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -197,7 +198,7 @@ export function ProjectBacklogPage() {
 
   if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
   if (error || !backlog)
-    return <div className="p-4 text-rose-500">{error?.message ?? t('issue.notFound')}</div>
+    return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { sprint: activeSprint, sprint_issues, backlog_issues } = backlog
   const futureSprints =

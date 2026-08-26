@@ -7,10 +7,12 @@ use crate::commands::{
     UpdateIssueCommand, UpdateNotificationSettingsCommand, UpdateProjectCommand,
     UpdateWorklogCommand,
 };
-use crate::dto::{AuthDto, BacklogDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto, WorklogDto};
+use crate::dto::{
+    AuthDto, BacklogDto, BoardDto, CommentDto, DashboardDto, IssueDto, ProjectDto, WorklogDto,
+};
 use shared::{
-    AppError, AttachmentId, CommentId, IssueId, IssueLinkId, LabelId,
-    ProjectKey, StatusId, UserId, WorklogId,
+    AppError, AttachmentId, CommentId, IssueId, IssueLinkId, LabelId, ProjectKey, StatusId, UserId,
+    WorklogId,
 };
 
 use crate::context::filters::SearchFilters;
@@ -172,7 +174,10 @@ pub trait LabelService: Send + Sync {
         requester: UserId,
     ) -> Result<crate::context::LabelDto, AppError>;
     async fn delete(&self, label_id: LabelId, requester: UserId) -> Result<(), AppError>;
-    async fn list_for_issue(&self, issue_id: IssueId) -> Result<Vec<crate::context::LabelDto>, AppError>;
+    async fn list_for_issue(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<crate::context::LabelDto>, AppError>;
     async fn attach(
         &self,
         issue_id: IssueId,
@@ -229,7 +234,10 @@ pub trait ReportService: Send + Sync {
         project_id: shared::ProjectId,
         count: u32,
     ) -> Result<Vec<crate::context::VelocitySprintDto>, AppError>;
-    async fn get_burndown(&self, sprint_id: shared::SprintId) -> Result<crate::context::BurndownDto, AppError>;
+    async fn get_burndown(
+        &self,
+        sprint_id: shared::SprintId,
+    ) -> Result<crate::context::BurndownDto, AppError>;
     async fn get_cumulative_flow(
         &self,
         project_id: shared::ProjectId,
@@ -244,15 +252,23 @@ pub trait ReportService: Send + Sync {
 pub trait WatcherService: Send + Sync {
     async fn watch(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
     async fn unwatch(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
-    async fn list_watchers(&self, issue_id: IssueId) -> Result<Vec<crate::context::WatcherDto>, AppError>;
+    async fn list_watchers(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<crate::context::WatcherDto>, AppError>;
     async fn is_watching(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
 }
 
 #[async_trait]
 pub trait VoteService: Send + Sync {
-    async fn vote(&self, issue_id: IssueId, user_id: UserId) -> Result<crate::context::VoteDto, AppError>;
+    async fn vote(
+        &self,
+        issue_id: IssueId,
+        user_id: UserId,
+    ) -> Result<crate::context::VoteDto, AppError>;
     async fn unvote(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
-    async fn list_votes(&self, issue_id: IssueId) -> Result<Vec<crate::context::VoteDto>, AppError>;
+    async fn list_votes(&self, issue_id: IssueId)
+    -> Result<Vec<crate::context::VoteDto>, AppError>;
     async fn count_votes(&self, issue_id: IssueId) -> Result<u64, AppError>;
     async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
 }
@@ -352,7 +368,10 @@ pub trait VersionService: Send + Sync {
 #[async_trait]
 pub trait AdminService: Send + Sync {
     /// List all users. `requester_id` must be a system admin.
-    async fn list_users(&self, requester_id: UserId) -> Result<Vec<crate::context::AdminUserDto>, AppError>;
+    async fn list_users(
+        &self,
+        requester_id: UserId,
+    ) -> Result<Vec<crate::context::AdminUserDto>, AppError>;
 
     /// Create a new user. `requester_id` must be a system admin. The password
     /// is hashed via argon2; the plaintext is never logged or persisted.

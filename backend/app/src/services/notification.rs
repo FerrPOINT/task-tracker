@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::NotificationService;
-use domain::{NotificationRepository, UserNotificationSettingsRepository};
 use shared::{AppError, UserId};
 
 pub struct NotificationServiceImpl {

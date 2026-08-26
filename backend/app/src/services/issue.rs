@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::commands::{CreateIssueCommand, UpdateIssueCommand};
-use crate::context::IssueService;
-use crate::dto::{IssueDto};
-use domain::{Issue, IssueQuery, IssueRepository, NotificationRepository, ProjectRepository, BoardRepository, StatusRepository, WorkflowTransitionRepository, UserRepository};
+use crate::dto::IssueDto;
+use domain::{
+    BoardRepository, Issue, IssueQuery, IssueRepository, ProjectRepository, StatusRepository,
+    WorkflowTransitionRepository,
+};
 use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
 
 pub struct IssueServiceImpl {

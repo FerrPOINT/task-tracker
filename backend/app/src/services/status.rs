@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use domain::StatusRepository;
-use shared::{AppError};
+use shared::AppError;
 
 pub struct StatusServiceImpl {
     statuses: Arc<dyn StatusRepository>,

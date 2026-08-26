@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::dto::{IssueDto, SprintDto};
-use domain::{IssueQuery, IssueRepository, ProjectRepository, SprintRepository, UserRepository};
+use domain::{IssueQuery, IssueRepository, ProjectRepository};
 use shared::{AppError, ProjectId, SprintId};
 
 #[async_trait]

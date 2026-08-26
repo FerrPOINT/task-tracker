@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::WatcherService;
-use domain::{IssueRepository, ProjectRepository, UserRepository, WatcherRepository};
+use domain::{IssueRepository, ProjectRepository};
 use shared::{AppError, IssueId, UserId};
 
 pub struct WatcherServiceImpl {

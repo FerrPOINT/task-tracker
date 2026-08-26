@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::VersionService;
-use domain::{ProjectRepository, ProjectVersionRepository};
+use domain::ProjectRepository;
 use shared::{AppError, ProjectKey};
 
 pub struct VersionServiceImpl {

@@ -2,8 +2,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::context::SearchFilters;
-use crate::dto::{IssueDto};
-use domain::{IssueQuery, IssueRepository, ProjectRepository, UserRepository};
+use crate::dto::IssueDto;
+use domain::{IssueQuery, IssueRepository, ProjectRepository};
 use shared::{AppError, ProjectKey, UserId};
 
 pub struct SearchServiceImpl {

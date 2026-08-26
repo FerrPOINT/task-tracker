@@ -2,7 +2,10 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::dto::{BacklogDto, BoardColumnDto, BoardDto, SprintDto};
-use domain::{BoardRepository, IssueQuery, IssueRepository, SprintRepository, StatusCategory, StatusRepository, UserRepository, WorkflowTransitionRepository};
+use domain::{
+    IssueQuery, IssueRepository, SprintRepository, StatusCategory, StatusRepository,
+    WorkflowTransitionRepository,
+};
 use shared::{AppError, IssueId, ProjectKey, StatusId};
 
 pub struct BoardServiceImpl {

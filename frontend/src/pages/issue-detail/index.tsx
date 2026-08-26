@@ -6,6 +6,7 @@ import { Toaster, toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Button } from '@/shared/ui/button'
+import { ConfirmDialog } from '@/shared/ui/async-states'
 import {
   useWorklogs,
   useCreateWorklog,
@@ -37,6 +38,7 @@ export function IssueDetailPage() {
   const currentUserId = useAuthStore((s) => s.userId)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingWorklog, setEditingWorklog] = useState<Worklog | undefined>(undefined)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
   const issueQuery = useIssue(id)
   const boardQuery = useBoard(issueQuery.data?.project_key)
@@ -149,11 +151,7 @@ export function IssueDetailPage() {
               variant="secondary"
               size="sm"
               disabled={deleteIssueMutation.isPending}
-              onClick={() => {
-                if (window.confirm(t('issue.deleteConfirm'))) {
-                  deleteIssueMutation.mutate(id)
-                }
-              }}
+              onClick={() => setDeleteConfirmOpen(true)}
             >
               {t('issue.delete')}
             </Button>
@@ -267,6 +265,16 @@ export function IssueDetailPage() {
         onOpenChange={setDialogOpen}
         onSubmit={handleSubmit}
         worklog={editingWorklog}
+      />
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title={t('issue.delete')}
+        description={t('issue.deleteConfirm')}
+        onConfirm={() => {
+          deleteIssueMutation.mutate(id)
+          setDeleteConfirmOpen(false)
+        }}
       />
       <Toaster position="top-center" richColors />
     </div>

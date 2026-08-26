@@ -17,6 +17,7 @@ import { Label } from '@/shared/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table'
 import { Textarea } from '@/shared/ui/textarea'
+import { ErrorState, LoadingState, EmptyState } from '@/shared/ui/async-states'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -68,10 +69,9 @@ function QueryState({
   children: React.ReactNode
 }) {
   const { t } = useTranslation()
-  if (isLoading)
-    return <p className="py-10 text-center text-sm text-text-muted">{t('admin.loading')}</p>
-  if (error) return <p className="py-10 text-center text-sm text-danger">{t('admin.error')}</p>
-  if (empty) return <p className="py-10 text-center text-sm text-text-muted">{t('admin.empty')}</p>
+  if (isLoading) return <LoadingState message={t('admin.loading')} />
+  if (error) return <ErrorState message={t('admin.error')} />
+  if (empty) return <EmptyState message={t('admin.empty')} />
   return <>{children}</>
 }
 

@@ -2,9 +2,8 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::commands::{CreateCommentCommand, UpdateCommentCommand};
-use crate::context::CommentService;
-use crate::dto::{CommentDto};
-use domain::{CommentRepository, IssueRepository, NotificationRepository, ProjectRepository, UserRepository};
+use crate::dto::CommentDto;
+use domain::ProjectRepository;
 use shared::{AppError, IssueId, UserId};
 
 pub struct CommentServiceImpl {

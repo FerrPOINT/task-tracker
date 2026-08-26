@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::ComponentService;
-use domain::{ProjectComponentRepository, ProjectRepository};
+use domain::ProjectRepository;
 use shared::{AppError, ProjectKey};
 
 pub struct ComponentServiceImpl {

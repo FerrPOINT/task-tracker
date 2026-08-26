@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use domain::{IssueQuery, IssueRepository, IssueStatusHistoryRepository, SprintRepository, StatusCategory, StatusRepository};
+use domain::{IssueQuery, IssueRepository, SprintRepository, StatusCategory, StatusRepository};
 use shared::{AppError, ProjectId, SprintId, StatusId};
 
 pub struct ReportServiceImpl {

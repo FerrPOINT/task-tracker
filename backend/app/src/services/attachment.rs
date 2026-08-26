@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::AttachmentService;
-use domain::{AttachmentRepository, FileStorage, IssueRepository};
+use domain::IssueRepository;
 use shared::{AppError, IssueId, UserId};
 
 pub struct AttachmentServiceImpl {

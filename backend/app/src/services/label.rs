@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::context::LabelService;
-use domain::{LabelRepository, IssueRepository, ProjectMemberRepository, ProjectRepository};
+use domain::{IssueRepository, ProjectMemberRepository, ProjectRepository};
 use shared::{AppError, IssueId, ProjectId, ProjectKey, UserId};
 
 pub struct LabelServiceImpl {
