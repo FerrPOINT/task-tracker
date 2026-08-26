@@ -100,7 +100,7 @@
 
 - Все sensitive-поля заменяются на `[REDACTED]`.
 - Проверка перед коммитом: `scripts/scan-secrets.sh`.
-- Security incident: см. `docs/SECURITY_INCIDENT_RESPONSE.md`.
+- Security incident: см. `docs/SECURITY.md`.
 
 ## 11. CLI и фоновые job
 

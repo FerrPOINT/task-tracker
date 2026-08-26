@@ -92,7 +92,7 @@ task-tracker/
     ├── API_EDGE_CASES.md
     ├── API_STANDARDS.md
     ├── API_VERSIONING.md
-    ├── AUTH_ADVANCED.md
+    ├── SECURITY.md
     ├── BACKUP_RESTORE.md
     ├── CACHING.md
     ├── CI_CD.md
@@ -102,7 +102,7 @@ task-tracker/
     ├── DATABASE_INDEXES.md
     ├── DATABASE_STANDARDS.md
     ├── DATA_MODEL.md
-    ├── DATA_RETENTION.md
+    ├── BACKUP_RESTORE.md
     ├── DEPLOYMENT.md
     ├── DESIGN_TOKENS.md
     ├── DOMAIN_MODEL.md
@@ -116,7 +116,7 @@ task-tracker/
     ├── I18N.md
     ├── JIRA_GAP_DETAILS.md
     ├── JIRA_UI_CAPTURE.md
-    ├── JQL.md
+    ├── API.md
     ├── LIBRARIES.md
     ├── LOAD_BALANCING.md
     ├── LOCAL_SETUP.md
@@ -137,7 +137,7 @@ task-tracker/
     ├── ROUTING.md
     ├── RUNTIME.md
     ├── SECURITY.md
-    ├── SECURITY_INCIDENT_RESPONSE.md
+    ├── SECURITY.md
     ├── STORAGE.md
     ├── SYSTEM_ADMIN.md
     ├── TESTING.md
@@ -147,7 +147,7 @@ task-tracker/
     ├── UI_UX.md
     ├── USER_STORIES.md
     ├── UX_PRODUCT.md
-    ├── WEBSOCKET_EVENTS.md
+    ├── EVENTS.md
     ├── WORKFLOW.md
     └── adr/0001-rust-axum.md ... adr/0010-apalis.md
 ```

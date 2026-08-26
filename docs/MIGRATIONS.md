@@ -2,197 +2,142 @@
 
 ## 1. Overview
 
-Миграции управляют схемой PostgreSQL. Используем `refinery` 0.8.15 (или SeaORM Migrator для проектов на SeaORM). Все миграции — SQL-файлы с контролем версий и контрольной суммой.
+Миграции управляют схемой PostgreSQL. Используется **SeaORM Migrator** (`sea-orm-migration` 1.1). Миграции — Rust-файлы с типизированным API, регистрируются в `migration/src/lib.rs`.
 
 ## 2. Tooling
 
 | Tool | Purpose |
 |------|---------|
-| `refinery_cli` | CLI для применения/отката миграций |
-| `sqlx` | Compile-time checked queries |
-| `sea-orm-cli` | Генерация сущностей из схемы (опционально) |
+| `sea-orm-migration` | Применение миграций при старте сервера |
+| `cargo build --bin gen-openapi` | Генерация OpenAPI spec |
+| `sea-orm-cli generate entity` | Генерация сущностей из схемы (опционально) |
 
 ## 3. Folder Structure
 
 ```
-backend/migrations/
-├── V1__initial_schema.sql
-├── V2__add_issue_comments.sql
-├── V3__add_workflow.sql
-├── V4__add_attachments.sql
-├── V5__add_notifications.sql
-├── V6__add_search_index.sql
-├── V7__add_reports_cache.sql
-└── refinery.toml
+backend/migration/src/
+├── lib.rs                        # Migrator registration
+├── m20250723_000001_create_tables.rs
+├── m20250723_0000015_workflow_and_issue_types.rs
+├── m20250723_0000016_labels.rs
+├── m20250723_0000017_issue_links.rs
+├── m20250723_0000018_fulltext_search.rs
+├── m20260824_0000020_notifications.rs
+├── m20260824_0000021_admin_audit_settings.rs
+├── m20260824_0000022_performance_indexes.rs
+├── m20260825_0000023_watchers_votes.rs
+├── m20260825_0000024_issue_soft_delete.rs
+├── m20260825_0000025_components_versions.rs
+├── m20260825_0000026_custom_fields.rs
+├── m20260826_0000027_fk_indexes.rs
 ```
 
 ## 4. Naming Convention
 
 ```
-V{version}__{description}.sql
+m{YYYYMMDD}_{NNNNNN}_{description}.rs
 ```
 
-- Версия — целое число, строго последовательное.
-- Описание — snake_case.
-- Пример: `V12__add_issue_links.sql`.
+- Дата — дата создания миграции.
+- NNNNNN — порядковый номер (6 цифр), строго последовательный.
+- Description — snake_case.
+- Пример: `m20260826_0000027_fk_indexes.rs`.
 
 ## 5. Migration Rules
 
 ### 5.1 Must
 
-- Каждая миграция идемпотентна в пределах своей версии.
-- Все изменения обратимо или безопасны для отката.
-- Использовать `IF NOT EXISTS` / `IF EXISTS` там, где это уместно.
+- Каждая миграция регистрируется в `migration/src/lib.rs` (`Vec<Box<dyn MigrationTrait>>`).
+- Все изменения обратимы или безопасны для отката (`down` метод).
 - Добавлять новые колонки nullable или с default.
 - Создавать индексы concurrently в production.
 
 ### 5.2 Must Not
 
-- Нельзя удалять колонки, на которые есть активные зависимости.
-- Нельзя переименовывать таблицы в одной миграции без backward-compatible alias.
-- Нельзя менять тип колонки с потерей данных.
-- Нельзя делать heavy ALTER на больших таблицах без отдельного runbook.
+- Не изменять существующие миграции после коммита — только новая миграция.
+- Не удалять миграции из `lib.rs` — только помечать как deprecated.
+- Не использовать raw SQL без необходимости — предпочитать SeaORM API.
 
-## 6. Example Migration
+## 6. Applying Migrations
 
-```sql
--- V2__add_issue_comments.sql
-CREATE TABLE IF NOT EXISTS issue_comments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    issue_id UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
-    author_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    body TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ
-);
+Миграции применяются автоматически при старте сервера:
 
-CREATE INDEX IF NOT EXISTS idx_issue_comments_issue_id ON issue_comments(issue_id);
+```rust
+// backend/infra/src/db.rs
+migration::Migrator::up(&db_conn, None).await?;
 ```
 
-## 7. Applying Migrations
-
-### 7.1 Local
+Вручную:
 
 ```bash
-cd backend
-refinery setup -c refinery.toml
-refinery migrate -c refinery.toml -p migrations
+# Применить все миграции
+cargo run -p migration -- up
+
+# Откатить последнюю
+cargo run -p migration -- down
+
+# Проверить статус
+cargo run -p migration -- status
 ```
 
-### 7.2 Docker
+## 7. History Table
+
+`sealock_migrations` — автоматически создаётся SeaORM Migrator. Хранит версию и контрольную сумму каждой применённой миграции.
+
+## 8. Creating a New Migration
 
 ```bash
-docker compose run --rm migrator
+# Создать файл
+touch backend/migration/src/m20260101_0000028_description.rs
 ```
 
-### 7.3 CLI
+Шаблон:
 
-```bash
-task-tracker migrate status
-task-tracker migrate up
-task-tracker migrate down --count 1
-task-tracker migrate redo
-task-tracker migrate create add_sprints_table
+```rust
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // DDL operations
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // Rollback
+    }
+}
 ```
 
-## 8. Migration Table
+Регистрация в `lib.rs`:
 
-`refinery_schema_history` автоматически создаётся refinery:
+```rust
+pub struct Migrator;
 
-| Column | Description |
-|--------|-------------|
-| `version` | номер миграции |
-| `name` | имя файла |
-| `applied_on` | дата применения |
-| `checksum` | SHA256 содержимого |
-
-## 9. Zero-Downtime Migrations
-
-### 9.1 Pattern: Add → Dual Write → Migrate → Remove
-
-1. **Deploy code** that writes to both old and new schema.
-2. **Backfill** data in background job.
-3. **Deploy code** that reads from new schema.
-4. **Drop** old columns in later migration.
-
-### 9.2 Example
-
-```sql
--- V10__add_issue_display_name.sql
-ALTER TABLE issues ADD COLUMN IF NOT EXISTS display_key VARCHAR(32);
-
--- Backfill via application job, not in migration.
--- V15__drop_issue_key.sql (later)
--- ALTER TABLE issues DROP COLUMN IF EXISTS old_key;
+#[async_trait::async_trait]
+impl MigratorTrait for Migrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        vec![
+            // ...
+            Box::new(m20260101_0000028_description::Migration),
+        ]
+    }
+}
 ```
 
-## 10. Rollbacks
+## 9. Production
 
-### 10.1 Policy
+- Миграции применяются при старте сервера автоматически.
+- В production откатываются через **compensating migration**, а не `down`.
+- Перед деплоем: тест на пустой БД (`cargo run -p migration -- fresh`).
+- Резервная копия перед миграцией обязательна.
 
-- Откат миграций допускается только на staging/dev.
-- В production откатываются изменения через **compensating migration**, а не `refinery undo`.
+## 10. Environments
 
-### 10.2 Compensating Migration
-
-```sql
--- V11__revert_add_display_key.sql
-ALTER TABLE issues DROP COLUMN IF EXISTS display_key;
-```
-
-## 11. Data Migrations
-
-Если нужно перенести данные:
-
-- Делать в отдельной миграции после DDL.
-- Для больших объёмов — batch update с `LIMIT` и `OFFSET`.
-- Запускать вне пиковой нагрузки.
-
-## 12. Seeding
-
-### 12.1 Fixtures
-
-```
-backend/fixtures/
-├── dev/
-│   ├── users.sql
-│   ├── projects.sql
-│   └── issues.sql
-└── test/
-    └── minimal.sql
-```
-
-### 12.2 Apply
-
-```bash
-psql $TASKTRACKER_DATABASE_URL -f backend/fixtures/dev/users.sql
-```
-
-## 13. Testing Migrations
-
-- Каждая миграция тестируется в CI на fresh PostgreSQL testcontainer.
-- Проверка `up` + `down` (или compensating) + `up`.
-- Проверка, что приложение стартует после миграций.
-
-## 14. CI/CD
-
-```yaml
-migrate:
-  image: task-tracker-migrator:latest
-  script:
-    - refinery migrate -c refinery.toml -p migrations
-```
-
-## 15. Environment-Specific Notes
-
-| Env | Approach |
-|-----|----------|
-| local | `refinery migrate` при старте dev-сервера |
-| test | fresh DB + all migrations перед каждым прогоном |
-| staging | same as production |
-| production | separate migrator job, migrations before app deploy |
-## References
-
-- `docs/ARCHITECTURE.md`
-- `docs/DATA_MODEL.md`
-- `docs/DEPLOYMENT.md`
+| Environment | When |
+|-------------|------|
+| local | `Migrator::up` при старте dev-сервера |
+| CI | `Migrator::up` на testcontainers PostgreSQL |
+| production | `Migrator::up` при старте backend контейнера |

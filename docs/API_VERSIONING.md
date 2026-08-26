@@ -71,4 +71,4 @@ Response:
 
 - `docs/API.md`
 - `docs/ARCHITECTURE.md`
-- `CHANGELOG.md` (корень репозитория)
+- `RELEASE.md` (корень репозитория)

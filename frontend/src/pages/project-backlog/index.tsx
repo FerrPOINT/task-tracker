@@ -197,8 +197,7 @@ export function ProjectBacklogPage() {
   const error = backlogError
 
   if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
-  if (error || !backlog)
-    return <ErrorState message={error?.message ?? t('issue.notFound')} />
+  if (error || !backlog) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { sprint: activeSprint, sprint_issues, backlog_issues } = backlog
   const futureSprints =

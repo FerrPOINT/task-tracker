@@ -99,4 +99,4 @@
 - `docs/DEPLOYMENT.md`
 - `docs/OPS_RUNBOOK.md`
 - `docs/MONITORING.md`
-- `docs/WEBSOCKET_EVENTS.md`
+- `docs/EVENTS.md`

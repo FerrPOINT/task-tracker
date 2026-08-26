@@ -72,7 +72,7 @@
 ## 8. WebSocket
 
 - Real-time события — отдельный WebSocket endpoint `/ws/v1`.
-- Структура сообщений зафиксирована в `docs/WEBSOCKET_EVENTS.md`.
+- Структура сообщений зафиксирована в `docs/EVENTS.md`.
 
 ## 9. Rate limiting
 
@@ -93,5 +93,5 @@
 - `docs/API_VERSIONING.md` — политика версионирования.
 - `docs/ERROR_HANDLING.md` — формат ошибок.
 - `docs/PAGINATION.md` — пагинация и bulk-операции.
-- `docs/WEBSOCKET_EVENTS.md` — realtime events.
+- `docs/EVENTS.md` — realtime events.
 - `docs/SECURITY.md` — auth, CORS, CSRF.

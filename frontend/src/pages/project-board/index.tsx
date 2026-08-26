@@ -90,8 +90,7 @@ export function ProjectBoardPage() {
   const [dropTarget, setDropTarget] = useState<string | null>(null)
 
   if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
-  if (error || !board)
-    return <ErrorState message={error?.message ?? t('issue.notFound')} />
+  if (error || !board) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { columns, issues, sprint } = board
 

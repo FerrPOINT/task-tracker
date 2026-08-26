@@ -84,4 +84,4 @@ docker compose cp api:/data/attachments ./attachments-backup
 - `docs/DEPLOYMENT.md`
 - `docs/OPS_RUNBOOK.md`
 - `docs/MONITORING.md`
-- `docs/DATA_RETENTION.md`
+- `docs/BACKUP_RESTORE.md`

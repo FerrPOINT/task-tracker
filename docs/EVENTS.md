@@ -76,5 +76,5 @@
 
 - `docs/NOTIFICATIONS.md`
 - `docs/WORKFLOW.md`
-- `docs/WEBSOCKET_EVENTS.md`
+- `docs/EVENTS.md`
 - `docs/SECURITY.md`

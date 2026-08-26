@@ -22,7 +22,7 @@ Semantic Versioning: `MAJOR.MINOR.PATCH`.
 
 ## 4. Release Checklist
 
-- [ ] `CHANGELOG.md` updated.
+- [ ] `RELEASE.md` updated.
 - [ ] Version bumped in `backend/Cargo.toml`.
 - [ ] Version bumped in `frontend/package.json`.
 - [ ] API version unchanged unless breaking.
@@ -79,7 +79,7 @@ git checkout v0.1.9
 
 ## References
 
-- `CHANGELOG.md` (корень репозитория)
+- `RELEASE.md` (корень репозитория)
 - `CONTRIBUTING.md` (корень репозитория)
 - `docs/DEPLOYMENT.md`
 - `docs/OPS_RUNBOOK.md`

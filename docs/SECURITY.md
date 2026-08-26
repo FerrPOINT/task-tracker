@@ -9,8 +9,8 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 - Passwords hashed with **argon2id**.
 - JWT access token (15 min) + httpOnly refresh cookie (7 days, rotation).
 - Failed login lockout после 5 попыток на 15 минут.
-- MFA/TOTP — future, интерфейс заложен в `users.mfa_enabled`.
-- OAuth/OpenID/LDAP — future, через admin settings.
+- MFA/TOTP — не реализовано (future).
+- OAuth/OpenID/LDAP — не реализовано (future).
 
 ## 3. Authorization
 
@@ -77,8 +77,8 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 
 - Size limits per type.
 - Magic bytes validation.
-- ClamAV virus scan.
-- Quarantine bucket for positives.
+- ClamAV virus scan — не реализовано (future).
+- Quarantine bucket — не реализовано (future).
 - No direct execution of uploaded files.
 
 ## 11. Rate Limiting
@@ -115,7 +115,7 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 - Read-only filesystem где возможно.
 - Distroless/alpine final images.
 - No secrets в image layers.
-- Scan images with Trivy.
+- Image scan with Trivy — не реализовано (future).
 
 ## 15. Network
 
@@ -158,8 +158,8 @@ Content-Security-Policy: ...
 - `docs/SYSTEM_ADMIN.md` — users/groups/permissions.
 - `docs/STORAGE.md` — attachment security.
 - `docs/ERROR_HANDLING.md` — error disclosure.
-- `docs/AUTH_ADVANCED.md` — детали refresh rotation, reuse detection, rate limits.
-- `docs/SECURITY_INCIDENT_RESPONSE.md` — план реагирования на инциденты.
+- `docs/SECURITY.md` — детали refresh rotation, reuse detection, rate limits.
+- `docs/SECURITY.md` — план реагирования на инциденты.
 
 ## References
 

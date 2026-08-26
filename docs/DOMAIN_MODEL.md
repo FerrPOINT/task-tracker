@@ -60,7 +60,7 @@
 | Email | `user@example.com` | RFC-5322 subset |
 | Password | — | min 8 chars, 1 upper, 1 lower, 1 digit |
 | Color | `#1a2b3c` | hex 6 |
-| JQLQuery | `status = open AND assignee = me` | grammar в `docs/JQL.md` |
+| JQLQuery | `status = open AND assignee = me` | grammar в `docs/API.md` |
 
 ## 4. Domain Events
 
@@ -92,5 +92,5 @@
 - `docs/ARCHITECTURE.md` — общая архитектура.
 - `docs/DATA_MODEL.md` — физическая модель данных.
 - `docs/WORKFLOW.md` — workflow engine.
-- `docs/JQL.md` — поисковый DSL.
+- `docs/API.md` — поисковый DSL.
 - `docs/API.md` — REST API.

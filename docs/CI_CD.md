@@ -278,7 +278,7 @@ pnpm vitest run
 ## 10. Release Pipeline
 
 1. Создание release branch `release/v0.1.0`.
-2. PR в `main` с обновлением `CHANGELOG.md`.
+2. PR в `main` с обновлением `RELEASE.md`.
 3. CI green.
 4. Tag `v0.1.0`.
 5. Docker image `ghcr.io/ferrpoint/task-tracker:v0.1.0`.
