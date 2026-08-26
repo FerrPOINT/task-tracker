@@ -54,6 +54,41 @@ jobs:
         env:
           DATABASE_URL: postgres://tasktracker:test@localhost:5432/tasktracker
 
+  coverage:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Run tests with coverage
+        run: cargo llvm-cov --workspace --summary-only 2>&1 | tee /tmp/cov.txt
+      - name: Enforce coverage threshold (60%)
+        run: |
+          COV=$(grep '^TOTAL' /tmp/cov.txt | awk '{print $NF}' | tr -d '%')
+          echo "Coverage: ${COV}%"
+          if (( $(echo "$COV < 60" | bc -l) )); then
+            echo "::error::Coverage ${COV}% is below 60% threshold"
+            exit 1
+          fi
+
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
+
   frontend:
     runs-on: ubuntu-latest
     defaults:
