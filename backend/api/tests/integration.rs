@@ -2640,16 +2640,8 @@ async fn users_list_returns_all_users() {
     let body: serde_json::Value = res.json().await.unwrap();
     let users = body["users"].as_array().unwrap();
     assert!(users.len() >= 2);
-    assert!(
-        users
-            .iter()
-            .any(|u| u["email"] == "demo@example.com")
-    );
-    assert!(
-        users
-            .iter()
-            .any(|u| u["email"] == "second@example.com")
-    );
+    assert!(users.iter().any(|u| u["email"] == "demo@example.com"));
+    assert!(users.iter().any(|u| u["email"] == "second@example.com"));
 }
 
 // ─── Watchers / votes integration tests ──────────────────────────────
@@ -2706,7 +2698,9 @@ async fn watch_unwatch_and_list_watchers_flow() {
 async fn watch_requires_auth() {
     let (url, client) = spawn_server().await;
     let res = client
-        .post(format!("{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/watch"))
+        .post(format!(
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/watch"
+        ))
         .send()
         .await
         .unwrap();
@@ -2768,7 +2762,9 @@ async fn vote_unvote_and_list_votes_flow() {
 async fn vote_requires_auth() {
     let (url, client) = spawn_server().await;
     let res = client
-        .post(format!("{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/vote"))
+        .post(format!(
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/vote"
+        ))
         .send()
         .await
         .unwrap();
@@ -2779,14 +2775,18 @@ async fn vote_requires_auth() {
 async fn list_watchers_and_votes_require_auth() {
     let (url, client) = spawn_server().await;
     let res = client
-        .get(format!("{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/watchers"))
+        .get(format!(
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/watchers"
+        ))
         .send()
         .await
         .unwrap();
     assert_eq!(res.status(), 401);
 
     let res = client
-        .get(format!("{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/votes"))
+        .get(format!(
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000001/votes"
+        ))
         .send()
         .await
         .unwrap();
@@ -3292,7 +3292,9 @@ async fn custom_field_set_and_list_issue_values() {
 
     // set value on issue
     let set = client
-        .put(format!("{url}/api/v1/issues/{issue_id}/custom-fields/{field_id}/value"))
+        .put(format!(
+            "{url}/api/v1/issues/{issue_id}/custom-fields/{field_id}/value"
+        ))
         .bearer_auth(&token)
         .json(&serde_json::json!({"value": 8}))
         .send()
