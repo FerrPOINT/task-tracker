@@ -60,9 +60,7 @@ export function SprintFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? t('sprints.editSprint') : t('sprints.createSprint')}
-          </DialogTitle>
+          <DialogTitle>{isEdit ? t('sprints.editSprint') : t('sprints.createSprint')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           {error && <div className="text-sm text-rose-500">{error.message}</div>}

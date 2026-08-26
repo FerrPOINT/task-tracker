@@ -30,27 +30,19 @@ const IssueCreatePage = lazy(() =>
 const IssueDetailPage = lazy(() =>
   import('@/pages/issue-detail').then((m) => ({ default: m.IssueDetailPage })),
 )
-const LoginPage = lazy(() =>
-  import('@/pages/login').then((m) => ({ default: m.LoginPage })),
-)
+const LoginPage = lazy(() => import('@/pages/login').then((m) => ({ default: m.LoginPage })))
 const RegisterPage = lazy(() =>
   import('@/pages/register').then((m) => ({ default: m.RegisterPage })),
 )
 const NotificationsPage = lazy(() =>
   import('@/pages/notifications').then((m) => ({ default: m.NotificationsPage })),
 )
-const ReportsPage = lazy(() =>
-  import('@/pages/reports').then((m) => ({ default: m.ReportsPage })),
-)
-const AdminPage = lazy(() =>
-  import('@/pages/admin').then((m) => ({ default: m.AdminPage })),
-)
+const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })))
+const AdminPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.AdminPage })))
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center py-16 text-sm text-text-muted">
-      Loading…
-    </div>
+    <div className="flex items-center justify-center py-16 text-sm text-text-muted">Loading…</div>
   )
 }
 
@@ -70,7 +62,10 @@ export const router = createBrowserRouter([
           { path: '/projects/:projectKey/board', element: withSuspense(<ProjectBoardPage />) },
           { path: '/projects/:projectKey/backlog', element: withSuspense(<ProjectBacklogPage />) },
           { path: '/projects/:projectKey/trash', element: withSuspense(<ProjectTrashPage />) },
-          { path: '/projects/:projectKey/settings/custom-fields', element: withSuspense(<ProjectCustomFieldsPage />) },
+          {
+            path: '/projects/:projectKey/settings/custom-fields',
+            element: withSuspense(<ProjectCustomFieldsPage />),
+          },
           { path: '/search', element: withSuspense(<SearchPage />) },
           { path: '/notifications', element: withSuspense(<NotificationsPage />) },
           { path: '/reports', element: withSuspense(<ReportsPage />) },

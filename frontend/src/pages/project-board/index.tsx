@@ -3,6 +3,7 @@ import { Plus, Filter, MoreHorizontal, List } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
+import { ErrorState } from '@/shared/ui/async-states'
 import { useBoard, useMoveIssue } from '@/shared/api/hooks'
 import { ProjectMembersPanel } from '@/features/project-members/ui/ProjectMembersPanel'
 import type { components } from '@/api/generated'
@@ -90,7 +91,7 @@ export function ProjectBoardPage() {
 
   if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
   if (error || !board)
-    return <div className="p-4 text-rose-500">{error?.message ?? t('issue.notFound')}</div>
+    return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { columns, issues, sprint } = board
 
@@ -144,9 +145,7 @@ export function ProjectBoardPage() {
               <span className="hidden sm:inline">{t('board.backlog')}</span>
             </Link>
           </Button>
-          {board?.project_id && (
-            <ProjectMembersPanel projectId={board.project_id} />
-          )}
+          {board?.project_id && <ProjectMembersPanel projectId={board.project_id} />}
           <Button size="sm" className="gap-1">
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">{t('board.addColumn')}</span>
@@ -181,7 +180,12 @@ export function ProjectBoardPage() {
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={t('board.columnActions')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  aria-label={t('board.columnActions')}
+                >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </div>
@@ -223,7 +227,12 @@ export function ProjectBoardPage() {
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" aria-label={t('board.columnActions')}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  aria-label={t('board.columnActions')}
+                >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </div>

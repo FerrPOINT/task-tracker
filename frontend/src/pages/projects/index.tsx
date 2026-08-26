@@ -3,9 +3,15 @@ import { Plus, Search, LayoutGrid, List, Star, MoreHorizontal, Pencil, Trash2 } 
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
+import { ErrorState } from '@/shared/ui/async-states'
 import { Input } from '@/shared/ui/input'
 import { Card, CardContent } from '@/shared/ui/card'
-import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from '@/shared/api/hooks'
+import {
+  useProjects,
+  useCreateProject,
+  useUpdateProject,
+  useDeleteProject,
+} from '@/shared/api/hooks'
 import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
 import {
   AlertDialog,
@@ -80,7 +86,9 @@ export function ProjectsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="flex justify-end gap-2 pt-2">
-            <AlertDialogCancel onClick={() => setDeletingProject(null)}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setDeletingProject(null)}>
+              {t('common.cancel')}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deletingProject) {
@@ -126,10 +134,20 @@ export function ProjectsPage() {
           ></Input>
         </div>
         <div className="ml-auto flex items-center gap-1">
-          <Button variant="secondary" size="icon" className="h-8 w-8" aria-label={t('projects.gridView')}>
+          <Button
+            variant="secondary"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t('projects.gridView')}
+          >
             <LayoutGrid className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('projects.listView')}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t('projects.listView')}
+          >
             <List className="h-4 w-4" />
           </Button>
         </div>

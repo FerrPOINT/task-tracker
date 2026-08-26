@@ -108,8 +108,16 @@ export function ReportsPage() {
                       <YAxis />
                       <Tooltip />
                       <Legend />
-                      <Bar dataKey="committed" name={t('reports.velocity.committed')} fill="#3b82f6" />
-                      <Bar dataKey="completed" name={t('reports.velocity.completed')} fill="#22c55e" />
+                      <Bar
+                        dataKey="committed"
+                        name={t('reports.velocity.committed')}
+                        fill="#3b82f6"
+                      />
+                      <Bar
+                        dataKey="completed"
+                        name={t('reports.velocity.completed')}
+                        fill="#22c55e"
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
@@ -162,7 +170,9 @@ export function ReportsPage() {
                 {cumulativeFlow.isLoading ? (
                   <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
                 ) : !cumulativeFlow.data || cumulativeFlow.data.points.length === 0 ? (
-                  <p className="py-8 text-center text-text-muted">{t('reports.cumulativeFlow.empty')}</p>
+                  <p className="py-8 text-center text-text-muted">
+                    {t('reports.cumulativeFlow.empty')}
+                  </p>
                 ) : (
                   <ResponsiveContainer width="100%" height={300}>
                     <AreaChart data={cumulativeFlow.data.points}>
@@ -213,19 +223,15 @@ export function ReportsPage() {
                 {controlChart.isLoading ? (
                   <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
                 ) : !controlChart.data || controlChart.data.points.length === 0 ? (
-                  <p className="py-8 text-center text-text-muted">{t('reports.controlChart.empty')}</p>
+                  <p className="py-8 text-center text-text-muted">
+                    {t('reports.controlChart.empty')}
+                  </p>
                 ) : (
                   <ResponsiveContainer width="100%" height={300}>
                     <ScatterChart>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="issue_key"
-                        name={t('reports.controlChart.issue')}
-                      />
-                      <YAxis
-                        dataKey="cycle_time_days"
-                        name={t('reports.controlChart.cycleTime')}
-                      />
+                      <XAxis dataKey="issue_key" name={t('reports.controlChart.issue')} />
+                      <YAxis dataKey="cycle_time_days" name={t('reports.controlChart.cycleTime')} />
                       <Tooltip cursor={{ strokeDasharray: '3 3' }} />
                       <Legend />
                       <Scatter

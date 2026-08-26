@@ -20,7 +20,13 @@ interface IssueMetaEditorProps {
   disabled?: boolean
 }
 
-export function IssueMetaEditor({ issue, columns, sprints, onChange, disabled }: IssueMetaEditorProps) {
+export function IssueMetaEditor({
+  issue,
+  columns,
+  sprints,
+  onChange,
+  disabled,
+}: IssueMetaEditorProps) {
   const { t } = useTranslation()
   const currentUser = useCurrentUser()
   const usersQuery = useUsers()

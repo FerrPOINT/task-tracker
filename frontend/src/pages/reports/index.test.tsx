@@ -30,7 +30,13 @@ vi.mock('recharts', () => ({
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="responsive-container">{children}</div>
   ),
-  BarChart: ({ data, children }: { data?: Array<Record<string, unknown>>; children?: React.ReactNode }) => (
+  BarChart: ({
+    data,
+    children,
+  }: {
+    data?: Array<Record<string, unknown>>
+    children?: React.ReactNode
+  }) => (
     <div data-testid="chart">
       {data?.map((d, i) => (
         <div key={i}>
@@ -42,7 +48,13 @@ vi.mock('recharts', () => ({
       {children}
     </div>
   ),
-  LineChart: ({ data, children }: { data?: Array<Record<string, unknown>>; children?: React.ReactNode }) => (
+  LineChart: ({
+    data,
+    children,
+  }: {
+    data?: Array<Record<string, unknown>>
+    children?: React.ReactNode
+  }) => (
     <div data-testid="chart">
       {data?.map((d, i) => (
         <div key={i}>
@@ -54,7 +66,13 @@ vi.mock('recharts', () => ({
       {children}
     </div>
   ),
-  AreaChart: ({ data, children }: { data?: Array<Record<string, unknown>>; children?: React.ReactNode }) => (
+  AreaChart: ({
+    data,
+    children,
+  }: {
+    data?: Array<Record<string, unknown>>
+    children?: React.ReactNode
+  }) => (
     <div data-testid="chart">
       {data?.map((d, i) => (
         <div key={i}>
@@ -66,9 +84,12 @@ vi.mock('recharts', () => ({
       {children}
     </div>
   ),
-  ScatterChart: ({ children }: { data?: Array<Record<string, unknown>>; children?: React.ReactNode }) => (
-    <div data-testid="chart">{children}</div>
-  ),
+  ScatterChart: ({
+    children,
+  }: {
+    data?: Array<Record<string, unknown>>
+    children?: React.ReactNode
+  }) => <div data-testid="chart">{children}</div>,
   Bar: () => null,
   Line: () => null,
   Area: () => null,
@@ -83,9 +104,7 @@ vi.mock('recharts', () => ({
       ))}
     </>
   ),
-  XAxis: ({ dataKey }: { dataKey?: string }) => (
-    <span data-testid="xaxis">{dataKey ?? ''}</span>
-  ),
+  XAxis: ({ dataKey }: { dataKey?: string }) => <span data-testid="xaxis">{dataKey ?? ''}</span>,
   YAxis: () => null,
   CartesianGrid: () => null,
   Tooltip: () => null,
@@ -95,8 +114,24 @@ vi.mock('recharts', () => ({
 // --- Helpers ------------------------------------------------------------------
 
 const projects = [
-  { id: 'proj-1', key: 'TT', name: 'Task Tracker', owner_id: 'u1', todo_count: 0, in_progress_count: 0, done_count: 0 },
-  { id: 'proj-2', key: 'QA', name: 'QA Tool', owner_id: 'u1', todo_count: 0, in_progress_count: 0, done_count: 0 },
+  {
+    id: 'proj-1',
+    key: 'TT',
+    name: 'Task Tracker',
+    owner_id: 'u1',
+    todo_count: 0,
+    in_progress_count: 0,
+    done_count: 0,
+  },
+  {
+    id: 'proj-2',
+    key: 'QA',
+    name: 'QA Tool',
+    owner_id: 'u1',
+    todo_count: 0,
+    in_progress_count: 0,
+    done_count: 0,
+  },
 ]
 
 function makeQueryClient() {
@@ -139,9 +174,7 @@ describe('ReportsPage', () => {
   it('renders the page title and project selector', () => {
     setLoadedProject()
     renderPage()
-    expect(
-      screen.getByRole('heading', { name: /отчёты|reports/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /отчёты|reports/i })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /проект|project/i })).toBeInTheDocument()
   })
 
@@ -277,7 +310,9 @@ describe('ReportsPage', () => {
     useProjects.mockReturnValue({ data: projects, isLoading: false })
     renderPage()
     // Initially no project selected -> prompt visible
-    expect(screen.getByText(/выберите проект для просмотра отчётов|select a project to view reports/i)).toBeInTheDocument()
+    expect(
+      screen.getByText(/выберите проект для просмотра отчётов|select a project to view reports/i),
+    ).toBeInTheDocument()
   })
 
   it('selecting a project enables report hooks', async () => {

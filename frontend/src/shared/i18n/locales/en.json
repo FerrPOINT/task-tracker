@@ -252,12 +252,18 @@
   "common": {
     "save": "Save",
     "cancel": "Cancel",
+    "confirm": "Confirm",
+    "retry": "Retry",
     "delete": "Delete",
     "theme": "Theme: {{theme}}",
     "creating": "Creating…",
     "loading": "Loading…",
     "edit": "Edit",
     "saving": "Saving…"
+  },
+  "loading": {
+    "empty": "Nothing to show yet.",
+    "error": "Something went wrong."
   },
   "comments": {
     "title": "Comments",

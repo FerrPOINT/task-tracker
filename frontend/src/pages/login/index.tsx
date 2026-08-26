@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { Layers } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
+import { ErrorState } from '@/shared/ui/async-states'
 import { Input } from '@/shared/ui/input'
 import { ThemeToggle } from '@/shared/ui/theme-toggle'
 import { useLogin } from '@/shared/api/hooks'
@@ -59,7 +60,7 @@ export function LoginPage() {
               required
             />
           </div>
-          {error && <div className="text-sm text-rose-500">{error.message}</div>}
+          {error && <ErrorState message={error.message} />}
           <Button type="submit" className="w-full" disabled={isPending}>
             {isPending ? `${t('auth.login')}…` : t('auth.login')}
           </Button>

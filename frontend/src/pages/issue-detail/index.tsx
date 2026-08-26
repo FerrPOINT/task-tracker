@@ -97,7 +97,7 @@ export function IssueDetailPage() {
     toast.success(t('issue.copyKey'))
   }
 
-return (
+  return (
     <div className="min-h-screen bg-background">
       <header className="flex h-12 items-center justify-between border-b border-border bg-surface px-4">
         <div className="flex items-center gap-4">
@@ -140,9 +140,7 @@ return (
               variant="secondary"
               size="sm"
               disabled={updateIssue.isPending || currentUserId === issue.assignee_id}
-              onClick={() =>
-                currentUserId && updateIssue.mutate({ assignee_id: currentUserId })
-              }
+              onClick={() => currentUserId && updateIssue.mutate({ assignee_id: currentUserId })}
             >
               <UserPlus className="h-4 w-4" />
               {t('issue.assignToMe')}
@@ -185,10 +183,7 @@ return (
                 <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
               </TabsList>
               <TabsContent value="activity">
-                <ActivityFeed
-                  comments={commentsQuery.data ?? []}
-                  worklogs={worklogs}
-                />
+                <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
               </TabsContent>
               <TabsContent value="comments">
                 <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />

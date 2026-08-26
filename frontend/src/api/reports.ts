@@ -10,10 +10,7 @@ export type CumulativeFlowPoint = components['schemas']['CumulativeFlowPointResp
 export type ControlChartResponse = components['schemas']['ControlChartResponse']
 export type ControlChartPoint = components['schemas']['ControlChartPointResponse']
 
-export async function getVelocityReport(
-  projectId: string,
-  count = 6,
-): Promise<VelocityResponse> {
+export async function getVelocityReport(projectId: string, count = 6): Promise<VelocityResponse> {
   const { data, error } = await api.GET('/api/v1/reports/velocity', {
     params: { query: { project_id: projectId, count } },
   })
@@ -29,9 +26,7 @@ export async function getBurndownReport(sprintId: string): Promise<BurndownRespo
   return data
 }
 
-export async function getCumulativeFlowReport(
-  projectId: string,
-): Promise<CumulativeFlowResponse> {
+export async function getCumulativeFlowReport(projectId: string): Promise<CumulativeFlowResponse> {
   const { data, error } = await api.GET('/api/v1/reports/cumulative-flow', {
     params: { query: { project_id: projectId } },
   })
@@ -39,9 +34,7 @@ export async function getCumulativeFlowReport(
   return data
 }
 
-export async function getControlChartReport(
-  projectId: string,
-): Promise<ControlChartResponse> {
+export async function getControlChartReport(projectId: string): Promise<ControlChartResponse> {
   const { data, error } = await api.GET('/api/v1/reports/control-chart', {
     params: { query: { project_id: projectId } },
   })

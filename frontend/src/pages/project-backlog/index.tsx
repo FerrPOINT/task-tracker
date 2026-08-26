@@ -57,13 +57,7 @@ function Avatar({ name }: { name: string }) {
   )
 }
 
-function IssueRow({
-  issue,
-  action,
-}: {
-  issue: Issue
-  action?: React.ReactNode
-}) {
+function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode }) {
   return (
     <div className="group flex items-center gap-2 border-b border-border px-3 py-2.5 text-sm hover:bg-surface-raised sm:grid sm:grid-cols-[24px_80px_1fr_90px_40px_40px] sm:gap-3">
       <GripVertical className="h-4 w-4 shrink-0 text-text-muted sm:order-1" />
@@ -206,7 +200,8 @@ export function ProjectBacklogPage() {
     return <div className="p-4 text-rose-500">{error?.message ?? t('issue.notFound')}</div>
 
   const { sprint: activeSprint, sprint_issues, backlog_issues } = backlog
-  const futureSprints = sprints?.filter((s) => s.id !== activeSprint.id && s.state !== 'closed') ?? []
+  const futureSprints =
+    sprints?.filter((s) => s.id !== activeSprint.id && s.state !== 'closed') ?? []
   const activeFromList = sprints?.find((s) => s.id === activeSprint.id)
   const activeSprintName = activeFromList?.name ?? activeSprint.name
 
@@ -236,7 +231,9 @@ export function ProjectBacklogPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold sm:text-2xl">{t('backlog.title', { projectName: key })}</h1>
+          <h1 className="text-xl font-bold sm:text-2xl">
+            {t('backlog.title', { projectName: key })}
+          </h1>
           <div className="text-sm text-text-muted">
             {t('backlog.velocity', { velocity: activeSprint.velocity ?? '-' })} ·{' '}
             {t('backlog.backlogCount', { count: backlog_issues.length })}
@@ -287,7 +284,12 @@ export function ProjectBacklogPage() {
             {activeFromList && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t('common.edit')}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label={t('common.edit')}
+                  >
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -336,7 +338,12 @@ export function ProjectBacklogPage() {
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t('common.edit')}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    aria-label={t('common.edit')}
+                  >
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -408,4 +415,3 @@ export function ProjectBacklogPage() {
     </div>
   )
 }
-

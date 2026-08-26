@@ -26,7 +26,13 @@ function wrapper(children: React.ReactNode) {
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    useAuthStore.setState({ token: null, userId: null, email: null, username: null, displayName: null })
+    useAuthStore.setState({
+      token: null,
+      userId: null,
+      email: null,
+      username: null,
+      displayName: null,
+    })
   })
 
   afterEach(() => {

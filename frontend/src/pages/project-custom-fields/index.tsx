@@ -3,7 +3,11 @@ import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { useCreateCustomField, useDeleteCustomField, useProjectCustomFields } from '@/shared/api/hooks'
+import {
+  useCreateCustomField,
+  useDeleteCustomField,
+  useProjectCustomFields,
+} from '@/shared/api/hooks'
 import type { CustomFieldInput, CustomFieldType } from '@/api/custom-fields'
 
 const types: CustomFieldType[] = ['text', 'number', 'select', 'multi-select', 'date']
@@ -28,14 +32,56 @@ export function ProjectCustomFieldsPage() {
           <CardTitle className="text-base">{t('customFields.addTitle')}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3" onSubmit={(e) => { e.preventDefault(); if (!draft.name.trim()) return; create.mutate(draft, { onSuccess: () => setDraft(initial) }) }}>
-            <input aria-label={t('customFields.fieldName')} className="rounded border border-border bg-background p-2" placeholder={t('customFields.fieldName')} value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-            <select aria-label={t('customFields.fieldType')} className="rounded border border-border bg-background p-2" value={draft.field_type} onChange={(e) => setDraft({ ...draft, field_type: e.target.value as CustomFieldType })}>
-              {types.map((type) => <option key={type}>{type}</option>)}
+          <form
+            className="grid gap-3"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (!draft.name.trim()) return
+              create.mutate(draft, { onSuccess: () => setDraft(initial) })
+            }}
+          >
+            <input
+              aria-label={t('customFields.fieldName')}
+              className="rounded border border-border bg-background p-2"
+              placeholder={t('customFields.fieldName')}
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            />
+            <select
+              aria-label={t('customFields.fieldType')}
+              className="rounded border border-border bg-background p-2"
+              value={draft.field_type}
+              onChange={(e) =>
+                setDraft({ ...draft, field_type: e.target.value as CustomFieldType })
+              }
+            >
+              {types.map((type) => (
+                <option key={type}>{type}</option>
+              ))}
             </select>
-            {needsOptions && <input aria-label={t('customFields.options')} className="rounded border border-border bg-background p-2" placeholder={t('customFields.options')} value={draft.options.join(', ')} onChange={(e) => setDraft({ ...draft, options: e.target.value.split(',').map((v) => v.trim()).filter(Boolean) })} />}
+            {needsOptions && (
+              <input
+                aria-label={t('customFields.options')}
+                className="rounded border border-border bg-background p-2"
+                placeholder={t('customFields.options')}
+                value={draft.options.join(', ')}
+                onChange={(e) =>
+                  setDraft({
+                    ...draft,
+                    options: e.target.value
+                      .split(',')
+                      .map((v) => v.trim())
+                      .filter(Boolean),
+                  })
+                }
+              />
+            )}
             <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={draft.is_required} onChange={(e) => setDraft({ ...draft, is_required: e.target.checked })} />
+              <input
+                type="checkbox"
+                checked={draft.is_required}
+                onChange={(e) => setDraft({ ...draft, is_required: e.target.checked })}
+              />
               {t('customFields.required')}
             </label>
             <Button type="submit" disabled={create.isPending}>
@@ -54,12 +100,23 @@ export function ProjectCustomFieldsPage() {
           ) : fields.data?.length ? (
             <div className="space-y-2">
               {fields.data.map((field) => (
-                <div key={field.id} className="flex items-center justify-between rounded border border-border p-3">
+                <div
+                  key={field.id}
+                  className="flex items-center justify-between rounded border border-border p-3"
+                >
                   <div>
-                    <p className="font-medium">{field.name}{field.is_required ? ' *' : ''}</p>
-                    <p className="text-sm text-text-muted">{field.field_type}{field.options.length ? `: ${field.options.join(', ')}` : ''}</p>
+                    <p className="font-medium">
+                      {field.name}
+                      {field.is_required ? ' *' : ''}
+                    </p>
+                    <p className="text-sm text-text-muted">
+                      {field.field_type}
+                      {field.options.length ? `: ${field.options.join(', ')}` : ''}
+                    </p>
                   </div>
-                  <Button variant="secondary" size="sm" onClick={() => remove.mutate(field.id)}>{t('common.delete')}</Button>
+                  <Button variant="secondary" size="sm" onClick={() => remove.mutate(field.id)}>
+                    {t('common.delete')}
+                  </Button>
                 </div>
               ))}
             </div>

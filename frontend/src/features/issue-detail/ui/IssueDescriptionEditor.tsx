@@ -21,11 +21,7 @@ interface IssueDescriptionEditorProps {
   disabled?: boolean
 }
 
-export function IssueDescriptionEditor({
-  issue,
-  onSubmit,
-  disabled,
-}: IssueDescriptionEditorProps) {
+export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescriptionEditorProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const {

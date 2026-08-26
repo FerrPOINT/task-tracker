@@ -68,7 +68,7 @@ export default function SearchPage() {
       sort_order: sort.split('_')[1] ?? 'desc',
       jql: jql || undefined,
     }),
-    [query, projectKey, status, assigneeId, priority, sort, jql]
+    [query, projectKey, status, assigneeId, priority, sort, jql],
   )
 
   const { data: issues, isLoading } = useIssues(filters)
@@ -95,13 +95,18 @@ export default function SearchPage() {
     setSearchParams(new URLSearchParams())
   }
 
-  const hasFilters = projectKey || status || assigneeId || priority || sort !== 'created_desc' || query || jql
+  const hasFilters =
+    projectKey || status || assigneeId || priority || sort !== 'created_desc' || query || jql
 
-  const projectName = projects?.find((p) => p.key === projectKey)?.name ?? projectKey ?? t('search.project')
+  const projectName =
+    projects?.find((p) => p.key === projectKey)?.name ?? projectKey ?? t('search.project')
   const statusLabel = status ?? t('search.status')
   const priorityLabel = priority ? t(`priority.${priority}`) : t('search.priority')
-  const assigneeName = users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
-  const sortLabel = SORT_OPTIONS.find((o) => o.value === sort) ? t(SORT_OPTIONS.find((o) => o.value === sort)!.labelKey) : t('search.sort')
+  const assigneeName =
+    users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
+  const sortLabel = SORT_OPTIONS.find((o) => o.value === sort)
+    ? t(SORT_OPTIONS.find((o) => o.value === sort)!.labelKey)
+    : t('search.sort')
 
   return (
     <div className="container mx-auto px-4 py-6">
@@ -212,7 +217,12 @@ export default function SearchPage() {
           </DropdownMenu>
 
           {hasFilters && (
-            <Button variant="ghost" size="icon" onClick={clearFilters} aria-label={t('search.clear')}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={clearFilters}
+              aria-label={t('search.clear')}
+            >
               <X className="h-4 w-4" />
             </Button>
           )}
@@ -245,9 +255,7 @@ export default function SearchPage() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-12 text-center text-muted-foreground">
-          {t('search.noResults')}
-        </div>
+        <div className="py-12 text-center text-muted-foreground">{t('search.noResults')}</div>
       ) : (
         <div className="space-y-2">
           {filtered.map((issue: Issue) => (

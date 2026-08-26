@@ -34,9 +34,7 @@ export function ProjectTrashPage() {
       )}
 
       {!isLoading && trashedIssues.length === 0 && (
-        <div className="py-16 text-center text-sm text-text-muted">
-          {t('trash.noIssues')}
-        </div>
+        <div className="py-16 text-center text-sm text-text-muted">{t('trash.noIssues')}</div>
       )}
 
       {trashedIssues.length > 0 && (
@@ -57,16 +55,10 @@ export function ProjectTrashPage() {
                   key={issue.id}
                   className="border-b border-border last:border-0 hover:bg-surface-raised"
                 >
-                  <td className="px-4 py-3 font-mono text-xs text-text-secondary">
-                    {issue.key}
-                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-text-secondary">{issue.key}</td>
                   <td className="px-4 py-3">{issue.summary}</td>
-                  <td className="px-4 py-3 text-text-secondary">
-                    {issue.issue_type}
-                  </td>
-                  <td className="px-4 py-3 text-text-secondary">
-                    {issue.priority}
-                  </td>
+                  <td className="px-4 py-3 text-text-secondary">{issue.issue_type}</td>
+                  <td className="px-4 py-3 text-text-secondary">{issue.priority}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       <Button

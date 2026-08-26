@@ -33,7 +33,10 @@ test.describe('labels and links', () => {
     await page.goto(`/issues/${issue.id}`)
 
     // Create a new label through the editor
-    await page.getByRole('button', { name: /новая метка|new label/i }).first().click()
+    await page
+      .getByRole('button', { name: /новая метка|new label/i })
+      .first()
+      .click()
     const labelName = `e2e-label-${Date.now() % 10000}`
     await page.getByTestId('label-name-input').fill(labelName)
     await page.getByRole('button', { name: /^добавить$|^add$/i }).click()
@@ -42,7 +45,11 @@ test.describe('labels and links', () => {
     })
 
     // Detach it
-    await page.getByRole('button', { name: new RegExp(`убрать метку ${labelName}|remove label ${labelName}`, 'i') }).click()
+    await page
+      .getByRole('button', {
+        name: new RegExp(`убрать метку ${labelName}|remove label ${labelName}`, 'i'),
+      })
+      .click()
     await expect(page.getByTestId('issue-label')).toHaveCount(0, { timeout: 10_000 })
   })
 
@@ -82,16 +89,23 @@ test.describe('labels and links', () => {
     await page.goto(`/issues/${a.id}`)
 
     // Add link a blocks b
-    await page.getByRole('button', { name: /добавить связь|add link/i }).first().click()
+    await page
+      .getByRole('button', { name: /добавить связь|add link/i })
+      .first()
+      .click()
     await page.getByTestId('link-target-input').fill(b.key)
     await page.getByRole('combobox', { name: /тип связи|link type/i }).selectOption('blocks')
     await page.getByTestId('link-submit').click()
-    await expect(
-      page.getByTestId('link-editor').getByText('блокирует').first(),
-    ).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByTestId('link-editor').getByText('блокирует').first()).toBeVisible({
+      timeout: 10_000,
+    })
 
     // Delete link
-    await page.getByRole('button', { name: new RegExp(`удалить связь с ${b.key}|remove link to ${b.key}`, 'i') }).click()
+    await page
+      .getByRole('button', {
+        name: new RegExp(`удалить связь с ${b.key}|remove link to ${b.key}`, 'i'),
+      })
+      .click()
     await expect(page.getByTestId('link-editor').getByText('блокирует')).toHaveCount(0, {
       timeout: 10_000,
     })

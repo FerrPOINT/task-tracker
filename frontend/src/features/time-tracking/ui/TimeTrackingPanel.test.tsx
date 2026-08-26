@@ -19,14 +19,16 @@ function wrapper(children: React.ReactNode) {
 
 describe('TimeTrackingPanel', () => {
   it('renders time summary with spent and estimated', () => {
-    render(wrapper(
-      <TimeTrackingPanel
-        timeSpentSeconds={3600}
-        originalEstimateSeconds={7200}
-        remainingEstimateSeconds={3600}
-        onLogWork={vi.fn()}
-      />,
-    ))
+    render(
+      wrapper(
+        <TimeTrackingPanel
+          timeSpentSeconds={3600}
+          originalEstimateSeconds={7200}
+          remainingEstimateSeconds={3600}
+          onLogWork={vi.fn()}
+        />,
+      ),
+    )
     const summary = screen.getByTestId('time-tracking-summary')
     expect(summary).toBeInTheDocument()
     expect(summary.textContent).toMatch(/1h/)
@@ -35,14 +37,16 @@ describe('TimeTrackingPanel', () => {
 
   it('calls onLogWork when log work button is clicked', () => {
     const onLogWork = vi.fn()
-    render(wrapper(
-      <TimeTrackingPanel
-        timeSpentSeconds={3600}
-        originalEstimateSeconds={7200}
-        remainingEstimateSeconds={3600}
-        onLogWork={onLogWork}
-      />,
-    ))
+    render(
+      wrapper(
+        <TimeTrackingPanel
+          timeSpentSeconds={3600}
+          originalEstimateSeconds={7200}
+          remainingEstimateSeconds={3600}
+          onLogWork={onLogWork}
+        />,
+      ),
+    )
     fireEvent.click(screen.getByRole('button', { name: /log work/i }))
     expect(onLogWork).toHaveBeenCalledOnce()
   })

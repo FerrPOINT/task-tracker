@@ -5,7 +5,14 @@ import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/boar
 import { searchIssues, type SearchFilters } from '@/api/search'
 import { login, register, getCurrentUser, listUsers, logout } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
-import { updateIssue, deleteIssue, restoreIssue, purgeIssue, listTrash, getIssue } from '@/api/issue'
+import {
+  updateIssue,
+  deleteIssue,
+  restoreIssue,
+  purgeIssue,
+  listTrash,
+  getIssue,
+} from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
 import { useAuthStore } from '@/shared/auth/store'
 import {

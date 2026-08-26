@@ -251,7 +251,12 @@ export function AppShell() {
           </DropdownMenu>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t('navigation.account')}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                aria-label={t('navigation.account')}
+              >
                 <User className="h-[18px] w-[18px]" />
               </Button>
             </DropdownMenuTrigger>

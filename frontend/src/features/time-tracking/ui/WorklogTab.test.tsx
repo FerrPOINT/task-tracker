@@ -47,7 +47,11 @@ const worklogs: Worklog[] = [
 
 describe('WorklogTab', () => {
   it('renders worklog entries', () => {
-    render(wrapper(<WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />))
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
     // Names appear in both desktop table and mobile card
     expect(screen.getAllByText('Alice').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('Bob').length).toBeGreaterThanOrEqual(1)
@@ -55,19 +59,29 @@ describe('WorklogTab', () => {
   })
 
   it('renders total logged time', () => {
-    render(wrapper(<WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />))
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
     expect(screen.getByText(/total logged/i)).toBeInTheDocument()
     // 3600 + 1800 = 5400s = 1h 30m
     expect(screen.getByText('1h 30m')).toBeInTheDocument()
   })
 
   it('renders empty state when no worklogs', () => {
-    render(wrapper(<WorklogTab worklogs={[]} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />))
+    render(
+      wrapper(<WorklogTab worklogs={[]} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />),
+    )
     expect(screen.getByText(/no entries yet/i)).toBeInTheDocument()
   })
 
   it('shows edit button only for current user worklogs', () => {
-    render(wrapper(<WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />))
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
     // Alice's worklog (u1 === currentUserId) should have edit buttons (desktop + mobile)
     expect(screen.getAllByLabelText(/edit worklog/i)).toHaveLength(2)
   })

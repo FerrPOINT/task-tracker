@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
+import { ErrorState } from '@/shared/ui/async-states'
 import { Input } from '@/shared/ui/input'
 import { useCreateIssue, useIssueTypes, useProjects, useUsers } from '@/shared/api/hooks'
 import { useAuthStore } from '@/shared/auth/store'
@@ -63,10 +64,8 @@ export function IssueCreatePage() {
         onSubmit={handleSubmit}
         className="space-y-4 rounded-lg border border-border bg-surface p-4 sm:p-6"
       >
-        {error && <div className="text-sm text-rose-500">{error.message}</div>}
-        {!userId && (
-          <div className="text-sm text-amber-500">{t('issueCreate.noReporter')}</div>
-        )}
+        {error && <ErrorState message={error.message} />}
+        {!userId && <div className="text-sm text-amber-500">{t('issueCreate.noReporter')}</div>}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">

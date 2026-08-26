@@ -1,15 +1,14 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, UserPlus } from 'lucide-react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/shared/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog'
 import { Button } from '@/shared/ui/button'
-import { useProjectMembers, useUsers, useAddProjectMember, useRemoveProjectMember } from '@/shared/api/hooks'
+import {
+  useProjectMembers,
+  useUsers,
+  useAddProjectMember,
+  useRemoveProjectMember,
+} from '@/shared/api/hooks'
 import type { components } from '@/api/generated'
 
 type User = components['schemas']['UserResponse']
@@ -26,7 +25,13 @@ function Avatar({ name }: { name: string }) {
   )
 }
 
-export function ProjectMembersPanel({ projectId, trigger }: { projectId: string; trigger?: React.ReactNode }) {
+export function ProjectMembersPanel({
+  projectId,
+  trigger,
+}: {
+  projectId: string
+  trigger?: React.ReactNode
+}) {
   const { t } = useTranslation()
   const { data, isLoading } = useProjectMembers(projectId)
   const { data: users } = useUsers()
@@ -66,7 +71,9 @@ export function ProjectMembersPanel({ projectId, trigger }: { projectId: string;
           <div className="space-y-4">
             <form onSubmit={handleAdd} className="flex items-end gap-2">
               <div className="flex-1">
-                <label className="mb-1 block text-xs text-text-secondary">{t('projectMembers.addUser')}</label>
+                <label className="mb-1 block text-xs text-text-secondary">
+                  {t('projectMembers.addUser')}
+                </label>
                 <select
                   value={selectedUserId}
                   onChange={(e) => setSelectedUserId(e.target.value)}
@@ -87,7 +94,9 @@ export function ProjectMembersPanel({ projectId, trigger }: { projectId: string;
 
             <div className="max-h-72 space-y-2 overflow-y-auto">
               {data?.members.length === 0 && (
-                <div className="py-4 text-center text-sm text-text-muted">{t('projectMembers.empty')}</div>
+                <div className="py-4 text-center text-sm text-text-muted">
+                  {t('projectMembers.empty')}
+                </div>
               )}
               {data?.members.map((m) => {
                 const user = users?.find((u: User) => u.id === m.user_id)

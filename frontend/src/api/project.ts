@@ -17,10 +17,7 @@ export async function createProject(req: CreateProjectRequest): Promise<Project>
   return data
 }
 
-export async function updateProject(
-  key: string,
-  req: UpdateProjectRequest,
-): Promise<Project> {
+export async function updateProject(key: string, req: UpdateProjectRequest): Promise<Project> {
   const { data, error } = await api.PATCH('/api/v1/projects/{project_key}', {
     params: { path: { project_key: key } },
     body: req,

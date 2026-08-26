@@ -20,9 +20,7 @@ export function DashboardPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-bold sm:text-2xl">{t('dashboard.title')}</h1>
         <Button size="sm" className="gap-1" asChild>
-          <Link to="/issues/create">
-            {t('navigation.create')}
-          </Link>
+          <Link to="/issues/create">{t('navigation.create')}</Link>
         </Button>
       </div>
 

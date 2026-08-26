@@ -74,7 +74,11 @@ describe('NotificationsPage', () => {
     const updateSettings = vi.fn()
     mockHooks()
     useNotificationSettings.mockReturnValue({
-      data: { email_frequency: 'daily', disabled_event_types: ['issue_updated'], notify_own_changes: false },
+      data: {
+        email_frequency: 'daily',
+        disabled_event_types: ['issue_updated'],
+        notify_own_changes: false,
+      },
       isLoading: false,
     })
     useUpdateNotificationSettings.mockReturnValue({ mutate: updateSettings })
@@ -92,7 +96,9 @@ describe('NotificationsPage', () => {
       }),
     )
 
-    fireEvent.click(screen.getByLabelText(/notify about my own changes|уведомлять о моих изменениях/i))
+    fireEvent.click(
+      screen.getByLabelText(/notify about my own changes|уведомлять о моих изменениях/i),
+    )
     await waitFor(() =>
       expect(updateSettings).toHaveBeenLastCalledWith({
         email_frequency: 'daily',

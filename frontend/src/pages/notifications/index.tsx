@@ -23,12 +23,16 @@ const NotificationCard = memo(function NotificationCard({
         {notification.action_url ? (
           <Link to={notification.action_url} className="block hover:text-accent">
             <h2 className="font-semibold">{notification.title}</h2>
-            {notification.body && <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>}
+            {notification.body && (
+              <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>
+            )}
           </Link>
         ) : (
           <>
             <h2 className="font-semibold">{notification.title}</h2>
-            {notification.body && <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>}
+            {notification.body && (
+              <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>
+            )}
           </>
         )}
       </CardContent>
@@ -144,7 +148,9 @@ export function NotificationsPage() {
                     type="checkbox"
                     className="mt-0.5 h-4 w-4 accent-accent"
                     checked={settings?.notify_own_changes ?? false}
-                    onChange={(event) => updatePreference({ notify_own_changes: event.target.checked })}
+                    onChange={(event) =>
+                      updatePreference({ notify_own_changes: event.target.checked })
+                    }
                     disabled={updateSettings.isPending}
                   />
                   <Label htmlFor="notify-own-changes" className="leading-5">

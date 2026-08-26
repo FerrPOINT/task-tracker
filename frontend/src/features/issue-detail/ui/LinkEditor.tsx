@@ -2,11 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
 import { Link } from 'react-router'
-import {
-  useIssueLinks,
-  useCreateIssueLink,
-  useDeleteIssueLink,
-} from '@/shared/api/hooks'
+import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 
@@ -52,7 +48,10 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
               <li key={l.id} className="flex items-center justify-between gap-2 text-sm">
                 <span>
                   <span className="text-muted-foreground">{label}</span>{' '}
-                  <Link to={`/issues/${otherKey}`} className="font-medium text-accent hover:underline">
+                  <Link
+                    to={`/issues/${otherKey}`}
+                    className="font-medium text-accent hover:underline"
+                  >
                     {otherKey}
                   </Link>
                 </span>
@@ -95,7 +94,13 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
               </option>
             ))}
           </select>
-          <Button type="button" size="sm" className="h-8" onClick={() => void onAdd()} data-testid="link-submit">
+          <Button
+            type="button"
+            size="sm"
+            className="h-8"
+            onClick={() => void onAdd()}
+            data-testid="link-submit"
+          >
             {t('links.submit')}
           </Button>
           {error && <p className="w-full text-xs text-destructive">{error}</p>}

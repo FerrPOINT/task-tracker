@@ -15,10 +15,7 @@ export async function listSprints(projectKey: string): Promise<Sprint[]> {
   return data.sprints
 }
 
-export async function createSprint(
-  projectKey: string,
-  req: CreateSprintRequest,
-): Promise<Sprint> {
+export async function createSprint(projectKey: string, req: CreateSprintRequest): Promise<Sprint> {
   const { data, error } = await api.POST('/api/v1/projects/{project_key}/sprints', {
     params: { path: { project_key: projectKey } },
     body: req,

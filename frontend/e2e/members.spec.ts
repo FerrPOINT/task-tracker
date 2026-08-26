@@ -43,7 +43,10 @@ test.describe('project members', () => {
     await page.goto('/projects/DEMO/board')
 
     // open members panel
-    await page.getByRole('button', { name: /участники|members/i }).first().click()
+    await page
+      .getByRole('button', { name: /участники|members/i })
+      .first()
+      .click()
     const combo = page.getByRole('combobox')
     // option presence is verified implicitly by label-based selection below
     await expect(combo).toBeVisible({ timeout: 10_000 })
@@ -58,8 +61,8 @@ test.describe('project members', () => {
     // remove
     await page.getByRole('button', { name: new RegExp(username) }).click()
     // member row disappears; username only remains inside the hidden <option> of the select
-    await expect(
-      page.getByRole('dialog').getByText(username, { exact: true }),
-    ).toHaveCount(0, { timeout: 10_000 })
+    await expect(page.getByRole('dialog').getByText(username, { exact: true })).toHaveCount(0, {
+      timeout: 10_000,
+    })
   })
 })

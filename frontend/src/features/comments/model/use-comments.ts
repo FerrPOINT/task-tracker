@@ -1,10 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  listComments,
-  createComment,
-  updateComment,
-  deleteComment,
-} from '@/api/comment'
+import { listComments, createComment, updateComment, deleteComment } from '@/api/comment'
 import type { Comment, CreateCommentInput, UpdateCommentInput } from '@/entities/comment/model'
 
 export function useComments(issueId: string) {

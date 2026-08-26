@@ -29,10 +29,7 @@ export async function listComments(issueId: string): Promise<Comment[]> {
   return data.comments.map(mapDto).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-export async function createComment(
-  issueId: string,
-  input: CreateCommentInput,
-): Promise<Comment> {
+export async function createComment(issueId: string, input: CreateCommentInput): Promise<Comment> {
   const { data, error } = await api.POST('/api/v1/issues/{issue_id}/comments', {
     params: { path: { issue_id: issueId } },
     body: { body: input.body.trim() },

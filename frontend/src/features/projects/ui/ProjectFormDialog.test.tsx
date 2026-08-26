@@ -20,20 +20,36 @@ function wrapper(children: React.ReactNode) {
 
 describe('ProjectFormDialog', () => {
   it('renders form fields when open', () => {
-    render(wrapper(
-      <ProjectFormDialog open={true} onOpenChange={vi.fn()} onSubmit={vi.fn()} isPending={false} />,
-    ))
+    render(
+      wrapper(
+        <ProjectFormDialog
+          open={true}
+          onOpenChange={vi.fn()}
+          onSubmit={vi.fn()}
+          isPending={false}
+        />,
+      ),
+    )
     expect(screen.getByPlaceholderText(/e\.g\. TT/i)).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/e\.g\. Task Tracker/i)).toBeInTheDocument()
   })
 
   it('submits form with entered values', () => {
     const onSubmit = vi.fn()
-    render(wrapper(
-      <ProjectFormDialog open={true} onOpenChange={vi.fn()} onSubmit={onSubmit} isPending={false} />,
-    ))
+    render(
+      wrapper(
+        <ProjectFormDialog
+          open={true}
+          onOpenChange={vi.fn()}
+          onSubmit={onSubmit}
+          isPending={false}
+        />,
+      ),
+    )
     fireEvent.change(screen.getByPlaceholderText(/e\.g\. TT/i), { target: { value: 'tt' } })
-    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Task Tracker/i), { target: { value: 'Test Project' } })
+    fireEvent.change(screen.getByPlaceholderText(/e\.g\. Task Tracker/i), {
+      target: { value: 'Test Project' },
+    })
     fireEvent.click(screen.getByRole('button', { name: /create project/i }))
     expect(onSubmit).toHaveBeenCalled()
     const arg = onSubmit.mock.calls[0]![0]
@@ -52,9 +68,17 @@ describe('ProjectFormDialog', () => {
       done_count: 0,
       description: 'A tracker',
     }
-    render(wrapper(
-      <ProjectFormDialog open={true} project={project} onOpenChange={vi.fn()} onSubmit={vi.fn()} isPending={false} />,
-    ))
+    render(
+      wrapper(
+        <ProjectFormDialog
+          open={true}
+          project={project}
+          onOpenChange={vi.fn()}
+          onSubmit={vi.fn()}
+          isPending={false}
+        />,
+      ),
+    )
     expect(screen.getByText(/edit project/i)).toBeInTheDocument()
     expect(screen.getByDisplayValue('TT')).toBeDisabled()
   })

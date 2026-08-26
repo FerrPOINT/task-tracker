@@ -27,15 +27,28 @@ pub enum AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let status = match &self {
-            AppError::NotFound(_) => StatusCode::NOT_FOUND,
-            AppError::InvalidInput(_) => StatusCode::BAD_REQUEST,
-            AppError::Unauthorized => StatusCode::UNAUTHORIZED,
-            AppError::Forbidden => StatusCode::FORBIDDEN,
-            AppError::Conflict(_) => StatusCode::CONFLICT,
-            AppError::Database(_) | AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        let (status, public_msg) = match &self {
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            AppError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
+            AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden".to_string()),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
+            AppError::Database(msg) => {
+                tracing::error!(error = %msg, "database error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
+            }
+            AppError::Internal(msg) => {
+                tracing::error!(error = %msg, "internal error");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
+            }
         };
-        let body = axum::Json(serde_json::json!({ "error": self.to_string() }));
+        let body = axum::Json(serde_json::json!({ "error": public_msg }));
         (status, body).into_response()
     }
 }
