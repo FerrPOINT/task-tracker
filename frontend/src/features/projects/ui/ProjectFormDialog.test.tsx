@@ -62,7 +62,7 @@ describe('ProjectFormDialog', () => {
       id: 'p1',
       key: 'TT',
       name: 'Task Tracker',
-      owner_id: 'u1',
+      owner_id: 'u1', owner_name: 'Owner',
       todo_count: 0,
       in_progress_count: 0,
       done_count: 0,

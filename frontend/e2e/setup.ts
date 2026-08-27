@@ -9,12 +9,53 @@ type ApiContext = {
   projectId: string
   issueId: string
   issueKey: string
+  /** epoch ms when the access token expires */
+  expiresAt: number
 }
 
 let seedPromise: Promise<ApiContext> | null = null
 
+// Cross-process seed lock: Playwright runs each --project in its own worker
+// process, so the module-level seedPromise does not dedupe logins between
+// projects. The lock file serializes seeds and lets the first finished
+// process publish the token for the others to reuse.
+const seedLockPath = '/tmp/tt-e2e-seed.lock'
+const seedCachePath = '/tmp/tt-e2e-seed.json'
+
+import { existsSync, openSync, readFileSync, writeFileSync, closeSync, unlinkSync, statSync } from 'node:fs'
+
+function acquireSeedLock(): number {
+  const deadline = Date.now() + 90_000
+  while (Date.now() < deadline) {
+    try {
+      const fd = openSync(seedLockPath, 'wx')
+      return fd
+    } catch {
+      // Stale-lock takeover: a worker killed mid-seed would otherwise wedge
+      // every other worker behind this lock forever.
+      try {
+        const stat = statSync(seedLockPath)
+        if (Date.now() - stat.mtimeMs > 60_000) unlinkSync(seedLockPath)
+      } catch {
+        // lock disappeared — retry immediately
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)
+    }
+  }
+  throw new Error('seed lock timeout (90s)')
+}
+
+function releaseSeedLock(fd: number) {
+  closeSync(fd)
+  try {
+    unlinkSync(seedLockPath)
+  } catch {
+    // already removed by stale takeover
+  }
+}
+
 async function post(path: string, body: object, token?: string) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  return fetchJsonWithRetry(`${API_BASE}${path}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -22,21 +63,25 @@ async function post(path: string, body: object, token?: string) {
     },
     body: JSON.stringify(body),
   })
-  return { status: res.status, data: await res.json().catch(() => ({})) }
 }
 
 async function get(path: string, token: string) {
-  const res = await fetch(`${API_BASE}${path}`, {
+  return fetchJsonWithRetry(`${API_BASE}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
-  return { status: res.status, data: await res.json().catch(() => ({})) }
 }
 
-async function fetchJsonWithRetry(url: string, init: RequestInit, attempts = 6) {
+// NOTE: fetchJsonWithRetry is declared with `function` (hoisted) so the
+// post/get helpers above can reference it before its textual definition.
+function fetchJsonWithRetry(url: string, init: RequestInit, attempts = 24) {
+  return _fetchJsonWithRetry(url, init, attempts)
+}
+
+async function _fetchJsonWithRetry(url: string, init: RequestInit, attempts = 24) {
   for (let i = 0; i < attempts; i++) {
     const res = await fetch(url, init)
     if (res.status === 429) {
-      await new Promise((r) => setTimeout(r, 15_000))
+      await new Promise((r) => setTimeout(r, 5_000))
       continue
     }
     return { status: res.status, data: await res.json().catch(() => ({})) }
@@ -141,13 +186,36 @@ async function seed(): Promise<ApiContext> {
     projectId,
     issueId: issue.id,
     issueKey: issue.key,
+    expiresAt: decodeJwtExpiryMs(access_token),
+  }
+}
+
+function decodeJwtExpiryMs(jwt: string): number {
+  try {
+    const payload = JSON.parse(Buffer.from(jwt.split('.')[1]!, 'base64url').toString('utf8'))
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : Date.now()
+  } catch {
+    return Date.now()
   }
 }
 
 export async function seedIntegrationData(): Promise<ApiContext> {
   if (!seedPromise) {
-    seedPromise = seed().catch((error) => {
-      seedPromise = null // allow retry on next call after a failure
+    seedPromise = (async () => {
+      const fd = acquireSeedLock()
+      try {
+        const cached = existsSync(seedCachePath) ? JSON.parse(readFileSync(seedCachePath, 'utf8')) : null
+        const fresh =
+          cached && Date.now() - cached.at < 10 * 60_000 && cached.ctx.expiresAt > Date.now() + 60_000
+        if (fresh) return cached.ctx as ApiContext
+        const ctx = await seed()
+        writeFileSync(seedCachePath, JSON.stringify({ at: Date.now(), ctx }))
+        return ctx
+      } finally {
+        releaseSeedLock(fd)
+      }
+    })().catch((error) => {
+      seedPromise = null
       throw error
     })
   }

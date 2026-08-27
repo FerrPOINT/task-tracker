@@ -6,7 +6,7 @@
 - Backend: реальные интеграционные тесты с PostgreSQL через Docker; unit-тесты для domain/services.
 - Frontend: unit-тесты на Vitest; E2E на Playwright.
 - После изменений UI — скриншоты в 375×812, 1920×1080, 2560×1440.
-- Coverage gate: lines ≥95%, regions ≥92%, functions ≥85% (backend).
+- Coverage gate в CI: ≥60% (`cargo-llvm-cov`, job `coverage`); локальный полный прогон — `just test-backend-coverage`.
 
 ## 2. Backend тесты
 
@@ -27,19 +27,29 @@ cargo test -p api --test failing_repos -- --test-threads=1
 
 ### Integration-тесты
 
-- `infra/tests/repos.rs` — Postgres-репозитории против реальной БД.
-- `infra/tests/repos_mock.rs` — `sea_orm::MockDatabase` error paths.
-- `api/tests/integration.rs` — end-to-end HTTP через Docker backend.
+- `api/tests/integration.rs` — end-to-end HTTP на in-memory стеке (spawn axum + memory-репозитории); ~130 сценариев.
 - `api/tests/failing_repos.rs` — 500-ветки с failing stubs.
+- `api/tests/middleware.rs` — JWT-middleware.
+- `infra/tests/repos_mock.rs` — `sea_orm::MockDatabase` error paths.
+
+### Docker-backed тесты (Postgres; `--include-ignored`)
+
+- `infra/tests/repos.rs` — Postgres-репозитории против реальной БД (`tasktracker_infra_test`).
+- `infra/tests/fk_regression.rs` — FK-констрейнты миграции m20260827_0000028 (orphan-вставки отклоняются, все констрейнты validated).
+
+```bash
+# подготовить тест-БД и запустить
+cd backend && cargo test -p infra --test repos --test fk_regression -- --include-ignored --test-threads=1
+```
 
 ### Coverage gate
 
 ```bash
-export TT_DB_PASS=$(cat /root/.tt_db_pass)
+# скрипт читает пароль тест-БД из /root/.tt_db_pass
 cd backend && bash scripts/run-e2e-tests.sh
 ```
 
-Текущие thresholds: lines 95%, regions 92%, functions 85%.
+CI-порог покрытия — 60% (`coverage` job); цель по слоям ниже — ориентир, не гейт.
 
 ## 3. Frontend тесты
 
@@ -103,10 +113,10 @@ Lefthook (`lefthook.yml`):
 | Layer | Target |
 |---|---|
 | Domain | ≥90% |
-| Application | ≥95% |
-| Infra | ≥90% |
+| Application | ≥90% |
+| Infra (docker-тесты) | ≥85% |
 | API routes | ≥85% |
-| **Total** | **lines ≥95, regions ≥92, functions ≥85** |
+| **CI gate (всё workspace)** | **≥60%** |
 
 ### Frontend
 

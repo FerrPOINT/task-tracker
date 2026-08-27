@@ -164,20 +164,12 @@
 
 ## 14. References
 
-- `docs/TZ.md` — полное ТЗ.
-- `docs/ARCHITECTURE.md` — архитектура.
-- `docs/DATA_MODEL.md` — дата-модель.
-- `docs/DEPLOYMENT.md` — деплой.
-- `docs/TESTING.md` — стратегия тестирования.
-- `docs/RUNTIME.md` — health probes и graceful shutdown.
-- `docs/RESILIENCE.md` — отказоустойчивость.
-- `docs/CI_CD.md` — CI/CD pipeline.
-
-## 15. References
-
 - `docs/TZ.md` — техническое задание и scope.
 - `docs/ARCHITECTURE.md` — архитектура и стек.
-- `docs/USER_STORIES.md` — user stories и use cases.
+- `docs/UI_UX.md` — user stories и use cases.
 - `docs/DATA_MODEL.md` — дата-модель.
 - `docs/API.md` — REST API спецификация.
+- `docs/DEPLOYMENT.md` — деплой.
+- `docs/TESTING.md` — стратегия тестирования.
 - `docs/RELEASE.md` — процесс релизов.
+- `docs/CI_CD.md` — CI/CD pipeline.

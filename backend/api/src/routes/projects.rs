@@ -41,6 +41,7 @@ fn map_project_response(dto: app::dto::ProjectDto) -> ProjectResponse {
             Some(dto.description)
         },
         owner_id: dto.owner_id,
+        owner_name: dto.owner_name,
         todo_count: dto.todo_count as u32,
         in_progress_count: dto.in_progress_count as u32,
         done_count: dto.done_count as u32,
@@ -84,13 +85,15 @@ pub async fn create_project(
 )]
 pub async fn get_project(
     State(ctx): State<Arc<app::AppContext>>,
+    claims: axum::Extension<app::auth::UserClaims>,
     axum::extract::Path(key): axum::extract::Path<String>,
 ) -> Result<Json<ProjectResponse>, AppError> {
     let key = ProjectKey::new(key.as_str());
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let p = ctx.services.project.get_by_key(&key).await?;
+    let requester: shared::UserId = claims.0.sub.parse().map_err(|_| AppError::Unauthorized)?;
+    let p = ctx.services.project.get_by_key(&key, requester).await?;
     Ok(Json(map_project_response(p)))
 }
 

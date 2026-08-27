@@ -128,8 +128,9 @@ Notification Scheme привязывается к проекту и опреде
 
 ### 5.3 Real-time Delivery
 
-- WebSocket channel `/ws/notifications/{user_id}`.
-- Новое уведомление приходит мгновенно.
+- SSE-поток `/api/v1/events` (`EventSource`, токен через `?access_token=`).
+- Клиент инвалидирует кэш TanStack Query по событиям (issue/board/comment/worklog).
+- WebSocket не используется.
 
 ## 6. Email Notifications
 

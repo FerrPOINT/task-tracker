@@ -27,9 +27,14 @@ async function refreshAccessToken(): Promise<boolean> {
         return false
       }
       const data = (await res.json()) as { access_token?: string; refresh_token?: string }
+      // Cookie-first: the rotated token arrives as an HttpOnly Set-Cookie on
+      // HTTPS deployments. The localStorage copy exists ONLY as a plain-HTTP
+      // fallback; when the server also returns the token in the body we keep
+      // the fallback fresh, otherwise we drop the stale one.
       if (data.refresh_token) {
-        // The backend rotates refresh tokens; persist the newest one.
         storeRefreshToken(data.refresh_token)
+      } else {
+        storeRefreshToken(null)
       }
       if (data.access_token) {
         useAuthStore.setState({ token: data.access_token })

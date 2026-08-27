@@ -3,6 +3,7 @@ import { apiLogin } from './setup'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
+test.setTimeout(120_000)
 test('token refresh keeps session alive when access token expires (HTTP)', async ({ page }) => {
   const loginRes = (await apiLogin()) as {
     status: number

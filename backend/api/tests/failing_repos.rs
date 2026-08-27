@@ -14,6 +14,7 @@ fn valid_token(ctx: &app::AppContext) -> String {
     use shared::UserId;
 
     let claims = UserClaims {
+        jti: None,
         sub: UserId::new().to_string(),
         exp: usize::MAX,
     };

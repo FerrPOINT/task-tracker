@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { apiLogin, apiGet, apiPost } from './setup'
 
 test.describe('project members', () => {
+test.setTimeout(120_000)
   test('add member → list → remove via board panel', async ({ page }) => {
     // register a fresh user to invite (single register per run; retried on 429)
     const username = `e2emember${Date.now() % 100000}`

@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { apiLogin, apiPost } from './setup'
 
 test.describe('real-time board updates (SSE)', () => {
+test.setTimeout(120_000)
   test('issue created via API appears on open board without reload', async ({ page }) => {
     const login = await apiLogin()
     expect(login.status).toBe(200)

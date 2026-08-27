@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router'
 import { AppShell } from './app-shell'
 
 const useCurrentUser = vi.hoisted(() => vi.fn())
+const useIssue = vi.hoisted(() => vi.fn())
 const useLogout = vi.hoisted(() => vi.fn())
 const useNotifications = vi.hoisted(() => vi.fn())
 const useMarkNotificationRead = vi.hoisted(() => vi.fn())
@@ -17,6 +18,7 @@ vi.mock('@/shared/api/hooks', () => ({
   useNotifications,
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
+  useIssue,
 }))
 vi.mock('@/shared/api/useTrackerEvents', () => ({ useTrackerEvents: vi.fn() }))
 vi.mock('@/shared/ui/theme-toggle', () => ({ ThemeToggle: () => null }))
@@ -32,6 +34,7 @@ type Notification = {
 
 function mockHooks(notifications: Notification[] | undefined) {
   useCurrentUser.mockReturnValue({ data: { email: 'user@example.test', display_name: 'User' } })
+  useIssue.mockReturnValue({ data: undefined })
   useLogout.mockReturnValue({ mutate: vi.fn() })
   useNotifications.mockReturnValue({ data: notifications, isLoading: false })
   useMarkNotificationRead.mockReturnValue({ mutate: vi.fn() })

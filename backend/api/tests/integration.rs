@@ -117,7 +117,12 @@ async fn spawn_server_with_notifications()
     users.save(&user).await.unwrap();
     let projects = Arc::new(MemoryProjectRepository::default());
     projects.save(&project).await.unwrap();
-    let issues = Arc::new(MemoryIssueRepository::default());
+    let shared_history = Arc::new(MemoryIssueStatusHistoryRepository::default());
+    let (hist_store, hist_projects) = shared_history.store();
+    let issues = Arc::new(MemoryIssueRepository::with_shared_history(
+        hist_store,
+        hist_projects,
+    ));
     let boards = Arc::new(MemoryBoardRepository::default());
     boards.save(&board).await.unwrap();
     let sprints = Arc::new(MemorySprintRepository::default());
@@ -176,7 +181,7 @@ async fn spawn_server_with_notifications()
         issue_links: Arc::new(MemoryIssueLinkRepository::default()),
         notifications: notifications.clone(),
         notification_settings: notifications.clone(),
-        issue_status_history: Arc::new(domain::MemoryIssueStatusHistoryRepository::default()),
+        issue_status_history: shared_history,
         watchers: Arc::new(domain::MemoryWatcherRepository::default()),
         votes: Arc::new(domain::MemoryVoteRepository::default()),
         components: Arc::new(domain::stubs::memory::MemoryProjectComponentRepository::default()),
@@ -356,6 +361,76 @@ async fn backlog_requires_auth_and_returns_issues() {
     let body: serde_json::Value = backlog.json().await.unwrap();
     assert!(body["backlog_issues"].is_array());
     assert!(body["sprint_issues"].is_array());
+}
+
+// P1: backlog offset pagination contract (audit r3)
+#[tokio::test]
+async fn backlog_offset_pages_without_duplicates() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let mut created_ids = Vec::new();
+    for i in 0..3 {
+        let res = client
+            .post(format!("{url}/api/v1/issues"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({
+                "project_key": "TT",
+                "summary": format!("Pagination item {i}"),
+                "issue_type": "task",
+                "priority": "medium",
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 201);
+        let body: serde_json::Value = res.json().await.unwrap();
+        created_ids.push(body["id"].as_str().unwrap().to_string());
+    }
+
+    let first = client
+        .get(format!("{url}/api/v1/projects/TT/backlog?offset=0&limit=1"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), 200);
+    let first_body: serde_json::Value = first.json().await.unwrap();
+    assert_eq!(first_body["backlog_offset"], 0, "metadata echoes offset");
+    assert_eq!(first_body["backlog_limit"], 1, "metadata echoes limit");
+    assert!(first_body["backlog_total"].as_u64().unwrap() >= 3);
+    let first_ids: Vec<String> = first_body["backlog_issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(first_ids.len(), 1);
+
+    let second = client
+        .get(format!("{url}/api/v1/projects/TT/backlog?offset=1&limit=1"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(second.status(), 200);
+    let second_body: serde_json::Value = second.json().await.unwrap();
+    let second_ids: Vec<String> = second_body["backlog_issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["id"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(second_ids.len(), 1);
+    assert_ne!(first_ids[0], second_ids[0], "pages must not overlap");
+
+    // Default call (no params) still works with the 100 window.
+    let default = client
+        .get(format!("{url}/api/v1/projects/TT/backlog"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(default.status(), 200);
 }
 
 #[tokio::test]
@@ -2097,10 +2172,15 @@ async fn spawn_server_with_reports() -> (
     users.save(&user).await.unwrap();
     let projects = Arc::new(MemoryProjectRepository::default());
     projects.save(&project).await.unwrap();
-    let issues = Arc::new(MemoryIssueRepository::default());
+    let shared_history = Arc::new(MemoryIssueStatusHistoryRepository::default());
+    let (hist_store, hist_projects) = shared_history.store();
+    let issues = Arc::new(MemoryIssueRepository::with_shared_history(
+        hist_store,
+        hist_projects,
+    ));
     let boards = Arc::new(MemoryBoardRepository::default());
     let sprints = Arc::new(MemorySprintRepository::default());
-    let history = Arc::new(MemoryIssueStatusHistoryRepository::default());
+    let history = shared_history.clone();
 
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
@@ -2918,7 +2998,12 @@ async fn spawn_server_with_memory_repos() -> (String, reqwest::Client) {
     users.save(&user).await.unwrap();
     let projects = Arc::new(MemoryProjectRepository::default());
     projects.save(&project).await.unwrap();
-    let issues = Arc::new(MemoryIssueRepository::default());
+    let shared_history = Arc::new(MemoryIssueStatusHistoryRepository::default());
+    let (hist_store, hist_projects) = shared_history.store();
+    let issues = Arc::new(MemoryIssueRepository::with_shared_history(
+        hist_store,
+        hist_projects,
+    ));
     let boards = Arc::new(MemoryBoardRepository::default());
     boards.save(&board).await.unwrap();
     let sprints = Arc::new(MemorySprintRepository::default());
@@ -2977,7 +3062,7 @@ async fn spawn_server_with_memory_repos() -> (String, reqwest::Client) {
         issue_links: Arc::new(MemoryIssueLinkRepository::default()),
         notifications: notifications.clone(),
         notification_settings: notifications.clone(),
-        issue_status_history: Arc::new(domain::MemoryIssueStatusHistoryRepository::default()),
+        issue_status_history: shared_history,
         watchers: Arc::new(domain::MemoryWatcherRepository::default()),
         votes: Arc::new(domain::MemoryVoteRepository::default()),
         components: Arc::new(domain::MemoryProjectComponentRepository::default()),
@@ -4740,6 +4825,268 @@ async fn board_move_enforces_wip_limit() {
         res.status(),
         409,
         "move past target WIP limit must be rejected"
+    );
+}
+
+// P1: project read must require membership (audit r3)
+#[tokio::test]
+async fn project_get_requires_membership() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    // A second, unrelated user must not read TT's project metadata.
+    let reg = client
+        .post(format!("{url}/api/v1/auth/register"))
+        .json(&serde_json::json!({
+            "email": "outsider@example.com",
+            "username": "outsider",
+            "display_name": "Outsider",
+            "password": "password123"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(reg.status(), 201, "register outsider");
+    let outsider: serde_json::Value = reg.json().await.unwrap();
+    let outsider_token = outsider["access_token"].as_str().unwrap().to_string();
+
+    let res = client
+        .get(format!("{url}/api/v1/projects/TT"))
+        .bearer_auth(&outsider_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        403,
+        "non-member must not read project metadata"
+    );
+
+    // The owner still can.
+    let res = client
+        .get(format!("{url}/api/v1/projects/TT"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "owner must read own project");
+}
+
+// P1: refresh rotation must be single-use (audit r3)
+#[tokio::test]
+async fn refresh_rotation_rejects_replayed_token() {
+    let (url, client) = spawn_server().await;
+    let login = client
+        .post(format!("{url}/api/v1/auth/login"))
+        .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
+        .send()
+        .await
+        .unwrap();
+    let first: serde_json::Value = login.json().await.unwrap();
+    let first_refresh = first["refresh_token"].as_str().unwrap().to_string();
+
+    // First refresh succeeds and rotates.
+    let res = client
+        .post(format!("{url}/api/v1/auth/refresh"))
+        .json(&serde_json::json!({"refresh_token": first_refresh}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "first refresh must succeed");
+
+    // Replaying the SAME token must fail: rotation is single-use.
+    let res = client
+        .post(format!("{url}/api/v1/auth/refresh"))
+        .json(&serde_json::json!({"refresh_token": first_refresh}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        401,
+        "replayed refresh token must be rejected after rotation"
+    );
+}
+
+// P1: cookie-based refresh must work with an (empty) body (audit r3)
+#[tokio::test]
+async fn refresh_with_cookie_and_empty_body() {
+    let (url, client) = spawn_server().await;
+    let login = client
+        .post(format!("{url}/api/v1/auth/login"))
+        .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login.status(), 200);
+    // The Set-Cookie header from login carries the HttpOnly refresh cookie.
+    let refresh_cookie = login
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|c| c.starts_with("refresh_token="))
+        .expect("login must set refresh cookie")
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string();
+
+    // Frontend sends `{}` when it has no locally stored token; the cookie
+    // alone must authenticate the refresh (HttpOnly primary mechanism).
+    let res = client
+        .post(format!("{url}/api/v1/auth/refresh"))
+        .header("cookie", &refresh_cookie)
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        200,
+        "cookie-only refresh with empty JSON body must succeed"
+    );
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["access_token"].as_str().is_some());
+}
+
+// 31a. transition endpoint must not bypass WIP limits (release hardening)
+#[tokio::test]
+async fn transition_endpoint_enforces_wip_limit() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    // Fill In Progress (WIP=5) through legal moves.
+    for _ in 0..5 {
+        let issue_id = create_issue_via_api(&url, &client, &token).await;
+        let res = client
+            .post(format!("{url}/api/v1/projects/TT/board/move"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({
+                "issue_id": issue_id,
+                "status_id": "00000000-0000-0000-0000-000000000002"
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+    }
+
+    let overflow_id = create_issue_via_api(&url, &client, &token).await;
+    let res = client
+        .post(format!("{url}/api/v1/issues/{overflow_id}/transition"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "target_status_id": "00000000-0000-0000-0000-000000000002"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        409,
+        "transition past target WIP limit must be rejected"
+    );
+}
+
+// 31b. PATCH status_id must not bypass WIP limits (release hardening)
+#[tokio::test]
+async fn patch_status_enforces_wip_limit() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    for _ in 0..5 {
+        let issue_id = create_issue_via_api(&url, &client, &token).await;
+        let res = client
+            .post(format!("{url}/api/v1/projects/TT/board/move"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({
+                "issue_id": issue_id,
+                "status_id": "00000000-0000-0000-0000-000000000002"
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+    }
+
+    let overflow_id = create_issue_via_api(&url, &client, &token).await;
+    let res = client
+        .patch(format!("{url}/api/v1/issues/{overflow_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "status_id": "00000000-0000-0000-0000-000000000002"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        409,
+        "PATCH status_id past target WIP limit must be rejected"
+    );
+}
+
+// 31c. transition endpoint must persist status history (release hardening)
+#[tokio::test]
+async fn transition_endpoint_persists_status_history() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/transition"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "target_status_id": "00000000-0000-0000-0000-000000000002"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "legal transition must succeed");
+
+    // The dedicated transition endpoint must leave the same trail as board
+    // move / PATCH. History has no public endpoint; control chart reports
+    // are derived from it, so verify the entry landed via the report API.
+    let res = client
+        .get(format!("{url}/api/v1/projects/TT"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let project: serde_json::Value = res.json().await.unwrap();
+    let project_id = project["id"].as_str().unwrap().to_string();
+    // Cumulative flow counts issues per status over time using status
+    // history; a Todo->InProgress entry must show up as in_progress >= 1.
+    let res = client
+        .get(format!(
+            "{url}/api/v1/reports/cumulative-flow?project_id={project_id}"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        200,
+        "cumulative-flow derives from status history"
+    );
+    let report: serde_json::Value = res.json().await.unwrap();
+    let flow = report["series"]
+        .as_array()
+        .or_else(|| report["points"].as_array())
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        flow.iter().any(|p| {
+            let ip = p["in_progress"]
+                .as_i64()
+                .or(p["inProgress"].as_i64())
+                .unwrap_or(0);
+            ip >= 1
+        }),
+        "transition must append status history visible to cumulative flow: {flow:?}"
     );
 }
 

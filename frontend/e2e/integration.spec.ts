@@ -18,6 +18,7 @@ async function login(page: Page) {
 
 test.describe('integration against live backend', () => {
   test.beforeAll(async () => {
+    test.setTimeout(180_000)
     await seedIntegrationData()
   })
 

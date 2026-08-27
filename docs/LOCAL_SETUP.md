@@ -1,155 +1,105 @@
 # Local Setup
 
+Локальный запуск и разработка Task Tracker.
+
 ## 1. Требования
 
 | Инструмент | Минимальная версия | Примечание |
 |---|---|---|
-| Docker + Compose | 24.x | для Postgres, Redis, Traefik |
-| Rust | 1.80+ | backend |
-| cargo | 1.80+ | backend |
+| Docker + Compose | 24.x | весь стек: Postgres, Redis, backend, frontend |
+| Rust | 1.86+ | backend (workspace в `backend/`) |
 | Node.js | 22 LTS | frontend |
-| pnpm | 9.x | frontend package manager |
-| just | — | task runner (опционально) |
+| pnpm | 9.x+ | frontend package manager |
 | git | 2.40+ | — |
 
-## 2. Быстрый старт
+## 2. Быстрый старт (Docker, весь стек)
 
 ```bash
 git clone git@github.com:FerrPOINT/task-tracker.git /opt/dev/task-tracker
 cd /opt/dev/task-tracker
 
 cp .env.example .env
-# отредактируй .env под себя
+# обязательно задай POSTGRES_PASSWORD и TASKTRACKER_JWT_SECRET (без рабочих дефолтов)
 
-docker compose up -d postgres
-cd backend && cargo run --bin server
-cd frontend && pnpm install && pnpm dev
+docker compose up -d --build
 ```
 
-Приложение доступно по `http://localhost:19876`.
+После старта:
+
+- Frontend: `http://localhost:19877`
+- Backend API: `http://localhost:3456/api/v1`
+- Health: `http://localhost:3456/api/v1/health` (без rate-limit)
+- Swagger UI: `http://localhost:3456/swagger-ui`
+- Postgres/Redis: внутренние (compose-сеть), наружу не публикуются; доступ — `docker compose exec postgres psql -U tasktracker`
+
+Демо-аккаунт (если выполнен seed): `demo@example.com` / пароль из `scripts/seed-demo.sh`.
 
 ## 3. Переменные окружения
 
-Основные для локальной разработки:
+Формат: `TASKTRACKER_SECTION__KEY` (двойное подчёркивание — вложенный ключ; `TASKTRACKER_SERVER_ADDRESS` с одним подчёркиванием НЕ парсится).
 
-```env
-TASKTRACKER_DATABASE__URL=postgres://tasktracker:[CHANGE_ME]@localhost:5432/tasktracker
-TASKTRACKER_JWT_SECRET=[CHANGE_ME_32BYTES_MIN]
-TASKTRACKER_REFRESH_SECRET=[CHANGE_ME_32BYTES_MIN]
-TASKTRACKER_ADMIN_EMAIL=admin@example.com
-TASKTRACKER_ADMIN_PASSWORD=[CHANGE_ME]
-VITE_API_URL=/api/v1
-VITE_WS_URL=/ws/v1
-```
+Основные переменные — в `.env.example` (Postgres-параметры compose, JWT-секрет, лимиты, порты `BACKEND_PORT`/`FRONTEND_PORT`). Секреты обязательны: `docker compose` откажется стартовать без `POSTGRES_PASSWORD` и `TASKTRACKER_JWT_SECRET`.
 
-Полный список — в `.env.example`.
-
-## 4. Backend
+## 4. Backend (разработка без Docker)
 
 ```bash
 cd backend
 
-# Установка зависимостей
 cargo build
 
-# Запуск миграций
+# миграции применяются автоматически при старте сервера; вручную:
 cargo run -p migration -- up
 
-# Запуск API сервера
+# API сервер (порт 3456)
 cargo run --bin server
 
-# Запуск тестов
-cargo test
+# тесты (юнит + integration на in-memory стеке)
+cargo test --workspace
 
-# Запуск с watch
-cargo watch -x run --bin server
+# docker-backed инфра-тесты (нужен Postgres из compose)
+cargo test -p infra --test repos -- --include-ignored --test-threads=1
 ```
 
-## 5. Frontend
+## 5. Frontend (разработка)
 
 ```bash
 cd frontend
 
 pnpm install
-pnpm dev
+pnpm dev          # Vite-прокси на backend :3456
 
-# Типизация
 pnpm typecheck
-
-# Линтер
 pnpm lint
+pnpm test -- --run          # vitest
+pnpm build                  # генерирует src/api/generated.ts из openapi/openapi.json
 
-# Тесты
-pnpm test
-pnpm test:e2e
+# E2E против живого Docker-стека
+pnpm exec playwright test --project=chromium
 ```
 
-## 6. Docker
+## 6. Генерация OpenAPI-контракта
+
+Источник истины — Rust-хендлеры (utoipa):
 
 ```bash
-# Всё через compose
-docker compose up -d --build
-
-# Только инфраструктура
-docker compose up -d postgres
-
-# Пересоздать контейнеры после изменений
-docker compose build
-docker compose up -d
-
-# Логи
-docker compose logs -f api
+cd backend && cargo run -p api --bin gen-openapi > ../openapi/openapi.json
+cd ../frontend && pnpm generate:api && pnpm typecheck
 ```
 
-## 7. Тестовые данные
+Не редактируйте `openapi/openapi.json` и `frontend/src/api/generated.ts` вручную.
 
-После первого запуска:
+## 7. Типичные проблемы
 
-```bash
-# Автосоздание admin пользователя из .env
-./scripts/init-admin.sh
-
-# Seed demo-проекта и задач (опционально)
-./scripts/seed-demo.sh
-```
-
-## 8. IDE
-
-Рекомендуемые расширения:
-
-- Rust Analyzer
-- Tailwind CSS IntelliSense
-- ESLint
-- Prettier
-- GitLens
-- Docker
-
-## 9. Частые проблемы
-
-| Проблема | Решение |
+| Симптом | Решение |
 |---|---|
-| Порт 19876 занят | `TASKTRACKER_SERVER__PORT` в `.env` / `docker-compose.override.yml` |
-| Postgres не стартует | `docker compose down -v` и пересоздать volume |
-| Redis connection refused | Redis не используется бекендом (event bus in-process); сервис в compose опционален |
-| `cargo` долго компилирует | `sccache` + `cargo nextest` |
+| Порт 19877/3456 занят | `FRONTEND_PORT` / `BACKEND_PORT` в `.env` |
+| compose не стартует: `POSTGRES_PASSWORD is required` | задай секрет в `.env` |
+| backend unhealthy | `docker compose logs backend`; healthcheck — `wget http://127.0.0.1:3456/api/v1/health` |
+| `TASKTRACKER_SERVER_ADDRESS` игнорируется | используй `TASKTRACKER_SERVER__ADDRESS` |
 
-Больше диагностики — в `docs/TROUBLESHOOTING.md`.
+## References
 
-## 10. Pre-commit
-
-```bash
-# Установить hooks (после создания)
-just install-hooks
-# или
-pre-commit install
-```
-
-## 11. References
-
-- `.env.example`
-- `docker-compose.yml`
-- `docs/DEPLOYMENT.md`
-- `docs/TESTING.md`
-- `docs/TROUBLESHOOTING.md`
-- `docs/CODE_STYLE.md`
-- `docs/AGENTS.md`
+- [Архитектура](ARCHITECTURE.md)
+- [Деплой](DEPLOYMENT.md)
+- [Бэкап и восстановление](BACKUP_RESTORE.md)
+- [Runbook](OPS_RUNBOOK.md)

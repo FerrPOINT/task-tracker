@@ -132,6 +132,25 @@ impl MigratorTrait for Migrator {
 }
 ```
 
+## 8a. m20260827_0000028 — core FK constraints
+
+Добавляет 16 FK-констрейнтов основного графа (issues/comments/worklogs/attachments/sprints/boards/project_members/issue_status_history) с явными delete-семантиками:
+
+- `CASCADE` — дочерние сущности (comments, worklogs, attachments, history, sprint/board/members при удалении проекта);
+- `SET NULL` — опциональные ссылки (issues.assignee_id, issues.sprint_id);
+- `RESTRICT` — целостность родителя (issues.project_id/status_id/reporter_id, authors).
+
+Констрейнты добавляются `NOT VALID` + `VALIDATE CONSTRAINT` (не блокирует запись). Если в данных есть сироты, миграция падает с именем констрейнта — данные нужно починить:
+
+```sql
+-- найти сирот reporter
+SELECT i.id, i.key FROM issues i LEFT JOIN users u ON i.reporter_id=u.id WHERE u.id IS NULL;
+-- переназначить на реального пользователя
+UPDATE issues SET reporter_id='<uuid>' WHERE ...;
+```
+
+DB-backed регрессия: `backend/infra/tests/fk_regression.rs` (docker-стек, `--include-ignored`).
+
 ## 9. Production
 
 - Миграции применяются при старте сервера автоматически.
@@ -146,3 +165,8 @@ impl MigratorTrait for Migrator {
 | local | `Migrator::up` при старте dev-сервера |
 | CI | `Migrator::up` на testcontainers PostgreSQL |
 | production | `Migrator::up` при старте backend контейнера |
+
+## References
+
+- [ARCHITECTURE](ARCHITECTURE.md)
+- [LOCAL_SETUP](LOCAL_SETUP.md)

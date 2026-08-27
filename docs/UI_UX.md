@@ -698,6 +698,6 @@ Time tracking
 Полный набор данных: `docs/assets/jira-reference/`.
 ## References
 
-- `docs/UI_LIBRARIES.md`
+- `docs/LIBRARIES.md`
 - `docs/FRONTEND_ARCHITECTURE.md`
-- `docs/USER_STORIES.md`
+- `docs/UI_UX.md`

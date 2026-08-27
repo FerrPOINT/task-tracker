@@ -77,7 +77,7 @@
 | Настройка | Значение по умолчанию |
 |-----------|----------------------|
 | `application_title` | Task Tracker |
-| `base_url` | `http://localhost:19876` |
+| `base_url` | `http://localhost:3456/api/v1` |
 | `default_locale` | `ru` |
 | `default_timezone` | `Europe/Moscow` |
 | `date_format` | `dd/MM/yyyy` |
@@ -165,7 +165,7 @@
 ### 10.1 Metrics
 
 - Prometheus `/metrics`.
-- OpenTelemetry traces.
+- OpenTelemetry traces — не реализовано (см. MONITORING.md).
 
 ### 10.2 Health Checks
 

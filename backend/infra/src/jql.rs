@@ -288,11 +288,11 @@ impl Compiler {
             BinaryOperator::GreaterThan => format!("{column} > {}", one_value()?),
             BinaryOperator::GreaterThanOrEqual => format!("{column} >= {}", one_value()?),
             BinaryOperator::Contains => format!(
-                "{column} ILIKE '%' || replace(replace({}, '%', '\\%'), '_', '\\_') || '%'",
+                "{column} ILIKE '%' || replace(replace(replace({}, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'",
                 one_value()?
             ),
             BinaryOperator::NotContains => format!(
-                "{column} NOT ILIKE '%' || replace(replace({}, '%', '\\%'), '_', '\\_') || '%'",
+                "{column} NOT ILIKE '%' || replace(replace(replace({}, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%'",
                 one_value()?
             ),
             BinaryOperator::In => format!("{column} IN ({})", placeholders.join(", ")),
@@ -512,6 +512,19 @@ mod wildcard_tests {
     use crate::jql::{JqlParameter, compile};
     use domain::jql::parse;
     use shared::UserId;
+
+    #[test]
+    fn contains_operator_escapes_backslash_in_bound_value() {
+        let expression = parse("summary ~ \"a\\\\b\"").expect("valid JQL");
+        let query = compile(&expression, UserId::new()).expect("supported query");
+        // The backslash itself must be neutralized BEFORE % and _ so it
+        // cannot escape the LIKE escape character.
+        assert!(
+            query.predicate.matches("replace(").count() >= 3,
+            "backslash must be escaped first, got: {}",
+            query.predicate
+        );
+    }
 
     #[test]
     fn contains_operator_escapes_like_wildcards_in_bound_value() {

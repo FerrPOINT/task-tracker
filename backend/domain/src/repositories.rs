@@ -41,6 +41,16 @@ pub trait UserRepository: Send + Sync {
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError>;
     async fn get_by_email(&self, email: &str) -> Result<User, AppError>;
     async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError>;
+    /// Atomic single-use rotation: replace the stored refresh-token hash
+    /// with `new_hash` ONLY if the row still holds `expected_hash`.
+    /// Returns Ok(()) on success and Unauthorized when the token was
+    /// already rotated (replay) or revoked.
+    async fn rotate_refresh_token(
+        &self,
+        user_id: UserId,
+        expected_hash: &str,
+        new_hash: &str,
+    ) -> Result<(), AppError>;
     async fn save(&self, user: &User) -> Result<UserId, AppError>;
     async fn list(&self) -> Result<Vec<User>, AppError>;
 }
@@ -83,6 +93,19 @@ pub trait IssueRepository: Send + Sync {
     /// and permanent-delete operations that need to act on trashed issues.
     async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError>;
     async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError>;
+    /// Atomically re-validate WIP and persist the status change together
+    /// with its history entry. Implementations MUST count the target column
+    /// and update the issue inside the same transaction (or critical
+    /// section), so concurrent movers cannot both observe free capacity.
+    async fn change_status_atomic(
+        &self,
+        issue_id: IssueId,
+        project_id: ProjectId,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+        actor_id: UserId,
+        guard: &TransitionGuard,
+    ) -> Result<(), AppError>;
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError>;
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError>;
     /// Soft-delete: set `deleted_at` to the current timestamp. The row is
@@ -121,6 +144,32 @@ pub trait WorkflowTransitionRepository: Send + Sync {
 pub trait IssueTypeRepository: Send + Sync {
     async fn get_by_id(&self, id: IssueTypeId) -> Result<IssueTypeEntity, AppError>;
     async fn list_all(&self) -> Result<Vec<IssueTypeEntity>, AppError>;
+}
+
+/// Guard used by every status-changing path (board move, dedicated
+/// transition endpoint, PATCH `status_id`). Centralizing the WIP check
+/// here makes the limit a domain invariant instead of a board-only rule.
+#[derive(Debug, Clone)]
+pub struct TransitionGuard {
+    pub wip_limit: Option<u32>,
+    pub target_count: u64,
+    pub column_name: String,
+}
+
+impl TransitionGuard {
+    /// Returns `Err(conflict)` when moving one more issue into the target
+    /// column would exceed its configured WIP limit.
+    pub fn ensure_wip_ok(&self) -> Result<(), AppError> {
+        if let Some(limit) = self.wip_limit {
+            if self.target_count >= limit as u64 {
+                return Err(AppError::conflict(format!(
+                    "WIP limit ({limit}) reached for {}",
+                    self.column_name
+                )));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -389,6 +438,15 @@ impl WorklogRepository for StubWorklogRepository {
 pub struct StubUserRepository;
 #[async_trait]
 impl UserRepository for StubUserRepository {
+    async fn rotate_refresh_token(
+        &self,
+        _user_id: UserId,
+        _expected_hash: &str,
+        _new_hash: &str,
+    ) -> Result<(), AppError> {
+        Err(AppError::Unauthorized)
+    }
+
     async fn get_by_id(&self, _id: UserId) -> Result<User, AppError> {
         Err(AppError::not_found("user", "stub"))
     }
@@ -441,6 +499,17 @@ impl ProjectRepository for StubProjectRepository {
 pub struct StubIssueRepository;
 #[async_trait]
 impl IssueRepository for StubIssueRepository {
+    async fn change_status_atomic(
+        &self,
+        _issue_id: IssueId,
+        _project_id: ProjectId,
+        _from_status_id: StatusId,
+        _to_status_id: StatusId,
+        _actor_id: UserId,
+        _guard: &TransitionGuard,
+    ) -> Result<(), AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
     async fn get_by_id(&self, _id: IssueId) -> Result<Issue, AppError> {
         Err(AppError::not_found("issue", "stub"))
     }

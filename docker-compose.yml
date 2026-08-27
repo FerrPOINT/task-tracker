@@ -3,29 +3,44 @@ services:
     image: postgres:17.6-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-tasktracker}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-[CHANGE_ME]}
+      # No working default: deployment MUST provide POSTGRES_PASSWORD.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-tasktracker}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-3457}:5432"
+    # Internal only: the backend reaches it over the compose network; do NOT
+    # publish Postgres on host interfaces. For local debugging use
+    # `docker compose exec postgres psql -U tasktracker`.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tasktracker} -d ${POSTGRES_DB:-tasktracker}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:8.0-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
+    # Internal only: unauthenticated Redis must never be reachable from the
+    # host network.
+    ports: []
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
+
+  uploads-init:
+    # One-shot: normalize ownership of the uploads volume so the non-root
+    # backend can write (legacy volumes were created by a root container).
+    image: debian:bookworm-slim
+    command: ["chown", "-R", "999:999", "/var/lib/tasktracker/uploads"]
+    user: "0:0"
+    volumes:
+      - uploads:/var/lib/tasktracker/uploads
 
   backend:
     build:
@@ -37,7 +52,8 @@ services:
       TASKTRACKER_DATABASE__URL: ${TASKTRACKER_DATABASE__URL}
       TASKTRACKER_SERVER__ADDRESS: 0.0.0.0
       TASKTRACKER_SERVER__PORT: 3456
-      TASKTRACKER_JWT_SECRET: ${TASKTRACKER_JWT_SECRET:-[CHANGE_ME]}
+      # No working default: deployment MUST provide a strong JWT secret.
+      TASKTRACKER_JWT_SECRET: ${TASKTRACKER_JWT_SECRET:?TASKTRACKER_JWT_SECRET is required}
       # Rate limits are configurable; defaults are production-safe (auth 5/15s, api 60/60s).
       TASKTRACKER_SERVER__AUTH_RATE_BURST: ${TASKTRACKER_SERVER__AUTH_RATE_BURST:-5}
       TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS: ${TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS:-15}
@@ -49,17 +65,22 @@ services:
       # Attachment files must survive container recreation.
       - uploads:/var/lib/tasktracker/uploads
     ports:
-      - "3456:3456"
+      - "${BACKEND_PORT:-3456}:3456"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      uploads-init:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3456/api/v1/health || exit 1"]
+      # /api/v1/health is mounted outside the rate-limited nest, so probes
+      # can never be throttled (429) by real traffic sharing the IP key.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3456/api/v1/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   frontend:
     build:
@@ -69,7 +90,7 @@ services:
     environment:
       NODE_ENV: production
     ports:
-      - "19877:80"
+      - "${FRONTEND_PORT:-19877}:80"
     depends_on:
       backend:
         condition: service_healthy

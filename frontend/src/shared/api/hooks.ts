@@ -333,11 +333,12 @@ export function useBoard(projectKey: string | undefined) {
   })
 }
 
-export function useBacklog(projectKey: string | undefined) {
+export function useBacklog(projectKey: string | undefined, offset = 0, limit = 100) {
   return useQuery({
-    queryKey: ['backlog', projectKey ?? ''],
-    queryFn: () => getBacklog(projectKey!),
+    queryKey: ['backlog', projectKey ?? '', offset, limit],
+    queryFn: () => getBacklog(projectKey!, offset, limit),
     enabled: !!projectKey,
+    placeholderData: (prev) => prev,
   })
 }
 
@@ -352,6 +353,7 @@ export function useIssue(id: string) {
   return useQuery({
     queryKey: ['issue', id],
     queryFn: () => getIssue(id),
+    enabled: id.length > 0,
     refetchOnWindowFocus: false,
     staleTime: 0,
   })

@@ -1,4 +1,5 @@
 use app::auth::UserClaims;
+use app::services::board::backlog;
 use axum::{
     Extension, Json,
     extract::{Path, State},
@@ -27,21 +28,44 @@ pub async fn get_board(
     Ok(Json(map_board(b)))
 }
 
+/// Query parameters for backlog paging. Defaults: offset 0, limit 100
+/// (server clamps limit to 200).
+#[derive(Debug, serde::Deserialize, utoipa::IntoParams)]
+pub struct BacklogQuery {
+    pub offset: Option<u32>,
+    pub limit: Option<u32>,
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/projects/{project_key}/backlog",
-    params(("project_key" = String, Path, description = "Project key")),
+    params(
+        BacklogQuery,
+        ("project_key" = String, Path, description = "Project key")
+    ),
     responses((status = 200, body = crate::dto::BacklogResponse))
 )]
 pub async fn get_backlog(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
+    axum::extract::Query(pagination): axum::extract::Query<BacklogQuery>,
 ) -> Result<Json<crate::dto::BacklogResponse>, AppError> {
     let key = shared::ProjectKey::from_str(&project_key)
         .map_err(|e| AppError::invalid_input(e.to_string()))?;
     let requester = parse_user_id(&claims)?;
-    let b = ctx.services.board.get_backlog(&key, requester).await?;
+    let b = ctx
+        .services
+        .board
+        .get_backlog(
+            &key,
+            requester,
+            pagination.offset.unwrap_or(0),
+            pagination
+                .limit
+                .unwrap_or(backlog::BACKLOG_PAGE_LIMIT as u32),
+        )
+        .await?;
     Ok(Json(map_backlog(b)))
 }
 
@@ -114,6 +138,8 @@ fn map_backlog(b: app::dto::BacklogDto) -> crate::dto::BacklogResponse {
         project_id: b.project_id,
         project_key: b.project_key,
         backlog_total: b.backlog_total,
+        backlog_offset: b.backlog_offset,
+        backlog_limit: b.backlog_limit,
         sprint: crate::dto::SprintResponse {
             id: b.sprint.id,
             name: b.sprint.name,

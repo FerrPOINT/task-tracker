@@ -146,6 +146,7 @@ async fn middleware_rejects_expired_token() {
     let token = jsonwebtoken::encode(
         &jsonwebtoken::Header::default(),
         &api::middleware::auth::UserClaims {
+            jti: None,
             sub: shared::UserId::from_uuid(uuid::Uuid::nil()).to_string(),
             exp: 1,
         },

@@ -26,8 +26,6 @@
     "confirmPassword": "Repeat password",
     "createAccount": "Create account",
     "haveAccount": "Already have an account",
-    "loginDemo": "MVP demo: any login/password works.",
-    "registerDemo": "MVP demo: registration without confirmation.",
     "passwordMismatch": "Passwords do not match"
   },
   "notifications": {
@@ -122,7 +120,10 @@
     "issueActions": "Issue actions",
     "removeFromSprint": "Remove from sprint",
     "moveToSprint": "Move to sprint",
-    "windowed": "Showing first {{shown}} of {{total}}"
+    "windowed": "Showing {{from}}–{{to}} of {{total}}",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "pageInfo": "{{from}}–{{to}} of {{total}}"
   },
   "sprint": {
     "name": "Sprint name",

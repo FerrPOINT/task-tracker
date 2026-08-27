@@ -212,6 +212,7 @@ async fn auth_expired_token_fails_verification() {
     let expired = jsonwebtoken::encode(
         &jsonwebtoken::Header::default(),
         &crate::auth::UserClaims {
+            jti: None,
             sub: UserId::new().to_string(),
             exp: 1,
         },
@@ -433,7 +434,7 @@ async fn project_service_create_list_and_get_by_key() {
     let by_key = ctx
         .services
         .project
-        .get_by_key(&ProjectKey::new("NP"))
+        .get_by_key(&ProjectKey::new("NP"), user.id)
         .await
         .unwrap();
     assert_eq!(by_key.key, "NP");
@@ -469,7 +470,7 @@ async fn project_service_list_and_get_by_key() {
     let by_key = ctx
         .services
         .project
-        .get_by_key(&ProjectKey::new("TT"))
+        .get_by_key(&ProjectKey::new("TT"), _user.id)
         .await
         .unwrap();
     assert_eq!(by_key.key, "TT");
@@ -506,11 +507,61 @@ async fn board_service_backlog() {
     let backlog = ctx
         .services
         .board
-        .get_backlog(&ProjectKey::new("TT"), user.id)
+        .get_backlog(&ProjectKey::new("TT"), user.id, 0, 100)
         .await
         .unwrap();
     assert_eq!(backlog.backlog_issues.len(), 1);
     assert_eq!(backlog.backlog_issues[0].summary, "Backlog item");
+}
+
+#[tokio::test]
+async fn backlog_offset_reaches_later_items_without_duplicates() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let status_id = board.columns[0].id.to_string();
+    for summary in ["Backlog page 1", "Backlog page 2", "Backlog page 3"] {
+        ctx.services
+            .issue
+            .create(
+                CreateIssueCommand {
+                    project_key: ProjectKey::new("TT"),
+                    summary: summary.to_string(),
+                    description: None,
+                    issue_type: IssueType::Task,
+                    priority: Priority::Medium,
+                    status_id: status_id.clone(),
+                    reporter_id: user.id,
+                    assignee_id: None,
+                    actor_id: user.id,
+                },
+                user.id,
+            )
+            .await
+            .unwrap();
+    }
+    let first = ctx
+        .services
+        .board
+        .get_backlog(&ProjectKey::new("TT"), user.id, 0, 1)
+        .await
+        .unwrap();
+    let second = ctx
+        .services
+        .board
+        .get_backlog(&ProjectKey::new("TT"), user.id, 1, 1)
+        .await
+        .unwrap();
+    assert_eq!(first.backlog_total, 3);
+    assert_eq!(first.backlog_offset, 0);
+    assert_eq!(second.backlog_offset, 1);
+    assert_eq!(first.backlog_issues.len(), 1);
+    assert_eq!(second.backlog_issues.len(), 1);
+    assert_ne!(first.backlog_issues[0].id, second.backlog_issues[0].id);
 }
 
 #[tokio::test]
@@ -865,6 +916,18 @@ fn failing_context() -> AppContext {
     struct FailingIssueRepository;
     #[async_trait::async_trait]
     impl IssueRepository for FailingIssueRepository {
+        async fn change_status_atomic(
+            &self,
+            _issue_id: shared::IssueId,
+            _project_id: shared::ProjectId,
+            _from_status_id: shared::StatusId,
+            _to_status_id: shared::StatusId,
+            _actor_id: shared::UserId,
+            _guard: &domain::TransitionGuard,
+        ) -> Result<(), shared::AppError> {
+            Err(shared::AppError::internal("failing repo"))
+        }
+
         async fn get_by_id(&self, _id: IssueId) -> Result<Issue, AppError> {
             Err(AppError::Internal("x".into()))
         }
@@ -895,6 +958,15 @@ fn failing_context() -> AppContext {
     struct FailingUserRepository;
     #[async_trait::async_trait]
     impl UserRepository for FailingUserRepository {
+        async fn rotate_refresh_token(
+            &self,
+            _user_id: shared::UserId,
+            _expected_hash: &str,
+            _new_hash: &str,
+        ) -> Result<(), shared::AppError> {
+            Err(shared::AppError::Internal("failing user repo".into()))
+        }
+
         async fn get_by_id(&self, _id: UserId) -> Result<User, AppError> {
             Err(AppError::Internal("x".into()))
         }
@@ -2697,4 +2769,20 @@ async fn verify_token_inactive_user_unauthorized() {
     // bearer_auth middleware performs the is_active lookup; simulate it here.
     let loaded = ctx.repos.users.get_by_id(user.id).await.unwrap();
     assert!(!loaded.is_active, "repo must persist the deactivation");
+}
+
+#[cfg(test)]
+mod backlog_proptests {
+    use proptest::prelude::*;
+
+    proptest! {
+        /// The page limit must always land inside 1..=200 regardless of input,
+    /// including zero and absurd values.
+        #[test]
+        fn backlog_limit_always_clamped(limit in 0usize..10_000usize) {
+            let clamped = limit.clamp(1, crate::services::board::backlog::BACKLOG_MAX_PAGE_SIZE);
+            prop_assert!(clamped >= 1);
+            prop_assert!(clamped <= crate::services::board::backlog::BACKLOG_MAX_PAGE_SIZE);
+        }
+    }
 }

@@ -101,7 +101,8 @@ pub trait ProjectService: Send + Sync {
         query: ProjectQueryDto,
         requester: UserId,
     ) -> Result<Vec<ProjectDto>, AppError>;
-    async fn get_by_key(&self, key: &ProjectKey) -> Result<ProjectDto, AppError>;
+    async fn get_by_key(&self, key: &ProjectKey, requester: UserId)
+    -> Result<ProjectDto, AppError>;
     async fn update(
         &self,
         key: &ProjectKey,
@@ -156,6 +157,8 @@ pub trait BoardService: Send + Sync {
         &self,
         project_key: &ProjectKey,
         requester: UserId,
+        offset: u32,
+        limit: u32,
     ) -> Result<BacklogDto, AppError>;
     async fn move_issue(
         &self,

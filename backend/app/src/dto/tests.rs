@@ -37,7 +37,7 @@ fn project_dto_from_project() {
         created_at: shared::now(),
         updated_at: shared::now(),
     };
-    let dto = ProjectDto::from_project(p.clone(), 1, 2, 3);
+    let dto = ProjectDto::from_project(p.clone(), "Owner Name".to_string(), 1, 2, 3);
     assert_eq!(dto.key, "XX");
     assert_eq!(dto.description, "desc");
     assert_eq!(dto.todo_count, 1);

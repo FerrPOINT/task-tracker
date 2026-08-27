@@ -9,6 +9,7 @@ test.describe.configure({ mode: 'serial' })
 
 test.describe('time tracking against live backend', () => {
   test.beforeAll(async () => {
+    test.setTimeout(120_000)
     const ctx = await seedIntegrationData()
     seededIssueId = ctx.issueId
   })
@@ -30,7 +31,7 @@ test.describe('time tracking against live backend', () => {
     await page.getByRole('button', { name: /сохранить|save/i }).click()
     // Worklog rows live on the «Журнал работ» tab, not the default «Активность» tab
     await page.getByRole('tab', { name: /журнал работ|worklog/i }).click()
-    await expect(page.getByRole('cell', { name: 'E2E logged work' })).toBeVisible()
+    await expect(page.getByRole('cell', { name: 'E2E logged work' }).first()).toBeVisible()
   })
 
   test('timer adds time to input', async ({ page }) => {

@@ -35,6 +35,7 @@ pub struct ProjectDto {
     pub name: String,
     pub description: String,
     pub owner_id: String,
+    pub owner_name: String,
     pub created_at: DateTime<FixedOffset>,
     pub todo_count: i64,
     pub in_progress_count: i64,
@@ -42,7 +43,13 @@ pub struct ProjectDto {
 }
 
 impl ProjectDto {
-    pub fn from_project(project: Project, todo: i64, in_progress: i64, done: i64) -> Self {
+    pub fn from_project(
+        project: Project,
+        owner_name: String,
+        todo: i64,
+        in_progress: i64,
+        done: i64,
+    ) -> Self {
         Self {
             id: project.id.to_string(),
             key: project.key.to_string(),
@@ -53,6 +60,7 @@ impl ProjectDto {
                 .map(|s| s.as_ref().to_string())
                 .unwrap_or_default(),
             owner_id: project.owner_id.to_string(),
+            owner_name,
             created_at: project.created_at,
             todo_count: todo,
             in_progress_count: in_progress,
@@ -192,8 +200,11 @@ pub struct BoardDto {
 pub struct BacklogDto {
     pub project_id: String,
     pub project_key: String,
-    /// Total backlog size before the response-window cap was applied.
+    /// Total number of backlog issues before paging.
     pub backlog_total: usize,
+    /// Applied page offset and page size make the next page deterministic.
+    pub backlog_offset: usize,
+    pub backlog_limit: usize,
     pub sprint: SprintDto,
     pub sprint_issues: Vec<IssueDto>,
     pub backlog_issues: Vec<IssueDto>,

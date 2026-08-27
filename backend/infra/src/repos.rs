@@ -136,6 +136,39 @@ struct UserRepo {
 
 #[async_trait]
 impl UserRepository for UserRepo {
+    async fn rotate_refresh_token(
+        &self,
+        user_id: UserId,
+        expected_hash: &str,
+        new_hash: &str,
+    ) -> Result<(), AppError> {
+        use sea_orm::Statement;
+        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        // Serialize rotation per user so two concurrent refreshes cannot
+        // both pass the hash comparison.
+        let lock_key = (user_id.as_uuid().as_u128() >> 64) as i64;
+        txn.execute(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT pg_advisory_xact_lock($1)",
+            [lock_key.into()],
+        ))
+        .await
+        .map_err(AppError::database)?;
+        let res = txn
+            .execute(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "UPDATE users SET refresh_token_hash = $1, updated_at = NOW() WHERE id = $2 AND refresh_token_hash = $3",
+                [new_hash.into(), user_id.as_uuid().into(), expected_hash.into()],
+            ))
+            .await
+            .map_err(AppError::database)?;
+        if res.rows_affected() == 0 {
+            return Err(AppError::Unauthorized);
+        }
+        txn.commit().await.map_err(AppError::database)?;
+        Ok(())
+    }
+
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError> {
         let model = user::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
@@ -428,8 +461,88 @@ impl IssueRepo {
     }
 }
 
+impl IssueRepo {
+    /// Advisory-lock key derived from the target status id: serializes all
+    /// movers into the same column so the in-transaction WIP count cannot
+    /// be raced by a concurrent transaction.
+    fn wip_lock_key(to_status_id: StatusId) -> i64 {
+        let bytes = to_status_id.as_uuid().as_u128().to_be_bytes();
+        i64::from_be_bytes([
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        ])
+    }
+}
+
 #[async_trait]
 impl IssueRepository for IssueRepo {
+    async fn change_status_atomic(
+        &self,
+        issue_id: IssueId,
+        project_id: ProjectId,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+        actor_id: UserId,
+        guard: &domain::TransitionGuard,
+    ) -> Result<(), AppError> {
+        use sea_orm::Statement;
+        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        // Serialize capacity checks per target column.
+        let lock_key = Self::wip_lock_key(to_status_id);
+        txn.execute(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT pg_advisory_xact_lock($1)",
+            [lock_key.into()],
+        ))
+        .await
+        .map_err(AppError::database)?;
+        // Re-count inside the transaction (READ COMMITTED snapshot starts now).
+        let count_stmt = Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT COUNT(*) AS c FROM issues WHERE project_id = $1 AND status_id = $2 AND deleted_at IS NULL",
+            [project_id.as_uuid().into(), to_status_id.as_uuid().into()],
+        );
+        let row: Option<i64> = txn
+            .query_one(count_stmt)
+            .await
+            .map_err(AppError::database)?
+            .map(|r| r.try_get::<i64>("", "c").unwrap_or(0));
+        let live_guard = domain::TransitionGuard {
+            target_count: row.unwrap_or(0) as u64,
+            ..guard.clone()
+        };
+        live_guard.ensure_wip_ok()?;
+        // Conditional update: fail if the issue moved concurrently.
+        let updated = issue::Entity::update_many()
+            .col_expr(issue::Column::StatusId, Expr::value(to_status_id.as_uuid()))
+            .col_expr(issue::Column::UpdatedAt, Expr::cust("CURRENT_TIMESTAMP"))
+            .filter(issue::Column::Id.eq(issue_id.as_uuid()))
+            .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
+            .filter(issue::Column::StatusId.eq(from_status_id.as_uuid()))
+            .filter(issue::Column::DeletedAt.is_null())
+            .exec(&txn)
+            .await
+            .map_err(AppError::database)?;
+        if updated.rows_affected == 0 {
+            return Err(AppError::conflict("issue status changed concurrently"));
+        }
+        txn.execute(Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "INSERT INTO issue_status_history (id, issue_id, from_status_id, to_status_id, changed_by_id, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+            [
+                Uuid::now_v7().into(),
+                issue_id.as_uuid().into(),
+                Some(from_status_id.as_uuid()).into(),
+                to_status_id.as_uuid().into(),
+                actor_id.as_uuid().into(),
+                chrono::Utc::now().into(),
+            ],
+        ))
+        .await
+        .map_err(AppError::database)?;
+        txn.commit().await.map_err(AppError::database)?;
+        Ok(())
+    }
+
     async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError> {
         let model = issue::Entity::find_by_id(id.as_uuid())
             .filter(issue::Column::DeletedAt.is_null())
@@ -531,8 +644,8 @@ impl IssueRepository for IssueRepo {
                 _ => issue::Column::CreatedAt,
             };
             select = match order {
-                "desc" => select.order_by_desc(col),
-                _ => select.order_by_asc(col),
+                "desc" => select.order_by_desc(col).order_by_desc(issue::Column::Id),
+                _ => select.order_by_asc(col).order_by_asc(issue::Column::Id),
             };
         }
         if let Some(q) = query.search_text.as_deref().filter(|s| !s.is_empty()) {
@@ -1972,7 +2085,11 @@ impl AuditLogRepository for AuditLogRepo {
         limit: u64,
         offset: u64,
     ) -> Result<Vec<AuditLog>, AppError> {
-        let mut query = audit_log::Entity::find().order_by_desc(audit_log::Column::CreatedAt);
+        // Deterministic pagination: created_at may collide (bulk inserts);
+        // id (UUIDv7, time-ordered) is the stable tie-breaker.
+        let mut query = audit_log::Entity::find()
+            .order_by_desc(audit_log::Column::CreatedAt)
+            .order_by_desc(audit_log::Column::Id);
         if let Some(actor_id) = actor_id {
             query = query.filter(audit_log::Column::ActorId.eq(actor_id.as_uuid()));
         }

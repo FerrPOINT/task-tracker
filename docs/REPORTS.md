@@ -165,4 +165,4 @@
 
 - `docs/PROJECT_ADMIN.md`
 - `docs/DATA_MODEL.md`
-- `docs/USER_STORIES.md`
+- `docs/UI_UX.md`

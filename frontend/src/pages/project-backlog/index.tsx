@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
-import { ErrorState } from '@/shared/ui/async-states'
+import { ErrorState, LoadingState } from '@/shared/ui/async-states'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -179,11 +179,18 @@ function Section<T extends Issue>({
   )
 }
 
+const BACKLOG_PAGE_SIZE = 100
+
 export function ProjectBacklogPage() {
   const { t } = useTranslation()
   const { projectKey } = useParams<{ projectKey?: string }>()
   const key = projectKey ?? 'TT'
-  const { data: backlog, isLoading: backlogLoading, error: backlogError } = useBacklog(key)
+  const [backlogOffset, setBacklogOffset] = useState(0)
+  const { data: backlog, isLoading: backlogLoading, error: backlogError } = useBacklog(
+    key,
+    backlogOffset,
+    BACKLOG_PAGE_SIZE,
+  )
   const { data: sprints, isLoading: sprintsLoading } = useSprints(key)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null)
@@ -196,12 +203,15 @@ export function ProjectBacklogPage() {
   const isLoading = backlogLoading || sprintsLoading
   const error = backlogError
 
-  if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
+  if (isLoading) return <LoadingState message={t('issue.loading')} />
   if (error || !backlog) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { sprint: activeSprint, sprint_issues, backlog_issues } = backlog
   const backlogTotal = backlog.backlog_total ?? backlog_issues.length
-  const backlogCapped = backlogTotal > backlog_issues.length
+  const currentOffset = backlog.backlog_offset ?? backlogOffset
+  const pageSize = backlog.backlog_limit ?? BACKLOG_PAGE_SIZE
+  const hasPrev = currentOffset > 0
+  const hasNext = currentOffset + backlog_issues.length < backlogTotal
   const futureSprints =
     sprints?.filter((s) => s.id !== activeSprint.id && s.state !== 'closed') ?? []
   const activeFromList = sprints?.find((s) => s.id === activeSprint.id)
@@ -239,9 +249,10 @@ export function ProjectBacklogPage() {
           <div className="text-sm text-text-muted">
             {t('backlog.velocity', { velocity: activeSprint.velocity ?? '-' })} ·{' '}
             {t('backlog.backlogCount', { count: backlogTotal })}
-            {backlogCapped &&
+            {hasNext &&
               ` · ${t('backlog.windowed', {
-                shown: backlog_issues.length,
+                from: currentOffset + 1,
+                to: currentOffset + backlog_issues.length,
                 total: backlogTotal,
               })}`}
           </div>
@@ -410,6 +421,34 @@ export function ProjectBacklogPage() {
         )}
         emptyText={t('backlog.emptyBacklog')}
       />
+
+      {(hasPrev || hasNext) && (
+        <div className="flex items-center justify-between rounded-lg border border-border bg-surface px-3 py-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!hasPrev || backlogLoading}
+            onClick={() => setBacklogOffset(Math.max(0, currentOffset - pageSize))}
+          >
+            {t('backlog.prevPage')}
+          </Button>
+          <span className="text-sm text-text-muted">
+            {t('backlog.pageInfo', {
+              from: currentOffset + 1,
+              to: currentOffset + backlog_issues.length,
+              total: backlogTotal,
+            })}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!hasNext || backlogLoading}
+            onClick={() => setBacklogOffset(currentOffset + pageSize)}
+          >
+            {t('backlog.nextPage')}
+          </Button>
+        </div>
+      )}
 
       <SprintFormDialog
         open={dialogOpen}

@@ -30,6 +30,6 @@ shadcn/ui компоненты на Radix primitives + Tailwind CSS 4.1.0 + CSS 
 
 ## Related
 
-- `docs/DESIGN_TOKENS.md`
-- `docs/REACT_STYLING.md`
-- `docs/UI_LIBRARIES.md`
+- `docs/CODE_STYLE.md`
+- `docs/FRONTEND_STANDARDS.md`
+- `docs/LIBRARIES.md`

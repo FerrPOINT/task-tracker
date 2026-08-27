@@ -101,7 +101,6 @@ export function RegisterPage() {
             <a href="/login">{t('auth.haveAccount')}</a>
           </Button>
         </form>
-        <p className="mt-4 text-center text-xs text-text-muted">{t('auth.registerDemo')}</p>
       </div>
     </div>
   )

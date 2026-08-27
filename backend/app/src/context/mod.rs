@@ -122,7 +122,6 @@ impl AppContext {
             repos.users.clone(),
             repos.statuses.clone(),
             repos.transitions.clone(),
-            repos.issue_status_history.clone(),
             repos.sprints.clone(),
             repos.components.clone(),
             repos.versions.clone(),
@@ -138,7 +137,6 @@ impl AppContext {
             repos.statuses.clone(),
             repos.transitions.clone(),
             repos.projects.clone(),
-            repos.issue_status_history.clone(),
             authz.clone(),
         ));
         let search: Arc<dyn SearchService> = Arc::new(SearchServiceImpl::new(

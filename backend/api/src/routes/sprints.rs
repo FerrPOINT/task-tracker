@@ -59,15 +59,15 @@ pub async fn list_sprints(
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let project = ctx.services.project.get_by_key(&key).await?;
-    let project_id = project
-        .id
-        .parse::<uuid::Uuid>()
-        .map_err(|_| AppError::invalid_input("project_id"))?;
     let requester = claims
         .sub
         .parse::<shared::UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let project = ctx.services.project.get_by_key(&key, requester).await?;
+    let project_id = project
+        .id
+        .parse::<uuid::Uuid>()
+        .map_err(|_| AppError::invalid_input("project_id"))?;
     let items = ctx
         .services
         .sprint
@@ -95,7 +95,11 @@ pub async fn create_sprint(
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let project = ctx.services.project.get_by_key(&key).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let project = ctx.services.project.get_by_key(&key, requester).await?;
     let project_id = project
         .id
         .parse::<uuid::Uuid>()
@@ -107,10 +111,6 @@ pub async fn create_sprint(
         start_date: req.start_date,
         end_date: req.end_date,
     };
-    let requester = claims
-        .sub
-        .parse::<shared::UserId>()
-        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let dto = ctx.services.sprint.create(cmd, requester).await?;
     Ok((StatusCode::CREATED, Json(map_sprint_response(dto))))
 }
@@ -133,15 +133,16 @@ pub async fn get_sprint(
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let _ = ctx.services.project.get_by_key(&key).await?;
-    let id = sprint_id
-        .parse::<uuid::Uuid>()
-        .map(SprintId::from_uuid)
-        .map_err(|_| AppError::invalid_input("sprint_id"))?;
     let requester = claims
         .sub
         .parse::<shared::UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let _ = ctx.services.project.get_by_key(&key, requester).await?;
+    let id = sprint_id
+        .parse::<uuid::Uuid>()
+        .map(SprintId::from_uuid)
+        .map_err(|_| AppError::invalid_input("sprint_id"))?;
+
     let dto = ctx.services.sprint.get_by_id(id, requester).await?;
     Ok(Json(map_sprint_response(dto)))
 }
@@ -166,7 +167,11 @@ pub async fn update_sprint(
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let _ = ctx.services.project.get_by_key(&key).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let _ = ctx.services.project.get_by_key(&key, requester).await?;
     let id = sprint_id
         .parse::<uuid::Uuid>()
         .map(SprintId::from_uuid)
@@ -177,10 +182,7 @@ pub async fn update_sprint(
         start_date: req.start_date,
         end_date: req.end_date,
     };
-    let requester = claims
-        .sub
-        .parse::<shared::UserId>()
-        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+
     let dto = ctx.services.sprint.update(id, cmd, requester).await?;
     Ok(Json(map_sprint_response(dto)))
 }
@@ -203,15 +205,16 @@ pub async fn start_sprint(
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let _ = ctx.services.project.get_by_key(&key).await?;
-    let id = sprint_id
-        .parse::<uuid::Uuid>()
-        .map(SprintId::from_uuid)
-        .map_err(|_| AppError::invalid_input("sprint_id"))?;
     let requester = claims
         .sub
         .parse::<shared::UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let _ = ctx.services.project.get_by_key(&key, requester).await?;
+    let id = sprint_id
+        .parse::<uuid::Uuid>()
+        .map(SprintId::from_uuid)
+        .map_err(|_| AppError::invalid_input("sprint_id"))?;
+
     let dto = ctx.services.sprint.start(id, requester).await?;
     Ok(Json(map_sprint_response(dto)))
 }
@@ -234,15 +237,16 @@ pub async fn close_sprint(
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let _ = ctx.services.project.get_by_key(&key).await?;
-    let id = sprint_id
-        .parse::<uuid::Uuid>()
-        .map(SprintId::from_uuid)
-        .map_err(|_| AppError::invalid_input("sprint_id"))?;
     let requester = claims
         .sub
         .parse::<shared::UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let _ = ctx.services.project.get_by_key(&key, requester).await?;
+    let id = sprint_id
+        .parse::<uuid::Uuid>()
+        .map(SprintId::from_uuid)
+        .map_err(|_| AppError::invalid_input("sprint_id"))?;
+
     let dto = ctx.services.sprint.close(id, requester).await?;
     Ok(Json(map_sprint_response(dto)))
 }
@@ -267,7 +271,11 @@ pub async fn move_issue_to_sprint(
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let _ = ctx.services.project.get_by_key(&key).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let _ = ctx.services.project.get_by_key(&key, requester).await?;
     let sprint_id = sprint_id
         .parse::<uuid::Uuid>()
         .map(SprintId::from_uuid)
@@ -277,10 +285,7 @@ pub async fn move_issue_to_sprint(
         .parse::<uuid::Uuid>()
         .map(shared::IssueId::from_uuid)
         .map_err(|_| AppError::invalid_input("issue_id"))?;
-    let requester = claims
-        .sub
-        .parse::<shared::UserId>()
-        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+
     let dto = ctx
         .services
         .sprint
@@ -315,7 +320,11 @@ pub async fn remove_issue_from_sprint(
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let _ = ctx.services.project.get_by_key(&key).await?;
+    let requester = claims
+        .sub
+        .parse::<shared::UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let _ = ctx.services.project.get_by_key(&key, requester).await?;
     let _ = sprint_id
         .parse::<uuid::Uuid>()
         .map(SprintId::from_uuid)
@@ -325,10 +334,7 @@ pub async fn remove_issue_from_sprint(
         .parse::<uuid::Uuid>()
         .map(shared::IssueId::from_uuid)
         .map_err(|_| AppError::invalid_input("issue_id"))?;
-    let requester = claims
-        .sub
-        .parse::<shared::UserId>()
-        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+
     let dto = ctx
         .services
         .sprint

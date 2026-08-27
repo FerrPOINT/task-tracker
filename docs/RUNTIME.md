@@ -42,7 +42,7 @@
 3. Применение миграций (`sea-orm-migration`).
 4. Seed default data (admin, default issue types, workflow).
 5. Подключение к Redis с retry.
-6. Запуск HTTP/WebSocket сервера.
+6. Запуск HTTP-сервера (API + SSE `/api/v1/events`).
 7. Mark startup probe as ready.
 
 ## 4. Retry / Backoff
@@ -57,9 +57,9 @@
 ## 5. Graceful Shutdown
 
 1. Получение `SIGTERM` / `SIGINT`.
-2. Stop accepting new HTTP/WebSocket connections.
+2. Stop accepting new HTTP connections.
 3. Wait for active requests (timeout 30s).
-4. Close WebSocket connections with `1001 Going Away`.
+4. Закрыть SSE-соединения.
 5. Stop background workers (apalis).
 6. Flush pending events to Redis/bus.
 7. Close DB connection pool.
@@ -91,7 +91,7 @@
 ## 9. Multi-instance Notes
 
 - Stateless HTTP tier.
-- WebSocket state синхронизируется через Redis pub/sub.
+- События SSE публикуются in-process (broadcast); Redis pub/sub не используется.
 - Background jobs должны быть idempotent при scale-out.
 
 ## References

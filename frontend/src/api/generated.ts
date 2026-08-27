@@ -1191,6 +1191,8 @@ export interface components {
         };
         BacklogResponse: {
             backlog_issues: components["schemas"]["IssueResponse"][];
+            backlog_limit: number;
+            backlog_offset: number;
             backlog_total: number;
             project_id: string;
             project_key: string;
@@ -1450,11 +1452,16 @@ export interface components {
             key: string;
             name: string;
             owner_id: string;
+            owner_name: string;
             /** Format: int32 */
             todo_count: number;
         };
         RefreshRequest: {
-            refresh_token: string;
+            /**
+             * @description Optional: the HttpOnly refresh cookie is the primary mechanism;
+             *     the body token is the explicit HTTP (non-Secure-cookie) fallback.
+             */
+            refresh_token?: string | null;
         };
         RegisterRequest: {
             email: string;
@@ -3687,7 +3694,10 @@ export interface operations {
     };
     get_backlog: {
         parameters: {
-            query?: never;
+            query?: {
+                offset?: number | null;
+                limit?: number | null;
+            };
             header?: never;
             path: {
                 /** @description Project key */

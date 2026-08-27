@@ -10,10 +10,18 @@ use app::context::AppContext;
 use shared::{AppError, ProjectId, ProjectKey, UserId};
 use std::str::FromStr;
 
-async fn resolve_project_id(ctx: &AppContext, project_key: String) -> Result<ProjectId, AppError> {
+async fn resolve_project_id(
+    ctx: &AppContext,
+    project_key: String,
+    requester: UserId,
+) -> Result<ProjectId, AppError> {
     let project_key = ProjectKey::from_str(&project_key)
         .map_err(|error| AppError::invalid_input(error.to_string()))?;
-    let project = ctx.services.project.get_by_key(&project_key).await?;
+    let project = ctx
+        .services
+        .project
+        .get_by_key(&project_key, requester)
+        .await?;
     project
         .id
         .parse::<ProjectId>()
@@ -36,11 +44,11 @@ pub async fn list_members(
     Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
 ) -> Result<Json<ProjectMemberListResponse>, AppError> {
-    let project_id = resolve_project_id(&ctx, project_key).await?;
     let requester = claims
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let project_id = resolve_project_id(&ctx, project_key, requester).await?;
     let items = ctx.services.member.list(project_id, requester).await?;
     Ok(Json(ProjectMemberListResponse {
         members: items
@@ -79,7 +87,11 @@ pub async fn add_member(
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
-    let project_id = resolve_project_id(&ctx, project_key).await?;
+    let requester = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
+    let project_id = resolve_project_id(&ctx, project_key, requester).await?;
     let user_id = body
         .user_id
         .parse::<UserId>()
@@ -129,7 +141,7 @@ pub async fn remove_member(
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
-    let project_id = resolve_project_id(&ctx, project_key).await?;
+    let project_id = resolve_project_id(&ctx, project_key, requester).await?;
     let user_id = user_id
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id"))?;

@@ -3,7 +3,7 @@ import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
-import { ErrorState } from '@/shared/ui/async-states'
+import { ErrorState, LoadingState } from '@/shared/ui/async-states'
 import { Input } from '@/shared/ui/input'
 import { Card, CardContent } from '@/shared/ui/card'
 import {
@@ -48,7 +48,7 @@ export function ProjectsPage() {
   const update = useUpdateProject(editingProject?.key ?? '')
   const remove = useDeleteProject()
 
-  if (isLoading) return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
+  if (isLoading) return <LoadingState message={t('issue.loading')} />
   if (error) return <ErrorState message={error.message} />
 
   const isFormPending = create.isPending || update.isPending
@@ -145,7 +145,7 @@ export function ProjectsPage() {
                       <div className="min-w-0">
                         <div className="truncate font-semibold">{project.name}</div>
                         <div className="text-xs text-text-muted">
-                          {project.key} · {t('projects.lead')}: {project.owner_id} ·{' '}
+                          {project.key} · {t('projects.lead')}: {project.owner_name || project.owner_id} ·{' '}
                           {project.todo_count + project.in_progress_count + project.done_count}{' '}
                           {t('projects.issues', {
                             count:

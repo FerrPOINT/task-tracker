@@ -30,6 +30,7 @@ vi.mock('@/shared/api/hooks', () => ({
     error: null,
   }),
   useMoveIssue: () => ({ mutate: vi.fn(), isPending: false }),
+  useTransitions: () => ({ data: [], isLoading: false }),
   useProjectMembers: () => ({ data: { members: [] }, isLoading: false, error: null }),
   useUsers: () => ({ data: [] }),
   useAddProjectMember: () => ({ mutate: vi.fn(), isPending: false }),
@@ -52,7 +53,7 @@ describe('ProjectBoardPage', () => {
   it('renders board columns and issue card', async () => {
     render(wrapper(<ProjectBoardPage />))
     const columns = await screen.findAllByText(/to do/i)
-    expect(columns.length).toBeGreaterThanOrEqual(2)
-    expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(2)
+    expect(columns.length).toBeGreaterThanOrEqual(1) // single responsive tree
+    expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(1)
   })
 })

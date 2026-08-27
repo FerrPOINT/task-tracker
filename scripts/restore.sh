@@ -43,9 +43,17 @@ docker compose exec -T postgres pg_restore \
   < "${BACKUP_DIR}/${BACKUP_NAME}.dump"
 
 echo "Restoring attachments..."
-if [ -d "${BACKUP_DIR}/${BACKUP_NAME}-attachments" ]; then
-  mkdir -p data/attachments
-  cp -a "${BACKUP_DIR}/${BACKUP_NAME}-attachments/." data/attachments/
+# Restore into the named Docker volume `uploads` and fix ownership for the
+# non-root backend user (uid/gid 999).
+if [ -f "${BACKUP_DIR}/${BACKUP_NAME}-attachments.tar.gz" ]; then
+  docker run --rm \
+    -v task-tracker_uploads:/var/lib/tasktracker/uploads \
+    -v "$BACKUP_DIR":/backup:ro \
+    --entrypoint /bin/sh \
+    debian:bookworm-slim \
+    -c "cd /var/lib/tasktracker/uploads && tar -xzf \"/backup/${BACKUP_NAME}-attachments.tar.gz\" && chown -R 999:999 /var/lib/tasktracker/uploads"
+else
+  echo "WARNING: no attachments archive found in backup; skipping" >&2
 fi
 
 echo "Restore complete."

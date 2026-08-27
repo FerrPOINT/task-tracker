@@ -73,6 +73,14 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 | POST | `/projects/{project_key}/sprints/{sprint_id}/close` | Закрытие спринта |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/issues` | Перенос задач в спринт |
 | POST | `/projects/{project_key}/sprints/{sprint_id}/remove-issue` | Убрать задачу из спринта |
+
+#### Backlog pagination
+
+`GET /projects/{project_key}/backlog?offset=0&limit=100` возвращает детерминированно отсортированное окно (`created_at DESC, id DESC`). `limit` — 1..200 (default 100). Ответ содержит `backlog_total`, `backlog_offset`, `backlog_limit`, `backlog_issues` и `sprint_issues`; используйте метаданные для пагинации, не полагайтесь на старый hard-cap 100.
+
+#### Project owner
+
+`ProjectResponse` включает `owner_id` и `owner_name`; клиент показывает `owner_name`, а `owner_id` оставляет для машинных операций.
 | POST | `/projects/{project_key}/sprints/{sprint_id}/start` | Старт спринта |
 
 ### Project members (по UUID)

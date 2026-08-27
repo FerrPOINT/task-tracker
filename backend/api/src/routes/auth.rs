@@ -66,7 +66,7 @@ pub async fn refresh(
     let refresh_token = jar
         .get(&ctx.config.auth.refresh_cookie_name)
         .map(|c| c.value().to_string())
-        .or(Some(body.refresh_token).filter(|t| !t.is_empty()))
+        .or(body.refresh_token.filter(|t| !t.is_empty()))
         .ok_or(AppError::Unauthorized)?;
     let dto = ctx.services.auth.refresh(&refresh_token).await?;
     let jar = set_refresh_cookie(jar, &ctx.config.auth, &dto.refresh_token);

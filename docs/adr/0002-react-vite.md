@@ -30,4 +30,4 @@ React 19.1.0 + Vite 6.2.0 + TypeScript 5.9.3.
 ## Related
 
 - `docs/FRONTEND_ARCHITECTURE.md`
-- `docs/UI_LIBRARIES.md`
+- `docs/LIBRARIES.md`

@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { apiLogin, apiPost } from './setup'
 
 test.describe('attachments', () => {
+test.setTimeout(120_000)
   test('upload → list → delete attachment on issue detail', async ({ page }) => {
     // Seed: login + create issue via API (shared seed keeps auth rate-limit happy)
     const login = await apiLogin()

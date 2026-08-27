@@ -54,3 +54,8 @@ task-tracker issue transition PROJ-1 --to <status-uuid>
 
 - `docs/API.md`
 - `docs/ARCHITECTURE.md`
+
+## References
+
+- [ARCHITECTURE](ARCHITECTURE.md)
+- [LOCAL_SETUP](LOCAL_SETUP.md)

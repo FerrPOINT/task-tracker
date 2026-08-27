@@ -17,7 +17,11 @@ RUN cargo build --release --bin server
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates libssl3 wget && rm -rf /var/lib/apt/lists/*
+# Run as an unprivileged user; uploads volume is chowned at startup below.
+RUN groupadd -r tasktracker && useradd -r -g tasktracker -d /app -s /usr/sbin/nologin tasktracker
 WORKDIR /app
 COPY --from=builder /app/target/release/server /usr/local/bin/task-tracker-server
+RUN mkdir -p /var/lib/tasktracker/uploads && chown -R tasktracker:tasktracker /var/lib/tasktracker
+USER tasktracker
 EXPOSE 3456
 CMD ["task-tracker-server"]

@@ -69,10 +69,11 @@
 
 Подробнее в `docs/ERROR_HANDLING.md`.
 
-## 8. WebSocket
+## 8. Server-Sent Events
 
-- Real-time события — отдельный WebSocket endpoint `/ws/v1`.
-- Структура сообщений зафиксирована в `docs/EVENTS.md`.
+- Real-time события — `GET /api/v1/events` (SSE, `EventSource`).
+- Авторизация: Bearer недоступен в EventSource, поэтому для этого endpoint принимается `?access_token=` (только здесь).
+- Формат событий — в `docs/EVENTS.md`.
 
 ## 9. Rate limiting
 

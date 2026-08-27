@@ -66,11 +66,26 @@ impl crate::context::AuthService for JwtAuthService {
             .parse::<UserId>()
             .map_err(|_| AppError::invalid_input("invalid user id"))?;
         let user = self.users.get_by_id(user_id).await?;
-        let token_hash = hash_refresh_token(refresh_token);
-        if user.refresh_token_hash.as_deref() != Some(&token_hash) {
+        if !user.is_active {
             return Err(AppError::Unauthorized);
         }
-        self.issue_tokens(user).await
+        let current_hash = hash_refresh_token(refresh_token);
+        // Mint the replacement first, then rotate the stored hash with a
+        // compare-and-swap: a replayed token no longer matches the stored
+        // hash and is rejected atomically (no read-before-write race).
+        let access = create_access_token(&self.config, user.id)?;
+        let next_refresh = create_refresh_token(&self.config, user.id)?;
+        let next_hash = hash_refresh_token(&next_refresh);
+        self.users
+            .rotate_refresh_token(user_id, &current_hash, &next_hash)
+            .await?;
+        let expires_in = self.config.access_token_ttl_minutes * 60;
+        Ok(AuthDto {
+            access_token: access,
+            refresh_token: next_refresh,
+            user: crate::dto::UserDto::from(user),
+            expires_in,
+        })
     }
 
     async fn logout(&self, user_id: UserId) -> Result<(), AppError> {
@@ -155,6 +170,7 @@ fn create_access_token(config: &AuthConfig, user_id: UserId) -> Result<String, A
     let claims = UserClaims {
         sub: user_id.to_string(),
         exp: exp.timestamp() as usize,
+        jti: None,
     };
     jsonwebtoken::encode(
         &Header::default(),
@@ -169,6 +185,7 @@ fn create_refresh_token(config: &AuthConfig, user_id: UserId) -> Result<String, 
     let claims = UserClaims {
         sub: user_id.to_string(),
         exp: exp.timestamp() as usize,
+        jti: Some(uuid::Uuid::now_v7().to_string()),
     };
     jsonwebtoken::encode(
         &Header::default(),
@@ -182,10 +199,54 @@ fn create_refresh_token(config: &AuthConfig, user_id: UserId) -> Result<String, 
 pub struct UserClaims {
     pub sub: String,
     pub exp: usize,
+    /// Unique token id; present on refresh tokens so that two rotations in
+    /// the same second still mint distinct single-use tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jti: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn refresh_rotation_is_single_use() {
+        use crate::context::AuthService as _;
+        let cfg = shared::AuthConfig {
+            jwt_secret: "test-secret".to_string(),
+            access_token_ttl_minutes: 15,
+            refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
+        };
+        let users = std::sync::Arc::new(domain::MemoryUserRepository::default());
+        let user = domain::User {
+            id: shared::UserId::from_uuid(uuid::Uuid::new_v4()),
+            email: "u@e.com".into(),
+            username: "u".into(),
+            display_name: "U".into(),
+            password_hash: "$argon2id$v=19$m=65536,t=3,p=4$stN/enhZ9yOvgWC9E8Y6BA$IL9I0WONb/I6zoT4rdmdkrPcIFADFxsLCjrO0ySSl0Y".into(),
+            refresh_token_hash: None,
+            is_system_admin: false,
+            is_active: true,
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        users.save(&user).await.unwrap();
+        let svc = super::JwtAuthService::new(cfg, users.clone());
+        let first = svc.refresh("not-a-token").await;
+        assert!(first.is_err(), "invalid signature must be rejected");
+
+        // Direct rotation path: seed a valid refresh token via issue_tokens,
+        // then replay it after a successful rotation.
+        let dto = svc.issue_tokens(user.clone()).await.unwrap();
+        let ok = svc.refresh(&dto.refresh_token).await.unwrap();
+        assert_ne!(ok.refresh_token, dto.refresh_token, "must rotate");
+        let replay = svc.refresh(&dto.refresh_token).await;
+        assert!(replay.is_err(), "replayed token must be rejected");
+    }
+
     use super::*;
     use crate::context::AuthService;
     use domain::{User, UserRepository};

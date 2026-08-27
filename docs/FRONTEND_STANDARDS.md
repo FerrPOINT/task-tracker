@@ -114,9 +114,9 @@ features/
 ## 13. References
 
 - `docs/FRONTEND_ARCHITECTURE.md` — технический стек и структура.
-- `docs/DESIGN_TOKENS.md` — токены дизайна.
-- `docs/REACT_STYLING.md` — руководство по стилизации.
-- `docs/UI_LIBRARIES.md` — выбор библиотек.
+- `docs/CODE_STYLE.md` — токены дизайна.
+- `docs/FRONTEND_STANDARDS.md` — руководство по стилизации.
+- `docs/LIBRARIES.md` — выбор библиотек.
 - `docs/TESTING.md` — стратегия тестирования.
 - `docs/CODE_STYLE.md` — общий code style.
 - `docs/API.md` — REST API.

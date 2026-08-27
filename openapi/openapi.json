@@ -2330,6 +2330,32 @@
         "operationId": "get_backlog",
         "parameters": [
           {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
             "name": "project_key",
             "in": "path",
             "description": "Project key",
@@ -4095,6 +4121,8 @@
           "project_id",
           "project_key",
           "backlog_total",
+          "backlog_offset",
+          "backlog_limit",
           "sprint",
           "sprint_issues",
           "backlog_issues"
@@ -4105,6 +4133,14 @@
             "items": {
               "$ref": "#/components/schemas/IssueResponse"
             }
+          },
+          "backlog_limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "backlog_offset": {
+            "type": "integer",
+            "minimum": 0
           },
           "backlog_total": {
             "type": "integer",
@@ -5120,6 +5156,7 @@
           "key",
           "name",
           "owner_id",
+          "owner_name",
           "todo_count",
           "in_progress_count",
           "done_count"
@@ -5153,6 +5190,9 @@
           "owner_id": {
             "type": "string"
           },
+          "owner_name": {
+            "type": "string"
+          },
           "todo_count": {
             "type": "integer",
             "format": "int32",
@@ -5162,12 +5202,13 @@
       },
       "RefreshRequest": {
         "type": "object",
-        "required": [
-          "refresh_token"
-        ],
         "properties": {
           "refresh_token": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional: the HttpOnly refresh cookie is the primary mechanism;\nthe body token is the explicit HTTP (non-Secure-cookie) fallback."
           }
         }
       },

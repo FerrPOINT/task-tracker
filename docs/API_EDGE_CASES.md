@@ -43,15 +43,16 @@
 | Operator unsupported for field | 422 |
 | Result > 1000 | Cursor pagination |
 
-## 6. WebSocket Edge Cases
+## 6. SSE Edge Cases
+
+Доставка событий — SSE `GET /api/v1/events` (WebSocket не используется).
 
 | Scenario | Behavior |
 |----------|----------|
-| Client reconnects | Sync missed events via `/sync` |
-| Server restarts | Clients reconnect automatically |
-| Subscribe to unauthorized channel | 403 close frame |
-| Invalid message format | Error event, connection stays |
-| Idle connection > 5 min | Server ping, client pong |
+| Client reconnects | браузерный EventSource reconect; пропущенные события добираются refetch-ом кэша |
+| Server restarts | клиенты переподключаются автоматически |
+| Токен в query (`?access_token=`) | принимается ТОЛЬКО для `/events` (EventSource не умеет заголовки) |
+| Idle-соединение | periodic keepalive от сервера |
 
 ## 7. File Upload Edge Cases
 

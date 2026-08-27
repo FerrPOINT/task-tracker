@@ -61,7 +61,13 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         // default_board_id points at a nonexistent board breaks board reads
         // and issue creation.
         self.projects.save_with_board(&project, &board).await?;
-        Ok(ProjectDto::from_project(project, 0, 0, 0))
+        Ok(ProjectDto::from_project(
+            project,
+            owner.display_name.as_ref().to_string(),
+            0,
+            0,
+            0,
+        ))
     }
 
     async fn list(
@@ -79,20 +85,60 @@ impl crate::context::ProjectService for ProjectServiceImpl {
                 projects.push(p);
             }
         }
+        // One user-list fetch instead of a per-project owner lookup (N+1).
+        let owner_names: std::collections::HashMap<_, _> = self
+            .users
+            .list()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|u| (u.id, u.display_name.as_ref().to_string()))
+            .collect();
         let mut dtos = Vec::new();
         for project in projects {
             let counts = self.issues.list(IssueQuery::project(project.id)).await?;
             let (todo, in_progress, done) = super::helpers::count_by_status(&counts);
-            dtos.push(ProjectDto::from_project(project, todo, in_progress, done));
+            let owner_name = owner_names
+                .get(&project.owner_id)
+                .cloned()
+                .unwrap_or_default();
+            dtos.push(ProjectDto::from_project(
+                project,
+                owner_name,
+                todo,
+                in_progress,
+                done,
+            ));
         }
         Ok(dtos)
     }
 
-    async fn get_by_key(&self, key: &ProjectKey) -> Result<ProjectDto, AppError> {
+    async fn get_by_key(
+        &self,
+        key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<ProjectDto, AppError> {
         let project = self.projects.get_by_key(key).await?;
+        // Project metadata (key, name, owner, counts) is member-visible only;
+        // an authenticated outsider must not enumerate other projects.
+        self.authz
+            .require_project_access(project.id, requester)
+            .await?;
         let counts = self.issues.list(IssueQuery::project(project.id)).await?;
         let (todo, in_progress, done) = super::helpers::count_by_status(&counts);
-        Ok(ProjectDto::from_project(project, todo, in_progress, done))
+        let owner_name = self
+            .users
+            .get_by_id(project.owner_id)
+            .await
+            .map(|u| u.display_name.as_ref().to_string())
+            .unwrap_or_default();
+        Ok(ProjectDto::from_project(
+            project,
+            owner_name,
+            todo,
+            in_progress,
+            done,
+        ))
     }
 
     async fn update(
@@ -115,7 +161,19 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         self.projects.save(&project).await?;
         let counts = self.issues.list(IssueQuery::project(project.id)).await?;
         let (todo, in_progress, done) = super::helpers::count_by_status(&counts);
-        Ok(ProjectDto::from_project(project, todo, in_progress, done))
+        let owner_name = self
+            .users
+            .get_by_id(project.owner_id)
+            .await
+            .map(|u| u.display_name.as_ref().to_string())
+            .unwrap_or_default();
+        Ok(ProjectDto::from_project(
+            project,
+            owner_name,
+            todo,
+            in_progress,
+            done,
+        ))
     }
 
     async fn delete(&self, key: &ProjectKey, requester_id: UserId) -> Result<(), AppError> {

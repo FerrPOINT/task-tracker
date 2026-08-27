@@ -111,17 +111,17 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 
 ## 14. Container Security
 
-- Non-root user в Docker images.
-- Read-only filesystem где возможно.
-- Distroless/alpine final images.
-- No secrets в image layers.
-- Image scan with Trivy — не реализовано (future).
+- Backend работает под non-root пользователем `tasktracker` (uid 999); volume `uploads` нормализуется one-shot сервисом `uploads-init`.
+- Обязательные секреты: `POSTGRES_PASSWORD`, `TASKTRACKER_JWT_SECRET` (`${VAR:?}` в compose — без них стек не стартует).
+- Read-only filesystem / distroless images — не реализовано.
+- Image scan (Trivy) — не реализовано.
 
 ## 15. Network
 
-- PostgreSQL и Redis доступны только в internal network.
-- Traefik на edge.
-- Firewall: 19876, 80, 443 only.
+- PostgreSQL и Redis не публикуются наружу (internal compose-сеть; порты `ports:` отсутствуют).
+- Наружу открыты только `frontend` (19877) и `backend` (3456); значения меняются `FRONTEND_PORT`/`BACKEND_PORT`.
+- Traefik — опциональный profile (`--profile traefik`).
+- Firewall-правила хоста настраиваются администратором.
 
 ## 16. Incident Response
 

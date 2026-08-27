@@ -86,13 +86,13 @@ task-tracker/
 ├── justfile                # unified dev commands
 ├── lefthook.yml            # git hooks
 └── docs/
+    ├── ADR.md
     ├── AGENTS.md
-    ├── ARCHITECTURE.md
     ├── API.md
     ├── API_EDGE_CASES.md
     ├── API_STANDARDS.md
     ├── API_VERSIONING.md
-    ├── SECURITY.md
+    ├── ARCHITECTURE.md
     ├── BACKUP_RESTORE.md
     ├── CACHING.md
     ├── CI_CD.md
@@ -102,52 +102,37 @@ task-tracker/
     ├── DATABASE_INDEXES.md
     ├── DATABASE_STANDARDS.md
     ├── DATA_MODEL.md
-    ├── BACKUP_RESTORE.md
     ├── DEPLOYMENT.md
-    ├── DESIGN_TOKENS.md
     ├── DOMAIN_MODEL.md
     ├── ERROR_HANDLING.md
     ├── EVENTS.md
-    ├── FAQ.md
-    ├── FEATURE_FLAGS.md
     ├── FRONTEND_ARCHITECTURE.md
     ├── FRONTEND_STANDARDS.md
-    ├── GLOSSARY.md
     ├── I18N.md
-    ├── JIRA_GAP_DETAILS.md
-    ├── JIRA_UI_CAPTURE.md
-    ├── API.md
     ├── LIBRARIES.md
-    ├── LOAD_BALANCING.md
     ├── LOCAL_SETUP.md
     ├── LOGGING_STANDARDS.md
     ├── MIGRATIONS.md
     ├── MONITORING.md
     ├── NOTIFICATIONS.md
-    ├── ONBOARDING.md
     ├── OPS_RUNBOOK.md
     ├── PAGINATION.md
     ├── PERFORMANCE.md
     ├── PROJECT_ADMIN.md
-    ├── REACT_STYLING.md
     ├── RELEASE.md
     ├── REPORTS.md
     ├── RESILIENCE.md
+    ├── REVIEW.md
     ├── ROADMAP.md
     ├── ROUTING.md
     ├── RUNTIME.md
-    ├── SECURITY.md
     ├── SECURITY.md
     ├── STORAGE.md
     ├── SYSTEM_ADMIN.md
     ├── TESTING.md
     ├── TROUBLESHOOTING.md
     ├── TZ.md
-    ├── UI_LIBRARIES.md
     ├── UI_UX.md
-    ├── USER_STORIES.md
-    ├── UX_PRODUCT.md
-    ├── EVENTS.md
     ├── WORKFLOW.md
     └── adr/0001-rust-axum.md ... adr/0010-apalis.md
 ```
@@ -214,7 +199,7 @@ Router::new()
     .layer(CompressionLayer::new())
 ```
 
-CORS настроен для локальной разработки (`localhost:5173`, `localhost:4173`).
+CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS` (по умолчанию `http://localhost:19877,http://localhost:5173`).
 
 ## 7. Security
 

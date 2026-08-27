@@ -10,7 +10,7 @@
 
 | Библиотека | Версия | Назначение | Почему она |
 |------------|--------|------------|------------|
-| [`axum`](https://crates.io/crates/axum) | 0.8.9 | HTTP-маршруты, extractors, маршрутизация | Официальный фреймворк Tokio/Hyper; лучшая интеграция с Tower middleware; экосистема набирает обороты в 2026; удобен для слоёв Controller → Mapper → Service → Repository |
+| [`axum`](https://crates.io/crates/axum) | 0.8.3 | HTTP-маршруты, extractors, маршрутизация | Официальный фреймворк Tokio/Hyper; лучшая интеграция с Tower middleware; экосистема набирает обороты в 2026; удобен для слоёв Controller → Mapper → Service → Repository |
 | [`tokio`](https://crates.io/crates/tokio) | 1.52.3 | Асинхронный runtime | Стандарт индустрии; async/await, пулы задач, таймеры |
 | [`tower`](https://crates.io/crates/tower) | 0.5.2 | Middleware абстракция (Service/ServiceBuilder) | Общий слой middleware для rate limit, auth, tracing, CORS |
 | [`tower-http`](https://crates.io/crates/tower-http) | 0.7.0 | Готовые HTTP middleware | CORS, compression, trace, auth, validate-request |
@@ -362,9 +362,9 @@ rstest = "0.25.0"
 ## Выводы
 
 - **Backend:** выбираем **Axum + SeaORM + PostgreSQL + Redis**. SeaORM даёт Spring-подобный опыт (Entity/Repository), Axum — Tower-middleware и DI через `Arc<dyn Trait>`.
-- **Frontend:** **React 19.1.0 + Vite 6.2.0 + Tailwind CSS 4.1.0 + shadcn/ui + TanStack Query + Zustand + dnd-kit + Tiptap** — полный набор для Jira-like UI.
+- **Frontend:** **React 19.1 + Vite 6.2 + Tailwind CSS 4.1 + shadcn-style Radix + TanStack Query + Zustand** — полный набор для Jira-like UI.
 - **Testing:** mockall + testcontainers на Rust; Vitest + Playwright на React.
-- **Infra:** Docker Compose, PostgreSQL 17.6, Redis 8.0, MinIO, Prometheus/Grafana.
+- **Infra:** Docker Compose, PostgreSQL 17.6, Redis 8.0; Prometheus-метрики отдаёт backend (`/metrics`), Grafana/MinIO — опционально, вне поставки.
 
 Этот набор покрывает все слои Controller → Mapper → Service → Repository + realtime, кэш, очереди, метрики, тесты.
 ## References

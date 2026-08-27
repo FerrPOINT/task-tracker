@@ -96,6 +96,32 @@ impl ProjectKey {
     }
 }
 
+#[cfg(test)]
+mod proptests {
+    use super::ProjectKey;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn valid_chars_and_len_implies_valid(key in "[A-Za-z0-9-]{1,10}") {
+            prop_assert!(ProjectKey::new(key.clone()).is_valid());
+        }
+
+        #[test]
+        fn overlong_keys_are_invalid(key in "[A-Za-z0-9-]{11,40}") {
+            prop_assert!(!ProjectKey::new(key).is_valid());
+        }
+
+        #[test]
+        fn keys_with_spaces_are_invalid(key in "[A-Za-z0-9 ]{1,8}") {
+            // contains at least the chars; only invalid if a space actually occurs
+            if key.contains(' ') {
+                prop_assert!(!ProjectKey::new(key).is_valid());
+            }
+        }
+    }
+}
+
 impl Serialize for ProjectKey {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(self.as_str())

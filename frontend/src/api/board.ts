@@ -13,9 +13,18 @@ export async function getBoard(projectKey: string): Promise<Board> {
   return data
 }
 
-export async function getBacklog(projectKey: string): Promise<Backlog> {
+const BACKLOG_PAGE_SIZE = 100
+
+export async function getBacklog(
+  projectKey: string,
+  offset = 0,
+  limit = BACKLOG_PAGE_SIZE,
+): Promise<Backlog> {
   const { data, error } = await api.GET('/api/v1/projects/{project_key}/backlog', {
-    params: { path: { project_key: projectKey } },
+    params: {
+      path: { project_key: projectKey },
+      query: { offset, limit },
+    },
   })
   if (error || !data) throw new Error('Failed to load backlog')
   return data

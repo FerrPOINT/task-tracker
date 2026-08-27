@@ -11,6 +11,15 @@ pub struct FailingUserRepository;
 
 #[async_trait]
 impl UserRepository for FailingUserRepository {
+    async fn rotate_refresh_token(
+        &self,
+        _user_id: shared::UserId,
+        _expected_hash: &str,
+        _new_hash: &str,
+    ) -> Result<(), shared::AppError> {
+        Err(shared::AppError::Internal("failing user repo".into()))
+    }
+
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError> {
         // The bearer-auth middleware performs an is_active lookup on every
         // request; it must succeed for these business-flow failure tests.
@@ -73,7 +82,7 @@ impl ProjectRepository for FailingProjectRepository {
     ) -> Result<shared::ProjectId, AppError> {
         Err(AppError::Internal("failing project repo".into()))
     }
-    async fn delete(&self, _id: ProjectId) -> Result<(), AppError> {
+    async fn delete(&self, _id: ProjectId) -> Result<(), shared::AppError> {
         Err(AppError::Internal("failing project repo".into()))
     }
 
@@ -87,6 +96,18 @@ pub struct FailingIssueRepository;
 
 #[async_trait]
 impl IssueRepository for FailingIssueRepository {
+    async fn change_status_atomic(
+        &self,
+        _issue_id: shared::IssueId,
+        _project_id: shared::ProjectId,
+        _from_status_id: shared::StatusId,
+        _to_status_id: shared::StatusId,
+        _actor_id: shared::UserId,
+        _guard: &domain::TransitionGuard,
+    ) -> Result<(), shared::AppError> {
+        Err(AppError::internal("failing repo"))
+    }
+
     async fn get_by_id(&self, _id: IssueId) -> Result<Issue, AppError> {
         Err(AppError::Internal("failing issue repo".into()))
     }
@@ -103,7 +124,7 @@ impl IssueRepository for FailingIssueRepository {
         Err(AppError::Internal("failing issue repo".into()))
     }
 
-    async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
+    async fn delete(&self, _id: IssueId) -> Result<(), shared::AppError> {
         Err(AppError::Internal("failing issue repo".into()))
     }
 
@@ -111,11 +132,11 @@ impl IssueRepository for FailingIssueRepository {
         Err(AppError::Internal("failing issue repo".into()))
     }
 
-    async fn restore(&self, _id: IssueId) -> Result<(), AppError> {
+    async fn restore(&self, _id: IssueId) -> Result<(), shared::AppError> {
         Err(AppError::Internal("failing issue repo".into()))
     }
 
-    async fn purge(&self, _id: IssueId) -> Result<(), AppError> {
+    async fn purge(&self, _id: IssueId) -> Result<(), shared::AppError> {
         Err(AppError::Internal("failing issue repo".into()))
     }
 }
@@ -140,7 +161,7 @@ impl BoardRepository for FailingBoardRepository {
         Err(AppError::Internal("failing board repo".into()))
     }
 
-    async fn save(&self, _board: &Board) -> Result<(), AppError> {
+    async fn save(&self, _board: &Board) -> Result<(), shared::AppError> {
         Err(AppError::Internal("failing board repo".into()))
     }
 }
@@ -152,7 +173,7 @@ pub struct FailingSprintRepository;
 impl SprintRepository for FailingSprintRepository {
     async fn get_active_by_project(
         &self,
-        _project_id: ProjectId,
+        _project_id: shared::ProjectId,
     ) -> Result<Option<Sprint>, AppError> {
         Err(AppError::Internal("failing sprint repo".into()))
     }

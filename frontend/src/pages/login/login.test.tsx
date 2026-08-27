@@ -49,10 +49,12 @@ describe('LoginPage', () => {
     render(wrapper(<LoginPage />))
     expect(screen.getByText('TaskTracker')).toBeInTheDocument()
 
-    const email = screen.getByDisplayValue('demo@example.com') as HTMLInputElement
+    const email = screen.getByLabelText(/email/i) as HTMLInputElement
+    await userEvent.type(email, 'demo@example.com')
     await userEvent.clear(email)
     await userEvent.type(email, 'demo@example.com')
-    const password = screen.getByDisplayValue('demo') as HTMLInputElement
+    const password = screen.getByLabelText('Пароль') as HTMLInputElement
+    await userEvent.type(password, 'demo')
     await userEvent.clear(password)
     await userEvent.type(password, 'demo')
 

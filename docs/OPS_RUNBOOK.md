@@ -1,123 +1,88 @@
 # Operations Runbook — Task Tracker
 
-## 1. Overview
+Пошаговые инструкции для типовых операций production-инстанса: deploy, rollback, backup, restore, инциденты.
 
-Пошаговые инструкции для типовых операций production-инстанса: deploy, rollback, backup, restore, incident response.
+Все команды выполняются из корня репозитория (`/opt/dev/task-tracker` или ваш путь деплоя).
 
-## 2. Daily Checks
+## 2. Ежедневные проверки
 
 ```bash
-docker compose ps
-docker compose logs --tail 100 api
-curl -f https://tasktracker.example.com:19876/api/v1/health
-curl -f https://tasktracker.example.com:19876/metrics | grep up
+docker compose ps          # все сервисы должны быть Up (healthy)
+docker compose logs --tail 100 backend
+curl -f http://localhost:3456/api/v1/health     # без rate-limit
+curl -f http://localhost:3456/metrics | head    # Prometheus-метрики
 ```
 
-## 3. Deploy New Version
+Frontend: `curl -f http://localhost:19877/` → 200.
+
+## 3. Деплой новой версии
 
 ```bash
-cd /opt/task-tracker
-git fetch origin
-git checkout main
-git pull origin main
+git fetch origin && git checkout main && git pull origin main
 docker compose build
-docker compose up -d
-docker compose run --rm migrator
+docker compose up -d        # recreate: подхватывает новый образ
 docker compose ps
 ```
+
+Миграции применяются автоматически при старте backend-контейнера. Отдельного сервиса `migrator` в compose нет.
 
 ## 4. Rollback
 
 ```bash
-# Revert code
 git log --oneline -20
-git revert <bad-commit>
+git revert <bad-commit>     # или checkout предыдущего тега
 docker compose build
 docker compose up -d
-
-# DB rollback: apply down-migration (если есть)
-docker compose run --rm migrator down
 ```
 
-## 5. Backup
+Down-миграции не поставляются; откат схемы БД — восстановлением из бэкапа (см. §6).
+
+## 5. Бэкап
 
 ```bash
-./scripts/backup.sh
-# Verify archive in /backups
-ls -lh /backups
+./scripts/backup.sh [путь-без-расширения]
+# создает <имя>.tar.gz: pg_dump (-Fc) + attachments из Docker volume `uploads`
+ls -lh backups/
 ```
 
-## 6. Restore
+## 6. Восстановление
 
 ```bash
-# Stop app
-docker compose stop api
-
-# Restore DB
-./scripts/restore.sh /backups/task-tracker-YYYY-MM-DD.tar.gz
-
-# Restart
+docker compose stop backend frontend
+./scripts/restore.sh backups/task-tracker-<дата>.tar.gz
 docker compose up -d
+curl -f http://localhost:3456/api/v1/health
 ```
 
-## 7. Scaling API
+`restore.sh` восстанавливает и БД (pg_restore `--clean --if-exists`), и attachments (в volume `uploads`, с chown под non-root backend uid 999).
+
+## 7. Масштабирование
 
 ```bash
-docker compose up -d --scale api=3
+docker compose up -d --scale backend=3
 ```
 
-## 8. High CPU / Memory
+Frontend/Postgres не масштабируются (статика и single-writer БД). Перед масштабированием backend вынесите `uploads` в shared storage.
 
-1. Check `top` / `docker stats`.
-2. Review slow query log.
-3. Restart affected container.
-4. Enable rate limit if DDoS suspected.
-
-## 9. DB Connection Pool Exhaustion
-
-```sql
-SELECT count(*), state FROM pg_stat_activity GROUP BY state;
-```
-
-Mitigation:
-
-- Restart API pods.
-- Increase pool size temporarily.
-- Kill long-running queries.
-
-## 10. Redis Failure
-
-- Switch to single-instance mode temporarily (`TASKTRACKER_REDIS_URL` → localhost fallback).
-- Rebuild Redis slave.
-- WebSocket real-time будет задерживаться.
-
-## 11. Disk Full
+## 8. Высокий CPU / память
 
 ```bash
-df -h
-docker system prune -a --volumes  # careful
-./scripts/cleanup_old_backups.sh
+docker stats
+docker compose logs backend | grep -E 'ERROR|panic' | tail -20
 ```
 
-## 12. Incident Contacts
+## 9. Инциденты
 
-- On-call: ...
-- Slack channel: #alerts
-- PagerDuty: ...
-
-## 13. Post-Mortem
-
-After every SEV-1/SEV-2 incident:
-
-1. Timeline.
-2. Root cause.
-3. Impact.
-4. Remediation.
-5. Preventive actions.
+| Симптом | Диагностика | Действие |
+|---|---|---|
+| backend unhealthy | `docker compose logs backend` | проверить БД/секреты; `docker compose up -d backend` |
+| 429 на API | общие лимиты 60/60с на IP | поднять `TASKTRACKER_SERVER__GENERAL_RATE_*` в `.env` |
+| Логин не работает | `docker compose logs backend \| grep -i auth` | проверить JWT-секрет не изменился |
+| Потеря attachments | `docker volume inspect task-tracker_uploads` | восстановить из бэкапа (§6) |
 
 ## References
 
-- `docs/DEPLOYMENT.md`
-- `docs/MONITORING.md`
-- `docs/SECURITY.md`
-- `docs/MIGRATIONS.md`
+- [LOCAL_SETUP](LOCAL_SETUP.md)
+- [BACKUP_RESTORE](BACKUP_RESTORE.md)
+- [MONITORING](MONITORING.md)
+- [TROUBLESHOOTING](TROUBLESHOOTING.md)

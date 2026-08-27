@@ -11,12 +11,12 @@
 
 - Проверить Node.js: `node --version` ≥ 22.
 - Удалить `node_modules` и lockfile: `rm -rf node_modules pnpm-lock.yaml`, затем `pnpm install`.
-- Проверить, что порт 19876 не занят: `lsof -i :19876`.
+- Проверить, что порт 19877 (frontend) / 3456 (backend) не занят: `ss -ltn | grep -E "19877|3456"`.
 
 ### Docker compose не поднимается
 
 ```bash
-docker compose down -v
+# Не используйте `down -v`: это удалит volume с БД и attachments.
 docker compose pull
 docker compose up -d --build
 ```
@@ -26,17 +26,13 @@ docker compose up -d --build
 ### Миграции не применяются
 
 ```bash
-cd backend
-cargo run --bin migrator -- --status
-# или
-sqlx migrate info
+# применённые миграции (SeaORM)
+docker compose exec postgres psql -U tasktracker -d tasktracker -c "SELECT * FROM seaql_migrations ORDER BY applied_at DESC LIMIT 5;"
+# миграции применяются автоматически при старте backend
+docker compose logs backend | grep -i migrat
 ```
 
-Если застряло — откатить вручную:
-
-```bash
-sqlx migrate revert
-```
+Если миграция упала, не откатывайте вручную через `sqlx`: проект использует SeaORM. Исправьте причину (например, legacy-сироты для FK), затем перезапустите `docker compose up -d backend`. Для отката используйте восстановление из бэкапа, если down-миграция не предусмотрена.
 
 ### Connection refused to postgres
 
@@ -136,9 +132,8 @@ pnpm exec playwright test --workers=1 --retries=2
 ### Health checks
 
 ```bash
-curl http://localhost:8080/health
-curl http://localhost:8080/health/ready
-curl http://localhost:8080/metrics
+curl -f http://localhost:3456/api/v1/health
+curl -f http://localhost:3456/metrics
 ```
 
 ### Логи

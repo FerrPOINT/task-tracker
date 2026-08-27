@@ -368,6 +368,6 @@ const ProjectPage = lazy(() => import("./pages/project"))
 ## References
 
 - `docs/ARCHITECTURE.md`
-- `docs/UI_LIBRARIES.md`
-- `docs/REACT_STYLING.md`
-- `docs/DESIGN_TOKENS.md`
+- `docs/LIBRARIES.md`
+- `docs/FRONTEND_STANDARDS.md`
+- `docs/CODE_STYLE.md`

@@ -58,12 +58,12 @@ Self-hosted таск-трекер: Rust (axum + SeaORM + PostgreSQL) + React (Vi
 
 ## Порты по умолчанию
 
-| Сервис | Внешний порт | Описание |
+| Сервис | Доступ | Описание |
 |---|---|---|
 | Frontend (docker) | `19877` | Nginx статика |
 | Backend | `3456` | API |
-| PostgreSQL | `3457` | БД |
-| Redis | `6379` | Кеш/сессии |
+| PostgreSQL | внутренний (compose-сеть) | БД, не публикуется наружу |
+| Redis | внутренний (compose-сеть) | кеш, не публикуется наружу |
 
 ## Функциональность
 
@@ -172,27 +172,18 @@ export TASKTRACKER_TOKEN=<jwt_token>
 
 ## Смена порта
 
-### Backend
+В `.env` измените host-порты, затем recreate сервисы:
 
-```yaml
-# docker-compose.yml
-services:
-  backend:
-    ports:
-      - "19876:3456"
+```env
+BACKEND_PORT=3456
+FRONTEND_PORT=19877
 ```
 
-Или env `TASKTRACKER_SERVER_PORT=3456` внутри контейнера с внешней привязкой на нужный порт.
-
-### Frontend
-
-```yaml
-# docker-compose.yml
-services:
-  frontend:
-    ports:
-      - "80:80"
+```bash
+docker compose up -d
 ```
+
+Внутри compose-сети backend всегда слушает `3456`; PostgreSQL и Redis наружу не публикуются. Настройки backend используют формат `TASKTRACKER_SECTION__KEY` (например, `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`).
 
 ## Структура
 

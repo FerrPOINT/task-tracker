@@ -78,10 +78,10 @@
 
 ## 7. Tracing
 
-- Backend: `tracing` + OpenTelemetry.
+- Backend: `tracing` (JSON в stdout). OpenTelemetry-экспорт не реализован.
 - Один top-level span на HTTP-запрос.
 - Вложенные spans: DB query, external HTTP call, cache lookup, queue job.
-- Frontend: OpenTelemetry Web SDK для user interactions (опционально).
+- Frontend: телеметрия не реализована.
 
 ## 8. Локальная разработка
 
@@ -91,7 +91,7 @@
 
 ## 9. Production
 
-- JSON в stdout → сборщик (Loki / Fluent Bit).
+- JSON в stdout; внешний сборщик (Loki/Fluent Bit) подключает администратор, в поставке нет.
 - Sample rate для `INFO`-запросов: 100% для ошибок, 10% для успешных health/metrics.
 - Retention: 30 дней hot, 90 дней cold.
 - Алерты на рост `ERROR`/`FATAL` и аномалии latency.

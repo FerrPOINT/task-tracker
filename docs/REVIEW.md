@@ -114,3 +114,8 @@
 | Dead code | — | 13 | — | 13 |
 | Docs accuracy | 3 | 20+ | 8 | 31+ |
 | **Total** | **13** | **101+** | **13** | **127+** |
+
+## References
+
+- [ARCHITECTURE](ARCHITECTURE.md)
+- [LOCAL_SETUP](LOCAL_SETUP.md)

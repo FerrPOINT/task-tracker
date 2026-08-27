@@ -1182,7 +1182,7 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 
 ### 27.21. WebSocket
 
-- `GET /ws/v1/connect` — handshake, далее subscribe на топики.
+- ~~`GET /ws/v1/connect`~~ — заменено на SSE `GET /api/v1/events` (реализация).
 
 ### 27.22. Import/Export
 
@@ -1288,7 +1288,7 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 
 | Опция | Env | По умолчанию | Описание |
 |-------|-----|-------------|----------|
-| `--api-url` | `TASKTRACKER_API_URL` | `http://localhost:19876` | Базовый URL API |
+| `--api-url` | `TASKTRACKER_API_URL` | `http://localhost:3456/api/v1` | Базовый URL API |
 | `--token` | `TASKTRACKER_TOKEN` | — | Bearer-токен аутентификации |
 | `--output` | `TASKTRACKER_OUTPUT` | `json` | Формат вывода: `json`, `table`, `compact` |
 | `--version` | — | — | Версия CLI |

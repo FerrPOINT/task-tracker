@@ -1,6 +1,6 @@
 use sea_orm_migration::MigratorTrait;
 
-#[async_std::main]
+#[tokio::main]
 async fn main() {
     let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let cmd = std::env::args().nth(1).unwrap_or_else(|| "up".to_string());

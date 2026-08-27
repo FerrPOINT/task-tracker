@@ -17,7 +17,6 @@ pub struct IssueServiceImpl {
     users: Arc<dyn domain::UserRepository>,
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
-    status_history: Arc<dyn domain::IssueStatusHistoryRepository>,
     sprints: Arc<dyn domain::SprintRepository>,
     components: Arc<dyn domain::ProjectComponentRepository>,
     versions: Arc<dyn domain::ProjectVersionRepository>,
@@ -27,6 +26,36 @@ pub struct IssueServiceImpl {
 }
 
 impl IssueServiceImpl {
+    /// WIP capacity snapshot for any status-changing path. The count is
+    /// re-validated inside `change_status_atomic`; this only carries the
+    /// limit and column name into the critical section.
+    async fn build_wip_guard(
+        &self,
+        project_id: domain::ProjectId,
+        target: shared::StatusId,
+    ) -> Result<domain::TransitionGuard, AppError> {
+        let board = self.boards.get_default_by_project(project_id).await?;
+        let column = board
+            .columns
+            .iter()
+            .find(|c| c.id == target)
+            .ok_or_else(|| AppError::invalid_input("unknown target column"))?;
+        let target_count = self
+            .issues
+            .list(domain::IssueQuery {
+                project_id: Some(project_id),
+                status_id: Some(target),
+                ..Default::default()
+            })
+            .await?
+            .len() as u64;
+        Ok(domain::TransitionGuard {
+            wip_limit: column.wip_limit.map(|v| v as u32),
+            target_count,
+            column_name: column.name.as_ref().to_string(),
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -36,7 +65,7 @@ impl IssueServiceImpl {
         users: Arc<dyn domain::UserRepository>,
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
-        status_history: Arc<dyn domain::IssueStatusHistoryRepository>,
+
         sprints: Arc<dyn domain::SprintRepository>,
         components: Arc<dyn domain::ProjectComponentRepository>,
         versions: Arc<dyn domain::ProjectVersionRepository>,
@@ -52,7 +81,6 @@ impl IssueServiceImpl {
             users,
             statuses,
             transitions,
-            status_history,
             sprints,
             components,
             versions,
@@ -207,7 +235,21 @@ impl crate::context::IssueService for IssueServiceImpl {
         let mut updated = issue.clone();
         updated.status_id = cmd.target_status_id;
         updated.updated_at = shared::now();
-        self.issues.save(&updated).await?;
+        // WIP is a domain invariant: enforce it on every status-changing
+        // path, not only on board drag-and-drop.
+        let guard = self
+            .build_wip_guard(issue.project_id, cmd.target_status_id)
+            .await?;
+        self.issues
+            .change_status_atomic(
+                issue.id,
+                issue.project_id,
+                issue.status_id,
+                cmd.target_status_id,
+                cmd.actor_id,
+                &guard,
+            )
+            .await?;
         let project = self.projects.get_by_id(updated.project_id).await?;
         let status = statuses
             .iter()
@@ -313,20 +355,19 @@ impl crate::context::IssueService for IssueServiceImpl {
             }
             let from_status = issue.status_id;
             let actor = cmd.actor_id;
-            issue.change_status(target);
-            self.status_history
-                .save_for_project(
-                    &domain::IssueStatusHistory {
-                        id: shared::IssueStatusHistoryId::new(),
-                        issue_id: issue.id,
-                        from_status_id: Some(from_status),
-                        to_status_id: target,
-                        changed_by_id: actor,
-                        changed_at: shared::now(),
-                    },
+            let _ = from_status;
+            let guard = self.build_wip_guard(issue.project_id, target).await?;
+            self.issues
+                .change_status_atomic(
+                    issue.id,
                     issue.project_id,
+                    from_status,
+                    target,
+                    actor,
+                    &guard,
                 )
                 .await?;
+            issue.change_status(target);
         }
         if let Some(assignee_id) = cmd.assignee_id {
             issue.assign(assignee_id);

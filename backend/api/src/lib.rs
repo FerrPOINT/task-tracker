@@ -308,7 +308,9 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .finish()
         .expect("valid general rate limit config");
 
-    let public = Router::new().route("/health", get(routes::health::health));
+    // /health stays public AND unthrottled: container/orchestrator probes
+    // share one IP key with real traffic and must not be rate-limited.
+    let public = Router::new();
 
     // Auth endpoints get stricter rate limiting: 5 requests per 15 seconds per IP.
     let auth_routes = Router::new()
@@ -562,6 +564,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
 
     Router::new()
         .route("/metrics", get(move || std::future::ready(handle.render())))
+        .route("/api/v1/health", get(routes::health::health))
         .nest(
             "/api/v1",
             api.layer(GovernorLayer::new(general_limiter)),

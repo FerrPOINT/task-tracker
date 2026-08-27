@@ -11,13 +11,13 @@ use crate::{
     IssueVote, IssueWatcher, Notification, NotificationRepository, NotificationUserSettings,
     Project, ProjectComponent, ProjectComponentRepository, ProjectMember, ProjectMemberRepository,
     ProjectQuery, ProjectRepository, ProjectVersion, ProjectVersionRepository, Sprint,
-    SprintRepository, Status, StatusRepository, SystemSetting, SystemSettingRepository, UnitOfWork,
-    User, UserNotificationSettingsRepository, UserRepository, VoteRepository, WatcherRepository,
-    Worklog, WorklogRepository,
+    SprintRepository, Status, StatusRepository, SystemSetting, SystemSettingRepository,
+    TransitionGuard, UnitOfWork, User, UserNotificationSettingsRepository, UserRepository,
+    VoteRepository, WatcherRepository, Worklog, WorklogRepository,
 };
 use shared::{
     AppError, BoardId, CommentId, IssueId, NotificationId, ProjectComponentId, ProjectId,
-    ProjectKey, ProjectVersionId, SprintId, UserId, WorklogId,
+    ProjectKey, ProjectVersionId, SprintId, StatusId, UserId, WorklogId,
 };
 
 #[derive(Default)]
@@ -27,6 +27,25 @@ pub struct MemoryUserRepository {
 
 #[async_trait]
 impl UserRepository for MemoryUserRepository {
+    async fn rotate_refresh_token(
+        &self,
+        user_id: UserId,
+        expected_hash: &str,
+        new_hash: &str,
+    ) -> Result<(), AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .iter_mut()
+            .find(|u| u.id == user_id)
+            .ok_or_else(|| AppError::not_found("user", user_id))?;
+        if user.refresh_token_hash.as_deref() != Some(expected_hash) {
+            return Err(AppError::Unauthorized);
+        }
+        user.refresh_token_hash = Some(new_hash.to_string().into());
+        user.updated_at = shared::now();
+        Ok(())
+    }
+
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError> {
         let users = self.users.lock().unwrap();
         users
@@ -158,10 +177,79 @@ impl ProjectRepository for MemoryProjectRepository {
 #[derive(Default)]
 pub struct MemoryIssueRepository {
     issues: Arc<Mutex<Vec<Issue>>>,
+    /// Shared with `MemoryIssueStatusHistoryRepository` when wired via
+    /// `with_shared_history`, so atomic writes are visible to reports.
+    history: Arc<Mutex<Vec<IssueStatusHistory>>>,
+    history_project_ids: Arc<Mutex<Vec<ProjectId>>>,
+}
+
+impl MemoryIssueRepository {
+    /// Wire the issue repo to the same store the history repository reads,
+    /// so `change_status_atomic` history entries appear in reports.
+    pub fn with_shared_history(
+        history: Arc<Mutex<Vec<IssueStatusHistory>>>,
+        project_ids: Arc<Mutex<Vec<ProjectId>>>,
+    ) -> Self {
+        Self {
+            issues: Arc::new(Mutex::new(Vec::new())),
+            history,
+            history_project_ids: project_ids,
+        }
+    }
 }
 
 #[async_trait]
 impl IssueRepository for MemoryIssueRepository {
+    async fn change_status_atomic(
+        &self,
+        issue_id: IssueId,
+        project_id: ProjectId,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+        actor_id: UserId,
+        guard: &TransitionGuard,
+    ) -> Result<(), AppError> {
+        // Single mutex acquisition = critical section: count and write are
+        // serialized, so concurrent movers cannot both pass the check.
+        let mut issues = self.issues.lock().unwrap();
+        let target_count = issues
+            .iter()
+            .filter(|i| {
+                i.project_id == project_id && i.status_id == to_status_id && i.deleted_at.is_none()
+            })
+            .count() as u64;
+        let guard = TransitionGuard {
+            target_count,
+            ..guard.clone()
+        };
+        guard.ensure_wip_ok()?;
+        let issue = issues
+            .iter_mut()
+            .find(|i| i.id == issue_id && i.deleted_at.is_none())
+            .ok_or_else(|| AppError::not_found("issue", issue_id))?;
+        if issue.project_id != project_id {
+            return Err(AppError::invalid_input(
+                "issue does not belong to this project",
+            ));
+        }
+        if issue.status_id != from_status_id {
+            return Err(AppError::conflict("issue status changed concurrently"));
+        }
+        issue.status_id = to_status_id;
+        issue.updated_at = shared::now();
+        drop(issues);
+        self.history.lock().unwrap().push(IssueStatusHistory {
+            id: shared::IssueStatusHistoryId::new(),
+            issue_id,
+            from_status_id: Some(from_status_id),
+            to_status_id,
+            changed_by_id: actor_id,
+            changed_at: shared::now(),
+        });
+        self.history_project_ids.lock().unwrap().push(project_id);
+        Ok(())
+    }
+
     async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError> {
         let issues = self.issues.lock().unwrap();
         issues
@@ -229,7 +317,19 @@ impl IssueRepository for MemoryIssueRepository {
             })
             .cloned()
             .collect();
-        result.sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap());
+        match query.sort_by.as_deref() {
+            Some("created") => result.sort_by(|a, b| {
+                b.created_at
+                    .cmp(&a.created_at)
+                    .then_with(|| b.id.to_string().cmp(&a.id.to_string()))
+            }),
+            Some("updated") => result.sort_by(|a, b| {
+                b.updated_at
+                    .cmp(&a.updated_at)
+                    .then_with(|| b.id.to_string().cmp(&a.id.to_string()))
+            }),
+            _ => result.sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap()),
+        }
         let offset = query.offset as usize;
         let limit = query.limit as usize;
         Ok(result.into_iter().skip(offset).take(limit).collect())
@@ -954,6 +1054,19 @@ pub struct MemoryIssueStatusHistoryRepository {
     history: Arc<Mutex<Vec<IssueStatusHistory>>>,
     /// Parallel vector of project_id per entry (index-aligned with `history`).
     project_ids: Arc<Mutex<Vec<ProjectId>>>,
+}
+
+/// Shared handle pair so `MemoryIssueRepository::with_shared_history` and the
+/// history repository observe the same entries (atomic writes + reports).
+pub type SharedHistoryStore = (
+    Arc<Mutex<Vec<IssueStatusHistory>>>,
+    Arc<Mutex<Vec<ProjectId>>>,
+);
+
+impl MemoryIssueStatusHistoryRepository {
+    pub fn store(&self) -> SharedHistoryStore {
+        (self.history.clone(), self.project_ids.clone())
+    }
 }
 
 #[async_trait]

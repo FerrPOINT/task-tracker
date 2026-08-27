@@ -60,6 +60,7 @@ pub struct ProjectResponse {
     pub name: String,
     pub description: Option<String>,
     pub owner_id: String,
+    pub owner_name: String,
     pub todo_count: u32,
     pub in_progress_count: u32,
     pub done_count: u32,
@@ -161,6 +162,8 @@ pub struct BacklogResponse {
     pub project_id: String,
     pub project_key: String,
     pub backlog_total: usize,
+    pub backlog_offset: usize,
+    pub backlog_limit: usize,
     pub sprint: SprintResponse,
     pub sprint_issues: Vec<IssueResponse>,
     pub backlog_issues: Vec<IssueResponse>,
@@ -245,7 +248,10 @@ pub struct UpdateWorklogRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct RefreshRequest {
-    pub refresh_token: String,
+    /// Optional: the HttpOnly refresh cookie is the primary mechanism;
+    /// the body token is the explicit HTTP (non-Secure-cookie) fallback.
+    #[serde(default)]
+    pub refresh_token: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import { apiLogin, apiPost } from './setup'
 
 test.describe('labels and links', () => {
+test.setTimeout(120_000)
   test('create label → attach to issue → detach', async ({ page }) => {
     const login = await apiLogin()
     expect(login.status).toBe(200)

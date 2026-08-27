@@ -4,14 +4,15 @@ use std::sync::Arc;
 use crate::authz::Authz;
 use crate::dto::{BacklogDto, BoardColumnDto, BoardDto, SprintDto};
 use domain::{
-    IssueQuery, IssueRepository, ProjectRepository, SprintRepository, StatusCategory,
-    StatusRepository, WorkflowTransitionRepository,
+    Board, IssueQuery, IssueRepository, ProjectRepository, SprintRepository, StatusCategory,
+    StatusRepository, TransitionGuard, WorkflowTransitionRepository,
 };
 use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
 
-/// Upper bound on issues returned in the single-page backlog payload.
-mod backlog {
+/// Bounded offset pagination for a deterministic backlog order.
+pub mod backlog {
     pub const BACKLOG_PAGE_LIMIT: usize = 100;
+    pub const BACKLOG_MAX_PAGE_SIZE: usize = 200;
 }
 
 pub struct BoardServiceImpl {
@@ -22,11 +23,39 @@ pub struct BoardServiceImpl {
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
     projects: Arc<dyn ProjectRepository>,
-    status_history: Arc<dyn domain::IssueStatusHistoryRepository>,
     authz: Authz,
 }
 
 impl BoardServiceImpl {
+    /// Snapshot of the target column's WIP capacity for the atomic guard.
+    /// Counting happens again inside the critical section; this snapshot
+    /// only builds the guard (limits/names) that survives into it.
+    async fn build_transition_guard(
+        &self,
+        board: &Board,
+        status_id: StatusId,
+    ) -> Result<TransitionGuard, AppError> {
+        let column = board
+            .columns
+            .iter()
+            .find(|c| c.id == status_id)
+            .ok_or_else(|| AppError::invalid_input("unknown target column"))?;
+        let target_count = self
+            .issues
+            .list(IssueQuery {
+                project_id: Some(board.project_id),
+                status_id: Some(status_id),
+                ..Default::default()
+            })
+            .await?
+            .len() as u64;
+        Ok(TransitionGuard {
+            wip_limit: column.wip_limit.map(|v| v as u32),
+            target_count,
+            column_name: column.name.as_ref().to_string(),
+        })
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         boards: Arc<dyn domain::BoardRepository>,
@@ -36,7 +65,7 @@ impl BoardServiceImpl {
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
         projects: Arc<dyn ProjectRepository>,
-        status_history: Arc<dyn domain::IssueStatusHistoryRepository>,
+
         authz: Authz,
     ) -> Self {
         Self {
@@ -47,7 +76,6 @@ impl BoardServiceImpl {
             statuses,
             transitions,
             projects,
-            status_history,
             authz,
         }
     }
@@ -153,6 +181,8 @@ impl crate::context::BoardService for BoardServiceImpl {
         &self,
         project_key: &ProjectKey,
         requester: UserId,
+        offset: u32,
+        limit: u32,
     ) -> Result<BacklogDto, AppError> {
         let project = self.projects.get_by_key(project_key).await?;
         self.authz
@@ -220,14 +250,15 @@ impl crate::context::BoardService for BoardServiceImpl {
             project_label.as_str(),
         )
         .await?;
-        // The backlog view renders a single list; shipping every historic
-        // issue produced multi-megabyte responses and >32k-pixel pages on
-        // long-lived projects. Keep the response bounded and report the
-        // total so clients can paginate via search.
+        // A bounded page prevents multi-MB responses and >32k-pixel pages,
+        // while offset paging keeps every backlog item reachable.
         let backlog_total = backlog_issues_raw.len();
+        let offset = offset as usize;
+        let page_limit = (limit as usize).clamp(1, backlog::BACKLOG_MAX_PAGE_SIZE);
         let backlog_issues_raw = backlog_issues_raw
             .into_iter()
-            .take(backlog::BACKLOG_PAGE_LIMIT)
+            .skip(offset)
+            .take(page_limit)
             .collect::<Vec<_>>();
         let backlog_issues = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
@@ -240,6 +271,8 @@ impl crate::context::BoardService for BoardServiceImpl {
             project_id: board.project_id.to_string(),
             project_key: project_key.to_string(),
             backlog_total,
+            backlog_offset: offset,
+            backlog_limit: page_limit,
             sprint: sprint_dto,
             sprint_issues,
             backlog_issues,
@@ -271,42 +304,17 @@ impl crate::context::BoardService for BoardServiceImpl {
         if !allowed {
             return Err(AppError::invalid_input("workflow transition not allowed"));
         }
-        if let Some(column) = board.columns.iter().find(|c| c.id == status_id) {
-            if let Some(limit) = column.wip_limit {
-                let target_count = self
-                    .issues
-                    .list(IssueQuery {
-                        project_id: Some(board.project_id),
-                        status_id: Some(status_id),
-                        ..Default::default()
-                    })
-                    .await?
-                    .len();
-                if target_count >= limit as usize {
-                    return Err(AppError::conflict(format!(
-                        "WIP limit ({limit}) reached for {}",
-                        column.name
-                    )));
-                }
-            }
-        }
-        let mut updated = issue.clone();
-        let from_status = updated.status_id;
-        updated.change_status(status_id);
-        self.issues.save(&updated).await?;
-        // Reports (control chart / cumulative flow) are derived from status
-        // history; persisting it here is what makes them truthful.
-        self.status_history
-            .save_for_project(
-                &domain::IssueStatusHistory {
-                    id: shared::IssueStatusHistoryId::new(),
-                    issue_id: updated.id,
-                    from_status_id: Some(from_status),
-                    to_status_id: status_id,
-                    changed_by_id: requester,
-                    changed_at: shared::now(),
-                },
+        let guard = self.build_transition_guard(&board, status_id).await?;
+        // Atomic: WIP re-check, issue update and history insert happen in one
+        // critical section so concurrent movers cannot both observe capacity.
+        self.issues
+            .change_status_atomic(
+                issue.id,
                 project.id,
+                issue.status_id,
+                status_id,
+                requester,
+                &guard,
             )
             .await?;
         self.build_board_dto(project_key).await

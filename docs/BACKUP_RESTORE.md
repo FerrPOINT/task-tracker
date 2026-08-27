@@ -1,87 +1,49 @@
-# Backup & Restore
+# Backup & Restore — Task Tracker
 
-## 1. Что бэкапим
+## 1. Что входит в бэкап
 
-| Компонент | Способ | Частота |
-|---|---|---|
-| PostgreSQL | `pg_dump` | ежедневно |
-| Attachments | `rsync` / object storage replication | ежедневно |
-| Redis | необязательно (cache + pub/sub) | — |
-| `.env` | внешний secret manager / encrypted store | при изменении |
+- PostgreSQL: `pg_dump -Fc` (custom format, восстановление через `pg_restore`).
+- Attachments: содержимое Docker volume `uploads` (tar.gz, с сохранением прав).
 
-## 2. Автоматический бэкап
+Скрипты: `scripts/backup.sh` (создание), `scripts/restore.sh` (восстановление), `scripts/cleanup_old_backups.sh` (ротация).
 
-```bash
-./scripts/backup.sh
-```
+## 2. Автоматизация
 
-Скрипт делает:
-
-1. `pg_dump` в `/backups/postgres-YYYY-MM-DD.sql.gz`.
-2. `rsync` attachments в `/backups/attachments/`.
-3. Архив `/backups/task-tracker-YYYY-MM-DD.tar.gz`.
-4. Ротация: хранить последние 7 дневных и 4 недельных снапшота.
-
-### Cron
+ cron-пример (ежедневно в 03:15, хранить 14 копий):
 
 ```cron
-0 2 * * * cd /opt/dev/task-tracker && ./scripts/backup.sh >> /var/log/tasktracker-backup.log 2>&1
+15 3 * * * cd /opt/dev/task-tracker && ./scripts/backup.sh >> backups/backup.log 2>&1 && ./scripts/cleanup_old_backups.sh 14
 ```
 
 ## 3. Ручной бэкап
 
 ```bash
-# PostgreSQL
-docker compose exec postgres pg_dump -U tasktracker tasktracker | gzip > tasktracker-$(date +%F).sql.gz
-
-# Attachments
-docker compose cp api:/var/lib/tasktracker/uploads ./attachments-backup
+./scripts/backup.sh backups/manual-$(date +%F)
+# Контроль: в архиве два файла — <имя>.dump и <имя>-attachments.tar.gz
+tar -tzf backups/manual-*.tar.gz
 ```
 
 ## 4. Восстановление
 
 ```bash
-./scripts/restore.sh /backups/task-tracker-2026-07-13.tar.gz
+docker compose stop backend frontend
+./scripts/restore.sh backups/task-tracker-YYYY-MM-DD-HHMMSS.tar.gz
+docker compose up -d
+curl -f http://localhost:3456/api/v1/health
 ```
 
-Порядок:
+`restore.sh`:
 
-1. Остановить `api` и `frontend`.
-2. Восстановить Postgres:
-   ```bash
-   gunzip -c postgres-2026-07-13.sql.gz | docker compose exec -T postgres psql -U tasktracker -d tasktracker
-   ```
-3. Восстановить attachments.
-4. Запустить `api` и проверить `/health/ready`.
+1. распаковывает архив;
+2. `pg_restore --clean --if-exists` в базу из `TASKTRACKER_DATABASE__URL` / переменных `.env`;
+3. восстанавливает attachments в volume `uploads` и делает `chown 999:999` (backend работает non-root).
 
 ## 5. Point-in-time recovery
 
-- Если включён WAL archiving — восстановление до момента времени.
-- Нужен отдельный backup solution (Barman, pgBackRest, WAL-G).
+WAL-архивирование не настроено по умолчанию. Для PITR подключите внешний инструмент (pgBackRest, WAL-G) к volume `postgres_data`.
 
-## 6. Object storage backup
+## References
 
-Если attachments в S3/MinIO:
-
-- Включить bucket versioning.
-- Настроить cross-region replication.
-
-## 7. Проверка бэкапов
-
-- Раз в месяц делать test restore на staging.
-- Метрика: `backup_last_success_timestamp`.
-
-## 8. Disaster recovery
-
-| Сценарий | RTO | RPO | Действия |
-|---|---|---|---|
-| Потеря данных PG | 1 час | 24 часа | restore из последнего pg_dump |
-| Потеря attachments | 30 мин | 24 часа | rsync из бэкапа или S3 |
-| Потеря entire host | 4 часа | 24 часа | развернуть на новом хосте из бэкапа |
-
-## 9. References
-
-- `docs/DEPLOYMENT.md`
-- `docs/OPS_RUNBOOK.md`
-- `docs/MONITORING.md`
-- `docs/BACKUP_RESTORE.md`
+- [OPS_RUNBOOK](OPS_RUNBOOK.md)
+- [STORAGE](STORAGE.md)
+- [DEPLOYMENT](DEPLOYMENT.md)

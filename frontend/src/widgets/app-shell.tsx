@@ -27,6 +27,7 @@ import {
   useLogout,
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
+  useIssue,
   useNotifications,
 } from '@/shared/api/hooks'
 import {
@@ -38,12 +39,18 @@ import {
 
 const systemItems: Array<{ to: string; icon: typeof Trash2; labelKey: string }> = []
 
-const projectKeyPattern = /^\/projects\/([^/]+)\/(board|backlog|trash)$/
+const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
+const issuePattern = /^\/issues\/([^/]+)$/
 
 function useCurrentProjectKey() {
   const location = useLocation()
   const match = location.pathname.match(projectKeyPattern)
-  return match?.[1]
+  const issueMatch = location.pathname.match(issuePattern)
+  const issueId = issueMatch?.[1]
+  // On the issue page the project is not part of the URL; resolve it from
+  // the loaded issue so sidebar Board/Backlog/Trash keep their context.
+  const { data: issue } = useIssue(issueId ?? '')
+  return match?.[1] ?? issue?.project_key
 }
 
 function SidebarLink({

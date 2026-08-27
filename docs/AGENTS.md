@@ -5,7 +5,7 @@
 - **GitHub**: `git@github.com:FerrPOINT/task-tracker.git`
 - **Стек**: backend Rust (Axum + SeaORM + PostgreSQL), frontend React 19.1.0 + Vite 6.2.0 + Tailwind CSS 4.1.0
 - **Env prefix**: `TASKTRACKER_`
-- **Публичные порты по умолчанию**: frontend docker `19877`, backend `3456`, PostgreSQL `3457`, Redis `6379`
+- **Публичные порты по умолчанию**: frontend docker `19877`, backend `3456`. PostgreSQL и Redis внутренние (compose-сеть), наружу не публикуются
 
 ## Правила работы
 

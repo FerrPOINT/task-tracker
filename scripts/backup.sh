@@ -32,14 +32,19 @@ docker compose exec -T postgres pg_dump \
   > "${BACKUP_PATH}.dump"
 
 echo "Backing up attachments..."
-if [ -d "data/attachments" ]; then
-  cp -a "data/attachments" "${BACKUP_PATH}-attachments"
-fi
+# Attachments live in the named Docker volume `uploads` (not a host dir).
+docker run --rm \
+  -v task-tracker_uploads:/var/lib/tasktracker/uploads:ro \
+  -v "$BACKUP_DIR":/backup \
+  --entrypoint /bin/tar \
+  debian:bookworm-slim \
+  -czf "/backup/${BACKUP_NAME}-attachments.tar.gz" \
+  -C /var/lib/tasktracker/uploads .
 
 echo "Creating archive..."
 tar -czf "${BACKUP_PATH}.tar.gz" -C "$BACKUP_DIR" \
   "${BACKUP_NAME}.dump" \
-  "${BACKUP_NAME}-attachments" 2>/dev/null || true
+  "${BACKUP_NAME}-attachments.tar.gz"
 
 rm -rf "${BACKUP_PATH}.dump" "${BACKUP_PATH}-attachments"
 

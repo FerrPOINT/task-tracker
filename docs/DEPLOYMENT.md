@@ -17,18 +17,21 @@ Self-hosted таск-трекер. MVP поставляется как Docker Co
 
 ## 3. Services
 
-| Service | Image | Port | Description |
-|---------|-------|------|-------------|
-| `backend` | build from `backend/Dockerfile` | `3456` | Axum API |
-| `postgres` | `postgres:17.6-alpine` | `5432` | PostgreSQL |
-| `redis` | `redis:8.0-alpine` | `6379` | Cache / event bus |
+| Service | Image | Host port | Description |
+|---------|-------|-----------|-------------|
+| `frontend` | build from `frontend/Dockerfile` | `19877` | nginx статика |
+| `backend` | build from `backend/Dockerfile` | `3456` | Axum API, non-root (uid 999) |
+| `postgres` | `postgres:17.6-alpine` | внутренний | PostgreSQL, не публикуется |
+| `redis` | `redis:8.0-alpine` | внутренний | Cache / event bus, не публикуется |
+| `uploads-init` | `debian:bookworm-slim` | — | one-shot chown volume `uploads` |
 
 ## 4. Quick Start
 
 ```bash
-cp backend/.env.example backend/.env
-# отредактируйте секреты
-docker compose up -d postgres redis backend
+cp .env.example .env
+# ОБЯЗАТЕЛЬНО задайте POSTGRES_PASSWORD и TASKTRACKER_JWT_SECRET — compose
+# откажется стартовать без них (рабочих дефолтов нет)
+docker compose up -d --build
 curl -sf http://localhost:3456/api/v1/health
 ```
 
@@ -46,7 +49,7 @@ pnpm generate:api
 pnpm dev
 ```
 
-Frontend dev-server ожидает backend по `http://127.0.0.1:3456/api/v1` (env `VITE_API_BASE_URL`).
+Frontend dev-server проксирует `/api/v1` на backend `:3456` (см. `vite.config.ts`; переопределение — `VITE_API_BASE_URL`).
 
 ## 6. Production Build
 
@@ -75,17 +78,20 @@ pnpm build
 ## 9. Backup
 
 ```bash
-docker compose exec -T postgres pg_dump -U tasktracker tasktracker > tasktracker-$(date +%Y%m%d).sql
-docker compose cp task-tracker-backend-1:/var/lib/tasktracker/uploads ./attachments-backup
+./scripts/backup.sh backups/$(date +%F-%H%M)
 ```
+
+См. [BACKUP_RESTORE](BACKUP_RESTORE.md).
 
 ## 10. Update
 
 ```bash
 git pull origin main
-docker compose down -v   # при изменениях миграций
-docker compose up -d postgres redis backend
+docker compose build
+docker compose up -d     # recreate подхватывает новый образ
 ```
+
+Миграции применяются автоматически при старте backend. **Никогда не используйте `docker compose down -v`** для обновления — флаг `-v` удаляет volume с базой и attachments.
 
 ## 11. Reverse Proxy Example (nginx)
 
