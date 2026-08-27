@@ -4702,3 +4702,117 @@ async fn comments_list_is_bounded() {
         .unwrap();
     assert_eq!(res.status(), 400);
 }
+
+// 31. board_move_enforces_wip_limit (release hardening)
+#[tokio::test]
+async fn board_move_enforces_wip_limit() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    // The test board's In Progress column has WIP=5. Fill it through legal moves.
+    for _ in 0..5 {
+        let issue_id = create_issue_via_api(&url, &client, &token).await;
+        let res = client
+            .post(format!("{url}/api/v1/projects/TT/board/move"))
+            .bearer_auth(&token)
+            .json(&serde_json::json!({
+                "issue_id": issue_id,
+                "status_id": "00000000-0000-0000-0000-000000000002"
+            }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+    }
+
+    let overflow_id = create_issue_via_api(&url, &client, &token).await;
+    let res = client
+        .post(format!("{url}/api/v1/projects/TT/board/move"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "issue_id": overflow_id,
+            "status_id": "00000000-0000-0000-0000-000000000002"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        409,
+        "move past target WIP limit must be rejected"
+    );
+}
+
+// 32. refresh_works_without_bearer (release hardening)
+#[tokio::test]
+async fn refresh_works_without_bearer() {
+    let (url, client) = spawn_server().await;
+    let login = client
+        .post(format!("{url}/api/v1/auth/login"))
+        .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = login.json().await.unwrap();
+    let refresh_token = body["refresh_token"].as_str().unwrap().to_string();
+
+    // No Authorization header at all: the whole point of refresh.
+    let res = client
+        .post(format!("{url}/api/v1/auth/refresh"))
+        .json(&serde_json::json!({"refresh_token": refresh_token}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200, "refresh must not require a bearer token");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["access_token"].as_str().is_some());
+    assert!(body["refresh_token"].as_str().is_some(), "rotated token");
+}
+
+// 33. worklog_create_publishes_sse_event (release hardening)
+#[tokio::test]
+async fn worklog_create_publishes_sse_event() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    // Subscribe to the SSE stream first.
+    let stream_url = format!("{url}/api/v1/events?access_token={token}");
+    let mut res = client.get(&stream_url).send().await.unwrap();
+    assert_eq!(res.status(), 200);
+
+    // Log work against the issue.
+    let wl = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/worklogs"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "started_at": "2026-08-26T10:00:00Z",
+            "duration_seconds": 1800,
+            "comment": "sse regression"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wl.status(), 201, "worklog create must succeed");
+
+    // The stream must deliver a worklog_logged event for the issue.
+    // Read chunks with a hard deadline so an absent event fails fast.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let mut seen = String::new();
+    while std::time::Instant::now() < deadline {
+        let chunk = tokio::time::timeout(std::time::Duration::from_secs(1), res.chunk()).await;
+        match chunk {
+            Ok(Ok(Some(bytes))) => {
+                seen.push_str(&String::from_utf8_lossy(&bytes));
+                if seen.contains("worklog_logged") {
+                    break;
+                }
+            }
+            _ => break,
+        }
+    }
+    assert!(
+        seen.contains("worklog_logged"),
+        "SSE stream must include worklog_logged, got: {seen}"
+    );
+}

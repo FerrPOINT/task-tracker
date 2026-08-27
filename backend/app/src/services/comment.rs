@@ -74,15 +74,17 @@ impl crate::context::CommentService for CommentServiceImpl {
             .skip(offset as usize)
             .take(effective_limit)
             .collect();
-        let comments = page;
-        let mut result = Vec::with_capacity(comments.len());
-        for c in comments {
-            let user = self.users.get_by_id(c.author_id).await.ok();
-            result.push(CommentDto::from_comment(
-                c,
-                user.map(|u| u.display_name.as_ref().to_string()),
-            ));
+        let mut names: std::collections::HashMap<UserId, String> = std::collections::HashMap::new();
+        for u in self.users.list().await.unwrap_or_default() {
+            names.insert(u.id, u.display_name.as_ref().to_string());
         }
+        let result = page
+            .into_iter()
+            .map(|c| {
+                let author = names.get(&c.author_id).cloned();
+                CommentDto::from_comment(c, author)
+            })
+            .collect();
         Ok(result)
     }
 

@@ -200,6 +200,8 @@ export function ProjectBacklogPage() {
   if (error || !backlog) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { sprint: activeSprint, sprint_issues, backlog_issues } = backlog
+  const backlogTotal = backlog.backlog_total ?? backlog_issues.length
+  const backlogCapped = backlogTotal > backlog_issues.length
   const futureSprints =
     sprints?.filter((s) => s.id !== activeSprint.id && s.state !== 'closed') ?? []
   const activeFromList = sprints?.find((s) => s.id === activeSprint.id)
@@ -236,7 +238,12 @@ export function ProjectBacklogPage() {
           </h1>
           <div className="text-sm text-text-muted">
             {t('backlog.velocity', { velocity: activeSprint.velocity ?? '-' })} ·{' '}
-            {t('backlog.backlogCount', { count: backlog_issues.length })}
+            {t('backlog.backlogCount', { count: backlogTotal })}
+            {backlogCapped &&
+              ` · ${t('backlog.windowed', {
+                shown: backlog_issues.length,
+                total: backlogTotal,
+              })}`}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">

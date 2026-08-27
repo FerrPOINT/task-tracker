@@ -160,6 +160,7 @@ pub struct BoardResponse {
 pub struct BacklogResponse {
     pub project_id: String,
     pub project_key: String,
+    pub backlog_total: usize,
     pub sprint: SprintResponse,
     pub sprint_issues: Vec<IssueResponse>,
     pub backlog_issues: Vec<IssueResponse>,

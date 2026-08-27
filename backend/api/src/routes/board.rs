@@ -113,6 +113,7 @@ fn map_backlog(b: app::dto::BacklogDto) -> crate::dto::BacklogResponse {
     crate::dto::BacklogResponse {
         project_id: b.project_id,
         project_key: b.project_key,
+        backlog_total: b.backlog_total,
         sprint: crate::dto::SprintResponse {
             id: b.sprint.id,
             name: b.sprint.name,

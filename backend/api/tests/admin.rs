@@ -404,3 +404,58 @@ async fn admin_system_settings_update_requires_admin() {
         .unwrap();
     assert_eq!(res.status(), 403);
 }
+
+// audit log pagination must page via offset, not repeat the first page
+#[tokio::test]
+async fn admin_audit_log_pages_with_offset() {
+    let (url, client, admin_token, _) = spawn_admin_server().await;
+
+    // Generate audit entries by flipping the regular user's status repeatedly.
+    for _ in 0..4 {
+        let res = client
+            .put(format!(
+                "{}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status",
+                url
+            ))
+            .bearer_auth(&admin_token)
+            .json(&serde_json::json!({"is_active": false}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+    }
+
+    let page1 = client
+        .get(format!("{}/api/v1/admin/audit-log?limit=2&offset=0", url))
+        .bearer_auth(&admin_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(page1.status(), 200);
+    let page1: serde_json::Value = page1.json().await.unwrap();
+    let page2 = client
+        .get(format!("{}/api/v1/admin/audit-log?limit=2&offset=2", url))
+        .bearer_auth(&admin_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(page2.status(), 200);
+    let page2: serde_json::Value = page2.json().await.unwrap();
+
+    let ids = |page: &serde_json::Value| -> Vec<String> {
+        page["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| e["id"].as_str().unwrap_or_default().to_string())
+            .collect()
+    };
+    let first = ids(&page1);
+    let second = ids(&page2);
+    assert_eq!(first.len(), 2, "page 1: {first:?}");
+    assert_eq!(second.len(), 2, "page 2: {second:?}");
+    assert!(
+        first.iter().all(|id| !second.contains(id)),
+        "offset must move the window, page1={first:?} page2={second:?}"
+    );
+}

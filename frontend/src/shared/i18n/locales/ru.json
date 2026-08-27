@@ -121,7 +121,8 @@
     "edit": "Изменить спринт",
     "issueActions": "Действия с задачей",
     "removeFromSprint": "Убрать из спринта",
-    "moveToSprint": "Переместить в спринт"
+    "moveToSprint": "Переместить в спринт",
+    "windowed": "Показаны первые {{shown}} из {{total}}"
   },
   "sprint": {
     "name": "Название спринта",

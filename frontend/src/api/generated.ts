@@ -1191,6 +1191,7 @@ export interface components {
         };
         BacklogResponse: {
             backlog_issues: components["schemas"]["IssueResponse"][];
+            backlog_total: number;
             project_id: string;
             project_key: string;
             sprint: components["schemas"]["SprintResponse"];
@@ -1673,6 +1674,8 @@ export interface operations {
             query?: {
                 /** @description Maximum entries (default 100) */
                 limit?: number;
+                /** @description Pagination offset (default 0) */
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -2401,6 +2404,8 @@ export interface operations {
                 assignee_id?: string | null;
                 sort_by?: string | null;
                 sort_order?: string | null;
+                limit?: number | null;
+                offset?: number | null;
                 jql?: string | null;
             };
             header?: never;
@@ -4518,6 +4523,8 @@ export interface operations {
                 assignee_id?: string | null;
                 sort_by?: string | null;
                 sort_order?: string | null;
+                limit?: number | null;
+                offset?: number | null;
                 jql?: string | null;
             };
             header?: never;

@@ -1053,7 +1053,12 @@ impl AuditLogRepository for MemoryAuditLogRepository {
         Ok(())
     }
 
-    async fn list(&self, actor_id: Option<UserId>, limit: u64) -> Result<Vec<AuditLog>, AppError> {
+    async fn list(
+        &self,
+        actor_id: Option<UserId>,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<AuditLog>, AppError> {
         let mut entries: Vec<_> = self
             .entries
             .lock()
@@ -1063,7 +1068,9 @@ impl AuditLogRepository for MemoryAuditLogRepository {
             .cloned()
             .collect();
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.created_at));
-        entries.truncate(limit as usize);
+        let offset = offset.min(entries.len() as u64) as usize;
+        entries.truncate(offset + limit as usize);
+        entries.drain(..offset);
         Ok(entries)
     }
 }

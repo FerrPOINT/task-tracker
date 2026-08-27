@@ -1966,12 +1966,18 @@ impl AuditLogRepository for AuditLogRepo {
         Ok(())
     }
 
-    async fn list(&self, actor_id: Option<UserId>, limit: u64) -> Result<Vec<AuditLog>, AppError> {
+    async fn list(
+        &self,
+        actor_id: Option<UserId>,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<AuditLog>, AppError> {
         let mut query = audit_log::Entity::find().order_by_desc(audit_log::Column::CreatedAt);
         if let Some(actor_id) = actor_id {
             query = query.filter(audit_log::Column::ActorId.eq(actor_id.as_uuid()));
         }
         let models = query
+            .offset(offset)
             .limit(limit)
             .all(&*self.db)
             .await

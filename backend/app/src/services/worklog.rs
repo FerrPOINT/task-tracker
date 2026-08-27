@@ -4,13 +4,15 @@ use std::sync::Arc;
 use crate::authz::Authz;
 use crate::commands::{CreateWorklogCommand, UpdateWorklogCommand};
 use crate::dto::WorklogDto;
-use domain::IssueRepository;
+use domain::{IssueRepository, ProjectRepository};
 use shared::{AppError, IssueId, UserId};
 
 pub struct WorklogServiceImpl {
     worklogs: Arc<dyn domain::WorklogRepository>,
     users: Arc<dyn domain::UserRepository>,
     issues: Arc<dyn IssueRepository>,
+    projects: Arc<dyn ProjectRepository>,
+    events: crate::context::EventBus,
     authz: Authz,
 }
 
@@ -19,13 +21,30 @@ impl WorklogServiceImpl {
         worklogs: Arc<dyn domain::WorklogRepository>,
         users: Arc<dyn domain::UserRepository>,
         issues: Arc<dyn IssueRepository>,
+        projects: Arc<dyn ProjectRepository>,
+        events: crate::context::EventBus,
         authz: Authz,
     ) -> Self {
         Self {
             worklogs,
             users,
             issues,
+            projects,
+            events,
             authz,
+        }
+    }
+
+    fn publish_worklog_event(&self, issue: &domain::Issue, project_key: String) {
+        self.events.publish(shared::TrackerEvent::WorklogLogged {
+            issue_id: issue.id.to_string(),
+            project_key,
+        });
+    }
+
+    async fn publish_for_issue(&self, issue: &domain::Issue) {
+        if let Ok(project) = self.projects.get_by_id(issue.project_id).await {
+            self.publish_worklog_event(issue, project.key.to_string());
         }
     }
 }
@@ -54,14 +73,17 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             .skip(offset as usize)
             .take(effective_limit)
             .collect();
-        let mut result = Vec::with_capacity(worklogs.len());
-        for w in worklogs {
-            let user = self.users.get_by_id(w.author_id).await.ok();
-            result.push(WorklogDto::from_worklog(
-                w,
-                user.map(|u| u.display_name.as_ref().to_string()),
-            ));
+        let mut names: std::collections::HashMap<UserId, String> = std::collections::HashMap::new();
+        for u in self.users.list().await.unwrap_or_default() {
+            names.insert(u.id, u.display_name.as_ref().to_string());
         }
+        let result = worklogs
+            .into_iter()
+            .map(|w| {
+                let author = names.get(&w.author_id).cloned();
+                WorklogDto::from_worklog(w, author)
+            })
+            .collect();
         Ok(result)
     }
 
@@ -91,6 +113,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             updated_at: shared::now(),
         };
         self.worklogs.save(&worklog).await?;
+        self.publish_for_issue(&issue).await;
         let user = self.users.get_by_id(cmd.author_id).await.ok();
         Ok(WorklogDto::from_worklog(
             worklog,
@@ -128,6 +151,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         }
         worklog.updated_at = shared::now();
         self.worklogs.save(&worklog).await?;
+        self.publish_for_issue(&issue).await;
         let user = self.users.get_by_id(worklog.author_id).await.ok();
         Ok(WorklogDto::from_worklog(
             worklog,
@@ -144,6 +168,8 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         if worklog.author_id != requester {
             return Err(AppError::Forbidden);
         }
-        self.worklogs.delete(id).await
+        self.worklogs.delete(id).await?;
+        self.publish_for_issue(&issue).await;
+        Ok(())
     }
 }

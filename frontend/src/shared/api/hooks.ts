@@ -14,7 +14,7 @@ import {
   getIssue,
 } from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
-import { useAuthStore } from '@/shared/auth/store'
+import { storeRefreshToken, useAuthStore } from '@/shared/auth/store'
 import {
   listProjectMembers,
   addProjectMember,
@@ -374,6 +374,7 @@ export function useLogin() {
   return useMutation({
     mutationFn: login,
     onSuccess: (data) => {
+      storeRefreshToken(data.refresh_token ?? null)
       setAuth({
         token: data.access_token,
         userId: data.user_id,
@@ -390,6 +391,7 @@ export function useRegister() {
   return useMutation({
     mutationFn: register,
     onSuccess: (data) => {
+      storeRefreshToken(data.refresh_token ?? null)
       setAuth({
         token: data.access_token,
         userId: data.user_id,

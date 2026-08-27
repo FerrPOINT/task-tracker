@@ -377,3 +377,53 @@ async fn issue_search_escapes_wildcards_and_folds_unicode_case() {
     let res = q("проверка").await.unwrap();
     assert_eq!(res.len(), 1, "unicode case folding must work");
 }
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn jql_contains_treats_percent_as_literal() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let pct = Issue::create(
+        &project,
+        1,
+        IssueType::Task,
+        status,
+        "progress hit 100% done",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    let other = Issue::create(
+        &project,
+        2,
+        IssueType::Task,
+        status,
+        "no metacharacters here",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&pct).await.unwrap();
+    repos.issues.save(&other).await.unwrap();
+
+    let list = repos
+        .issues
+        .list(domain::IssueQuery {
+            project_id: Some(project.id),
+            jql: Some(domain::jql::parse("summary ~ \"100%\"").expect("valid JQL")),
+            jql_user_id: Some(user.id),
+            limit: 50,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(list.len(), 1, "literal % must match only the 100% issue");
+    assert!(list[0].summary.as_ref().contains("100%"));
+}

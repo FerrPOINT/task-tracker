@@ -27,6 +27,10 @@ pub enum TrackerEvent {
         issue_id: String,
         project_key: String,
     },
+    WorklogLogged {
+        issue_id: String,
+        project_key: String,
+    },
     SprintChanged {
         project_key: String,
     },
@@ -43,6 +47,7 @@ impl TrackerEvent {
             | TrackerEvent::IssueMoved { project_key, .. }
             | TrackerEvent::IssueDeleted { project_key, .. }
             | TrackerEvent::IssueCommented { project_key, .. }
+            | TrackerEvent::WorklogLogged { project_key, .. }
             | TrackerEvent::SprintChanged { project_key } => project_key,
             TrackerEvent::NotificationCreated { .. } => "",
         }

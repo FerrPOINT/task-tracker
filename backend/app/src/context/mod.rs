@@ -184,6 +184,8 @@ impl AppContext {
                     repos.worklogs.clone(),
                     repos.users.clone(),
                     repos.issues.clone(),
+                    repos.projects.clone(),
+                    events.clone(),
                     authz.clone(),
                 )),
                 member: Arc::new(ProjectMemberServiceImpl::new(

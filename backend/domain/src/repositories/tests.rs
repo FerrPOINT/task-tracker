@@ -141,7 +141,7 @@ async fn stub_audit_log_and_system_setting_repositories_are_safe_defaults() {
     let audit_logs = StubAuditLogRepository;
     let settings = StubSystemSettingRepository;
 
-    assert!(audit_logs.list(None, 10).await.unwrap().is_empty());
+    assert!(audit_logs.list(None, 10, 0).await.unwrap().is_empty());
     assert!(settings.get("missing").await.is_err());
     assert!(settings.list().await.unwrap().is_empty());
 }
@@ -149,6 +149,6 @@ async fn stub_audit_log_and_system_setting_repositories_are_safe_defaults() {
 #[tokio::test]
 async fn repositories_default_wires_audit_log_and_system_setting_repositories() {
     let repos = Repositories::default();
-    assert!(repos.audit_logs.list(None, 10).await.unwrap().is_empty());
+    assert!(repos.audit_logs.list(None, 10, 0).await.unwrap().is_empty());
     assert!(repos.system_settings.list().await.unwrap().is_empty());
 }

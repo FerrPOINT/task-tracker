@@ -354,9 +354,9 @@ async fn memory_audit_log_repository_filters_by_actor_and_limits_newest_entries(
     repo.save(&newer).await.unwrap();
     repo.save(&unrelated).await.unwrap();
 
-    assert_eq!(repo.list(Some(actor), 1).await.unwrap(), vec![newer]);
+    assert_eq!(repo.list(Some(actor), 1, 0).await.unwrap(), vec![newer]);
     assert_eq!(
-        repo.list(Some(other_actor), 10).await.unwrap(),
+        repo.list(Some(other_actor), 10, 0).await.unwrap(),
         vec![unrelated]
     );
 }

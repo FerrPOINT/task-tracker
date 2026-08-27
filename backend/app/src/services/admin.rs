@@ -193,9 +193,10 @@ impl AdminService for AdminServiceImpl {
         &self,
         requester_id: UserId,
         limit: u64,
+        offset: u64,
     ) -> Result<Vec<AuditLogDto>, AppError> {
         self.require_admin(requester_id).await?;
-        let entries = self.audit_logs.list(None, limit).await?;
+        let entries = self.audit_logs.list(None, limit, offset).await?;
         Ok(entries.into_iter().map(AuditLogDto::from).collect())
     }
 
@@ -369,7 +370,7 @@ mod tests {
         assert!(!dto.is_system_admin);
         assert!(dto.is_active);
 
-        let logs = audit_logs.list(None, 100).await.unwrap();
+        let logs = audit_logs.list(None, 100, 0).await.unwrap();
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].action.as_ref(), "admin.create_user");
         assert_eq!(logs[0].entity_type.as_ref(), "user");
@@ -423,7 +424,7 @@ mod tests {
             .unwrap();
         assert!(!dto.is_active);
 
-        let logs = audit_logs.list(None, 100).await.unwrap();
+        let logs = audit_logs.list(None, 100, 0).await.unwrap();
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].action.as_ref(), "admin.update_user_status");
     }
@@ -458,7 +459,7 @@ mod tests {
         let regular = make_regular_user();
         users.save(&regular).await.unwrap();
         let (service, _, _) = make_service(users);
-        let result = service.list_audit_logs(regular.id, 100).await;
+        let result = service.list_audit_logs(regular.id, 100, 0).await;
         assert!(matches!(result, Err(AppError::Forbidden)));
     }
 
@@ -540,7 +541,7 @@ mod tests {
         assert_eq!(stored.value, serde_json::json!("My Tracker"));
 
         // Verify audit.
-        let logs = audit_logs.list(None, 100).await.unwrap();
+        let logs = audit_logs.list(None, 100, 0).await.unwrap();
         assert_eq!(logs.len(), 1);
         assert_eq!(logs[0].action.as_ref(), "admin.update_system_setting");
     }

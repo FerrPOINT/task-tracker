@@ -21,7 +21,12 @@ use shared::{
 #[async_trait]
 pub trait AuditLogRepository: Send + Sync {
     async fn save(&self, entry: &AuditLog) -> Result<(), AppError>;
-    async fn list(&self, actor_id: Option<UserId>, limit: u64) -> Result<Vec<AuditLog>, AppError>;
+    async fn list(
+        &self,
+        actor_id: Option<UserId>,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<AuditLog>, AppError>;
 }
 
 #[async_trait]
@@ -661,6 +666,7 @@ impl AuditLogRepository for StubAuditLogRepository {
         &self,
         _actor_id: Option<UserId>,
         _limit: u64,
+        _offset: u64,
     ) -> Result<Vec<AuditLog>, AppError> {
         Ok(vec![])
     }

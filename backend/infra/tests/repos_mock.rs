@@ -166,7 +166,7 @@ async fn project_list_database_error() {
 #[tokio::test]
 async fn audit_log_list_database_error() {
     let repos = mock_db_with_query_error();
-    assert_database_error(repos.audit_logs.list(None, 10).await);
+    assert_database_error(repos.audit_logs.list(None, 10, 0).await);
 }
 
 #[tokio::test]

@@ -9,6 +9,11 @@ use domain::{
 };
 use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
 
+/// Upper bound on issues returned in the single-page backlog payload.
+mod backlog {
+    pub const BACKLOG_PAGE_LIMIT: usize = 100;
+}
+
 pub struct BoardServiceImpl {
     boards: Arc<dyn domain::BoardRepository>,
     issues: Arc<dyn IssueRepository>,
@@ -159,6 +164,8 @@ impl crate::context::BoardService for BoardServiceImpl {
             .issues
             .list(IssueQuery {
                 project_id: Some(board.project_id),
+                sort_by: Some("created".to_string()),
+                sort_order: Some("desc".to_string()),
                 ..Default::default()
             })
             .await?;
@@ -213,6 +220,15 @@ impl crate::context::BoardService for BoardServiceImpl {
             project_label.as_str(),
         )
         .await?;
+        // The backlog view renders a single list; shipping every historic
+        // issue produced multi-megabyte responses and >32k-pixel pages on
+        // long-lived projects. Keep the response bounded and report the
+        // total so clients can paginate via search.
+        let backlog_total = backlog_issues_raw.len();
+        let backlog_issues_raw = backlog_issues_raw
+            .into_iter()
+            .take(backlog::BACKLOG_PAGE_LIMIT)
+            .collect::<Vec<_>>();
         let backlog_issues = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
             backlog_issues_raw,
@@ -223,6 +239,7 @@ impl crate::context::BoardService for BoardServiceImpl {
         Ok(BacklogDto {
             project_id: board.project_id.to_string(),
             project_key: project_key.to_string(),
+            backlog_total,
             sprint: sprint_dto,
             sprint_issues,
             backlog_issues,
@@ -253,6 +270,25 @@ impl crate::context::BoardService for BoardServiceImpl {
             .await?;
         if !allowed {
             return Err(AppError::invalid_input("workflow transition not allowed"));
+        }
+        if let Some(column) = board.columns.iter().find(|c| c.id == status_id) {
+            if let Some(limit) = column.wip_limit {
+                let target_count = self
+                    .issues
+                    .list(IssueQuery {
+                        project_id: Some(board.project_id),
+                        status_id: Some(status_id),
+                        ..Default::default()
+                    })
+                    .await?
+                    .len();
+                if target_count >= limit as usize {
+                    return Err(AppError::conflict(format!(
+                        "WIP limit ({limit}) reached for {}",
+                        column.name
+                    )));
+                }
+            }
         }
         let mut updated = issue.clone();
         let from_status = updated.status_id;

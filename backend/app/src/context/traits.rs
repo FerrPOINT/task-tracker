@@ -470,6 +470,7 @@ pub trait AdminService: Send + Sync {
         &self,
         requester_id: UserId,
         limit: u64,
+        offset: u64,
     ) -> Result<Vec<crate::context::AuditLogDto>, AppError>;
 
     /// List all system settings. `requester_id` must be a system admin. Only

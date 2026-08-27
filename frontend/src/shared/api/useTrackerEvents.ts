@@ -50,6 +50,12 @@ export function useTrackerEvents() {
         case 'issue_commented':
           if (evt.issue_id) qc.invalidateQueries({ queryKey: ['comments', evt.issue_id] })
           break
+        case 'worklog_logged':
+          if (evt.issue_id) {
+            qc.invalidateQueries({ queryKey: ['worklogs', evt.issue_id] })
+            qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
+          }
+          break
         case 'sprint_changed':
           qc.invalidateQueries({ queryKey: ['sprints'] })
           break

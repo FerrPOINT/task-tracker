@@ -1,6 +1,6 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './generated'
-import { useAuthStore } from '@/shared/auth/store'
+import { readRefreshToken, storeRefreshToken, useAuthStore } from '@/shared/auth/store'
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
 
@@ -12,18 +12,25 @@ async function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
+      // On plain-HTTP deployments the Secure refresh cookie never reaches
+      // the browser; send the stored refresh token as a body fallback.
+      const refreshToken = readRefreshToken()
       const res = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
       })
       if (!res.ok) {
         useAuthStore.getState().logout()
         window.location.href = '/login'
         return false
       }
-      const data = (await res.json()) as { access_token?: string }
+      const data = (await res.json()) as { access_token?: string; refresh_token?: string }
+      if (data.refresh_token) {
+        // The backend rotates refresh tokens; persist the newest one.
+        storeRefreshToken(data.refresh_token)
+      }
       if (data.access_token) {
         useAuthStore.setState({ token: data.access_token })
       }

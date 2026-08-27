@@ -314,6 +314,9 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let auth_routes = Router::new()
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/login", post(routes::auth::login))
+        // Refresh must stay public: it exists precisely for the moment the
+        // access token has expired, so it cannot require a valid bearer.
+        .route("/auth/refresh", post(routes::auth::refresh))
         .layer(GovernorLayer::new(auth_limiter));
 
     let auth = from_fn_with_state(ctx.clone(), middleware::auth::bearer_auth);
@@ -454,7 +457,6 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
                 .patch(routes::notifications::update_notification_settings),
         )
         .route("/dashboard", get(routes::dashboard::get_dashboard))
-        .route("/auth/refresh", post(routes::auth::refresh))
         .route("/auth/logout", post(routes::auth::logout))
         .route("/auth/me", get(routes::users::get_me))
         .route("/users/me", get(routes::users::get_users_me))

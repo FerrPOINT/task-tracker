@@ -121,7 +121,8 @@
     "edit": "Edit sprint",
     "issueActions": "Issue actions",
     "removeFromSprint": "Remove from sprint",
-    "moveToSprint": "Move to sprint"
+    "moveToSprint": "Move to sprint",
+    "windowed": "Showing first {{shown}} of {{total}}"
   },
   "sprint": {
     "name": "Sprint name",

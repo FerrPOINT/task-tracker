@@ -16,7 +16,7 @@ import {
 import type { Comment, CreateCommentInput, UpdateCommentInput } from '@/entities/comment/model'
 
 interface CommentFormProps {
-  onSubmit: (input: CreateCommentInput | UpdateCommentInput) => void
+  onSubmit: (input: CreateCommentInput | UpdateCommentInput) => void | Promise<unknown>
   onCancel?: () => void
   initialBody?: string
   submitLabel?: string
@@ -38,8 +38,8 @@ export function CommentForm({
     defaultValues: { body: initialBody },
   })
 
-  const handleSubmit = form.handleSubmit((values) => {
-    onSubmit({ body: values.body.trim() })
+  const handleSubmit = form.handleSubmit(async (values) => {
+    await onSubmit({ body: values.body.trim() })
     if (!onCancel) {
       form.reset({ body: '' })
     }
@@ -171,13 +171,11 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
     return <p className="text-sm text-text-muted">{t('common.loading')}</p>
   }
 
-  const handleCreate = (input: CreateCommentInput) => {
-    create.mutate(input)
-  }
+  const handleCreate = (input: CreateCommentInput) => create.mutateAsync(input)
 
-  const handleUpdate = (input: UpdateCommentInput) => {
+  const handleUpdate = async (input: UpdateCommentInput) => {
     if (!editing) return
-    update.mutate({ id: editing.id, input })
+    await update.mutateAsync({ id: editing.id, input })
     setEditing(null)
   }
 

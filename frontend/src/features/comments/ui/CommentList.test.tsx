@@ -58,6 +58,31 @@ describe('CommentItem', () => {
 })
 
 describe('CommentForm', () => {
+  it('does not submit the same comment twice while the mutation is pending', async () => {
+    let resolveSubmit: (() => void) | undefined
+    const onSubmit = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveSubmit = resolve
+      }),
+    )
+    render(
+      <Wrapper>
+        <CommentForm onSubmit={onSubmit} submitLabel="Add" />
+      </Wrapper>,
+    )
+    fireEvent.change(screen.getByPlaceholderText(/напишите/i), {
+      target: { value: 'Only once' },
+    })
+    const submit = screen.getByText(/add/i)
+    fireEvent.click(submit)
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1))
+    // Do not clear the text while the request is still in flight.
+    expect(screen.getByPlaceholderText(/напишите/i)).toHaveValue('Only once')
+    expect(submit).toBeDisabled()
+    resolveSubmit?.()
+    await waitFor(() => expect(screen.getByPlaceholderText(/напишите/i)).toHaveValue(''))
+  })
+
   it('submits non-empty body', async () => {
     const onSubmit = vi.fn()
     render(

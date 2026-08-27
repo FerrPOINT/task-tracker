@@ -287,10 +287,14 @@ impl Compiler {
             BinaryOperator::LessThanOrEqual => format!("{column} <= {}", one_value()?),
             BinaryOperator::GreaterThan => format!("{column} > {}", one_value()?),
             BinaryOperator::GreaterThanOrEqual => format!("{column} >= {}", one_value()?),
-            BinaryOperator::Contains => format!("{column} ILIKE '%' || {} || '%'", one_value()?),
-            BinaryOperator::NotContains => {
-                format!("{column} NOT ILIKE '%' || {} || '%'", one_value()?)
-            }
+            BinaryOperator::Contains => format!(
+                "{column} ILIKE '%' || replace(replace({}, '%', '\\%'), '_', '\\_') || '%'",
+                one_value()?
+            ),
+            BinaryOperator::NotContains => format!(
+                "{column} NOT ILIKE '%' || replace(replace({}, '%', '\\%'), '_', '\\_') || '%'",
+                one_value()?
+            ),
             BinaryOperator::In => format!("{column} IN ({})", placeholders.join(", ")),
             BinaryOperator::NotIn => format!("{column} NOT IN ({})", placeholders.join(", ")),
         };
@@ -501,5 +505,25 @@ mod tests {
         let expr = parse("assignee = not-a-uuid").expect("valid JQL syntax");
         let error = compile(&expr, UserId::new()).expect_err("invalid UUID");
         assert!(error.to_string().contains("UUID"));
+    }
+}
+#[cfg(test)]
+mod wildcard_tests {
+    use crate::jql::{JqlParameter, compile};
+    use domain::jql::parse;
+    use shared::UserId;
+
+    #[test]
+    fn contains_operator_escapes_like_wildcards_in_bound_value() {
+        let expression = parse("summary ~ \"100%\"").expect("valid JQL");
+        let query = compile(&expression, UserId::new()).expect("supported query");
+        // The predicate must neutralize LIKE metacharacters inside the bound parameter.
+        assert!(
+            query.predicate.contains("replace("),
+            "expected like_escape/replace wrapping, got: {}",
+            query.predicate
+        );
+        let params: Vec<&JqlParameter> = query.parameters.iter().collect();
+        assert!(!params.is_empty());
     }
 }

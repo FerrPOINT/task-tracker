@@ -192,6 +192,8 @@ pub struct BoardDto {
 pub struct BacklogDto {
     pub project_id: String,
     pub project_key: String,
+    /// Total backlog size before the response-window cap was applied.
+    pub backlog_total: usize,
     pub sprint: SprintDto,
     pub sprint_issues: Vec<IssueDto>,
     pub backlog_issues: Vec<IssueDto>,

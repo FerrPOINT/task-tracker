@@ -222,7 +222,7 @@ pub async fn update_user_status(
 #[utoipa::path(
     get,
     path = "/api/v1/admin/audit-log",
-    params(("limit" = Option<u64>, Query, description = "Maximum entries (default 100)")),
+    params(("limit" = Option<u64>, Query, description = "Maximum entries (default 100)"), ("offset" = Option<u64>, Query, description = "Pagination offset (default 0)")),
     responses(
         (status = 200, body = AuditLogListResponse),
         (status = 401, description = "Unauthorized"),
@@ -237,10 +237,11 @@ pub async fn list_audit_logs(
 ) -> Result<Json<AuditLogListResponse>, AppError> {
     let requester_id = parse_user_id(&claims)?;
     let limit = params.limit.unwrap_or(100).min(1000);
+    let offset = params.offset.unwrap_or(0);
     let entries = ctx
         .services
         .admin
-        .list_audit_logs(requester_id, limit)
+        .list_audit_logs(requester_id, limit, offset)
         .await?;
     Ok(Json(AuditLogListResponse {
         entries: entries.into_iter().map(AuditLogResponse::from).collect(),
@@ -250,6 +251,7 @@ pub async fn list_audit_logs(
 #[derive(Debug, Clone, Deserialize, utoipa::IntoParams)]
 pub struct AuditLogQueryParams {
     pub limit: Option<u64>,
+    pub offset: Option<u64>,
 }
 
 #[utoipa::path(

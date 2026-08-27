@@ -26,6 +26,17 @@
               "format": "int64",
               "minimum": 0
             }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Pagination offset (default 0)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
@@ -817,6 +828,32 @@
                 "string",
                 "null"
               ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
             }
           },
           {
@@ -3597,6 +3634,32 @@
             }
           },
           {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
             "name": "jql",
             "in": "query",
             "required": false,
@@ -4031,6 +4094,7 @@
         "required": [
           "project_id",
           "project_key",
+          "backlog_total",
           "sprint",
           "sprint_issues",
           "backlog_issues"
@@ -4041,6 +4105,10 @@
             "items": {
               "$ref": "#/components/schemas/IssueResponse"
             }
+          },
+          "backlog_total": {
+            "type": "integer",
+            "minimum": 0
           },
           "project_id": {
             "type": "string"
