@@ -15,6 +15,7 @@ fn valid_token(ctx: &app::AppContext) -> String {
 
     let claims = UserClaims {
         jti: None,
+        typ: Some("access".to_string()),
         sub: UserId::new().to_string(),
         exp: usize::MAX,
     };

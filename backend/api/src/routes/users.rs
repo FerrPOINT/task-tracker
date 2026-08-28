@@ -32,7 +32,8 @@ pub async fn get_me(
 #[utoipa::path(
     get,
     path = "/api/v1/users/me",
-    responses((status = 200, body = UserResponse))
+    responses((status = 200, body = UserResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_users_me(
     State(ctx): State<Arc<app::AppContext>>,
@@ -44,7 +45,8 @@ pub async fn get_users_me(
 #[utoipa::path(
     get,
     path = "/api/v1/users",
-    responses((status = 200, body = UserListResponse))
+    responses((status = 200, body = UserListResponse)),
+    security(("bearer" = []))
 )]
 pub async fn list_users(
     State(ctx): State<Arc<app::AppContext>>,

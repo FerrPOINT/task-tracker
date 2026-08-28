@@ -48,7 +48,8 @@ pub struct UpdateNotificationSettingsRequest {
 #[utoipa::path(
     get,
     path = "/api/v1/notifications",
-    responses((status = 200, body = NotificationListResponse))
+    responses((status = 200, body = NotificationListResponse)),
+    security(("bearer" = []))
 )]
 pub async fn list_notifications(
     State(ctx): State<Arc<app::AppContext>>,
@@ -82,7 +83,8 @@ pub async fn list_notifications(
     patch,
     path = "/api/v1/notifications/{id}/read",
     params(("id" = String, Path, description = "Notification id")),
-    responses((status = 204), (status = 400), (status = 404))
+    responses((status = 204), (status = 400), (status = 404)),
+    security(("bearer" = []))
 )]
 pub async fn mark_notification_read(
     State(ctx): State<Arc<app::AppContext>>,
@@ -97,7 +99,8 @@ pub async fn mark_notification_read(
 #[utoipa::path(
     post,
     path = "/api/v1/notifications/read-all",
-    responses((status = 204))
+    responses((status = 204)),
+    security(("bearer" = []))
 )]
 pub async fn mark_all_notifications_read(
     State(ctx): State<Arc<app::AppContext>>,
@@ -111,7 +114,8 @@ pub async fn mark_all_notifications_read(
 #[utoipa::path(
     get,
     path = "/api/v1/notification-settings",
-    responses((status = 200, body = NotificationSettingsResponse))
+    responses((status = 200, body = NotificationSettingsResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_notification_settings(
     State(ctx): State<Arc<app::AppContext>>,
@@ -130,7 +134,8 @@ pub async fn get_notification_settings(
     patch,
     path = "/api/v1/notification-settings",
     request_body = UpdateNotificationSettingsRequest,
-    responses((status = 200, body = NotificationSettingsResponse), (status = 400))
+    responses((status = 200, body = NotificationSettingsResponse), (status = 400)),
+    security(("bearer" = []))
 )]
 pub async fn update_notification_settings(
     State(ctx): State<Arc<app::AppContext>>,

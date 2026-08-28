@@ -48,7 +48,8 @@ fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
     get,
     path = "/api/v1/projects/{project_key}/sprints",
     params(("project_key" = String, Path, description = "Project key")),
-    responses((status = 200, body = SprintListResponse))
+    responses((status = 200, body = SprintListResponse)),
+    security(("bearer" = []))
 )]
 pub async fn list_sprints(
     State(ctx): State<Arc<app::AppContext>>,
@@ -83,7 +84,8 @@ pub async fn list_sprints(
     path = "/api/v1/projects/{project_key}/sprints",
     params(("project_key" = String, Path, description = "Project key")),
     request_body = CreateSprintRequest,
-    responses((status = 201, body = SprintResponse))
+    responses((status = 201, body = SprintResponse)),
+    security(("bearer" = []))
 )]
 pub async fn create_sprint(
     State(ctx): State<Arc<app::AppContext>>,
@@ -122,7 +124,8 @@ pub async fn create_sprint(
         ("project_key" = String, Path, description = "Project key"),
         ("sprint_id" = String, Path, description = "Sprint id"),
     ),
-    responses((status = 200, body = SprintResponse))
+    responses((status = 200, body = SprintResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_sprint(
     State(ctx): State<Arc<app::AppContext>>,
@@ -155,7 +158,8 @@ pub async fn get_sprint(
         ("sprint_id" = String, Path, description = "Sprint id"),
     ),
     request_body = UpdateSprintRequest,
-    responses((status = 200, body = SprintResponse))
+    responses((status = 200, body = SprintResponse)),
+    security(("bearer" = []))
 )]
 pub async fn update_sprint(
     State(ctx): State<Arc<app::AppContext>>,
@@ -194,7 +198,8 @@ pub async fn update_sprint(
         ("project_key" = String, Path, description = "Project key"),
         ("sprint_id" = String, Path, description = "Sprint id"),
     ),
-    responses((status = 200, body = SprintResponse))
+    responses((status = 200, body = SprintResponse)),
+    security(("bearer" = []))
 )]
 pub async fn start_sprint(
     State(ctx): State<Arc<app::AppContext>>,
@@ -226,7 +231,8 @@ pub async fn start_sprint(
         ("project_key" = String, Path, description = "Project key"),
         ("sprint_id" = String, Path, description = "Sprint id"),
     ),
-    responses((status = 200, body = SprintResponse))
+    responses((status = 200, body = SprintResponse)),
+    security(("bearer" = []))
 )]
 pub async fn close_sprint(
     State(ctx): State<Arc<app::AppContext>>,
@@ -259,7 +265,8 @@ pub async fn close_sprint(
         ("sprint_id" = String, Path, description = "Sprint id"),
     ),
     request_body = MoveIssueToSprintRequest,
-    responses((status = 200, body = crate::dto::IssueResponse))
+    responses((status = 200, body = crate::dto::IssueResponse)),
+    security(("bearer" = []))
 )]
 pub async fn move_issue_to_sprint(
     State(ctx): State<Arc<app::AppContext>>,
@@ -308,7 +315,8 @@ pub async fn move_issue_to_sprint(
         ("sprint_id" = String, Path, description = "Sprint id"),
     ),
     request_body = MoveIssueToSprintRequest,
-    responses((status = 200, body = crate::dto::IssueResponse))
+    responses((status = 200, body = crate::dto::IssueResponse)),
+    security(("bearer" = []))
 )]
 pub async fn remove_issue_from_sprint(
     State(ctx): State<Arc<app::AppContext>>,

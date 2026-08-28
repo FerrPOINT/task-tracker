@@ -36,6 +36,7 @@ fn clear_env() {
         "TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS",
         "TASKTRACKER_SERVER__GENERAL_RATE_BURST",
         "TASKTRACKER_SERVER__GENERAL_RATE_PERIOD_SECS",
+        "TASKTRACKER_SERVER__GENERAL_RATE_PER_SECOND",
     ] {
         unsafe { env::remove_var(key) };
     }
@@ -67,6 +68,17 @@ fn config_scenarios() {
     assert_eq!(cfg.auth.refresh_cookie_same_site, "Lax");
     assert_eq!(cfg.auth.refresh_cookie_path, "/api/v1/auth");
     assert_eq!(cfg.database.url, "");
+    assert_eq!(
+        cfg.server.cors_allowed_origins,
+        vec![
+            "http://localhost:19877",
+            "http://localhost:4173",
+            "http://localhost:5173",
+            "http://127.0.0.1:19877",
+            "http://127.0.0.1:4173",
+            "http://127.0.0.1:5173",
+        ]
+    );
     assert_eq!(cfg.auth.jwt_secret, "test-secret-32-chars-long!!!!!");
     set_env(
         "TASKTRACKER_DATABASE__URL",
@@ -186,19 +198,19 @@ fn rate_limit_defaults_and_env_override() {
     assert_eq!(cfg.server.auth_rate_burst, 5);
     assert_eq!(cfg.server.auth_rate_period_secs, 15);
     assert_eq!(cfg.server.general_rate_burst, 60);
-    assert_eq!(cfg.server.general_rate_period_secs, 60);
+    assert_eq!(cfg.server.general_rate_per_second, 60);
 
     set_env("TASKTRACKER_SERVER__AUTH_RATE_BURST", "100");
     set_env("TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS", "1");
     set_env("TASKTRACKER_SERVER__GENERAL_RATE_BURST", "10000");
-    set_env("TASKTRACKER_SERVER__GENERAL_RATE_PERIOD_SECS", "1");
+    set_env("TASKTRACKER_SERVER__GENERAL_RATE_PER_SECOND", "100");
     set_env("TASKTRACKER_AUTH__JWT_SECRET", "test-secret-123");
 
     let cfg = AppConfig::from_path("/nonexistent.toml").unwrap();
     assert_eq!(cfg.server.auth_rate_burst, 100);
     assert_eq!(cfg.server.auth_rate_period_secs, 1);
     assert_eq!(cfg.server.general_rate_burst, 10000);
-    assert_eq!(cfg.server.general_rate_period_secs, 1);
+    assert_eq!(cfg.server.general_rate_per_second, 100);
 }
 
 #[test]
@@ -211,7 +223,19 @@ fn rate_limit_zero_values_rejected() {
     assert!(err.is_err(), "zero auth burst must be a config error");
 
     clear_env();
-    unsafe { env::set_var("TASKTRACKER_SERVER__GENERAL_RATE_PERIOD_SECS", "0") };
+    unsafe { env::set_var("TASKTRACKER_SERVER__GENERAL_RATE_PER_SECOND", "0") };
     let err = AppConfig::from_path("/nonexistent.toml");
-    assert!(err.is_err(), "zero general period must be a config error");
+    assert!(err.is_err(), "zero general rate must be a config error");
+}
+
+#[test]
+fn general_rate_above_nanosecond_precision_is_rejected() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    clear_env();
+    set_env("TASKTRACKER_JWT_SECRET", "test-secret-32-chars-long!!!!!");
+    set_env("TASKTRACKER_SERVER__GENERAL_RATE_PER_SECOND", "1000000001");
+
+    let err = AppConfig::from_path("/nonexistent.toml").unwrap_err();
+    assert!(err.to_string().contains("must not exceed 1000000000"));
+    clear_env();
 }

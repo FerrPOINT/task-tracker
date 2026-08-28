@@ -3,18 +3,13 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
 };
-use serde::Deserialize;
+
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 use app::auth::UserClaims;
 use app::context::AppContext;
 use shared::{AppError, IssueId, UserId};
-
-#[derive(Debug, Deserialize, ToSchema)]
-pub struct WatchRequest {
-    pub user_id: Option<String>,
-}
 
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct WatcherResponse {
@@ -63,9 +58,8 @@ pub struct VoteStatusResponse {
     path = "/api/v1/issues/{issue_id}/watch",
     tag = "issue-watchers",
     params(("issue_id" = String, Path, description = "Issue ID")),
-    request_body = WatchRequest,
     responses(
-        (status = 204, description = "Now watching the issue"),
+        (status = 204, description = "Now watching the issue (always as the authenticated user)"),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Issue not found"),
     ),
@@ -75,7 +69,6 @@ pub async fn watch_issue(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Path(issue_id): Path<String>,
-    body: Option<Json<WatchRequest>>,
 ) -> Result<StatusCode, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
@@ -85,9 +78,7 @@ pub async fn watch_issue(
         .parse()
         .map(UserId::from_uuid)
         .map_err(|_| AppError::invalid_input("invalid user id"))?;
-    // Always watch as the authenticated requester. Accepting a body-supplied
-    // user_id would let any member add someone else as a watcher.
-    let _ = body;
+    // Always watch as the authenticated requester.
     ctx.services.watcher.watch(issue_id, requester).await?;
     Ok(StatusCode::NO_CONTENT)
 }

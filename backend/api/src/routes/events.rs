@@ -6,12 +6,25 @@ use futures_util::stream::Stream;
 use std::{convert::Infallible, sync::Arc};
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct TrackerEventPayload {
+    /// Event discriminator, e.g. `issue_created`, `issue_updated`, `issue_deleted`.
+    pub event_type: String,
+    /// UUID of the affected issue (when applicable).
+    pub issue_id: Option<String>,
+    /// Project key for cache scoping (when applicable).
+    pub project_key: Option<String>,
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/events",
-    description = "Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries.",
+    description = "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (event_type, issue_id, project_key). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter.",
+    params(
+        ("access_token" = Option<String>, Query, description = "Access token for EventSource clients that cannot send headers"),
+    ),
     responses(
-        (status = 200, description = "SSE stream (text/event-stream)"),
+        (status = 200, description = "SSE stream (text/event-stream) of `tracker` events", body = TrackerEventPayload, content_type = "text/event-stream"),
         (status = 401, description = "Unauthorized"),
     ),
     security(("bearer" = []))

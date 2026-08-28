@@ -2668,11 +2668,11 @@ async fn auth_refresh_returns_new_access_token() {
         .send()
         .await
         .unwrap();
+    let refresh_token = refresh_cookie_value(&login);
     let body: serde_json::Value = login.json().await.unwrap();
     let access_token = body["access_token"].as_str().unwrap().to_string();
-    let refresh_token = body["refresh_token"].as_str().unwrap().to_string();
 
-    // The refresh endpoint is behind the auth middleware, so we need the bearer token too
+    // The refresh endpoint also accepts the token in the body (CLI fallback).
     let refresh_res = client
         .post(format!("{url}/api/v1/auth/refresh"))
         .bearer_auth(&access_token)
@@ -2710,8 +2710,8 @@ async fn auth_logout_clears_refresh_and_invalidates_token() {
         .send()
         .await
         .unwrap();
+    let refresh_token = refresh_cookie_value(&login);
     let body: serde_json::Value = login.json().await.unwrap();
-    let refresh_token = body["refresh_token"].as_str().unwrap().to_string();
 
     // logout again
     let token2 = body["access_token"].as_str().unwrap().to_string();
@@ -4882,8 +4882,12 @@ async fn refresh_rotation_rejects_replayed_token() {
         .send()
         .await
         .unwrap();
+    let first_refresh = refresh_cookie_value(&login);
     let first: serde_json::Value = login.json().await.unwrap();
-    let first_refresh = first["refresh_token"].as_str().unwrap().to_string();
+    assert!(
+        first.get("refresh_token").is_none(),
+        "refresh must stay cookie-only"
+    );
 
     // First refresh succeeds and rotates.
     let res = client
@@ -5100,8 +5104,7 @@ async fn refresh_works_without_bearer() {
         .send()
         .await
         .unwrap();
-    let body: serde_json::Value = login.json().await.unwrap();
-    let refresh_token = body["refresh_token"].as_str().unwrap().to_string();
+    let refresh_token = refresh_cookie_value(&login);
 
     // No Authorization header at all: the whole point of refresh.
     let res = client
@@ -5111,9 +5114,10 @@ async fn refresh_works_without_bearer() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200, "refresh must not require a bearer token");
+    let rotated = refresh_cookie_value(&res);
     let body: serde_json::Value = res.json().await.unwrap();
     assert!(body["access_token"].as_str().is_some());
-    assert!(body["refresh_token"].as_str().is_some(), "rotated token");
+    assert!(!rotated.is_empty(), "rotated token in cookie");
 }
 
 // 33. worklog_create_publishes_sse_event (release hardening)
@@ -5161,5 +5165,176 @@ async fn worklog_create_publishes_sse_event() {
     assert!(
         seen.contains("worklog_logged"),
         "SSE stream must include worklog_logged, got: {seen}"
+    );
+}
+
+// ─── Auth token-type & refresh-cookie contract (audit r4, P1) ────────
+
+fn refresh_cookie_value(res: &reqwest::Response) -> String {
+    res.headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .find(|c| c.starts_with("refresh_token="))
+        .expect("refresh cookie must be set")
+        .split(';')
+        .next()
+        .unwrap()
+        .trim_start_matches("refresh_token=")
+        .to_string()
+}
+
+// P1: a refresh token must never authenticate the protected API, before
+// and after logout. Its only purpose is POST /auth/refresh.
+#[tokio::test]
+async fn refresh_token_must_not_authenticate_protected_api() {
+    let (url, client) = spawn_server().await;
+    let login = client
+        .post(format!("{url}/api/v1/auth/login"))
+        .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login.status(), 200);
+    let refresh_token = refresh_cookie_value(&login);
+
+    let res = client
+        .get(format!("{url}/api/v1/auth/me"))
+        .bearer_auth(&refresh_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        res.status(),
+        401,
+        "refresh token presented as Bearer must be rejected"
+    );
+
+    // Same after logout: the cookie value is dead in both directions.
+    let body: serde_json::Value = login.json().await.unwrap();
+    let access = body["access_token"].as_str().unwrap().to_string();
+    let logout = client
+        .post(format!("{url}/api/v1/auth/logout"))
+        .bearer_auth(&access)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(logout.status(), 204);
+    let res = client
+        .get(format!("{url}/api/v1/auth/me"))
+        .bearer_auth(&refresh_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 401);
+}
+
+// P1: the refresh token travels ONLY via the HttpOnly cookie; the JSON
+// body of login/register/refresh must never contain it.
+#[tokio::test]
+async fn auth_json_never_contains_refresh_token() {
+    let (url, client) = spawn_server().await;
+    let login = client
+        .post(format!("{url}/api/v1/auth/login"))
+        .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login.status(), 200);
+    let cookie = refresh_cookie_value(&login);
+    assert!(!cookie.is_empty(), "login must set the refresh cookie");
+    let body: serde_json::Value = login.json().await.unwrap();
+    assert!(
+        body.get("refresh_token").is_none(),
+        "refresh token leaked in login JSON"
+    );
+
+    // Refresh rotates via cookie and never leaks the new token in JSON.
+    let res = client
+        .post(format!("{url}/api/v1/auth/refresh"))
+        .header("cookie", format!("refresh_token={cookie}"))
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let rotated = refresh_cookie_value(&res);
+    assert_ne!(rotated, cookie, "rotation must mint a new cookie value");
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        body.get("refresh_token").is_none(),
+        "refresh token leaked in refresh JSON"
+    );
+    assert!(body["access_token"].as_str().is_some());
+
+    // Register follows the same contract.
+    let reg = client
+        .post(format!("{url}/api/v1/auth/register"))
+        .json(&serde_json::json!({
+            "email":"cookie-leak@example.com",
+            "username":"cookieleak",
+            "password":"12345678"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(reg.status(), 201);
+    assert!(
+        !refresh_cookie_value(&reg).is_empty(),
+        "register must set the refresh cookie"
+    );
+    let body: serde_json::Value = reg.json().await.unwrap();
+    assert!(
+        body.get("refresh_token").is_none(),
+        "refresh token leaked in register JSON"
+    );
+}
+
+#[tokio::test]
+async fn cors_allows_configured_origin_to_send_refresh_cookie() {
+    let (url, client) = spawn_server().await;
+    let origin = "http://localhost:4173";
+
+    let preflight = client
+        .request(reqwest::Method::OPTIONS, format!("{url}/api/v1/auth/login"))
+        .header("origin", origin)
+        .header("access-control-request-method", "POST")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(preflight.status(), 200);
+    assert_eq!(
+        preflight
+            .headers()
+            .get("access-control-allow-origin")
+            .unwrap(),
+        origin
+    );
+    assert_eq!(
+        preflight
+            .headers()
+            .get("access-control-allow-credentials")
+            .unwrap(),
+        "true"
+    );
+
+    let login = client
+        .post(format!("{url}/api/v1/auth/login"))
+        .header("origin", origin)
+        .json(&serde_json::json!({ "email": "demo@example.com", "password": "demo" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(login.status(), 200);
+    assert_eq!(
+        login.headers().get("access-control-allow-origin").unwrap(),
+        origin
+    );
+    assert_eq!(
+        login
+            .headers()
+            .get("access-control-allow-credentials")
+            .unwrap(),
+        "true"
     );
 }

@@ -82,9 +82,9 @@ pub struct ServerConfig {
     /// General API rate limit: burst size.
     #[serde(default = "default_general_rate_burst")]
     pub general_rate_burst: u32,
-    /// General API rate limit period in seconds.
-    #[serde(default = "default_general_rate_period_secs")]
-    pub general_rate_period_secs: u64,
+    /// General API sustained rate: tokens replenished per second (GCRA).
+    #[serde(default = "default_general_rate_per_second")]
+    pub general_rate_per_second: u64,
 }
 
 fn default_auth_rate_burst() -> u32 {
@@ -96,7 +96,7 @@ fn default_auth_rate_period_secs() -> u64 {
 fn default_general_rate_burst() -> u32 {
     60
 }
-fn default_general_rate_period_secs() -> u64 {
+fn default_general_rate_per_second() -> u64 {
     60
 }
 
@@ -130,11 +130,21 @@ impl AppConfig {
             .set_default("database.idle_timeout_seconds", 600u64)?
             .set_default("server.address", "0.0.0.0")?
             .set_default("server.port", 3456u16)?
-            .set_default("server.cors_allowed_origins", vec!["*"])?
+            .set_default(
+                "server.cors_allowed_origins",
+                vec![
+                    "http://localhost:19877",
+                    "http://localhost:4173",
+                    "http://localhost:5173",
+                    "http://127.0.0.1:19877",
+                    "http://127.0.0.1:4173",
+                    "http://127.0.0.1:5173",
+                ],
+            )?
             .set_default("server.auth_rate_burst", 5u32)?
             .set_default("server.auth_rate_period_secs", 15u64)?
             .set_default("server.general_rate_burst", 60u32)?
-            .set_default("server.general_rate_period_secs", 60u64)?
+            .set_default("server.general_rate_per_second", 60u64)?
             .set_default("auth.jwt_secret", "[CHANGE_ME]")?
             .set_default("auth.access_token_ttl_minutes", 15u64)?
             .set_default("auth.refresh_token_ttl_days", 7u64)?
@@ -201,9 +211,14 @@ impl AppConfig {
 
         // Rate limits: governor panics on a zero period; validate early so a
         // bad config surfaces as a configuration error, not a startup crash.
-        if cfg.server.auth_rate_period_secs == 0 || cfg.server.general_rate_period_secs == 0 {
+        if cfg.server.auth_rate_period_secs == 0 || cfg.server.general_rate_per_second == 0 {
             return Err(ConfigError::Message(
                 "server rate-limit periods must be greater than zero".to_string(),
+            ));
+        }
+        if cfg.server.general_rate_per_second > 1_000_000_000 {
+            return Err(ConfigError::Message(
+                "server.general_rate_per_second must not exceed 1000000000".to_string(),
             ));
         }
         if cfg.server.auth_rate_burst == 0 || cfg.server.general_rate_burst == 0 {
@@ -243,11 +258,18 @@ impl Default for ServerConfig {
         Self {
             address: "0.0.0.0".to_string(),
             port: 3456,
-            cors_allowed_origins: vec!["*".to_string()],
+            cors_allowed_origins: vec![
+                "http://localhost:19877".to_string(),
+                "http://localhost:4173".to_string(),
+                "http://localhost:5173".to_string(),
+                "http://127.0.0.1:19877".to_string(),
+                "http://127.0.0.1:4173".to_string(),
+                "http://127.0.0.1:5173".to_string(),
+            ],
             auth_rate_burst: default_auth_rate_burst(),
             auth_rate_period_secs: default_auth_rate_period_secs(),
             general_rate_burst: default_general_rate_burst(),
-            general_rate_period_secs: default_general_rate_period_secs(),
+            general_rate_per_second: default_general_rate_per_second(),
         }
     }
 }

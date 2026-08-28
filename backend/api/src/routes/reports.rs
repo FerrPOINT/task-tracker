@@ -88,7 +88,8 @@ pub struct ControlChartResponse {
     get,
     path = "/api/v1/reports/velocity",
     params(VelocityQuery),
-    responses((status = 200, body = VelocityResponse))
+    responses((status = 200, body = VelocityResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_velocity_report(
     State(ctx): State<Arc<app::AppContext>>,
@@ -118,7 +119,8 @@ pub async fn get_velocity_report(
     get,
     path = "/api/v1/reports/burndown",
     params(BurndownQuery),
-    responses((status = 200, body = BurndownResponse))
+    responses((status = 200, body = BurndownResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_burndown_report(
     State(ctx): State<Arc<app::AppContext>>,
@@ -149,7 +151,8 @@ pub async fn get_burndown_report(
     get,
     path = "/api/v1/reports/cumulative-flow",
     params(CumulativeFlowQuery),
-    responses((status = 200, body = CumulativeFlowResponse))
+    responses((status = 200, body = CumulativeFlowResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_cumulative_flow_report(
     State(ctx): State<Arc<app::AppContext>>,
@@ -180,7 +183,8 @@ pub async fn get_cumulative_flow_report(
     get,
     path = "/api/v1/reports/control-chart",
     params(ControlChartQuery),
-    responses((status = 200, body = ControlChartResponse))
+    responses((status = 200, body = ControlChartResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_control_chart_report(
     State(ctx): State<Arc<app::AppContext>>,

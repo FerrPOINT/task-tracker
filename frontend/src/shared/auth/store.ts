@@ -37,24 +37,9 @@ function readStoredAuth(): {
   }
 }
 
-const REFRESH_KEY = 'tt-refresh-token'
-
-export function storeRefreshToken(token: string | null): void {
-  try {
-    if (token) localStorage.setItem(REFRESH_KEY, token)
-    else localStorage.removeItem(REFRESH_KEY)
-  } catch {
-    // storage unavailable — cookie flow remains
-  }
-}
-
-export function readRefreshToken(): string | null {
-  try {
-    return localStorage.getItem(REFRESH_KEY)
-  } catch {
-    return null
-  }
-}
+// The refresh token lives ONLY in the HttpOnly cookie set by the backend.
+// It is never copied into localStorage: an XSS payload must not be able to
+// read it and silently extend the session (audit r4, P1).
 
 interface AuthState {
   token: string | null
@@ -104,7 +89,6 @@ export const useAuthStore = create<AuthState>()(
           displayName: payload.displayName ?? state.displayName,
         })),
       logout: () => {
-        storeRefreshToken(null)
         set({
           token: null,
           userId: null,
