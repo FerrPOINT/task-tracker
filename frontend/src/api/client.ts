@@ -2,9 +2,9 @@ import createClient from 'openapi-fetch'
 import type { paths } from './generated'
 import { useAuthStore } from '@/shared/auth/store'
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
+export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
 
-export const api = createClient<paths>({ baseUrl })
+export const api = createClient<paths>({ baseUrl: apiBaseUrl })
 
 let refreshPromise: Promise<boolean> | null = null
 
@@ -12,7 +12,7 @@ export async function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
-      const res = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
+      const res = await fetch(`${apiBaseUrl}/api/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },

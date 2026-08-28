@@ -199,18 +199,18 @@ Fallback: если `auth.jwt_secret` не задан, используется `
 Router::new()
     .merge(api_routes())
     .layer(TraceLayer::new_for_http())
-    .layer(CorsLayer::permissive())
+    .layer(CorsLayer::new())
     .layer(CompressionLayer::new())
 ```
 
-CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS` (по умолчанию `http://localhost:19877,http://localhost:5173`).
+CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию используется `*` без credentialed requests; для browser refresh-cookie в cross-origin окружении нужно задать явный whitelist origins, например `http://localhost:19877,http://localhost:5173`.
 
 ## 7. Security
 
 - **AuthN**: JWT access token (`Authorization: Bearer`), refresh token в `httpOnly` cookie на `/api/v1/auth`
 - **Hashing**: argon2id
 - **Input validation**: `validator` derive на Request DTO + route-уровневые проверки
-- **CORS**: whitelist для dev
+- **CORS**: wildcard без credentials либо explicit whitelist с `Access-Control-Allow-Credentials`
 
 ## 8. Frontend архитектура
 

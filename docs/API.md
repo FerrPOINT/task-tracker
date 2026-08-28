@@ -331,6 +331,8 @@ Refresh берётся из `httpOnly` cookie. Для non-browser клиенто
 {
   "access_token": "jwt",
   "token_type": "Bearer",
+  "user_id": "uuid",
+  "email": "jdoe@example.com",
   "expires_in": 900
 }
 ```
@@ -735,6 +737,7 @@ Soft delete → trash.
 ### POST /issues/{id}/attachments
 
 Multipart-форма с полем `file`. Максимальный размер тела запроса берётся из `TASKTRACKER_STORAGE__MAX_UPLOAD_BYTES` (по умолчанию 25 MiB).
+Backend нормализует имя файла, отбрасывает path/control-символы и принимает только whitelist безопасных content-type: `text/plain`, `text/markdown`, `text/csv`, `application/json`, `application/pdf`, `application/zip`, `application/gzip`, `image/png`, `image/jpeg`, `image/gif`, `image/webp`, а также распространённые Office/OpenDocument форматы.
 
 **Response 201:** `AttachmentResponse`
 
@@ -750,7 +753,7 @@ Multipart-форма с полем `file`. Максимальный размер
 }
 ```
 
-### GET /attachments/{id}
+### GET /attachments/{id}/download
 
 Download/stream.
 
@@ -1198,7 +1201,7 @@ Server-Sent Events (SSE) — поток событий реального вре
 
 **Content-Type:** `text/event-stream`
 
-**Auth:** JWT access token в `Authorization: Bearer ...`
+**Auth:** JWT access token в `Authorization: Bearer ...`. Browser `EventSource` не умеет задавать заголовки, поэтому для этого endpoint также принимается `?access_token=`. Query-token разрешён только для `/events`.
 
 **Подключение:**
 
@@ -1206,6 +1209,13 @@ Server-Sent Events (SSE) — поток событий реального вре
 GET /api/v1/events
 Accept: text/event-stream
 Authorization: Bearer <access_token>
+```
+
+Для browser-клиента:
+
+```
+GET /api/v1/events?access_token=<access_token>
+Accept: text/event-stream
 ```
 
 **Формат сообщений:**
@@ -1234,7 +1244,7 @@ data: {"type":"StatusChanged","issue_id":"uuid","from":"uuid","to":"uuid"}
 
 ### Client-Side Handling
 
-- Клиент подключается к `GET /api/v1/events` с access token в заголовке `Authorization`.
+- Browser-клиент подключается к `GET /api/v1/events?access_token=<access_token>` через `EventSource`; non-browser клиенты могут использовать `Authorization: Bearer ...`.
 - При получении события клиент инвалидирует соответствующие TanStack Query и рефетчит затронутые данные.
 - Keep-alive: сервер отправляет SSE ping-сообщения по умолчанию (Axum `KeepAlive::default()`).
 - При разрыве соединения клиент автоматически переподключается (браузерный `EventSource` API).
@@ -1243,9 +1253,7 @@ data: {"type":"StatusChanged","issue_id":"uuid","from":"uuid","to":"uuid"}
 ### Пример (JavaScript)
 
 ```javascript
-const es = new EventSource('/api/v1/events', {
-  withCredentials: true, // для httpOnly refresh cookie
-});
+const es = new EventSource(`/api/v1/events?access_token=${encodeURIComponent(accessToken)}`);
 
 es.addEventListener('tracker', (e) => {
   const event = JSON.parse(e.data);

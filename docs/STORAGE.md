@@ -2,38 +2,31 @@
 
 ## 1. Overview
 
-Вложения (attachments, аватары, экспорт-файлы) хранятся в S3-compatible storage или локальной файловой системе. Backend абстрагирует хранилище через `FileStore` trait.
+Вложения (attachments) хранятся в локальной файловой системе через `FileStorage`. S3-compatible storage, аватары и export-файлы описаны как будущие расширения.
 
 ## 2. Supported Backends
 
 | Backend | Use Case |
 |---------|----------|
-| `filesystem` | Local dev, single-node deploy |
-| `s3` | Production, scalable, backups |
-| `minio` | Self-hosted S3-compatible |
+| `filesystem` | Local dev, single-node deploy; реализовано |
+| `s3` | Production, scalable, backups; future |
+| `minio` | Self-hosted S3-compatible; future |
 
 ## 3. Configuration
 
 ```env
-TASKTRACKER_FILE_STORAGE_BACKEND=s3
-TASKTRACKER_FILE_STORAGE_BUCKET=tasktracker-attachments
-TASKTRACKER_FILE_STORAGE_REGION=ru-central1
-TASKTRACKER_FILE_STORAGE_ENDPOINT=https://s3.example.com
-TASKTRACKER_FILE_STORAGE_ACCESS_KEY=...
-TASKTRACKER_FILE_STORAGE_SECRET_KEY=...
-TASKTRACKER_FILE_STORAGE_PATH=/data/attachments  # for filesystem
+TASKTRACKER_STORAGE__DIR=/data/attachments
+TASKTRACKER_STORAGE__MAX_UPLOAD_BYTES=26214400
 ```
 
 ## 4. FileStore Trait
 
 ```rust
 #[async_trait]
-pub trait FileStore: Send + Sync {
-    async fn put(&self, key: &str, content: Bytes, content_type: &str) -> Result<(), FileStoreError>;
-    async fn get(&self, key: &str) -> Result<Bytes, FileStoreError>;
-    async fn delete(&self, key: &str) -> Result<(), FileStoreError>;
-    async fn exists(&self, key: &str) -> Result<bool, FileStoreError>;
-    fn public_url(&self, key: &str) -> String;
+pub trait FileStorage: Send + Sync {
+    async fn put(&self, issue_id: &str, key: &str, bytes: Vec<u8>) -> Result<(), AppError>;
+    async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError>;
+    async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError>;
 }
 ```
 
@@ -44,16 +37,16 @@ pub trait FileStore: Send + Sync {
 1. Client POST `/api/v1/issues/{id}/attachments` multipart/form-data.
 2. Server валидирует:
    - max size (default 25 MiB);
-   - mime-type whitelist;
-   - filename sanity (path traversal).
-3. Server генерирует `attachment_id` UUIDv7.
-4. Файл сохраняется в storage под ключом `attachments/{issue_id}/{attachment_id}/{filename}`.
+   - whitelist заявленного content-type;
+   - filename sanity (path/control символы).
+3. Server генерирует `attachment_id` UUID.
+4. Файл сохраняется в storage под ключом `{issue_id}/{uuid}-{sanitized_filename}`.
 5. Запись в `attachments` таблице.
 6. Возвращается `AttachmentResponse`.
 
 ### 5.2 Download
 
-1. GET `/api/v1/attachments/{attachment_id}`.
+1. GET `/api/v1/attachments/{attachment_id}/download`.
 2. Server проверяет права (project access).
 3. Возвращает файл как `application/octet-stream` или redirect на signed S3 URL.
 
@@ -85,7 +78,8 @@ pub struct Attachment {
 - Scan on upload via ClamAV (optional async scan).
 - Quarantine bucket/file если scan positive.
 - Filename sanitized: удаляются `..`, null bytes, control chars.
-- Content-Type не доверяем blindly; определяем по magic bytes.
+- Content-Type проверяется по whitelist заявленного multipart content-type.
+- Magic bytes validation — future.
 
 ## 8. Virus Scanning
 
@@ -141,27 +135,21 @@ fn signed_url(&self, key: &str, expires_in: Duration) -> String
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/v1/issues/{id}/attachments` | Upload attachment |
-| GET | `/api/v1/attachments/{id}` | Download attachment |
-| GET | `/api/v1/attachments/{id}/thumbnail` | Download thumbnail |
+| GET | `/api/v1/issues/{id}/attachments` | List issue attachments |
+| GET | `/api/v1/attachments/{id}/download` | Download attachment |
 | DELETE | `/api/v1/attachments/{id}` | Delete attachment |
-| GET | `/api/v1/users/{id}/avatar` | User avatar |
-| POST | `/api/v1/users/me/avatar` | Upload avatar |
 
 ## 15. Storage Path Schema
 
 ```
 {backend-specific prefix}/
-  attachments/{issue_id}/{attachment_id}/{sanitized_filename}
-  thumbnails/{attachment_id}.webp
-  avatars/users/{user_id}.webp
-  avatars/projects/{project_id}.webp
-  exports/{user_id}/{export_id}.json
+  {issue_id}/{uuid}-{sanitized_filename}
 ```
 
 ## 16. Backup
 
-- S3 bucket с versioning + lifecycle policy.
-- Filesystem — rsync к backup volume.
+- S3 bucket с versioning + lifecycle policy — future.
+- Filesystem — backup Docker volume / storage directory.
 - Restore: sync из backup + проверка consistency с `attachments` таблицей.
 ## References
 

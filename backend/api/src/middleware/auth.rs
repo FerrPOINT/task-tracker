@@ -28,10 +28,11 @@ pub async fn bearer_auth(
             if !req.uri().path().ends_with("/events") {
                 return None;
             }
-            req.uri()
-                .query()?
-                .split('&')
-                .find_map(|pair| pair.strip_prefix("access_token=").map(str::to_string))
+            req.uri().query()?.split('&').find_map(|pair| {
+                pair.strip_prefix("access_token=")
+                    .and_then(|token| urlencoding::decode(token).ok())
+                    .map(|token| token.into_owned())
+            })
         })
         .ok_or(StatusCode::UNAUTHORIZED)?;
 

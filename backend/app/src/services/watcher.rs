@@ -55,6 +55,10 @@ impl crate::context::WatcherService for WatcherServiceImpl {
     }
 
     async fn unwatch(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
+        let issue = self.issues.get_by_id(issue_id).await?;
+        self.authz
+            .require_project_access(issue.project_id, user_id)
+            .await?;
         self.watchers.remove(issue_id, user_id).await?;
         Ok(())
     }

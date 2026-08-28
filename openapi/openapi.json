@@ -57,7 +57,12 @@
           "403": {
             "description": "Forbidden — system admin required"
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/admin/system-settings": {
@@ -83,7 +88,12 @@
           "403": {
             "description": "Forbidden — system admin required"
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "put": {
         "tags": [
@@ -120,7 +130,12 @@
           "403": {
             "description": "Forbidden — system admin required"
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/admin/users": {
@@ -146,7 +161,12 @@
           "403": {
             "description": "Forbidden — system admin required"
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -183,7 +203,12 @@
           "409": {
             "description": "Conflict — email already registered"
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/admin/users/{id}/status": {
@@ -233,7 +258,12 @@
           "409": {
             "description": "Conflict — cannot deactivate last system admin"
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/attachments/{id}": {
@@ -644,7 +674,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/events": {
@@ -652,8 +687,19 @@
         "tags": [
           "routes::events"
         ],
-        "description": "Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries.",
+        "description": "Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries. Auth accepts the standard bearer header, or access_token query only for browser EventSource clients.",
         "operationId": "events",
+        "parameters": [
+          {
+            "name": "access_token",
+            "in": "query",
+            "description": "Short-lived JWT access token fallback for browser EventSource clients that cannot set Authorization headers.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "SSE stream (text/event-stream)"
@@ -665,6 +711,9 @@
         "security": [
           {
             "bearer": []
+          },
+          {
+            "events_access_token": []
           }
         ]
       }
@@ -744,7 +793,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/issues": {
@@ -880,7 +934,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -908,7 +967,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/issues/{id}": {
@@ -939,7 +1003,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -963,7 +1032,12 @@
           "404": {
             "description": ""
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -1002,7 +1076,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/issues/{id}/restore": {
@@ -1036,7 +1115,12 @@
           "404": {
             "description": ""
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/issues/{id}/transition": {
@@ -1118,7 +1202,12 @@
           "404": {
             "description": ""
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/issues/{issue_id}/attachments": {
@@ -2055,7 +2144,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -2086,7 +2180,12 @@
           "400": {
             "description": ""
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/notifications": {
@@ -2106,7 +2205,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/notifications/read-all": {
@@ -2119,7 +2223,12 @@
           "204": {
             "description": ""
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/notifications/{id}/read": {
@@ -2149,7 +2258,12 @@
           "404": {
             "description": ""
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects": {
@@ -2169,7 +2283,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -2197,7 +2316,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{key}/trash": {
@@ -2228,7 +2352,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}": {
@@ -2259,7 +2388,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "delete": {
         "tags": [
@@ -2281,7 +2415,12 @@
           "204": {
             "description": ""
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -2320,7 +2459,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/backlog": {
@@ -2377,7 +2521,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/board": {
@@ -2408,7 +2557,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/board/move": {
@@ -2449,7 +2603,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/components": {
@@ -2971,7 +3130,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -3010,7 +3174,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/sprints/{sprint_id}": {
@@ -3050,7 +3219,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -3098,7 +3272,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/sprints/{sprint_id}/close": {
@@ -3138,7 +3317,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/sprints/{sprint_id}/issues": {
@@ -3188,7 +3372,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/sprints/{sprint_id}/remove-issue": {
@@ -3238,7 +3427,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/sprints/{sprint_id}/start": {
@@ -3278,7 +3472,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/projects/{project_key}/versions": {
@@ -3473,7 +3672,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/reports/control-chart": {
@@ -3503,7 +3707,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/reports/cumulative-flow": {
@@ -3533,7 +3742,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/reports/velocity": {
@@ -3573,7 +3787,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/search": {
@@ -3709,7 +3928,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/statuses": {
@@ -3732,7 +3956,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/transitions": {
@@ -3755,7 +3984,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/users": {
@@ -3775,7 +4009,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/users/me": {
@@ -3795,7 +4034,12 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/v1/worklogs/{id}": {
@@ -5995,6 +6239,19 @@
             "format": "date-time"
           }
         }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "events_access_token": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "access_token",
+        "description": "Short-lived JWT access token accepted only by the SSE events endpoint."
       }
     }
   }

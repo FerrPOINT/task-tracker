@@ -122,6 +122,7 @@ dependencies = [
  "tower-http 0.6.11",
  "tower_governor",
  "tracing",
+ "urlencoding",
  "utoipa",
  "utoipa-axum",
  "utoipa-swagger-ui",

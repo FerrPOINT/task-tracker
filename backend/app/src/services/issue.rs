@@ -99,6 +99,22 @@ impl IssueServiceImpl {
                 });
         }
     }
+
+    async fn require_active_user(&self, user_id: UserId, field: &str) -> Result<(), AppError> {
+        let user = self
+            .users
+            .get_by_id(user_id)
+            .await
+            .map_err(|error| match error {
+                AppError::NotFound(_) => AppError::invalid_input(field),
+                error => error,
+            })?;
+        if user.is_active {
+            Ok(())
+        } else {
+            Err(AppError::invalid_input(field))
+        }
+    }
 }
 
 #[async_trait]
@@ -135,6 +151,11 @@ impl crate::context::IssueService for IssueServiceImpl {
             Ok(_) => {}
             Err(AppError::NotFound(_)) => return Err(AppError::invalid_input("status_id")),
             Err(err) => return Err(err),
+        }
+        self.require_active_user(cmd.reporter_id, "reporter_id")
+            .await?;
+        if let Some(assignee_id) = cmd.assignee_id {
+            self.require_active_user(assignee_id, "assignee_id").await?;
         }
         // Retry on key conflicts: concurrent creators may compute the same next number.
         let mut issue = None;
@@ -375,6 +396,9 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue.change_status(target);
         }
         if let Some(assignee_id) = cmd.assignee_id {
+            if let Some(assignee_id) = assignee_id {
+                self.require_active_user(assignee_id, "assignee_id").await?;
+            }
             issue.assign(assignee_id);
         }
         // Cross-project references corrupt project-scoped reports/metadata:

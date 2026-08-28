@@ -494,6 +494,56 @@ async fn issue_create_validation_errors() {
         .unwrap();
     assert_eq!(bad_reporter.status(), 400);
 
+    let unknown_reporter = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "Unknown reporter",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": "00000000-0000-0000-0000-00c0ffee0100"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown_reporter.status(), 400);
+
+    let bad_assignee = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "Bad assignee",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string(),
+            "assignee_id": "not-a-uuid"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_assignee.status(), 400);
+
+    let unknown_assignee = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "Unknown assignee",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string(),
+            "assignee_id": "00000000-0000-0000-0000-00c0ffee0101"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown_assignee.status(), 400);
+
     let bad_issue_type = client
         .post(format!("{}/api/v1/issues", url))
         .bearer_auth(&token)
@@ -996,6 +1046,30 @@ async fn project_members_crud() {
 }
 
 #[tokio::test]
+async fn project_member_rejects_unknown_role() {
+    let (url, client) = spawn_server().await;
+    let owner_token = login_token(&url, &client).await;
+    let (user_id, _) = register_user(
+        &url,
+        &client,
+        "member-role-invalid@example.com",
+        "memberroleinvalid",
+        "Member Role Invalid",
+    )
+    .await;
+
+    let add = client
+        .post(format!("{url}/api/v1/projects/TT/members"))
+        .bearer_auth(&owner_token)
+        .json(&serde_json::json!({"user_id": user_id, "role": "maintainer"}))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(add.status(), 400);
+}
+
+#[tokio::test]
 async fn issue_transition() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
@@ -1098,7 +1172,7 @@ async fn create_issue_via_api(url: &str, client: &reqwest::Client, token: &str) 
             "priority": "medium",
             "status_id": "00000000-0000-0000-0000-000000000001",
             "summary": "attachment test issue",
-            "reporter_id": "00000000-0000-0000-0000-000000000001"
+            "reporter_id": test_user().id.to_string()
         }))
         .send()
         .await
@@ -1245,6 +1319,27 @@ async fn attachment_upload_empty_file_400() {
         .send()
         .await
         .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn attachment_upload_rejects_disallowed_content_type() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/attachments", url, issue_id))
+        .bearer_auth(token)
+        .multipart(multipart_file(
+            "payload.exe",
+            "application/x-msdownload",
+            b"MZ",
+        ))
+        .send()
+        .await
+        .unwrap();
+
     assert_eq!(res.status(), 400);
 }
 
@@ -1402,6 +1497,34 @@ async fn label_attach_unknown_label_404() {
 }
 
 #[tokio::test]
+async fn label_attach_rejects_cross_project_label() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+    create_project_via_api(&url, &client, &token, "LB", "Labels B").await;
+
+    let other_label = client
+        .post(format!("{}/api/v1/projects/LB/labels", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "other", "color": "#22c55e"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(other_label.status(), 201);
+    let other_label: serde_json::Value = other_label.json().await.unwrap();
+    let other_label_id = other_label["id"].as_str().unwrap();
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/labels", url, issue_id))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"label_id": other_label_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
 async fn labels_require_auth() {
     let (url, client) = spawn_server().await;
     let res = client
@@ -1429,7 +1552,7 @@ async fn create_second_issue(
             "priority": "medium",
             "status_id": "00000000-0000-0000-0000-000000000001",
             "summary": summary,
-            "reporter_id": "00000000-0000-0000-0000-000000000001"
+            "reporter_id": test_user().id.to_string()
         }))
         .send()
         .await
@@ -1548,6 +1671,36 @@ async fn issue_link_unknown_target_404() {
         .await
         .unwrap();
     assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn issue_link_rejects_target_in_inaccessible_project() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let a_issue = create_issue_via_api(&url, &client, &a_token).await;
+    let (b_id, b_token) =
+        register_user(&url, &client, "linkb@example.com", "linkb", "Link B").await;
+    create_project_via_api(&url, &client, &b_token, "LK", "Link B Project").await;
+    let b_issue = create_issue_in_project(&url, &client, &b_token, "LK", &b_id).await;
+
+    let res = client
+        .get(format!("{}/api/v1/issues/{}", url, b_issue))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let b_issue: serde_json::Value = res.json().await.unwrap();
+    let b_key = b_issue["key"].as_str().unwrap();
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{}/links", url, a_issue))
+        .bearer_auth(a_token)
+        .json(&serde_json::json!({"target_key": b_key, "link_type": "relates"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
 }
 
 // ===== Member edge-case tests =====
@@ -1916,7 +2069,7 @@ async fn sse_stream_receives_issue_events() {
             "priority": "medium",
             "status_id": "00000000-0000-0000-0000-000000000001",
             "summary": "sse test issue",
-            "reporter_id": "00000000-0000-0000-0000-000000000001"
+            "reporter_id": test_user().id.to_string()
         }))
         .send()
         .await
@@ -2925,6 +3078,29 @@ async fn watch_requires_auth() {
 }
 
 #[tokio::test]
+async fn unwatch_denies_inaccessible_issue() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let (_b_id, b_token) = register_user(
+        &url,
+        &client,
+        "watch-out@example.com",
+        "watchout",
+        "Watch Out",
+    )
+    .await;
+    let issue_id = create_issue_via_api(&url, &client, &a_token).await;
+
+    let res = client
+        .delete(format!("{url}/api/v1/issues/{issue_id}/watch"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
+}
+
+#[tokio::test]
 async fn vote_unvote_and_list_votes_flow() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
@@ -2986,6 +3162,23 @@ async fn vote_requires_auth() {
         .await
         .unwrap();
     assert_eq!(res.status(), 401);
+}
+
+#[tokio::test]
+async fn unvote_denies_inaccessible_issue() {
+    let (url, client) = spawn_server().await;
+    let a_token = login_token(&url, &client).await;
+    let (_b_id, b_token) =
+        register_user(&url, &client, "vote-out@example.com", "voteout", "Vote Out").await;
+    let issue_id = create_issue_via_api(&url, &client, &a_token).await;
+
+    let res = client
+        .delete(format!("{url}/api/v1/issues/{issue_id}/vote"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
 }
 
 #[tokio::test]
@@ -4584,7 +4777,7 @@ async fn issue_rejects_oversized_summary() {
             "priority": "medium",
             "status_id": "00000000-0000-0000-0000-000000000001",
             "summary": "x".repeat(501),
-            "reporter_id": "00000000-0000-0000-0000-000000000001"
+            "reporter_id": test_user().id.to_string()
         }))
         .send()
         .await

@@ -42,14 +42,14 @@ describe('useTrackerEvents', () => {
 
   it('subscribes with the access token in the stream URL', () => {
     vi.stubGlobal('EventSource', FakeEventSource)
-    useAuthStore.setState({ token: 'test-token' })
+    useAuthStore.setState({ token: 'test.token+/=' })
     const client = new QueryClient()
     render(
       <QueryClientProvider client={client}>
         <Subscriber />
       </QueryClientProvider>,
     )
-    expect(lastUrl).toBe('/api/v1/events?access_token=test-token')
+    expect(lastUrl).toBe('/api/v1/events?access_token=test.token%2B%2F%3D')
   })
 
   it('invalidates worklogs and issue detail when a worklog SSE event arrives', () => {

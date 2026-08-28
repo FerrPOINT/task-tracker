@@ -439,13 +439,14 @@ impl ProjectRole {
 }
 
 impl std::str::FromStr for ProjectRole {
-    type Err = ();
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "admin" => Ok(ProjectRole::Admin),
             "owner" => Ok(ProjectRole::Owner),
-            _ => Ok(ProjectRole::Member),
+            "member" => Ok(ProjectRole::Member),
+            other => Err(format!("unknown project role: {other}")),
         }
     }
 }

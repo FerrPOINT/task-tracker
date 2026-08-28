@@ -64,7 +64,13 @@ pub async fn create_issue(
         status_id,
         assignee_id: req
             .assignee_id
-            .and_then(|s| s.parse().ok().map(shared::UserId::from_uuid)),
+            .map(|assignee_id| {
+                assignee_id
+                    .parse()
+                    .map(shared::UserId::from_uuid)
+                    .map_err(|_| AppError::invalid_input("assignee_id"))
+            })
+            .transpose()?,
         reporter_id,
         actor_id,
     };

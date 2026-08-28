@@ -16,7 +16,13 @@ use tower_governor::GovernorLayer;
 use tower_governor::governor::GovernorConfigBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
-use utoipa::OpenApi;
+use utoipa::openapi::{
+    path::Operation,
+    security::{
+        ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme,
+    },
+};
+use utoipa::{Modify, OpenApi};
 use utoipa_swagger_ui::SwaggerUi;
 
 /// Global Prometheus metrics handle — initialized once, reused across router builds.
@@ -68,6 +74,7 @@ pub use routes::*;
 
 #[derive(OpenApi)]
 #[openapi(
+    modifiers(&SecurityAddon),
     paths(
         routes::health::health,
         routes::auth::register,
@@ -251,6 +258,67 @@ pub use routes::*;
 )]
 pub struct ApiDoc;
 
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi
+            .components
+            .get_or_insert_with(utoipa::openapi::Components::new);
+
+        components.add_security_scheme(
+            "bearer",
+            SecurityScheme::Http(
+                HttpBuilder::new()
+                    .scheme(HttpAuthScheme::Bearer)
+                    .bearer_format("JWT")
+                    .build(),
+            ),
+        );
+        components.add_security_scheme(
+            "events_access_token",
+            SecurityScheme::ApiKey(ApiKey::Query(ApiKeyValue::with_description(
+                "access_token",
+                "Short-lived JWT access token accepted only by the SSE events endpoint.",
+            ))),
+        );
+
+        for (path, item) in openapi.paths.paths.iter_mut() {
+            let security = match path.as_str() {
+                "/api/v1/health"
+                | "/api/v1/auth/login"
+                | "/api/v1/auth/register"
+                | "/api/v1/auth/refresh" => None,
+                "/api/v1/events" => Some(events_security()),
+                _ => Some(bearer_security()),
+            };
+
+            apply_security(item.get.as_mut(), security.clone());
+            apply_security(item.put.as_mut(), security.clone());
+            apply_security(item.post.as_mut(), security.clone());
+            apply_security(item.delete.as_mut(), security.clone());
+            apply_security(item.patch.as_mut(), security.clone());
+        }
+    }
+}
+
+fn bearer_security() -> Vec<SecurityRequirement> {
+    vec![SecurityRequirement::new("bearer", Vec::<String>::new())]
+}
+
+fn events_security() -> Vec<SecurityRequirement> {
+    vec![
+        SecurityRequirement::new("bearer", Vec::<String>::new()),
+        SecurityRequirement::new("events_access_token", Vec::<String>::new()),
+    ]
+}
+
+fn apply_security(operation: Option<&mut Operation>, security: Option<Vec<SecurityRequirement>>) {
+    if let (Some(operation), Some(security)) = (operation, security) {
+        operation.security = Some(security);
+    }
+}
+
 pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let cors = if ctx.config.server.cors_allowed_origins.len() == 1
         && ctx.config.server.cors_allowed_origins[0] == "*"
@@ -288,6 +356,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             ])
             .allow_origin(allowed)
             .allow_headers(Any)
+            .allow_credentials(true)
     };
 
     // Rate limiter for auth endpoints (configurable, default 5 requests per 15 seconds per IP).
@@ -622,4 +691,59 @@ pub async fn serve_forever(
 pub async fn serve(ctx: Arc<app::AppContext>) {
     let listener = bind(ctx.clone()).await.expect("failed to bind");
     serve_forever(listener, ctx).await.expect("server failed");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn openapi_security_matches_runtime_protection() {
+        let document = ApiDoc::openapi();
+        for (path, item) in document.paths.paths.iter() {
+            let is_public = matches!(
+                path.as_str(),
+                "/api/v1/health"
+                    | "/api/v1/auth/login"
+                    | "/api/v1/auth/register"
+                    | "/api/v1/auth/refresh"
+            );
+
+            for operation in [
+                item.get.as_ref(),
+                item.put.as_ref(),
+                item.post.as_ref(),
+                item.delete.as_ref(),
+                item.patch.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                if is_public {
+                    assert!(
+                        operation.security.is_none(),
+                        "{path} should stay public in OpenAPI"
+                    );
+                } else {
+                    assert!(
+                        operation.security.is_some(),
+                        "{path} must declare OpenAPI security"
+                    );
+                }
+            }
+        }
+
+        let events = document
+            .paths
+            .paths
+            .get("/api/v1/events")
+            .and_then(|item| item.get.as_ref())
+            .and_then(|operation| operation.security.as_ref())
+            .expect("events must be documented");
+        let events = serde_json::to_value(events).expect("serialize events security");
+        assert_eq!(
+            events,
+            serde_json::json!([{ "bearer": [] }, { "events_access_token": [] }])
+        );
+    }
 }

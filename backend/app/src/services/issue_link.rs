@@ -43,6 +43,9 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         let target_key_vo = IssueKey::parse(target_key)
             .map_err(|_| AppError::invalid_input("invalid target issue key"))?;
         let target = self.issues.get_by_key(&target_key_vo).await?;
+        self.authz
+            .require_project_access(target.project_id, requester)
+            .await?;
         if source.id == target.id {
             return Err(AppError::invalid_input("cannot link an issue to itself"));
         }
@@ -77,6 +80,12 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         for link in links {
             let source = self.issues.get_by_id(link.source_id).await?;
             let target = self.issues.get_by_id(link.target_id).await?;
+            if !self
+                .can_read_link_endpoint(&source, &target, requester)
+                .await?
+            {
+                continue;
+            }
             out.push(crate::context::IssueLinkDto {
                 id: link.id.to_string(),
                 source_id: link.source_id.to_string(),
@@ -103,5 +112,27 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
             .await?;
         self.links.delete(link_id).await?;
         Ok(())
+    }
+}
+
+impl IssueLinkServiceImpl {
+    async fn can_read_link_endpoint(
+        &self,
+        source: &domain::Issue,
+        target: &domain::Issue,
+        requester: UserId,
+    ) -> Result<bool, AppError> {
+        for project_id in [source.project_id, target.project_id] {
+            match self
+                .authz
+                .require_project_access(project_id, requester)
+                .await
+            {
+                Ok(()) => {}
+                Err(AppError::Forbidden) => return Ok(false),
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(true)
     }
 }

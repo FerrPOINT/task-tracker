@@ -141,7 +141,11 @@ fn clear_refresh_cookie(jar: CookieJar, cfg: &shared::AuthConfig) -> CookieJar {
     let mut cookie = Cookie::new(cfg.refresh_cookie_name.clone(), "");
     cookie.set_http_only(true);
     cookie.set_secure(cfg.refresh_cookie_secure);
+    cookie.set_same_site(parse_same_site(&cfg.refresh_cookie_same_site));
     cookie.set_path(cfg.refresh_cookie_path.clone());
+    if let Some(domain) = &cfg.refresh_cookie_domain {
+        cookie.set_domain(domain.clone());
+    }
     cookie.set_max_age(Duration::seconds(0));
     jar.add(cookie)
 }
@@ -170,5 +174,37 @@ fn map_auth(dto: app::dto::AuthDto) -> AuthResponse {
         user_id: dto.user.id,
         email: dto.user.email,
         expires_in: dto.expires_in,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[test]
+    fn clear_refresh_cookie_preserves_scope_attributes() {
+        let cfg = shared::AuthConfig {
+            refresh_cookie_domain: Some("example.com".to_string()),
+            refresh_cookie_same_site: "Strict".to_string(),
+            refresh_cookie_path: "/api/v1/auth".to_string(),
+            ..Default::default()
+        };
+
+        let response = clear_refresh_cookie(CookieJar::new(), &cfg).into_response();
+        let header = response
+            .headers()
+            .get_all(axum::http::header::SET_COOKIE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .find(|value| value.starts_with("refresh_token="))
+            .expect("logout must clear the configured refresh cookie");
+
+        assert!(header.contains("Domain=example.com"), "{header}");
+        assert!(header.contains("Path=/api/v1/auth"), "{header}");
+        assert!(header.contains("SameSite=Strict"), "{header}");
+        assert!(header.contains("Secure"), "{header}");
+        assert!(header.contains("HttpOnly"), "{header}");
+        assert!(header.contains("Max-Age=0"), "{header}");
     }
 }

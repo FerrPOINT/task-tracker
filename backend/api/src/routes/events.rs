@@ -9,12 +9,13 @@ use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 #[utoipa::path(
     get,
     path = "/api/v1/events",
-    description = "Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries.",
+    description = "Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries. Auth accepts the standard bearer header, or access_token query only for browser EventSource clients.",
+    params(("access_token" = Option<String>, Query, description = "Short-lived JWT access token fallback for browser EventSource clients that cannot set Authorization headers.")),
     responses(
         (status = 200, description = "SSE stream (text/event-stream)"),
         (status = 401, description = "Unauthorized"),
     ),
-    security(("bearer" = []))
+    security(("bearer" = []), ("events_access_token" = []))
 )]
 pub async fn events(
     State(ctx): State<Arc<app::AppContext>>,

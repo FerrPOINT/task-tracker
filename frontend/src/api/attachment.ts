@@ -1,4 +1,5 @@
 import { api } from './client'
+import { apiBaseUrl, refreshAccessToken } from './client'
 import type { components } from './generated'
 import { useAuthStore } from '@/shared/auth/store'
 
@@ -17,7 +18,24 @@ function authHeader(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+class UnauthorizedError extends Error {}
+
 export async function uploadAttachment(
+  issueId: string,
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+): Promise<Attachment> {
+  try {
+    return await uploadAttachmentOnce(issueId, file, onProgress)
+  } catch (error) {
+    if (error instanceof UnauthorizedError && (await refreshAccessToken())) {
+      return uploadAttachmentOnce(issueId, file, onProgress)
+    }
+    throw error
+  }
+}
+
+function uploadAttachmentOnce(
   issueId: string,
   file: File,
   onProgress?: (loaded: number, total: number) => void,
@@ -26,7 +44,7 @@ export async function uploadAttachment(
     const form = new FormData()
     form.append('file', file)
     const xhr = new XMLHttpRequest()
-    xhr.open('POST', `/api/v1/issues/${issueId}/attachments`)
+    xhr.open('POST', `${apiBaseUrl}/api/v1/issues/${issueId}/attachments`)
     const headers = authHeader()
     for (const [key, value] of Object.entries(headers)) {
       xhr.setRequestHeader(key, value)
@@ -43,6 +61,8 @@ export async function uploadAttachment(
         } catch {
           reject(new Error('Invalid response'))
         }
+      } else if (xhr.status === 401) {
+        reject(new UnauthorizedError('unauthorized'))
       } else {
         try {
           const body = JSON.parse(xhr.responseText)
@@ -66,10 +86,19 @@ export async function deleteAttachment(id: string): Promise<void> {
 
 /** Fetches the file with auth and triggers a browser download. */
 export async function downloadAttachment(a: Attachment): Promise<void> {
-  const res = await fetch(`/api/v1/attachments/${a.id}/download`, {
+  let res = await fetch(`${apiBaseUrl}/api/v1/attachments/${a.id}/download`, {
     headers: authHeader(),
   })
+  if (res.status === 401 && (await refreshAccessToken())) {
+    res = await fetch(`${apiBaseUrl}/api/v1/attachments/${a.id}/download`, {
+      headers: authHeader(),
+    })
+  }
   if (!res.ok) throw new Error('download failed')
+  await saveDownload(a, res)
+}
+
+async function saveDownload(a: Attachment, res: Response): Promise<void> {
   const blob = await res.blob()
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')

@@ -235,7 +235,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries. */
+        /** @description Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries. Auth accepts the standard bearer header, or access_token query only for browser EventSource clients. */
         get: operations["events"];
         put?: never;
         post?: never;
@@ -2308,7 +2308,10 @@ export interface operations {
     };
     events: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Short-lived JWT access token fallback for browser EventSource clients that cannot set Authorization headers. */
+                access_token?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
