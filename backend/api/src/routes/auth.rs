@@ -1,4 +1,4 @@
-use axum::{Extension, Json, extract::State, http::StatusCode};
+use axum::{Extension, Json, body::Bytes, extract::State, http::StatusCode};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use shared::{AppError, UserId};
 use std::sync::Arc;
@@ -61,13 +61,16 @@ pub async fn login(
 pub async fn refresh(
     State(ctx): State<Arc<app::AppContext>>,
     jar: CookieJar,
-    Json(body): Json<RefreshRequest>,
+    body: Bytes,
 ) -> Result<(CookieJar, Json<AuthResponse>), AppError> {
-    let refresh_token = jar
+    let refresh_token = match jar
         .get(&ctx.config.auth.refresh_cookie_name)
         .map(|c| c.value().to_string())
-        .or(body.refresh_token.filter(|t| !t.is_empty()))
-        .ok_or(AppError::Unauthorized)?;
+        .filter(|t| !t.is_empty())
+    {
+        Some(token) => token,
+        None => parse_refresh_body(&body)?.ok_or(AppError::Unauthorized)?,
+    };
     let dto = ctx.services.auth.refresh(&refresh_token).await?;
     let jar = set_refresh_cookie(jar, &ctx.config.auth, &dto.refresh_token);
     Ok((jar, Json(map_auth(dto))))
@@ -151,10 +154,18 @@ fn parse_same_site(value: &str) -> axum_extra::extract::cookie::SameSite {
     }
 }
 
+fn parse_refresh_body(body: &[u8]) -> Result<Option<String>, AppError> {
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let request: RefreshRequest =
+        serde_json::from_slice(body).map_err(|_| AppError::invalid_input("refresh_token"))?;
+    Ok(request.refresh_token.filter(|token| !token.is_empty()))
+}
+
 fn map_auth(dto: app::dto::AuthDto) -> AuthResponse {
     AuthResponse {
         access_token: dto.access_token,
-        refresh_token: dto.refresh_token,
         token_type: "Bearer".to_string(),
         user_id: dto.user.id,
         email: dto.user.email,

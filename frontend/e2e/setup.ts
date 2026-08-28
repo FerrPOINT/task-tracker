@@ -1,10 +1,20 @@
+import type { Page } from '@playwright/test'
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
+
 const API_BASE = process.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3456/api/v1'
 
 // Single shared seed per test-run (process-wide). Parallel workers/projects reuse it,
 // avoiding simultaneous /auth/register + /auth/login calls that trip the auth rate limiter.
 type ApiContext = {
   token: string
-  refreshToken: string
   userId: string
   projectId: string
   issueId: string
@@ -21,8 +31,6 @@ let seedPromise: Promise<ApiContext> | null = null
 // process publish the token for the others to reuse.
 const seedLockPath = '/tmp/tt-e2e-seed.lock'
 const seedCachePath = '/tmp/tt-e2e-seed.json'
-
-import { existsSync, openSync, readFileSync, writeFileSync, closeSync, unlinkSync, statSync } from 'node:fs'
 
 function acquireSeedLock(): number {
   const deadline = Date.now() + 90_000
@@ -52,6 +60,12 @@ function releaseSeedLock(fd: number) {
   } catch {
     // already removed by stale takeover
   }
+}
+
+type AuthResponse = {
+  access_token: string
+  user_id: string
+  email?: string
 }
 
 async function post(path: string, body: object, token?: string) {
@@ -114,7 +128,7 @@ async function seed(): Promise<ApiContext> {
   if (loginRes.status !== 200) {
     throw new Error(`login failed: ${loginRes.status} ${JSON.stringify(loginRes.data)}`)
   }
-  const { access_token, refresh_token, user_id } = loginRes.data
+  const { access_token, user_id } = loginRes.data
 
   const projectsRes = await get('/projects', access_token)
   type ProjectItem = { id: string; key: string }
@@ -181,7 +195,6 @@ async function seed(): Promise<ApiContext> {
 
   return {
     token: access_token,
-    refreshToken: refresh_token,
     userId: user_id,
     projectId,
     issueId: issue.id,
@@ -204,9 +217,13 @@ export async function seedIntegrationData(): Promise<ApiContext> {
     seedPromise = (async () => {
       const fd = acquireSeedLock()
       try {
-        const cached = existsSync(seedCachePath) ? JSON.parse(readFileSync(seedCachePath, 'utf8')) : null
+        const cached = existsSync(seedCachePath)
+          ? JSON.parse(readFileSync(seedCachePath, 'utf8'))
+          : null
         const fresh =
-          cached && Date.now() - cached.at < 10 * 60_000 && cached.ctx.expiresAt > Date.now() + 60_000
+          cached &&
+          Date.now() - cached.at < 10 * 60_000 &&
+          cached.ctx.expiresAt > Date.now() + 60_000
         if (fresh) return cached.ctx as ApiContext
         const ctx = await seed()
         writeFileSync(seedCachePath, JSON.stringify({ at: Date.now(), ctx }))
@@ -228,6 +245,24 @@ export async function apiLogin() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: 'demo@example.com', password: 'demo' }),
   })
+}
+
+export async function authenticatePage(page: Page): Promise<AuthResponse> {
+  for (let i = 0; i < 24; i++) {
+    const res = await page.request.post(`${API_BASE}/auth/login`, {
+      data: { email: 'demo@example.com', password: 'demo' },
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.status() === 200) {
+      return data as AuthResponse
+    }
+    if (res.status() === 429) {
+      await new Promise((r) => setTimeout(r, 5_000))
+      continue
+    }
+    throw new Error(`browser login failed: ${res.status()} ${JSON.stringify(data)}`)
+  }
+  throw new Error('browser login failed: persistent 429')
 }
 
 export async function apiGet(path: string, token: string) {

@@ -1,5 +1,6 @@
 import { api } from './client'
 import type { components } from './generated'
+import { useAuthStore } from '@/shared/auth/store'
 
 export type Attachment = components['schemas']['AttachmentResponse']
 
@@ -12,7 +13,7 @@ export async function listAttachments(issueId: string): Promise<Attachment[]> {
 }
 
 function authHeader(): Record<string, string> {
-  const token = JSON.parse(localStorage.getItem('task-tracker-auth') ?? '{}')?.state?.token ?? ''
+  const token = useAuthStore.getState().token ?? ''
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 

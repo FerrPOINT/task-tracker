@@ -131,6 +131,11 @@ impl crate::context::IssueService for IssueServiceImpl {
                 .parse()
                 .map_err(|_| AppError::invalid_input("status_id"))?,
         );
+        match self.statuses.get_by_id(status_id).await {
+            Ok(_) => {}
+            Err(AppError::NotFound(_)) => return Err(AppError::invalid_input("status_id")),
+            Err(err) => return Err(err),
+        }
         // Retry on key conflicts: concurrent creators may compute the same next number.
         let mut issue = None;
         for _ in 0..5 {

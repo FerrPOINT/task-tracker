@@ -54,6 +54,21 @@ fn test_config() -> Arc<AppConfig> {
     })
 }
 
+fn statuses_from_board(board: &Board) -> Vec<domain::Status> {
+    board
+        .columns
+        .iter()
+        .map(|column| domain::Status {
+            id: column.id,
+            name: column.name.clone(),
+            category: column.category,
+            position: column.position,
+            is_default: column.category == StatusCategory::Todo && column.position == 0,
+            is_closed: column.category == StatusCategory::Done,
+        })
+        .collect()
+}
+
 async fn ctx_with_demo_data() -> (AppContext, User) {
     let user = test_user();
     let user_copy = user.clone();
@@ -133,7 +148,9 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         comments: Arc::new(domain::StubCommentRepository),
         worklogs: Arc::new(domain::StubWorklogRepository),
         members: Arc::new(domain::StubProjectMemberRepository),
-        statuses: Arc::new(domain::StubStatusRepository),
+        statuses: Arc::new(domain::MemoryStatusRepository::new(statuses_from_board(
+            &board,
+        ))),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(domain::StubAttachmentRepository),
@@ -2632,7 +2649,9 @@ async fn ctx_with_real_members() -> (AppContext, User, User, ProjectId) {
         comments: Arc::new(domain::StubCommentRepository),
         worklogs: Arc::new(domain::StubWorklogRepository),
         members: members.clone(),
-        statuses: Arc::new(domain::StubStatusRepository),
+        statuses: Arc::new(domain::MemoryStatusRepository::new(statuses_from_board(
+            &board,
+        ))),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
         attachments: Arc::new(domain::StubAttachmentRepository),

@@ -155,7 +155,7 @@ pub async fn update_worklog(
     let cmd = app::commands::UpdateWorklogCommand {
         started_at: body.started_at,
         duration_seconds: body.duration_seconds,
-        description: Some(body.description),
+        description: body.description,
     };
     let w = ctx
         .services

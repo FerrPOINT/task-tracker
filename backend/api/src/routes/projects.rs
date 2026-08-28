@@ -85,14 +85,17 @@ pub async fn create_project(
 )]
 pub async fn get_project(
     State(ctx): State<Arc<app::AppContext>>,
-    claims: axum::Extension<app::auth::UserClaims>,
+    Extension(claims): Extension<crate::middleware::auth::UserClaims>,
     axum::extract::Path(key): axum::extract::Path<String>,
 ) -> Result<Json<ProjectResponse>, AppError> {
     let key = ProjectKey::new(key.as_str());
     if !key.is_valid() {
         return Err(AppError::invalid_input("project_key"));
     }
-    let requester: shared::UserId = claims.0.sub.parse().map_err(|_| AppError::Unauthorized)?;
+    let requester = claims
+        .sub
+        .parse::<UserId>()
+        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let p = ctx.services.project.get_by_key(&key, requester).await?;
     Ok(Json(map_project_response(p)))
 }

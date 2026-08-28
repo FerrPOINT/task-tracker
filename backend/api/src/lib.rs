@@ -1,5 +1,7 @@
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
+    handler::Handler,
     http::HeaderName,
     http::HeaderValue,
     http::Method,
@@ -348,7 +350,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route(
             "/issues/{issue_id}/attachments",
-            get(routes::attachments::list_attachments).post(routes::attachments::upload_attachment),
+            get(routes::attachments::list_attachments).post(
+                routes::attachments::upload_attachment
+                    .layer(DefaultBodyLimit::max(ctx.config.storage.max_upload_bytes)),
+            ),
         )
         .route(
             "/projects/{project_key}/labels",

@@ -494,13 +494,29 @@ async fn issue_create_validation_errors() {
         .unwrap();
     assert_eq!(bad_reporter.status(), 400);
 
-    let defaults = client
+    let bad_issue_type = client
         .post(format!("{}/api/v1/issues", url))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
-            "summary": "fallback defaults",
+            "summary": "bad issue type",
             "issue_type": "unknown",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": test_user().id.to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_issue_type.status(), 400);
+
+    let bad_priority = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "bad priority",
+            "issue_type": "task",
             "priority": "unknown",
             "status_id": "00000000-0000-0000-0000-000000000001",
             "reporter_id": test_user().id.to_string()
@@ -508,10 +524,23 @@ async fn issue_create_validation_errors() {
         .send()
         .await
         .unwrap();
-    assert_eq!(defaults.status(), 201);
-    let body: serde_json::Value = defaults.json().await.unwrap();
-    assert_eq!(body["issue_type"], "task");
-    assert_eq!(body["priority"], "Medium");
+    assert_eq!(bad_priority.status(), 400);
+
+    let bad_status = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "bad status",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+            "reporter_id": test_user().id.to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_status.status(), 400);
 }
 
 #[tokio::test]
@@ -611,6 +640,21 @@ async fn login_token(url: &str, client: &reqwest::Client) -> String {
     assert_eq!(res.status(), 200);
     let body: serde_json::Value = res.json().await.unwrap();
     body["access_token"].as_str().unwrap().to_string()
+}
+
+fn refresh_cookie_header(res: &reqwest::Response) -> String {
+    res.headers()
+        .get_all(reqwest::header::SET_COOKIE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find_map(|value| {
+            value
+                .split(';')
+                .next()
+                .filter(|part| part.starts_with("refresh_token="))
+        })
+        .expect("refresh cookie should be set")
+        .to_string()
 }
 
 fn test_status_done() -> shared::StatusId {
@@ -842,14 +886,14 @@ async fn worklogs_crud() {
     let worklog: serde_json::Value = create.json().await.unwrap();
     let worklog_id = worklog["id"].as_str().unwrap();
     assert_eq!(worklog["duration_seconds"], 3600);
+    assert_eq!(worklog["description"], "e2e worklog");
 
     let update = client
         .patch(format!("{}/api/v1/worklogs/{worklog_id}", url))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "started_at": "2026-07-21T11:00:00+00:00",
-            "duration_seconds": 7200,
-            "description": "updated worklog"
+            "duration_seconds": 7200
         }))
         .send()
         .await
@@ -857,6 +901,28 @@ async fn worklogs_crud() {
     assert_eq!(update.status(), 200);
     let body: serde_json::Value = update.json().await.unwrap();
     assert_eq!(body["duration_seconds"], 7200);
+    assert_eq!(body["description"], "e2e worklog");
+
+    let issue_after_update = client
+        .get(format!("{}/api/v1/issues/{issue_id}", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(issue_after_update.status(), 200);
+    let issue_after_update: serde_json::Value = issue_after_update.json().await.unwrap();
+    assert_eq!(issue_after_update["time_spent_seconds"], 7200);
+
+    let clear_description = client
+        .patch(format!("{}/api/v1/worklogs/{worklog_id}", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "description": null }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(clear_description.status(), 200);
+    let body: serde_json::Value = clear_description.json().await.unwrap();
+    assert!(body["description"].is_null());
 
     let delete = client
         .delete(format!("{}/api/v1/worklogs/{worklog_id}", url))
@@ -865,6 +931,16 @@ async fn worklogs_crud() {
         .await
         .unwrap();
     assert_eq!(delete.status(), 204);
+
+    let issue_after_delete = client
+        .get(format!("{}/api/v1/issues/{issue_id}", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(issue_after_delete.status(), 200);
+    let issue_after_delete: serde_json::Value = issue_after_delete.json().await.unwrap();
+    assert_eq!(issue_after_delete["time_spent_seconds"], 0);
 }
 
 #[tokio::test]
@@ -2668,15 +2744,16 @@ async fn auth_refresh_returns_new_access_token() {
         .send()
         .await
         .unwrap();
+    let refresh_cookie = refresh_cookie_header(&login);
     let body: serde_json::Value = login.json().await.unwrap();
     let access_token = body["access_token"].as_str().unwrap().to_string();
-    let refresh_token = body["refresh_token"].as_str().unwrap().to_string();
+    assert!(body["refresh_token"].is_null());
 
-    // The refresh endpoint is behind the auth middleware, so we need the bearer token too
     let refresh_res = client
         .post(format!("{url}/api/v1/auth/refresh"))
         .bearer_auth(&access_token)
-        .json(&serde_json::json!({"refresh_token": refresh_token}))
+        .header(reqwest::header::COOKIE, refresh_cookie)
+        .json(&serde_json::json!({}))
         .send()
         .await
         .unwrap();
@@ -2686,6 +2763,7 @@ async fn auth_refresh_returns_new_access_token() {
     assert!(!new_access.is_empty());
     assert_eq!(body["token_type"], "Bearer");
     assert!(body["expires_in"].as_u64().is_some());
+    assert!(body["refresh_token"].is_null());
 }
 
 #[tokio::test]
@@ -2702,16 +2780,15 @@ async fn auth_logout_clears_refresh_and_invalidates_token() {
         .unwrap();
     assert_eq!(logout.status(), 204);
 
-    // after logout, refresh with old token should fail (refresh_token_hash cleared)
-    // We need to get the refresh_token from login first — re-login to get it
+    // after logout, refresh with old cookie should fail (refresh_token_hash cleared)
     let login = client
         .post(format!("{url}/api/v1/auth/login"))
         .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
         .send()
         .await
         .unwrap();
+    let refresh_cookie = refresh_cookie_header(&login);
     let body: serde_json::Value = login.json().await.unwrap();
-    let refresh_token = body["refresh_token"].as_str().unwrap().to_string();
 
     // logout again
     let token2 = body["access_token"].as_str().unwrap().to_string();
@@ -2726,7 +2803,8 @@ async fn auth_logout_clears_refresh_and_invalidates_token() {
     // refresh should now fail
     let refresh_res = client
         .post(format!("{url}/api/v1/auth/refresh"))
-        .json(&serde_json::json!({"refresh_token": refresh_token}))
+        .header(reqwest::header::COOKIE, refresh_cookie)
+        .json(&serde_json::json!({}))
         .send()
         .await
         .unwrap();
@@ -4216,11 +4294,7 @@ async fn sprint_from_other_project_rejected() {
         .send()
         .await
         .unwrap();
-    assert!(
-        res.status() == 400 || res.status() == 403,
-        "got {}",
-        res.status()
-    );
+    assert_eq!(res.status(), reqwest::StatusCode::NOT_FOUND);
 }
 
 // 17. custom_field_from_other_project_rejected (XPROJ-2)
@@ -4882,13 +4956,15 @@ async fn refresh_rotation_rejects_replayed_token() {
         .send()
         .await
         .unwrap();
+    let first_refresh = refresh_cookie_header(&login);
     let first: serde_json::Value = login.json().await.unwrap();
-    let first_refresh = first["refresh_token"].as_str().unwrap().to_string();
+    assert!(first["refresh_token"].is_null());
 
     // First refresh succeeds and rotates.
     let res = client
         .post(format!("{url}/api/v1/auth/refresh"))
-        .json(&serde_json::json!({"refresh_token": first_refresh}))
+        .header(reqwest::header::COOKIE, first_refresh.clone())
+        .json(&serde_json::json!({}))
         .send()
         .await
         .unwrap();
@@ -4897,7 +4973,8 @@ async fn refresh_rotation_rejects_replayed_token() {
     // Replaying the SAME token must fail: rotation is single-use.
     let res = client
         .post(format!("{url}/api/v1/auth/refresh"))
-        .json(&serde_json::json!({"refresh_token": first_refresh}))
+        .header(reqwest::header::COOKIE, first_refresh)
+        .json(&serde_json::json!({}))
         .send()
         .await
         .unwrap();
@@ -5100,20 +5177,45 @@ async fn refresh_works_without_bearer() {
         .send()
         .await
         .unwrap();
+    let refresh_cookie = refresh_cookie_header(&login);
     let body: serde_json::Value = login.json().await.unwrap();
-    let refresh_token = body["refresh_token"].as_str().unwrap().to_string();
+    assert!(body["refresh_token"].is_null());
 
     // No Authorization header at all: the whole point of refresh.
     let res = client
         .post(format!("{url}/api/v1/auth/refresh"))
-        .json(&serde_json::json!({"refresh_token": refresh_token}))
+        .header(reqwest::header::COOKIE, refresh_cookie)
+        .json(&serde_json::json!({}))
         .send()
         .await
         .unwrap();
     assert_eq!(res.status(), 200, "refresh must not require a bearer token");
     let body: serde_json::Value = res.json().await.unwrap();
     assert!(body["access_token"].as_str().is_some());
-    assert!(body["refresh_token"].as_str().is_some(), "rotated token");
+    assert!(body["refresh_token"].is_null());
+}
+
+// 1a. non_member_cannot_view_project_metadata — B GET /projects/TT → 403
+#[tokio::test]
+async fn non_member_cannot_view_project_metadata() {
+    let (url, client) = spawn_server().await;
+    let _a_token = login_token(&url, &client).await;
+    let (_b_id, b_token) = register_user(
+        &url,
+        &client,
+        "bmeta@example.com",
+        "userbmeta",
+        "User B Meta",
+    )
+    .await;
+
+    let res = client
+        .get(format!("{url}/api/v1/projects/TT"))
+        .bearer_auth(&b_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 403);
 }
 
 // 33. worklog_create_publishes_sse_event (release hardening)

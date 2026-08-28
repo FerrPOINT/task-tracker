@@ -1,6 +1,6 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './generated'
-import { readRefreshToken, storeRefreshToken, useAuthStore } from '@/shared/auth/store'
+import { useAuthStore } from '@/shared/auth/store'
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
 
@@ -8,36 +8,36 @@ export const api = createClient<paths>({ baseUrl })
 
 let refreshPromise: Promise<boolean> | null = null
 
-async function refreshAccessToken(): Promise<boolean> {
+export async function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
-      // On plain-HTTP deployments the Secure refresh cookie never reaches
-      // the browser; send the stored refresh token as a body fallback.
-      const refreshToken = readRefreshToken()
       const res = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(refreshToken ? { refresh_token: refreshToken } : {}),
+        body: JSON.stringify({}),
       })
       if (!res.ok) {
         useAuthStore.getState().logout()
         window.location.href = '/login'
         return false
       }
-      const data = (await res.json()) as { access_token?: string; refresh_token?: string }
-      // Cookie-first: the rotated token arrives as an HttpOnly Set-Cookie on
-      // HTTPS deployments. The localStorage copy exists ONLY as a plain-HTTP
-      // fallback; when the server also returns the token in the body we keep
-      // the fallback fresh, otherwise we drop the stale one.
-      if (data.refresh_token) {
-        storeRefreshToken(data.refresh_token)
-      } else {
-        storeRefreshToken(null)
+      const data = (await res.json()) as {
+        access_token?: string
+        user_id?: string
+        email?: string
       }
-      if (data.access_token) {
-        useAuthStore.setState({ token: data.access_token })
+      if (data.access_token && data.user_id && data.email) {
+        useAuthStore.getState().setAuth({
+          token: data.access_token,
+          userId: data.user_id,
+          email: data.email,
+        })
+      } else {
+        useAuthStore.getState().logout()
+        window.location.href = '/login'
+        return false
       }
       return true
     } catch {

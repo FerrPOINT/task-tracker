@@ -3,7 +3,7 @@ pub mod requests;
 pub use requests::*;
 
 use chrono::{DateTime, FixedOffset};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -24,7 +24,6 @@ pub struct LoginRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AuthResponse {
     pub access_token: String,
-    pub refresh_token: String,
     pub token_type: String,
     pub user_id: String,
     pub email: String,
@@ -81,6 +80,7 @@ pub struct CreateProjectRequest {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UpdateProjectRequest {
     pub name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub description: Option<Option<String>>,
 }
 
@@ -106,6 +106,8 @@ pub struct IssueResponse {
     pub original_estimate_seconds: Option<i64>,
     /// Remaining estimate in seconds, derived from the latest worklog.
     pub remaining_estimate_seconds: Option<i64>,
+    /// Logged work in seconds, derived from worklogs.
+    pub time_spent_seconds: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -243,7 +245,8 @@ pub struct CreateWorklogRequest {
 pub struct UpdateWorklogRequest {
     pub started_at: Option<DateTime<FixedOffset>>,
     pub duration_seconds: Option<i64>,
-    pub description: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
+    pub description: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -252,6 +255,16 @@ pub struct RefreshRequest {
     /// the body token is the explicit HTTP (non-Secure-cookie) fallback.
     #[serde(default)]
     pub refresh_token: Option<String>,
+}
+
+pub(crate) fn deserialize_optional_nullable<'de, D, T>(
+    deserializer: D,
+) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -294,8 +307,11 @@ pub struct CreateSprintRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateSprintRequest {
     pub name: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub goal: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub start_date: Option<Option<DateTime<FixedOffset>>>,
+    #[serde(default, deserialize_with = "deserialize_optional_nullable")]
     pub end_date: Option<Option<DateTime<FixedOffset>>>,
 }
 

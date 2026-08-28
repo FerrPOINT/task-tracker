@@ -1185,7 +1185,6 @@ export interface components {
             email: string;
             /** Format: int64 */
             expires_in: number;
-            refresh_token: string;
             token_type: string;
             user_id: string;
         };
@@ -1376,6 +1375,11 @@ export interface components {
             status: string;
             status_id: string;
             summary: string;
+            /**
+             * Format: int64
+             * @description Logged work in seconds, derived from worklogs.
+             */
+            time_spent_seconds: number;
         };
         IssueTypeResponse: {
             color?: string | null;

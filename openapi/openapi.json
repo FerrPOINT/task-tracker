@@ -4,7 +4,8 @@
     "title": "api",
     "description": "",
     "license": {
-      "name": ""
+      "name": "MIT",
+      "identifier": "MIT"
     },
     "version": "0.2.0"
   },
@@ -4086,7 +4087,6 @@
         "type": "object",
         "required": [
           "access_token",
-          "refresh_token",
           "token_type",
           "user_id",
           "email",
@@ -4103,9 +4103,6 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
-          },
-          "refresh_token": {
-            "type": "string"
           },
           "token_type": {
             "type": "string"
@@ -4795,7 +4792,8 @@
           "priority",
           "labels",
           "reporter_id",
-          "project_name"
+          "project_name",
+          "time_spent_seconds"
         ],
         "properties": {
           "assignee_id": {
@@ -4876,6 +4874,11 @@
           },
           "summary": {
             "type": "string"
+          },
+          "time_spent_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Logged work in seconds, derived from worklogs."
           }
         }
       },

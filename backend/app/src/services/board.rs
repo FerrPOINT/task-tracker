@@ -143,6 +143,7 @@ impl BoardServiceImpl {
             .map(|s| SprintDto::from_sprint(s, issue_dtos.iter().map(|i| i.id.clone()).collect()))
             .unwrap_or_else(|| SprintDto {
                 id: "none".to_string(),
+                project_id: board.project_id.to_string(),
                 name: "Backlog".to_string(),
                 goal: String::new(),
                 state: "future".to_string(),
@@ -233,6 +234,7 @@ impl crate::context::BoardService for BoardServiceImpl {
             })
             .unwrap_or_else(|| SprintDto {
                 id: "none".to_string(),
+                project_id: board.project_id.to_string(),
                 name: "Backlog".to_string(),
                 goal: String::new(),
                 state: "future".to_string(),

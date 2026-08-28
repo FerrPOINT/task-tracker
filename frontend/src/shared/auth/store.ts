@@ -9,6 +9,7 @@ function readStoredAuth(): {
   displayName: string | null
 } {
   try {
+    localStorage.removeItem('tt-refresh-token')
     const raw = localStorage.getItem('task-tracker-auth')
     if (!raw)
       return {
@@ -19,12 +20,13 @@ function readStoredAuth(): {
         displayName: null,
       }
     const parsed = JSON.parse(raw)
+    const state = parsed.state ?? parsed
     return {
-      token: parsed.token ?? null,
-      userId: parsed.userId ?? parsed.user_id ?? null,
-      email: parsed.email ?? null,
-      username: parsed.username ?? null,
-      displayName: parsed.displayName ?? parsed.display_name ?? null,
+      token: null,
+      userId: state.userId ?? state.user_id ?? null,
+      email: state.email ?? null,
+      username: state.username ?? null,
+      displayName: state.displayName ?? state.display_name ?? null,
     }
   } catch {
     return {
@@ -34,25 +36,6 @@ function readStoredAuth(): {
       username: null,
       displayName: null,
     }
-  }
-}
-
-const REFRESH_KEY = 'tt-refresh-token'
-
-export function storeRefreshToken(token: string | null): void {
-  try {
-    if (token) localStorage.setItem(REFRESH_KEY, token)
-    else localStorage.removeItem(REFRESH_KEY)
-  } catch {
-    // storage unavailable — cookie flow remains
-  }
-}
-
-export function readRefreshToken(): string | null {
-  try {
-    return localStorage.getItem(REFRESH_KEY)
-  } catch {
-    return null
   }
 }
 
@@ -104,7 +87,6 @@ export const useAuthStore = create<AuthState>()(
           displayName: payload.displayName ?? state.displayName,
         })),
       logout: () => {
-        storeRefreshToken(null)
         set({
           token: null,
           userId: null,
@@ -114,6 +96,25 @@ export const useAuthStore = create<AuthState>()(
         })
       },
     }),
-    { name: 'task-tracker-auth' },
+    {
+      name: 'task-tracker-auth',
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState ?? {}) as Partial<AuthState>
+        return {
+          ...currentState,
+          token: null,
+          userId: persisted.userId ?? currentState.userId,
+          email: persisted.email ?? currentState.email,
+          username: persisted.username ?? currentState.username,
+          displayName: persisted.displayName ?? currentState.displayName,
+        }
+      },
+      partialize: (state) => ({
+        userId: state.userId,
+        email: state.email,
+        username: state.username,
+        displayName: state.displayName,
+      }),
+    },
   ),
 )

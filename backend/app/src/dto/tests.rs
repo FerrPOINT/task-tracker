@@ -81,9 +81,10 @@ fn issue_dto_from_issue() {
 
 #[test]
 fn sprint_dto_from_sprint() {
+    let project_id = ProjectId::new();
     let sprint = Sprint {
         id: SprintId::new(),
-        project_id: ProjectId::new(),
+        project_id,
         name: "S1".into(),
         goal: Some("goal".into()),
         state: SprintState::Active,
@@ -95,4 +96,5 @@ fn sprint_dto_from_sprint() {
     assert_eq!(dto.state, "active");
     assert_eq!(dto.velocity, 42);
     assert_eq!(dto.goal, "goal");
+    assert_eq!(dto.project_id, project_id.to_string());
 }
