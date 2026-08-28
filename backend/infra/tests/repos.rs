@@ -9,11 +9,22 @@ use shared::{
 };
 use uuid::Uuid;
 
+fn base_db_url() -> String {
+    std::env::var("TT_TEST_DATABASE_URL").unwrap_or_else(|_| {
+        let path = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".tt_db_url");
+
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
+            .trim()
+            .to_string()
+    })
+}
+
 async fn setup() -> domain::Repositories {
-    let base_url = std::fs::read_to_string("/root/.tt_db_url")
-        .expect("read /root/.tt_db_url")
-        .trim()
-        .to_string();
+    let base_url = base_db_url();
     // Replace database name with isolated infra test DB
     let db_url = format!(
         "{}/{}",

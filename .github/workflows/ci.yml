@@ -107,8 +107,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          arguments: --all-features check
-          workdir: backend
+          manifest-path: backend/Cargo.toml
+          command: check
+          arguments: --all-features
 
   infra-db-tests:
     runs-on: ubuntu-latest
@@ -142,9 +143,9 @@ jobs:
           PGPASSWORD: test
       - name: Run docker-backed repo and FK regression tests
         run: |
-          # repos.rs reads /root/.tt_db_url; fk_regression honors TT_TEST_DATABASE_URL
-          echo "postgresql://tasktracker:test@127.0.0.1:5432/tasktracker" > /root/.tt_db_url
-          cargo test -p infra --test fk_regression -- --include-ignored --test-threads=1
+          # repos.rs reads $HOME/.tt_db_url; fk_regression honors TT_TEST_DATABASE_URL
+          echo "postgresql://tasktracker:test@127.0.0.1:5432/tasktracker" > "$HOME/.tt_db_url"
+          cargo test -p infra --test repos --test fk_regression -- --include-ignored --test-threads=1
         env:
           TT_TEST_DATABASE_URL: postgres://tasktracker:test@127.0.0.1:5432/tasktracker_infra_test
 
@@ -157,6 +158,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
       - uses: taiki-e/install-action@cargo-audit
       - run: cargo audit
 
@@ -184,6 +187,10 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-test
+      TASKTRACKER_DATABASE__URL: postgres://tasktracker:ci-test@postgres:5432/tasktracker
+      TASKTRACKER_JWT_SECRET: ci-test-secret-ci-test-secret-ci-test-32b
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -200,18 +207,16 @@ jobs:
         working-directory: frontend
       - run: docker compose up -d postgres redis backend
         working-directory: ${{ github.workspace }}
-        env:
-          POSTGRES_PASSWORD: ci-test
-          TASKTRACKER_JWT_SECRET: ci-test-secret-ci-test-secret-ci-test-32b
       - name: Wait for backend readiness (retry loop)
         run: |
-          for i in $(seq 1 60); do
+          for i in $(seq 1 120); do
             if curl -sf http://localhost:3456/api/v1/health > /dev/null 2>&1; then
               echo "backend ready after ${i}s"; exit 0
             fi
             sleep 1
           done
-          echo "::error::backend did not become healthy in 60s"
+          echo "::error::backend did not become healthy in 120s"
+          docker compose ps
           docker compose logs backend
           exit 1
         working-directory: ${{ github.workspace }}
