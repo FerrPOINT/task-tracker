@@ -14,10 +14,12 @@ pub struct CommentServiceImpl {
     projects: Arc<dyn ProjectRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
+    notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
     authz: Authz,
 }
 
 impl CommentServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         comments: Arc<dyn domain::CommentRepository>,
         users: Arc<dyn domain::UserRepository>,
@@ -25,6 +27,7 @@ impl CommentServiceImpl {
         projects: Arc<dyn ProjectRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
+        notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
         authz: Authz,
     ) -> Self {
         Self {
@@ -34,6 +37,7 @@ impl CommentServiceImpl {
             projects,
             events,
             notifications,
+            notification_settings,
             authz,
         }
     }
@@ -41,7 +45,21 @@ impl CommentServiceImpl {
     /// Create a notification and publish a real-time SSE event.
     async fn create_notification(&self, notification: domain::Notification) {
         let recipient_id = notification.recipient_id;
-        if let Ok(_id) = self.notifications.save(&notification).await {
+        let event_type = notification.event_type.as_ref();
+        let actor_is_recipient = notification.actor_id == Some(recipient_id);
+        let allowed = match self.notification_settings.get_settings(recipient_id).await {
+            Ok(settings) => {
+                (settings.notify_own_changes || !actor_is_recipient)
+                    && !settings
+                        .disabled_event_types
+                        .iter()
+                        .any(|value| value.as_ref() == event_type)
+            }
+            // Missing settings preserve the existing default delivery behavior.
+            Err(shared::AppError::NotFound(_)) => !actor_is_recipient,
+            Err(_) => return,
+        };
+        if allowed && self.notifications.save(&notification).await.is_ok() {
             self.events
                 .publish(shared::TrackerEvent::NotificationCreated {
                     recipient_id: recipient_id.to_string(),
@@ -68,12 +86,11 @@ impl crate::context::CommentService for CommentServiceImpl {
             Some(_) => return Err(AppError::invalid_input("limit must be between 1 and 500")),
             None => 100,
         };
-        let comments = self.comments.list_by_issue(issue_id).await?;
-        let page: Vec<_> = comments
-            .into_iter()
-            .skip(offset as usize)
-            .take(effective_limit)
-            .collect();
+        // Bounded SQL page: never load the whole thread to slice it in memory.
+        let page = self
+            .comments
+            .list_by_issue_page(issue_id, effective_limit as u64, offset)
+            .await?;
         let mut names: std::collections::HashMap<UserId, String> = std::collections::HashMap::new();
         for u in self.users.list().await.unwrap_or_default() {
             names.insert(u.id, u.display_name.as_ref().to_string());

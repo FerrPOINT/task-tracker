@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { seedIntegrationData } from './setup'
+import { seedIntegrationData, uiLogin } from './setup'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
@@ -15,11 +15,7 @@ test.describe('time tracking against live backend', () => {
   })
 
   test('time tracking panel and worklog flow', async ({ page }) => {
-    await page.goto(`${baseURL}/login`)
-    await page.getByRole('textbox').nth(0).fill('demo@example.com')
-    await page.getByRole('textbox').nth(1).fill('demo')
-    await page.getByRole('button', { name: /войти|login/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
+    await uiLogin(page)
 
     await page.goto(`${baseURL}/issues/${seededIssueId}`)
     await expect(page.getByText(/учёт времени|time tracking/i)).toBeVisible()
@@ -35,11 +31,7 @@ test.describe('time tracking against live backend', () => {
   })
 
   test('timer adds time to input', async ({ page }) => {
-    await page.goto(`${baseURL}/login`)
-    await page.getByRole('textbox').nth(0).fill('demo@example.com')
-    await page.getByRole('textbox').nth(1).fill('demo')
-    await page.getByRole('button', { name: /войти|login/i }).click()
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
+    await uiLogin(page)
 
     await page.goto(`${baseURL}/issues/${seededIssueId}`)
     await page.getByRole('button', { name: /записать время|log work/i }).click()

@@ -1,14 +1,14 @@
 use crate::memory::{
     MemoryAuditLogRepository, MemoryBoardRepository, MemoryEventBus, MemoryIssueRepository,
     MemoryNotificationRepository, MemoryProjectRepository, MemorySprintRepository,
-    MemorySystemSettingRepository, MemoryUnitOfWork, MemoryUserRepository,
+    MemorySystemSettingRepository, MemoryUnitOfWork, MemoryUserRepository, MemoryWorklogRepository,
 };
 use crate::{
     AuditLog, AuditLogRepository, Board, BoardRepository, EventBus, Issue, IssueQuery,
     IssueRepository, Notification, NotificationRepository, NotificationUserSettings, Project,
     ProjectEvent, ProjectQuery, ProjectRepository, Repositories, Sprint, SprintRepository,
     SprintState, SystemSetting, SystemSettingRepository, UnitOfWork, User,
-    UserNotificationSettingsRepository, UserRepository,
+    UserNotificationSettingsRepository, UserRepository, WorklogRepository,
 };
 use shared::{
     BoardId, IssueId, IssueType, NotificationId, Priority, ProjectId, ProjectKey, SprintId,
@@ -380,4 +380,49 @@ async fn memory_system_setting_repository_replaces_existing_keys() {
     repo.save(&updated).await.unwrap();
     assert_eq!(repo.list().await.unwrap(), vec![updated]);
     assert!(repo.get("unknown").await.is_err());
+}
+
+#[tokio::test]
+async fn memory_worklog_repository_page_respects_limit_offset_and_order() {
+    use crate::entities::Worklog;
+
+    let repo = MemoryWorklogRepository::default();
+    let issue = IssueId::new();
+    let author = UserId::new();
+    let base = shared::now();
+    for i in 0..5u64 {
+        let w = Worklog {
+            id: shared::WorklogId::new(),
+            issue_id: issue,
+            author_id: author,
+            started_at: base + chrono::Duration::minutes(i as i64),
+            duration_seconds: 60,
+            description: Some(format!("wl-{i}").into()),
+            created_at: base,
+            updated_at: base,
+        };
+        repo.save(&w).await.unwrap();
+    }
+
+    let first = repo.list_by_issue_page(issue, 2, 0).await.unwrap();
+    assert_eq!(first.len(), 2, "limit=2 must bound the page");
+    let second = repo.list_by_issue_page(issue, 2, 2).await.unwrap();
+    assert_eq!(second.len(), 2, "offset=2 must skip the first two entries");
+    let tail = repo.list_by_issue_page(issue, 2, 4).await.unwrap();
+    assert_eq!(tail.len(), 1, "only one worklog remains past offset 4");
+
+    // Ascending started_at ordering across pages.
+    let all: Vec<_> = first.into_iter().chain(second).chain(tail).collect();
+    let descs: Vec<String> = all
+        .iter()
+        .map(|w| w.description.as_ref().unwrap().as_ref().to_string())
+        .collect();
+    assert_eq!(descs, ["wl-0", "wl-1", "wl-2", "wl-3", "wl-4"]);
+
+    // Pages never leak worklogs from other issues.
+    let other = repo
+        .list_by_issue_page(IssueId::new(), 10, 0)
+        .await
+        .unwrap();
+    assert!(other.is_empty());
 }

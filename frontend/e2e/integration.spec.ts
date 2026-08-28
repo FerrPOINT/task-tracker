@@ -1,20 +1,9 @@
 import { test, expect, Page } from '@playwright/test'
-import { seedIntegrationData } from './setup'
+import { seedIntegrationData, uiLogin } from './setup'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 
-const credentials = {
-  email: 'demo@example.com',
-  password: 'demo',
-}
-
-async function login(page: Page) {
-  await page.goto(`${baseURL}/login`)
-  await page.getByRole('textbox').nth(0).fill(credentials.email)
-  await page.getByRole('textbox').nth(1).fill(credentials.password)
-  await page.getByRole('button', { name: /войти|login/i }).click()
-  await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
-}
+const login = (page: Page) => uiLogin(page)
 
 test.describe('integration against live backend', () => {
   test.beforeAll(async () => {

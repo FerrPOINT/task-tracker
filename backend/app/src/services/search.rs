@@ -52,6 +52,21 @@ impl crate::context::SearchService for SearchServiceImpl {
             query.limit = 50;
         }
         query.offset = filters.offset.unwrap_or(0);
+        // Relevance is undefined for LIKE search, so the default ordering is
+        // recency: newest hits first. ASC would bury freshly created issues
+        // behind hundreds of older matches on the first page.
+        query.sort_by = Some(
+            filters
+                .sort_by
+                .clone()
+                .unwrap_or_else(|| "created".to_string()),
+        );
+        query.sort_order = Some(
+            filters
+                .sort_order
+                .clone()
+                .unwrap_or_else(|| "desc".to_string()),
+        );
         if let Some(q) = filters.q.as_deref().filter(|s| !s.is_empty()) {
             query.search_text = Some(q.to_string());
         }

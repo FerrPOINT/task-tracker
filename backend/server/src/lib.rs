@@ -164,8 +164,12 @@ async fn run_digest_cycle(ctx: &AppContext) -> Result<(), shared::AppError> {
             continue;
         }
 
-        // Mark all of this user's notifications as read after a successful send.
-        if let Err(e) = ctx.repos.notifications.mark_all_read(user_id).await {
+        // Mark read only the notifications that were part of the delivered
+        // digest snapshot. `mark_all_read` would swallow notifications that
+        // arrived between `list_all_unread` and this point.
+        let delivered: Vec<shared::NotificationId> =
+            user_notifications.iter().map(|n| n.id).collect();
+        if let Err(e) = ctx.repos.notifications.mark_read_batch(&delivered).await {
             error!("digest: failed to mark notifications read for {user_id}: {e}");
         }
     }

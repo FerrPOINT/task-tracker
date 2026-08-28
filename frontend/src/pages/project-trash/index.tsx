@@ -3,13 +3,13 @@ import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@/shared/ui/button'
-import { ConfirmDialog } from '@/shared/ui/async-states'
+import { ConfirmDialog, ErrorState } from '@/shared/ui/async-states'
 import { useTrash, useRestoreIssue, usePurgeIssue } from '@/shared/api/hooks'
 
 export function ProjectTrashPage() {
   const { projectKey } = useParams<{ projectKey: string }>()
   const { t } = useTranslation()
-  const { data: trashedIssues = [], isLoading } = useTrash(projectKey)
+  const { data: trashedIssues = [], isLoading, error, refetch } = useTrash(projectKey)
   const restoreMutation = useRestoreIssue()
   const purgeMutation = usePurgeIssue()
   const [purgeConfirmId, setPurgeConfirmId] = useState<string | null>(null)
@@ -36,7 +36,9 @@ export function ProjectTrashPage() {
         <div className="py-8 text-center text-sm text-text-muted">{t('trash.loading')}</div>
       )}
 
-      {!isLoading && trashedIssues.length === 0 && (
+      {error && <ErrorState message={t('common.error')} onRetry={() => void refetch()} />}
+
+      {!error && !isLoading && trashedIssues.length === 0 && (
         <div className="py-16 text-center text-sm text-text-muted">{t('trash.noIssues')}</div>
       )}
 

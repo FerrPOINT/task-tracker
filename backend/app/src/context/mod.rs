@@ -127,6 +127,7 @@ impl AppContext {
             repos.versions.clone(),
             events.clone(),
             repos.notifications.clone(),
+            repos.notification_settings.clone(),
             authz.clone(),
         ));
         let board: Arc<dyn BoardService> = Arc::new(BoardServiceImpl::new(
@@ -176,6 +177,7 @@ impl AppContext {
                     repos.projects.clone(),
                     events.clone(),
                     repos.notifications.clone(),
+                    repos.notification_settings.clone(),
                     authz.clone(),
                 )),
                 worklog: Arc::new(WorklogServiceImpl::new(

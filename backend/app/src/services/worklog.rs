@@ -67,12 +67,10 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             Some(_) => return Err(AppError::invalid_input("limit must be between 1 and 500")),
             None => 100,
         };
-        let worklogs = self.worklogs.list_by_issue(issue_id).await?;
-        let worklogs: Vec<_> = worklogs
-            .into_iter()
-            .skip(offset as usize)
-            .take(effective_limit)
-            .collect();
+        let worklogs = self
+            .worklogs
+            .list_by_issue_page(issue_id, effective_limit as u64, offset)
+            .await?;
         let mut names: std::collections::HashMap<UserId, String> = std::collections::HashMap::new();
         for u in self.users.list().await.unwrap_or_default() {
             names.insert(u.id, u.display_name.as_ref().to_string());

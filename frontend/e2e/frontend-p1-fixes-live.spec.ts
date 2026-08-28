@@ -2,8 +2,8 @@
 // tabs overflow, board single-tree render, DnD workflow gating.
 import { test, expect, type Page } from '@playwright/test'
 
-const BASE = 'http://localhost:19877'
-const API = 'http://localhost:3456/api/v1'
+const BASE = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:19877'
+const API = process.env.VITE_API_BASE_URL ?? 'http://localhost:3456/api/v1'
 
 let lastToken: string | undefined
 
@@ -23,6 +23,18 @@ async function cachedToken(page: Page): Promise<string> {
   return lastToken
 }
 
+async function authedGet(page: Page, url: string) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const token = await cachedToken(page)
+    const res = await page.request.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.status() !== 401) return res
+    lastToken = undefined
+  }
+  throw new Error('auth kept failing')
+}
+
 async function auth(page: Page) {
   const token = await cachedToken(page)
   await page.goto(`${BASE}/login`)
@@ -37,10 +49,7 @@ async function auth(page: Page) {
 }
 
 async function firstIssue(page: Page) {
-  const token = await cachedToken(page)
-  const issues = await page.request.get(`${API}/search?q=test&limit=1`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+  const issues = await authedGet(page, `${API}/search?q=test&limit=1`)
   expect(issues.ok()).toBeTruthy()
   return (await issues.json()).issues[0]
 }

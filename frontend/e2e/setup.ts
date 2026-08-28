@@ -1,10 +1,9 @@
-const API_BASE = process.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3456/api/v1'
+export const API_BASE = process.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3456/api/v1'
 
 // Single shared seed per test-run (process-wide). Parallel workers/projects reuse it,
 // avoiding simultaneous /auth/register + /auth/login calls that trip the auth rate limiter.
 type ApiContext = {
   token: string
-  refreshToken: string
   userId: string
   projectId: string
   issueId: string
@@ -114,7 +113,7 @@ async function seed(): Promise<ApiContext> {
   if (loginRes.status !== 200) {
     throw new Error(`login failed: ${loginRes.status} ${JSON.stringify(loginRes.data)}`)
   }
-  const { access_token, refresh_token, user_id } = loginRes.data
+  const { access_token, user_id } = loginRes.data
 
   const projectsRes = await get('/projects', access_token)
   type ProjectItem = { id: string; key: string }
@@ -181,7 +180,6 @@ async function seed(): Promise<ApiContext> {
 
   return {
     token: access_token,
-    refreshToken: refresh_token,
     userId: user_id,
     projectId,
     issueId: issue.id,
@@ -208,6 +206,26 @@ export async function seedIntegrationData(): Promise<ApiContext> {
         const fresh =
           cached && Date.now() - cached.at < 10 * 60_000 && cached.ctx.expiresAt > Date.now() + 60_000
         if (fresh) return cached.ctx as ApiContext
+        // Cache hit but the access token is close to expiry: re-login and
+        // keep the seeded project/issue instead of failing mid-suite with 401s.
+        if (cached && cached.ctx.expiresAt > Date.now()) {
+          const loginRes = await fetchJsonWithRetry(`${API_BASE}/auth/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'demo@example.com', password: 'demo' }),
+          })
+          if (loginRes.status === 200) {
+            const ctx = {
+              ...cached.ctx,
+              token: loginRes.data.access_token,
+              userId: loginRes.data.user_id,
+              expiresAt: decodeJwtExpiryMs(loginRes.data.access_token),
+            }
+            writeFileSync(seedCachePath, JSON.stringify({ at: Date.now(), ctx }))
+            return ctx as ApiContext
+          }
+          // login failed (e.g. rate limited through): fall through to a full seed
+        }
         const ctx = await seed()
         writeFileSync(seedCachePath, JSON.stringify({ at: Date.now(), ctx }))
         return ctx
@@ -248,3 +266,30 @@ export async function apiPost(path: string, body: object, token?: string) {
 }
 
 export const API_BASE_URL = API_BASE
+
+/**
+ * UI-form login shared by live specs. The auth rate limiter (5 req / 15 s per
+ * IP) returns 429 with a Retry-After hint when several specs log in within
+ * one run; retry instead of failing the test.
+ */
+export async function uiLogin(
+  page: import('@playwright/test').Page,
+  email = 'demo@example.com',
+  password = 'demo',
+) {
+  const base = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await page.goto(`${base}/login`)
+    await page.getByRole('textbox').nth(0).fill(email)
+    await page.getByRole('textbox').nth(1).fill(password)
+    await page.getByRole('button', { name: /войти|login/i }).click()
+    const ok = await page
+      .waitForURL((u) => !u.pathname.includes('/login'), { timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false)
+    if (ok) return
+    // 429 backoff aligned with the auth limiter window
+    await page.waitForTimeout(5_000)
+  }
+  throw new Error('uiLogin: still on /login after retries (rate limit?)')
+}

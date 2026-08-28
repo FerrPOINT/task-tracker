@@ -22,6 +22,7 @@ pub struct IssueServiceImpl {
     versions: Arc<dyn domain::ProjectVersionRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
+    notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
     authz: Authz,
 }
 
@@ -71,6 +72,7 @@ impl IssueServiceImpl {
         versions: Arc<dyn domain::ProjectVersionRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
+        notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
         authz: Authz,
     ) -> Self {
         Self {
@@ -85,6 +87,7 @@ impl IssueServiceImpl {
             components,
             versions,
             notifications,
+            notification_settings,
             authz,
         }
     }
@@ -92,7 +95,21 @@ impl IssueServiceImpl {
     /// Create a notification and publish a real-time SSE event.
     async fn create_notification(&self, notification: domain::Notification) {
         let recipient_id = notification.recipient_id;
-        if let Ok(_id) = self.notifications.save(&notification).await {
+        let event_type = notification.event_type.as_ref();
+        let actor_is_recipient = notification.actor_id == Some(recipient_id);
+        let allowed = match self.notification_settings.get_settings(recipient_id).await {
+            Ok(settings) => {
+                (settings.notify_own_changes || !actor_is_recipient)
+                    && !settings
+                        .disabled_event_types
+                        .iter()
+                        .any(|value| value.as_ref() == event_type)
+            }
+            // Missing settings preserve the existing default delivery behavior.
+            Err(shared::AppError::NotFound(_)) => !actor_is_recipient,
+            Err(_) => return,
+        };
+        if allowed && self.notifications.save(&notification).await.is_ok() {
             self.events
                 .publish(shared::TrackerEvent::NotificationCreated {
                     recipient_id: recipient_id.to_string(),
@@ -543,7 +560,13 @@ impl crate::context::IssueService for IssueServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, actor_id)
             .await?;
-        self.issues.delete(id).await
+        self.issues.delete(id).await?;
+        let project = self.projects.get_by_id(issue.project_id).await?;
+        self.events.publish(shared::TrackerEvent::IssueDeleted {
+            issue_id: id.to_string(),
+            project_key: project.key.to_string(),
+        });
+        Ok(())
     }
 
     async fn restore(&self, id: IssueId, actor_id: UserId) -> Result<IssueDto, AppError> {
@@ -553,6 +576,11 @@ impl crate::context::IssueService for IssueServiceImpl {
             .await?;
         self.issues.restore(id).await?;
         let issue = self.issues.get_by_id(id).await?;
+        let project = self.projects.get_by_id(issue.project_id).await?;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: id.to_string(),
+            project_key: project.key.to_string(),
+        });
         super::helpers::build_issue_dtos_with_projects(
             Arc::clone(&self.projects),
             Arc::clone(&self.users),

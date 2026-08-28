@@ -92,17 +92,46 @@ async fn full_smoke_with_real_repositories() {
     let url = format!("http://{}", addr);
     let client = reqwest::Client::new();
 
-    let login = client
-        .post(format!("{}/api/v1/auth/login", url))
-        .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
+    // The isolated database intentionally has no demo seed. Register through
+    // the public HTTP contract, then create a project to prove the production
+    // server, migrations, auth and SeaORM repositories work together.
+    let unique = uuid::Uuid::new_v4();
+    let email = format!("server-e2e-{unique}@example.com");
+    let username = format!("e2e{}", &unique.simple().to_string()[..8]);
+    let register = client
+        .post(format!("{}/api/v1/auth/register", url))
+        .json(&serde_json::json!({
+            "email": email,
+            "username": username,
+            "password": "12345678"
+        }))
         .send()
         .await
         .unwrap();
-    assert_eq!(login.status(), 200);
-    let token = login.json::<serde_json::Value>().await.unwrap()["access_token"]
+    assert_eq!(register.status(), 201);
+    let token = register.json::<serde_json::Value>().await.unwrap()["access_token"]
         .as_str()
         .unwrap()
         .to_string();
+
+    let project_key = format!("E{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
+    let project = client
+        .post(format!("{}/api/v1/projects", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "key": project_key,
+            "name": "Server E2E project",
+            "description": "Created by the real server E2E"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        project.status().is_success(),
+        "create project failed: {} {}",
+        project.status(),
+        project.text().await.unwrap_or_default()
+    );
 
     let projects = client
         .get(format!("{}/api/v1/projects", url))
@@ -112,9 +141,13 @@ async fn full_smoke_with_real_repositories() {
         .unwrap();
     assert_eq!(projects.status(), 200);
     let body: serde_json::Value = projects.json().await.unwrap();
-    let projects_arr = body["projects"].as_array().unwrap();
-    assert!(!projects_arr.is_empty());
-    let project_key = projects_arr[0]["key"].as_str().unwrap();
+    assert!(
+        body["projects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["key"] == project_key)
+    );
 
     let board = client
         .get(format!("{}/api/v1/projects/{}/board", url, project_key))

@@ -29,3 +29,4 @@ reqwest = { workspace = true, features = ["json"] }
 serde_json.workspace = true
 sea-orm.workspace = true
 serial_test = "3.2"
+uuid.workspace = true

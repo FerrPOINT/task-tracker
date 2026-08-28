@@ -11,6 +11,7 @@ import {
 } from '@/shared/api/hooks'
 import { Button } from '@/shared/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { ErrorState } from '@/shared/ui/async-states'
 import { Label } from '@/shared/ui/label'
 
 const NotificationCard = memo(function NotificationCard({
@@ -53,7 +54,7 @@ const NotificationCard = memo(function NotificationCard({
 export function NotificationsPage() {
   const { t } = useTranslation()
   const [showUnread, setShowUnread] = useState(false)
-  const { data: notifications = [], isLoading: notificationsLoading } = useNotifications()
+  const { data: notifications = [], isLoading: notificationsLoading, error: notificationsError, refetch: refetchNotifications } = useNotifications()
   const { data: settings, isLoading: settingsLoading } = useNotificationSettings()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
@@ -114,6 +115,11 @@ export function NotificationsPage() {
             <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
               {t('notifications.loading')}
             </p>
+          ) : notificationsError ? (
+            <ErrorState
+              message={t('common.error')}
+              onRetry={() => void refetchNotifications()}
+            />
           ) : visibleNotifications.length === 0 ? (
             <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
               {showUnread ? t('notifications.emptyUnread') : t('notifications.empty')}

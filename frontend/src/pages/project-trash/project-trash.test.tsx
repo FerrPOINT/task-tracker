@@ -69,6 +69,20 @@ describe('ProjectTrashPage', () => {
     expect(screen.getByText(/загрузка/i)).toBeInTheDocument()
   })
 
+  it('renders an API error instead of an empty trash state', () => {
+    const refetch = vi.fn()
+    mockTrash.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('500'),
+      refetch,
+    })
+    render(wrapper(<ProjectTrashPage />))
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText(/корзина пуста/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /повторить/i })).toBeInTheDocument()
+  })
+
   it('renders trash list', async () => {
     render(wrapper(<ProjectTrashPage />))
     await waitFor(() => expect(screen.getByText('Deleted task')).toBeInTheDocument())

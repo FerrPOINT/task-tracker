@@ -43,6 +43,11 @@ describe('LinkEditor', () => {
     expect(screen.getByText('TT-2')).toBeInTheDocument()
   })
 
+  it('links to the related issue UUID, not its display key', () => {
+    render(wrapper(<LinkEditor issueId="i1" currentKey="TT-1" />))
+    expect(screen.getByRole('link', { name: 'TT-2' })).toHaveAttribute('href', '/issues/i2')
+  })
+
   it('shows add link form on button click', () => {
     render(wrapper(<LinkEditor issueId="i1" currentKey="TT-1" />))
     fireEvent.click(screen.getByText(/add link/i))

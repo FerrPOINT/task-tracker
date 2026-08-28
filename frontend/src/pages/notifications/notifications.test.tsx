@@ -28,6 +28,8 @@ function renderPage() {
 
 function mockHooks() {
   useNotifications.mockReturnValue({
+    error: null,
+    refetch: vi.fn(),
     data: [
       {
         id: 'notification-1',
@@ -109,5 +111,21 @@ describe('NotificationsPage', () => {
         notify_own_changes: true,
       }),
     )
+  })
+
+  it('renders an API error state with retry instead of an empty list', () => {
+    mockHooks()
+    useNotifications.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('500'),
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByText('Issue updated')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /повторить|retry/i })).toBeInTheDocument()
   })
 })

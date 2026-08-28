@@ -140,11 +140,12 @@ jobs:
           PGPASSWORD=test psql -h localhost -U tasktracker -d tasktracker -c "CREATE DATABASE tasktracker_infra_test;"
         env:
           PGPASSWORD: test
-      - name: Run docker-backed repo and FK regression tests
+      - name: Run real PostgreSQL repository and server E2E tests
         run: |
-          # repos.rs reads /root/.tt_db_url; fk_regression honors TT_TEST_DATABASE_URL
+          # Repositories use this URL as a base and derive their isolated DB.
           echo "postgresql://tasktracker:test@127.0.0.1:5432/tasktracker" > /root/.tt_db_url
-          cargo test -p infra --test fk_regression -- --include-ignored --test-threads=1
+          cargo test -p infra --test repos --test fk_regression -- --include-ignored --test-threads=1
+          cargo test -p server --test e2e -- --include-ignored --test-threads=1
         env:
           TT_TEST_DATABASE_URL: postgres://tasktracker:test@127.0.0.1:5432/tasktracker_infra_test
 

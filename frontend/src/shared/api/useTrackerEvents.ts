@@ -21,54 +21,80 @@ export function useTrackerEvents() {
 
   useEffect(() => {
     if (!token) return
-    const es = new EventSource(`/api/v1/events?access_token=${token}`)
+    let es: EventSource | null = null
+    let retryDelay = 1000
+    let closed = false
+    let timer: ReturnType<typeof setTimeout> | undefined
 
-    es.addEventListener('tracker', (e) => {
-      let evt: TrackerEvent | null = null
-      try {
-        evt = JSON.parse((e as MessageEvent).data)
-      } catch {
-        return
+    const connect = () => {
+      if (closed) return
+      es = new EventSource(`/api/v1/events?access_token=${token}`)
+
+      es.addEventListener('tracker', (e) => {
+        let evt: TrackerEvent | null = null
+        try {
+          evt = JSON.parse((e as MessageEvent).data)
+        } catch {
+          return
+        }
+        if (!evt) return
+        // A healthy stream resets the reconnect backoff.
+        retryDelay = 1000
+
+        const pk = evt.project_key
+        switch (evt.type) {
+          case 'issue_created':
+          case 'issue_updated':
+          case 'issue_deleted':
+            if (pk) qc.invalidateQueries({ queryKey: ['project', pk] })
+            qc.invalidateQueries({ queryKey: ['search'] })
+            if (pk) qc.invalidateQueries({ queryKey: ['backlog', pk] })
+            if (evt.issue_id) qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
+            break
+          case 'issue_moved':
+            if (pk) qc.invalidateQueries({ queryKey: ['project', pk] })
+            qc.invalidateQueries({ queryKey: ['search'] })
+            if (evt.issue_id) qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
+            break
+          case 'issue_commented':
+            if (evt.issue_id) qc.invalidateQueries({ queryKey: ['comments', evt.issue_id] })
+            break
+          case 'worklog_logged':
+            if (evt.issue_id) {
+              qc.invalidateQueries({ queryKey: ['worklogs', evt.issue_id] })
+              qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
+            }
+            break
+          case 'sprint_changed':
+            qc.invalidateQueries({ queryKey: ['sprints'] })
+            break
+          case 'notification_created':
+            qc.invalidateQueries({ queryKey: ['notifications'] })
+            break
+        }
+      })
+
+      es.onopen = () => {
+        retryDelay = 1000
       }
-      if (!evt) return
 
-      const pk = evt.project_key
-      switch (evt.type) {
-        case 'issue_created':
-        case 'issue_updated':
-        case 'issue_deleted':
-          if (pk) qc.invalidateQueries({ queryKey: ['project', pk] })
-          qc.invalidateQueries({ queryKey: ['search'] })
-          if (pk) qc.invalidateQueries({ queryKey: ['backlog', pk] })
-          if (evt.issue_id) qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
-          break
-        case 'issue_moved':
-          if (pk) qc.invalidateQueries({ queryKey: ['project', pk] })
-          qc.invalidateQueries({ queryKey: ['search'] })
-          if (evt.issue_id) qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
-          break
-        case 'issue_commented':
-          if (evt.issue_id) qc.invalidateQueries({ queryKey: ['comments', evt.issue_id] })
-          break
-        case 'worklog_logged':
-          if (evt.issue_id) {
-            qc.invalidateQueries({ queryKey: ['worklogs', evt.issue_id] })
-            qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
-          }
-          break
-        case 'sprint_changed':
-          qc.invalidateQueries({ queryKey: ['sprints'] })
-          break
-        case 'notification_created':
-          qc.invalidateQueries({ queryKey: ['notifications'] })
-          break
+      es.onerror = () => {
+        // Reconnect manually with exponential backoff: EventSource's built-in
+        // retry has no delay and hammers the rate limiter when the stream is
+        // refused with 429, starving every other request from the same IP.
+        es?.close()
+        if (closed) return
+        timer = setTimeout(connect, retryDelay)
+        retryDelay = Math.min(retryDelay * 2, 15_000)
       }
-    })
-
-    es.onerror = () => {
-      // EventSource auto-reconnects; nothing to do.
     }
 
-    return () => es.close()
+    connect()
+
+    return () => {
+      closed = true
+      if (timer) clearTimeout(timer)
+      es?.close()
+    }
   }, [qc, token])
 }
