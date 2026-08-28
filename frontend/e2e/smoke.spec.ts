@@ -20,7 +20,7 @@ function routeJson(route: Route, body: unknown, status = 200) {
 test.describe('smoke', () => {
   test('login then navigate through dashboard, projects, board and create issue', async ({
     page,
-  }) => {
+  }, testInfo) => {
     await page.route('**/api/v1/auth/login', (route) =>
       routeJson(route, {
         access_token: 'demo-token',
@@ -85,6 +85,7 @@ test.describe('smoke', () => {
         ],
       }),
     )
+    await page.route('**/api/v1/projects/*/members', (route) => routeJson(route, { members: [] }))
     await page.route('**/api/v1/projects/*/board', (route) =>
       routeJson(route, {
         columns: [
@@ -154,6 +155,6 @@ test.describe('smoke', () => {
 
     await page.goto(`${baseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
-    await page.screenshot({ path: '/root/.hermes/cache/images/smoke-board.png' })
+    await page.screenshot({ path: testInfo.outputPath('smoke-board.png') })
   })
 })
