@@ -7,7 +7,7 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.86"
 authors = ["FerrPOINT <https://github.com/FerrPOINT>"]
-license = "MIT"
+license-file = "LICENSE"
 repository = "https://github.com/FerrPOINT/task-tracker"
 
 [workspace.dependencies]

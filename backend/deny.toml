@@ -18,6 +18,7 @@ ignore = [
 
 [licenses]
 version = 2
+# Third-party dependency allowlist only. It does not license FerrPOINT-owned code.
 allow = [
     "MIT",
     "Apache-2.0",

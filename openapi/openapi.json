@@ -4,8 +4,8 @@
     "title": "api",
     "description": "",
     "license": {
-      "name": "MIT",
-      "identifier": "MIT"
+      "name": "FerrPOINT Proprietary Source-Available Evaluation License v1.0",
+      "url": "./LICENSE"
     },
     "version": "0.2.0"
   },
