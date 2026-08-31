@@ -10,8 +10,10 @@
 docker compose ps          # все сервисы должны быть Up (healthy)
 docker compose logs --tail 100 backend
 curl -f http://localhost:3456/api/v1/health     # без rate-limit
-curl -f http://localhost:3456/metrics | head    # Prometheus-метрики
+curl -f http://localhost:3456/metrics | head    # Prometheus-метрики, если TASKTRACKER_METRICS__PUBLIC=true
 ```
+
+Для production-инстансов с публичным backend endpoint закройте `/metrics` на proxy/edge или задайте `TASKTRACKER_METRICS__PUBLIC=false`.
 
 Frontend: `curl -f http://localhost:19877/` → 200.
 

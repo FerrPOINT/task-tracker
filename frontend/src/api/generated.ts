@@ -1267,6 +1267,9 @@ export interface components {
         };
         CreateIssueRequest: {
             assignee_id?: string | null;
+            custom_fields?: {
+                [key: string]: unknown;
+            };
             description?: string | null;
             issue_type: string;
             priority: string;
@@ -1333,6 +1336,11 @@ export interface components {
         };
         DashboardResponse: {
             assigned_issues: components["schemas"]["IssueResponse"][];
+        };
+        DirectoryUserResponse: {
+            display_name: string;
+            id: string;
+            username: string;
         };
         IssueLinkListResponse: {
             links: components["schemas"]["IssueLinkResponse"][];
@@ -1590,7 +1598,7 @@ export interface components {
             started_at?: string | null;
         };
         UserListResponse: {
-            users: components["schemas"]["UserResponse"][];
+            users: components["schemas"]["DirectoryUserResponse"][];
         };
         UserResponse: {
             display_name: string;
@@ -2476,6 +2484,13 @@ export interface operations {
                     "application/json": components["schemas"]["IssueResponse"];
                 };
             };
+            /** @description Required custom field is missing or empty */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     get_issue: {
@@ -2902,6 +2917,13 @@ export interface operations {
             };
             /** @description Issue or field not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Required custom field cannot be cleared */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

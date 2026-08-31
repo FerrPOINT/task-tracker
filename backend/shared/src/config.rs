@@ -15,6 +15,8 @@ pub struct AppConfig {
     pub storage: StorageConfig,
     #[serde(default)]
     pub email: EmailConfig,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +58,17 @@ impl Default for StorageConfig {
             dir: "/var/lib/tasktracker/uploads".to_string(),
             max_upload_bytes: 25 * 1024 * 1024,
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsConfig {
+    pub public: bool,
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self { public: true }
     }
 }
 
@@ -163,6 +176,7 @@ impl AppConfig {
             .set_default("email.from_address", "")?
             .set_default("email.from_name", "Task Tracker")?
             .set_default("email.starttls", true)?
+            .set_default("metrics.public", true)?
             .build()?;
 
         let mut cfg: AppConfig = Config::builder()

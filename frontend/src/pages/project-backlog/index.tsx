@@ -175,11 +175,11 @@ export function ProjectBacklogPage() {
   const { projectKey } = useParams<{ projectKey?: string }>()
   const key = projectKey ?? 'TT'
   const [backlogOffset, setBacklogOffset] = useState(0)
-  const { data: backlog, isLoading: backlogLoading, error: backlogError } = useBacklog(
-    key,
-    backlogOffset,
-    BACKLOG_PAGE_SIZE,
-  )
+  const {
+    data: backlog,
+    isLoading: backlogLoading,
+    error: backlogError,
+  } = useBacklog(key, backlogOffset, BACKLOG_PAGE_SIZE)
   const { data: sprints, isLoading: sprintsLoading } = useSprints(key)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingSprint, setEditingSprint] = useState<Sprint | null>(null)

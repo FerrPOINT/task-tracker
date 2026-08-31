@@ -44,6 +44,7 @@ fn test_config() -> Arc<AppConfig> {
         },
         storage: shared::StorageConfig::default(),
         email: shared::EmailConfig::default(),
+        metrics: shared::MetricsConfig::default(),
     })
 }
 
@@ -2983,7 +2984,7 @@ async fn auth_me_returns_current_user_info() {
 }
 
 #[tokio::test]
-async fn users_list_returns_all_users() {
+async fn users_list_returns_directory_users_only() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
 
@@ -3010,8 +3011,15 @@ async fn users_list_returns_all_users() {
     let body: serde_json::Value = res.json().await.unwrap();
     let users = body["users"].as_array().unwrap();
     assert!(users.len() >= 2);
-    assert!(users.iter().any(|u| u["email"] == "demo@example.com"));
-    assert!(users.iter().any(|u| u["email"] == "second@example.com"));
+    assert!(users.iter().any(|u| u["username"] == "demo"));
+    assert!(users.iter().any(|u| u["username"] == "second"));
+    for user in users {
+        assert!(user.get("id").is_some());
+        assert!(user.get("username").is_some());
+        assert!(user.get("display_name").is_some());
+        assert!(user.get("email").is_none());
+        assert!(user.get("is_system_admin").is_none());
+    }
 }
 
 // ─── Watchers / votes integration tests ──────────────────────────────
@@ -3112,6 +3120,7 @@ async fn vote_unvote_and_list_votes_flow() {
         "Vote Reporter",
     )
     .await;
+    add_member_via_api(&url, &client, &token, "TT", &reporter_id).await;
     let issue_id = create_issue_in_project(&url, &client, &token, "TT", &reporter_id).await;
 
     // vote
@@ -3743,6 +3752,63 @@ async fn custom_field_create_unknown_project_returns_404() {
         .await
         .unwrap();
     assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn issue_create_missing_required_custom_field_returns_422() {
+    let (url, client) = spawn_server_with_memory_repos().await;
+    let token = login_token(&url, &client).await;
+
+    let create_field = client
+        .post(format!("{url}/api/v1/projects/TT/custom-fields"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "name": "Required text",
+            "field_type": "text",
+            "options": [],
+            "is_required": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create_field.status(), 201);
+    let field_id = create_field.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let missing = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "Missing required custom field",
+            "issue_type": "task",
+            "priority": "medium"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), 422);
+
+    let mut custom_fields = serde_json::Map::new();
+    custom_fields.insert(field_id, serde_json::json!("filled"));
+    let mut valid_body = serde_json::json!({
+        "project_key": "TT",
+        "summary": "Has required custom field",
+        "issue_type": "task",
+        "priority": "medium"
+    });
+    valid_body["custom_fields"] = serde_json::Value::Object(custom_fields);
+
+    let valid = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&token)
+        .json(&valid_body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(valid.status(), 201);
 }
 
 #[tokio::test]
@@ -4724,6 +4790,7 @@ async fn vote_dto_includes_user_names() {
         "Vote Dto Reporter",
     )
     .await;
+    add_member_via_api(&url, &client, &token, "TT", &reporter_id).await;
     let issue_id = create_issue_in_project(&url, &client, &token, "TT", &reporter_id).await;
 
     let res = client

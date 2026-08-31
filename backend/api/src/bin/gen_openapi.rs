@@ -3,7 +3,7 @@ use std::sync::Arc;
 use api::ApiDoc;
 use app::context::AppContext;
 use domain::Repositories;
-use shared::{AppConfig, AuthConfig, DatabaseConfig, EmailConfig, ServerConfig};
+use shared::{AppConfig, AuthConfig, DatabaseConfig, EmailConfig, MetricsConfig, ServerConfig};
 use utoipa::OpenApi;
 
 fn main() {
@@ -22,6 +22,7 @@ fn main() {
         },
         storage: shared::StorageConfig::default(),
         email: EmailConfig::default(),
+        metrics: MetricsConfig::default(),
     });
     let ctx = Arc::new(AppContext::new(
         config,

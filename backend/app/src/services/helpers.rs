@@ -32,22 +32,6 @@ pub fn issue_status_column(status_id: StatusId) -> String {
         .unwrap_or_else(|| "Unknown".to_string())
 }
 
-pub fn count_by_status(issues: &[Issue]) -> (i64, i64, i64) {
-    let todo = issues
-        .iter()
-        .filter(|i| i.status_id == todo_status())
-        .count() as i64;
-    let in_progress = issues
-        .iter()
-        .filter(|i| i.status_id == in_progress_status() || i.status_id == review_status())
-        .count() as i64;
-    let done = issues
-        .iter()
-        .filter(|i| i.status_id == done_status())
-        .count() as i64;
-    (todo, in_progress, done)
-}
-
 pub async fn project_name(
     projects: Arc<dyn ProjectRepository>,
     project_id: ProjectId,

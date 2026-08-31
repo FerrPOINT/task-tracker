@@ -9,10 +9,10 @@ import {
   useAddProjectMember,
   useRemoveProjectMember,
 } from '@/shared/api/hooks'
-import type { components } from '@/api/generated'
+import type { DirectoryUser } from '@/api/auth'
 import { UserAvatar } from '@/shared/ui/user-avatar'
 
-type User = components['schemas']['UserResponse']
+type User = DirectoryUser
 
 export function ProjectMembersPanel({
   projectKey,
@@ -71,7 +71,7 @@ export function ProjectMembersPanel({
                   <option value="">{t('projectMembers.selectUser')}</option>
                   {candidates.map((u: User) => (
                     <option key={u.id} value={u.id}>
-                      {u.display_name || u.username} ({u.email})
+                      {u.display_name || u.username}
                     </option>
                   ))}
                 </select>

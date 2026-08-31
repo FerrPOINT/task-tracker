@@ -5,8 +5,18 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
 import { ErrorState } from '@/shared/ui/async-states'
 import { Input } from '@/shared/ui/input'
-import { useCreateIssue, useIssueTypes, useProjects, useUsers } from '@/shared/api/hooks'
+import {
+  useCreateIssue,
+  useIssueTypes,
+  useProjectCustomFields,
+  useProjects,
+  useUsers,
+} from '@/shared/api/hooks'
 import { useAuthStore } from '@/shared/auth/store'
+import {
+  CustomFieldValueInput,
+  isEmptyCustomFieldValue,
+} from '@/features/issue-detail/ui/CustomFieldsPanel'
 
 export function IssueCreatePage() {
   const { t } = useTranslation()
@@ -31,10 +41,14 @@ export function IssueCreatePage() {
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('Medium')
   const [assignee_id, setAssigneeId] = useState('')
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({})
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
   const users = usersQuery.data ?? []
   const issueTypes = issueTypesQuery.data ?? []
+  const customFieldsQuery = useProjectCustomFields(project_key || undefined)
+  const customFields = customFieldsQuery.data ?? []
 
   useEffect(() => {
     if (!project_key && projects.length > 0) {
@@ -42,11 +56,29 @@ export function IssueCreatePage() {
     }
   }, [projects, project_key])
 
+  useEffect(() => {
+    setCustomFieldValues({})
+    setValidationError(null)
+  }, [project_key])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!userId) {
       return
     }
+    const missingRequired = customFields.find(
+      (field) => field.is_required && isEmptyCustomFieldValue(customFieldValues[field.id]),
+    )
+    if (missingRequired) {
+      setValidationError(t('customFields.requiredMissing', { name: missingRequired.name }))
+      return
+    }
+    setValidationError(null)
+    const custom_fields = Object.fromEntries(
+      customFields
+        .map((field) => [field.id, customFieldValues[field.id]] as const)
+        .filter(([, value]) => !isEmptyCustomFieldValue(value)),
+    )
     mutate(
       {
         project_key,
@@ -56,7 +88,7 @@ export function IssueCreatePage() {
         priority: priority.toLowerCase() as 'highest' | 'high' | 'medium' | 'low' | 'lowest',
         status_id: '00000000-0000-0000-0000-000000000001',
         assignee_id: assignee_id || null,
-        reporter_id: userId,
+        custom_fields,
       },
       {
         onSuccess: () => navigate(`/projects/${project_key}/backlog`),
@@ -73,6 +105,7 @@ export function IssueCreatePage() {
         className="space-y-4 rounded-lg border border-border bg-surface p-4 sm:p-6"
       >
         {error && <ErrorState message={error.message} />}
+        {validationError && <ErrorState message={validationError} />}
         {!userId && <div className="text-sm text-amber-500">{t('issueCreate.noReporter')}</div>}
 
         <div className="grid gap-4 sm:grid-cols-2">
@@ -180,12 +213,36 @@ export function IssueCreatePage() {
               <option value="">{t('issueCreate.unassigned')}</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
-                  {u.display_name || u.username || u.email}
+                  {u.display_name || u.username}
                 </option>
               ))}
             </select>
           </div>
         </div>
+
+        {customFields.length > 0 && (
+          <div className="space-y-3 border-t border-border pt-4">
+            <h2 className="text-sm font-semibold">{t('customFields.title')}</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {customFields.map((field) => (
+                <label key={field.id} className="space-y-2 text-sm font-medium">
+                  <span>
+                    {field.name}
+                    {field.is_required ? ' *' : ''}
+                  </span>
+                  <CustomFieldValueInput
+                    field={field}
+                    value={customFieldValues[field.id]}
+                    onSave={(value) =>
+                      setCustomFieldValues((prev) => ({ ...prev, [field.id]: value }))
+                    }
+                    commit="change"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2">
           <label htmlFor="issue-reporter" className="text-sm font-medium">

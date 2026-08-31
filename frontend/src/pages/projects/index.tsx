@@ -145,7 +145,8 @@ export function ProjectsPage() {
                       <div className="min-w-0">
                         <div className="truncate font-semibold">{project.name}</div>
                         <div className="text-xs text-text-muted">
-                          {project.key} · {t('projects.lead')}: {project.owner_name || project.owner_id} ·{' '}
+                          {project.key} · {t('projects.lead')}:{' '}
+                          {project.owner_name || project.owner_id} ·{' '}
                           {project.todo_count + project.in_progress_count + project.done_count}{' '}
                           {t('projects.issues', {
                             count:

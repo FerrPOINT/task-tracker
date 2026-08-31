@@ -33,9 +33,7 @@ describe('API client transport', () => {
 
   it('includes HttpOnly cookies when the API is cross-origin', async () => {
     await import('./client')
-    expect(createClient).toHaveBeenCalledWith(
-      expect.objectContaining({ credentials: 'include' }),
-    )
+    expect(createClient).toHaveBeenCalledWith(expect.objectContaining({ credentials: 'include' }))
   })
 
   it('retries a consumed request body after refreshing the access token', async () => {

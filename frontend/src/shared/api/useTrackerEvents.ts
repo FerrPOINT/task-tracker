@@ -9,6 +9,24 @@ type TrackerEvent = {
   recipient_id?: string
 }
 
+function invalidateIssueEventQueries(
+  qc: ReturnType<typeof useQueryClient>,
+  projectKey?: string,
+  issueId?: string,
+) {
+  qc.invalidateQueries({ queryKey: ['projects'] })
+  qc.invalidateQueries({ queryKey: ['dashboard'] })
+  qc.invalidateQueries({ queryKey: ['search'] })
+  if (projectKey) {
+    qc.invalidateQueries({ queryKey: ['project', projectKey] })
+    qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+  } else {
+    qc.invalidateQueries({ queryKey: ['project'] })
+    qc.invalidateQueries({ queryKey: ['backlog'] })
+  }
+  if (issueId) qc.invalidateQueries({ queryKey: ['issue', issueId] })
+}
+
 /**
  * Subscribe to the backend SSE stream (`/api/v1/events`) and invalidate
  * the affected TanStack Query caches. Bearer auth is passed via a short-lived
@@ -46,15 +64,8 @@ export function useTrackerEvents() {
           case 'issue_created':
           case 'issue_updated':
           case 'issue_deleted':
-            if (pk) qc.invalidateQueries({ queryKey: ['project', pk] })
-            qc.invalidateQueries({ queryKey: ['search'] })
-            if (pk) qc.invalidateQueries({ queryKey: ['backlog', pk] })
-            if (evt.issue_id) qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
-            break
           case 'issue_moved':
-            if (pk) qc.invalidateQueries({ queryKey: ['project', pk] })
-            qc.invalidateQueries({ queryKey: ['search'] })
-            if (evt.issue_id) qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
+            invalidateIssueEventQueries(qc, pk, evt.issue_id)
             break
           case 'issue_commented':
             if (evt.issue_id) qc.invalidateQueries({ queryKey: ['comments', evt.issue_id] })

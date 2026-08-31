@@ -63,12 +63,13 @@ services:
       TASKTRACKER_AUTH__REFRESH_COOKIE_SAME_SITE: ${TASKTRACKER_AUTH__REFRESH_COOKIE_SAME_SITE:-Lax}
       TASKTRACKER_AUTH__REFRESH_COOKIE_PATH: /api/v1/auth
       TASKTRACKER_STORAGE__DIR: ${TASKTRACKER_STORAGE__DIR:-/var/lib/tasktracker/uploads}
+      TASKTRACKER_METRICS__PUBLIC: ${TASKTRACKER_METRICS__PUBLIC:-true}
       RUST_LOG: ${RUST_LOG:-info}
     volumes:
       # Attachment files must survive container recreation.
       - uploads:/var/lib/tasktracker/uploads
     ports:
-      - "${BACKEND_PORT:-3456}:3456"
+      - "${BACKEND_HOST:-127.0.0.1}:${BACKEND_PORT:-3456}:3456"
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,7 +108,7 @@ services:
       - "--entrypoints.web.address=:80"
     ports:
       - "8080:80"
-      - "8081:8080"
+      - "127.0.0.1:8081:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     profiles:

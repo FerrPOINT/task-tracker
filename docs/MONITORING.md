@@ -2,7 +2,7 @@
 
 ## 1. Что реально есть
 
-- **Prometheus-метрики** backend: `GET /metrics` (без авторизации, на порту backend `3456`).
+- **Prometheus-метрики** backend: `GET /metrics` (без авторизации только для trusted/local exposure; в production закрывайте edge-маршрут или ставьте `TASKTRACKER_METRICS__PUBLIC=false`).
 - **Логи** — `tracing` в stdout (`RUST_LOG`, по умолчанию `info`); `docker compose logs backend`.
 - **Health** — `GET /api/v1/health` (вне rate-limit, для Docker healthcheck и мониторинга).
 
@@ -22,7 +22,13 @@ scrape_configs:
   - job_name: task-tracker
     scrape_interval: 15s
     static_configs:
-      - targets: ['<host>:3456']
+      - targets: ['127.0.0.1:3456']
+```
+
+Если backend публикуется наружу напрямую, оставьте health public, но отключите публичный metrics route:
+
+```bash
+TASKTRACKER_METRICS__PUBLIC=false docker compose up -d backend
 ```
 
 Grafana/Loki/Alertmanager/OpenTelemetry в поставку не входят — подключаются администратором при необходимости.

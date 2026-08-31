@@ -20,6 +20,7 @@ pub struct IssueServiceImpl {
     sprints: Arc<dyn domain::SprintRepository>,
     components: Arc<dyn domain::ProjectComponentRepository>,
     versions: Arc<dyn domain::ProjectVersionRepository>,
+    custom_fields: Arc<dyn domain::CustomFieldRepository>,
     watchers: Arc<dyn domain::WatcherRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
@@ -44,13 +45,8 @@ impl IssueServiceImpl {
             .ok_or_else(|| AppError::invalid_input("unknown target column"))?;
         let target_count = self
             .issues
-            .list(domain::IssueQuery {
-                project_id: Some(project_id),
-                status_id: Some(target),
-                ..Default::default()
-            })
-            .await?
-            .len() as u64;
+            .count_by_project_status(project_id, target)
+            .await?;
         Ok(domain::TransitionGuard {
             wip_limit: column.wip_limit.map(|v| v as u32),
             target_count,
@@ -70,6 +66,7 @@ impl IssueServiceImpl {
         sprints: Arc<dyn domain::SprintRepository>,
         components: Arc<dyn domain::ProjectComponentRepository>,
         versions: Arc<dyn domain::ProjectVersionRepository>,
+        custom_fields: Arc<dyn domain::CustomFieldRepository>,
         watchers: Arc<dyn domain::WatcherRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
@@ -87,6 +84,7 @@ impl IssueServiceImpl {
             sprints,
             components,
             versions,
+            custom_fields,
             watchers,
             notifications,
             notification_settings,
@@ -182,6 +180,59 @@ impl IssueServiceImpl {
             Err(AppError::invalid_input(field))
         }
     }
+
+    async fn require_project_user(
+        &self,
+        project_id: shared::ProjectId,
+        user_id: UserId,
+        field: &str,
+    ) -> Result<(), AppError> {
+        self.require_active_user(user_id, field).await?;
+        self.authz.require_project_access(project_id, user_id).await
+    }
+
+    async fn normalize_custom_fields_for_create(
+        &self,
+        project_id: shared::ProjectId,
+        values: &std::collections::HashMap<String, serde_json::Value>,
+    ) -> Result<Vec<(shared::CustomFieldId, serde_json::Value)>, AppError> {
+        let fields = self.custom_fields.list_by_project(project_id).await?;
+        let mut provided = HashSet::new();
+        let mut normalized_values = Vec::new();
+
+        for (raw_field_id, value) in values {
+            let field_id = raw_field_id
+                .parse::<shared::CustomFieldId>()
+                .map_err(|_| AppError::invalid_input("custom_fields key"))?;
+            let field = fields
+                .iter()
+                .find(|field| field.id == field_id)
+                .ok_or_else(|| AppError::invalid_input("custom field"))?;
+            if super::custom_field::is_empty_custom_field_value(value) {
+                if field.is_required {
+                    return Err(AppError::validation(format!(
+                        "required custom field {} cannot be empty",
+                        field.name.as_ref()
+                    )));
+                }
+                continue;
+            }
+            let normalized = super::custom_field::normalize_custom_field_value(field, value)?;
+            provided.insert(field_id);
+            normalized_values.push((field_id, normalized));
+        }
+
+        for field in fields.iter().filter(|field| field.is_required) {
+            if !provided.contains(&field.id) {
+                return Err(AppError::validation(format!(
+                    "required custom field {} is missing",
+                    field.name.as_ref()
+                )));
+            }
+        }
+
+        Ok(normalized_values)
+    }
 }
 
 #[async_trait]
@@ -219,11 +270,15 @@ impl crate::context::IssueService for IssueServiceImpl {
             Err(AppError::NotFound(_)) => return Err(AppError::invalid_input("status_id")),
             Err(err) => return Err(err),
         }
-        self.require_active_user(cmd.reporter_id, "reporter_id")
+        self.require_project_user(project.id, cmd.reporter_id, "reporter_id")
             .await?;
         if let Some(assignee_id) = cmd.assignee_id {
-            self.require_active_user(assignee_id, "assignee_id").await?;
+            self.require_project_user(project.id, assignee_id, "assignee_id")
+                .await?;
         }
+        let custom_field_values = self
+            .normalize_custom_fields_for_create(project.id, &cmd.custom_fields)
+            .await?;
         // Retry on key conflicts: concurrent creators may compute the same next number.
         let mut issue = None;
         for _ in 0..5 {
@@ -258,6 +313,11 @@ impl crate::context::IssueService for IssueServiceImpl {
         let issue = issue.ok_or_else(|| {
             AppError::conflict("could not allocate a unique issue key, try again")
         })?;
+        for (field_id, value) in custom_field_values {
+            self.custom_fields
+                .set_value(issue.id, field_id, &value)
+                .await?;
+        }
         let statuses = self.statuses.list_all().await.unwrap_or_default();
         let column = statuses
             .iter()
@@ -446,7 +506,8 @@ impl crate::context::IssueService for IssueServiceImpl {
         }
         if let Some(assignee_id) = cmd.assignee_id {
             if let Some(assignee_id) = assignee_id {
-                self.require_active_user(assignee_id, "assignee_id").await?;
+                self.require_project_user(issue.project_id, assignee_id, "assignee_id")
+                    .await?;
             }
             issue.assign(assignee_id);
         }

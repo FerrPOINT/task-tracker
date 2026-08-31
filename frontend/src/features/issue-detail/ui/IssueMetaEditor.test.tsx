@@ -19,8 +19,8 @@ vi.mock('@/shared/api/hooks', () => ({
   }),
   useUsers: () => ({
     data: [
-      { id: 'u1', username: 'alice', display_name: 'Alice', email: 'alice@test.com' },
-      { id: 'u2', username: 'bob', display_name: 'Bob', email: 'bob@test.com' },
+      { id: 'u1', username: 'alice', display_name: 'Alice' },
+      { id: 'u2', username: 'bob', display_name: 'Bob' },
     ],
     isLoading: false,
     error: null,
@@ -84,6 +84,12 @@ describe('IssueMetaEditor', () => {
     expect(screen.getByText(/status/i)).toBeInTheDocument()
     expect(screen.getByText(/priority/i)).toBeInTheDocument()
     expect(screen.getByText(/assignee/i)).toBeInTheDocument()
+    const options = Array.from(
+      (screen.getByLabelText(/priority/i) as HTMLSelectElement).options,
+      (option) => option.value,
+    )
+    expect(options).toEqual(['Lowest', 'Low', 'Medium', 'High', 'Highest'])
+    expect(screen.queryByRole('option', { name: /critical/i })).not.toBeInTheDocument()
   })
 
   it('calls onChange when priority is changed', () => {

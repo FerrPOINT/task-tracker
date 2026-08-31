@@ -107,6 +107,63 @@ pub trait IssueRepository: Send + Sync {
         guard: &TransitionGuard,
     ) -> Result<(), AppError>;
     async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError>;
+    async fn list_unbounded(&self, mut query: IssueQuery) -> Result<Vec<Issue>, AppError> {
+        query.limit = IssueQuery::NO_LIMIT;
+        query.offset = 0;
+        self.list(query).await
+    }
+    async fn count_by_project_status(
+        &self,
+        project_id: ProjectId,
+        status_id: StatusId,
+    ) -> Result<u64, AppError> {
+        Ok(self
+            .list_unbounded(IssueQuery {
+                project_id: Some(project_id),
+                status_id: Some(status_id),
+                ..Default::default()
+            })
+            .await?
+            .len() as u64)
+    }
+    async fn count_backlog(
+        &self,
+        project_id: ProjectId,
+        todo_status_id: StatusId,
+    ) -> Result<u64, AppError> {
+        Ok(self
+            .list_unbounded(IssueQuery {
+                project_id: Some(project_id),
+                status_id: Some(todo_status_id),
+                ..Default::default()
+            })
+            .await?
+            .into_iter()
+            .filter(|issue| issue.sprint_id.is_none())
+            .count() as u64)
+    }
+    async fn list_backlog_page(
+        &self,
+        project_id: ProjectId,
+        todo_status_id: StatusId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Issue>, AppError> {
+        Ok(self
+            .list_unbounded(IssueQuery {
+                project_id: Some(project_id),
+                status_id: Some(todo_status_id),
+                sort_by: Some("created".to_string()),
+                sort_order: Some("desc".to_string()),
+                ..Default::default()
+            })
+            .await?
+            .into_iter()
+            .filter(|issue| issue.sprint_id.is_none())
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError>;
     /// Soft-delete: set `deleted_at` to the current timestamp. The row is
     /// kept and can be restored via [`restore`] or permanently removed via
@@ -999,6 +1056,11 @@ pub trait CustomFieldRepository: Send + Sync {
         field_id: shared::CustomFieldId,
         value: &serde_json::Value,
     ) -> Result<(), AppError>;
+    async fn delete_value(
+        &self,
+        issue_id: IssueId,
+        field_id: shared::CustomFieldId,
+    ) -> Result<(), AppError>;
     async fn get_values_for_issue(
         &self,
         issue_id: IssueId,
@@ -1029,6 +1091,13 @@ impl CustomFieldRepository for StubCustomFieldRepository {
         _issue_id: IssueId,
         _field_id: shared::CustomFieldId,
         _value: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn delete_value(
+        &self,
+        _issue_id: IssueId,
+        _field_id: shared::CustomFieldId,
     ) -> Result<(), AppError> {
         Ok(())
     }

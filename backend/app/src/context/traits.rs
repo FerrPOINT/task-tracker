@@ -24,7 +24,7 @@ pub trait AuthService: Send + Sync {
     async fn refresh(&self, refresh_token: &str) -> Result<AuthDto, AppError>;
     async fn logout(&self, user_id: UserId) -> Result<(), AppError>;
     async fn me(&self, user_id: UserId) -> Result<crate::dto::UserDto, AppError>;
-    async fn list_users(&self) -> Result<Vec<crate::dto::UserDto>, AppError>;
+    async fn list_active_users(&self) -> Result<Vec<crate::dto::UserDto>, AppError>;
 }
 
 #[async_trait]

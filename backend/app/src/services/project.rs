@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use crate::authz::Authz;
 use crate::dto::ProjectDto;
-use domain::{Board, IssueQuery, IssueRepository, ProjectRepository};
+use domain::{Board, IssueRepository, ProjectRepository, StatusCategory, StatusRepository};
 use shared::{AppError, BoardId, ProjectId, ProjectKey, UserId};
 
 pub struct ProjectServiceImpl {
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
     users: Arc<dyn domain::UserRepository>,
+    statuses: Arc<dyn StatusRepository>,
     authz: Authz,
 }
 
@@ -19,6 +20,7 @@ impl ProjectServiceImpl {
         issues: Arc<dyn IssueRepository>,
         users: Arc<dyn domain::UserRepository>,
         boards: Arc<dyn domain::BoardRepository>,
+        statuses: Arc<dyn StatusRepository>,
         authz: Authz,
     ) -> Self {
         // `boards` is no longer stored: project creation persists the default
@@ -28,8 +30,31 @@ impl ProjectServiceImpl {
             projects,
             issues,
             users,
+            statuses,
             authz,
         }
+    }
+
+    async fn count_by_status_categories(
+        &self,
+        project_id: ProjectId,
+        statuses: &[domain::Status],
+    ) -> Result<(i64, i64, i64), AppError> {
+        let mut todo = 0;
+        let mut in_progress = 0;
+        let mut done = 0;
+        for status in statuses {
+            let count = self
+                .issues
+                .count_by_project_status(project_id, status.id)
+                .await? as i64;
+            match status.category {
+                StatusCategory::Todo => todo += count,
+                StatusCategory::InProgress => in_progress += count,
+                StatusCategory::Done => done += count,
+            }
+        }
+        Ok((todo, in_progress, done))
     }
 }
 
@@ -85,6 +110,7 @@ impl crate::context::ProjectService for ProjectServiceImpl {
                 projects.push(p);
             }
         }
+        let statuses = self.statuses.list_all().await?;
         // One user-list fetch instead of a per-project owner lookup (N+1).
         let owner_names: std::collections::HashMap<_, _> = self
             .users
@@ -96,8 +122,9 @@ impl crate::context::ProjectService for ProjectServiceImpl {
             .collect();
         let mut dtos = Vec::new();
         for project in projects {
-            let counts = self.issues.list(IssueQuery::project(project.id)).await?;
-            let (todo, in_progress, done) = super::helpers::count_by_status(&counts);
+            let (todo, in_progress, done) = self
+                .count_by_status_categories(project.id, &statuses)
+                .await?;
             let owner_name = owner_names
                 .get(&project.owner_id)
                 .cloned()
@@ -124,8 +151,10 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         self.authz
             .require_project_access(project.id, requester)
             .await?;
-        let counts = self.issues.list(IssueQuery::project(project.id)).await?;
-        let (todo, in_progress, done) = super::helpers::count_by_status(&counts);
+        let statuses = self.statuses.list_all().await?;
+        let (todo, in_progress, done) = self
+            .count_by_status_categories(project.id, &statuses)
+            .await?;
         let owner_name = self
             .users
             .get_by_id(project.owner_id)
@@ -159,8 +188,10 @@ impl crate::context::ProjectService for ProjectServiceImpl {
             project.updated_at = shared::now();
         }
         self.projects.save(&project).await?;
-        let counts = self.issues.list(IssueQuery::project(project.id)).await?;
-        let (todo, in_progress, done) = super::helpers::count_by_status(&counts);
+        let statuses = self.statuses.list_all().await?;
+        let (todo, in_progress, done) = self
+            .count_by_status_categories(project.id, &statuses)
+            .await?;
         let owner_name = self
             .users
             .get_by_id(project.owner_id)

@@ -7,17 +7,45 @@ import {
 } from '@/shared/api/hooks'
 import type { CustomField } from '@/api/custom-fields'
 
-function FieldInput({
+export function customFieldDateInputValue(value: unknown) {
+  if (typeof value !== 'string') return ''
+  if (/^\d{4}-\d{2}-\d{2}(?:$|T)/.test(value)) return value.slice(0, 10)
+  return ''
+}
+
+export function isEmptyCustomFieldValue(value: unknown) {
+  return (
+    value == null ||
+    (typeof value === 'string' && value.trim() === '') ||
+    (Array.isArray(value) && value.length === 0)
+  )
+}
+
+function customFieldInputValue(field: CustomField, value: unknown) {
+  if (field.field_type === 'date') return customFieldDateInputValue(value)
+  if (typeof value === 'number') return String(value)
+  if (typeof value === 'string') return value
+  return ''
+}
+
+function customFieldValueFromInput(field: CustomField, value: string) {
+  if (field.field_type === 'number' && value !== '') return Number(value)
+  return value
+}
+
+export function CustomFieldValueInput({
   field,
   value,
   onSave,
+  commit = 'blur',
 }: {
   field: CustomField
   value: unknown
   onSave: (value: unknown) => void
+  commit?: 'blur' | 'change'
 }) {
   const { t } = useTranslation()
-  const current = typeof value === 'string' ? value : ''
+  const current = customFieldInputValue(field, value)
   if (field.field_type === 'select') {
     return (
       <select
@@ -51,18 +79,24 @@ function FieldInput({
       </select>
     )
   }
+  const type =
+    field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'
+  if (commit === 'change') {
+    return (
+      <input
+        className="w-full rounded border border-border bg-background p-2"
+        type={type}
+        value={current}
+        onChange={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
+      />
+    )
+  }
   return (
     <input
       className="w-full rounded border border-border bg-background p-2"
-      type={
-        field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'
-      }
+      type={type}
       defaultValue={current}
-      onBlur={(e) =>
-        onSave(
-          field.field_type === 'number' && e.target.value ? Number(e.target.value) : e.target.value,
-        )
-      }
+      onBlur={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
     />
   )
 }
@@ -91,7 +125,7 @@ export function CustomFieldsPanel({
           {field.name}
           {field.is_required ? ' *' : ''}
           <div className="mt-1">
-            <FieldInput
+            <CustomFieldValueInput
               field={field}
               value={byField.get(field.id)}
               onSave={(value) => save.mutate({ fieldId: field.id, value })}

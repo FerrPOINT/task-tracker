@@ -9,6 +9,9 @@ pub enum AppError {
     #[error("invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("validation failed: {0}")]
+    Validation(String),
+
     #[error("unauthorized")]
     Unauthorized,
 
@@ -30,6 +33,7 @@ impl IntoResponse for AppError {
         let (status, public_msg) = match &self {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::Validation(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg.clone()),
             AppError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "forbidden".to_string()),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone()),
@@ -60,6 +64,10 @@ impl AppError {
 
     pub fn invalid_input(msg: impl Into<String>) -> Self {
         Self::InvalidInput(msg.into())
+    }
+
+    pub fn validation(msg: impl Into<String>) -> Self {
+        Self::Validation(msg.into())
     }
 
     pub fn conflict(msg: impl Into<String>) -> Self {

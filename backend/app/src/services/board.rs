@@ -42,13 +42,8 @@ impl BoardServiceImpl {
             .ok_or_else(|| AppError::invalid_input("unknown target column"))?;
         let target_count = self
             .issues
-            .list(IssueQuery {
-                project_id: Some(board.project_id),
-                status_id: Some(status_id),
-                ..Default::default()
-            })
-            .await?
-            .len() as u64;
+            .count_by_project_status(board.project_id, status_id)
+            .await?;
         Ok(TransitionGuard {
             wip_limit: column.wip_limit.map(|v| v as u32),
             target_count,
@@ -85,7 +80,7 @@ impl BoardServiceImpl {
         let sprint = self.sprints.get_active_by_project(board.project_id).await?;
         let issues = self
             .issues
-            .list(IssueQuery {
+            .list_unbounded(IssueQuery {
                 project_id: Some(board.project_id),
                 ..Default::default()
             })
@@ -191,9 +186,9 @@ impl crate::context::BoardService for BoardServiceImpl {
             .await?;
         let board = self.boards.get_default_by_project_key(project_key).await?;
         let sprint = self.sprints.get_active_by_project(board.project_id).await?;
-        let all_issues = self
+        let all_non_backlog_candidates = self
             .issues
-            .list(IssueQuery {
+            .list_unbounded(IssueQuery {
                 project_id: Some(board.project_id),
                 sort_by: Some("created".to_string()),
                 sort_order: Some("desc".to_string()),
@@ -215,14 +210,9 @@ impl crate::context::BoardService for BoardServiceImpl {
                     .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()))
             });
 
-        let sprint_issues_raw: Vec<_> = all_issues
-            .clone()
+        let sprint_issues_raw: Vec<_> = all_non_backlog_candidates
             .into_iter()
             .filter(|i| i.sprint_id.is_some() || i.status_id != todo_status)
-            .collect();
-        let backlog_issues_raw: Vec<_> = all_issues
-            .into_iter()
-            .filter(|i| i.sprint_id.is_none() && i.status_id == todo_status)
             .collect();
 
         let sprint_dto = sprint
@@ -252,16 +242,21 @@ impl crate::context::BoardService for BoardServiceImpl {
             project_label.as_str(),
         )
         .await?;
-        // A bounded page prevents multi-MB responses and >32k-pixel pages,
-        // while offset paging keeps every backlog item reachable.
-        let backlog_total = backlog_issues_raw.len();
         let offset = offset as usize;
         let page_limit = (limit as usize).clamp(1, backlog::BACKLOG_MAX_PAGE_SIZE);
-        let backlog_issues_raw = backlog_issues_raw
-            .into_iter()
-            .skip(offset)
-            .take(page_limit)
-            .collect::<Vec<_>>();
+        let backlog_total = self
+            .issues
+            .count_backlog(board.project_id, todo_status)
+            .await? as usize;
+        let backlog_issues_raw = self
+            .issues
+            .list_backlog_page(
+                board.project_id,
+                todo_status,
+                page_limit as u64,
+                offset as u64,
+            )
+            .await?;
         let backlog_issues = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
             backlog_issues_raw,

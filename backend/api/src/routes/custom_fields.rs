@@ -285,6 +285,7 @@ pub async fn list_issue_custom_field_values(
         (status = 400, description = "Bad request"),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Issue or field not found"),
+        (status = 422, description = "Required custom field cannot be cleared"),
     ),
     security(("bearer" = []))
 )]

@@ -5,7 +5,7 @@ import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
 import { useCurrentUser, useStatuses, useTransitions, useUsers } from '@/shared/api/hooks'
 
-const priorities = ['Low', 'Medium', 'High', 'Critical']
+const priorities = ['Lowest', 'Low', 'Medium', 'High', 'Highest']
 
 interface IssueMetaEditorProps {
   issue: Issue
@@ -58,7 +58,7 @@ export function IssueMetaEditor({
       { value: '', label: t('issue.unassigned') },
       ...list.map((u) => ({
         value: u.id,
-        label: u.display_name || u.username || u.email,
+        label: u.display_name || u.username,
       })),
     ]
   }, [usersQuery.data, currentUser.data, t])

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use shared::{IssueId, ProjectId, SprintId, StatusId, UserId};
 
@@ -73,6 +75,7 @@ pub struct CreateIssueCommand {
     pub priority: shared::Priority,
     pub assignee_id: Option<shared::UserId>,
     pub actor_id: shared::UserId,
+    pub custom_fields: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
