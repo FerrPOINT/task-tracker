@@ -14,7 +14,7 @@ use app::commands::{LoginCommand, RegisterCommand};
     tag = "auth",
     request_body = RegisterRequest,
     responses(
-        (status = 201, description = "User registered", body = AuthResponse),
+        (status = 201, description = "User registered; refresh session is issued in the HttpOnly cookie", body = AuthResponse, headers(("Set-Cookie" = String, description = "Rotated HttpOnly refresh-session cookie"))),
         (status = 400, description = "Bad request"),
     )
 )]
@@ -40,7 +40,7 @@ pub async fn register(
     tag = "auth",
     request_body = LoginRequest,
     responses(
-        (status = 200, description = "Login successful", body = AuthResponse),
+        (status = 200, description = "Login successful; refresh session is issued in the HttpOnly cookie", body = AuthResponse, headers(("Set-Cookie" = String, description = "Rotated HttpOnly refresh-session cookie"))),
         (status = 401, description = "Invalid credentials"),
     )
 )]
@@ -81,8 +81,11 @@ pub async fn refresh(
     path = "/api/v1/auth/refresh",
     tag = "auth",
     request_body = RefreshRequest,
+    params(
+        ("refresh_token" = Option<String>, Cookie, description = "HttpOnly refresh-session cookie; browser clients use this primary credential"),
+    ),
     responses(
-        (status = 200, description = "Tokens refreshed", body = AuthResponse),
+        (status = 200, description = "Tokens refreshed and refresh session rotated", body = AuthResponse, headers(("Set-Cookie" = String, description = "Rotated HttpOnly refresh-session cookie"))),
         (status = 401, description = "Invalid refresh token"),
     )
 )]
@@ -168,6 +171,8 @@ fn parse_refresh_body(body: &[u8]) -> Result<Option<String>, AppError> {
 }
 
 fn map_auth(dto: app::dto::AuthDto) -> AuthResponse {
+    // The refresh token travels ONLY in the HttpOnly cookie set by the
+    // caller; it must never be serialized into the JSON body.
     AuthResponse {
         access_token: dto.access_token,
         token_type: "Bearer".to_string(),

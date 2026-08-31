@@ -39,6 +39,9 @@ function readStoredAuth(): {
   }
 }
 
+// The refresh token lives ONLY in the HttpOnly cookie set by the backend.
+// It is never copied into localStorage: an XSS payload must not be able to
+// read it and silently extend the session (audit r4, P1).
 interface AuthState {
   token: string | null
   userId: string | null

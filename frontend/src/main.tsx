@@ -9,7 +9,22 @@ import { router } from './app/router'
 import { ThemeProvider } from './shared/lib/theme'
 import './index.css'
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Transient 429s (per-IP burst limit) must not surface as "empty"
+      // data: retry with backoff so a short burst resolves instead of
+      // rendering a permanently empty page.
+      retry: (failureCount, error) => {
+        if (failureCount >= 4) return false
+        const status = (error as { status?: number })?.status
+        return status === undefined || status === 429 || status >= 500
+      },
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10_000),
+    },
+    mutations: { retry: false },
+  },
+})
 
 function Boot() {
   const [ready, setReady] = useState(i18n.isInitialized)

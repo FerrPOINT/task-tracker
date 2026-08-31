@@ -147,6 +147,7 @@ fn parse_user_id(claims: &app::auth::UserClaims) -> Result<UserId, AppError> {
     ),
     tag = "admin",
     operation_id = "admin_list_users",
+    security(("bearer" = []))
 )]
 pub async fn list_users(
     State(ctx): State<Arc<app::AppContext>>,
@@ -170,6 +171,7 @@ pub async fn list_users(
         (status = 409, description = "Conflict — email already registered"),
     ),
     tag = "admin",
+    security(("bearer" = []))
 )]
 pub async fn create_user(
     State(ctx): State<Arc<app::AppContext>>,
@@ -200,6 +202,7 @@ pub async fn create_user(
         (status = 409, description = "Conflict — cannot deactivate last system admin"),
     ),
     tag = "admin",
+    security(("bearer" = []))
 )]
 pub async fn update_user_status(
     State(ctx): State<Arc<app::AppContext>>,
@@ -229,6 +232,7 @@ pub async fn update_user_status(
         (status = 403, description = "Forbidden — system admin required"),
     ),
     tag = "admin",
+    security(("bearer" = []))
 )]
 pub async fn list_audit_logs(
     State(ctx): State<Arc<app::AppContext>>,
@@ -263,6 +267,7 @@ pub struct AuditLogQueryParams {
         (status = 403, description = "Forbidden — system admin required"),
     ),
     tag = "admin",
+    security(("bearer" = []))
 )]
 pub async fn list_system_settings(
     State(ctx): State<Arc<app::AppContext>>,
@@ -293,6 +298,7 @@ pub async fn list_system_settings(
         (status = 403, description = "Forbidden — system admin required"),
     ),
     tag = "admin",
+    security(("bearer" = []))
 )]
 pub async fn update_system_setting(
     State(ctx): State<Arc<app::AppContext>>,

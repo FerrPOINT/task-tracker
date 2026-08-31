@@ -10,7 +10,8 @@ use app::commands::ProjectQueryDto;
 #[utoipa::path(
     get,
     path = "/api/v1/projects",
-    responses((status = 200, body = ProjectListResponse))
+    responses((status = 200, body = ProjectListResponse)),
+    security(("bearer" = []))
 )]
 pub async fn list_projects(
     State(ctx): State<Arc<app::AppContext>>,
@@ -52,7 +53,8 @@ fn map_project_response(dto: app::dto::ProjectDto) -> ProjectResponse {
     post,
     path = "/api/v1/projects",
     request_body = CreateProjectRequest,
-    responses((status = 201, body = ProjectResponse))
+    responses((status = 201, body = ProjectResponse)),
+    security(("bearer" = []))
 )]
 pub async fn create_project(
     State(ctx): State<Arc<app::AppContext>>,
@@ -81,7 +83,8 @@ pub async fn create_project(
     get,
     path = "/api/v1/projects/{project_key}",
     params(("project_key" = String, Path, description = "Project key")),
-    responses((status = 200, body = ProjectResponse))
+    responses((status = 200, body = ProjectResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_project(
     State(ctx): State<Arc<app::AppContext>>,
@@ -105,7 +108,8 @@ pub async fn get_project(
     path = "/api/v1/projects/{project_key}",
     params(("project_key" = String, Path, description = "Project key")),
     request_body = UpdateProjectRequest,
-    responses((status = 200, body = ProjectResponse))
+    responses((status = 200, body = ProjectResponse)),
+    security(("bearer" = []))
 )]
 pub async fn update_project(
     State(ctx): State<Arc<app::AppContext>>,
@@ -134,7 +138,8 @@ pub async fn update_project(
     delete,
     path = "/api/v1/projects/{project_key}",
     params(("project_key" = String, Path, description = "Project key")),
-    responses((status = 204))
+    responses((status = 204)),
+    security(("bearer" = []))
 )]
 pub async fn delete_project(
     State(ctx): State<Arc<app::AppContext>>,

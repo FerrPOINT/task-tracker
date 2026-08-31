@@ -12,7 +12,8 @@ use app::auth::UserClaims;
 #[utoipa::path(
     get,
     path = "/api/v1/dashboard",
-    responses((status = 200, body = DashboardResponse))
+    responses((status = 200, body = DashboardResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_dashboard(
     State(ctx): State<Arc<app::AppContext>>,

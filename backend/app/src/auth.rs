@@ -60,7 +60,18 @@ impl crate::context::AuthService for JwtAuthService {
     }
 
     async fn refresh(&self, refresh_token: &str) -> Result<AuthDto, AppError> {
-        let claims = self.verify_token(refresh_token)?;
+        let key = self.config.jwt_secret.as_bytes();
+        let decoded = jsonwebtoken::decode::<UserClaims>(
+            refresh_token,
+            &jsonwebtoken::DecodingKey::from_secret(key),
+            &jsonwebtoken::Validation::default(),
+        )
+        .map_err(|_| AppError::Unauthorized)?;
+        // Only refresh-type tokens may enter the rotation flow.
+        if decoded.claims.typ.as_deref() != Some(TOKEN_TYPE_REFRESH) {
+            return Err(AppError::Unauthorized);
+        }
+        let claims = decoded.claims;
         let user_id = claims
             .sub
             .parse::<UserId>()
@@ -112,6 +123,11 @@ impl crate::context::AuthService for JwtAuthService {
             &jsonwebtoken::Validation::default(),
         )
         .map_err(|_| AppError::Unauthorized)?;
+        // Only access tokens may authenticate the protected API. Refresh
+        // tokens (7-day TTL) must never be replayed as a Bearer credential.
+        if token.claims.typ.as_deref() != Some(TOKEN_TYPE_ACCESS) {
+            return Err(AppError::Unauthorized);
+        }
         Ok(token.claims)
     }
 }
@@ -170,6 +186,9 @@ fn create_access_token(config: &AuthConfig, user_id: UserId) -> Result<String, A
     let claims = UserClaims {
         sub: user_id.to_string(),
         exp: exp.timestamp() as usize,
+        // Token type discrimination: the middleware only accepts `access`
+        // tokens, so a leaked refresh token cannot be replayed as a Bearer.
+        typ: Some(TOKEN_TYPE_ACCESS.to_string()),
         jti: None,
     };
     jsonwebtoken::encode(
@@ -185,6 +204,7 @@ fn create_refresh_token(config: &AuthConfig, user_id: UserId) -> Result<String, 
     let claims = UserClaims {
         sub: user_id.to_string(),
         exp: exp.timestamp() as usize,
+        typ: Some(TOKEN_TYPE_REFRESH.to_string()),
         jti: Some(uuid::Uuid::now_v7().to_string()),
     };
     jsonwebtoken::encode(
@@ -195,10 +215,18 @@ fn create_refresh_token(config: &AuthConfig, user_id: UserId) -> Result<String, 
     .map_err(AppError::internal)
 }
 
+pub const TOKEN_TYPE_ACCESS: &str = "access";
+pub const TOKEN_TYPE_REFRESH: &str = "refresh";
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UserClaims {
     pub sub: String,
     pub exp: usize,
+    /// Token type discriminator (`access` | `refresh`). Optional so that
+    /// tokens issued before this field existed still parse, but only
+    /// `access` tokens may authenticate the protected API.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub typ: Option<String>,
     /// Unique token id; present on refresh tokens so that two rotations in
     /// the same second still mint distinct single-use tokens.
     #[serde(default, skip_serializing_if = "Option::is_none")]

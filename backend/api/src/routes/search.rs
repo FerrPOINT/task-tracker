@@ -11,7 +11,8 @@ use crate::dto::{IssueListResponse, IssueResponse, SearchQuery};
     get,
     path = "/api/v1/search",
     params(SearchQuery),
-    responses((status = 200, body = IssueListResponse))
+    responses((status = 200, body = IssueListResponse)),
+    security(("bearer" = []))
 )]
 pub async fn search_global(
     State(ctx): State<Arc<app::AppContext>>,

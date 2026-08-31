@@ -1513,6 +1513,23 @@ impl CommentRepository for CommentRepo {
         Ok(models.into_iter().map(map_comment).collect())
     }
 
+    async fn list_by_issue_page(
+        &self,
+        issue_id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Comment>, AppError> {
+        let models = comment::Entity::find()
+            .filter(comment::Column::IssueId.eq(issue_id.as_uuid()))
+            .order_by_asc(comment::Column::CreatedAt)
+            .offset(offset)
+            .limit(limit)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_comment).collect())
+    }
+
     async fn save(&self, comment_item: &Comment) -> Result<CommentId, AppError> {
         let exists = comment::Entity::find_by_id(comment_item.id.as_uuid())
             .one(&*self.db)
@@ -1571,14 +1588,25 @@ impl WorklogRepository for WorklogRepo {
             .ok_or_else(|| AppError::not_found("worklog", id))
     }
 
-    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
+    async fn list_by_issue_page(
+        &self,
+        issue_id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Worklog>, AppError> {
         let models = worklog::Entity::find()
             .filter(worklog::Column::IssueId.eq(issue_id.as_uuid()))
             .order_by_asc(worklog::Column::StartedAt)
+            .offset(offset)
+            .limit(limit)
             .all(&*self.db)
             .await
             .map_err(AppError::database)?;
         Ok(models.into_iter().map(map_worklog).collect())
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
+        self.list_by_issue_page(issue_id, u64::MAX, 0).await
     }
 
     async fn save(&self, worklog_item: &Worklog) -> Result<WorklogId, AppError> {
@@ -1899,6 +1927,25 @@ impl NotificationRepository for NotificationRepo {
                 Expr::current_timestamp().into(),
             )
             .filter(notification::Column::RecipientId.eq(recipient_id.as_uuid()))
+            .filter(notification::Column::IsRead.eq(false))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn mark_read_batch(&self, ids: &[NotificationId]) -> Result<(), AppError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let uuids: Vec<uuid::Uuid> = ids.iter().map(|id| id.as_uuid()).collect();
+        notification::Entity::update_many()
+            .col_expr(notification::Column::IsRead, Expr::value(true))
+            .col_expr(
+                notification::Column::ReadAt,
+                Expr::current_timestamp().into(),
+            )
+            .filter(notification::Column::Id.is_in(uuids))
             .filter(notification::Column::IsRead.eq(false))
             .exec(&*self.db)
             .await

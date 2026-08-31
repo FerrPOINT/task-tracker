@@ -261,17 +261,15 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 ### ErrorResponse
 
+Runtime contract (single source of truth — `backend/shared/src/error.rs`):
+
 ```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Request validation failed",
-    "details": [
-      { "field": "summary", "message": "required" }
-    ]
-  }
-}
+{ "error": "not found: issue 0192…", "detail": null, "instance": "/api/v1/issues/…" }
 ```
+
+- `error` — короткое человекочитаемое сообщение; для 500 всегда `internal server error` (детали только в логах, не в теле ответа).
+- `detail` / `instance` — RFC 7807-совместимые поля, зарезервированы и сейчас всегда `null`/путь запроса.
+- Структурированные коды ошибок (`code` + `details[]`) в рантайме НЕ отдаются; SDK должен ориентироваться на HTTP status (400/401/403/404/409/429/500) и текст `error`.
 
 ---
 
@@ -325,6 +323,8 @@ Refresh берётся из `httpOnly` cookie. Для non-browser клиенто
 ```
 
 Возвращает новый access token и обновляет refresh cookie. Refresh token не возвращается в JSON.
+
+Клиенты без cookie-jar (CLI) могут передать текущий refresh-токен в теле: `{"refresh_token": "…"}`. Cookie имеет приоритет.
 
 **Response 200:**
 ```json

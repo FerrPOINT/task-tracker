@@ -14,8 +14,8 @@ use shared::{
 };
 
 use crate::commands::{
-    CreateIssueCommand, CreateProjectCommand, LoginCommand, RegisterCommand, UpdateIssueCommand,
-    UpdateNotificationSettingsCommand,
+    CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, LoginCommand, RegisterCommand,
+    UpdateIssueCommand, UpdateNotificationSettingsCommand,
 };
 use crate::context::{AppContext, NotificationService};
 use crate::services::NotificationServiceImpl;
@@ -137,6 +137,7 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
     boards.save(&board).await.unwrap();
     let sprints = Arc::new(MemorySprintRepository::default());
 
+    let notifications = Arc::new(MemoryNotificationRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
@@ -156,8 +157,8 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         attachments: Arc::new(domain::StubAttachmentRepository),
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
-        notifications: Arc::new(MemoryNotificationRepository::default()),
-        notification_settings: Arc::new(domain::StubUserNotificationSettingsRepository),
+        notifications: notifications.clone(),
+        notification_settings: notifications.clone(),
         issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
         watchers: Arc::new(domain::MemoryWatcherRepository::default()),
         votes: Arc::new(domain::MemoryVoteRepository::default()),
@@ -230,6 +231,7 @@ async fn auth_expired_token_fails_verification() {
         &jsonwebtoken::Header::default(),
         &crate::auth::UserClaims {
             jti: None,
+            typ: Some("access".to_string()),
             sub: UserId::new().to_string(),
             exp: 1,
         },
@@ -1248,6 +1250,143 @@ async fn notification_service_returns_default_settings_and_persists_valid_update
             .is_err()
     );
 }
+
+async fn notification_recipient(ctx: &AppContext) -> User {
+    let dto = ctx
+        .services
+        .auth
+        .register(RegisterCommand {
+            email: format!("notify-{}@example.com", uuid::Uuid::new_v4()),
+            username: format!("notify{}", &uuid::Uuid::new_v4().simple().to_string()[..6]),
+            name: "Notify Recipient".to_string(),
+            password: "12345678".to_string(),
+        })
+        .await
+        .unwrap();
+    ctx.repos
+        .users
+        .get_by_id(dto.user.id.parse().unwrap())
+        .await
+        .unwrap()
+}
+
+// ─── Notification preference enforcement (audit r4, P2) ──────────────
+
+#[tokio::test]
+async fn disabled_event_types_suppress_in_app_notification() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let second = notification_recipient(&ctx).await;
+    // Disable issue_assigned notifications for the recipient, then assign.
+    ctx.services
+        .notification
+        .update_settings(
+            second.id,
+            UpdateNotificationSettingsCommand {
+                email_frequency: "immediate".into(),
+                disabled_event_types: vec!["issue_assigned".into()],
+                notify_own_changes: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    ctx.services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Muted assignment".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: Some(second.id),
+                actor_id: user.id,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let unread = ctx
+        .repos
+        .notifications
+        .list_unread(second.id)
+        .await
+        .unwrap();
+    assert!(
+        unread
+            .iter()
+            .all(|n| n.event_type.as_ref() != "issue_assigned"),
+        "disabled_event_types must suppress in-app notifications, got {:?}",
+        unread
+            .iter()
+            .map(|n| n.event_type.to_string())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn notify_own_changes_false_suppresses_self_notifications() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    // notify_own_changes defaults to false: commenting on own issue must not
+    // create a notification for the author.
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Self comment".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    ctx.services
+        .comment
+        .create(
+            CreateCommentCommand {
+                issue_id: issue.id.parse().unwrap(),
+                author_id: user.id,
+                body: "own comment".to_string(),
+                actor_id: user.id,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let unread = ctx.repos.notifications.list_unread(user.id).await.unwrap();
+    assert!(
+        unread
+            .iter()
+            .all(|n| n.event_type.as_ref() != "issue_commented"),
+        "self-events must be suppressed when notify_own_changes is false"
+    );
+}
+
 // ─── v0.2.0 feature tests ────────────────────────────────────────────
 
 #[tokio::test]
@@ -1556,6 +1695,54 @@ async fn version_create_and_list() {
         .unwrap();
     assert_eq!(versions.len(), 1);
     assert_eq!(versions[0].name, "v1.0");
+}
+
+#[tokio::test]
+async fn issue_soft_delete_and_restore_publishes_invalidation_events() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Event lifecycle issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let mut events = ctx.events.subscribe();
+
+    ctx.services.issue.delete(issue_id, user.id).await.unwrap();
+    let deleted = events.recv().await.unwrap();
+    assert!(matches!(
+        deleted,
+        shared::TrackerEvent::IssueDeleted { issue_id: ref id, project_key: ref key }
+            if id == &issue.id && key == "TT"
+    ));
+
+    ctx.services.issue.restore(issue_id, user.id).await.unwrap();
+    let restored = events.recv().await.unwrap();
+    assert!(matches!(
+        restored,
+        shared::TrackerEvent::IssueUpdated { issue_id: ref id, project_key: ref key }
+            if id == &issue.id && key == "TT"
+    ));
 }
 
 #[tokio::test]

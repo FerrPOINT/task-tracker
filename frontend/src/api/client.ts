@@ -4,7 +4,7 @@ import { useAuthStore } from '@/shared/auth/store'
 
 export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
 
-export const api = createClient<paths>({ baseUrl: apiBaseUrl })
+export const api = createClient<paths>({ baseUrl: apiBaseUrl, credentials: 'include' })
 
 let refreshPromise: Promise<boolean> | null = null
 
@@ -12,11 +12,13 @@ export async function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
+      // The HttpOnly refresh cookie is the only refresh credential the
+      // browser holds.
       const res = await fetch(`${apiBaseUrl}/api/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: '{}',
       })
       if (!res.ok) {
         useAuthStore.getState().logout()

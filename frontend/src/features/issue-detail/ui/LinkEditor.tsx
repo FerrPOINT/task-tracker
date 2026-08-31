@@ -41,6 +41,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           {links.map((l) => {
             const isSource = l.source_id === issueId
             const otherKey = isSource ? l.target_key : l.source_key
+            const otherId = isSource ? l.target_id : l.source_id
             const label = isSource
               ? t(`links.type.${l.link_type}`)
               : t(`links.typeInverse.${l.link_type}`)
@@ -49,7 +50,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
                 <span>
                   <span className="text-muted-foreground">{label}</span>{' '}
                   <Link
-                    to={`/issues/${otherKey}`}
+                    to={`/issues/${otherId}`}
                     className="font-medium text-accent hover:underline"
                   >
                     {otherKey}

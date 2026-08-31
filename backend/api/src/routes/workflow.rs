@@ -9,7 +9,8 @@ use crate::dto::{IssueTypeResponse, StatusResponse, TransitionResponse};
     path = "/api/v1/statuses",
     responses(
         (status = 200, description = "List statuses", body = Vec<StatusResponse>)
-    )
+    ),
+    security(("bearer" = []))
 )]
 pub async fn list_statuses(
     State(ctx): State<Arc<app::AppContext>>,
@@ -35,7 +36,8 @@ pub async fn list_statuses(
     path = "/api/v1/transitions",
     responses(
         (status = 200, description = "List workflow transitions", body = Vec<TransitionResponse>)
-    )
+    ),
+    security(("bearer" = []))
 )]
 pub async fn list_transitions(
     State(ctx): State<Arc<app::AppContext>>,
@@ -59,7 +61,8 @@ pub async fn list_transitions(
     path = "/api/v1/issue-types",
     responses(
         (status = 200, description = "List issue types", body = Vec<IssueTypeResponse>)
-    )
+    ),
+    security(("bearer" = []))
 )]
 pub async fn list_issue_types(
     State(ctx): State<Arc<app::AppContext>>,

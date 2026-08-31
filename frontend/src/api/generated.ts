@@ -235,7 +235,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries. Auth accepts the standard bearer header, or access_token query only for browser EventSource clients. */
+        /** @description Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (event_type, issue_id, project_key). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter. */
         get: operations["events"];
         put?: never;
         post?: never;
@@ -1517,6 +1517,14 @@ export interface components {
             updated_at: string;
             value: unknown;
         };
+        TrackerEventPayload: {
+            /** @description Event discriminator, e.g. `issue_created`, `issue_updated`, `issue_deleted`. */
+            event_type: string;
+            /** @description UUID of the affected issue (when applicable). */
+            issue_id?: string | null;
+            /** @description Project key for cache scoping (when applicable). */
+            project_key?: string | null;
+        };
         TransitionIssueRequest: {
             target_status_id: string;
         };
@@ -1638,9 +1646,6 @@ export interface components {
             /** Format: int64 */
             count: number;
             has_voted: boolean;
-        };
-        WatchRequest: {
-            user_id?: string | null;
         };
         WatchStatusResponse: {
             is_watching: boolean;
@@ -2004,9 +2009,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Login successful */
+            /** @description Login successful; refresh session is issued in the HttpOnly cookie */
             200: {
                 headers: {
+                    /** @description Rotated HttpOnly refresh-session cookie */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2071,7 +2078,10 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                /** @description HttpOnly refresh-session cookie; browser clients use this primary credential */
+                refresh_token?: string | null;
+            };
         };
         requestBody: {
             content: {
@@ -2079,9 +2089,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Tokens refreshed */
+            /** @description Tokens refreshed and refresh session rotated */
             200: {
                 headers: {
+                    /** @description Rotated HttpOnly refresh-session cookie */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2110,9 +2122,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description User registered */
+            /** @description User registered; refresh session is issued in the HttpOnly cookie */
             201: {
                 headers: {
+                    /** @description Rotated HttpOnly refresh-session cookie */
+                    "Set-Cookie"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2318,12 +2332,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description SSE stream (text/event-stream) */
+            /** @description SSE stream (text/event-stream) of `tracker` events */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "text/event-stream": components["schemas"]["TrackerEventPayload"];
+                };
             };
             /** @description Unauthorized */
             401: {
@@ -3196,13 +3212,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["WatchRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Now watching the issue */
+            /** @description Now watching the issue (always as the authenticated user) */
             204: {
                 headers: {
                     [name: string]: unknown;

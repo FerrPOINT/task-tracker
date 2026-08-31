@@ -10,20 +10,9 @@ import {
   useRemoveProjectMember,
 } from '@/shared/api/hooks'
 import type { components } from '@/api/generated'
+import { UserAvatar } from '@/shared/ui/user-avatar'
 
 type User = components['schemas']['UserResponse']
-
-function Avatar({ name }: { name: string }) {
-  const colors = ['bg-accent', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
-  const color = colors[name.charCodeAt(0) % colors.length]
-  return (
-    <div
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white ${color}`}
-    >
-      {name.charAt(0).toUpperCase()}
-    </div>
-  )
-}
 
 export function ProjectMembersPanel({
   projectKey,
@@ -107,7 +96,7 @@ export function ProjectMembersPanel({
                     className="flex items-center justify-between rounded-md border border-border bg-surface-raised p-2"
                   >
                     <div className="flex items-center gap-2">
-                      <Avatar name={name} />
+                      <UserAvatar name={name} userId={m.user_id} size="md" />
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium">{name}</div>
                         <div className="text-xs text-text-muted capitalize">{m.role}</div>

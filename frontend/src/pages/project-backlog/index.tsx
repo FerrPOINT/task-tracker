@@ -31,6 +31,7 @@ import {
   useRemoveIssueFromSprint,
 } from '@/shared/api/hooks'
 import { SprintFormDialog } from '@/features/sprints/ui/SprintFormDialog'
+import { UserAvatar } from '@/shared/ui/user-avatar'
 import type { components } from '@/api/generated'
 import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
 
@@ -46,18 +47,6 @@ function PriorityBadge({ priority }: { priority: string }) {
   return <span className={`text-xs font-medium ${color}`}>{priority}</span>
 }
 
-function Avatar({ name }: { name: string }) {
-  const colors = ['bg-accent', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
-  const color = colors[name.charCodeAt(0) % colors.length]
-  return (
-    <div
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${color}`}
-    >
-      {name.charAt(0).toUpperCase()}
-    </div>
-  )
-}
-
 function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode }) {
   return (
     <div className="group flex items-center gap-2 border-b border-border px-3 py-2.5 text-sm hover:bg-surface-raised sm:grid sm:grid-cols-[24px_80px_1fr_90px_40px_40px] sm:gap-3">
@@ -68,7 +57,7 @@ function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode })
       </Link>
       <div className="ml-auto flex shrink-0 items-center gap-2 sm:order-4 sm:ml-0">
         <PriorityBadge priority={issue.priority} />
-        <Avatar name={issue.assignee_name ?? '?'} />
+        <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
       </div>
       <div className="sm:order-5" />
       <div className="flex justify-end sm:order-6">{action}</div>

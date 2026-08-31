@@ -232,6 +232,13 @@ pub trait SprintRepository: Send + Sync {
 
 #[async_trait]
 pub trait CommentRepository: Send + Sync {
+    /// Bounded page query — callers must NOT load full comment threads.
+    async fn list_by_issue_page(
+        &self,
+        issue_id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Comment>, AppError>;
     async fn get_by_id(&self, id: CommentId) -> Result<Comment, AppError>;
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Comment>, AppError>;
     async fn save(&self, comment: &Comment) -> Result<CommentId, AppError>;
@@ -241,6 +248,12 @@ pub trait CommentRepository: Send + Sync {
 #[async_trait]
 pub trait WorklogRepository: Send + Sync {
     async fn get_by_id(&self, id: WorklogId) -> Result<Worklog, AppError>;
+    async fn list_by_issue_page(
+        &self,
+        issue_id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Worklog>, AppError>;
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError>;
     async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError>;
     async fn delete(&self, id: WorklogId) -> Result<(), AppError>;
@@ -404,6 +417,14 @@ impl LabelRepository for StubLabelRepository {
 pub struct StubCommentRepository;
 #[async_trait]
 impl CommentRepository for StubCommentRepository {
+    async fn list_by_issue_page(
+        &self,
+        _issue_id: IssueId,
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<Vec<Comment>, AppError> {
+        Ok(Vec::new())
+    }
     async fn get_by_id(&self, _id: CommentId) -> Result<Comment, AppError> {
         Err(AppError::not_found("comment", "stub"))
     }
@@ -423,6 +444,15 @@ pub struct StubWorklogRepository;
 impl WorklogRepository for StubWorklogRepository {
     async fn get_by_id(&self, _id: WorklogId) -> Result<Worklog, AppError> {
         Err(AppError::not_found("worklog", "stub"))
+    }
+
+    async fn list_by_issue_page(
+        &self,
+        _issue_id: IssueId,
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<Vec<Worklog>, AppError> {
+        Ok(vec![])
     }
     async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
         Ok(vec![])
@@ -757,6 +787,8 @@ impl SystemSettingRepository for StubSystemSettingRepository {
 
 #[async_trait]
 pub trait NotificationRepository: Send + Sync {
+    /// Mark exactly these notifications read (idempotent, ignores others).
+    async fn mark_read_batch(&self, ids: &[shared::NotificationId]) -> Result<(), AppError>;
     async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError>;
     async fn list_unread(&self, recipient_id: UserId) -> Result<Vec<Notification>, AppError>;
     async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError>;
@@ -777,6 +809,9 @@ pub trait UserNotificationSettingsRepository: Send + Sync {
 pub struct StubNotificationRepository;
 #[async_trait]
 impl NotificationRepository for StubNotificationRepository {
+    async fn mark_read_batch(&self, _ids: &[shared::NotificationId]) -> Result<(), AppError> {
+        Ok(())
+    }
     async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError> {
         Ok(notification.id)
     }

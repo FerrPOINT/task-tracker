@@ -72,6 +72,13 @@ pub mod routes;
 pub use dto::*;
 pub use routes::*;
 
+fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
+    // tower-governor uses the configured duration as the time for ONE permit.
+    // Nanosecond precision keeps configured rates accurate above 1,000 rps
+    // and avoids inflating rates through millisecond rounding.
+    std::time::Duration::from_nanos(1_000_000_000 / rate_per_second.max(1))
+}
+
 #[derive(OpenApi)]
 #[openapi(
     modifiers(&SecurityAddon),
@@ -233,7 +240,6 @@ pub use routes::*;
         routes::admin::SystemSettingResponse,
         routes::admin::SystemSettingListResponse,
         routes::admin::UpdateSystemSettingRequest,
-        routes::watchers_votes::WatchRequest,
         routes::watchers_votes::WatcherResponse,
         routes::watchers_votes::WatcherListResponse,
         routes::custom_fields::CreateCustomFieldRequest,
@@ -355,7 +361,14 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
                 Method::DELETE,
             ])
             .allow_origin(allowed)
-            .allow_headers(Any)
+            // Credentialed CORS cannot use `*` for headers. Keep this list to
+            // the browser-visible headers used by the generated client.
+            .allow_headers([
+                axum::http::header::ACCEPT,
+                axum::http::header::AUTHORIZATION,
+                axum::http::header::CONTENT_TYPE,
+            ])
+            // Refresh cookies must reach the API cross-origin (dev preview).
             .allow_credentials(true)
     };
 
@@ -369,11 +382,14 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .finish()
         .expect("valid auth rate limit config");
 
-    // General rate limiter for all API endpoints (default 60 requests per 60 seconds per IP).
+    // General API throughput: a GCRA token bucket. `general_rate_per_second`
+    // is converted to the duration for ONE permit; `burst_size` is the bucket
+    // capacity a single interactive page load (board = ~8 parallel queries +
+    // SSE) can spend without waiting.
     let general_limiter = GovernorConfigBuilder::default()
         .key_extractor(FallbackIpKeyExtractor)
-        .period(std::time::Duration::from_secs(
-            ctx.config.server.general_rate_period_secs,
+        .period(rate_per_second_period(
+            ctx.config.server.general_rate_per_second,
         ))
         .burst_size(ctx.config.server.general_rate_burst)
         .finish()
@@ -469,7 +485,9 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/attachments/{id}",
             delete(routes::attachments::delete_attachment),
         )
-        .route("/events", get(routes::events::events))
+        // NOTE: /events is mounted on its own router above (outside the
+        // general rate limiter) — long-lived SSE reconnects must not burn
+        // the shared per-IP burst bucket.
         .route("/statuses", get(routes::workflow::list_statuses))
         .route("/transitions", get(routes::workflow::list_transitions))
         .route("/issue-types", get(routes::workflow::list_issue_types))
@@ -632,6 +650,18 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
 
     let api = public.merge(auth_routes).merge(protected);
 
+    // The SSE stream is a long-lived connection, not a request/response the
+    // burst limiter was designed for: each reconnect burns a permit from the
+    // shared per-IP bucket and one flaky network moment can starve every
+    // regular API call from the same client. Mount it outside the general
+    // limiter (auth itself still applies via the auth middleware).
+    let events_router = Router::new()
+        .route("/events", get(routes::events::events))
+        .layer(from_fn_with_state(
+            ctx.clone(),
+            middleware::auth::bearer_auth,
+        ));
+
     // Prometheus metrics layer + handle for the /metrics endpoint.
     let handle = metric_handle();
     let prometheus_layer: PrometheusMetricLayer = GenericMetricLayer::new();
@@ -643,6 +673,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/api/v1",
             api.layer(GovernorLayer::new(general_limiter)),
         )
+        .nest("/api/v1", events_router)
         .merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", ApiDoc::openapi()))
         .layer(
             ServiceBuilder::new()
@@ -696,6 +727,7 @@ pub async fn serve(ctx: Arc<app::AppContext>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn openapi_security_matches_runtime_protection() {
@@ -745,5 +777,11 @@ mod tests {
             events,
             serde_json::json!([{ "bearer": [] }, { "events_access_token": [] }])
         );
+    }
+
+    #[test]
+    fn general_rate_preserves_sub_millisecond_intervals() {
+        assert_eq!(rate_per_second_period(60), Duration::from_nanos(16_666_666));
+        assert_eq!(rate_per_second_period(5_000), Duration::from_nanos(200_000));
     }
 }

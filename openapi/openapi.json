@@ -357,7 +357,15 @@
         },
         "responses": {
           "200": {
-            "description": "Login successful",
+            "description": "Login successful; refresh session is issued in the HttpOnly cookie",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Rotated HttpOnly refresh-session cookie"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -424,6 +432,20 @@
           "auth"
         ],
         "operationId": "refresh_openapi",
+        "parameters": [
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "description": "HttpOnly refresh-session cookie; browser clients use this primary credential",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -436,7 +458,15 @@
         },
         "responses": {
           "200": {
-            "description": "Tokens refreshed",
+            "description": "Tokens refreshed and refresh session rotated",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Rotated HttpOnly refresh-session cookie"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -469,7 +499,15 @@
         },
         "responses": {
           "201": {
-            "description": "User registered",
+            "description": "User registered; refresh session is issued in the HttpOnly cookie",
+            "headers": {
+              "Set-Cookie": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Rotated HttpOnly refresh-session cookie"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -687,7 +725,7 @@
         "tags": [
           "routes::events"
         ],
-        "description": "Server-Sent Events stream of tracker invalidation events (issue_created, issue_moved, ...). Clients refetch affected queries. Auth accepts the standard bearer header, or access_token query only for browser EventSource clients.",
+        "description": "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (event_type, issue_id, project_key). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter.",
         "operationId": "events",
         "parameters": [
           {
@@ -702,7 +740,14 @@
         ],
         "responses": {
           "200": {
-            "description": "SSE stream (text/event-stream)"
+            "description": "SSE stream (text/event-stream) of `tracker` events",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackerEventPayload"
+                }
+              }
+            }
           },
           "401": {
             "description": "Unauthorized"
@@ -1847,19 +1892,9 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WatchRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "204": {
-            "description": "Now watching the issue"
+            "description": "Now watching the issue (always as the authenticated user)"
           },
           "401": {
             "description": "Unauthorized"
@@ -5628,6 +5663,32 @@
           "value": {}
         }
       },
+      "TrackerEventPayload": {
+        "type": "object",
+        "required": [
+          "event_type"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "description": "Event discriminator, e.g. `issue_created`, `issue_updated`, `issue_deleted`."
+          },
+          "issue_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "UUID of the affected issue (when applicable)."
+          },
+          "project_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Project key for cache scoping (when applicable)."
+          }
+        }
+      },
       "TransitionIssueRequest": {
         "type": "object",
         "required": [
@@ -6117,17 +6178,6 @@
           },
           "has_voted": {
             "type": "boolean"
-          }
-        }
-      },
-      "WatchRequest": {
-        "type": "object",
-        "properties": {
-          "user_id": {
-            "type": [
-              "string",
-              "null"
-            ]
           }
         }
       },

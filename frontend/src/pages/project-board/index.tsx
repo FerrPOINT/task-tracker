@@ -6,6 +6,7 @@ import { Button } from '@/shared/ui/button'
 import { ErrorState, LoadingState } from '@/shared/ui/async-states'
 import { useBoard, useMoveIssue, useTransitions } from '@/shared/api/hooks'
 import { ProjectMembersPanel } from '@/features/project-members/ui/ProjectMembersPanel'
+import { UserAvatar } from '@/shared/ui/user-avatar'
 import type { components } from '@/api/generated'
 
 export type Issue = components['schemas']['IssueResponse']
@@ -24,18 +25,6 @@ function PriorityBadge({ priority }: { priority: string }) {
         ? 'text-amber-500'
         : 'text-emerald-500'
   return <span className={`text-xs font-medium ${color}`}>{priority}</span>
-}
-
-function Avatar({ name }: { name: string }) {
-  const colors = ['bg-accent', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
-  const color = colors[name.charCodeAt(0) % colors.length]
-  return (
-    <div
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${color}`}
-    >
-      {name.charAt(0).toUpperCase()}
-    </div>
-  )
 }
 
 function IssueCard({
@@ -70,7 +59,7 @@ function IssueCard({
             {issue.issue_type}
           </span>
         </div>
-        <Avatar name={issue.assignee_name ?? '?'} />
+        <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
       </div>
     </Link>
   )

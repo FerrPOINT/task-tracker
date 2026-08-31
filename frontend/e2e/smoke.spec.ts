@@ -137,9 +137,6 @@ test.describe('smoke', () => {
       routeJson(route, { items: [], unread_count: 0 }),
     )
 
-    page.on('request', (req) => console.log('request', req.method(), req.url()))
-    page.on('response', (res) => console.log('response', res.status(), res.url()))
-
     await page.goto(`${baseURL}/login`)
     await page.getByRole('textbox').nth(0).fill('demo@example.com')
     await page.getByRole('textbox').nth(1).fill('demo')

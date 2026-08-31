@@ -593,6 +593,19 @@ impl Default for MemoryCommentRepository {
 
 #[async_trait]
 impl CommentRepository for MemoryCommentRepository {
+    async fn list_by_issue_page(
+        &self,
+        issue_id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Comment>, AppError> {
+        let all = self.list_by_issue(issue_id).await?;
+        Ok(all
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
     async fn get_by_id(&self, id: CommentId) -> Result<Comment, AppError> {
         let comments = self.comments.lock().unwrap();
         comments
@@ -657,13 +670,28 @@ impl WorklogRepository for MemoryWorklogRepository {
             .ok_or_else(|| AppError::not_found("worklog", id))
     }
 
-    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
+    async fn list_by_issue_page(
+        &self,
+        issue_id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Worklog>, AppError> {
         let worklogs = self.worklogs.lock().unwrap();
-        Ok(worklogs
+        let mut items: Vec<_> = worklogs
             .iter()
             .filter(|w| w.issue_id == issue_id)
             .cloned()
+            .collect();
+        items.sort_by_key(|w| w.started_at);
+        Ok(items
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
             .collect())
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
+        self.list_by_issue_page(issue_id, u64::MAX, 0).await
     }
 
     async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError> {
@@ -957,6 +985,16 @@ pub struct MemoryNotificationRepository {
 
 #[async_trait]
 impl NotificationRepository for MemoryNotificationRepository {
+    async fn mark_read_batch(&self, ids: &[shared::NotificationId]) -> Result<(), AppError> {
+        let mut all = self.notifications.lock().unwrap();
+        for n in all.iter_mut() {
+            if ids.contains(&n.id) && !n.is_read {
+                n.is_read = true;
+                n.read_at = Some(shared::now());
+            }
+        }
+        Ok(())
+    }
     async fn save(&self, notification: &Notification) -> Result<NotificationId, AppError> {
         let mut notifications = self.notifications.lock().unwrap();
         if let Some(index) = notifications

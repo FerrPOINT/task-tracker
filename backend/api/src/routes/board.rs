@@ -14,7 +14,8 @@ use std::str::FromStr;
     get,
     path = "/api/v1/projects/{project_key}/board",
     params(("project_key" = String, Path, description = "Project key")),
-    responses((status = 200, body = BoardResponse))
+    responses((status = 200, body = BoardResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_board(
     State(ctx): State<Arc<app::AppContext>>,
@@ -43,7 +44,8 @@ pub struct BacklogQuery {
         BacklogQuery,
         ("project_key" = String, Path, description = "Project key")
     ),
-    responses((status = 200, body = crate::dto::BacklogResponse))
+    responses((status = 200, body = crate::dto::BacklogResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_backlog(
     State(ctx): State<Arc<app::AppContext>>,
@@ -74,7 +76,8 @@ pub async fn get_backlog(
     path = "/api/v1/projects/{project_key}/board/move",
     params(("project_key" = String, Path, description = "Project key")),
     request_body = MoveIssueRequest,
-    responses((status = 200, body = BoardResponse))
+    responses((status = 200, body = BoardResponse)),
+    security(("bearer" = []))
 )]
 pub async fn move_issue(
     State(ctx): State<Arc<app::AppContext>>,

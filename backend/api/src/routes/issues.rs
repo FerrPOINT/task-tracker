@@ -18,7 +18,8 @@ use std::str::FromStr;
     post,
     path = "/api/v1/issues",
     request_body = CreateIssueRequest,
-    responses((status = 201, description = "Issue created", body = IssueResponse))
+    responses((status = 201, description = "Issue created", body = IssueResponse)),
+    security(("bearer" = []))
 )]
 pub async fn create_issue(
     State(ctx): State<Arc<app::AppContext>>,
@@ -83,7 +84,8 @@ pub async fn create_issue(
     path = "/api/v1/issues/{id}",
     params(("id" = String, Path, description = "Issue id")),
     request_body = UpdateIssueRequest,
-    responses((status = 200, body = IssueResponse))
+    responses((status = 200, body = IssueResponse)),
+    security(("bearer" = []))
 )]
 pub async fn update_issue(
     State(ctx): State<Arc<app::AppContext>>,
@@ -156,7 +158,8 @@ fn parse_optional_uuid(
     get,
     path = "/api/v1/issues/{id}",
     params(("id" = String, Path, description = "Issue id")),
-    responses((status = 200, body = IssueResponse))
+    responses((status = 200, body = IssueResponse)),
+    security(("bearer" = []))
 )]
 pub async fn get_issue(
     State(ctx): State<Arc<app::AppContext>>,
@@ -180,7 +183,8 @@ pub async fn get_issue(
     get,
     path = "/api/v1/issues",
     params(SearchQuery),
-    responses((status = 200, body = IssueListResponse))
+    responses((status = 200, body = IssueListResponse)),
+    security(("bearer" = []))
 )]
 pub async fn search_issues(
     State(ctx): State<Arc<app::AppContext>>,
@@ -245,7 +249,8 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
 #[utoipa::path(
     delete,
     path = "/api/v1/issues/{id}",
-    responses((status = 204), (status = 404))
+    responses((status = 204), (status = 404)),
+    security(("bearer" = []))
 )]
 pub async fn delete_issue(
     State(ctx): State<Arc<app::AppContext>>,
@@ -267,7 +272,8 @@ pub async fn delete_issue(
     post,
     path = "/api/v1/issues/{id}/restore",
     params(("id" = String, Path, description = "Issue id")),
-    responses((status = 200, body = IssueResponse), (status = 404))
+    responses((status = 200, body = IssueResponse), (status = 404)),
+    security(("bearer" = []))
 )]
 pub async fn restore_issue(
     State(ctx): State<Arc<app::AppContext>>,
@@ -289,7 +295,8 @@ pub async fn restore_issue(
     delete,
     path = "/api/v1/issues/{id}/trash",
     params(("id" = String, Path, description = "Issue id")),
-    responses((status = 204), (status = 404))
+    responses((status = 204), (status = 404)),
+    security(("bearer" = []))
 )]
 pub async fn purge_issue(
     State(ctx): State<Arc<app::AppContext>>,
@@ -311,7 +318,8 @@ pub async fn purge_issue(
     get,
     path = "/api/v1/projects/{key}/trash",
     params(("key" = String, Path, description = "Project key")),
-    responses((status = 200, body = IssueListResponse))
+    responses((status = 200, body = IssueListResponse)),
+    security(("bearer" = []))
 )]
 pub async fn list_trash(
     State(ctx): State<Arc<app::AppContext>>,

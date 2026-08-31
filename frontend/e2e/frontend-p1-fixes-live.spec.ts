@@ -2,8 +2,10 @@
 // tabs overflow, board single-tree render, DnD workflow gating.
 import { test, expect, type Page } from '@playwright/test'
 
-const BASE = 'http://localhost:19877'
-const API = 'http://localhost:3456/api/v1'
+const BASE = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:19877'
+const API = process.env.VITE_API_BASE_URL ?? 'http://localhost:3456/api/v1'
+
+let lastToken: string | undefined
 
 async function loginToken(page: Page): Promise<string> {
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -16,21 +18,45 @@ async function loginToken(page: Page): Promise<string> {
   throw new Error('login kept failing (rate limit?)')
 }
 
-async function auth(page: Page): Promise<string> {
-  return loginToken(page)
+async function cachedToken(page: Page): Promise<string> {
+  lastToken ??= await loginToken(page)
+  return lastToken
 }
 
-async function firstIssue(page: Page, token: string) {
-  const issues = await page.request.get(`${API}/search?q=test&limit=1`, {
-    headers: { Authorization: `Bearer ${token}` },
-  })
+async function authedGet(page: Page, url: string) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const token = await cachedToken(page)
+    const res = await page.request.get(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.status() !== 401) return res
+    lastToken = undefined
+  }
+  throw new Error('auth kept failing')
+}
+
+async function auth(page: Page) {
+  const token = await cachedToken(page)
+  await page.goto(`${BASE}/login`)
+  await page.evaluate(
+    (t) =>
+      localStorage.setItem(
+        'task-tracker-auth',
+        JSON.stringify({ state: { token: t }, version: 0 }),
+      ),
+    token,
+  )
+}
+
+async function firstIssue(page: Page) {
+  const issues = await authedGet(page, `${API}/search?q=test&limit=1`)
   expect(issues.ok()).toBeTruthy()
   return (await issues.json()).issues[0]
 }
 
 test('issue page keeps project context in sidebar (no /projects/TT 404)', async ({ page }) => {
-  const token = await auth(page)
-  const issue = await firstIssue(page, token)
+  await auth(page)
+  const issue = await firstIssue(page)
   await page.goto(`${BASE}/issues/${issue.id}`)
   await page.waitForFunction(() => document.body.innerText.length > 50, null, { timeout: 30000 })
   await page.waitForTimeout(2000)
@@ -48,8 +74,8 @@ test('issue page keeps project context in sidebar (no /projects/TT 404)', async 
 })
 
 test('issue detail does not overflow horizontally at 375px', async ({ page }) => {
-  const token = await auth(page)
-  const issue = await firstIssue(page, token)
+  await auth(page)
+  const issue = await firstIssue(page)
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto(`${BASE}/issues/${issue.id}`)
   await page.waitForFunction(() => document.body.innerText.length > 50, null, { timeout: 30000 })
