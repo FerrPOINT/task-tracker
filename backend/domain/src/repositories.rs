@@ -804,6 +804,11 @@ pub trait NotificationRepository: Send + Sync {
 pub trait UserNotificationSettingsRepository: Send + Sync {
     async fn get_settings(&self, user_id: UserId) -> Result<NotificationUserSettings, AppError>;
     async fn save_settings(&self, settings: &NotificationUserSettings) -> Result<(), AppError>;
+    async fn mark_email_digest_sent(
+        &self,
+        user_id: UserId,
+        sent_at: shared::Timestamp,
+    ) -> Result<(), AppError>;
 }
 
 pub struct StubNotificationRepository;
@@ -845,6 +850,14 @@ impl UserNotificationSettingsRepository for StubUserNotificationSettingsReposito
     }
 
     async fn save_settings(&self, _settings: &NotificationUserSettings) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    async fn mark_email_digest_sent(
+        &self,
+        _user_id: UserId,
+        _sent_at: shared::Timestamp,
+    ) -> Result<(), AppError> {
         Ok(())
     }
 }

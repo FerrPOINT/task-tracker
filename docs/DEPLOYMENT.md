@@ -31,6 +31,8 @@ Self-hosted таск-трекер. MVP поставляется как Docker Co
 cp .env.example .env
 # ОБЯЗАТЕЛЬНО задайте POSTGRES_PASSWORD и TASKTRACKER_JWT_SECRET — compose
 # откажется стартовать без них (рабочих дефолтов нет)
+# TASKTRACKER_DATABASE__URL оставьте закомментированным для встроенного Postgres:
+# compose передаст backend postgres://...@postgres:5432/...
 docker compose up -d --build
 curl -sf http://localhost:3456/api/v1/health
 ```
@@ -39,7 +41,7 @@ curl -sf http://localhost:3456/api/v1/health
 
 ```bash
 # Terminal 1
-docker compose up -d postgres redis backend
+docker compose up -d postgres redis
 cd backend && cargo run --bin server
 
 # Terminal 2
@@ -49,7 +51,7 @@ pnpm generate:api
 pnpm dev
 ```
 
-Frontend dev-server проксирует `/api/v1` на backend `:3456` (см. `vite.config.ts`; переопределение — `VITE_API_BASE_URL`).
+Для host-run backend задайте `TASKTRACKER_DATABASE__URL` на доступную с хоста БД; compose-Postgres по умолчанию наружу не публикуется. Frontend dev-server проксирует `/api/v1` на backend `:3456` (см. `vite.config.ts`; переопределение — `VITE_API_BASE_URL`).
 
 ## 6. Production Build
 

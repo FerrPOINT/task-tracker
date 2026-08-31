@@ -310,6 +310,7 @@ async fn memory_notification_settings_repository_round_trips_user_preferences() 
         email_frequency: "daily".into(),
         disabled_event_types: vec!["issue_updated".into(), "issue_commented".into()],
         notify_own_changes: false,
+        last_email_digest_at: None,
     };
 
     assert!(repo.get_settings(user_id).await.is_err());
@@ -322,6 +323,11 @@ async fn memory_notification_settings_repository_round_trips_user_preferences() 
     };
     repo.save_settings(&updated).await.unwrap();
     assert_eq!(repo.get_settings(user_id).await.unwrap(), updated);
+
+    let sent_at = "2026-08-31T12:00:00+00:00".parse().unwrap();
+    repo.mark_email_digest_sent(user_id, sent_at).await.unwrap();
+    let settings = repo.get_settings(user_id).await.unwrap();
+    assert_eq!(settings.last_email_digest_at, Some(sent_at));
 }
 
 #[tokio::test]

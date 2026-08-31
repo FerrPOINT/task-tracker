@@ -49,7 +49,7 @@ services:
     restart: unless-stopped
     environment:
       # config crate format: TASKTRACKER_ + SECTION__KEY (separator "__", prefix_separator "_")
-      TASKTRACKER_DATABASE__URL: ${TASKTRACKER_DATABASE__URL}
+      TASKTRACKER_DATABASE__URL: ${TASKTRACKER_DATABASE__URL:-postgres://${POSTGRES_USER:-tasktracker}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tasktracker}}
       TASKTRACKER_SERVER__ADDRESS: 0.0.0.0
       TASKTRACKER_SERVER__PORT: 3456
       # No working default: deployment MUST provide a strong JWT secret.

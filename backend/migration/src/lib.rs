@@ -12,6 +12,7 @@ pub mod m20260825_0000025_components_versions;
 pub mod m20260825_0000026_custom_fields;
 pub mod m20260826_0000027_fk_indexes;
 pub mod m20260827_0000028_core_fk_constraints;
+pub mod m20260831_0000029_notification_digest_state;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -35,6 +36,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260825_0000026_custom_fields::Migration),
             Box::new(m20260826_0000027_fk_indexes::Migration),
             Box::new(m20260827_0000028_core_fk_constraints::Migration),
+            Box::new(m20260831_0000029_notification_digest_state::Migration),
         ]
     }
 }

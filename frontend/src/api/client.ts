@@ -7,6 +7,7 @@ export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', 
 export const api = createClient<paths>({ baseUrl: apiBaseUrl, credentials: 'include' })
 
 let refreshPromise: Promise<boolean> | null = null
+const retryRequests = new WeakMap<Request, Request>()
 
 export async function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
@@ -64,6 +65,9 @@ api.use({
     if (token) {
       request.headers.set('Authorization', `Bearer ${token}`)
     }
+    if (shouldIntercept401(request)) {
+      retryRequests.set(request, request.clone())
+    }
     return request
   },
   onResponse: async ({ request, response, options }) => {
@@ -73,11 +77,14 @@ api.use({
     const ok = await refreshAccessToken()
     if (!ok) return response
     const token = useAuthStore.getState().token
-    const nextRequest = new Request(request)
+    const retryRequest = retryRequests.get(request)
+    retryRequests.delete(request)
+    if (!retryRequest) return response
+    const nextRequest = new Request(retryRequest)
     if (token) {
       nextRequest.headers.set('Authorization', `Bearer ${token}`)
     }
-    return fetch(nextRequest, options as unknown as RequestInit)
+    return options.fetch(nextRequest)
   },
 })
 

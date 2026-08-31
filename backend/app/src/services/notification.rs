@@ -110,11 +110,17 @@ impl crate::context::NotificationService for NotificationServiceImpl {
         {
             return Err(AppError::invalid_input("invalid disabled_event_types"));
         }
+        let last_email_digest_at = match self.settings.get_settings(user_id).await {
+            Ok(settings) => settings.last_email_digest_at,
+            Err(AppError::NotFound(_)) => None,
+            Err(error) => return Err(error),
+        };
         let settings = domain::NotificationUserSettings {
             user_id,
             email_frequency: cmd.email_frequency,
             disabled_event_types: cmd.disabled_event_types,
             notify_own_changes: cmd.notify_own_changes,
+            last_email_digest_at,
         };
         self.settings.save_settings(&settings).await?;
         Ok(Self::settings_dto(settings))

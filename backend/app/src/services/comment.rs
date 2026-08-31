@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::authz::Authz;
 use crate::commands::{CreateCommentCommand, UpdateCommentCommand};
@@ -12,6 +12,7 @@ pub struct CommentServiceImpl {
     users: Arc<dyn domain::UserRepository>,
     issues: Arc<dyn domain::IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
+    watchers: Arc<dyn domain::WatcherRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
     notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
@@ -25,6 +26,7 @@ impl CommentServiceImpl {
         users: Arc<dyn domain::UserRepository>,
         issues: Arc<dyn domain::IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
+        watchers: Arc<dyn domain::WatcherRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
         notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
@@ -35,6 +37,7 @@ impl CommentServiceImpl {
             users,
             issues,
             projects,
+            watchers,
             events,
             notifications,
             notification_settings,
@@ -64,6 +67,54 @@ impl CommentServiceImpl {
                 .publish(shared::TrackerEvent::NotificationCreated {
                     recipient_id: recipient_id.to_string(),
                 });
+        }
+    }
+
+    async fn issue_recipients(&self, issue: &domain::Issue) -> Vec<UserId> {
+        let mut recipients = vec![issue.reporter_id];
+        if let Some(assignee_id) = issue.assignee_id {
+            recipients.push(assignee_id);
+        }
+        if let Ok(watchers) = self.watchers.list_by_issue(issue.id).await {
+            recipients.extend(watchers.into_iter().map(|watcher| watcher.user_id));
+        }
+        recipients
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn notify_issue_recipients(
+        &self,
+        recipients: Vec<UserId>,
+        issue: &domain::Issue,
+        project: &domain::Project,
+        actor_id: UserId,
+        event_type: &str,
+        title: String,
+        body: Option<String>,
+        metadata: serde_json::Value,
+    ) {
+        let mut seen = HashSet::new();
+        let action_url = format!("/projects/{}/issues/{}", project.key, issue.id);
+        for recipient_id in recipients {
+            if !seen.insert(recipient_id) {
+                continue;
+            }
+            self.create_notification(domain::Notification {
+                id: shared::NotificationId::new(),
+                recipient_id,
+                event_type: event_type.into(),
+                entity_type: "issue".into(),
+                entity_id: Some(issue.id.as_uuid()),
+                actor_id: Some(actor_id),
+                title: title.clone().into(),
+                body: body.clone().map(Into::into),
+                is_read: false,
+                read_at: None,
+                action_url: Some(action_url.clone().into()),
+                metadata: metadata.clone(),
+                created_at: shared::now(),
+            })
+            .await;
         }
     }
 }
@@ -135,32 +186,18 @@ impl crate::context::CommentService for CommentServiceImpl {
                     issue_id: cmd.issue_id.to_string(),
                     project_key: project.key.to_string(),
                 });
-                // Notify reporter and assignee about new comment (if different from author)
                 let key = issue.key.to_string();
-                let action_url = format!("/projects/{}/issues/{}", project.key, issue.id);
-                for recipient in [
-                    issue.reporter_id,
-                    issue.assignee_id.unwrap_or(issue.reporter_id),
-                ] {
-                    if recipient != cmd.author_id {
-                        self.create_notification(domain::Notification {
-                            id: shared::NotificationId::new(),
-                            recipient_id: recipient,
-                            event_type: "issue_commented".into(),
-                            entity_type: "issue".into(),
-                            entity_id: Some(issue.id.as_uuid()),
-                            actor_id: Some(cmd.author_id),
-                            title: format!("New comment on {}", key).into(),
-                            body: None,
-                            is_read: false,
-                            read_at: None,
-                            action_url: Some(action_url.clone().into()),
-                            metadata: serde_json::json!({"issue_key": key}),
-                            created_at: shared::now(),
-                        })
-                        .await;
-                    }
-                }
+                self.notify_issue_recipients(
+                    self.issue_recipients(&issue).await,
+                    &issue,
+                    &project,
+                    cmd.actor_id,
+                    "issue_commented",
+                    format!("New comment on {}", key),
+                    None,
+                    serde_json::json!({"issue_key": key}),
+                )
+                .await;
             }
         }
         Ok(CommentDto::from_comment(

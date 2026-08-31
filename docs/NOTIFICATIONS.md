@@ -74,7 +74,9 @@
 | Someone mentions me | ✅ | ✅ |
 | Sprint events | ✅ | ❌ |
 | Project events | ✅ | ❌ |
-| Daily digest | ❌ | ❌ |
+| Daily digest | ❌ | ✅ |
+
+Email digests use `email_frequency`: `hourly` is sent every digest cycle when unread notifications exist, `daily` is sent at most once per calendar day and stores the last successful send timestamp in `notification_user_settings.last_email_digest_at`.
 
 ## 4. Notification Scheme
 

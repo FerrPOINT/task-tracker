@@ -12,6 +12,40 @@ const SHUTDOWN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30)
 /// Interval at which the email digest background task runs.
 const DIGEST_INTERVAL: std::time::Duration = std::time::Duration::from_secs(3600);
 
+fn digest_date_key(now: shared::Timestamp) -> String {
+    now.date_naive().to_string()
+}
+
+fn digest_is_due(
+    frequency: &str,
+    settings: &domain::NotificationUserSettings,
+    now: shared::Timestamp,
+) -> bool {
+    match frequency {
+        "hourly" => true,
+        "daily" => match settings.last_email_digest_at {
+            Some(sent_at) => digest_date_key(sent_at) != digest_date_key(now),
+            None => true,
+        },
+        _ => false,
+    }
+}
+
+async fn mark_digest_sent(
+    ctx: &AppContext,
+    frequency: &str,
+    user_id: shared::UserId,
+    now: shared::Timestamp,
+) -> Result<(), shared::AppError> {
+    if frequency == "daily" {
+        ctx.repos
+            .notification_settings
+            .mark_email_digest_sent(user_id, now)
+            .await?;
+    }
+    Ok(())
+}
+
 pub async fn run(
     config: Arc<AppConfig>,
     ready: oneshot::Sender<std::net::SocketAddr>,
@@ -39,16 +73,15 @@ pub async fn run(
         email.clone(),
     ));
 
-    // Spawn the email digest background task. It runs every hour, collects
-    // unread notifications for users with email_frequency 'hourly' or 'daily',
-    // sends a digest email per user, and marks those notifications as read.
-    // The task is cancelled (aborted) when the shutdown signal fires.
+    // Spawn the email digest background task. It checks unread notifications
+    // every hour, sends hourly digests every cycle and daily digests at most
+    // once per calendar day. The task is cancelled (aborted) on shutdown.
     let digest_ctx = ctx.clone();
     let digest_handle = tokio::spawn(async move {
         let mut ticker = tokio::time::interval(DIGEST_INTERVAL);
         loop {
             ticker.tick().await;
-            if let Err(e) = run_digest_cycle(&digest_ctx).await {
+            if let Err(e) = run_digest_cycle(&digest_ctx, shared::now()).await {
                 error!("email digest cycle failed: {e}");
             }
         }
@@ -92,9 +125,12 @@ pub async fn run(
 /// Run a single email-digest cycle.
 ///
 /// Collects all unread notifications across all users, groups them by
-/// recipient, filters to users whose `email_frequency` is `hourly` or
-/// `daily`, sends a digest email, then marks the notifications as read.
-async fn run_digest_cycle(ctx: &AppContext) -> Result<(), shared::AppError> {
+/// recipient, filters to users whose digest frequency is due, sends one digest
+/// email per user, then marks the delivered notifications as read.
+async fn run_digest_cycle(
+    ctx: &AppContext,
+    now: shared::Timestamp,
+) -> Result<(), shared::AppError> {
     use std::collections::HashMap;
 
     // Skip entirely if email is disabled — nothing to send.
@@ -134,7 +170,7 @@ async fn run_digest_cycle(ctx: &AppContext) -> Result<(), shared::AppError> {
         };
 
         let freq = settings.email_frequency.as_ref();
-        if freq != "hourly" && freq != "daily" {
+        if !digest_is_due(freq, &settings, now) {
             continue;
         }
 
@@ -163,6 +199,10 @@ async fn run_digest_cycle(ctx: &AppContext) -> Result<(), shared::AppError> {
             error!("digest: failed to send email to {}: {e}", user.email);
             continue;
         }
+        if let Err(e) = mark_digest_sent(ctx, freq, user_id, now).await {
+            error!("digest: failed to mark digest sent for {user_id}: {e}");
+            continue;
+        }
 
         // Mark read only the notifications that were part of the delivered
         // digest snapshot. `mark_all_read` would swallow notifications that
@@ -175,4 +215,62 @@ async fn run_digest_cycle(ctx: &AppContext) -> Result<(), shared::AppError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ts(value: &str) -> shared::Timestamp {
+        value.parse().unwrap()
+    }
+
+    fn settings(
+        last_email_digest_at: Option<shared::Timestamp>,
+    ) -> domain::NotificationUserSettings {
+        domain::NotificationUserSettings {
+            user_id: shared::UserId::new(),
+            email_frequency: "daily".into(),
+            disabled_event_types: Vec::new(),
+            notify_own_changes: false,
+            last_email_digest_at,
+        }
+    }
+
+    #[test]
+    fn hourly_digest_is_due_every_cycle() {
+        let user_settings = settings(None);
+        let now = ts("2026-08-31T12:00:00+00:00");
+
+        assert!(digest_is_due("hourly", &user_settings, now));
+        assert!(digest_is_due(
+            "hourly",
+            &settings(Some(now)),
+            ts("2026-08-31T18:00:00+00:00")
+        ));
+    }
+
+    #[test]
+    fn daily_digest_is_due_once_per_day() {
+        let first = ts("2026-08-31T12:00:00+00:00");
+        let later_same_day = ts("2026-08-31T18:00:00+00:00");
+        let next_day = ts("2026-09-01T09:00:00+00:00");
+
+        assert!(digest_is_due("daily", &settings(None), first));
+        assert!(!digest_is_due(
+            "daily",
+            &settings(Some(first)),
+            later_same_day
+        ));
+        assert!(digest_is_due("daily", &settings(Some(first)), next_day));
+    }
+
+    #[test]
+    fn immediate_and_never_are_not_digest_frequencies() {
+        let settings = settings(None);
+        let now = ts("2026-08-31T12:00:00+00:00");
+
+        assert!(!digest_is_due("immediate", &settings, now));
+        assert!(!digest_is_due("never", &settings, now));
+    }
 }

@@ -1999,6 +1999,7 @@ impl UserNotificationSettingsRepository for NotificationUserSettingsRepo {
                     .collect(),
             )),
             notify_own_changes: sea_orm::ActiveValue::Set(settings.notify_own_changes),
+            last_email_digest_at: sea_orm::ActiveValue::Set(settings.last_email_digest_at),
         };
         notification_user_settings::Entity::insert(model)
             .on_conflict(
@@ -2013,6 +2014,26 @@ impl UserNotificationSettingsRepository for NotificationUserSettingsRepo {
             .exec(&*self.db)
             .await
             .map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn mark_email_digest_sent(
+        &self,
+        user_id: UserId,
+        sent_at: shared::Timestamp,
+    ) -> Result<(), AppError> {
+        let result = notification_user_settings::Entity::update_many()
+            .col_expr(
+                notification_user_settings::Column::LastEmailDigestAt,
+                Expr::value(sent_at),
+            )
+            .filter(notification_user_settings::Column::UserId.eq(user_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        if result.rows_affected == 0 {
+            return Err(AppError::not_found("notification settings", user_id));
+        }
         Ok(())
     }
 }
@@ -2030,6 +2051,7 @@ fn map_notification_user_settings(
         email_frequency: m.email_frequency.into(),
         disabled_event_types,
         notify_own_changes: m.notify_own_changes,
+        last_email_digest_at: m.last_email_digest_at,
     }
 }
 

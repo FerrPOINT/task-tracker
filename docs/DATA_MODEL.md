@@ -1,12 +1,14 @@
 # Дата-модель Task Tracker
 
-## 0. Фактическая схема реализованных таблиц (миграции 000001–000028)
+## 0. Фактическая схема реализованных таблиц (миграции 000001–000029)
 
 Раздел 4 описывает целевую полную модель (фазы 5+). Ниже — таблицы, реально существующие в текущих миграциях (`backend/migration/src/`), полученные из живой БД. При расхождении приоритет у миграций.
 
 > **v0.2.0** (миграции 000023–000026): добавлены таблицы `issue_watchers`, `issue_votes`, `project_components`, `project_versions`, `custom_fields`, `issue_custom_field_values`; в таблицу `issues` добавлены колонки `deleted_at`, `component_id`, `affected_version_id`, `fix_version_id`.
 >
 > **v0.2.1** (миграции 000027–000028): `m20260826_0000027_fk_indexes` — индексы под внешние ключи; `m20260827_0000028_core_fk_constraints` —Ключевые FK-ограничения и ON DELETE-поведение для связанных таблиц (детали — в самих миграциях).
+>
+> **v0.2.2** (миграция 000029): `m20260831_0000029_notification_digest_state` — persisted marker `notification_user_settings.last_email_digest_at` для daily email digest.
 
 ### statuses
 ```
@@ -473,6 +475,7 @@ Foreign-key constraints:
  email_frequency     | character varying        |           | not null | 'immediate'
  disabled_event_types | json                    |           | not null | '[]'::jsonb
  notify_own_changes  | boolean                  |           | not null | false
+ last_email_digest_at | timestamp with time zone |           |          |
 Indexes:
     "notification_user_settings_pkey" PRIMARY KEY, btree (user_id)
 Foreign-key constraints:
@@ -1737,7 +1740,8 @@ CREATE TABLE notification_user_settings (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     email_frequency TEXT NOT NULL DEFAULT 'immediate',
     disabled_event_types JSONB NOT NULL DEFAULT '[]'::jsonb,
-    notify_own_changes BOOLEAN NOT NULL DEFAULT false
+    notify_own_changes BOOLEAN NOT NULL DEFAULT false,
+    last_email_digest_at TIMESTAMPTZ
 );
 ```
 

@@ -118,6 +118,8 @@ Self-hosted таск-трекер: Rust (axum + SeaORM + PostgreSQL) + React (Vi
 ```bash
 # 1. Скопировать env
 cp .env.example .env
+# замените POSTGRES_PASSWORD и TASKTRACKER_JWT_SECRET в .env
+# TASKTRACKER_DATABASE__URL для Docker Compose оставьте закомментированным
 
 # 2. Поднять инфраструктуру
 docker compose up -d

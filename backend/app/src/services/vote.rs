@@ -59,6 +59,9 @@ impl crate::context::VoteService for VoteServiceImpl {
         self.authz
             .require_project_access(issue.project_id, user_id)
             .await?;
+        if issue.reporter_id == user_id {
+            return Err(AppError::invalid_input("cannot vote for own issue"));
+        }
         let vote = self.votes.add(issue_id, user_id).await?;
         Ok(self.vote_dto(vote).await)
     }

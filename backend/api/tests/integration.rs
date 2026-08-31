@@ -3104,7 +3104,15 @@ async fn unwatch_denies_inaccessible_issue() {
 async fn vote_unvote_and_list_votes_flow() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
-    let issue_id = create_issue_via_api(&url, &client, &token).await;
+    let (reporter_id, _reporter_token) = register_user(
+        &url,
+        &client,
+        "vote-reporter@example.com",
+        "votereporter",
+        "Vote Reporter",
+    )
+    .await;
+    let issue_id = create_issue_in_project(&url, &client, &token, "TT", &reporter_id).await;
 
     // vote
     let vote = client
@@ -3149,6 +3157,22 @@ async fn vote_unvote_and_list_votes_flow() {
     let body2: serde_json::Value = list2.json().await.unwrap();
     assert_eq!(body2["votes"].as_array().unwrap().len(), 0);
     assert_eq!(body2["count"], 0);
+}
+
+#[tokio::test]
+async fn vote_rejects_reporter_self_vote() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let vote = client
+        .post(format!("{url}/api/v1/issues/{issue_id}/vote"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(vote.status(), 400);
 }
 
 #[tokio::test]
@@ -4692,7 +4716,15 @@ async fn worklog_rejects_negative_duration() {
 async fn vote_dto_includes_user_names() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
-    let issue_id = create_issue_via_api(&url, &client, &token).await;
+    let (reporter_id, _reporter_token) = register_user(
+        &url,
+        &client,
+        "vote-dto-reporter@example.com",
+        "votedtoreporter",
+        "Vote Dto Reporter",
+    )
+    .await;
+    let issue_id = create_issue_in_project(&url, &client, &token, "TT", &reporter_id).await;
 
     let res = client
         .post(format!("{url}/api/v1/issues/{issue_id}/vote"))

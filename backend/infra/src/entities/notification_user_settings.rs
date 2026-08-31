@@ -9,6 +9,7 @@ pub struct Model {
     pub email_frequency: String,
     pub disabled_event_types: JsonValue,
     pub notify_own_changes: bool,
+    pub last_email_digest_at: Option<DateTimeWithTimeZone>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

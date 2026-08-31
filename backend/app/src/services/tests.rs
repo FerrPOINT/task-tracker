@@ -1387,6 +1387,181 @@ async fn notify_own_changes_false_suppresses_self_notifications() {
     );
 }
 
+#[tokio::test]
+async fn comment_notifications_deduplicate_recipients() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+    let reporter = notification_recipient(&ctx).await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Unassigned issue".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: reporter.id,
+                assignee_id: None,
+                actor_id: owner.id,
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    ctx.services
+        .comment
+        .create(
+            CreateCommentCommand {
+                issue_id: issue.id.parse().unwrap(),
+                author_id: owner.id,
+                body: "one notification only".to_string(),
+                actor_id: owner.id,
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    let unread = ctx
+        .repos
+        .notifications
+        .list_unread(reporter.id)
+        .await
+        .unwrap();
+    let comments: Vec<_> = unread
+        .iter()
+        .filter(|notification| notification.event_type.as_ref() == "issue_commented")
+        .collect();
+    assert_eq!(comments.len(), 1, "reporter must not receive duplicates");
+}
+
+#[tokio::test]
+async fn watcher_receives_comment_notification() {
+    let (ctx, owner, member, _project_id) = ctx_with_real_members().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Watched comment".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services
+        .watcher
+        .watch(issue_id, member.id)
+        .await
+        .unwrap();
+
+    ctx.services
+        .comment
+        .create(
+            CreateCommentCommand {
+                issue_id,
+                author_id: owner.id,
+                body: "watcher should see this".to_string(),
+                actor_id: owner.id,
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    let unread = ctx
+        .repos
+        .notifications
+        .list_unread(member.id)
+        .await
+        .unwrap();
+    assert_eq!(unread.len(), 1);
+    assert_eq!(unread[0].event_type.as_ref(), "issue_commented");
+}
+
+#[tokio::test]
+async fn watcher_receives_issue_update_notification() {
+    let (ctx, owner, member, _project_id) = ctx_with_real_members().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Watched update".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services
+        .watcher
+        .watch(issue_id, member.id)
+        .await
+        .unwrap();
+
+    ctx.services
+        .issue
+        .update(
+            issue_id,
+            UpdateIssueCommand {
+                summary: Some("Watched update changed".to_string()),
+                actor_id: owner.id,
+                ..Default::default()
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    let unread = ctx
+        .repos
+        .notifications
+        .list_unread(member.id)
+        .await
+        .unwrap();
+    assert_eq!(unread.len(), 1);
+    assert_eq!(unread[0].event_type.as_ref(), "issue_updated");
+}
+
 // ─── v0.2.0 feature tests ────────────────────────────────────────────
 
 #[tokio::test]
@@ -1484,6 +1659,7 @@ async fn watcher_remove() {
 #[tokio::test]
 async fn vote_add_and_count() {
     let (ctx, user) = ctx_with_demo_data().await;
+    let reporter = notification_recipient(&ctx).await;
     let board = ctx
         .services
         .board
@@ -1501,7 +1677,7 @@ async fn vote_add_and_count() {
                 issue_type: IssueType::Task,
                 priority: Priority::Medium,
                 status_id: board.columns[0].id.to_string(),
-                reporter_id: user.id,
+                reporter_id: reporter.id,
                 assignee_id: None,
                 actor_id: user.id,
             },
@@ -1520,6 +1696,7 @@ async fn vote_add_and_count() {
 #[tokio::test]
 async fn vote_remove() {
     let (ctx, user) = ctx_with_demo_data().await;
+    let reporter = notification_recipient(&ctx).await;
     let board = ctx
         .services
         .board
@@ -1537,7 +1714,7 @@ async fn vote_remove() {
                 issue_type: IssueType::Task,
                 priority: Priority::Medium,
                 status_id: board.columns[0].id.to_string(),
-                reporter_id: user.id,
+                reporter_id: reporter.id,
                 assignee_id: None,
                 actor_id: user.id,
             },
@@ -1552,6 +1729,40 @@ async fn vote_remove() {
 
     let count = ctx.services.vote.count_votes(issue_id).await.unwrap();
     assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn vote_rejects_reporter_self_vote() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Own vote".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let err = ctx.services.vote.vote(issue_id, user.id).await.unwrap_err();
+    assert!(matches!(err, AppError::InvalidInput(_)));
 }
 
 #[tokio::test]

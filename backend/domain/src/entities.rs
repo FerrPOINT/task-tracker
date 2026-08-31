@@ -512,6 +512,7 @@ pub struct NotificationUserSettings {
     pub email_frequency: ArcStr,
     pub disabled_event_types: Vec<ArcStr>,
     pub notify_own_changes: bool,
+    pub last_email_digest_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

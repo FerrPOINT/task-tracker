@@ -1085,6 +1085,20 @@ impl UserNotificationSettingsRepository for MemoryNotificationRepository {
         }
         Ok(())
     }
+
+    async fn mark_email_digest_sent(
+        &self,
+        user_id: UserId,
+        sent_at: shared::Timestamp,
+    ) -> Result<(), AppError> {
+        let mut all_settings = self.settings.lock().unwrap();
+        let settings = all_settings
+            .iter_mut()
+            .find(|settings| settings.user_id == user_id)
+            .ok_or_else(|| AppError::not_found("notification settings", user_id))?;
+        settings.last_email_digest_at = Some(sent_at);
+        Ok(())
+    }
 }
 
 #[derive(Default)]

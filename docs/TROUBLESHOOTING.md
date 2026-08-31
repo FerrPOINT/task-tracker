@@ -37,7 +37,7 @@ docker compose logs backend | grep -i migrat
 ### Connection refused to postgres
 
 - Проверить, что контейнер postgres healthy: `docker compose ps`.
-- Проверить `TASKTRACKER_DATABASE__URL` — хост должен быть `localhost` для локального запуска, `postgres` для docker.
+- Проверить `TASKTRACKER_DATABASE__URL` — для backend внутри docker хост должен быть `postgres`; для запуска backend с хоста нужен host-accessible Postgres (`localhost` только если БД реально опубликована наружу).
 - Проверить credentials в `.env`.
 
 ### Медленные запросы

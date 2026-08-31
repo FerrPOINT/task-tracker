@@ -1,8 +1,11 @@
 use axum::{
     extract::State,
-    response::sse::{Event, KeepAlive, Sse},
+    http::{HeaderName, HeaderValue, header::CACHE_CONTROL},
+    response::{
+        IntoResponse,
+        sse::{Event, KeepAlive, Sse},
+    },
 };
-use futures_util::stream::Stream;
 use std::{convert::Infallible, sync::Arc};
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 
@@ -29,17 +32,29 @@ pub struct TrackerEventPayload {
     ),
     security(("bearer" = []), ("events_access_token" = []))
 )]
-pub async fn events(
-    State(ctx): State<Arc<app::AppContext>>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+pub async fn events(State(ctx): State<Arc<app::AppContext>>) -> impl IntoResponse {
     let rx = ctx.events.subscribe();
     let stream = BroadcastStream::new(rx).filter_map(|msg| match msg {
         Ok(event) => {
             let json = serde_json::to_string(&event).unwrap_or_default();
-            Some(Ok(Event::default().event("tracker").data(json)))
+            Some(Ok::<Event, Infallible>(
+                Event::default().event("tracker").data(json),
+            ))
         }
         // Lagged subscribers just refetch; skip the gap notification.
         Err(_) => None,
     });
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    (
+        [
+            (
+                CACHE_CONTROL,
+                HeaderValue::from_static("no-cache, no-transform"),
+            ),
+            (
+                HeaderName::from_static("x-accel-buffering"),
+                HeaderValue::from_static("no"),
+            ),
+        ],
+        Sse::new(stream).keep_alive(KeepAlive::default()),
+    )
 }

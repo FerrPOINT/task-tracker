@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use crate::authz::Authz;
 use crate::commands::{CreateIssueCommand, UpdateIssueCommand};
@@ -20,6 +20,7 @@ pub struct IssueServiceImpl {
     sprints: Arc<dyn domain::SprintRepository>,
     components: Arc<dyn domain::ProjectComponentRepository>,
     versions: Arc<dyn domain::ProjectVersionRepository>,
+    watchers: Arc<dyn domain::WatcherRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
     notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
@@ -58,7 +59,6 @@ impl IssueServiceImpl {
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
@@ -70,6 +70,7 @@ impl IssueServiceImpl {
         sprints: Arc<dyn domain::SprintRepository>,
         components: Arc<dyn domain::ProjectComponentRepository>,
         versions: Arc<dyn domain::ProjectVersionRepository>,
+        watchers: Arc<dyn domain::WatcherRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
         notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
@@ -86,6 +87,7 @@ impl IssueServiceImpl {
             sprints,
             components,
             versions,
+            watchers,
             notifications,
             notification_settings,
             authz,
@@ -114,6 +116,54 @@ impl IssueServiceImpl {
                 .publish(shared::TrackerEvent::NotificationCreated {
                     recipient_id: recipient_id.to_string(),
                 });
+        }
+    }
+
+    async fn issue_recipients(&self, issue: &Issue) -> Vec<UserId> {
+        let mut recipients = vec![issue.reporter_id];
+        if let Some(assignee_id) = issue.assignee_id {
+            recipients.push(assignee_id);
+        }
+        if let Ok(watchers) = self.watchers.list_by_issue(issue.id).await {
+            recipients.extend(watchers.into_iter().map(|watcher| watcher.user_id));
+        }
+        recipients
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn notify_issue_recipients(
+        &self,
+        recipients: Vec<UserId>,
+        issue: &Issue,
+        project: &domain::Project,
+        actor_id: UserId,
+        event_type: &str,
+        title: String,
+        body: Option<String>,
+        metadata: serde_json::Value,
+    ) {
+        let mut seen = HashSet::new();
+        let action_url = format!("/projects/{}/issues/{}", project.key, issue.id);
+        for recipient_id in recipients {
+            if !seen.insert(recipient_id) {
+                continue;
+            }
+            self.create_notification(domain::Notification {
+                id: shared::NotificationId::new(),
+                recipient_id,
+                event_type: event_type.into(),
+                entity_type: "issue".into(),
+                entity_id: Some(issue.id.as_uuid()),
+                actor_id: Some(actor_id),
+                title: title.clone().into(),
+                body: body.clone().map(Into::into),
+                is_read: false,
+                read_at: None,
+                action_url: Some(action_url.clone().into()),
+                metadata: metadata.clone(),
+                created_at: shared::now(),
+            })
+            .await;
         }
     }
 
@@ -220,29 +270,19 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue_id: issue.id.to_string(),
             project_key: project.key.to_string(),
         });
-        // Notify assignee if assigned and not the reporter
         if let Some(assignee_id) = issue.assignee_id {
-            if assignee_id != cmd.reporter_id {
-                let key = issue.key.to_string();
-                self.create_notification(domain::Notification {
-                    id: shared::NotificationId::new(),
-                    recipient_id: assignee_id,
-                    event_type: "issue_assigned".into(),
-                    entity_type: "issue".into(),
-                    entity_id: Some(issue.id.as_uuid()),
-                    actor_id: Some(cmd.reporter_id),
-                    title: format!("You were assigned to {}", key).into(),
-                    body: Some(issue.summary.as_ref().to_string().into()),
-                    is_read: false,
-                    read_at: None,
-                    action_url: Some(
-                        format!("/projects/{}/issues/{}", project.key, issue.id).into(),
-                    ),
-                    metadata: serde_json::json!({"issue_key": key}),
-                    created_at: shared::now(),
-                })
-                .await;
-            }
+            let key = issue.key.to_string();
+            self.notify_issue_recipients(
+                vec![assignee_id],
+                &issue,
+                &project,
+                cmd.actor_id,
+                "issue_assigned",
+                format!("You were assigned to {}", key),
+                Some(issue.summary.as_ref().to_string()),
+                serde_json::json!({"issue_key": key}),
+            )
+            .await;
         }
         Ok(IssueDto::from_issue(
             issue,
@@ -312,26 +352,18 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue_id: updated.id.to_string(),
             project_key: project.key.to_string(),
         });
-        // Notify reporter of status change
-        if updated.reporter_id != cmd.actor_id {
-            let key = updated.key.to_string();
-            self.create_notification(domain::Notification {
-                id: shared::NotificationId::new(),
-                recipient_id: updated.reporter_id,
-                event_type: "issue_moved".into(),
-                entity_type: "issue".into(),
-                entity_id: Some(updated.id.as_uuid()),
-                actor_id: Some(cmd.actor_id),
-                title: format!("{} moved to {}", key, status).into(),
-                body: None,
-                is_read: false,
-                read_at: None,
-                action_url: Some(format!("/projects/{}/issues/{}", project.key, updated.id).into()),
-                metadata: serde_json::json!({"issue_key": key, "status": status}),
-                created_at: shared::now(),
-            })
-            .await;
-        }
+        let key = updated.key.to_string();
+        self.notify_issue_recipients(
+            self.issue_recipients(&updated).await,
+            &updated,
+            &project,
+            cmd.actor_id,
+            "issue_moved",
+            format!("{} moved to {}", key, status),
+            None,
+            serde_json::json!({"issue_key": key, "status": status}),
+        )
+        .await;
         Ok(IssueDto::from_issue(
             updated,
             project.name.as_ref().to_string(),
@@ -430,6 +462,7 @@ impl crate::context::IssueService for IssueServiceImpl {
                 }
             }
             issue.sprint_id = sprint_id;
+            issue.updated_at = shared::now();
         }
         if let Some(component_id) = cmd.component_id {
             if let Some(cid) = component_id {
@@ -481,29 +514,37 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue_id: issue.id.to_string(),
             project_key: project.key.to_string(),
         });
-        // Notify assignee if assignment changed
-        if let Some(new_assignee) = cmd.assignee_id.flatten() {
-            if new_assignee != issue.reporter_id {
-                let key = issue.key.to_string();
-                self.create_notification(domain::Notification {
-                    id: shared::NotificationId::new(),
-                    recipient_id: new_assignee,
-                    event_type: "issue_assigned".into(),
-                    entity_type: "issue".into(),
-                    entity_id: Some(issue.id.as_uuid()),
-                    actor_id: Some(cmd.actor_id),
-                    title: format!("You were assigned to {}", key).into(),
-                    body: Some(issue.summary.as_ref().to_string().into()),
-                    is_read: false,
-                    read_at: None,
-                    action_url: Some(
-                        format!("/projects/{}/issues/{}", project.key, issue.id).into(),
-                    ),
-                    metadata: serde_json::json!({"issue_key": key}),
-                    created_at: shared::now(),
-                })
-                .await;
-            }
+        let key = issue.key.to_string();
+        let assigned_recipient = cmd.assignee_id.flatten();
+        let update_recipients = self
+            .issue_recipients(&issue)
+            .await
+            .into_iter()
+            .filter(|recipient_id| Some(*recipient_id) != assigned_recipient)
+            .collect();
+        self.notify_issue_recipients(
+            update_recipients,
+            &issue,
+            &project,
+            cmd.actor_id,
+            "issue_updated",
+            format!("{} updated", key),
+            Some(issue.summary.as_ref().to_string()),
+            serde_json::json!({"issue_key": key}),
+        )
+        .await;
+        if let Some(new_assignee) = assigned_recipient {
+            self.notify_issue_recipients(
+                vec![new_assignee],
+                &issue,
+                &project,
+                cmd.actor_id,
+                "issue_assigned",
+                format!("You were assigned to {}", key),
+                Some(issue.summary.as_ref().to_string()),
+                serde_json::json!({"issue_key": key}),
+            )
+            .await;
         }
         Ok(IssueDto::from_issue(
             issue,
