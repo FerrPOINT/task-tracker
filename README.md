@@ -5,6 +5,7 @@
 <p align="center">
   <a href="#features"><img src="https://img.shields.io/badge/%E2%9C%A8%20Features-0B1220?style=for-the-badge" alt="Features" /></a>
   <a href="#stack"><img src="https://img.shields.io/badge/%F0%9F%94%A7%20Stack-111827?style=for-the-badge" alt="Stack" /></a>
+  <a href="#screenshots"><img src="https://img.shields.io/badge/%F0%9F%96%BC%EF%B8%8F%20Screens-334155?style=for-the-badge" alt="Screenshots" /></a>
   <a href="#cli"><img src="https://img.shields.io/badge/%F0%9F%96%A5%EF%B8%8F%20CLI-1F2937?style=for-the-badge" alt="CLI" /></a>
   <a href="#architecture"><img src="https://img.shields.io/badge/%F0%9F%8F%97%EF%B8%8F%20Architecture-374151?style=for-the-badge" alt="Architecture" /></a>
   <a href="#quality"><img src="https://img.shields.io/badge/%F0%9F%9B%A1%EF%B8%8F%20Quality-4B5563?style=for-the-badge" alt="Quality" /></a>
@@ -41,6 +42,15 @@
 | Ports | Frontend `19877`, backend `3456`, PostgreSQL/Redis internal |
 | License | FerrPOINT Proprietary Source-Available Evaluation License v1.0 |
 
+## 🚪 Default Ports
+
+| Сервис | Доступ | Описание |
+|---|---|---|
+| Frontend Docker | `19877` | Nginx static frontend |
+| Backend | `3456` | API |
+| PostgreSQL | internal compose network | DB, not published externally |
+| Redis | internal compose network | cache, not published externally |
+
 <a name="features"></a>
 ## ✨ Features
 
@@ -53,6 +63,19 @@
 | Notifications | In-app center, SSE push, email digest worker and per-user delivery settings. |
 | Administration | Users, instance settings, audit log, security headers, rate limits and Prometheus metrics. |
 | CLI | `task-tracker` binary with JSON/table/compact output. |
+
+## 🧩 Capability Details
+
+| Area | Details |
+|---|---|
+| Projects and issues | Projects with kanban boards, backlog, dashboard and search; issue create/edit/status transitions, comments, attachments, priorities, labels, issue types, links, assignees and worklog. |
+| Kanban and sprints | Drag-and-drop board columns, sprint planning and reports: velocity, burndown, cumulative flow and control chart. |
+| Notifications | In-app center, unread counters, SSE `NotificationCreated`, hourly/daily email digest, `email_frequency`, `disabled_event_types` and `notify_own_changes`. |
+| Watchers and votes | Watch subscriptions, issue votes and vote counters. |
+| Custom fields | Project-level text, number, select, multi-select and date fields with required flags and issue-level values. |
+| Components and versions | Project components, release/milestone versions, `released`/`release_date`, affected/fix version links. |
+| Soft delete | `deleted_at` trash model, restore and permanent purge. |
+| Search/admin | JQL search, admin panel, users, instance settings, audit log, security headers, rate limiting and Prometheus metrics. |
 
 <a name="stack"></a>
 ## 🔧 Core Stack
@@ -86,6 +109,37 @@ pnpm dev
 
 Vite opens on `http://localhost:5173` and proxies API calls to the backend.
 
+Port override:
+
+```env
+BACKEND_PORT=3456
+FRONTEND_PORT=19877
+```
+
+After changing host ports, recreate services with `docker compose up -d`. Inside the compose network the backend still listens on `3456`; backend settings use the `TASKTRACKER_SECTION__KEY` format, for example `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`.
+
+<a name="screenshots"></a>
+## 🖼️ Screenshots
+
+| Surface | Preview |
+|---|---|
+| Login | ![Вход](docs/screenshots/01-login.png) |
+| Dashboard | ![Дашборд](docs/screenshots/02-dashboard.png) |
+| Projects | ![Проекты](docs/screenshots/03-projects.png) |
+| Kanban board | ![Канбан-доска](docs/screenshots/04-board.png) |
+| Backlog | ![Бэклог](docs/screenshots/05-backlog.png) |
+| Trash | ![Корзина](docs/screenshots/06-trash.png) |
+| Custom fields | ![Кастомные поля](docs/screenshots/07-custom-fields.png) |
+| Search | ![Поиск](docs/screenshots/08-search.png) |
+| Notifications | ![Уведомления](docs/screenshots/09-notifications.png) |
+| Reports | ![Отчёты](docs/screenshots/10-reports.png) |
+| Administration | ![Администрирование](docs/screenshots/11-admin.png) |
+| Issue create | ![Создание задачи](docs/screenshots/12-issue-create.png) |
+| Issue detail | ![Страница задачи](docs/screenshots/13-issue-detail.png) |
+| Register | ![Регистрация](docs/screenshots/14-register.png) |
+| Mobile board | ![Доска на мобильном](docs/screenshots/15-board-mobile.png) |
+| Mobile projects | ![Проекты на мобильном](docs/screenshots/16-projects-mobile.png) |
+
 <a name="cli"></a>
 ## 🖥️ CLI
 
@@ -97,10 +151,12 @@ export TASKTRACKER_API_URL=http://localhost:3456/api/v1
 export TASKTRACKER_TOKEN=<jwt_token>
 
 ./target/debug/task-tracker project list
+./target/debug/task-tracker issue create --project-key DEMO --summary "Fix bug" --priority high
 ./target/debug/task-tracker issue list --project-key DEMO --output table
+./target/debug/task-tracker board get --project-key DEMO
 ```
 
-AI/CLI usage notes: [cli/SKILL.md](cli/SKILL.md).
+CLI command documentation: [docs/CLI.md](docs/CLI.md). AI usage notes: [cli/SKILL.md](cli/SKILL.md).
 
 <a name="architecture"></a>
 ## 🏗️ Architecture
