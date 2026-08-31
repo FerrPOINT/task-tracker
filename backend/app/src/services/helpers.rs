@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use domain::{BoardColumn, Issue, ProjectRepository, StatusCategory};
+use domain::{BoardColumn, Issue, LabelRepository, ProjectRepository, StatusCategory};
 use shared::{AppError, ProjectId, StatusId};
 
 pub async fn resolve_names(
@@ -46,7 +46,9 @@ pub fn build_issue_dto_from_lookups(
     issue: Issue,
     project_names: &HashMap<ProjectId, String>,
     user_names: &HashMap<shared::UserId, String>,
+    label_names: &HashMap<shared::IssueId, Vec<String>>,
 ) -> crate::dto::IssueDto {
+    let issue_id = issue.id;
     let status_id = issue.status_id;
     let assignee_name = issue
         .assignee_id
@@ -56,29 +58,39 @@ pub fn build_issue_dto_from_lookups(
         .get(&issue.project_id)
         .cloned()
         .unwrap_or_default();
-    crate::dto::IssueDto::from_issue(
+    let mut dto = crate::dto::IssueDto::from_issue(
         issue,
         project_name,
         issue_status_column(status_id),
         assignee_name,
         reporter_name,
-    )
+    );
+    if let Some(labels) = label_names.get(&issue_id) {
+        dto.labels = labels.clone();
+    }
+    dto
 }
 
 pub async fn build_issue_dto(
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
     issue: Issue,
     project_name: &str,
 ) -> crate::dto::IssueDto {
-    let status_id = issue.status_id;
+    let label_names = issue_label_name_lookup(labels, &[issue.id])
+        .await
+        .unwrap_or_default();
     let (assignee_name, reporter_name) = resolve_names(users, &issue).await;
-    crate::dto::IssueDto::from_issue(
-        issue,
-        project_name.to_string(),
-        issue_status_column(status_id),
-        assignee_name,
-        reporter_name,
-    )
+    let project_names = HashMap::from([(issue.project_id, project_name.to_string())]);
+    let user_names = [
+        issue.assignee_id.map(|id| (id, assignee_name.clone())),
+        Some((issue.reporter_id, reporter_name.clone())),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(|(id, name)| name.map(|name| (id, name)))
+    .collect::<HashMap<_, _>>();
+    build_issue_dto_from_lookups(issue, &project_names, &user_names, &label_names)
 }
 
 async fn issue_user_name_lookup(
@@ -93,25 +105,49 @@ async fn issue_user_name_lookup(
         .collect()
 }
 
+async fn issue_label_name_lookup(
+    labels: Arc<dyn LabelRepository>,
+    issue_ids: &[shared::IssueId],
+) -> Result<HashMap<shared::IssueId, Vec<String>>, AppError> {
+    Ok(labels
+        .list_by_issues(issue_ids)
+        .await?
+        .into_iter()
+        .map(|(issue_id, labels)| {
+            (
+                issue_id,
+                labels
+                    .into_iter()
+                    .map(|label| label.name.as_ref().to_string())
+                    .collect(),
+            )
+        })
+        .collect())
+}
+
 pub async fn build_issue_dtos(
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
     issues: Vec<Issue>,
     project_name: &str,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
     let user_names = issue_user_name_lookup(users).await;
+    let issue_ids = issues.iter().map(|issue| issue.id).collect::<Vec<_>>();
+    let label_names = issue_label_name_lookup(labels, &issue_ids).await?;
     let project_names = issues
         .iter()
         .map(|issue| (issue.project_id, project_name.to_string()))
         .collect::<HashMap<_, _>>();
     Ok(issues
         .into_iter()
-        .map(|issue| build_issue_dto_from_lookups(issue, &project_names, &user_names))
+        .map(|issue| build_issue_dto_from_lookups(issue, &project_names, &user_names, &label_names))
         .collect())
 }
 
 async fn build_issue_dtos_prefetched(
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
     issues: Vec<Issue>,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
     let project_names = projects
@@ -127,26 +163,30 @@ async fn build_issue_dtos_prefetched(
     {
         return Err(AppError::not_found("project", missing.project_id));
     }
+    let issue_ids = issues.iter().map(|issue| issue.id).collect::<Vec<_>>();
+    let label_names = issue_label_name_lookup(labels, &issue_ids).await?;
     Ok(issues
         .into_iter()
-        .map(|issue| build_issue_dto_from_lookups(issue, &project_names, &user_names))
+        .map(|issue| build_issue_dto_from_lookups(issue, &project_names, &user_names, &label_names))
         .collect())
 }
 
 pub async fn build_issue_dtos_with_projects(
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
     issues: Vec<Issue>,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
-    build_issue_dtos_prefetched(projects, users, issues).await
+    build_issue_dtos_prefetched(projects, users, labels, issues).await
 }
 
 pub async fn build_issue_dtos_for_dashboard(
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
     issues: Vec<Issue>,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
-    build_issue_dtos_prefetched(projects, users, issues).await
+    build_issue_dtos_prefetched(projects, users, labels, issues).await
 }
 
 fn todo_status() -> StatusId {
@@ -228,7 +268,8 @@ mod tests {
         let mut users = HashMap::new();
         users.insert(issue.reporter_id, "Reporter".to_string());
 
-        let dto = build_issue_dto_from_lookups(issue, &projects, &users);
+        let labels = HashMap::new();
+        let dto = build_issue_dto_from_lookups(issue, &projects, &users, &labels);
         assert_eq!(dto.project_name, "Project TT");
         assert_eq!(dto.reporter_name.as_deref(), Some("Reporter"));
     }

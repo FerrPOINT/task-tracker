@@ -6,7 +6,6 @@ OPENAPI_DIR="$ROOT/openapi"
 mkdir -p "$OPENAPI_DIR"
 
 cd "$ROOT/backend"
-cargo build --bin openapi-gen
-./target/debug/openapi-gen "$OPENAPI_DIR/openapi.json"
+cargo run -p api --bin gen-openapi > "$OPENAPI_DIR/openapi.json"
 
 echo "Saved $OPENAPI_DIR/openapi.json"

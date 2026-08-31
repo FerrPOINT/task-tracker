@@ -120,9 +120,10 @@ pub async fn create_component(
 pub async fn update_component(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
-    Path((_project_key, component_id)): Path<(String, String)>,
+    Path((project_key, component_id)): Path<(String, String)>,
     Json(body): Json<ComponentRequest>,
 ) -> Result<Json<ComponentResponse>, AppError> {
+    let key = ProjectKey::new(project_key.as_str());
     let id: ProjectComponentId = component_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid component id"))?;
@@ -130,7 +131,7 @@ pub async fn update_component(
     let component = ctx
         .services
         .component
-        .update(id, &body.name, body.description.as_deref(), requester)
+        .update(&key, id, &body.name, body.description.as_deref(), requester)
         .await?;
     Ok(Json(component_response(component)))
 }
@@ -139,13 +140,14 @@ pub async fn update_component(
 pub async fn delete_component(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
-    Path((_project_key, component_id)): Path<(String, String)>,
+    Path((project_key, component_id)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
+    let key = ProjectKey::new(project_key.as_str());
     let id: ProjectComponentId = component_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid component id"))?;
     let requester = parse_user_id(&claims)?;
-    ctx.services.component.delete(id, requester).await?;
+    ctx.services.component.delete(&key, id, requester).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -195,9 +197,10 @@ pub async fn create_version(
 pub async fn update_version(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
-    Path((_project_key, version_id)): Path<(String, String)>,
+    Path((project_key, version_id)): Path<(String, String)>,
     Json(body): Json<VersionRequest>,
 ) -> Result<Json<VersionResponse>, AppError> {
+    let key = ProjectKey::new(project_key.as_str());
     let id: ProjectVersionId = version_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid version id"))?;
@@ -206,6 +209,7 @@ pub async fn update_version(
         .services
         .version
         .update(
+            &key,
             id,
             &body.name,
             body.description.as_deref(),
@@ -221,13 +225,14 @@ pub async fn update_version(
 pub async fn delete_version(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
-    Path((_project_key, version_id)): Path<(String, String)>,
+    Path((project_key, version_id)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
+    let key = ProjectKey::new(project_key.as_str());
     let id: ProjectVersionId = version_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid version id"))?;
     let requester = parse_user_id(&claims)?;
-    ctx.services.version.delete(id, requester).await?;
+    ctx.services.version.delete(&key, id, requester).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

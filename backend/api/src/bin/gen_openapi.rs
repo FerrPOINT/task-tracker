@@ -11,7 +11,7 @@ fn main() {
         database: DatabaseConfig::default(),
         server: ServerConfig::default(),
         auth: AuthConfig {
-            jwt_secret: "openapi-gen".to_string(),
+            jwt_secret: "gen-openapi".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),

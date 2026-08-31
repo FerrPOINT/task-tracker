@@ -235,7 +235,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (event_type, issue_id, project_key). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter. */
+        /** @description Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (type, issue_id, project_key). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter. */
         get: operations["events"];
         put?: never;
         post?: never;
@@ -1526,12 +1526,12 @@ export interface components {
             value: unknown;
         };
         TrackerEventPayload: {
-            /** @description Event discriminator, e.g. `issue_created`, `issue_updated`, `issue_deleted`. */
-            event_type: string;
             /** @description UUID of the affected issue (when applicable). */
             issue_id?: string | null;
             /** @description Project key for cache scoping (when applicable). */
             project_key?: string | null;
+            /** @description Event discriminator, e.g. `issue_created`, `issue_updated`, `issue_deleted`. */
+            type: string;
         };
         TransitionIssueRequest: {
             target_status_id: string;
@@ -3645,7 +3645,10 @@ export interface operations {
     };
     list_trash: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number | null;
+                offset?: number | null;
+            };
             header?: never;
             path: {
                 /** @description Project key */

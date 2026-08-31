@@ -400,7 +400,7 @@ async fn update_issue_invalid_assignee_id_returns_400() {
         description: None,
         priority: None,
         status_id: None,
-        assignee_id: Some("not-a-uuid".to_string()),
+        assignee_id: Some(Some("not-a-uuid".to_string())),
         sprint_id: None,
         component_id: None,
         affected_version_id: None,

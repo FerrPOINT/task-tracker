@@ -5,6 +5,39 @@ use crate::authz::Authz;
 use domain::{IssueQuery, IssueRepository, SprintRepository, StatusCategory, StatusRepository};
 use shared::{AppError, ProjectId, SprintId, StatusId, UserId};
 
+pub(crate) fn status_at(
+    issue: &domain::Issue,
+    issue_history: &[domain::IssueStatusHistory],
+    timestamp: shared::Timestamp,
+) -> Option<StatusId> {
+    if issue.created_at > timestamp {
+        return None;
+    }
+
+    let history = issue_history
+        .iter()
+        .filter(|entry| entry.issue_id == issue.id);
+
+    if let Some(last) = history
+        .clone()
+        .filter(|entry| entry.changed_at <= timestamp)
+        .max_by_key(|entry| entry.changed_at)
+    {
+        return Some(last.to_status_id);
+    }
+
+    if let Some(first_after) = history
+        .filter(|entry| entry.changed_at > timestamp)
+        .min_by_key(|entry| entry.changed_at)
+    {
+        if let Some(from_status_id) = first_after.from_status_id {
+            return Some(from_status_id);
+        }
+    }
+
+    Some(issue.status_id)
+}
+
 pub struct ReportServiceImpl {
     issues: Arc<dyn IssueRepository>,
     sprints: Arc<dyn SprintRepository>,
@@ -34,7 +67,13 @@ impl ReportServiceImpl {
         statuses
             .iter()
             .find(|s| s.id == status_id)
-            .map(|s| s.category)
+            .map(|s| {
+                if s.is_closed {
+                    StatusCategory::Done
+                } else {
+                    s.category
+                }
+            })
             .unwrap_or_default()
     }
 }
@@ -111,11 +150,7 @@ impl crate::context::ReportService for ReportServiceImpl {
         let total = issues.len();
 
         let statuses = self.statuses.list_all().await.unwrap_or_default();
-        let done_status_ids: Vec<StatusId> = statuses
-            .iter()
-            .filter(|s| s.category == StatusCategory::Done || s.is_closed)
-            .map(|s| s.id)
-            .collect();
+        let history = self.history.list_by_project(project_id).await?;
 
         let start = sprint.start_date.unwrap_or_else(shared::now);
         let end = sprint
@@ -131,10 +166,11 @@ impl crate::context::ReportService for ReportServiceImpl {
             let remaining = issues
                 .iter()
                 .filter(|issue| {
-                    if !done_status_ids.contains(&issue.status_id) {
-                        return true; // still open
-                    }
-                    issue.updated_at > current
+                    status_at(issue, &history, current)
+                        .map(|status_id| {
+                            self.category_of(status_id, &statuses) != StatusCategory::Done
+                        })
+                        .unwrap_or(false)
                 })
                 .count();
             points.push(crate::context::BurndownPointDto {
@@ -188,15 +224,7 @@ impl crate::context::ReportService for ReportServiceImpl {
         for &date in &dates {
             let (mut todo, mut in_progress, mut done) = (0usize, 0usize, 0usize);
             for issue in &issues {
-                let issue_history: Vec<_> = history
-                    .iter()
-                    .filter(|h| h.issue_id == issue.id && h.changed_at <= date)
-                    .collect();
-                let status_id = if let Some(last) = issue_history.last() {
-                    last.to_status_id
-                } else if issue.created_at <= date {
-                    issue.status_id
-                } else {
+                let Some(status_id) = status_at(issue, &history, date) else {
                     continue;
                 };
                 match self.category_of(status_id, &statuses) {

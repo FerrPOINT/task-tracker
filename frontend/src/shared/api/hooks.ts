@@ -311,10 +311,9 @@ export function useMoveIssueToSprint(projectKey: string) {
   return useMutation({
     mutationFn: ({ sprintId, issueId }: { sprintId: string; issueId: string }) =>
       moveIssueToSprint(projectKey, sprintId, issueId),
-    onSuccess: () => {
+    onSuccess: (data, { issueId }) => {
       qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
-      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
-      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+      invalidateIssueCaches(qc, data.project_key || projectKey, issueId)
     },
   })
 }
@@ -324,10 +323,9 @@ export function useRemoveIssueFromSprint(projectKey: string) {
   return useMutation({
     mutationFn: ({ sprintId, issueId }: { sprintId: string; issueId: string }) =>
       removeIssueFromSprint(projectKey, sprintId, issueId),
-    onSuccess: () => {
+    onSuccess: (data, { issueId }) => {
       qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
-      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
-      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+      invalidateIssueCaches(qc, data.project_key || projectKey, issueId)
     },
   })
 }
@@ -622,19 +620,25 @@ export function useIssueLabels(issueId: string | undefined) {
   })
 }
 
-export function useAttachLabel(issueId: string) {
+export function useAttachLabel(issueId: string, projectKey?: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (labelId: string) => attachLabel(issueId, labelId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: labelKeys.issue(issueId) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: labelKeys.issue(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
   })
 }
 
-export function useDetachLabel(issueId: string) {
+export function useDetachLabel(issueId: string, projectKey?: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (labelId: string) => detachLabel(issueId, labelId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: labelKeys.issue(issueId) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: labelKeys.issue(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
   })
 }
 

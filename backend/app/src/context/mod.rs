@@ -127,6 +127,9 @@ impl AppContext {
             repos.components.clone(),
             repos.versions.clone(),
             repos.custom_fields.clone(),
+            repos.labels.clone(),
+            repos.attachments.clone(),
+            storage.clone(),
             repos.watchers.clone(),
             events.clone(),
             repos.notifications.clone(),
@@ -138,6 +141,7 @@ impl AppContext {
             repos.issues.clone(),
             repos.sprints.clone(),
             repos.users.clone(),
+            repos.labels.clone(),
             repos.statuses.clone(),
             repos.transitions.clone(),
             repos.projects.clone(),
@@ -147,6 +151,7 @@ impl AppContext {
             repos.issues.clone(),
             repos.projects.clone(),
             repos.users.clone(),
+            repos.labels.clone(),
             repos.statuses.clone(),
             authz.clone(),
         ));
@@ -154,6 +159,7 @@ impl AppContext {
             repos.issues.clone(),
             repos.projects.clone(),
             repos.users.clone(),
+            repos.labels.clone(),
             authz.clone(),
         ));
         let sprint: Arc<dyn SprintService> = Arc::new(SprintServiceImpl::new(
@@ -161,6 +167,8 @@ impl AppContext {
             repos.issues.clone(),
             repos.projects.clone(),
             repos.users.clone(),
+            repos.labels.clone(),
+            events.clone(),
             authz.clone(),
         ));
         Self {

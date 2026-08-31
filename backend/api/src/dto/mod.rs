@@ -199,6 +199,12 @@ pub struct SearchQuery {
     pub jql: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct TrashQuery {
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CommentResponse {
     pub id: String,

@@ -2,11 +2,12 @@ use std::sync::Arc;
 
 type TestStorage = domain::InMemoryStorage;
 use domain::{
-    Board, BoardColumn, BoardRepository, Issue, IssueQuery, IssueRepository, MemoryBoardRepository,
-    MemoryIssueRepository, MemoryNotificationRepository, MemoryProjectRepository,
-    MemorySprintRepository, MemoryUserRepository, Notification, NotificationRepository, Project,
-    ProjectMemberRepository, ProjectQuery, ProjectRepository, Sprint, SprintRepository,
-    StatusCategory, User, UserNotificationSettingsRepository, UserRepository,
+    Board, BoardColumn, BoardRepository, Issue, IssueQuery, IssueRepository,
+    MemoryAttachmentRepository, MemoryBoardRepository, MemoryIssueRepository,
+    MemoryNotificationRepository, MemoryProjectRepository, MemorySprintRepository,
+    MemoryUserRepository, Notification, NotificationRepository, Project, ProjectMemberRepository,
+    ProjectQuery, ProjectRepository, Sprint, SprintRepository, StatusCategory, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{
     AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, NotificationId,
@@ -14,8 +15,9 @@ use shared::{
 };
 
 use crate::commands::{
-    CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, LoginCommand, RegisterCommand,
-    UpdateIssueCommand, UpdateNotificationSettingsCommand,
+    CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateSprintCommand,
+    LoginCommand, MoveIssueToSprintCommand, RegisterCommand, UpdateIssueCommand,
+    UpdateNotificationSettingsCommand,
 };
 use crate::context::{AppContext, AttachmentService, NotificationService};
 use crate::services::{AttachmentServiceImpl, NotificationServiceImpl};
@@ -212,7 +214,14 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
     users.save(&user).await.unwrap();
     let projects = Arc::new(MemoryProjectRepository::default());
     projects.save(&project).await.unwrap();
-    let issues = Arc::new(MemoryIssueRepository::default());
+    let history = Arc::new(domain::MemoryIssueStatusHistoryRepository::default());
+    let (history_entries, history_project_ids) = history.store();
+    let custom_fields = Arc::new(domain::MemoryCustomFieldRepository::default());
+    let issues = Arc::new(MemoryIssueRepository::with_shared_stores(
+        history_entries,
+        history_project_ids,
+        custom_fields.value_store(),
+    ));
     let boards = Arc::new(MemoryBoardRepository::default());
     boards.save(&board).await.unwrap();
     let sprints = Arc::new(MemorySprintRepository::default());
@@ -234,17 +243,17 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         ))),
         transitions: Arc::new(domain::StubWorkflowTransitionRepository),
         issue_types: Arc::new(domain::StubIssueTypeRepository),
-        attachments: Arc::new(domain::StubAttachmentRepository),
+        attachments: Arc::new(MemoryAttachmentRepository::default()),
         labels: Arc::new(domain::StubLabelRepository),
         issue_links: Arc::new(domain::StubIssueLinkRepository),
         notifications: notifications.clone(),
         notification_settings: notifications.clone(),
-        issue_status_history: Arc::new(domain::StubIssueStatusHistoryRepository),
+        issue_status_history: history,
         watchers: Arc::new(domain::MemoryWatcherRepository::default()),
         votes: Arc::new(domain::MemoryVoteRepository::default()),
         components: Arc::new(domain::MemoryProjectComponentRepository::default()),
         versions: Arc::new(domain::MemoryProjectVersionRepository::default()),
-        custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
+        custom_fields,
     });
     AppContext::new(
         test_config(),
@@ -369,6 +378,17 @@ async fn issue_service_create() {
     assert_eq!(issue.project_key, "TT");
     assert_eq!(issue.summary, "Test issue");
     assert!(!issue.key.is_empty());
+
+    let history = ctx
+        .repos
+        .issue_status_history
+        .list_by_issue(issue.id.parse().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].from_status_id, None);
+    assert_eq!(history[0].to_status_id.to_string(), issue.status_id);
+    assert_eq!(history[0].changed_by_id, user.id);
 }
 
 #[tokio::test]
@@ -556,6 +576,71 @@ async fn issue_update_rejects_non_member_assignee() {
         .await
         .unwrap_err();
     assert!(matches!(err, AppError::Forbidden));
+}
+
+#[tokio::test]
+async fn issue_update_distinguishes_omitted_and_null_assignee() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Assignee clear".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: Some(owner.id),
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let renamed = ctx
+        .services
+        .issue
+        .update(
+            issue_id,
+            UpdateIssueCommand {
+                summary: Some("Assignee unchanged".to_string()),
+                assignee_id: None,
+                actor_id: owner.id,
+                ..Default::default()
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    assert_eq!(renamed.assignee_id, Some(owner.id.to_string()));
+
+    let cleared = ctx
+        .services
+        .issue
+        .update(
+            issue_id,
+            UpdateIssueCommand {
+                assignee_id: Some(None),
+                actor_id: owner.id,
+                ..Default::default()
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    assert_eq!(cleared.assignee_id, None);
 }
 
 #[tokio::test]
@@ -2671,11 +2756,52 @@ async fn issue_soft_delete_lists_in_trash() {
     let trash = ctx
         .services
         .issue
-        .list_trash(&ProjectKey::new("TT"), user.id)
+        .list_trash(&ProjectKey::new("TT"), user.id, 0, 50)
         .await
         .unwrap();
     assert_eq!(trash.len(), 1);
     assert_eq!(trash[0].id, issue.id);
+}
+
+#[tokio::test]
+async fn issue_trash_paginates_beyond_default_issue_cap() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let todo: StatusId = board.columns[0].id.parse().unwrap();
+
+    for number in 1..=1_005 {
+        let mut issue = domain::Issue::create(
+            &project,
+            number,
+            IssueType::Task,
+            todo,
+            format!("trashed {number}"),
+            None,
+            user.id,
+            Priority::Medium,
+        );
+        issue.deleted_at = Some(shared::now());
+        ctx.repos.issues.save(&issue).await.unwrap();
+    }
+
+    let trash = ctx
+        .services
+        .issue
+        .list_trash(&ProjectKey::new("TT"), user.id, 1_000, 50)
+        .await
+        .unwrap();
+    assert_eq!(trash.len(), 5);
 }
 
 #[tokio::test]
@@ -2715,7 +2841,7 @@ async fn issue_purge_from_trash() {
     let trash = ctx
         .services
         .issue
-        .list_trash(&ProjectKey::new("TT"), user.id)
+        .list_trash(&ProjectKey::new("TT"), user.id, 0, 50)
         .await
         .unwrap();
     assert_eq!(trash.len(), 0);
@@ -2723,6 +2849,137 @@ async fn issue_purge_from_trash() {
     // Restore should fail after purge.
     let err = ctx.services.issue.restore(issue_id, user.id).await;
     assert!(err.is_err());
+}
+
+#[tokio::test]
+async fn issue_purge_from_trash_deletes_attachment_files() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let storage = Arc::new(RecordingStorage::default());
+    let ctx = AppContext::new(test_config(), base_ctx.repos.clone(), storage.clone());
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Purge attachment".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    ctx.services
+        .attachment
+        .upload(
+            issue_id,
+            user.id,
+            "purge.txt",
+            "text/plain",
+            b"payload".to_vec(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(storage.file_count(), 1);
+    ctx.services.issue.delete(issue_id, user.id).await.unwrap();
+    ctx.services.issue.purge(issue_id, user.id).await.unwrap();
+
+    assert_eq!(storage.file_count(), 0);
+    assert_eq!(storage.delete_count(), 1);
+}
+
+#[tokio::test]
+async fn sprint_move_issue_publishes_issue_updated_event() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Move to sprint".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let sprint = ctx
+        .services
+        .sprint
+        .create(
+            CreateSprintCommand {
+                project_id: project.id,
+                name: "Sprint".to_string(),
+                goal: None,
+                start_date: None,
+                end_date: None,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let sprint_id: SprintId = sprint.id.parse().unwrap();
+    let mut receiver = ctx.events.subscribe();
+
+    ctx.services
+        .sprint
+        .move_issue(
+            MoveIssueToSprintCommand {
+                issue_id,
+                sprint_id: Some(sprint_id),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
 }
 
 #[tokio::test]
@@ -2880,6 +3137,23 @@ fn make_history(
         id: shared::IssueStatusHistoryId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
         issue_id,
         from_status_id: None,
+        to_status_id,
+        changed_by_id: UserId::new(),
+        changed_at,
+    }
+}
+
+fn make_transition_history(
+    id: &str,
+    issue_id: IssueId,
+    from_status_id: Option<StatusId>,
+    to_status_id: StatusId,
+    changed_at: chrono::DateTime<chrono::FixedOffset>,
+) -> IssueStatusHistory {
+    IssueStatusHistory {
+        id: shared::IssueStatusHistoryId::from_uuid(uuid::Uuid::parse_str(id).unwrap()),
+        issue_id,
+        from_status_id,
         to_status_id,
         changed_by_id: UserId::new(),
         changed_at,
@@ -3098,6 +3372,70 @@ async fn report_burndown_computes_remaining_per_day() {
 }
 
 #[tokio::test]
+async fn report_burndown_uses_history_not_later_issue_edits() {
+    let (issues, sprints, statuses, history, project_id, todo, _in_progress, done, owner) =
+        report_test_setup();
+
+    let start = shared::now() - chrono::Duration::days(3);
+    let end = shared::now();
+    let sprint = make_sprint(
+        "cccccccc-0000-0000-0000-000000000101",
+        project_id,
+        "History Sprint",
+        domain::SprintState::Active,
+        start,
+        end,
+    );
+    sprints.save(&sprint).await.unwrap();
+
+    let mut issue = make_issue(
+        "dddddddd-0000-0000-0000-000000000101",
+        project_id,
+        101,
+        done,
+        Some(sprint.id),
+        start,
+    );
+    issue.updated_at = shared::now();
+    issues.save(&issue).await.unwrap();
+
+    history.save_with_project(
+        &make_transition_history(
+            "11111111-0000-0000-0000-000000000101",
+            issue.id,
+            None,
+            todo,
+            start,
+        ),
+        project_id,
+    );
+    history.save_with_project(
+        &make_transition_history(
+            "11111111-0000-0000-0000-000000000102",
+            issue.id,
+            Some(todo),
+            done,
+            start + chrono::Duration::days(1),
+        ),
+        project_id,
+    );
+
+    let service = report_service(
+        issues.clone(),
+        sprints.clone(),
+        statuses.clone(),
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service.get_burndown(sprint.id, owner).await.unwrap();
+
+    assert_eq!(result.points.first().unwrap().remaining, 1);
+    assert_eq!(result.points.last().unwrap().remaining, 0);
+}
+
+#[tokio::test]
 async fn report_cumulative_flow_snapshots_status_categories() {
     let (issues, _sprints, statuses, history, project_id, todo, in_progress, done, owner) =
         report_test_setup();
@@ -3154,6 +3492,53 @@ async fn report_cumulative_flow_snapshots_status_categories() {
     assert_eq!(last.done, 1);
     assert_eq!(last.todo, 0);
     assert_eq!(last.in_progress, 0);
+}
+
+#[tokio::test]
+async fn report_cumulative_flow_uses_first_transition_from_status_for_legacy_issues() {
+    let (issues, _sprints, statuses, history, project_id, todo, in_progress, _done, owner) =
+        report_test_setup();
+
+    let created_at = shared::now() - chrono::Duration::days(2);
+    let first_transition_at = shared::now() - chrono::Duration::days(1);
+    let issue = make_issue(
+        "eeeeeeee-0000-0000-0000-000000000101",
+        project_id,
+        101,
+        in_progress,
+        None,
+        created_at,
+    );
+    issues.save(&issue).await.unwrap();
+    history.save_with_project(
+        &make_transition_history(
+            "11111111-0000-0000-0000-000000000201",
+            issue.id,
+            Some(todo),
+            in_progress,
+            first_transition_at,
+        ),
+        project_id,
+    );
+
+    let service = report_service(
+        issues.clone(),
+        Arc::new(domain::StubSprintRepository),
+        statuses.clone(),
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service
+        .get_cumulative_flow(project_id, owner)
+        .await
+        .unwrap();
+
+    assert_eq!(result.first().unwrap().todo, 1);
+    assert_eq!(result.first().unwrap().in_progress, 0);
+    assert_eq!(result.last().unwrap().todo, 0);
+    assert_eq!(result.last().unwrap().in_progress, 1);
 }
 
 #[tokio::test]
@@ -3866,6 +4251,29 @@ async fn authz_require_owner_denies_member() {
         matches!(err, AppError::Forbidden),
         "expected Forbidden for member calling owner-only gate, got {err:?}"
     );
+}
+
+#[tokio::test]
+async fn project_member_add_rejects_inactive_user() {
+    let (ctx, owner, _member, project_id) = ctx_with_real_members().await;
+    let mut inactive = test_user_with("inactive", "inactive@example.com", "Inactive User");
+    inactive.is_active = false;
+    ctx.repos.users.save(&inactive).await.unwrap();
+
+    let err = ctx
+        .services
+        .member
+        .add(
+            crate::commands::AddProjectMemberCommand {
+                project_id,
+                user_id: inactive.id,
+                role: "member".to_string(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::InvalidInput(_)));
 }
 
 // SEC-4: deactivated accounts must not log in

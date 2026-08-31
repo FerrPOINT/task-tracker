@@ -3,7 +3,13 @@ import { useMemo } from 'react'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
-import { useCurrentUser, useStatuses, useTransitions, useUsers } from '@/shared/api/hooks'
+import {
+  useProjectMembers,
+  useProjects,
+  useStatuses,
+  useTransitions,
+  useUsers,
+} from '@/shared/api/hooks'
 
 const priorities = ['Lowest', 'Low', 'Medium', 'High', 'Highest']
 
@@ -28,8 +34,9 @@ export function IssueMetaEditor({
   disabled,
 }: IssueMetaEditorProps) {
   const { t } = useTranslation()
-  const currentUser = useCurrentUser()
   const usersQuery = useUsers()
+  const projectsQuery = useProjects()
+  const projectMembersQuery = useProjectMembers(issue.project_key)
   const statusesQuery = useStatuses()
   const transitionsQuery = useTransitions()
 
@@ -48,20 +55,45 @@ export function IssueMetaEditor({
     return all.filter((s) => allowed.has(s.id))
   }, [statusesQuery.data, transitionsQuery.data, columns, issue.status_id])
 
-  const assigneeOptions = useMemo(() => {
-    const initial = usersQuery.data ?? []
-    const list = [...initial]
-    if (currentUser.data?.id && !list.find((u) => u.id === currentUser.data!.id)) {
-      list.unshift(currentUser.data)
+  const currentProject = useMemo(
+    () => (projectsQuery.data ?? []).find((project) => project.key === issue.project_key),
+    [issue.project_key, projectsQuery.data],
+  )
+
+  const assigneeOptions = useMemo<
+    Array<{ value: string; label: string; disabled?: boolean }>
+  >(() => {
+    const allowedIds = new Set((projectMembersQuery.data?.members ?? []).map((m) => m.user_id))
+    if (currentProject?.owner_id) {
+      allowedIds.add(currentProject.owner_id)
     }
+    const list = (usersQuery.data ?? []).filter((user) => allowedIds.has(user.id))
+    const hasCurrentAssignee =
+      !!issue.assignee_id && list.some((user) => user.id === issue.assignee_id)
     return [
       { value: '', label: t('issue.unassigned') },
       ...list.map((u) => ({
         value: u.id,
         label: u.display_name || u.username,
       })),
+      ...(issue.assignee_id && !hasCurrentAssignee
+        ? [
+            {
+              value: issue.assignee_id,
+              label: issue.assignee_name ?? issue.assignee_id,
+              disabled: true,
+            },
+          ]
+        : []),
     ]
-  }, [usersQuery.data, currentUser.data, t])
+  }, [
+    currentProject?.owner_id,
+    issue.assignee_id,
+    issue.assignee_name,
+    projectMembersQuery.data?.members,
+    t,
+    usersQuery.data,
+  ])
 
   const selectClass =
     'w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50'
@@ -114,11 +146,11 @@ export function IssueMetaEditor({
           id="issue-assignee"
           value={issue.assignee_id ?? ''}
           onChange={(e) => onChange({ assignee_id: e.target.value || null })}
-          disabled={disabled || usersQuery.isLoading}
+          disabled={disabled || usersQuery.isLoading || projectMembersQuery.isLoading}
           className={selectClass}
         >
           {assigneeOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
+            <option key={opt.value} value={opt.value} disabled={opt.disabled}>
               {opt.label}
             </option>
           ))}

@@ -168,4 +168,11 @@ describe('ProjectBacklogPage', () => {
     await waitFor(() => expect(screen.getByText(/Sprint 1/)).toBeInTheDocument())
     expect(screen.getByText(/Sprint 2/)).toBeInTheDocument()
   })
+
+  it('preserves project key when opening issue create', async () => {
+    render(wrapper(<ProjectBacklogPage />))
+    const links = await screen.findAllByRole('link')
+    const createLink = links.find((link) => link.getAttribute('href')?.startsWith('/issues/create'))
+    expect(createLink).toHaveAttribute('href', '/issues/create?project_key=TT')
+  })
 })

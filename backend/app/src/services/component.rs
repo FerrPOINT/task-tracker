@@ -77,15 +77,20 @@ impl crate::context::ComponentService for ComponentServiceImpl {
 
     async fn update(
         &self,
+        project_key: &ProjectKey,
         id: shared::ProjectComponentId,
         name: &str,
         description: Option<&str>,
         requester: UserId,
     ) -> Result<crate::context::ComponentDto, AppError> {
-        let mut component = self.components.get_by_id(id).await?;
+        let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(component.project_id, requester)
+            .require_project_edit(project.id, requester)
             .await?;
+        let mut component = self.components.get_by_id(id).await?;
+        if component.project_id != project.id {
+            return Err(AppError::not_found("component", id));
+        }
         if !name.trim().is_empty() {
             component.name = name.trim().to_string().into();
         }
@@ -96,13 +101,18 @@ impl crate::context::ComponentService for ComponentServiceImpl {
 
     async fn delete(
         &self,
+        project_key: &ProjectKey,
         id: shared::ProjectComponentId,
         requester: UserId,
     ) -> Result<(), AppError> {
-        let component = self.components.get_by_id(id).await?;
+        let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(component.project_id, requester)
+            .require_project_edit(project.id, requester)
             .await?;
+        let component = self.components.get_by_id(id).await?;
+        if component.project_id != project.id {
+            return Err(AppError::not_found("component", id));
+        }
         self.components.delete(id).await?;
         Ok(())
     }

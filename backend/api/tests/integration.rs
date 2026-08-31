@@ -120,9 +120,11 @@ async fn spawn_server_with_notifications()
     projects.save(&project).await.unwrap();
     let shared_history = Arc::new(MemoryIssueStatusHistoryRepository::default());
     let (hist_store, hist_projects) = shared_history.store();
-    let issues = Arc::new(MemoryIssueRepository::with_shared_history(
+    let custom_fields = Arc::new(domain::MemoryCustomFieldRepository::default());
+    let issues = Arc::new(MemoryIssueRepository::with_shared_stores(
         hist_store,
         hist_projects,
+        custom_fields.value_store(),
     ));
     let boards = Arc::new(MemoryBoardRepository::default());
     boards.save(&board).await.unwrap();
@@ -187,7 +189,7 @@ async fn spawn_server_with_notifications()
         votes: Arc::new(domain::MemoryVoteRepository::default()),
         components: Arc::new(domain::stubs::memory::MemoryProjectComponentRepository::default()),
         versions: Arc::new(domain::stubs::memory::MemoryProjectVersionRepository::default()),
-        custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
+        custom_fields,
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -827,6 +829,75 @@ async fn issue_update_not_found() {
 }
 
 #[tokio::test]
+async fn issue_update_assignee_null_empty_and_omitted_contract() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let assignee_id = test_user().id.to_string();
+
+    let created = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "assignee contract",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": assignee_id,
+            "assignee_id": assignee_id
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201);
+    let issue: serde_json::Value = created.json().await.unwrap();
+    let issue_id = issue["id"].as_str().unwrap();
+    assert_eq!(issue["assignee_id"], assignee_id);
+
+    let omitted = client
+        .patch(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"summary": "assignee still set"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(omitted.status(), 200);
+    let body: serde_json::Value = omitted.json().await.unwrap();
+    assert_eq!(body["assignee_id"], assignee_id);
+
+    let cleared_null = client
+        .patch(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"assignee_id": null}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cleared_null.status(), 200);
+    let body: serde_json::Value = cleared_null.json().await.unwrap();
+    assert!(body["assignee_id"].is_null());
+
+    let reassigned = client
+        .patch(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"assignee_id": assignee_id}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(reassigned.status(), 200);
+
+    let cleared_empty = client
+        .patch(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"assignee_id": ""}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(cleared_empty.status(), 200);
+    let body: serde_json::Value = cleared_empty.json().await.unwrap();
+    assert!(body["assignee_id"].is_null());
+}
+
+#[tokio::test]
 async fn comments_crud() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
@@ -1417,6 +1488,32 @@ async fn labels_crud_and_issue_attach_flow() {
     let issue_labels: serde_json::Value = res.json().await.unwrap();
     assert_eq!(issue_labels["labels"].as_array().unwrap().len(), 1);
 
+    let res = client
+        .get(format!("{}/api/v1/issues/{}", url, issue_id))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let issue: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(issue["labels"], serde_json::json!(["bug"]));
+
+    let res = client
+        .get(format!("{}/api/v1/search?q=attachment", url))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let search: serde_json::Value = res.json().await.unwrap();
+    let search_issue = search["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"].as_str() == Some(issue_id.as_str()))
+        .expect("attached issue appears in search");
+    assert_eq!(search_issue["labels"], serde_json::json!(["bug"]));
+
     // update
     let res = client
         .put(format!("{}/api/v1/labels/{}", url, label_id))
@@ -1428,6 +1525,16 @@ async fn labels_crud_and_issue_attach_flow() {
     assert_eq!(res.status(), 200);
     let updated: serde_json::Value = res.json().await.unwrap();
     assert_eq!(updated["name"], "critical-bug");
+
+    let res = client
+        .get(format!("{}/api/v1/issues/{}", url, issue_id))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let issue: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(issue["labels"], serde_json::json!(["critical-bug"]));
 
     // detach
     let res = client
@@ -2404,9 +2511,11 @@ async fn spawn_server_with_reports() -> (
     projects.save(&project).await.unwrap();
     let shared_history = Arc::new(MemoryIssueStatusHistoryRepository::default());
     let (hist_store, hist_projects) = shared_history.store();
-    let issues = Arc::new(MemoryIssueRepository::with_shared_history(
+    let custom_fields = Arc::new(domain::MemoryCustomFieldRepository::default());
+    let issues = Arc::new(MemoryIssueRepository::with_shared_stores(
         hist_store,
         hist_projects,
+        custom_fields.value_store(),
     ));
     let boards = Arc::new(MemoryBoardRepository::default());
     let sprints = Arc::new(MemorySprintRepository::default());
@@ -2436,7 +2545,7 @@ async fn spawn_server_with_reports() -> (
         votes: Arc::new(domain::MemoryVoteRepository::default()),
         components: Arc::new(domain::stubs::memory::MemoryProjectComponentRepository::default()),
         versions: Arc::new(domain::stubs::memory::MemoryProjectVersionRepository::default()),
-        custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
+        custom_fields,
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -2568,13 +2677,14 @@ async fn reports_burndown_returns_data() {
     let todo =
         StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
 
+    let sprint_start = shared::now() - chrono::Duration::days(2);
     let sprint = domain::Sprint {
         id: shared::SprintId::new(),
         project_id,
         name: "Active Sprint".into(),
         goal: None,
         state: domain::SprintState::Active,
-        start_date: Some(shared::now() - chrono::Duration::days(2)),
+        start_date: Some(sprint_start),
         end_date: Some(shared::now() + chrono::Duration::days(2)),
         velocity: None,
     };
@@ -2587,7 +2697,7 @@ async fn reports_burndown_returns_data() {
             i,
             todo,
             Some(sprint.id),
-            shared::now() - chrono::Duration::days(2),
+            sprint_start,
         );
         issues.save(&issue).await.unwrap();
     }
@@ -3304,9 +3414,11 @@ async fn spawn_server_with_memory_repos() -> (String, reqwest::Client) {
     projects.save(&project).await.unwrap();
     let shared_history = Arc::new(MemoryIssueStatusHistoryRepository::default());
     let (hist_store, hist_projects) = shared_history.store();
-    let issues = Arc::new(MemoryIssueRepository::with_shared_history(
+    let custom_fields = Arc::new(domain::MemoryCustomFieldRepository::default());
+    let issues = Arc::new(MemoryIssueRepository::with_shared_stores(
         hist_store,
         hist_projects,
+        custom_fields.value_store(),
     ));
     let boards = Arc::new(MemoryBoardRepository::default());
     boards.save(&board).await.unwrap();
@@ -3371,7 +3483,7 @@ async fn spawn_server_with_memory_repos() -> (String, reqwest::Client) {
         votes: Arc::new(domain::MemoryVoteRepository::default()),
         components: Arc::new(domain::MemoryProjectComponentRepository::default()),
         versions: Arc::new(domain::MemoryProjectVersionRepository::default()),
-        custom_fields: Arc::new(domain::MemoryCustomFieldRepository::default()),
+        custom_fields,
     });
 
     let ctx = Arc::new(AppContext::new(
@@ -3495,6 +3607,47 @@ async fn component_create_unknown_project_returns_404() {
         .await
         .unwrap();
     assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn component_update_delete_reject_path_project_mismatch_as_404() {
+    let (url, client) = spawn_server_with_memory_repos().await;
+    let token = login_token(&url, &client).await;
+    create_project_via_api(&url, &client, &token, "XP3", "Mismatch Project").await;
+
+    let create = client
+        .post(format!("{url}/api/v1/projects/TT/components"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "Backend"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201);
+    let component_id = create.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let update = client
+        .put(format!(
+            "{url}/api/v1/projects/XP3/components/{component_id}"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "Wrong project"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update.status(), 404);
+
+    let delete = client
+        .delete(format!(
+            "{url}/api/v1/projects/XP3/components/{component_id}"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete.status(), 404);
 }
 
 #[tokio::test]
@@ -3623,6 +3776,43 @@ async fn version_create_unknown_project_returns_404() {
         .await
         .unwrap();
     assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn version_update_delete_reject_path_project_mismatch_as_404() {
+    let (url, client) = spawn_server_with_memory_repos().await;
+    let token = login_token(&url, &client).await;
+    create_project_via_api(&url, &client, &token, "XV3", "Version Mismatch").await;
+
+    let create = client
+        .post(format!("{url}/api/v1/projects/TT/versions"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "v1", "description": null, "released": false}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201);
+    let version_id = create.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let update = client
+        .put(format!("{url}/api/v1/projects/XV3/versions/{version_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "wrong", "description": null, "released": false}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(update.status(), 404);
+
+    let delete = client
+        .delete(format!("{url}/api/v1/projects/XV3/versions/{version_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete.status(), 404);
 }
 
 #[tokio::test]
@@ -4664,6 +4854,31 @@ async fn search_status_filter_applied() {
     // Unknown status name → empty set, not everything
     let res = client
         .get(format!("{url}/api/v1/search?status=bogus"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(body["issues"].as_array().unwrap().is_empty());
+
+    let res = client
+        .get(format!("{url}/api/v1/issues?status=todo"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert!(
+        body["issues"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|i| i["id"].as_str() == Some(issue_id.as_str()))
+    );
+
+    let res = client
+        .get(format!("{url}/api/v1/issues?status=bogus"))
         .bearer_auth(&token)
         .send()
         .await

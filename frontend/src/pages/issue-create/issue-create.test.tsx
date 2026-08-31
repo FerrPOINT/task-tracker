@@ -35,6 +35,9 @@ const listProjects = vi.hoisted(() =>
 const listUsers = vi.hoisted(() =>
   vi.fn(() => Promise.resolve([{ id: 'u2', username: 'bob', display_name: 'Bob' }])),
 )
+const listProjectMembers = vi.hoisted(() =>
+  vi.fn(() => Promise.resolve({ members: [{ project_id: 'p1', user_id: 'u2', role: 'member' }] })),
+)
 const listIssueTypes = vi.hoisted(() =>
   vi.fn(() =>
     Promise.resolve([{ id: 'it1', name: 'Task', description: '', icon: '', is_subtask: false }]),
@@ -70,6 +73,11 @@ vi.mock('@/api/auth', () => ({
   getCurrentUser: vi.fn(),
   listUsers,
   logout: vi.fn(),
+}))
+vi.mock('@/api/members', () => ({
+  listProjectMembers,
+  addProjectMember: vi.fn(),
+  removeProjectMember: vi.fn(),
 }))
 vi.mock('@/api/workflow', () => ({
   listStatuses: vi.fn(),
@@ -107,6 +115,7 @@ describe('IssueCreatePage', () => {
     createIssue.mockClear()
     listProjects.mockClear()
     listUsers.mockClear()
+    listProjectMembers.mockClear()
     listIssueTypes.mockClear()
     listCustomFields.mockClear()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })

@@ -19,7 +19,7 @@ REST API первой версии Task Tracker. Все endpoint возвращ�
 
 ```bash
 cd backend
-cargo run --bin openapi-gen -- ../openapi/openapi.json
+cargo run -p api --bin gen-openapi > ../openapi/openapi.json
 cd ../frontend
 pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 ```

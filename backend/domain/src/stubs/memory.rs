@@ -16,8 +16,8 @@ use crate::{
     VoteRepository, WatcherRepository, Worklog, WorklogRepository,
 };
 use shared::{
-    AppError, BoardId, CommentId, IssueId, NotificationId, ProjectComponentId, ProjectId,
-    ProjectKey, ProjectVersionId, SprintId, StatusId, UserId, WorklogId,
+    AppError, BoardId, CommentId, CustomFieldId, IssueId, NotificationId, ProjectComponentId,
+    ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId, UserId, WorklogId,
 };
 
 #[derive(Default)]
@@ -181,20 +181,40 @@ pub struct MemoryIssueRepository {
     /// `with_shared_history`, so atomic writes are visible to reports.
     history: Arc<Mutex<Vec<IssueStatusHistory>>>,
     history_project_ids: Arc<Mutex<Vec<ProjectId>>>,
+    custom_field_values: Arc<Mutex<Vec<crate::CustomFieldValue>>>,
 }
 
 impl MemoryIssueRepository {
+    pub fn with_shared_stores(
+        history: Arc<Mutex<Vec<IssueStatusHistory>>>,
+        project_ids: Arc<Mutex<Vec<ProjectId>>>,
+        custom_field_values: Arc<Mutex<Vec<crate::CustomFieldValue>>>,
+    ) -> Self {
+        Self {
+            issues: Arc::new(Mutex::new(Vec::new())),
+            history,
+            history_project_ids: project_ids,
+            custom_field_values,
+        }
+    }
+
     /// Wire the issue repo to the same store the history repository reads,
     /// so `change_status_atomic` history entries appear in reports.
     pub fn with_shared_history(
         history: Arc<Mutex<Vec<IssueStatusHistory>>>,
         project_ids: Arc<Mutex<Vec<ProjectId>>>,
     ) -> Self {
-        Self {
-            issues: Arc::new(Mutex::new(Vec::new())),
-            history,
-            history_project_ids: project_ids,
-        }
+        Self::with_shared_stores(history, project_ids, Arc::new(Mutex::new(Vec::new())))
+    }
+
+    pub fn with_shared_custom_fields(
+        custom_field_values: Arc<Mutex<Vec<crate::CustomFieldValue>>>,
+    ) -> Self {
+        Self::with_shared_stores(
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(Vec::new())),
+            custom_field_values,
+        )
     }
 }
 
@@ -341,6 +361,36 @@ impl IssueRepository for MemoryIssueRepository {
             issues[idx] = issue.clone();
         } else {
             issues.push(issue.clone());
+        }
+        Ok(issue.id)
+    }
+
+    async fn create_with_initial_data(
+        &self,
+        issue: &Issue,
+        status_history: &IssueStatusHistory,
+        custom_field_values: &[(CustomFieldId, serde_json::Value)],
+    ) -> Result<IssueId, AppError> {
+        let mut issues = self.issues.lock().unwrap();
+        if issues.iter().any(|i| i.key == issue.key) {
+            return Err(AppError::conflict("duplicate entry"));
+        }
+        issues.push(issue.clone());
+        drop(issues);
+
+        self.history.lock().unwrap().push(status_history.clone());
+        self.history_project_ids
+            .lock()
+            .unwrap()
+            .push(issue.project_id);
+
+        let mut values = self.custom_field_values.lock().unwrap();
+        for (field_id, value) in custom_field_values {
+            values.push(crate::CustomFieldValue {
+                issue_id: issue.id,
+                field_id: *field_id,
+                value: value.clone(),
+            });
         }
         Ok(issue.id)
     }
@@ -903,6 +953,38 @@ impl crate::LabelRepository for MemoryLabelRepository {
             .collect())
     }
 
+    async fn list_by_issues(
+        &self,
+        issue_ids: &[IssueId],
+    ) -> Result<std::collections::HashMap<IssueId, Vec<crate::Label>>, AppError> {
+        let wanted = issue_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
+        let labels = self.labels.lock().unwrap();
+        let labels_by_id = labels
+            .iter()
+            .cloned()
+            .map(|label| (label.id, label))
+            .collect::<std::collections::HashMap<_, _>>();
+        let mut result = std::collections::HashMap::<IssueId, Vec<crate::Label>>::new();
+        for issue_id in issue_ids {
+            result.entry(*issue_id).or_default();
+        }
+        for (issue_id, label_id) in self.issue_labels.lock().unwrap().iter() {
+            if !wanted.contains(issue_id) {
+                continue;
+            }
+            if let Some(label) = labels_by_id.get(label_id) {
+                result.entry(*issue_id).or_default().push(label.clone());
+            }
+        }
+        for labels in result.values_mut() {
+            labels.sort_by(|a, b| a.name.as_ref().cmp(b.name.as_ref()));
+        }
+        Ok(result)
+    }
+
     async fn attach(&self, issue_id: IssueId, label_id: shared::LabelId) -> Result<(), AppError> {
         let mut il = self.issue_labels.lock().unwrap();
         if !il.contains(&(issue_id, label_id)) {
@@ -1400,6 +1482,19 @@ impl VoteRepository for MemoryVoteRepository {
 pub struct MemoryCustomFieldRepository {
     fields: Arc<Mutex<Vec<crate::CustomField>>>,
     values: Arc<Mutex<Vec<crate::CustomFieldValue>>>,
+}
+
+impl MemoryCustomFieldRepository {
+    pub fn with_shared_values(values: Arc<Mutex<Vec<crate::CustomFieldValue>>>) -> Self {
+        Self {
+            fields: Arc::new(Mutex::new(Vec::new())),
+            values,
+        }
+    }
+
+    pub fn value_store(&self) -> Arc<Mutex<Vec<crate::CustomFieldValue>>> {
+        self.values.clone()
+    }
 }
 
 #[async_trait]

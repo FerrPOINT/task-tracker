@@ -83,6 +83,7 @@ impl crate::context::VersionService for VersionServiceImpl {
 
     async fn update(
         &self,
+        project_key: &ProjectKey,
         id: shared::ProjectVersionId,
         name: &str,
         description: Option<&str>,
@@ -90,10 +91,14 @@ impl crate::context::VersionService for VersionServiceImpl {
         release_date: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
         requester: UserId,
     ) -> Result<crate::context::VersionDto, AppError> {
-        let mut version = self.versions.get_by_id(id).await?;
+        let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(version.project_id, requester)
+            .require_project_edit(project.id, requester)
             .await?;
+        let mut version = self.versions.get_by_id(id).await?;
+        if version.project_id != project.id {
+            return Err(AppError::not_found("version", id));
+        }
         if !name.trim().is_empty() {
             version.name = name.trim().to_string().into();
         }
@@ -108,13 +113,18 @@ impl crate::context::VersionService for VersionServiceImpl {
 
     async fn delete(
         &self,
+        project_key: &ProjectKey,
         id: shared::ProjectVersionId,
         requester: UserId,
     ) -> Result<(), AppError> {
-        let version = self.versions.get_by_id(id).await?;
+        let project = self.projects.get_by_key(project_key).await?;
         self.authz
-            .require_project_edit(version.project_id, requester)
+            .require_project_edit(project.id, requester)
             .await?;
+        let version = self.versions.get_by_id(id).await?;
+        if version.project_id != project.id {
+            return Err(AppError::not_found("version", id));
+        }
         self.versions.delete(id).await?;
         Ok(())
     }

@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::authz::Authz;
+use crate::context::EventBus;
 use crate::dto::{IssueDto, SprintDto};
-use domain::{IssueQuery, IssueRepository, ProjectRepository, SprintRepository};
+use domain::{IssueQuery, IssueRepository, LabelRepository, ProjectRepository, SprintRepository};
 use shared::{AppError, ProjectId, SprintId, UserId};
 
 #[async_trait]
@@ -39,6 +40,8 @@ pub struct SprintServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
+    events: EventBus,
     authz: Authz,
 }
 
@@ -48,6 +51,8 @@ impl SprintServiceImpl {
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
         users: Arc<dyn domain::UserRepository>,
+        labels: Arc<dyn LabelRepository>,
+        events: EventBus,
         authz: Authz,
     ) -> Self {
         Self {
@@ -55,6 +60,8 @@ impl SprintServiceImpl {
             issues,
             projects,
             users,
+            labels,
+            events,
             authz,
         }
     }
@@ -227,7 +234,18 @@ impl SprintService for SprintServiceImpl {
             issue.sprint_id = None;
         }
         self.issues.save(&issue).await?;
-        let name = super::helpers::project_name(self.projects.clone(), issue.project_id).await?;
-        Ok(super::helpers::build_issue_dto(self.users.clone(), issue, name.as_str()).await)
+        let project = self.projects.get_by_id(issue.project_id).await?;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: project.key.to_string(),
+        });
+        super::helpers::build_issue_dtos_with_projects(
+            Arc::clone(&self.projects),
+            Arc::clone(&self.users),
+            Arc::clone(&self.labels),
+            vec![issue],
+        )
+        .await
+        .map(|mut issues| issues.remove(0))
     }
 }

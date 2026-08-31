@@ -5,8 +5,8 @@ use crate::authz::Authz;
 use crate::commands::{CreateIssueCommand, UpdateIssueCommand};
 use crate::dto::IssueDto;
 use domain::{
-    BoardRepository, Issue, IssueQuery, IssueRepository, ProjectRepository, StatusRepository,
-    WorkflowTransitionRepository,
+    AttachmentRepository, BoardRepository, FileStorage, Issue, IssueQuery, IssueRepository,
+    ProjectRepository, StatusRepository, WorkflowTransitionRepository,
 };
 use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
 
@@ -21,6 +21,9 @@ pub struct IssueServiceImpl {
     components: Arc<dyn domain::ProjectComponentRepository>,
     versions: Arc<dyn domain::ProjectVersionRepository>,
     custom_fields: Arc<dyn domain::CustomFieldRepository>,
+    labels: Arc<dyn domain::LabelRepository>,
+    attachments: Arc<dyn AttachmentRepository>,
+    storage: Arc<dyn FileStorage>,
     watchers: Arc<dyn domain::WatcherRepository>,
     events: crate::context::EventBus,
     notifications: Arc<dyn domain::NotificationRepository>,
@@ -67,6 +70,9 @@ impl IssueServiceImpl {
         components: Arc<dyn domain::ProjectComponentRepository>,
         versions: Arc<dyn domain::ProjectVersionRepository>,
         custom_fields: Arc<dyn domain::CustomFieldRepository>,
+        labels: Arc<dyn domain::LabelRepository>,
+        attachments: Arc<dyn AttachmentRepository>,
+        storage: Arc<dyn FileStorage>,
         watchers: Arc<dyn domain::WatcherRepository>,
         events: crate::context::EventBus,
         notifications: Arc<dyn domain::NotificationRepository>,
@@ -85,6 +91,9 @@ impl IssueServiceImpl {
             components,
             versions,
             custom_fields,
+            labels,
+            attachments,
+            storage,
             watchers,
             notifications,
             notification_settings,
@@ -296,7 +305,19 @@ impl crate::context::IssueService for IssueServiceImpl {
             if let Some(assignee_id) = cmd.assignee_id {
                 candidate.assign(Some(assignee_id));
             }
-            match self.issues.save(&candidate).await {
+            let initial_status_history = domain::IssueStatusHistory {
+                id: shared::IssueStatusHistoryId::new(),
+                issue_id: candidate.id,
+                from_status_id: None,
+                to_status_id: status_id,
+                changed_by_id: cmd.actor_id,
+                changed_at: candidate.created_at,
+            };
+            match self
+                .issues
+                .create_with_initial_data(&candidate, &initial_status_history, &custom_field_values)
+                .await
+            {
                 Ok(_) => {
                     issue = Some(candidate);
                     break;
@@ -313,19 +334,6 @@ impl crate::context::IssueService for IssueServiceImpl {
         let issue = issue.ok_or_else(|| {
             AppError::conflict("could not allocate a unique issue key, try again")
         })?;
-        for (field_id, value) in custom_field_values {
-            self.custom_fields
-                .set_value(issue.id, field_id, &value)
-                .await?;
-        }
-        let statuses = self.statuses.list_all().await.unwrap_or_default();
-        let column = statuses
-            .iter()
-            .find(|s| s.id == issue.status_id)
-            .map(|s| s.name.as_ref().to_string())
-            .unwrap_or_else(|| super::helpers::issue_status_column(issue.status_id));
-        let (assignee_name, reporter_name) =
-            super::helpers::resolve_names(self.users.clone(), &issue).await;
         self.events.publish(shared::TrackerEvent::IssueCreated {
             issue_id: issue.id.to_string(),
             project_key: project.key.to_string(),
@@ -344,13 +352,14 @@ impl crate::context::IssueService for IssueServiceImpl {
             )
             .await;
         }
-        Ok(IssueDto::from_issue(
-            issue,
-            project.name.as_ref().to_string(),
-            column,
-            assignee_name,
-            reporter_name,
-        ))
+        super::helpers::build_issue_dtos_with_projects(
+            Arc::clone(&self.projects),
+            Arc::clone(&self.users),
+            Arc::clone(&self.labels),
+            vec![issue],
+        )
+        .await
+        .map(|mut issues| issues.remove(0))
     }
 
     async fn transition(
@@ -406,8 +415,6 @@ impl crate::context::IssueService for IssueServiceImpl {
                     .map(|c| c.name.as_ref().to_string())
                     .unwrap_or_default()
             });
-        let (assignee_name, reporter_name) =
-            super::helpers::resolve_names(self.users.clone(), &updated).await;
         self.events.publish(shared::TrackerEvent::IssueMoved {
             issue_id: updated.id.to_string(),
             project_key: project.key.to_string(),
@@ -424,13 +431,14 @@ impl crate::context::IssueService for IssueServiceImpl {
             serde_json::json!({"issue_key": key, "status": status}),
         )
         .await;
-        Ok(IssueDto::from_issue(
-            updated,
-            project.name.as_ref().to_string(),
-            status,
-            assignee_name,
-            reporter_name,
-        ))
+        super::helpers::build_issue_dtos_with_projects(
+            Arc::clone(&self.projects),
+            Arc::clone(&self.users),
+            Arc::clone(&self.labels),
+            vec![updated],
+        )
+        .await
+        .map(|mut issues| issues.remove(0))
     }
 
     async fn get_by_id(&self, id: IssueId, requester: UserId) -> Result<IssueDto, AppError> {
@@ -439,7 +447,13 @@ impl crate::context::IssueService for IssueServiceImpl {
             .require_project_access(issue.project_id, requester)
             .await?;
         let name = super::helpers::project_name(self.projects.clone(), issue.project_id).await?;
-        Ok(super::helpers::build_issue_dto(self.users.clone(), issue, name.as_str()).await)
+        Ok(super::helpers::build_issue_dto(
+            self.users.clone(),
+            self.labels.clone(),
+            issue,
+            name.as_str(),
+        )
+        .await)
     }
 
     async fn update(
@@ -563,14 +577,6 @@ impl crate::context::IssueService for IssueServiceImpl {
         }
 
         self.issues.save(&issue).await?;
-        let statuses = self.statuses.list_all().await.unwrap_or_default();
-        let column = statuses
-            .iter()
-            .find(|s| s.id == issue.status_id)
-            .map(|s| s.name.as_ref().to_string())
-            .unwrap_or_else(|| super::helpers::issue_status_column(issue.status_id));
-        let (assignee_name, reporter_name) =
-            super::helpers::resolve_names(self.users.clone(), &issue).await;
         self.events.publish(shared::TrackerEvent::IssueUpdated {
             issue_id: issue.id.to_string(),
             project_key: project.key.to_string(),
@@ -607,13 +613,14 @@ impl crate::context::IssueService for IssueServiceImpl {
             )
             .await;
         }
-        Ok(IssueDto::from_issue(
-            issue,
-            project.name.as_ref().to_string(),
-            column,
-            assignee_name,
-            reporter_name,
-        ))
+        super::helpers::build_issue_dtos_with_projects(
+            Arc::clone(&self.projects),
+            Arc::clone(&self.users),
+            Arc::clone(&self.labels),
+            vec![issue],
+        )
+        .await
+        .map(|mut issues| issues.remove(0))
     }
 
     async fn search(
@@ -653,6 +660,25 @@ impl crate::context::IssueService for IssueServiceImpl {
                 None => return Ok(Vec::new()),
             }
         }
+        if let Some(status) = filters.status.as_deref().filter(|s| !s.is_empty()) {
+            // The UI filters by status name; issues store status ids.
+            // Status names are human-cased ("To Do"); URL filters use
+            // snake_case ("to_do") — normalize both sides.
+            let norm = |v: &str| {
+                v.replace('_', " ")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join("")
+                    .to_lowercase()
+            };
+            let wanted = norm(status);
+            let all = self.statuses.list_all().await?;
+            let matched = all.iter().find(|s| norm(s.name.as_ref()) == wanted);
+            match matched {
+                Some(s) => query.status_id = Some(s.id),
+                None => return Ok(Vec::new()),
+            }
+        }
         if let Some(sort_by) = filters.sort_by.as_deref() {
             query.sort_by = Some(sort_by.to_string());
             query.sort_order = filters.sort_order.clone();
@@ -681,6 +707,7 @@ impl crate::context::IssueService for IssueServiceImpl {
         super::helpers::build_issue_dtos_with_projects(
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
+            Arc::clone(&self.labels),
             issues,
         )
         .await
@@ -715,6 +742,7 @@ impl crate::context::IssueService for IssueServiceImpl {
         super::helpers::build_issue_dtos_with_projects(
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
+            Arc::clone(&self.labels),
             vec![issue],
         )
         .await
@@ -726,13 +754,33 @@ impl crate::context::IssueService for IssueServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, actor_id)
             .await?;
-        self.issues.purge(id).await
+        let attachment_keys = self
+            .attachments
+            .list_by_issue(id)
+            .await?
+            .into_iter()
+            .map(|attachment| attachment.storage_key.as_ref().to_string())
+            .collect::<Vec<_>>();
+        self.issues.purge(id).await?;
+        for storage_key in attachment_keys {
+            if let Err(error) = self.storage.delete(&id.to_string(), &storage_key).await {
+                tracing::warn!(
+                    issue_id = %id,
+                    storage_key = %storage_key,
+                    error = %error,
+                    "failed to delete purged issue attachment"
+                );
+            }
+        }
+        Ok(())
     }
 
     async fn list_trash(
         &self,
         project_key: &ProjectKey,
         requester: UserId,
+        offset: u32,
+        limit: u32,
     ) -> Result<Vec<IssueDto>, AppError> {
         let project = self
             .projects
@@ -745,12 +793,15 @@ impl crate::context::IssueService for IssueServiceImpl {
         let query = IssueQuery {
             project_id: Some(project.id),
             deleted_only: true,
+            offset: offset as u64,
+            limit: limit.clamp(1, 100) as u64,
             ..Default::default()
         };
         let issues = self.issues.list(query).await?;
         super::helpers::build_issue_dtos_with_projects(
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
+            Arc::clone(&self.labels),
             issues,
         )
         .await
