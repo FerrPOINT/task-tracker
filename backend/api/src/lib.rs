@@ -17,6 +17,7 @@ use tower_governor::governor::GovernorConfigBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::openapi::{
+    info::License,
     path::Operation,
     security::{
         ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme,
@@ -268,6 +269,11 @@ struct SecurityAddon;
 
 impl Modify for SecurityAddon {
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let mut license =
+            License::new("FerrPOINT Proprietary Source-Available Evaluation License v1.0");
+        license.url = Some("./LICENSE".to_string());
+        openapi.info.license = Some(license);
+
         let components = openapi
             .components
             .get_or_insert_with(utoipa::openapi::Components::new);

@@ -71,6 +71,64 @@ fn map_issue_type(m: issue_type::Model) -> IssueTypeEntity {
         hierarchy_level: m.hierarchy_level,
     }
 }
+
+fn issue_active_model(issue: &Issue) -> issue::ActiveModel {
+    let labels = issue
+        .labels
+        .iter()
+        .map(|l| l.to_string())
+        .collect::<Vec<_>>();
+    issue::ActiveModel {
+        id: Set(issue.id.as_uuid()),
+        project_id: Set(issue.project_id.as_uuid()),
+        key: Set(issue.key.to_string()),
+        issue_type: Set(format!("{:?}", issue.issue_type)),
+        status_id: Set(issue.status_id.as_uuid()),
+        summary: Set(issue.summary.as_ref().to_string()),
+        description: Set(issue.description.as_ref().map(|d| d.as_ref().to_string())),
+        assignee_id: Set(issue.assignee_id.map(|id| id.as_uuid())),
+        reporter_id: Set(issue.reporter_id.as_uuid()),
+        priority: Set(format!("{:?}", issue.priority)),
+        labels: Set(serde_json::to_value(labels).unwrap_or_default()),
+        sprint_id: Set(issue.sprint_id.map(|id| id.as_uuid())),
+        component_id: Set(issue.component_id.map(|id| id.as_uuid())),
+        affected_version_id: Set(issue.affected_version_id.map(|id| id.as_uuid())),
+        fix_version_id: Set(issue.fix_version_id.map(|id| id.as_uuid())),
+        position: Set(issue.position),
+        due_date: Set(issue.due_date),
+        original_estimate_seconds: Set(issue.original_estimate_seconds),
+        remaining_estimate_seconds: Set(issue.remaining_estimate_seconds),
+        time_spent_seconds: Set(issue.time_spent_seconds),
+        created_at: Set(issue.created_at),
+        updated_at: Set(shared::now()),
+        deleted_at: Set(issue.deleted_at),
+    }
+}
+
+fn issue_status_history_active_model(
+    entry: &IssueStatusHistory,
+) -> issue_status_history::ActiveModel {
+    issue_status_history::ActiveModel {
+        id: Set(entry.id.as_uuid()),
+        issue_id: Set(entry.issue_id.as_uuid()),
+        from_status_id: Set(entry.from_status_id.map(|s| s.as_uuid())),
+        to_status_id: Set(entry.to_status_id.as_uuid()),
+        changed_by_id: Set(entry.changed_by_id.as_uuid()),
+        created_at: Set(entry.changed_at),
+    }
+}
+
+fn custom_field_value_active_model(
+    issue_id: IssueId,
+    field_id: CustomFieldId,
+    value: serde_json::Value,
+) -> issue_custom_field_value::ActiveModel {
+    issue_custom_field_value::ActiveModel {
+        issue_id: Set(issue_id.as_uuid()),
+        field_id: Set(field_id.as_uuid()),
+        value: Set(value),
+    }
+}
 pub struct SeaOrmRepositories {
     pub users: Arc<dyn UserRepository>,
     pub audit_logs: Arc<dyn AuditLogRepository>,
@@ -739,41 +797,37 @@ impl IssueRepository for IssueRepo {
             .await
             .map_err(AppError::database)?
             .is_some();
-        let labels = issue
-            .labels
-            .iter()
-            .map(|l| l.to_string())
-            .collect::<Vec<_>>();
-        let active = issue::ActiveModel {
-            id: Set(issue.id.as_uuid()),
-            project_id: Set(issue.project_id.as_uuid()),
-            key: Set(issue.key.to_string()),
-            issue_type: Set(format!("{:?}", issue.issue_type)),
-            status_id: Set(issue.status_id.as_uuid()),
-            summary: Set(issue.summary.as_ref().to_string()),
-            description: Set(issue.description.as_ref().map(|d| d.as_ref().to_string())),
-            assignee_id: Set(issue.assignee_id.map(|id| id.as_uuid())),
-            reporter_id: Set(issue.reporter_id.as_uuid()),
-            priority: Set(format!("{:?}", issue.priority)),
-            labels: Set(serde_json::to_value(labels).unwrap_or_default()),
-            sprint_id: Set(issue.sprint_id.map(|id| id.as_uuid())),
-            component_id: Set(issue.component_id.map(|id| id.as_uuid())),
-            affected_version_id: Set(issue.affected_version_id.map(|id| id.as_uuid())),
-            fix_version_id: Set(issue.fix_version_id.map(|id| id.as_uuid())),
-            position: Set(issue.position),
-            due_date: Set(issue.due_date),
-            original_estimate_seconds: Set(issue.original_estimate_seconds),
-            remaining_estimate_seconds: Set(issue.remaining_estimate_seconds),
-            time_spent_seconds: Set(issue.time_spent_seconds),
-            created_at: Set(issue.created_at),
-            updated_at: Set(shared::now()),
-            deleted_at: Set(issue.deleted_at),
-        };
+        let active = issue_active_model(issue);
         if exists {
             active.update(&*self.db).await.map_err(AppError::database)?;
         } else {
             active.insert(&*self.db).await.map_err(AppError::database)?;
         }
+        Ok(issue.id)
+    }
+
+    async fn create_with_initial_data(
+        &self,
+        issue: &Issue,
+        status_history: &IssueStatusHistory,
+        custom_field_values: &[(CustomFieldId, serde_json::Value)],
+    ) -> Result<IssueId, AppError> {
+        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        issue_active_model(issue)
+            .insert(&txn)
+            .await
+            .map_err(AppError::database)?;
+        issue_status_history_active_model(status_history)
+            .insert(&txn)
+            .await
+            .map_err(AppError::database)?;
+        for (field_id, value) in custom_field_values {
+            custom_field_value_active_model(issue.id, *field_id, value.clone())
+                .insert(&txn)
+                .await
+                .map_err(AppError::database)?;
+        }
+        txn.commit().await.map_err(AppError::database)?;
         Ok(issue.id)
     }
 
@@ -1327,6 +1381,56 @@ impl LabelRepository for LabelRepo {
             .into_iter()
             .map(|m| LabelId::from_uuid(m.label_id))
             .collect())
+    }
+
+    async fn list_by_issues(
+        &self,
+        issue_ids: &[IssueId],
+    ) -> Result<std::collections::HashMap<IssueId, Vec<Label>>, AppError> {
+        let mut result = std::collections::HashMap::new();
+        for issue_id in issue_ids {
+            result.insert(*issue_id, Vec::new());
+        }
+        if issue_ids.is_empty() {
+            return Ok(result);
+        }
+
+        let raw_issue_ids = issue_ids.iter().map(|id| id.as_uuid()).collect::<Vec<_>>();
+        let links = issue_label::Entity::find()
+            .filter(issue_label::Column::IssueId.is_in(raw_issue_ids))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        let label_ids = links
+            .iter()
+            .map(|link| link.label_id)
+            .collect::<std::collections::HashSet<_>>();
+        if label_ids.is_empty() {
+            return Ok(result);
+        }
+
+        let labels = label::Entity::find()
+            .filter(label::Column::Id.is_in(label_ids))
+            .order_by_asc(label::Column::Name)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .into_iter()
+            .map(map_label)
+            .map(|label| (label.id, label))
+            .collect::<std::collections::HashMap<_, _>>();
+
+        for link in links {
+            let issue_id = IssueId::from_uuid(link.issue_id);
+            let label_id = LabelId::from_uuid(link.label_id);
+            if let Some(label) = labels.get(&label_id) {
+                result.entry(issue_id).or_default().push(label.clone());
+            }
+        }
+        for labels in result.values_mut() {
+            labels.sort_by(|a, b| a.name.as_ref().cmp(b.name.as_ref()));
+        }
+        Ok(result)
     }
 
     async fn attach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError> {
@@ -2186,14 +2290,7 @@ impl IssueStatusHistoryRepository for IssueStatusHistoryRepo {
     }
 
     async fn save(&self, entry: &IssueStatusHistory) -> Result<(), AppError> {
-        let model = issue_status_history::ActiveModel {
-            id: Set(entry.id.as_uuid()),
-            issue_id: Set(entry.issue_id.as_uuid()),
-            from_status_id: Set(entry.from_status_id.map(|s| s.as_uuid())),
-            to_status_id: Set(entry.to_status_id.as_uuid()),
-            changed_by_id: Set(entry.changed_by_id.as_uuid()),
-            created_at: Set(entry.changed_at),
-        };
+        let model = issue_status_history_active_model(entry);
         issue_status_history::Entity::insert(model)
             .exec(&*self.db)
             .await

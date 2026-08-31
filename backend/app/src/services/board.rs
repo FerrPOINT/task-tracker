@@ -4,8 +4,8 @@ use std::sync::Arc;
 use crate::authz::Authz;
 use crate::dto::{BacklogDto, BoardColumnDto, BoardDto, SprintDto};
 use domain::{
-    Board, IssueQuery, IssueRepository, ProjectRepository, SprintRepository, StatusCategory,
-    StatusRepository, TransitionGuard, WorkflowTransitionRepository,
+    Board, IssueQuery, IssueRepository, LabelRepository, ProjectRepository, SprintRepository,
+    StatusCategory, StatusRepository, TransitionGuard, WorkflowTransitionRepository,
 };
 use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
 
@@ -20,6 +20,7 @@ pub struct BoardServiceImpl {
     issues: Arc<dyn IssueRepository>,
     sprints: Arc<dyn SprintRepository>,
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
     projects: Arc<dyn ProjectRepository>,
@@ -57,6 +58,7 @@ impl BoardServiceImpl {
         issues: Arc<dyn IssueRepository>,
         sprints: Arc<dyn SprintRepository>,
         users: Arc<dyn domain::UserRepository>,
+        labels: Arc<dyn LabelRepository>,
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
         projects: Arc<dyn ProjectRepository>,
@@ -68,6 +70,7 @@ impl BoardServiceImpl {
             issues,
             sprints,
             users,
+            labels,
             statuses,
             transitions,
             projects,
@@ -129,6 +132,7 @@ impl BoardServiceImpl {
 
         let issue_dtos = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
+            Arc::clone(&self.labels),
             issues,
             project_key.to_string().as_str(),
         )
@@ -238,6 +242,7 @@ impl crate::context::BoardService for BoardServiceImpl {
         let project_label = project_key.to_string();
         let sprint_issues = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
+            Arc::clone(&self.labels),
             sprint_issues_raw,
             project_label.as_str(),
         )
@@ -259,6 +264,7 @@ impl crate::context::BoardService for BoardServiceImpl {
             .await?;
         let backlog_issues = super::helpers::build_issue_dtos(
             Arc::clone(&self.users),
+            Arc::clone(&self.labels),
             backlog_issues_raw,
             project_label.as_str(),
         )

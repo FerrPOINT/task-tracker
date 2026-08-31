@@ -143,6 +143,8 @@ pub trait IssueService: Send + Sync {
         &self,
         project_key: &ProjectKey,
         requester: UserId,
+        offset: u32,
+        limit: u32,
     ) -> Result<Vec<IssueDto>, AppError>;
 }
 
@@ -397,6 +399,7 @@ pub trait ComponentService: Send + Sync {
     ) -> Result<Vec<crate::context::ComponentDto>, AppError>;
     async fn update(
         &self,
+        project_key: &ProjectKey,
         id: shared::ProjectComponentId,
         name: &str,
         description: Option<&str>,
@@ -404,12 +407,14 @@ pub trait ComponentService: Send + Sync {
     ) -> Result<crate::context::ComponentDto, AppError>;
     async fn delete(
         &self,
+        project_key: &ProjectKey,
         id: shared::ProjectComponentId,
         requester: UserId,
     ) -> Result<(), AppError>;
 }
 
 #[async_trait]
+#[allow(clippy::too_many_arguments)]
 pub trait VersionService: Send + Sync {
     async fn create(
         &self,
@@ -427,6 +432,7 @@ pub trait VersionService: Send + Sync {
     ) -> Result<Vec<crate::context::VersionDto>, AppError>;
     async fn update(
         &self,
+        project_key: &ProjectKey,
         id: shared::ProjectVersionId,
         name: &str,
         description: Option<&str>,
@@ -434,8 +440,12 @@ pub trait VersionService: Send + Sync {
         release_date: Option<Option<chrono::DateTime<chrono::FixedOffset>>>,
         requester: UserId,
     ) -> Result<crate::context::VersionDto, AppError>;
-    async fn delete(&self, id: shared::ProjectVersionId, requester: UserId)
-    -> Result<(), AppError>;
+    async fn delete(
+        &self,
+        project_key: &ProjectKey,
+        id: shared::ProjectVersionId,
+        requester: UserId,
+    ) -> Result<(), AppError>;
 }
 
 // ---------------------------------------------------------------------------

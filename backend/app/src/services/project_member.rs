@@ -78,7 +78,10 @@ impl ProjectMemberService for ProjectMemberServiceImpl {
     ) -> Result<ProjectMemberDto, AppError> {
         self.authz.require_owner(cmd.project_id, requester).await?;
         let role = ProjectRole::from_str(&cmd.role).map_err(AppError::invalid_input)?;
-        let _ = self.users.get_by_id(cmd.user_id).await?;
+        let user = self.users.get_by_id(cmd.user_id).await?;
+        if !user.is_active {
+            return Err(AppError::invalid_input("user is inactive"));
+        }
         // Re-adding an existing member upserts the role (repo save is idempotent)
         // and preserves the original joined_at.
         let joined_at = match self.members.get(cmd.project_id, cmd.user_id).await {

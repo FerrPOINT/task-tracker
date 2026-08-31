@@ -3,13 +3,14 @@ use std::sync::Arc;
 
 use crate::authz::Authz;
 use crate::dto::DashboardDto;
-use domain::{IssueQuery, IssueRepository, ProjectRepository};
+use domain::{IssueQuery, IssueRepository, LabelRepository, ProjectRepository};
 use shared::{AppError, UserId};
 
 pub struct DashboardServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
     authz: Authz,
 }
 
@@ -18,12 +19,14 @@ impl DashboardServiceImpl {
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
         users: Arc<dyn domain::UserRepository>,
+        labels: Arc<dyn LabelRepository>,
         authz: Authz,
     ) -> Self {
         Self {
             issues,
             projects,
             users,
+            labels,
             authz,
         }
     }
@@ -43,6 +46,7 @@ impl crate::context::DashboardService for DashboardServiceImpl {
         let dtos = super::helpers::build_issue_dtos_for_dashboard(
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
+            Arc::clone(&self.labels),
             issues,
         )
         .await?;

@@ -252,7 +252,10 @@ export function ProjectBacklogPage() {
             {t('backlog.createSprint')}
           </Button>
           <Button variant="outline" size="sm" className="gap-1" asChild>
-            <Link to="/issues/create">
+            <Link
+              to={`/issues/create?project_key=${encodeURIComponent(key)}`}
+              state={{ project_key: key }}
+            >
               <Plus className="h-4 w-4" />
               <span className="hidden sm:inline">{t('backlog.createIssue')}</span>
               <span className="sm:hidden">{t('backlog.createIssue')}</span>

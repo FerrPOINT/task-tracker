@@ -6,7 +6,8 @@ use axum::{
 use std::sync::Arc;
 
 use crate::dto::{
-    CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery, UpdateIssueRequest,
+    CreateIssueRequest, IssueListResponse, IssueResponse, SearchQuery, TrashQuery,
+    UpdateIssueRequest,
 };
 use app::auth::UserClaims;
 use app::commands::{CreateIssueCommand, UpdateIssueCommand};
@@ -114,9 +115,11 @@ pub async fn update_issue(
             .transpose()
             .map_err(|_| AppError::invalid_input("priority"))?,
         status_id: req.status_id,
-        assignee_id: match req.assignee_id.as_deref() {
-            None | Some("") => None,
-            Some(s) => {
+        assignee_id: match req.assignee_id {
+            None => None,
+            Some(None) => Some(None),
+            Some(Some(s)) if s.is_empty() => Some(None),
+            Some(Some(s)) => {
                 let uuid = s
                     .parse()
                     .map_err(|_| AppError::invalid_input("assignee_id"))?;
@@ -209,7 +212,7 @@ pub async fn search_issues(
                 q: q.q,
                 project_key: q.project_key,
                 priority: q.priority,
-                status: None,
+                status: q.status,
                 assignee_id: q.assignee_id,
                 sort_by: q.sort_by,
                 sort_order: q.sort_order,
@@ -321,7 +324,10 @@ pub async fn purge_issue(
 #[utoipa::path(
     get,
     path = "/api/v1/projects/{key}/trash",
-    params(("key" = String, Path, description = "Project key")),
+    params(
+        ("key" = String, Path, description = "Project key"),
+        TrashQuery,
+    ),
     responses((status = 200, body = IssueListResponse)),
     security(("bearer" = []))
 )]
@@ -329,6 +335,7 @@ pub async fn list_trash(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Path(key): Path<String>,
+    Query(q): Query<TrashQuery>,
 ) -> Result<Json<IssueListResponse>, AppError> {
     let requester = claims
         .sub
@@ -339,7 +346,12 @@ pub async fn list_trash(
     let items = ctx
         .services
         .issue
-        .list_trash(&project_key, requester)
+        .list_trash(
+            &project_key,
+            requester,
+            q.offset.unwrap_or(0),
+            q.limit.unwrap_or(50).clamp(1, 100),
+        )
         .await?;
     Ok(Json(IssueListResponse {
         issues: items.into_iter().map(map_issue).collect(),

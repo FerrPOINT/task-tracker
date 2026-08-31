@@ -12,8 +12,20 @@ beforeAll(() => {
 })
 
 vi.mock('@/shared/api/hooks', () => ({
-  useCurrentUser: () => ({
-    data: { id: 'u1', username: 'alice', display_name: 'Alice', email: 'alice@test.com' },
+  useProjects: () => ({
+    data: [
+      {
+        id: 'p1',
+        key: 'TT',
+        name: 'Task Tracker',
+        owner_id: 'u1',
+      },
+    ],
+    isLoading: false,
+    error: null,
+  }),
+  useProjectMembers: () => ({
+    data: { members: [{ project_id: 'p1', user_id: 'u2', role: 'member' }] },
     isLoading: false,
     error: null,
   }),
@@ -97,5 +109,16 @@ describe('IssueMetaEditor', () => {
     render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={onChange} />))
     fireEvent.change(screen.getByDisplayValue('High'), { target: { value: 'Low' } })
     expect(onChange).toHaveBeenCalledWith({ priority: 'Low' })
+  })
+
+  it('keeps stale assignee visible as a disabled current option', () => {
+    const staleIssue = {
+      ...issue,
+      assignee_id: 'u3',
+      assignee_name: 'Former Member',
+    }
+    render(wrapper(<IssueMetaEditor issue={staleIssue} columns={columns} onChange={vi.fn()} />))
+    const option = screen.getByRole('option', { name: 'Former Member' }) as HTMLOptionElement
+    expect(option.disabled).toBe(true)
   })
 })

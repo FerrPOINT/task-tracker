@@ -725,7 +725,7 @@
         "tags": [
           "routes::events"
         ],
-        "description": "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (event_type, issue_id, project_key). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter.",
+        "description": "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (type, issue_id, project_key). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter.",
         "operationId": "events",
         "parameters": [
           {
@@ -2379,6 +2379,32 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
             }
           }
         ],
@@ -5698,13 +5724,9 @@
       "TrackerEventPayload": {
         "type": "object",
         "required": [
-          "event_type"
+          "type"
         ],
         "properties": {
-          "event_type": {
-            "type": "string",
-            "description": "Event discriminator, e.g. `issue_created`, `issue_updated`, `issue_deleted`."
-          },
           "issue_id": {
             "type": [
               "string",
@@ -5718,6 +5740,10 @@
               "null"
             ],
             "description": "Project key for cache scoping (when applicable)."
+          },
+          "type": {
+            "type": "string",
+            "description": "Event discriminator, e.g. `issue_created`, `issue_updated`, `issue_deleted`."
           }
         }
       },

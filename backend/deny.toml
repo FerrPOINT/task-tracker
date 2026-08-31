@@ -35,6 +35,9 @@ allow = [
     "0BSD",
 ]
 
+[licenses.private]
+ignore = true
+
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"

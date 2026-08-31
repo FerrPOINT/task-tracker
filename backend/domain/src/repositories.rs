@@ -13,9 +13,9 @@ use crate::{
 };
 use shared::IssueTypeId;
 use shared::{
-    AppError, AttachmentId, BoardId, CommentId, IssueId, IssueKey, IssueLinkId, LabelId,
-    ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId, UserId,
-    WorklogId,
+    AppError, AttachmentId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey, IssueLinkId,
+    LabelId, ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId,
+    UserId, WorklogId,
 };
 
 #[async_trait]
@@ -165,6 +165,16 @@ pub trait IssueRepository: Send + Sync {
             .collect())
     }
     async fn save(&self, issue: &Issue) -> Result<IssueId, AppError>;
+    async fn create_with_initial_data(
+        &self,
+        issue: &Issue,
+        status_history: &IssueStatusHistory,
+        custom_field_values: &[(CustomFieldId, serde_json::Value)],
+    ) -> Result<IssueId, AppError> {
+        let _ = status_history;
+        let _ = custom_field_values;
+        self.save(issue).await
+    }
     /// Soft-delete: set `deleted_at` to the current timestamp. The row is
     /// kept and can be restored via [`restore`] or permanently removed via
     /// [`purge`].
@@ -783,6 +793,20 @@ pub trait LabelRepository: Send + Sync {
     async fn save(&self, label: &Label) -> Result<LabelId, AppError>;
     async fn delete(&self, id: LabelId) -> Result<(), AppError>;
     async fn list_ids_by_issue(&self, issue_id: IssueId) -> Result<Vec<LabelId>, AppError>;
+    async fn list_by_issues(
+        &self,
+        issue_ids: &[IssueId],
+    ) -> Result<std::collections::HashMap<IssueId, Vec<Label>>, AppError> {
+        let mut labels_by_issue = std::collections::HashMap::new();
+        for issue_id in issue_ids {
+            let mut labels = Vec::new();
+            for label_id in self.list_ids_by_issue(*issue_id).await? {
+                labels.push(self.get_by_id(label_id).await?);
+            }
+            labels_by_issue.insert(*issue_id, labels);
+        }
+        Ok(labels_by_issue)
+    }
     async fn attach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError>;
     async fn detach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError>;
 }

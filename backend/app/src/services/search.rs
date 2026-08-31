@@ -4,13 +4,14 @@ use std::sync::Arc;
 use crate::authz::Authz;
 use crate::context::SearchFilters;
 use crate::dto::IssueDto;
-use domain::{IssueQuery, IssueRepository, ProjectRepository};
+use domain::{IssueQuery, IssueRepository, LabelRepository, ProjectRepository};
 use shared::{AppError, ProjectKey, UserId};
 
 pub struct SearchServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
     users: Arc<dyn domain::UserRepository>,
+    labels: Arc<dyn LabelRepository>,
     statuses: Arc<dyn domain::StatusRepository>,
     authz: Authz,
 }
@@ -20,6 +21,7 @@ impl SearchServiceImpl {
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
         users: Arc<dyn domain::UserRepository>,
+        labels: Arc<dyn LabelRepository>,
         statuses: Arc<dyn domain::StatusRepository>,
         authz: Authz,
     ) -> Self {
@@ -27,6 +29,7 @@ impl SearchServiceImpl {
             issues,
             projects,
             users,
+            labels,
             statuses,
             authz,
         }
@@ -148,6 +151,7 @@ impl crate::context::SearchService for SearchServiceImpl {
         super::helpers::build_issue_dtos_with_projects(
             Arc::clone(&self.projects),
             Arc::clone(&self.users),
+            Arc::clone(&self.labels),
             issues,
         )
         .await

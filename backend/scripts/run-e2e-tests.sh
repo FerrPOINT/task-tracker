@@ -105,7 +105,7 @@ reset_database "$DB_NAME"
 reset_database "$INFRA_DB_NAME"
 wait_for_host_port
 
-EXCLUDE_REGEX="server/src/main\.rs|api/src/bin/openapi-gen\.rs|cli/src/main\.rs|migration/.*|shared/src/id\.rs"
+EXCLUDE_REGEX="server/src/main\.rs|api/src/bin/gen_openapi\.rs|cli/src/main\.rs|migration/.*|shared/src/id\.rs"
 
 cargo llvm-cov --workspace \
     --ignore-filename-regex "$EXCLUDE_REGEX" \

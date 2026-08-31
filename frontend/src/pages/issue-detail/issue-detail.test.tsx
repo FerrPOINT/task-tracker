@@ -90,6 +90,11 @@ vi.mock('@/shared/api/hooks', () => ({
   useUpdateIssue: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteIssue: () => ({ mutate: vi.fn(), isPending: false }),
   useCurrentUser: () => ({ data: undefined, isLoading: false }),
+  useProjects: () => ({
+    data: [{ id: 'p1', key: 'TT', name: 'Task Tracker', owner_id: 'u1' }],
+    isLoading: false,
+  }),
+  useProjectMembers: () => ({ data: { members: [] }, isLoading: false, error: null }),
   useUsers: () => ({ data: [], isLoading: false }),
   useStatuses: () => ({ data: [], isLoading: false }),
   useTransitions: () => ({ data: [], isLoading: false }),

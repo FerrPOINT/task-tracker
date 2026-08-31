@@ -43,9 +43,9 @@ export async function purgeIssue(id: string): Promise<void> {
   if (error) throw new Error('Failed to permanently delete issue')
 }
 
-export async function listTrash(projectKey: string): Promise<Issue[]> {
+export async function listTrash(projectKey: string, limit = 50, offset = 0): Promise<Issue[]> {
   const { data, error } = await api.GET('/api/v1/projects/{key}/trash', {
-    params: { path: { key: projectKey } },
+    params: { path: { key: projectKey }, query: { limit, offset } },
   })
   if (error || !data) throw new Error('Failed to list trash')
   return data.issues
