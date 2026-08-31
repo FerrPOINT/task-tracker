@@ -1,34 +1,72 @@
-# Task Tracker
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&height=190&text=Task%20Tracker&desc=Self-hosted%20planning%2C%20kanban%20and%20issue%20operations&fontColor=F8FAFC&fontSize=52&fontAlignY=35&descAlignY=56&color=0:111827,50:2563EB,100:14B8A6" alt="Task Tracker banner" />
+</p>
 
-Self-hosted task tracker для FerrPOINT: проекты, задачи, канбан, backlog, sprints, comments, attachments, notifications, reports and admin tooling in a Rust + React stack.
+<p align="center">
+  <a href="#features"><img src="https://img.shields.io/badge/%E2%9C%A8%20Features-0B1220?style=for-the-badge" alt="Features" /></a>
+  <a href="#stack"><img src="https://img.shields.io/badge/%F0%9F%94%A7%20Stack-111827?style=for-the-badge" alt="Stack" /></a>
+  <a href="#cli"><img src="https://img.shields.io/badge/%F0%9F%96%A5%EF%B8%8F%20CLI-1F2937?style=for-the-badge" alt="CLI" /></a>
+  <a href="#architecture"><img src="https://img.shields.io/badge/%F0%9F%8F%97%EF%B8%8F%20Architecture-374151?style=for-the-badge" alt="Architecture" /></a>
+  <a href="#quality"><img src="https://img.shields.io/badge/%F0%9F%9B%A1%EF%B8%8F%20Quality-4B5563?style=for-the-badge" alt="Quality" /></a>
+  <a href="#license"><img src="https://img.shields.io/badge/%F0%9F%94%92%20License-Proprietary%20source--available-7F1D1D?style=for-the-badge" alt="License" /></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Rust-2024-000000?style=flat-square&logo=rust&logoColor=white" alt="Rust" />
+  <img src="https://img.shields.io/badge/Axum-111827?style=flat-square" alt="Axum" />
+  <img src="https://img.shields.io/badge/SeaORM-2563EB?style=flat-square" alt="SeaORM" />
+  <img src="https://img.shields.io/badge/PostgreSQL-17-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Redis-8-DC382D?style=flat-square&logo=redis&logoColor=white" alt="Redis" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=111827" alt="React" />
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/OpenAPI-6BA539?style=flat-square&logo=openapiinitiative&logoColor=white" alt="OpenAPI" />
+</p>
+
+---
+
+## 🎯 Позиционирование
+
+**Task Tracker** — self-hosted task tracker для FerrPOINT: проекты, задачи, kanban, backlog, sprints, comments, attachments, notifications, reports and admin tooling.
+
+Это продуктовый MVP/hardening branch, а не hosted multi-tenant SaaS. Env-префикс: `TASKTRACKER_`.
+
+## 📌 Snapshot
 
 | Поле | Значение |
 |---|---|
-| Статус | MVP/product hardening branch, env-префикс `TASKTRACKER_` |
-| Backend | Rust 2024, Axum, SeaORM, PostgreSQL 17, Redis 8 |
+| Backend | Rust 2024, Axum, SeaORM |
+| Data | PostgreSQL 17, Redis 8 |
 | Frontend | React 19, Vite, Tailwind CSS |
-| API | Canonical OpenAPI artifact in [openapi/openapi.json](openapi/openapi.json) |
-| Порты | Frontend `19877`, backend `3456`, PostgreSQL/Redis внутри compose-сети |
-| Лицензия | [FerrPOINT Proprietary Source-Available Evaluation License v1.0](LICENSE) |
+| API | [openapi/openapi.json](openapi/openapi.json) |
+| Ports | Frontend `19877`, backend `3456`, PostgreSQL/Redis internal |
+| License | FerrPOINT Proprietary Source-Available Evaluation License v1.0 |
 
-## Что есть
+<a name="features"></a>
+## ✨ Features
 
-- Projects, members, kanban boards, backlog, issue detail, comments, attachments and search.
-- Issue metadata: priorities, labels, issue types, links, watchers, votes and worklog.
-- Sprints with planning/reporting surfaces: velocity, burndown, cumulative flow and control chart.
-- Notifications: in-app center, SSE push, email digest worker and per-user delivery settings.
-- Project custom fields, components, versions/milestones and soft-delete trash flow.
-- Admin area: users, instance settings, audit log, security headers, rate limits and Prometheus metrics.
-- CLI binary `task-tracker` with API-driven commands and JSON/table/compact output.
+| Feature | Описание |
+|---|---|
+| Projects and issues | Projects, members, issue detail, comments, attachments and search. |
+| Planning | Kanban boards, backlog, sprints and worklog. |
+| Metadata | Priorities, labels, issue types, links, watchers, votes, components and versions. |
+| Reporting | Velocity, burndown, cumulative flow and control chart surfaces. |
+| Notifications | In-app center, SSE push, email digest worker and per-user delivery settings. |
+| Administration | Users, instance settings, audit log, security headers, rate limits and Prometheus metrics. |
+| CLI | `task-tracker` binary with JSON/table/compact output. |
 
-## Границы
+<a name="stack"></a>
+## 🔧 Core Stack
 
-- Это self-hosted MVP, а не hosted multi-tenant SaaS.
-- PostgreSQL and Redis are internal in Compose by default; expose them only deliberately.
-- Before shared deployments, replace all `[CHANGE_ME]` values, set `TASKTRACKER_JWT_SECRET`, review CORS/cookie settings and put the stack behind TLS/reverse proxy.
-- Generated frontend API code must be refreshed after OpenAPI changes.
+| Zone | Tech | Роль |
+|---|---|---|
+| API | Rust + Axum | HTTP routes, auth, DTO boundary |
+| Domain/App | Rust workspace crates | services, policies and repository contracts |
+| Persistence | SeaORM + PostgreSQL | runtime data and migrations |
+| Cache/Push | Redis + SSE | cache and real-time delivery |
+| Frontend | React + Vite + Tailwind | dashboard, boards and admin UI |
+| Contract | OpenAPI | generated frontend API client |
 
-## Быстрый старт
+## ⚡ Quick Start
 
 ```bash
 cp .env.example .env
@@ -48,7 +86,8 @@ pnpm dev
 
 Vite opens on `http://localhost:5173` and proxies API calls to the backend.
 
-## CLI
+<a name="cli"></a>
+## 🖥️ CLI
 
 ```bash
 cd backend
@@ -61,49 +100,73 @@ export TASKTRACKER_TOKEN=<jwt_token>
 ./target/debug/task-tracker issue list --project-key DEMO --output table
 ```
 
-AI/CLI usage notes live in [cli/SKILL.md](cli/SKILL.md).
+AI/CLI usage notes: [cli/SKILL.md](cli/SKILL.md).
 
-## Работа
+<a name="architecture"></a>
+## 🏗️ Architecture
 
-| Команда | Назначение |
+```mermaid
+flowchart TD
+    UI[React SPA] --> API[Axum API]
+    CLI[task-tracker CLI] --> API
+    API --> App[Application services]
+    App --> Domain[Domain contracts]
+    App --> Repo[SeaORM repositories]
+    Repo --> DB[(PostgreSQL)]
+    API --> Redis[(Redis)]
+    App --> Notify[SSE + email digest]
+    API --> OpenAPI[OpenAPI contract]
+    OpenAPI --> Gen[Generated frontend client]
+```
+
+## 🧱 Границы
+
+- PostgreSQL and Redis are internal in Compose by default; expose them only deliberately.
+- Before shared deployments, replace all `[CHANGE_ME]` values and review JWT, CORS, cookies, TLS and reverse-proxy settings.
+- Generated frontend API code must be refreshed after OpenAPI changes.
+
+<a name="quality"></a>
+## 🛡️ Quality Bar
+
+| Проверка | Команда |
 |---|---|
-| `just setup` | Install backend/frontend dependencies |
-| `just setup-env` | Create `.env` from `.env.example` |
-| `just db-up` / `just db-down` | Start/stop Compose dependencies |
-| `just backend-dev` | Run backend with database |
-| `just frontend-dev` | Run frontend dev server |
-| `just api-codegen` | Regenerate frontend API client from OpenAPI |
-| `just test` | Backend and frontend tests |
-| `just e2e` | Playwright E2E tests |
-| `just gate` | CI-like fmt/clippy/typecheck/test gate |
-| `just build` | Backend release and frontend production build |
+| Setup | `just setup` |
+| Dependencies | `just db-up` / `just db-down` |
+| Backend dev | `just backend-dev` |
+| Frontend dev | `just frontend-dev` |
+| API codegen | `just api-codegen` |
+| Test suite | `just test` |
+| E2E | `just e2e` |
+| CI-like gate | `just gate` |
+| Build | `just build` |
 
-## Структура
+## 🧭 Project Map
 
 ```text
 task-tracker/
 ├── backend/     # Rust workspace: api, app, domain, infra, shared, server, cli, migration
 ├── frontend/    # React SPA: pages, widgets, generated API client
 ├── cli/         # CLI binary notes and agent skill
-├── openapi/     # Canonical API contract
+├── openapi/     # canonical API contract
 ├── docs/        # architecture, deployment, testing, roadmap
 └── docker-compose.yml
 ```
 
-## Документы
+## 📚 Документы
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - архитектура.
-- [docs/TZ.md](docs/TZ.md) - техническое задание.
-- [docs/DATA_MODEL.md](docs/DATA_MODEL.md) - дата-модель.
-- [docs/API.md](docs/API.md) - API notes.
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - deployment.
-- [docs/TESTING.md](docs/TESTING.md) - проверки.
-- [docs/ROADMAP.md](docs/ROADMAP.md) - roadmap.
-- [docs/AGENTS.md](docs/AGENTS.md) - агентские инструкции.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — architecture.
+- [docs/TZ.md](docs/TZ.md) — technical specification.
+- [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — data model.
+- [docs/API.md](docs/API.md) — API notes.
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — deployment.
+- [docs/TESTING.md](docs/TESTING.md) — checks.
+- [docs/ROADMAP.md](docs/ROADMAP.md) — roadmap.
+- [docs/AGENTS.md](docs/AGENTS.md) — agent instructions.
 
-Скриншоты лежат в [docs/screenshots](docs/screenshots); README оставляет их в документации, а не растягивает главную страницу.
+Screenshots live in [docs/screenshots](docs/screenshots).
 
-## Лицензия
+<a name="license"></a>
+## 🔒 License
 
 Proprietary source-available. Not open source.
 
