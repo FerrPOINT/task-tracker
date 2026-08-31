@@ -1,0 +1,6 @@
+[advisories]
+ignore = [
+    # rsa is pulled into Cargo.lock through sqlx-mysql metadata, but the workspace
+    # enables only the PostgreSQL backend in SeaORM/SQLx.
+    "RUSTSEC-2023-0071",
+]

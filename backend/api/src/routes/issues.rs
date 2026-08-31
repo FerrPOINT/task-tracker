@@ -56,14 +56,22 @@ pub async fn create_issue(
         .unwrap_or(actor_id);
     let cmd = CreateIssueCommand {
         project_key,
-        issue_type: shared::IssueType::from_str(&req.issue_type).unwrap_or(shared::IssueType::Task),
+        issue_type: shared::IssueType::from_str(&req.issue_type)
+            .map_err(|_| AppError::invalid_input("issue_type"))?,
         summary: req.summary,
         description: req.description,
-        priority: shared::Priority::from_str(&req.priority).unwrap_or(shared::Priority::Medium),
+        priority: shared::Priority::from_str(&req.priority)
+            .map_err(|_| AppError::invalid_input("priority"))?,
         status_id,
         assignee_id: req
             .assignee_id
-            .and_then(|s| s.parse().ok().map(shared::UserId::from_uuid)),
+            .map(|assignee_id| {
+                assignee_id
+                    .parse()
+                    .map(shared::UserId::from_uuid)
+                    .map_err(|_| AppError::invalid_input("assignee_id"))
+            })
+            .transpose()?,
         reporter_id,
         actor_id,
     };
@@ -98,7 +106,9 @@ pub async fn update_issue(
         description: req.description,
         priority: req
             .priority
-            .and_then(|s| shared::Priority::from_str(s.as_str()).ok()),
+            .map(|s| shared::Priority::from_str(s.as_str()))
+            .transpose()
+            .map_err(|_| AppError::invalid_input("priority"))?,
         status_id: req.status_id,
         assignee_id: match req.assignee_id.as_deref() {
             None | Some("") => None,
@@ -232,6 +242,7 @@ fn map_issue(i: app::dto::IssueDto) -> IssueResponse {
         sprint_id: i.sprint_id,
         original_estimate_seconds: i.original_estimate_seconds,
         remaining_estimate_seconds: i.remaining_estimate_seconds,
+        time_spent_seconds: i.time_spent_seconds,
     }
 }
 

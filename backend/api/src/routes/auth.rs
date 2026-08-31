@@ -1,4 +1,4 @@
-use axum::{Extension, Json, extract::State, http::StatusCode};
+use axum::{Extension, Json, body::Bytes, extract::State, http::StatusCode};
 use axum_extra::extract::cookie::{Cookie, CookieJar};
 use shared::{AppError, UserId};
 use std::sync::Arc;
@@ -61,13 +61,16 @@ pub async fn login(
 pub async fn refresh(
     State(ctx): State<Arc<app::AppContext>>,
     jar: CookieJar,
-    Json(body): Json<RefreshRequest>,
+    body: Bytes,
 ) -> Result<(CookieJar, Json<AuthResponse>), AppError> {
-    let refresh_token = jar
+    let refresh_token = match jar
         .get(&ctx.config.auth.refresh_cookie_name)
         .map(|c| c.value().to_string())
-        .or(body.refresh_token.filter(|t| !t.is_empty()))
-        .ok_or(AppError::Unauthorized)?;
+        .filter(|t| !t.is_empty())
+    {
+        Some(token) => token,
+        None => parse_refresh_body(&body)?.ok_or(AppError::Unauthorized)?,
+    };
     let dto = ctx.services.auth.refresh(&refresh_token).await?;
     let jar = set_refresh_cookie(jar, &ctx.config.auth, &dto.refresh_token);
     Ok((jar, Json(map_auth(dto))))
@@ -141,7 +144,11 @@ fn clear_refresh_cookie(jar: CookieJar, cfg: &shared::AuthConfig) -> CookieJar {
     let mut cookie = Cookie::new(cfg.refresh_cookie_name.clone(), "");
     cookie.set_http_only(true);
     cookie.set_secure(cfg.refresh_cookie_secure);
+    cookie.set_same_site(parse_same_site(&cfg.refresh_cookie_same_site));
     cookie.set_path(cfg.refresh_cookie_path.clone());
+    if let Some(domain) = &cfg.refresh_cookie_domain {
+        cookie.set_domain(domain.clone());
+    }
     cookie.set_max_age(Duration::seconds(0));
     jar.add(cookie)
 }
@@ -154,6 +161,15 @@ fn parse_same_site(value: &str) -> axum_extra::extract::cookie::SameSite {
     }
 }
 
+fn parse_refresh_body(body: &[u8]) -> Result<Option<String>, AppError> {
+    if body.is_empty() {
+        return Ok(None);
+    }
+    let request: RefreshRequest =
+        serde_json::from_slice(body).map_err(|_| AppError::invalid_input("refresh_token"))?;
+    Ok(request.refresh_token.filter(|token| !token.is_empty()))
+}
+
 fn map_auth(dto: app::dto::AuthDto) -> AuthResponse {
     // The refresh token travels ONLY in the HttpOnly cookie set by the
     // caller; it must never be serialized into the JSON body.
@@ -163,5 +179,37 @@ fn map_auth(dto: app::dto::AuthDto) -> AuthResponse {
         user_id: dto.user.id,
         email: dto.user.email,
         expires_in: dto.expires_in,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[test]
+    fn clear_refresh_cookie_preserves_scope_attributes() {
+        let cfg = shared::AuthConfig {
+            refresh_cookie_domain: Some("example.com".to_string()),
+            refresh_cookie_same_site: "Strict".to_string(),
+            refresh_cookie_path: "/api/v1/auth".to_string(),
+            ..Default::default()
+        };
+
+        let response = clear_refresh_cookie(CookieJar::new(), &cfg).into_response();
+        let header = response
+            .headers()
+            .get_all(axum::http::header::SET_COOKIE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .find(|value| value.starts_with("refresh_token="))
+            .expect("logout must clear the configured refresh cookie");
+
+        assert!(header.contains("Domain=example.com"), "{header}");
+        assert!(header.contains("Path=/api/v1/auth"), "{header}");
+        assert!(header.contains("SameSite=Strict"), "{header}");
+        assert!(header.contains("Secure"), "{header}");
+        assert!(header.contains("HttpOnly"), "{header}");
+        assert!(header.contains("Max-Age=0"), "{header}");
     }
 }

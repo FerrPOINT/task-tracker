@@ -52,5 +52,6 @@ fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
         sprint_id: i.sprint_id,
         original_estimate_seconds: i.original_estimate_seconds,
         remaining_estimate_seconds: i.remaining_estimate_seconds,
+        time_spent_seconds: i.time_spent_seconds,
     }
 }

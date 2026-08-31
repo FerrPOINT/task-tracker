@@ -1083,8 +1083,8 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 
 - `GET /api/v1/issues/{id}/worklogs`
 - `POST /api/v1/issues/{id}/worklogs`
-- `PUT /api/v1/issues/{id}/worklogs/{worklogId}`
-- `DELETE /api/v1/issues/{id}/worklogs/{worklogId}`
+- `PATCH /api/v1/worklogs/{worklogId}`
+- `DELETE /api/v1/worklogs/{worklogId}`
 - `GET /api/v1/worklogs/reports`
 
 ### 27.10. Issue Links

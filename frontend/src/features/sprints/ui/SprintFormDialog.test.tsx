@@ -84,4 +84,42 @@ describe('SprintFormDialog', () => {
     expect(screen.getByText(/edit sprint/i)).toBeInTheDocument()
     expect(screen.getByDisplayValue('Sprint 1')).toBeInTheDocument()
   })
+
+  it('submits nulls when optional sprint fields are cleared in edit mode', () => {
+    const onSubmit = vi.fn()
+    const sprint: Sprint = {
+      id: 'sp1',
+      name: 'Sprint 1',
+      goal: 'Ship it',
+      issue_ids: [],
+      state: 'planned',
+      velocity: 0,
+      start_date: '2026-08-01T00:00:00Z',
+      end_date: '2026-08-14T00:00:00Z',
+    }
+    render(
+      wrapper(
+        <SprintFormDialog
+          open={true}
+          sprint={sprint}
+          onOpenChange={vi.fn()}
+          onSubmit={onSubmit}
+          isPending={false}
+        />,
+      ),
+    )
+
+    fireEvent.change(screen.getByDisplayValue('Ship it'), { target: { value: '' } })
+    fireEvent.change(screen.getByDisplayValue('2026-08-01'), { target: { value: '' } })
+    fireEvent.change(screen.getByDisplayValue('2026-08-14'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        goal: null,
+        start_date: null,
+        end_date: null,
+      }),
+    )
+  })
 })

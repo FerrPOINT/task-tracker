@@ -4,13 +4,22 @@
 use migration::MigratorTrait;
 use sea_orm::{ConnectionTrait, Database, DatabaseConnection, Statement};
 
-async fn db() -> DatabaseConnection {
-    let base_url = std::env::var("TT_TEST_DATABASE_URL").unwrap_or_else(|_| {
-        std::fs::read_to_string("/root/.tt_db_url")
-            .expect("read /root/.tt_db_url")
+fn base_db_url() -> String {
+    std::env::var("TT_TEST_DATABASE_URL").unwrap_or_else(|_| {
+        let path = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".tt_db_url");
+
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
             .trim()
             .to_string()
-    });
+    })
+}
+
+async fn db() -> DatabaseConnection {
+    let base_url = base_db_url();
     let base_url = base_url
         .rsplit_once('/')
         .map(|(h, _)| h.to_string())

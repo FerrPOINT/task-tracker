@@ -153,6 +153,7 @@ pub struct BoardColumnDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SprintDto {
     pub id: String,
+    pub project_id: String,
     pub name: String,
     pub goal: String,
     pub state: String,
@@ -167,6 +168,7 @@ impl SprintDto {
     pub fn from_sprint(sprint: Sprint, issue_ids: Vec<String>) -> Self {
         Self {
             id: sprint.id.to_string(),
+            project_id: sprint.project_id.to_string(),
             name: sprint.name.as_ref().to_string(),
             goal: sprint
                 .goal

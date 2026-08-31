@@ -1375,6 +1375,11 @@ export interface components {
             status: string;
             status_id: string;
             summary: string;
+            /**
+             * Format: int64
+             * @description Logged work in seconds, derived from worklogs.
+             */
+            time_spent_seconds: number;
         };
         IssueTypeResponse: {
             color?: string | null;
@@ -2318,7 +2323,7 @@ export interface operations {
     events: {
         parameters: {
             query?: {
-                /** @description Access token for EventSource clients that cannot send headers */
+                /** @description Short-lived JWT access token fallback for browser EventSource clients that cannot set Authorization headers. */
                 access_token?: string;
             };
             header?: never;

@@ -83,10 +83,6 @@ pub async fn add_member(
     Path(project_key): Path<String>,
     Json(body): Json<AddProjectMemberRequest>,
 ) -> Result<(axum::http::StatusCode, Json<ProjectMemberResponse>), AppError> {
-    let _actor_id = claims
-        .sub
-        .parse::<UserId>()
-        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let requester = claims
         .sub
         .parse::<UserId>()
@@ -96,10 +92,6 @@ pub async fn add_member(
         .user_id
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id"))?;
-    let requester = claims
-        .sub
-        .parse::<UserId>()
-        .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
     let cmd = app::commands::AddProjectMemberCommand {
         project_id,
         user_id,

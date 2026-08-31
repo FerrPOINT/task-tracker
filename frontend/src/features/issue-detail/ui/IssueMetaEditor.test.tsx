@@ -65,6 +65,7 @@ const issue: Issue = {
   reporter_id: 'u1',
   issue_type: 'Bug',
   labels: [],
+  time_spent_seconds: 0,
   assignee_id: null,
   assignee_name: null,
   reporter_name: null,

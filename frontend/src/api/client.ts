@@ -2,19 +2,19 @@ import createClient from 'openapi-fetch'
 import type { paths } from './generated'
 import { useAuthStore } from '@/shared/auth/store'
 
-const baseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
+export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
 
-export const api = createClient<paths>({ baseUrl, credentials: 'include' })
+export const api = createClient<paths>({ baseUrl: apiBaseUrl, credentials: 'include' })
 
 let refreshPromise: Promise<boolean> | null = null
 
-async function refreshAccessToken(): Promise<boolean> {
+export async function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {
-      // The HttpOnly refresh cookie (same-origin via nginx/vite proxy) is
-      // the only refresh credential the browser holds.
-      const res = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
+      // The HttpOnly refresh cookie is the only refresh credential the
+      // browser holds.
+      const res = await fetch(`${apiBaseUrl}/api/v1/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -25,9 +25,21 @@ async function refreshAccessToken(): Promise<boolean> {
         window.location.href = '/login'
         return false
       }
-      const data = (await res.json()) as { access_token?: string }
-      if (data.access_token) {
-        useAuthStore.setState({ token: data.access_token })
+      const data = (await res.json()) as {
+        access_token?: string
+        user_id?: string
+        email?: string
+      }
+      if (data.access_token && data.user_id && data.email) {
+        useAuthStore.getState().setAuth({
+          token: data.access_token,
+          userId: data.user_id,
+          email: data.email,
+        })
+      } else {
+        useAuthStore.getState().logout()
+        window.location.href = '/login'
+        return false
       }
       return true
     } catch {

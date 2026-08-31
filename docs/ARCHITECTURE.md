@@ -4,7 +4,7 @@
 
 Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.
 
-Связь frontend ↔ backend реализована через OpenAPI-first: `openapi/openapi.json` генерируется из Rust-кода, TypeScript-клиент `frontend/src/api/generated.ts` обновляется командой `pnpm generate-api`, запросы идут через `openapi-fetch`, состояния кешируются через `@tanstack/react-query`.
+Связь frontend ↔ backend реализована через OpenAPI-first: `openapi/openapi.json` генерируется из Rust-кода, TypeScript-клиент `frontend/src/api/generated.ts` обновляется командой `pnpm generate:api`, запросы идут через `openapi-fetch`, состояния кешируются через `@tanstack/react-query`.
 
 ## 2. Технологический стек
 
@@ -178,6 +178,8 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub server: ServerConfig,
     pub auth: AuthConfig,
+    pub storage: StorageConfig,
+    pub email: EmailConfig,
 }
 ```
 
@@ -186,6 +188,8 @@ pub struct AppConfig {
 - `TASKTRACKER_SERVER__PORT`
 - `TASKTRACKER_JWT_SECRET`
 - `TASKTRACKER_DATABASE_PASSWORD`
+- `TASKTRACKER_AUTH__REFRESH_COOKIE_SECURE`
+- `TASKTRACKER_STORAGE__MAX_UPLOAD_BYTES`
 
 Fallback: если `auth.jwt_secret` не задан, используется `TASKTRACKER_JWT_SECRET`.
 
@@ -195,18 +199,18 @@ Fallback: если `auth.jwt_secret` не задан, используется `
 Router::new()
     .merge(api_routes())
     .layer(TraceLayer::new_for_http())
-    .layer(CorsLayer::permissive())
+    .layer(CorsLayer::new())
     .layer(CompressionLayer::new())
 ```
 
-CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS` (по умолчанию `http://localhost:19877,http://localhost:5173`).
+CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию используется `*` без credentialed requests; для browser refresh-cookie в cross-origin окружении нужно задать явный whitelist origins, например `http://localhost:19877,http://localhost:5173`.
 
 ## 7. Security
 
-- **AuthN**: JWT access token (Bearer), без refresh в MVP
+- **AuthN**: JWT access token (`Authorization: Bearer`), refresh token в `httpOnly` cookie на `/api/v1/auth`
 - **Hashing**: argon2id
 - **Input validation**: `validator` derive на Request DTO + route-уровневые проверки
-- **CORS**: whitelist для dev
+- **CORS**: wildcard без credentials либо explicit whitelist с `Access-Control-Allow-Credentials`
 
 ## 8. Frontend архитектура
 

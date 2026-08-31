@@ -28,7 +28,7 @@ export function useTrackerEvents() {
 
     const connect = () => {
       if (closed) return
-      es = new EventSource(`/api/v1/events?access_token=${token}`)
+      es = new EventSource(`/api/v1/events?access_token=${encodeURIComponent(token)}`)
 
       es.addEventListener('tracker', (e) => {
         let evt: TrackerEvent | null = null

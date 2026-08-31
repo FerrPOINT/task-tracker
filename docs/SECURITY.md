@@ -24,13 +24,13 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 - HTTPS/TLS everywhere в production.
 - HSTS header.
 - Secure, SameSite=Lax/Strict, httpOnly cookies.
-- No sensitive data в URL query params.
+- No sensitive data в URL query params, кроме короткоживущего `access_token` fallback только для `GET /api/v1/events`, где browser `EventSource` не позволяет задать `Authorization`.
 
 ## 5. Input Validation
 
 - Strict DTO validation на входе (validator, zod).
-- Whitelist mime-types для attachments.
-- Filename sanitization.
+- Whitelist заявленных content-type для attachments.
+- Filename sanitization для path/control-символов.
 - SQL только через parameterized queries / ORM.
 - No `eval`, no dynamic SQL.
 
@@ -61,9 +61,10 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 
 - Strict whitelist:
   ```
-  TASKTRACKER_CORS_ALLOWED_ORIGINS=https://tasktracker.example.com
+  TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS=https://tasktracker.example.com
   ```
-- No wildcard (`*`) в production.
+- No wildcard (`*`) в production: wildcard CORS does not allow credentialed refresh-cookie requests.
+- Credentials только при trusted origin.
 
 ## 9. Secrets Management
 
@@ -76,7 +77,9 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 ## 10. File Upload Security
 
 - Size limits per type.
-- Magic bytes validation.
+- Whitelist заявленных content-type для attachments.
+- Filename sanitization для path/control-символов.
+- Magic bytes validation — не реализовано (future).
 - ClamAV virus scan — не реализовано (future).
 - Quarantine bucket — не реализовано (future).
 - No direct execution of uploaded files.

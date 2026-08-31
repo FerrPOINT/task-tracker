@@ -1,30 +1,7 @@
-import { test, expect, Page } from '@playwright/test'
-import { seedIntegrationData } from './setup'
+import { test, expect, type Page } from '@playwright/test'
+import { API_BASE_URL, authenticatePage, seedIntegrationData } from './setup'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
-
-let cachedAuth: { token: string; userId: string; email: string } | null = null
-
-async function authenticate(p: Page) {
-  // One login per worker: reusing the seeded context avoids tripping the
-  // auth rate limiter (5 req / 15 s) with a login per screenshot.
-  if (!cachedAuth) {
-    const ctx = await seedIntegrationData()
-    cachedAuth = { token: ctx.token, userId: ctx.userId, email: 'demo@example.com' }
-  }
-  const { token: access_token, userId: user_id, email } = cachedAuth
-  await p.goto(`${baseURL}/login`)
-  await p.evaluate(
-    (payload: { token: string; userId: string; email: string }) => {
-      // zustand persist stores {state:{...},version:0}; the app rehydrates from .state.
-      window.localStorage.setItem(
-        'task-tracker-auth',
-        JSON.stringify({ state: payload, version: 0 }),
-      )
-    },
-    { token: access_token, userId: user_id, email },
-  )
-}
 
 async function setThemeAndGoto(p: Page, theme: 'light' | 'dark', path: string, marker: string) {
   await p.addInitScript((t) => {
@@ -77,22 +54,19 @@ test.describe('reports screenshots', () => {
     },
   ]
 
-  for (const viewport of [
-    { name: 'fullhd', width: 1920, height: 1080 },
-  ]) {
+  for (const viewport of [{ name: 'fullhd', width: 1920, height: 1080 }]) {
     for (const t of tabs) {
       test(`${t.name} ${viewport.name} screenshot`, async ({ page }) => {
-        await authenticate(page)
+        const auth = await authenticatePage(page)
         await page.setViewportSize({ width: viewport.width, height: viewport.height })
         await setThemeAndGoto(page, 'dark', '/reports', 'Отчёты')
         // select DEMO project in the picker
         await page.getByLabel(/проект/i).selectOption({ label: 'Demo Project' })
         if (t.tab === 'burndown') {
           // pick the active sprint (burndown needs a sprint id)
-          const res = await page.request.get(
-            `${baseURL.replace(':4173', ':3456')}/api/v1/projects/DEMO/sprints`,
-            { headers: { Authorization: `Bearer ${cachedAuth!.token}` } },
-          )
+          const res = await page.request.get(`${API_BASE_URL}/projects/DEMO/sprints`, {
+            headers: { Authorization: `Bearer ${auth.access_token}` },
+          })
           const data = await res.json()
           const active =
             data.sprints?.find((sp: { state: string }) => sp.state === 'active') ??

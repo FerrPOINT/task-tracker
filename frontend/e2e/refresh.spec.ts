@@ -10,7 +10,8 @@ test('token refresh keeps session alive when access token expires (HTTP)', async
     data: { email: 'demo@example.com', password: 'demo' },
   })
   expect(loginApi.ok()).toBeTruthy()
-  const data = (await loginApi.json()) as { access_token: string }
+  const data = (await loginApi.json()) as { access_token: string; refresh_token?: string }
+  expect(data.refresh_token).toBeUndefined()
   const access_token = data.access_token
 
   // Seed the auth store with the access token, then corrupt it: the app
@@ -25,7 +26,7 @@ test('token refresh keeps session alive when access token expires (HTTP)', async
   await page.evaluate(() => {
     const raw = localStorage.getItem('task-tracker-auth')
     const parsed = raw ? JSON.parse(raw) : {}
-    parsed.state = { ...parsed.state, token: 'expired-token-value' }
+    parsed.state = { ...parsed.state, token: null }
     localStorage.setItem('task-tracker-auth', JSON.stringify(parsed))
   })
 

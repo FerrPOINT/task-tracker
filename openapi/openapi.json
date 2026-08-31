@@ -731,7 +731,7 @@
           {
             "name": "access_token",
             "in": "query",
-            "description": "Access token for EventSource clients that cannot send headers",
+            "description": "Short-lived JWT access token fallback for browser EventSource clients that cannot set Authorization headers.",
             "required": false,
             "schema": {
               "type": "string"
@@ -756,6 +756,9 @@
         "security": [
           {
             "bearer": []
+          },
+          {
+            "events_access_token": []
           }
         ]
       }
@@ -5068,7 +5071,8 @@
           "priority",
           "labels",
           "reporter_id",
-          "project_name"
+          "project_name",
+          "time_spent_seconds"
         ],
         "properties": {
           "assignee_id": {
@@ -5149,6 +5153,11 @@
           },
           "summary": {
             "type": "string"
+          },
+          "time_spent_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Logged work in seconds, derived from worklogs."
           }
         }
       },
@@ -6285,7 +6294,14 @@
     "securitySchemes": {
       "bearer": {
         "type": "http",
-        "scheme": "bearer"
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "events_access_token": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "access_token",
+        "description": "Short-lived JWT access token accepted only by the SSE events endpoint."
       }
     }
   }

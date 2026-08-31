@@ -84,7 +84,10 @@ test('issue detail does not overflow horizontally at 375px', async ({ page }) =>
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   )
   expect(overflow).toBeLessThanOrEqual(1)
-  await page.screenshot({ path: '/root/.hermes/cache/images/issue-mobile-fixed.png', fullPage: true })
+  await page.screenshot({
+    path: '/root/.hermes/cache/images/issue-mobile-fixed.png',
+    fullPage: true,
+  })
 })
 
 test('board renders a single tree and pages stay under the pixel cap', async ({ page }) => {

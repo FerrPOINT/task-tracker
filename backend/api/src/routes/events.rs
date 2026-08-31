@@ -21,13 +21,13 @@ pub struct TrackerEventPayload {
     path = "/api/v1/events",
     description = "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (event_type, issue_id, project_key). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter.",
     params(
-        ("access_token" = Option<String>, Query, description = "Access token for EventSource clients that cannot send headers"),
+        ("access_token" = Option<String>, Query, description = "Short-lived JWT access token fallback for browser EventSource clients that cannot set Authorization headers."),
     ),
     responses(
         (status = 200, description = "SSE stream (text/event-stream) of `tracker` events", body = TrackerEventPayload, content_type = "text/event-stream"),
         (status = 401, description = "Unauthorized"),
     ),
-    security(("bearer" = []))
+    security(("bearer" = []), ("events_access_token" = []))
 )]
 pub async fn events(
     State(ctx): State<Arc<app::AppContext>>,

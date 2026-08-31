@@ -1,12 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { apiLogin, apiPost } from './setup'
+import { apiPost, authenticatePage } from './setup'
 
 test.describe('labels and links', () => {
-test.setTimeout(120_000)
+  test.setTimeout(120_000)
   test('create label → attach to issue → detach', async ({ page }) => {
-    const login = await apiLogin()
-    expect(login.status).toBe(200)
-    const token: string = login.data.access_token
+    const auth = await authenticatePage(page)
+    const token = auth.access_token
 
     const created = await apiPost(
       '/issues',
@@ -15,23 +14,13 @@ test.setTimeout(120_000)
         issue_type: 'task',
         priority: 'medium',
         summary: `Labels E2E ${Date.now()}`,
-        reporter_id: login.data.user_id,
+        reporter_id: auth.user_id,
       },
       token,
     )
     expect([200, 201]).toContain(created.status)
     const issue = created.data
 
-    await page.goto('/login')
-    await page.evaluate(
-      ([t]) => {
-        localStorage.setItem(
-          'task-tracker-auth',
-          JSON.stringify({ state: { token: t }, version: 0 }),
-        )
-      },
-      [token],
-    )
     await page.goto(`/issues/${issue.id}`)
 
     // Create a new label through the editor
@@ -56,9 +45,8 @@ test.setTimeout(120_000)
   })
 
   test('create issue link → delete', async ({ page }) => {
-    const login = await apiLogin()
-    expect(login.status).toBe(200)
-    const token: string = login.data.access_token
+    const auth = await authenticatePage(page)
+    const token = auth.access_token
 
     const mk = async (summary: string) => {
       const res = await apiPost(
@@ -68,7 +56,7 @@ test.setTimeout(120_000)
           issue_type: 'task',
           priority: 'medium',
           summary,
-          reporter_id: login.data.user_id,
+          reporter_id: auth.user_id,
         },
         token,
       )
@@ -78,16 +66,6 @@ test.setTimeout(120_000)
     const a = await mk(`Link E2E A ${Date.now()}`)
     const b = await mk(`Link E2E B ${Date.now()}`)
 
-    await page.goto('/login')
-    await page.evaluate(
-      ([t]) => {
-        localStorage.setItem(
-          'task-tracker-auth',
-          JSON.stringify({ state: { token: t }, version: 0 }),
-        )
-      },
-      [token],
-    )
     await page.goto(`/issues/${a.id}`)
 
     // Add link a blocks b

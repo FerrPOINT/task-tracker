@@ -133,7 +133,12 @@ impl crate::context::LabelService for LabelServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
-        let _label = self.labels.get_by_id(label_id).await?;
+        let label = self.labels.get_by_id(label_id).await?;
+        if label.project_id != issue.project_id {
+            return Err(AppError::invalid_input(
+                "label belongs to a different project",
+            ));
+        }
         self.labels.attach(issue_id, label_id).await?;
         Ok(())
     }

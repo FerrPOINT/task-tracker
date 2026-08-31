@@ -61,9 +61,10 @@ describe('CommentForm', () => {
   it('does not submit the same comment twice while the mutation is pending', async () => {
     let resolveSubmit: (() => void) | undefined
     const onSubmit = vi.fn(
-      () => new Promise<void>((resolve) => {
-        resolveSubmit = resolve
-      }),
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve
+        }),
     )
     render(
       <Wrapper>

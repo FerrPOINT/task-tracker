@@ -424,10 +424,11 @@ export function useMoveIssue(projectKey: string) {
 }
 
 export function useUsers() {
+  const token = useAuthStore((s) => s.token)
   return useQuery({
     queryKey: ['users'],
     queryFn: listUsers,
-    enabled: !!useAuthStore.getState().token,
+    enabled: !!token,
   })
 }
 

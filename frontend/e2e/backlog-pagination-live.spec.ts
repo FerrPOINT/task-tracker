@@ -5,14 +5,11 @@ test('backlog pager pages through the full backlog', async ({ page }) => {
   const login = await page.request.post('http://localhost:3456/api/v1/auth/login', {
     data: { email: 'demo@example.com', password: 'demo' },
   })
-  const { access_token: token } = await login.json()
-  await page.goto('http://localhost:19877/login')
-  await page.evaluate(
-    (t) => localStorage.setItem('task-tracker-auth', JSON.stringify({ state: { token: t }, version: 0 })),
-    token,
-  )
+  expect(login.ok()).toBeTruthy()
   await page.goto('http://localhost:19877/projects/DEMO/backlog')
-  await page.waitForFunction(() => document.body.innerText.includes('Backlog'), null, { timeout: 20000 })
+  await page.waitForFunction(() => document.body.innerText.includes('Backlog'), null, {
+    timeout: 20000,
+  })
   await page.waitForTimeout(1500)
 
   const body1 = await page.evaluate(() => document.body.innerText)

@@ -74,6 +74,9 @@ Indexes:
 Indexes:
     "attachments_pkey" PRIMARY KEY, btree (id)
     "idx_attachments_issue_id" btree (issue_id)
+Foreign-key constraints:
+    "fk_attachments_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
+    "fk_attachments_author" FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE RESTRICT
 ```
 
 ### labels
@@ -241,6 +244,11 @@ Foreign-key constraints:
 Indexes:
     "idx_issues_deleted_at" btree (deleted_at)
 Foreign-key constraints:
+    "fk_issues_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE RESTRICT
+    "fk_issues_status" FOREIGN KEY (status_id) REFERENCES statuses(id) ON DELETE RESTRICT
+    "fk_issues_assignee" FOREIGN KEY (assignee_id) REFERENCES users(id) ON DELETE SET NULL
+    "fk_issues_reporter" FOREIGN KEY (reporter_id) REFERENCES users(id) ON DELETE RESTRICT
+    "fk_issues_sprint" FOREIGN KEY (sprint_id) REFERENCES sprints(id) ON DELETE SET NULL
     "fk_issues_component" FOREIGN KEY (component_id) REFERENCES project_components(id) ON DELETE SET NULL
     "fk_issues_affected_version" FOREIGN KEY (affected_version_id) REFERENCES project_versions(id) ON DELETE SET NULL
     "fk_issues_fix_version" FOREIGN KEY (fix_version_id) REFERENCES project_versions(id) ON DELETE SET NULL
@@ -345,7 +353,7 @@ Indexes:
     "comments_pkey" PRIMARY KEY, btree (id)
 Foreign-key constraints:
     "fk_comments_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
-    "fk_comments_author" FOREIGN KEY (author_id) REFERENCES users(id)
+    "fk_comments_author" FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE RESTRICT
 ```
 
 ### project_members
@@ -361,8 +369,8 @@ Foreign-key constraints:
 Indexes:
     "pk_project_members" PRIMARY KEY, btree (project_id, user_id)
 Foreign-key constraints:
-    "fk_project_members_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-    "fk_project_members_user" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    "fk_members_project" FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+    "fk_members_user" FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ```
 
 ### worklogs
@@ -383,7 +391,7 @@ Indexes:
     "worklogs_pkey" PRIMARY KEY, btree (id)
 Foreign-key constraints:
     "fk_worklogs_issue" FOREIGN KEY (issue_id) REFERENCES issues(id) ON DELETE CASCADE
-    "fk_worklogs_author" FOREIGN KEY (author_id) REFERENCES users(id)
+    "fk_worklogs_author" FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE RESTRICT
 ```
 
 ### issue_status_history
@@ -1225,17 +1233,17 @@ CREATE TABLE versions (
 ```sql
 CREATE TABLE issues (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    project_id UUID NOT NULL REFERENCES projects(id),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
     issue_type_id UUID NOT NULL REFERENCES issue_types(id),
-    status_id UUID NOT NULL REFERENCES statuses(id),
+    status_id UUID NOT NULL REFERENCES statuses(id) ON DELETE RESTRICT,
     workflow_transition_id UUID REFERENCES workflow_transitions(id),
     key TEXT NOT NULL,
     summary TEXT NOT NULL,
     description JSONB,
     environment TEXT,
     priority_id UUID REFERENCES priorities(id),
-    assignee_id UUID REFERENCES users(id),
-    reporter_id UUID NOT NULL REFERENCES users(id),
+    assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    reporter_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     creator_id UUID NOT NULL REFERENCES users(id),
     epic_id UUID REFERENCES issues(id),
     parent_id UUID REFERENCES issues(id),
@@ -1243,6 +1251,7 @@ CREATE TABLE issues (
     original_estimate_seconds INTEGER,
     remaining_estimate_seconds INTEGER,
     time_spent_seconds INTEGER DEFAULT 0,
+    sprint_id UUID REFERENCES sprints(id) ON DELETE SET NULL,
     due_date DATE,
     start_date DATE,
     resolution TEXT,

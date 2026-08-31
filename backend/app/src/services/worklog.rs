@@ -47,6 +47,22 @@ impl WorklogServiceImpl {
             self.publish_worklog_event(issue, project.key.to_string());
         }
     }
+
+    async fn sync_issue_time_tracking(&self, issue: &mut domain::Issue) -> Result<(), AppError> {
+        let spent: i64 = self
+            .worklogs
+            .list_by_issue(issue.id)
+            .await?
+            .iter()
+            .map(|worklog| worklog.duration_seconds)
+            .sum();
+        issue.time_spent_seconds = spent;
+        if let Some(original) = issue.original_estimate_seconds {
+            issue.remaining_estimate_seconds = Some((original - spent).max(0));
+        }
+        issue.updated_at = shared::now();
+        self.issues.save(issue).await.map(|_| ())
+    }
 }
 
 #[async_trait]
@@ -90,7 +106,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         cmd: CreateWorklogCommand,
         requester: UserId,
     ) -> Result<WorklogDto, AppError> {
-        let issue = self.issues.get_by_id(cmd.issue_id).await?;
+        let mut issue = self.issues.get_by_id(cmd.issue_id).await?;
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
@@ -111,6 +127,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             updated_at: shared::now(),
         };
         self.worklogs.save(&worklog).await?;
+        self.sync_issue_time_tracking(&mut issue).await?;
         self.publish_for_issue(&issue).await;
         let user = self.users.get_by_id(cmd.author_id).await.ok();
         Ok(WorklogDto::from_worklog(
@@ -126,7 +143,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         requester: UserId,
     ) -> Result<WorklogDto, AppError> {
         let mut worklog = self.worklogs.get_by_id(id).await?;
-        let issue = self.issues.get_by_id(worklog.issue_id).await?;
+        let mut issue = self.issues.get_by_id(worklog.issue_id).await?;
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
@@ -149,6 +166,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         }
         worklog.updated_at = shared::now();
         self.worklogs.save(&worklog).await?;
+        self.sync_issue_time_tracking(&mut issue).await?;
         self.publish_for_issue(&issue).await;
         let user = self.users.get_by_id(worklog.author_id).await.ok();
         Ok(WorklogDto::from_worklog(
@@ -159,7 +177,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
 
     async fn delete(&self, id: shared::WorklogId, requester: UserId) -> Result<(), AppError> {
         let worklog = self.worklogs.get_by_id(id).await?;
-        let issue = self.issues.get_by_id(worklog.issue_id).await?;
+        let mut issue = self.issues.get_by_id(worklog.issue_id).await?;
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
@@ -167,6 +185,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             return Err(AppError::Forbidden);
         }
         self.worklogs.delete(id).await?;
+        self.sync_issue_time_tracking(&mut issue).await?;
         self.publish_for_issue(&issue).await;
         Ok(())
     }

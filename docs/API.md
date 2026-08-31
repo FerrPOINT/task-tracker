@@ -10,7 +10,7 @@ REST API первой версии Task Tracker. Все endpoint возвращ�
 
 - Base URL: `https://{host}:3456/api/v1`
 - Content-Type: `application/json`
-- Auth: JWT access в заголовке Authorization; refresh в httpOnly cookie.
+- Auth: JWT access в `Authorization: Bearer <token>`, refresh в `httpOnly` cookie.
 - Версионирование: path-based `/api/v1`.
 - Пагинация: `?page=0&size=20&sort=createdAt,desc`
 - Фильтр поиска задач: `?jql=...`
@@ -40,9 +40,9 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| POST | `/auth/login` | Вход, выдача access/refresh |
-| POST | `/auth/logout` | Выход, отзыв refresh |
-| POST | `/auth/refresh` | Обновление access-токена |
+| POST | `/auth/login` | Вход, выдача access и refresh-cookie |
+| POST | `/auth/logout` | Выход, отзыв refresh и очистка cookie |
+| POST | `/auth/refresh` | Обновление access-токена по refresh-cookie |
 | POST | `/auth/register` | Регистрация |
 | GET | `/auth/me` | Текущий аутентифицированный пользователь |
 
@@ -283,46 +283,57 @@ Runtime contract (single source of truth — `backend/shared/src/error.rs`):
   "username": "jdoe",
   "email": "jdoe@example.com",
   "password": "Str0ngP@ss",
-  "displayName": "John Doe"
+  "name": "John Doe"
 }
 ```
 
 **Response 201:**
 ```json
 {
-  "id": "uuid",
-  "username": "jdoe",
+  "access_token": "jwt",
+  "token_type": "Bearer",
+  "user_id": "uuid",
   "email": "jdoe@example.com",
-  "displayName": "John Doe",
-  "accessToken": "jwt",
-  "expiresIn": 900
+  "expires_in": 900
 }
 ```
 
-Refresh token — httpOnly cookie.
+Refresh token не возвращается в JSON, а выставляется через `Set-Cookie` как `httpOnly` cookie.
 
 ### POST /auth/login
 
 **Body:**
 ```json
 {
-  "login": "jdoe", // username or email
+  "email": "jdoe@example.com",
   "password": "Str0ngP@ss"
 }
 ```
 
+**Response 200:** `AuthResponse`, refresh token выставляется через `Set-Cookie`.
+
 ### POST /auth/refresh
 
-Refresh из `httpOnly` cookie. Возвращает новый access token и обновляет refresh cookie.
+Refresh берётся из `httpOnly` cookie. Для non-browser клиентов допускается optional body fallback:
+
+```json
+{
+  "refresh_token": "refresh-token"
+}
+```
+
+Возвращает новый access token и обновляет refresh cookie. Refresh token не возвращается в JSON.
 
 Клиенты без cookie-jar (CLI) могут передать текущий refresh-токен в теле: `{"refresh_token": "…"}`. Cookie имеет приоритет.
 
 **Response 200:**
 ```json
 {
-  "accessToken": "jwt",
-  "expiresIn": 900,
-  "tokenType": "Bearer"
+  "access_token": "jwt",
+  "token_type": "Bearer",
+  "user_id": "uuid",
+  "email": "jdoe@example.com",
+  "expires_in": 900
 }
 ```
 
@@ -354,13 +365,13 @@ Client                          Server
   |                               |
   |--- POST /auth/login --------->|
   |                               | argon2id verify
-  |<-- accessToken + Set-Cookie --|
+  |<-- access_token + Set-Cookie --|
   |                               |
   |--- GET /api/v1/... Bearer --->|
   |<-- 401 expired                |
   |                               |
   |--- POST /auth/refresh Cookie->|
-  |<-- new accessToken + cookie --|
+  |<-- new access_token + cookie --|
 ```
 
 - Access token TTL: 15 минут.
@@ -492,11 +503,11 @@ Query parameters:
 
 ### GET /issues/{id}
 
-**Response:** `IssueDetail` с полной историей, связями, кастомными полями.
+**Response:** `IssueResponse`, включая `original_estimate_seconds`, `remaining_estimate_seconds` и агрегированное `time_spent_seconds`.
 
-### PUT /issues/{id}
+### PATCH /issues/{id}
 
-**Body:** partial update разрешённых полей.
+**Body:** partial update разрешённых полей. Nullable поля (`description`, `sprint_id`, `component_id`, `affected_version_id`, `fix_version_id`) очищаются при явном `null` и остаются без изменений при отсутствии ключа.
 
 ### DELETE /issues/{id}
 
@@ -725,7 +736,8 @@ Soft delete → trash.
 
 ### POST /issues/{id}/attachments
 
-Multipart-форма с полем `file`.
+Multipart-форма с полем `file`. Максимальный размер тела запроса берётся из `TASKTRACKER_STORAGE__MAX_UPLOAD_BYTES` (по умолчанию 25 MiB).
+Backend нормализует имя файла, отбрасывает path/control-символы и принимает только whitelist безопасных content-type: `text/plain`, `text/markdown`, `text/csv`, `application/json`, `application/pdf`, `application/zip`, `application/gzip`, `image/png`, `image/jpeg`, `image/gif`, `image/webp`, а также распространённые Office/OpenDocument форматы.
 
 **Response 201:** `AttachmentResponse`
 
@@ -741,7 +753,7 @@ Multipart-форма с полем `file`.
 }
 ```
 
-### GET /attachments/{id}
+### GET /attachments/{id}/download
 
 Download/stream.
 
@@ -803,15 +815,17 @@ Download/stream.
 }
 ```
 
-### PUT /issues/{id}/worklogs/{worklogId}
+### PATCH /worklogs/{worklogId}
 
-**Body:** то же, что и POST.
+**Body:** `UpdateWorklogRequest` — частичное обновление `started_at`, `duration_seconds`, `description`. Отсутствующий `description` сохраняет текущее значение, явный `null` очищает описание.
 
 **Response 200:** `WorklogResponse`
 
-### DELETE /issues/{id}/worklogs/{worklogId}
+### DELETE /worklogs/{worklogId}
 
 **Response 204**
+
+Создание, редактирование и удаление worklog пересчитывают агрегаты задачи: `time_spent_seconds` и `remaining_estimate_seconds`.
 
 **Права:** создание/редактирование/удаление worklog доступно пользователям с правом `Work On Issues` для проекта. Просмотр — с правом `View Project`.
 
@@ -1187,7 +1201,7 @@ Server-Sent Events (SSE) — поток событий реального вре
 
 **Content-Type:** `text/event-stream`
 
-**Auth:** JWT access token в `Authorization: Bearer ...`
+**Auth:** JWT access token в `Authorization: Bearer ...`. Browser `EventSource` не умеет задавать заголовки, поэтому для этого endpoint также принимается `?access_token=`. Query-token разрешён только для `/events`.
 
 **Подключение:**
 
@@ -1195,6 +1209,13 @@ Server-Sent Events (SSE) — поток событий реального вре
 GET /api/v1/events
 Accept: text/event-stream
 Authorization: Bearer <access_token>
+```
+
+Для browser-клиента:
+
+```
+GET /api/v1/events?access_token=<access_token>
+Accept: text/event-stream
 ```
 
 **Формат сообщений:**
@@ -1223,7 +1244,7 @@ data: {"type":"StatusChanged","issue_id":"uuid","from":"uuid","to":"uuid"}
 
 ### Client-Side Handling
 
-- Клиент подключается к `GET /api/v1/events` с access token в заголовке `Authorization`.
+- Browser-клиент подключается к `GET /api/v1/events?access_token=<access_token>` через `EventSource`; non-browser клиенты могут использовать `Authorization: Bearer ...`.
 - При получении события клиент инвалидирует соответствующие TanStack Query и рефетчит затронутые данные.
 - Keep-alive: сервер отправляет SSE ping-сообщения по умолчанию (Axum `KeepAlive::default()`).
 - При разрыве соединения клиент автоматически переподключается (браузерный `EventSource` API).
@@ -1232,9 +1253,7 @@ data: {"type":"StatusChanged","issue_id":"uuid","from":"uuid","to":"uuid"}
 ### Пример (JavaScript)
 
 ```javascript
-const es = new EventSource('/api/v1/events', {
-  withCredentials: true, // для httpOnly refresh cookie
-});
+const es = new EventSource(`/api/v1/events?access_token=${encodeURIComponent(accessToken)}`);
 
 es.addEventListener('tracker', (e) => {
   const event = JSON.parse(e.data);

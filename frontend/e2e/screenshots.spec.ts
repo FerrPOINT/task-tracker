@@ -1,5 +1,5 @@
 import { test, Page } from '@playwright/test'
-import { seedIntegrationData } from './setup'
+import { seedIntegrationData, authenticatePage } from './setup'
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
 const viewports = [
@@ -18,32 +18,14 @@ const pages = [
   { path: '/issues/create', name: 'issue-create', marker: 'Создать задачу' },
 ]
 
+test.setTimeout(120_000)
+
 test.beforeAll(async () => {
-  test.setTimeout(120_000)
   await seedIntegrationData()
 })
 
-let cachedAuth: { token: string; userId: string; email: string } | null = null
-
 async function authenticate(p: Page) {
-  // One login per worker: reusing the seeded context avoids tripping the
-  // auth rate limiter (5 req / 15 s) with a login per screenshot.
-  if (!cachedAuth) {
-    const ctx = await seedIntegrationData()
-    cachedAuth = { token: ctx.token, userId: ctx.userId, email: 'demo@example.com' }
-  }
-  const { token: access_token, userId: user_id, email } = cachedAuth
-  await p.goto(`${baseURL}/login`)
-  await p.evaluate(
-    (payload: { token: string; userId: string; email: string }) => {
-      // zustand persist stores {state:{...},version:0}; the app rehydrates from .state.
-      window.localStorage.setItem(
-        'task-tracker-auth',
-        JSON.stringify({ state: payload, version: 0 }),
-      )
-    },
-    { token: access_token, userId: user_id, email },
-  )
+  await authenticatePage(p)
 }
 
 async function setThemeAndGoto(p: Page, theme: 'light' | 'dark', path: string, marker: string) {

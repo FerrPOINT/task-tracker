@@ -1,3 +1,14 @@
+import type { Page } from '@playwright/test'
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
+
 export const API_BASE = process.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3456/api/v1'
 
 // Single shared seed per test-run (process-wide). Parallel workers/projects reuse it,
@@ -20,8 +31,6 @@ let seedPromise: Promise<ApiContext> | null = null
 // process publish the token for the others to reuse.
 const seedLockPath = '/tmp/tt-e2e-seed.lock'
 const seedCachePath = '/tmp/tt-e2e-seed.json'
-
-import { existsSync, openSync, readFileSync, writeFileSync, closeSync, unlinkSync, statSync } from 'node:fs'
 
 function acquireSeedLock(): number {
   const deadline = Date.now() + 90_000
@@ -51,6 +60,12 @@ function releaseSeedLock(fd: number) {
   } catch {
     // already removed by stale takeover
   }
+}
+
+type AuthResponse = {
+  access_token: string
+  user_id: string
+  email?: string
 }
 
 async function post(path: string, body: object, token?: string) {
@@ -202,9 +217,13 @@ export async function seedIntegrationData(): Promise<ApiContext> {
     seedPromise = (async () => {
       const fd = acquireSeedLock()
       try {
-        const cached = existsSync(seedCachePath) ? JSON.parse(readFileSync(seedCachePath, 'utf8')) : null
+        const cached = existsSync(seedCachePath)
+          ? JSON.parse(readFileSync(seedCachePath, 'utf8'))
+          : null
         const fresh =
-          cached && Date.now() - cached.at < 10 * 60_000 && cached.ctx.expiresAt > Date.now() + 60_000
+          cached &&
+          Date.now() - cached.at < 10 * 60_000 &&
+          cached.ctx.expiresAt > Date.now() + 60_000
         if (fresh) return cached.ctx as ApiContext
         // Cache hit but the access token is close to expiry: re-login and
         // keep the seeded project/issue instead of failing mid-suite with 401s.
@@ -246,6 +265,24 @@ export async function apiLogin() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: 'demo@example.com', password: 'demo' }),
   })
+}
+
+export async function authenticatePage(page: Page): Promise<AuthResponse> {
+  for (let i = 0; i < 24; i++) {
+    const res = await page.request.post(`${API_BASE}/auth/login`, {
+      data: { email: 'demo@example.com', password: 'demo' },
+    })
+    const data = await res.json().catch(() => ({}))
+    if (res.status() === 200) {
+      return data as AuthResponse
+    }
+    if (res.status() === 429) {
+      await new Promise((r) => setTimeout(r, 5_000))
+      continue
+    }
+    throw new Error(`browser login failed: ${res.status()} ${JSON.stringify(data)}`)
+  }
+  throw new Error('browser login failed: persistent 429')
 }
 
 export async function apiGet(path: string, token: string) {
