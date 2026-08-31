@@ -23,6 +23,7 @@ fn test_config() -> Arc<shared::AppConfig> {
         },
         storage: shared::StorageConfig::default(),
         email: shared::EmailConfig::default(),
+        metrics: shared::MetricsConfig::default(),
     })
 }
 

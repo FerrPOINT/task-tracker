@@ -1,7 +1,7 @@
 use axum::{Extension, Json, extract::State};
 use std::sync::Arc;
 
-use crate::dto::{UserListResponse, UserResponse};
+use crate::dto::{DirectoryUserResponse, UserListResponse, UserResponse};
 use shared::UserId;
 
 #[utoipa::path(
@@ -51,16 +51,14 @@ pub async fn get_users_me(
 pub async fn list_users(
     State(ctx): State<Arc<app::AppContext>>,
 ) -> Result<Json<UserListResponse>, shared::AppError> {
-    let users = ctx.services.auth.list_users().await?;
+    let users = ctx.services.auth.list_active_users().await?;
     Ok(Json(UserListResponse {
         users: users
             .into_iter()
-            .map(|u| UserResponse {
+            .map(|u| DirectoryUserResponse {
                 id: u.id,
-                email: u.email,
                 username: u.username,
                 display_name: u.display_name,
-                is_system_admin: u.is_system_admin,
             })
             .collect(),
     }))

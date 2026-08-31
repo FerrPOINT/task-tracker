@@ -82,7 +82,7 @@ impl Authz {
             .projects
             .list(domain::ProjectQuery {
                 owner_id: Some(user),
-                limit: 1000,
+                limit: 0,
                 offset: 0,
             })
             .await?

@@ -119,6 +119,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         let file_name = sanitize_file_name(file_name);
         let content_type = validate_content_type(content_type)?;
         let key = format!("{}-{}", uuid::Uuid::new_v4(), file_name);
+        let size_bytes = bytes.len() as i64;
         self.storage.put(&issue.id.to_string(), &key, bytes).await?;
         let attachment = domain::Attachment {
             id: shared::AttachmentId::new(),
@@ -126,15 +127,18 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             author_id,
             file_name: file_name.as_str().into(),
             content_type: content_type.as_str().into(),
-            size_bytes: 0, // corrected below from stored file
+            size_bytes,
             storage_key: key.as_str().into(),
             created_at: shared::now(),
         };
-        // size from the uploaded bytes (validated in storage)
-        let mut a = attachment;
-        a.size_bytes = self.storage.get(&a.issue_id.to_string(), &key).await?.len() as i64;
-        self.attachments.save(&a).await?;
-        Ok(Self::to_dto(&a))
+        if let Err(err) = self.attachments.save(&attachment).await {
+            let _ = self
+                .storage
+                .delete(&issue.id.to_string(), key.as_str())
+                .await;
+            return Err(err);
+        }
+        Ok(Self::to_dto(&attachment))
     }
 
     async fn list_by_issue(

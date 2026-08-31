@@ -471,7 +471,8 @@
     "noFields": "No custom fields configured.",
     "loading": "Loading...",
     "selectPlaceholder": "Select...",
-    "optionsRequired": "Options are required for this field type"
+    "optionsRequired": "Options are required for this field type",
+    "requiredMissing": "{{name}} is required"
   },
   "trash": {
     "title": "Trash",

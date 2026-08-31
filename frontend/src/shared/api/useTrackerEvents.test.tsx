@@ -71,4 +71,28 @@ describe('useTrackerEvents', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['worklogs', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
   })
+
+  it('invalidates issue collection caches when an issue SSE event arrives', () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+
+    act(() => {
+      FakeEventSource.latest?.emit('issue_moved', { issue_id: 'issue-1', project_key: 'TT' })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+  })
 })

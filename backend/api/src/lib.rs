@@ -662,19 +662,22 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             middleware::auth::bearer_auth,
         ));
 
-    // Prometheus metrics layer + handle for the /metrics endpoint.
-    let handle = metric_handle();
+    // Prometheus metrics layer; /metrics exposure is configurable so production
+    // deployments can keep the route internal or disabled at the edge.
     let prometheus_layer: PrometheusMetricLayer = GenericMetricLayer::new();
 
-    Router::new()
-        .route("/metrics", get(move || std::future::ready(handle.render())))
+    let mut root = Router::new()
         .route("/api/v1/health", get(routes::health::health))
-        .nest(
-            "/api/v1",
-            api.layer(GovernorLayer::new(general_limiter)),
-        )
+        .nest("/api/v1", api.layer(GovernorLayer::new(general_limiter)))
         .nest("/api/v1", events_router)
-        .merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", ApiDoc::openapi()))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api/v1/openapi.json", ApiDoc::openapi()));
+
+    if ctx.config.metrics.public {
+        let handle = metric_handle();
+        root = root.route("/metrics", get(move || std::future::ready(handle.render())));
+    }
+
+    root
         .layer(
             ServiceBuilder::new()
                 .layer(SetResponseHeaderLayer::overriding(

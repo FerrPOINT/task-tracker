@@ -75,6 +75,7 @@ async fn serve_forever_responds_to_request() {
         },
         storage: shared::StorageConfig::default(),
         email: shared::EmailConfig::default(),
+        metrics: shared::MetricsConfig::default(),
     });
 
     let ctx = mocks::failing_context_with_config(config.clone());
@@ -120,6 +121,7 @@ async fn bind_returns_listener_on_valid_addr() {
         },
         storage: shared::StorageConfig::default(),
         email: shared::EmailConfig::default(),
+        metrics: shared::MetricsConfig::default(),
     });
 
     let ctx = mocks::failing_context_with_config(config);
@@ -283,6 +285,7 @@ async fn issue_create_invalid_project_key_returns_400() {
         status_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
         reporter_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
         assignee_id: None,
+        custom_fields: Default::default(),
     };
     let response = app
         .oneshot(
@@ -311,6 +314,7 @@ async fn issue_create_invalid_reporter_id_returns_400() {
         status_id: Some("00000000-0000-0000-0000-000000000000".to_string()),
         reporter_id: Some("not-a-uuid".to_string()),
         assignee_id: None,
+        custom_fields: Default::default(),
     };
     let response = app
         .oneshot(

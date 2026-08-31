@@ -5,6 +5,7 @@ export type LoginRequest = components['schemas']['LoginRequest']
 export type RegisterRequest = components['schemas']['RegisterRequest']
 export type AuthResponse = components['schemas']['AuthResponse']
 export type UserResponse = components['schemas']['UserResponse']
+export type DirectoryUser = components['schemas']['DirectoryUserResponse']
 
 export async function login(req: LoginRequest): Promise<AuthResponse> {
   const { data, error } = await api.POST('/api/v1/auth/login', { body: req })
@@ -18,9 +19,9 @@ export async function register(req: RegisterRequest): Promise<AuthResponse> {
   return data
 }
 
-export type User = components['schemas']['UserResponse']
+export type User = UserResponse
 
-export async function listUsers(): Promise<User[]> {
+export async function listUsers(): Promise<DirectoryUser[]> {
   const { data, error } = await api.GET('/api/v1/users')
   if (error || !data) throw new Error('failed to load users')
   return data.users

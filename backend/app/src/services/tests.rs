@@ -17,8 +17,8 @@ use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, LoginCommand, RegisterCommand,
     UpdateIssueCommand, UpdateNotificationSettingsCommand,
 };
-use crate::context::{AppContext, NotificationService};
-use crate::services::NotificationServiceImpl;
+use crate::context::{AppContext, AttachmentService, NotificationService};
+use crate::services::{AttachmentServiceImpl, NotificationServiceImpl};
 
 fn test_user() -> User {
     User {
@@ -33,6 +33,15 @@ fn test_user() -> User {
         created_at: shared::now(),
         updated_at: shared::now(),
     }
+}
+
+fn test_user_with(username: &str, email: &str, display_name: &str) -> User {
+    let mut user = test_user();
+    user.id = UserId::new();
+    user.email = email.to_string().into();
+    user.username = username.to_string().into();
+    user.display_name = display_name.to_string().into();
+    user
 }
 
 fn test_config() -> Arc<AppConfig> {
@@ -51,7 +60,78 @@ fn test_config() -> Arc<AppConfig> {
         },
         storage: shared::StorageConfig::default(),
         email: shared::EmailConfig::default(),
+        metrics: shared::MetricsConfig::default(),
     })
+}
+
+#[derive(Default)]
+struct RecordingStorage {
+    files: std::sync::Mutex<std::collections::HashMap<(String, String), Vec<u8>>>,
+    deletes: std::sync::atomic::AtomicUsize,
+}
+
+impl RecordingStorage {
+    fn file_count(&self) -> usize {
+        self.files.lock().unwrap().len()
+    }
+
+    fn delete_count(&self) -> usize {
+        self.deletes.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+#[async_trait::async_trait]
+impl domain::FileStorage for RecordingStorage {
+    async fn put(&self, issue_id: &str, key: &str, bytes: Vec<u8>) -> Result<(), AppError> {
+        self.files
+            .lock()
+            .unwrap()
+            .insert((issue_id.to_string(), key.to_string()), bytes);
+        Ok(())
+    }
+
+    async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError> {
+        self.files
+            .lock()
+            .unwrap()
+            .get(&(issue_id.to_string(), key.to_string()))
+            .cloned()
+            .ok_or_else(|| AppError::not_found("attachment file", key))
+    }
+
+    async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError> {
+        self.files
+            .lock()
+            .unwrap()
+            .remove(&(issue_id.to_string(), key.to_string()));
+        self.deletes
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+struct FailingAttachmentSaveRepository;
+
+#[async_trait::async_trait]
+impl domain::AttachmentRepository for FailingAttachmentSaveRepository {
+    async fn get_by_id(&self, _id: shared::AttachmentId) -> Result<domain::Attachment, AppError> {
+        Err(AppError::not_found("attachment", "failing"))
+    }
+
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<domain::Attachment>, AppError> {
+        Ok(Vec::new())
+    }
+
+    async fn save(
+        &self,
+        _attachment: &domain::Attachment,
+    ) -> Result<shared::AttachmentId, AppError> {
+        Err(AppError::Internal("metadata insert failed".into()))
+    }
+
+    async fn delete(&self, _id: shared::AttachmentId) -> Result<(), AppError> {
+        Ok(())
+    }
 }
 
 fn statuses_from_board(board: &Board) -> Vec<domain::Status> {
@@ -148,7 +228,7 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         sprints: sprints.clone(),
         comments: Arc::new(domain::StubCommentRepository),
         worklogs: Arc::new(domain::StubWorklogRepository),
-        members: Arc::new(domain::StubProjectMemberRepository),
+        members: Arc::new(domain::MemoryProjectMemberRepository::default()),
         statuses: Arc::new(domain::MemoryStatusRepository::new(statuses_from_board(
             &board,
         ))),
@@ -225,6 +305,18 @@ async fn auth_login_missing_user_fails() {
 }
 
 #[tokio::test]
+async fn auth_list_active_users_filters_inactive_accounts() {
+    let (ctx, _user) = ctx_with_demo_data().await;
+    let mut inactive = test_user_with("inactive", "inactive@example.com", "Inactive User");
+    inactive.is_active = false;
+    ctx.repos.users.save(&inactive).await.unwrap();
+
+    let users = ctx.services.auth.list_active_users().await.unwrap();
+    assert!(users.iter().any(|user| user.username == "demo"));
+    assert!(!users.iter().any(|user| user.username == "inactive"));
+}
+
+#[tokio::test]
 async fn auth_expired_token_fails_verification() {
     let (ctx, _user) = ctx_with_demo_data().await;
     let expired = jsonwebtoken::encode(
@@ -267,6 +359,7 @@ async fn issue_service_create() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -305,6 +398,7 @@ async fn issue_service_update_and_move() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -358,6 +452,113 @@ async fn issue_service_update_and_move() {
 }
 
 #[tokio::test]
+async fn issue_create_rejects_non_member_assignee_and_reporter() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+    let outsider = test_user_with("outsider", "outsider@example.com", "Outsider");
+    ctx.repos.users.save(&outsider).await.unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let status_id = board.columns[0].id.to_string();
+
+    let assignee_err = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Bad assignee".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: status_id.clone(),
+                reporter_id: owner.id,
+                assignee_id: Some(outsider.id),
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(assignee_err, AppError::Forbidden));
+
+    let reporter_err = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Bad reporter".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id,
+                reporter_id: outsider.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(reporter_err, AppError::Forbidden));
+}
+
+#[tokio::test]
+async fn issue_update_rejects_non_member_assignee() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+    let outsider = test_user_with("outsider", "outsider@example.com", "Outsider");
+    ctx.repos.users.save(&outsider).await.unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Needs update".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    let err = ctx
+        .services
+        .issue
+        .update(
+            issue.id.parse().unwrap(),
+            UpdateIssueCommand {
+                assignee_id: Some(Some(outsider.id)),
+                actor_id: owner.id,
+                ..Default::default()
+            },
+            owner.id,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::Forbidden));
+}
+
+#[tokio::test]
 async fn dashboard_lists_assigned_issues() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
@@ -380,6 +581,7 @@ async fn dashboard_lists_assigned_issues() {
                 reporter_id: user.id,
                 assignee_id: Some(user.id),
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -388,6 +590,45 @@ async fn dashboard_lists_assigned_issues() {
 
     let dashboard = ctx.services.dashboard.get_dashboard(user.id).await.unwrap();
     assert_eq!(dashboard.assigned_issues.len(), 1);
+}
+
+#[tokio::test]
+async fn dashboard_does_not_show_assigned_issues_from_inaccessible_projects() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+    let outsider = test_user_with("outsider", "outsider@example.com", "Outsider");
+    ctx.repos.users.save(&outsider).await.unwrap();
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let mut issue = Issue::create(
+        &project,
+        404,
+        IssueType::Task,
+        board.columns[0].id.parse().unwrap(),
+        "Legacy assignment",
+        None,
+        owner.id,
+        Priority::Medium,
+    );
+    issue.assign(Some(outsider.id));
+    ctx.repos.issues.save(&issue).await.unwrap();
+
+    let dashboard = ctx
+        .services
+        .dashboard
+        .get_dashboard(outsider.id)
+        .await
+        .unwrap();
+    assert!(dashboard.assigned_issues.is_empty());
 }
 
 #[tokio::test]
@@ -413,6 +654,7 @@ async fn search_finds_issue() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -518,6 +760,7 @@ async fn board_service_backlog() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -557,6 +800,7 @@ async fn backlog_offset_reaches_later_items_without_duplicates() {
                     reporter_id: user.id,
                     assignee_id: None,
                     actor_id: user.id,
+                    custom_fields: Default::default(),
                 },
                 user.id,
             )
@@ -581,6 +825,90 @@ async fn backlog_offset_reaches_later_items_without_duplicates() {
     assert_eq!(first.backlog_issues.len(), 1);
     assert_eq!(second.backlog_issues.len(), 1);
     assert_ne!(first.backlog_issues[0].id, second.backlog_issues[0].id);
+}
+
+#[tokio::test]
+async fn backlog_offset_reaches_items_beyond_default_issue_cap() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let status_id = board.columns[0].id.to_string();
+    for idx in 0..1005 {
+        ctx.services
+            .issue
+            .create(
+                CreateIssueCommand {
+                    project_key: ProjectKey::new("TT"),
+                    summary: format!("Large backlog {idx:04}"),
+                    description: None,
+                    issue_type: IssueType::Task,
+                    priority: Priority::Medium,
+                    status_id: status_id.clone(),
+                    reporter_id: user.id,
+                    assignee_id: None,
+                    actor_id: user.id,
+                    custom_fields: Default::default(),
+                },
+                user.id,
+            )
+            .await
+            .unwrap();
+    }
+
+    let backlog = ctx
+        .services
+        .board
+        .get_backlog(&ProjectKey::new("TT"), user.id, 1000, 10)
+        .await
+        .unwrap();
+    assert_eq!(backlog.backlog_total, 1005);
+    assert_eq!(backlog.backlog_offset, 1000);
+    assert_eq!(backlog.backlog_issues.len(), 5);
+}
+
+#[tokio::test]
+async fn project_counters_include_issues_beyond_default_issue_cap() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let status_id = board.columns[0].id.to_string();
+    for idx in 0..1005 {
+        ctx.services
+            .issue
+            .create(
+                CreateIssueCommand {
+                    project_key: ProjectKey::new("TT"),
+                    summary: format!("Counter item {idx:04}"),
+                    description: None,
+                    issue_type: IssueType::Task,
+                    priority: Priority::Medium,
+                    status_id: status_id.clone(),
+                    reporter_id: user.id,
+                    assignee_id: None,
+                    actor_id: user.id,
+                    custom_fields: Default::default(),
+                },
+                user.id,
+            )
+            .await
+            .unwrap();
+    }
+
+    let project = ctx
+        .services
+        .project
+        .get_by_key(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    assert_eq!(project.todo_count, 1005);
 }
 
 #[tokio::test]
@@ -614,6 +942,7 @@ async fn issue_service_create_fails_for_missing_project() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -638,6 +967,7 @@ async fn issue_service_create_fails_for_invalid_status_id() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -668,6 +998,7 @@ async fn issue_service_update_fails_for_invalid_status_id() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -800,7 +1131,7 @@ async fn issue_service_get_by_id_fails_for_missing_issue() {
 }
 
 #[tokio::test]
-async fn dashboard_get_fails_when_project_missing() {
+async fn dashboard_get_skips_issue_from_missing_project() {
     let (ctx, user) = ctx_with_demo_data().await;
     let fake_project = domain::Project {
         id: ProjectId::new(),
@@ -827,8 +1158,8 @@ async fn dashboard_get_fails_when_project_missing() {
     issue_with_assignee.assign(Some(user.id));
     ctx.repos.issues.save(&issue_with_assignee).await.unwrap();
 
-    let err = ctx.services.dashboard.get_dashboard(user.id).await;
-    assert!(err.is_err());
+    let dashboard = ctx.services.dashboard.get_dashboard(user.id).await.unwrap();
+    assert!(dashboard.assigned_issues.is_empty());
 }
 
 #[tokio::test]
@@ -1113,6 +1444,7 @@ async fn issue_create_propagates_repo_error() {
                     reporter_id: UserId::new(),
                     assignee_id: None,
                     actor_id: UserId::new(),
+                    custom_fields: Default::default(),
                 },
                 UserId::new(),
             )
@@ -1263,11 +1595,29 @@ async fn notification_recipient(ctx: &AppContext) -> User {
         })
         .await
         .unwrap();
-    ctx.repos
+    let user = ctx
+        .repos
         .users
         .get_by_id(dto.user.id.parse().unwrap())
         .await
-        .unwrap()
+        .unwrap();
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    ctx.repos
+        .members
+        .save(&domain::ProjectMember {
+            project_id: project.id,
+            user_id: user.id,
+            role: domain::ProjectRole::Member,
+            joined_at: shared::now(),
+        })
+        .await
+        .unwrap();
+    user
 }
 
 // ─── Notification preference enforcement (audit r4, P2) ──────────────
@@ -1309,6 +1659,7 @@ async fn disabled_event_types_suppress_in_app_notification() {
                 reporter_id: user.id,
                 assignee_id: Some(second.id),
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1358,6 +1709,7 @@ async fn notify_own_changes_false_suppresses_self_notifications() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1411,6 +1763,7 @@ async fn comment_notifications_deduplicate_recipients() {
                 reporter_id: reporter.id,
                 assignee_id: None,
                 actor_id: owner.id,
+                custom_fields: Default::default(),
             },
             owner.id,
         )
@@ -1467,6 +1820,7 @@ async fn watcher_receives_comment_notification() {
                 reporter_id: owner.id,
                 assignee_id: None,
                 actor_id: owner.id,
+                custom_fields: Default::default(),
             },
             owner.id,
         )
@@ -1526,6 +1880,7 @@ async fn watcher_receives_issue_update_notification() {
                 reporter_id: owner.id,
                 assignee_id: None,
                 actor_id: owner.id,
+                custom_fields: Default::default(),
             },
             owner.id,
         )
@@ -1587,6 +1942,7 @@ async fn watcher_add_and_list() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1632,6 +1988,7 @@ async fn watcher_remove() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1680,6 +2037,7 @@ async fn vote_add_and_count() {
                 reporter_id: reporter.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1717,6 +2075,7 @@ async fn vote_remove() {
                 reporter_id: reporter.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1754,6 +2113,7 @@ async fn vote_rejects_reporter_self_vote() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1833,6 +2193,7 @@ async fn custom_field_set_and_get_value() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1856,6 +2217,281 @@ async fn custom_field_set_and_get_value() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0].field_id, field.id);
     assert_eq!(values[0].value, serde_json::json!("high"));
+}
+
+#[tokio::test]
+async fn issue_create_rejects_missing_or_empty_required_custom_fields() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let field = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Required text",
+            "text",
+            &[],
+            true,
+            user.id,
+        )
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let base = CreateIssueCommand {
+        project_key: ProjectKey::new("TT"),
+        summary: "Missing required custom field".to_string(),
+        description: None,
+        issue_type: IssueType::Task,
+        priority: Priority::Medium,
+        status_id: board.columns[0].id.to_string(),
+        reporter_id: user.id,
+        assignee_id: None,
+        actor_id: user.id,
+        custom_fields: Default::default(),
+    };
+
+    let err = ctx
+        .services
+        .issue
+        .create(base.clone(), user.id)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::Validation(_)));
+
+    for value in [
+        serde_json::Value::Null,
+        serde_json::json!(""),
+        serde_json::json!("   "),
+        serde_json::json!([]),
+    ] {
+        let mut custom_fields = std::collections::HashMap::new();
+        custom_fields.insert(field.id.clone(), value);
+        let err = ctx
+            .services
+            .issue
+            .create(
+                CreateIssueCommand {
+                    custom_fields,
+                    ..base.clone()
+                },
+                user.id,
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::Validation(_)));
+    }
+}
+
+#[tokio::test]
+async fn issue_create_persists_custom_fields_and_normalizes_dates() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let date_field = ctx
+        .services
+        .custom_field
+        .create_field(&ProjectKey::new("TT"), "Due", "date", &[], true, user.id)
+        .await
+        .unwrap();
+    let text_field = ctx
+        .services
+        .custom_field
+        .create_field(&ProjectKey::new("TT"), "Note", "text", &[], false, user.id)
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let mut custom_fields = std::collections::HashMap::new();
+    custom_fields.insert(
+        date_field.id.clone(),
+        serde_json::json!("2026-12-31T23:59:59Z"),
+    );
+    custom_fields.insert(text_field.id.clone(), serde_json::json!("ready"));
+
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Custom field create".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+
+    let values = ctx
+        .services
+        .custom_field
+        .get_values_for_issue(issue_id, user.id)
+        .await
+        .unwrap();
+    assert!(values.iter().any(|value| {
+        value.field_id == date_field.id && value.value == serde_json::json!("2026-12-31")
+    }));
+    assert!(
+        values
+            .iter()
+            .any(|value| value.field_id == text_field.id
+                && value.value == serde_json::json!("ready"))
+    );
+}
+
+#[tokio::test]
+async fn custom_field_null_clears_optional_and_rejects_required() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let optional = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Optional",
+            "text",
+            &[],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+    let required = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Required",
+            "text",
+            &[],
+            true,
+            user.id,
+        )
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let mut custom_fields = std::collections::HashMap::new();
+    custom_fields.insert(required.id.clone(), serde_json::json!("seed"));
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Clear custom field".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let optional_id: shared::CustomFieldId = optional.id.parse().unwrap();
+    let required_id: shared::CustomFieldId = required.id.parse().unwrap();
+
+    ctx.services
+        .custom_field
+        .set_value(issue_id, optional_id, serde_json::json!("set"), user.id)
+        .await
+        .unwrap();
+    ctx.services
+        .custom_field
+        .set_value(issue_id, optional_id, serde_json::Value::Null, user.id)
+        .await
+        .unwrap();
+    let values = ctx
+        .services
+        .custom_field
+        .get_values_for_issue(issue_id, user.id)
+        .await
+        .unwrap();
+    assert!(!values.iter().any(|value| value.field_id == optional.id));
+
+    let err = ctx
+        .services
+        .custom_field
+        .set_value(issue_id, required_id, serde_json::Value::Null, user.id)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::Validation(_)));
+}
+
+#[tokio::test]
+async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Attachment cleanup".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let storage = Arc::new(RecordingStorage::default());
+    let service = AttachmentServiceImpl::new(
+        Arc::new(FailingAttachmentSaveRepository),
+        ctx.repos.issues.clone(),
+        storage.clone(),
+        ctx.authz.clone(),
+    );
+
+    let err = service
+        .upload(
+            issue.id.parse().unwrap(),
+            user.id,
+            "report.txt",
+            "text/plain",
+            b"payload".to_vec(),
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, AppError::Internal(_)));
+    assert_eq!(storage.file_count(), 0);
+    assert_eq!(storage.delete_count(), 1);
 }
 
 #[tokio::test]
@@ -1931,6 +2567,7 @@ async fn issue_soft_delete_and_restore_publishes_invalidation_events() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -1979,6 +2616,7 @@ async fn issue_soft_delete_and_restore() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2020,6 +2658,7 @@ async fn issue_soft_delete_lists_in_trash() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2062,6 +2701,7 @@ async fn issue_purge_from_trash() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2103,6 +2743,22 @@ async fn notification_created_on_issue_assign() {
         .await
         .unwrap();
     let assignee_id: UserId = assignee.user.id.parse().unwrap();
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    ctx.repos
+        .members
+        .save(&domain::ProjectMember {
+            project_id: project.id,
+            user_id: assignee_id,
+            role: domain::ProjectRole::Member,
+            joined_at: shared::now(),
+        })
+        .await
+        .unwrap();
 
     let board = ctx
         .services
@@ -2123,6 +2779,7 @@ async fn notification_created_on_issue_assign() {
                 reporter_id: user.id,
                 assignee_id: Some(assignee_id),
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2500,6 +3157,41 @@ async fn report_cumulative_flow_snapshots_status_categories() {
 }
 
 #[tokio::test]
+async fn report_cumulative_flow_includes_issues_beyond_default_issue_cap() {
+    let (issues, _sprints, statuses, history, project_id, todo, _in_progress, _done, owner) =
+        report_test_setup();
+    let created = shared::now() - chrono::Duration::days(1);
+
+    for key_num in 1..=1_001 {
+        let issue = make_issue(
+            &uuid::Uuid::new_v4().to_string(),
+            project_id,
+            key_num,
+            todo,
+            None,
+            created,
+        );
+        issues.save(&issue).await.unwrap();
+    }
+
+    let service = report_service(
+        issues.clone(),
+        Arc::new(domain::StubSprintRepository),
+        statuses.clone(),
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service
+        .get_cumulative_flow(project_id, owner)
+        .await
+        .unwrap();
+    let last = result.last().unwrap();
+    assert_eq!(last.todo, 1_001);
+}
+
+#[tokio::test]
 async fn report_control_chart_computes_cycle_time() {
     let (issues, _sprints, statuses, history, project_id, todo, _ip, done, owner) =
         report_test_setup();
@@ -2607,6 +3299,7 @@ async fn restore_non_deleted_issue_returns_error() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2663,6 +3356,7 @@ async fn board_move_rejects_issue_from_other_project() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2716,6 +3410,7 @@ async fn custom_field_set_value_validates_text_type() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2777,6 +3472,7 @@ async fn custom_field_set_value_validates_select_type() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2837,6 +3533,7 @@ async fn custom_field_set_value_validates_number_type() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2902,6 +3599,7 @@ async fn custom_field_set_value_validates_date_type() {
                 reporter_id: user.id,
                 assignee_id: None,
                 actor_id: user.id,
+                custom_fields: Default::default(),
             },
             user.id,
         )
@@ -2929,6 +3627,27 @@ async fn custom_field_set_value_validates_date_type() {
         )
         .await
         .unwrap();
+    let values = ctx
+        .services
+        .custom_field
+        .get_values_for_issue(issue_id, user.id)
+        .await
+        .unwrap();
+    assert_eq!(values[0].value, serde_json::json!("2026-12-31"));
+
+    // Setting a canonical date-only value should also succeed and stay date-only.
+    ctx.services
+        .custom_field
+        .set_value(issue_id, field_id, serde_json::json!("2027-01-02"), user.id)
+        .await
+        .unwrap();
+    let values = ctx
+        .services
+        .custom_field
+        .get_values_for_issue(issue_id, user.id)
+        .await
+        .unwrap();
+    assert_eq!(values[0].value, serde_json::json!("2027-01-02"));
 }
 
 // ─── Authz unit tests ─────────────────────────────────────────────────
@@ -3100,6 +3819,7 @@ async fn authz_require_project_access_denies_non_member() {
                 reporter_id: owner.id,
                 assignee_id: None,
                 actor_id: owner.id,
+                custom_fields: Default::default(),
             },
             owner.id,
         )

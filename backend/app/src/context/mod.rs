@@ -113,6 +113,7 @@ impl AppContext {
             repos.issues.clone(),
             repos.users.clone(),
             repos.boards.clone(),
+            repos.statuses.clone(),
             authz.clone(),
         ));
         let issue: Arc<dyn IssueService> = Arc::new(IssueServiceImpl::new(
@@ -125,6 +126,7 @@ impl AppContext {
             repos.sprints.clone(),
             repos.components.clone(),
             repos.versions.clone(),
+            repos.custom_fields.clone(),
             repos.watchers.clone(),
             events.clone(),
             repos.notifications.clone(),
@@ -152,6 +154,7 @@ impl AppContext {
             repos.issues.clone(),
             repos.projects.clone(),
             repos.users.clone(),
+            authz.clone(),
         ));
         let sprint: Arc<dyn SprintService> = Arc::new(SprintServiceImpl::new(
             repos.sprints.clone(),

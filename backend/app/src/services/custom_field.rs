@@ -40,11 +40,26 @@ impl CustomFieldServiceImpl {
     }
 }
 
-/// Validate that a JSON value is acceptable for the given custom field type.
-fn validate_custom_field_value(
+pub(super) fn is_empty_custom_field_value(value: &serde_json::Value) -> bool {
+    value.is_null()
+        || value.as_str().is_some_and(|value| value.trim().is_empty())
+        || value.as_array().is_some_and(Vec::is_empty)
+}
+
+fn normalize_date_value(value: &str) -> Result<String, AppError> {
+    if chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok() {
+        return Ok(value.to_string());
+    }
+    let parsed = chrono::DateTime::parse_from_rfc3339(value)
+        .map_err(|_| AppError::invalid_input("invalid date for date field"))?;
+    Ok(parsed.date_naive().format("%Y-%m-%d").to_string())
+}
+
+/// Validate and normalize a JSON value for the given custom field type.
+pub(super) fn normalize_custom_field_value(
     field: &domain::CustomField,
     value: &serde_json::Value,
-) -> Result<(), AppError> {
+) -> Result<serde_json::Value, AppError> {
     use domain::CustomFieldType;
     match field.field_type {
         CustomFieldType::Text => {
@@ -53,6 +68,7 @@ fn validate_custom_field_value(
                     "expected a string value for text field",
                 ));
             }
+            Ok(value.clone())
         }
         CustomFieldType::Number => {
             if !value.is_number() {
@@ -60,13 +76,13 @@ fn validate_custom_field_value(
                     "expected a number value for number field",
                 ));
             }
+            Ok(value.clone())
         }
         CustomFieldType::Date => {
             let s = value
                 .as_str()
                 .ok_or_else(|| AppError::invalid_input("expected a date string for date field"))?;
-            chrono::DateTime::parse_from_rfc3339(s)
-                .map_err(|_| AppError::invalid_input("invalid RFC 3339 date for date field"))?;
+            Ok(serde_json::Value::String(normalize_date_value(s)?))
         }
         CustomFieldType::Select => {
             let s = value.as_str().ok_or_else(|| {
@@ -77,6 +93,7 @@ fn validate_custom_field_value(
                     "value is not one of the allowed options",
                 ));
             }
+            Ok(value.clone())
         }
         CustomFieldType::MultiSelect => {
             let arr = value.as_array().ok_or_else(|| {
@@ -92,9 +109,9 @@ fn validate_custom_field_value(
                     ));
                 }
             }
+            Ok(value.clone())
         }
     }
-    Ok(())
 }
 
 #[async_trait]
@@ -203,9 +220,19 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
                 "custom field belongs to a different project",
             ));
         }
-        // Validate the value matches the field type.
-        validate_custom_field_value(&field, &value)?;
-        self.fields.set_value(issue_id, field_id, &value).await?;
+        if is_empty_custom_field_value(&value) {
+            if field.is_required {
+                return Err(AppError::validation(
+                    "required custom field cannot be empty",
+                ));
+            }
+            self.fields.delete_value(issue_id, field_id).await?;
+            return Ok(());
+        }
+        let normalized = normalize_custom_field_value(&field, &value)?;
+        self.fields
+            .set_value(issue_id, field_id, &normalized)
+            .await?;
         Ok(())
     }
 

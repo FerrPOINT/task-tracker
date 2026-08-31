@@ -39,7 +39,7 @@ pub struct TokenResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct UserListResponse {
-    pub users: Vec<UserResponse>,
+    pub users: Vec<DirectoryUserResponse>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -50,6 +50,13 @@ pub struct UserResponse {
     pub display_name: String,
     /// Whether the user may access admin endpoints.
     pub is_system_admin: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct DirectoryUserResponse {
+    pub id: String,
+    pub username: String,
+    pub display_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -125,6 +132,8 @@ pub struct CreateIssueRequest {
     pub status_id: Option<String>,
     pub assignee_id: Option<String>,
     pub reporter_id: Option<String>,
+    #[serde(default)]
+    pub custom_fields: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

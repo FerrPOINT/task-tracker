@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { listProjects, createProject, updateProject, deleteProject } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
@@ -238,6 +238,20 @@ const projectKeys = {
   sprints: (key: string) => ['sprints', key] as const,
 }
 
+function invalidateIssueCaches(qc: QueryClient, projectKey?: string, issueId?: string) {
+  qc.invalidateQueries({ queryKey: projectKeys.all })
+  qc.invalidateQueries({ queryKey: ['dashboard'] })
+  qc.invalidateQueries({ queryKey: ['search'] })
+  if (projectKey) {
+    qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+    qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+  } else {
+    qc.invalidateQueries({ queryKey: ['project'] })
+    qc.invalidateQueries({ queryKey: ['backlog'] })
+  }
+  if (issueId) qc.invalidateQueries({ queryKey: ['issue', issueId] })
+}
+
 export function useSprints(projectKey: string | undefined) {
   return useQuery({
     queryKey: projectKeys.sprints(projectKey ?? ''),
@@ -406,8 +420,9 @@ export function useCreateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: createIssue,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: projectKeys.all })
+    onSuccess: (data) => {
+      qc.setQueryData(['issue', data.id], data)
+      invalidateIssueCaches(qc, data.project_key, data.id)
     },
   })
 }
@@ -416,9 +431,8 @@ export function useMoveIssue(projectKey: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (input: MoveIssueInput) => moveIssue(projectKey, input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
-      qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+    onSuccess: (data, input) => {
+      invalidateIssueCaches(qc, data.project_key || projectKey, input.issue_id)
     },
   })
 }
@@ -497,8 +511,9 @@ export function useUpdateIssue(id: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: Parameters<typeof updateIssue>[1]) => updateIssue(id, input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['issue', id] })
+    onSuccess: (data) => {
+      qc.setQueryData(['issue', data.id], data)
+      invalidateIssueCaches(qc, data.project_key, data.id)
     },
   })
 }
@@ -509,7 +524,8 @@ export function useDeleteIssue() {
   return useMutation({
     mutationFn: deleteIssue,
     onSuccess: (_data, id) => {
-      qc.invalidateQueries({ queryKey: projectKeys.all })
+      invalidateIssueCaches(qc, undefined, id)
+      qc.invalidateQueries({ queryKey: ['trash'] })
       qc.removeQueries({ queryKey: ['issue', id] })
       navigate('/')
     },
@@ -530,8 +546,8 @@ export function useRestoreIssue() {
     mutationFn: restoreIssue,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['trash'] })
-      qc.invalidateQueries({ queryKey: projectKeys.all })
       qc.setQueryData(['issue', data.id], data)
+      invalidateIssueCaches(qc, data.project_key, data.id)
     },
   })
 }
@@ -542,6 +558,7 @@ export function usePurgeIssue() {
     mutationFn: purgeIssue,
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ['trash'] })
+      invalidateIssueCaches(qc, undefined, id)
       qc.removeQueries({ queryKey: ['issue', id] })
     },
   })

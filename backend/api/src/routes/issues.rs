@@ -18,7 +18,10 @@ use std::str::FromStr;
     post,
     path = "/api/v1/issues",
     request_body = CreateIssueRequest,
-    responses((status = 201, description = "Issue created", body = IssueResponse)),
+    responses(
+        (status = 201, description = "Issue created", body = IssueResponse),
+        (status = 422, description = "Required custom field is missing or empty")
+    ),
     security(("bearer" = []))
 )]
 pub async fn create_issue(
@@ -74,6 +77,7 @@ pub async fn create_issue(
             .transpose()?,
         reporter_id,
         actor_id,
+        custom_fields: req.custom_fields,
     };
     let i = ctx.services.issue.create(cmd, actor_id).await?;
     Ok((StatusCode::CREATED, Json(map_issue(i))))

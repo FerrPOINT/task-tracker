@@ -70,7 +70,7 @@ impl crate::context::ReportService for ReportServiceImpl {
         for sprint in &closed {
             let issues = self
                 .issues
-                .list(IssueQuery {
+                .list_unbounded(IssueQuery {
                     project_id: Some(project_id),
                     sprint_id: Some(sprint.id),
                     ..Default::default()
@@ -102,7 +102,7 @@ impl crate::context::ReportService for ReportServiceImpl {
         let project_id = sprint.project_id;
         let issues = self
             .issues
-            .list(IssueQuery {
+            .list_unbounded(IssueQuery {
                 project_id: Some(project_id),
                 sprint_id: Some(sprint_id),
                 ..Default::default()
@@ -166,7 +166,10 @@ impl crate::context::ReportService for ReportServiceImpl {
         self.authz
             .require_project_access(project_id, requester)
             .await?;
-        let issues = self.issues.list(IssueQuery::project(project_id)).await?;
+        let issues = self
+            .issues
+            .list_unbounded(IssueQuery::project(project_id))
+            .await?;
         let history = self.history.list_by_project(project_id).await?;
         let statuses = self.statuses.list_all().await.unwrap_or_default();
 
@@ -221,7 +224,10 @@ impl crate::context::ReportService for ReportServiceImpl {
         self.authz
             .require_project_access(project_id, requester)
             .await?;
-        let issues = self.issues.list(IssueQuery::project(project_id)).await?;
+        let issues = self
+            .issues
+            .list_unbounded(IssueQuery::project(project_id))
+            .await?;
         let history = self.history.list_by_project(project_id).await?;
         let statuses = self.statuses.list_all().await.unwrap_or_default();
         let done_status_ids: Vec<StatusId> = statuses

@@ -32,6 +32,7 @@ fn clear_env() {
         "TASKTRACKER_EMAIL__FROM_ADDRESS",
         "TASKTRACKER_EMAIL__FROM_NAME",
         "TASKTRACKER_EMAIL__STARTTLS",
+        "TASKTRACKER_METRICS__PUBLIC",
         "TASKTRACKER_SERVER__AUTH_RATE_BURST",
         "TASKTRACKER_SERVER__AUTH_RATE_PERIOD_SECS",
         "TASKTRACKER_SERVER__GENERAL_RATE_BURST",
@@ -67,6 +68,7 @@ fn config_scenarios() {
     assert!(cfg.auth.refresh_cookie_secure);
     assert_eq!(cfg.auth.refresh_cookie_same_site, "Lax");
     assert_eq!(cfg.auth.refresh_cookie_path, "/api/v1/auth");
+    assert!(cfg.metrics.public);
     assert_eq!(cfg.database.url, "");
     assert_eq!(
         cfg.server.cors_allowed_origins,
@@ -107,6 +109,10 @@ fn config_scenarios() {
     assert_eq!(cfg.database.max_connections, 42);
     assert_eq!(cfg.database.min_connections, 3);
 
+    set_env("TASKTRACKER_METRICS__PUBLIC", "false");
+    let cfg = AppConfig::from_path("/nonexistent.toml").unwrap();
+    assert!(!cfg.metrics.public);
+
     set_env("TASKTRACKER_SERVER__PORT", "not-a-number");
     let err = AppConfig::from_path("/nonexistent.toml").unwrap_err();
     assert!(err.to_string().contains("invalid type"));
@@ -121,6 +127,7 @@ fn config_defaults_implemented() {
     assert_eq!(cfg.server.port, 3456);
     assert_eq!(cfg.database.max_connections, 20);
     assert_eq!(cfg.auth.jwt_secret, "[CHANGE_ME]");
+    assert!(cfg.metrics.public);
 }
 
 #[test]

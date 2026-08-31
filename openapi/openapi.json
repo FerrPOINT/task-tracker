@@ -1011,6 +1011,9 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Required custom field is missing or empty"
           }
         },
         "security": [
@@ -1531,6 +1534,9 @@
           },
           "404": {
             "description": "Issue or field not found"
+          },
+          "422": {
+            "description": "Required custom field cannot be cleared"
           }
         },
         "security": [
@@ -4729,6 +4735,13 @@
               "null"
             ]
           },
+          "custom_fields": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "description": {
             "type": [
               "string",
@@ -4995,6 +5008,25 @@
             "items": {
               "$ref": "#/components/schemas/IssueResponse"
             }
+          }
+        }
+      },
+      "DirectoryUserResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "display_name"
+        ],
+        "properties": {
+          "display_name": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
           }
         }
       },
@@ -5960,7 +5992,7 @@
           "users": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/UserResponse"
+              "$ref": "#/components/schemas/DirectoryUserResponse"
             }
           }
         }

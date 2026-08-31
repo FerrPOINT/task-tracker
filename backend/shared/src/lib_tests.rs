@@ -9,6 +9,9 @@ fn error_constructors() {
     let e = AppError::invalid_input("bad request");
     assert!(matches!(e, AppError::InvalidInput(_)));
 
+    let e = AppError::validation("required field");
+    assert!(matches!(e, AppError::Validation(_)));
+
     let e = AppError::conflict("duplicate");
     assert!(matches!(e, AppError::Conflict(_)));
 

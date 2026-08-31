@@ -1466,6 +1466,18 @@ impl crate::CustomFieldRepository for MemoryCustomFieldRepository {
         Ok(())
     }
 
+    async fn delete_value(
+        &self,
+        issue_id: IssueId,
+        field_id: shared::CustomFieldId,
+    ) -> Result<(), AppError> {
+        self.values
+            .lock()
+            .unwrap()
+            .retain(|v| !(v.issue_id == issue_id && v.field_id == field_id));
+        Ok(())
+    }
+
     async fn get_values_for_issue(
         &self,
         issue_id: IssueId,

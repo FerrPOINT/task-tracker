@@ -23,10 +23,11 @@ fn test_config() -> Arc<shared::AppConfig> {
         },
         storage: shared::StorageConfig::default(),
         email: shared::EmailConfig::default(),
+        metrics: shared::MetricsConfig::default(),
     })
 }
 
-async fn test_ctx() -> Arc<app::context::AppContext> {
+async fn test_ctx_with_config(config: Arc<shared::AppConfig>) -> Arc<app::context::AppContext> {
     let users = Arc::new(domain::MemoryUserRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
@@ -55,10 +56,14 @@ async fn test_ctx() -> Arc<app::context::AppContext> {
         custom_fields: Arc::new(domain::StubCustomFieldRepository),
     });
     Arc::new(app::context::AppContext::new(
-        test_config(),
+        config,
         repos,
         Arc::new(domain::InMemoryStorage::default()),
     ))
+}
+
+async fn test_ctx() -> Arc<app::context::AppContext> {
+    test_ctx_with_config(test_config()).await
 }
 
 /// Helper: send a request to the given path and return the status code.
@@ -119,6 +124,21 @@ async fn metrics_endpoint_returns_prometheus_format() {
             || body.contains("http_request_duration_seconds"),
         "expected http_request_duration_seconds metric in body, got: {body}"
     );
+}
+
+#[tokio::test]
+async fn metrics_endpoint_can_be_disabled_by_config() {
+    let mut config = (*test_config()).clone();
+    config.metrics.public = false;
+    let ctx = test_ctx_with_config(Arc::new(config)).await;
+    let app = api::router(ctx.clone()).with_state(ctx);
+
+    let req = Request::builder()
+        .uri("/metrics")
+        .body(Body::empty())
+        .unwrap();
+    let res = app.oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

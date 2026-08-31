@@ -124,7 +124,7 @@ cp .env.example .env
 # 2. Поднять инфраструктуру
 docker compose up -d
 
-# 3. Проверить API
+# 3. Проверить API (backend host port по умолчанию слушает только localhost)
 curl http://127.0.0.1:3456/api/v1/health
 
 # 4. Frontend dev

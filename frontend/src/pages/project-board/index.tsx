@@ -92,7 +92,9 @@ export function ProjectBoardPage() {
 
   function transitionAllowed(fromStatusId: string, toStatusId: string): boolean {
     if (fromStatusId === toStatusId) return false
-    return transitions.some((tr) => tr.from_status_id === fromStatusId && tr.to_status_id === toStatusId)
+    return transitions.some(
+      (tr) => tr.from_status_id === fromStatusId && tr.to_status_id === toStatusId,
+    )
   }
 
   function statusIdOfColumn(columnId: string): string | undefined {
@@ -119,10 +121,7 @@ export function ProjectBoardPage() {
       const fromStatusId = issue
         ? issue.status_id
         : statusIdOfColumn(sourceColumnId ?? targetColumnId)
-      if (
-        fromStatusId &&
-        transitionAllowed(fromStatusId, targetColumnId)
-      ) {
+      if (fromStatusId && transitionAllowed(fromStatusId, targetColumnId)) {
         move.mutate({ issue_id: issueId, status_id: targetColumnId })
       }
     }

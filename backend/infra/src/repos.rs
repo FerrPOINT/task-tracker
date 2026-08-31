@@ -267,11 +267,21 @@ impl ProjectRepository for ProjectRepo {
             .ok_or_else(|| AppError::not_found("project", key))
     }
 
-    async fn list(&self, _query: domain::ProjectQuery) -> Result<Vec<Project>, AppError> {
-        let models = project::Entity::find()
-            .all(&*self.db)
-            .await
-            .map_err(AppError::database)?;
+    async fn list(&self, query: domain::ProjectQuery) -> Result<Vec<Project>, AppError> {
+        let mut select = project::Entity::find();
+        if let Some(owner_id) = query.owner_id {
+            select = select.filter(project::Column::OwnerId.eq(owner_id.as_uuid()));
+        }
+        if query.limit > 0 {
+            select = select.limit(query.limit);
+        }
+        if query.offset > 0 {
+            select = select.offset(query.offset);
+        }
+        select = select
+            .order_by_asc(project::Column::Key)
+            .order_by_asc(project::Column::Id);
+        let models = select.all(&*self.db).await.map_err(AppError::database)?;
         Ok(models.into_iter().map(map_project).collect())
     }
 
@@ -662,9 +672,61 @@ impl IssueRepository for IssueRepo {
                     .add(Expr::col(issue::Column::Description).ilike(&pattern)),
             );
         }
-        let models = select
-            .limit(query.limit)
-            .offset(query.offset)
+        if query.limit != IssueQuery::NO_LIMIT {
+            select = select.limit(query.limit);
+        }
+        if query.offset > 0 {
+            select = select.offset(query.offset);
+        }
+        let models = select.all(&*self.db).await.map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_issue).collect())
+    }
+
+    async fn count_by_project_status(
+        &self,
+        project_id: ProjectId,
+        status_id: StatusId,
+    ) -> Result<u64, AppError> {
+        issue::Entity::find()
+            .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
+            .filter(issue::Column::StatusId.eq(status_id.as_uuid()))
+            .filter(issue::Column::DeletedAt.is_null())
+            .count(&*self.db)
+            .await
+            .map_err(AppError::database)
+    }
+
+    async fn count_backlog(
+        &self,
+        project_id: ProjectId,
+        todo_status_id: StatusId,
+    ) -> Result<u64, AppError> {
+        issue::Entity::find()
+            .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
+            .filter(issue::Column::StatusId.eq(todo_status_id.as_uuid()))
+            .filter(issue::Column::SprintId.is_null())
+            .filter(issue::Column::DeletedAt.is_null())
+            .count(&*self.db)
+            .await
+            .map_err(AppError::database)
+    }
+
+    async fn list_backlog_page(
+        &self,
+        project_id: ProjectId,
+        todo_status_id: StatusId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Issue>, AppError> {
+        let models = issue::Entity::find()
+            .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
+            .filter(issue::Column::StatusId.eq(todo_status_id.as_uuid()))
+            .filter(issue::Column::SprintId.is_null())
+            .filter(issue::Column::DeletedAt.is_null())
+            .order_by_desc(issue::Column::CreatedAt)
+            .order_by_desc(issue::Column::Id)
+            .limit(limit)
+            .offset(offset)
             .all(&*self.db)
             .await
             .map_err(AppError::database)?;
@@ -1392,6 +1454,20 @@ impl CustomFieldRepository for CustomFieldRepo {
         } else {
             active.insert(&*self.db).await.map_err(AppError::database)?;
         }
+        Ok(())
+    }
+
+    async fn delete_value(
+        &self,
+        issue_id: IssueId,
+        field_id: CustomFieldId,
+    ) -> Result<(), AppError> {
+        issue_custom_field_value::Entity::delete_many()
+            .filter(issue_custom_field_value::Column::IssueId.eq(issue_id.as_uuid()))
+            .filter(issue_custom_field_value::Column::FieldId.eq(field_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::database)?;
         Ok(())
     }
 

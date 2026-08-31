@@ -54,7 +54,12 @@ const NotificationCard = memo(function NotificationCard({
 export function NotificationsPage() {
   const { t } = useTranslation()
   const [showUnread, setShowUnread] = useState(false)
-  const { data: notifications = [], isLoading: notificationsLoading, error: notificationsError, refetch: refetchNotifications } = useNotifications()
+  const {
+    data: notifications = [],
+    isLoading: notificationsLoading,
+    error: notificationsError,
+    refetch: refetchNotifications,
+  } = useNotifications()
   const { data: settings, isLoading: settingsLoading } = useNotificationSettings()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
@@ -116,10 +121,7 @@ export function NotificationsPage() {
               {t('notifications.loading')}
             </p>
           ) : notificationsError ? (
-            <ErrorState
-              message={t('common.error')}
-              onRetry={() => void refetchNotifications()}
-            />
+            <ErrorState message={t('common.error')} onRetry={() => void refetchNotifications()} />
           ) : visibleNotifications.length === 0 ? (
             <p className="rounded-lg border border-border bg-surface p-6 text-sm text-text-muted">
               {showUnread ? t('notifications.emptyUnread') : t('notifications.empty')}

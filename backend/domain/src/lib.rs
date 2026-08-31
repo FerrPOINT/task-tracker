@@ -67,9 +67,20 @@ impl Default for IssueQuery {
 }
 
 impl IssueQuery {
+    pub const NO_LIMIT: u64 = u64::MAX;
+
     pub fn project(project_id: ProjectId) -> Self {
         Self {
             project_id: Some(project_id),
+            ..Default::default()
+        }
+    }
+
+    pub fn project_unbounded(project_id: ProjectId) -> Self {
+        Self {
+            project_id: Some(project_id),
+            limit: Self::NO_LIMIT,
+            offset: 0,
             ..Default::default()
         }
     }

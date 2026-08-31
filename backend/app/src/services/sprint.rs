@@ -62,7 +62,7 @@ impl SprintServiceImpl {
     async fn sprint_dto(&self, sprint: domain::Sprint) -> Result<SprintDto, AppError> {
         let issues = self
             .issues
-            .list(IssueQuery {
+            .list_unbounded(IssueQuery {
                 sprint_id: Some(sprint.id),
                 ..Default::default()
             })

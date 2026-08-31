@@ -272,6 +272,7 @@ pub fn failing_context() -> Arc<app::AppContext> {
             },
             storage: shared::StorageConfig::default(),
             email: shared::EmailConfig::default(),
+            metrics: shared::MetricsConfig::default(),
         }),
         repos,
         Arc::new(InMemoryStorage::default()),
