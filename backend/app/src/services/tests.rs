@@ -5320,6 +5320,99 @@ async fn sprint_move_issue_publishes_issue_updated_event() {
 }
 
 #[tokio::test]
+async fn sprint_move_issue_updates_issue_timestamp() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Move timestamp".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let sprint = ctx
+        .services
+        .sprint
+        .create(
+            CreateSprintCommand {
+                project_id: project.id,
+                name: "Timestamp Sprint".to_string(),
+                goal: None,
+                start_date: None,
+                end_date: None,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let sprint_id: SprintId = sprint.id.parse().unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    let moved = ctx
+        .services
+        .sprint
+        .move_issue(
+            MoveIssueToSprintCommand {
+                issue_id,
+                sprint_id: Some(sprint_id),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let moved_issue = ctx.repos.issues.get_by_id(issue_id).await.unwrap();
+    assert!(
+        moved_issue.updated_at > issue.updated_at,
+        "moving to a sprint must refresh issue.updated_at"
+    );
+
+    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    ctx.services
+        .sprint
+        .move_issue(
+            MoveIssueToSprintCommand {
+                issue_id,
+                sprint_id: None,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let removed_issue = ctx.repos.issues.get_by_id(issue_id).await.unwrap();
+    assert!(
+        removed_issue.updated_at > moved_issue.updated_at,
+        "removing from a sprint must refresh issue.updated_at"
+    );
+    assert_eq!(moved.sprint_id.as_deref(), Some(sprint.id.as_str()));
+    assert_eq!(removed_issue.sprint_id, None);
+}
+
+#[tokio::test]
 async fn sprint_lifecycle_publishes_sprint_changed_events() {
     let (ctx, user) = ctx_with_demo_data().await;
     let project = ctx
