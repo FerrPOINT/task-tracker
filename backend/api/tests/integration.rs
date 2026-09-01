@@ -684,6 +684,41 @@ async fn board_move_validation() {
     assert_eq!(missing_issue.status(), 404);
 }
 
+#[tokio::test]
+async fn board_move_accepts_current_status_id_as_noop() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+    let status_id = "00000000-0000-0000-0000-000000000001";
+
+    let res = client
+        .post(format!("{}/api/v1/projects/TT/board/move", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "issue_id": &issue_id,
+            "status_id": status_id
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), 200);
+    let board: serde_json::Value = res.json().await.unwrap();
+    let todo_column = board["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|column| column["id"].as_str() == Some(status_id))
+        .unwrap();
+    assert!(
+        todo_column["issue_ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|id| id.as_str() == Some(issue_id.as_str()))
+    );
+}
+
 async fn login_token(url: &str, client: &reqwest::Client) -> String {
     let res = client
         .post(format!("{}/api/v1/auth/login", url))
@@ -1216,6 +1251,26 @@ async fn issue_transition() {
     assert_eq!(res.status(), 200);
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["status"], "Done");
+}
+
+#[tokio::test]
+async fn transition_accepts_current_status_id_as_noop() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+    let status_id = "00000000-0000-0000-0000-000000000001";
+
+    let res = client
+        .post(format!("{}/api/v1/issues/{issue_id}/transition", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "target_status_id": status_id }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    assert_eq!(body["status_id"].as_str(), Some(status_id));
 }
 
 fn test_project_id() -> String {

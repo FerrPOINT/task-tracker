@@ -377,6 +377,16 @@ impl crate::context::IssueService for IssueServiceImpl {
         if !valid {
             return Err(AppError::invalid_input("invalid target status"));
         }
+        if cmd.target_status_id == issue.status_id {
+            return super::helpers::build_issue_dtos_with_projects(
+                Arc::clone(&self.projects),
+                Arc::clone(&self.users),
+                Arc::clone(&self.labels),
+                vec![issue],
+            )
+            .await
+            .map(|mut issues| issues.remove(0));
+        }
         let allowed = self
             .transitions
             .is_allowed(issue.status_id, cmd.target_status_id)
