@@ -104,6 +104,7 @@ impl crate::context::ReportService for ReportServiceImpl {
             .filter(|s| s.category == StatusCategory::Done || s.is_closed)
             .map(|s| s.id)
             .collect();
+        let history = self.history.list_by_project(project_id).await?;
 
         let mut result = Vec::new();
         for sprint in &closed {
@@ -116,9 +117,14 @@ impl crate::context::ReportService for ReportServiceImpl {
                 })
                 .await?;
             let committed = issues.len();
+            let sprint_end = sprint.end_date.unwrap_or_else(shared::now);
             let completed = issues
                 .iter()
-                .filter(|i| done_status_ids.contains(&i.status_id))
+                .filter(|i| {
+                    status_at(i, &history, sprint_end)
+                        .map(|status_id| done_status_ids.contains(&status_id))
+                        .unwrap_or(false)
+                })
                 .count();
             result.push(crate::context::VelocitySprintDto {
                 name: sprint.name.as_ref().to_string(),
@@ -263,16 +269,34 @@ impl crate::context::ReportService for ReportServiceImpl {
             .filter(|s| s.category == StatusCategory::Done || s.is_closed)
             .map(|s| s.id)
             .collect();
+        let in_progress_status_ids: Vec<StatusId> = statuses
+            .iter()
+            .filter(|s| s.category == StatusCategory::InProgress && !s.is_closed)
+            .map(|s| s.id)
+            .collect();
 
         let mut result = Vec::new();
         for issue in &issues {
-            let done_transition = history
+            let issue_history: Vec<_> = history.iter().filter(|h| h.issue_id == issue.id).collect();
+            let Some(started_at) = issue_history
                 .iter()
-                .filter(|h| h.issue_id == issue.id && done_status_ids.contains(&h.to_status_id))
+                .filter(|h| in_progress_status_ids.contains(&h.to_status_id))
+                .min_by_key(|h| h.changed_at)
+                .map(|h| h.changed_at)
+            else {
+                continue;
+            };
+            let done_transition = issue_history
+                .iter()
+                .filter(|h| {
+                    h.issue_id == issue.id
+                        && h.changed_at >= started_at
+                        && done_status_ids.contains(&h.to_status_id)
+                })
                 .min_by_key(|h| h.changed_at);
 
             if let Some(dt) = done_transition {
-                let cycle_time = (dt.changed_at - issue.created_at).num_seconds() as f64 / 86400.0;
+                let cycle_time = (dt.changed_at - started_at).num_seconds() as f64 / 86400.0;
                 result.push(crate::context::ControlChartPointDto {
                     issue_key: issue.key.to_string(),
                     cycle_time_days: cycle_time,
