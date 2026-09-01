@@ -19,8 +19,8 @@ use shared::{
 use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateSprintCommand,
     CreateWorklogCommand, LoginCommand, MoveIssueToSprintCommand, RegisterCommand,
-    UpdateCommentCommand, UpdateIssueCommand, UpdateNotificationSettingsCommand,
-    UpdateSprintCommand, UpdateWorklogCommand,
+    TransitionIssueCommand, UpdateCommentCommand, UpdateIssueCommand,
+    UpdateNotificationSettingsCommand, UpdateSprintCommand, UpdateWorklogCommand,
 };
 use crate::context::{AppContext, AttachmentService, NotificationService};
 use crate::services::{AttachmentServiceImpl, NotificationServiceImpl};
@@ -681,6 +681,111 @@ async fn board_move_issue_publishes_issue_moved_event() {
             project_key: ref actual_project_key,
         } if actual_issue_id == &issue.id && actual_project_key == "TT"
     ));
+}
+
+#[tokio::test]
+async fn board_move_same_status_is_noop_for_history_and_events() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, user.id)
+        .await
+        .unwrap();
+    let status_id: StatusId = board.columns[0].id.parse().unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: project_key.clone(),
+                summary: "Board same status".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: status_id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let mut receiver = ctx.events.subscribe();
+    ctx.services
+        .board
+        .move_issue(&project_key, issue.id.parse().unwrap(), status_id, user.id)
+        .await
+        .unwrap();
+
+    assert!(receiver.try_recv().is_err());
+    let history = ctx
+        .repos
+        .issue_status_history
+        .list_by_issue(issue.id.parse().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(history.len(), 1);
+}
+
+#[tokio::test]
+async fn transition_same_status_is_noop_for_history_and_events() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, user.id)
+        .await
+        .unwrap();
+    let status_id: StatusId = board.columns[0].id.parse().unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key,
+                summary: "Transition same status".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: status_id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+
+    let mut receiver = ctx.events.subscribe();
+    let updated = ctx
+        .services
+        .issue
+        .transition(TransitionIssueCommand {
+            issue_id,
+            target_status_id: status_id,
+            actor_id: user.id,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(updated.status_id, status_id.to_string());
+    assert!(receiver.try_recv().is_err());
+    let history = ctx
+        .repos
+        .issue_status_history
+        .list_by_issue(issue_id)
+        .await
+        .unwrap();
+    assert_eq!(history.len(), 1);
 }
 
 #[tokio::test]

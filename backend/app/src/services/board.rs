@@ -311,6 +311,9 @@ impl crate::context::BoardService for BoardServiceImpl {
                 "issue does not belong to this project",
             ));
         }
+        if status_id == issue.status_id {
+            return self.build_board_dto(project_key).await;
+        }
         let allowed = self
             .transitions
             .is_allowed(issue.status_id, status_id)
