@@ -6,22 +6,24 @@ use shared::{AppError, ProjectId, StatusId};
 pub async fn resolve_names(
     users: Arc<dyn domain::UserRepository>,
     issue: &Issue,
-) -> (Option<String>, Option<String>) {
+) -> Result<(Option<String>, Option<String>), AppError> {
     let assignee_name = if let Some(id) = issue.assignee_id {
-        users
-            .get_by_id(id)
-            .await
-            .map(|u| u.display_name.as_ref().to_string())
-            .ok()
+        Some(
+            users
+                .get_by_id(id)
+                .await
+                .map(|u| u.display_name.as_ref().to_string())?,
+        )
     } else {
         None
     };
-    let reporter_name = users
-        .get_by_id(issue.reporter_id)
-        .await
-        .map(|u| u.display_name.as_ref().to_string())
-        .ok();
-    (assignee_name, reporter_name)
+    let reporter_name = Some(
+        users
+            .get_by_id(issue.reporter_id)
+            .await
+            .map(|u| u.display_name.as_ref().to_string())?,
+    );
+    Ok((assignee_name, reporter_name))
 }
 
 pub fn issue_status_column(status_id: StatusId) -> String {
@@ -76,11 +78,9 @@ pub async fn build_issue_dto(
     labels: Arc<dyn LabelRepository>,
     issue: Issue,
     project_name: &str,
-) -> crate::dto::IssueDto {
-    let label_names = issue_label_name_lookup(labels, &[issue.id])
-        .await
-        .unwrap_or_default();
-    let (assignee_name, reporter_name) = resolve_names(users, &issue).await;
+) -> Result<crate::dto::IssueDto, AppError> {
+    let label_names = issue_label_name_lookup(labels, &[issue.id]).await?;
+    let (assignee_name, reporter_name) = resolve_names(users, &issue).await?;
     let project_names = HashMap::from([(issue.project_id, project_name.to_string())]);
     let user_names = [
         issue.assignee_id.map(|id| (id, assignee_name.clone())),
@@ -90,19 +90,23 @@ pub async fn build_issue_dto(
     .flatten()
     .filter_map(|(id, name)| name.map(|name| (id, name)))
     .collect::<HashMap<_, _>>();
-    build_issue_dto_from_lookups(issue, &project_names, &user_names, &label_names)
+    Ok(build_issue_dto_from_lookups(
+        issue,
+        &project_names,
+        &user_names,
+        &label_names,
+    ))
 }
 
 async fn issue_user_name_lookup(
     users: Arc<dyn domain::UserRepository>,
-) -> HashMap<shared::UserId, String> {
-    users
+) -> Result<HashMap<shared::UserId, String>, AppError> {
+    Ok(users
         .list()
-        .await
-        .unwrap_or_default()
+        .await?
         .into_iter()
         .map(|user| (user.id, user.display_name.to_string()))
-        .collect()
+        .collect())
 }
 
 async fn issue_label_name_lookup(
@@ -131,7 +135,7 @@ pub async fn build_issue_dtos(
     issues: Vec<Issue>,
     project_name: &str,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
-    let user_names = issue_user_name_lookup(users).await;
+    let user_names = issue_user_name_lookup(users).await?;
     let issue_ids = issues.iter().map(|issue| issue.id).collect::<Vec<_>>();
     let label_names = issue_label_name_lookup(labels, &issue_ids).await?;
     let project_names = issues
@@ -156,7 +160,7 @@ async fn build_issue_dtos_prefetched(
         .into_iter()
         .map(|project| (project.id, project.name.to_string()))
         .collect::<HashMap<_, _>>();
-    let user_names = issue_user_name_lookup(users).await;
+    let user_names = issue_user_name_lookup(users).await?;
     if let Some(missing) = issues
         .iter()
         .find(|issue| !project_names.contains_key(&issue.project_id))

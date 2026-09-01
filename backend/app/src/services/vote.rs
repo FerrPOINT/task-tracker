@@ -30,24 +30,18 @@ impl VoteServiceImpl {
         }
     }
 
-    async fn vote_dto(&self, v: domain::IssueVote) -> crate::context::VoteDto {
-        let (username, display_name) = self
-            .users
-            .get_by_id(v.user_id)
-            .await
-            .map(|u| {
-                (
-                    u.username.as_ref().to_string(),
-                    u.display_name.as_ref().to_string(),
-                )
-            })
-            .unwrap_or_default();
+    fn vote_dto_from_user(v: domain::IssueVote, user: &domain::User) -> crate::context::VoteDto {
         crate::context::VoteDto {
             user_id: v.user_id.to_string(),
-            username,
-            display_name,
+            username: user.username.as_ref().to_string(),
+            display_name: user.display_name.as_ref().to_string(),
             voted_at: v.voted_at.to_rfc3339(),
         }
+    }
+
+    async fn vote_dto(&self, v: domain::IssueVote) -> Result<crate::context::VoteDto, AppError> {
+        let user = self.users.get_by_id(v.user_id).await?;
+        Ok(Self::vote_dto_from_user(v, &user))
     }
 }
 
@@ -65,8 +59,9 @@ impl crate::context::VoteService for VoteServiceImpl {
         if issue.reporter_id == user_id {
             return Err(AppError::invalid_input("cannot vote for own issue"));
         }
+        let user = self.users.get_by_id(user_id).await?;
         let vote = self.votes.add(issue_id, user_id).await?;
-        let dto = self.vote_dto(vote).await;
+        let dto = Self::vote_dto_from_user(vote, &user);
         self.events.publish(shared::TrackerEvent::IssueUpdated {
             issue_id: issue_id.to_string(),
             project_key: issue.key.project_key.to_string(),
@@ -99,7 +94,7 @@ impl crate::context::VoteService for VoteServiceImpl {
         let votes = self.votes.list_by_issue(issue_id).await?;
         let mut dtos = Vec::with_capacity(votes.len());
         for v in votes {
-            dtos.push(self.vote_dto(v).await);
+            dtos.push(self.vote_dto(v).await?);
         }
         Ok(dtos)
     }

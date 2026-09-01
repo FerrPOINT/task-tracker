@@ -91,7 +91,7 @@ impl BoardServiceImpl {
             })
             .await?;
 
-        let db_statuses = self.statuses.list_all().await.unwrap_or_default();
+        let db_statuses = self.statuses.list_all().await?;
         let columns: Vec<BoardColumnDto> = if board.columns.iter().all(|c| c.id.as_uuid().is_nil())
         {
             db_statuses
@@ -202,7 +202,7 @@ impl crate::context::BoardService for BoardServiceImpl {
             })
             .await?;
 
-        let db_statuses = self.statuses.list_all().await.unwrap_or_default();
+        let db_statuses = self.statuses.list_all().await?;
         let todo_status = db_statuses
             .iter()
             .find(|s| s.category == StatusCategory::Todo)
