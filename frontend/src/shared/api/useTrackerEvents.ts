@@ -9,10 +9,9 @@ type TrackerEvent = {
   recipient_id?: string
 }
 
-function invalidateIssueEventQueries(
+function invalidateIssueCollectionQueries(
   qc: ReturnType<typeof useQueryClient>,
   projectKey?: string,
-  issueId?: string,
 ) {
   qc.invalidateQueries({ queryKey: ['projects'] })
   qc.invalidateQueries({ queryKey: ['dashboard'] })
@@ -24,8 +23,26 @@ function invalidateIssueEventQueries(
     qc.invalidateQueries({ queryKey: ['project'] })
     qc.invalidateQueries({ queryKey: ['backlog'] })
   }
+}
+
+function invalidateIssueSummaryQueries(
+  qc: ReturnType<typeof useQueryClient>,
+  projectKey?: string,
+  issueId?: string,
+) {
+  invalidateIssueCollectionQueries(qc, projectKey)
   if (issueId) {
     qc.invalidateQueries({ queryKey: ['issue', issueId] })
+  }
+}
+
+function invalidateIssueEventQueries(
+  qc: ReturnType<typeof useQueryClient>,
+  projectKey?: string,
+  issueId?: string,
+) {
+  invalidateIssueSummaryQueries(qc, projectKey, issueId)
+  if (issueId) {
     qc.invalidateQueries({ queryKey: ['issue-labels', issueId] })
     qc.invalidateQueries({ queryKey: ['issue-links', issueId] })
     qc.invalidateQueries({ queryKey: ['issue-custom-fields', issueId] })
@@ -91,7 +108,7 @@ export function useTrackerEvents() {
           case 'worklog_logged':
             if (evt.issue_id) {
               qc.invalidateQueries({ queryKey: ['worklogs', evt.issue_id] })
-              qc.invalidateQueries({ queryKey: ['issue', evt.issue_id] })
+              invalidateIssueSummaryQueries(qc, pk, evt.issue_id)
             }
             break
           case 'sprint_changed':

@@ -68,6 +68,11 @@ describe('useTrackerEvents', () => {
       FakeEventSource.latest?.emit('worklog_logged', { issue_id: 'issue-1', project_key: 'TT' })
     })
 
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['worklogs', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
   })
