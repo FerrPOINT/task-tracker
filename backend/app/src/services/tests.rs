@@ -2774,6 +2774,73 @@ async fn watcher_receives_comment_notification() {
 }
 
 #[tokio::test]
+async fn watcher_receives_comment_edit_and_delete_notifications() {
+    let (base_ctx, owner, member, _project_id) = ctx_with_real_members().await;
+    let repos = Arc::new(domain::Repositories {
+        comments: Arc::new(MemoryCommentRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let issue_id = create_demo_issue(&ctx, &owner, "Watched comment lifecycle").await;
+    ctx.services
+        .watcher
+        .watch(issue_id, member.id)
+        .await
+        .unwrap();
+    let comment = ctx
+        .services
+        .comment
+        .create(
+            CreateCommentCommand {
+                issue_id,
+                author_id: owner.id,
+                body: "watcher should see edit/delete".to_string(),
+                actor_id: owner.id,
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let comment_id: shared::CommentId = comment.id.parse().unwrap();
+
+    ctx.services
+        .comment
+        .update(
+            comment_id,
+            UpdateCommentCommand {
+                body: Some("edited for watcher".to_string()),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    ctx.services
+        .comment
+        .delete(comment_id, owner.id)
+        .await
+        .unwrap();
+
+    let unread = ctx
+        .repos
+        .notifications
+        .list_unread(member.id)
+        .await
+        .unwrap();
+    let event_types = unread
+        .iter()
+        .map(|notification| notification.event_type.as_ref())
+        .collect::<Vec<_>>();
+    assert!(
+        event_types.contains(&"issue_comment_edited"),
+        "watcher notifications should include issue_comment_edited, got {event_types:?}"
+    );
+    assert!(
+        event_types.contains(&"issue_comment_deleted"),
+        "watcher notifications should include issue_comment_deleted, got {event_types:?}"
+    );
+}
+
+#[tokio::test]
 async fn watcher_receives_issue_update_notification() {
     let (ctx, owner, member, _project_id) = ctx_with_real_members().await;
     let board = ctx
@@ -2831,6 +2898,53 @@ async fn watcher_receives_issue_update_notification() {
         .unwrap();
     assert_eq!(unread.len(), 1);
     assert_eq!(unread[0].event_type.as_ref(), "issue_updated");
+}
+
+#[tokio::test]
+async fn watcher_receives_worklog_logged_notification() {
+    let (base_ctx, owner, member, _project_id) = ctx_with_real_members().await;
+    let repos = Arc::new(domain::Repositories {
+        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let issue_id = create_demo_issue(&ctx, &owner, "Watched worklog").await;
+    ctx.services
+        .watcher
+        .watch(issue_id, member.id)
+        .await
+        .unwrap();
+
+    ctx.services
+        .worklog
+        .create(
+            CreateWorklogCommand {
+                issue_id,
+                author_id: owner.id,
+                started_at: shared::now(),
+                duration_seconds: 900,
+                description: Some("implementation".to_string()),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    let unread = ctx
+        .repos
+        .notifications
+        .list_unread(member.id)
+        .await
+        .unwrap();
+    let worklog_notifications = unread
+        .iter()
+        .filter(|notification| notification.event_type.as_ref() == "issue_worklog_logged")
+        .collect::<Vec<_>>();
+    assert_eq!(worklog_notifications.len(), 1);
+    assert_eq!(
+        worklog_notifications[0].metadata["duration_seconds"],
+        serde_json::json!(900)
+    );
 }
 
 #[tokio::test]
