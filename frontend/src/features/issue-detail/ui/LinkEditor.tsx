@@ -12,7 +12,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
   const { t } = useTranslation()
   const { data: links = [] } = useIssueLinks(issueId)
   const create = useCreateIssueLink(issueId)
-  const remove = useDeleteIssueLink(issueId)
+  const remove = useDeleteIssueLink()
   const [adding, setAdding] = useState(false)
   const [targetKey, setTargetKey] = useState('')
   const [linkType, setLinkType] = useState<(typeof LINK_TYPES)[number]>('relates')

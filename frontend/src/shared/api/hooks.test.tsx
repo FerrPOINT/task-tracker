@@ -2,8 +2,8 @@ import { act, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import { useCreateIssueLink, useStartSprint, useUpdateIssue } from './hooks'
-import { createIssueLink } from '@/api/link'
+import { useCreateIssueLink, useDeleteIssueLink, useStartSprint, useUpdateIssue } from './hooks'
+import { createIssueLink, deleteIssueLink } from '@/api/link'
 import { updateIssue } from '@/api/issue'
 import { startSprint } from '@/api/sprint'
 
@@ -64,6 +64,22 @@ describe('shared api hooks', () => {
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-source'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-target'] })
+  })
+
+  it('invalidates all issue link lists after deleting a link', async () => {
+    vi.mocked(deleteIssueLink).mockResolvedValue(undefined)
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useDeleteIssueLink(), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync('link-1')
+    })
+
+    expect(deleteIssueLink).toHaveBeenCalledWith('link-1')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links'] })
   })
 
   it('invalidates reports when an issue mutation changes issue-derived data', async () => {
