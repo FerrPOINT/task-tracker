@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { listWorklogs } from './worklog'
+import { listWorklogs, updateWorklog } from './worklog'
 
 const GET = vi.hoisted(() => vi.fn())
+const PATCH = vi.hoisted(() => vi.fn())
 
-vi.mock('./client', () => ({ api: { GET } }))
+vi.mock('./client', () => ({ api: { GET, PATCH } }))
 
 function worklogDto(
   index: number,
@@ -25,6 +26,7 @@ function worklogDto(
 describe('worklog API wrapper', () => {
   beforeEach(() => {
     GET.mockReset()
+    PATCH.mockReset()
   })
 
   it('loads every worklog page instead of stopping at the first API page', async () => {
@@ -47,6 +49,40 @@ describe('worklog API wrapper', () => {
       params: {
         path: { issue_id: 'issue-1' },
         query: { limit: 500, offset: 500 },
+      },
+    })
+  })
+
+  it('omits description on partial update when comment is not provided', async () => {
+    PATCH.mockResolvedValue({ data: worklogDto(1) })
+
+    await updateWorklog('worklog-1', {
+      timeSpent: '45m',
+      startedAt: '2026-09-01T10:00:00.000Z',
+    })
+
+    expect(PATCH).toHaveBeenCalledWith('/api/v1/worklogs/{id}', {
+      params: { path: { id: 'worklog-1' } },
+      body: {
+        started_at: '2026-09-01T10:00:00.000Z',
+        duration_seconds: 2700,
+      },
+    })
+  })
+
+  it('sends trimmed description on update when comment is provided', async () => {
+    PATCH.mockResolvedValue({ data: worklogDto(1) })
+
+    await updateWorklog('worklog-1', {
+      timeSpent: '30m',
+      comment: '  Updated note  ',
+    })
+
+    expect(PATCH).toHaveBeenCalledWith('/api/v1/worklogs/{id}', {
+      params: { path: { id: 'worklog-1' } },
+      body: {
+        duration_seconds: 1800,
+        description: 'Updated note',
       },
     })
   })

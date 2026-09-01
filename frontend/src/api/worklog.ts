@@ -80,13 +80,23 @@ export async function updateWorklog(worklogId: string, input: LogWorkInput): Pro
     throw new Error('Invalid time spent')
   }
 
+  const body: {
+    started_at?: string
+    duration_seconds: number
+    description?: string | null
+  } = {
+    duration_seconds: timeSpentSeconds,
+  }
+  if (input.startedAt !== undefined) {
+    body.started_at = input.startedAt
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'comment')) {
+    body.description = input.comment?.trim() ?? null
+  }
+
   const { data, error } = await api.PATCH('/api/v1/worklogs/{id}', {
     params: { path: { id: worklogId } },
-    body: {
-      started_at: input.startedAt,
-      duration_seconds: timeSpentSeconds,
-      description: input.comment?.trim() ?? null,
-    },
+    body,
   })
   if (error || !data) throw new Error('Failed to update worklog')
   return mapDto(data)
