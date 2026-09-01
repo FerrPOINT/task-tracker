@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 type TestStorage = domain::InMemoryStorage;
 use domain::{
-    Board, BoardColumn, BoardRepository, FileStorage, Issue, IssueQuery, IssueRepository,
-    MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
+    Board, BoardColumn, BoardRepository, CommentRepository, FileStorage, Issue, IssueQuery,
+    IssueRepository, MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
     MemoryIssueLinkRepository, MemoryIssueRepository, MemoryLabelRepository,
     MemoryNotificationRepository, MemoryProjectRepository, MemorySprintRepository,
     MemoryUserRepository, MemoryWorklogRepository, Notification, NotificationRepository, Project,
     ProjectMemberRepository, ProjectQuery, ProjectRepository, Sprint, SprintRepository,
-    StatusCategory, User, UserNotificationSettingsRepository, UserRepository,
+    StatusCategory, User, UserNotificationSettingsRepository, UserRepository, WorklogRepository,
 };
 use shared::{
     AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, NotificationId,
@@ -134,6 +134,40 @@ impl domain::AttachmentRepository for FailingAttachmentSaveRepository {
 
     async fn delete(&self, _id: shared::AttachmentId) -> Result<(), AppError> {
         Ok(())
+    }
+}
+
+struct FailingUserRepository;
+
+#[async_trait::async_trait]
+impl UserRepository for FailingUserRepository {
+    async fn get_by_id(&self, _id: UserId) -> Result<User, AppError> {
+        Err(AppError::Internal("failing user repo".into()))
+    }
+
+    async fn get_by_email(&self, _email: &str) -> Result<User, AppError> {
+        Err(AppError::Internal("failing user repo".into()))
+    }
+
+    async fn get_by_refresh_token(&self, _token_hash: &str) -> Result<User, AppError> {
+        Err(AppError::Internal("failing user repo".into()))
+    }
+
+    async fn rotate_refresh_token(
+        &self,
+        _user_id: UserId,
+        _expected_hash: &str,
+        _new_hash: &str,
+    ) -> Result<(), AppError> {
+        Err(AppError::Internal("failing user repo".into()))
+    }
+
+    async fn save(&self, _user: &User) -> Result<UserId, AppError> {
+        Err(AppError::Internal("failing user repo".into()))
+    }
+
+    async fn list(&self) -> Result<Vec<User>, AppError> {
+        Err(AppError::Internal("failing user repo".into()))
     }
 }
 
@@ -2039,6 +2073,124 @@ async fn comment_create_rejects_spoofed_author_and_actor() {
 }
 
 #[tokio::test]
+async fn comment_create_propagates_author_lookup_error_without_writing() {
+    let (base_ctx, owner) = ctx_with_demo_data().await;
+    let board = base_ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = base_ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "comment author lookup failure".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let comments = Arc::new(MemoryCommentRepository::default());
+    let repos = Arc::new(domain::Repositories {
+        users: Arc::new(FailingUserRepository),
+        comments: comments.clone(),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(
+        test_config(),
+        repos.clone(),
+        Arc::new(TestStorage::default()),
+    );
+
+    assert_internal(
+        ctx.services
+            .comment
+            .create(
+                CreateCommentCommand {
+                    issue_id,
+                    author_id: owner.id,
+                    body: "must not be persisted".to_string(),
+                    actor_id: owner.id,
+                },
+                owner.id,
+            )
+            .await,
+    );
+    assert!(
+        comments.list_by_issue(issue_id).await.unwrap().is_empty(),
+        "failed author lookup must happen before writing the comment"
+    );
+}
+
+#[tokio::test]
+async fn comment_list_propagates_author_directory_error() {
+    let (base_ctx, owner) = ctx_with_demo_data().await;
+    let board = base_ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = base_ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "comment list user lookup failure".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let comments = Arc::new(MemoryCommentRepository::default());
+    comments
+        .save(&domain::Comment {
+            id: shared::CommentId::new(),
+            issue_id,
+            author_id: owner.id,
+            body: domain::value_objects::RichText::new("stored comment".to_string()),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        })
+        .await
+        .unwrap();
+    let repos = Arc::new(domain::Repositories {
+        users: Arc::new(FailingUserRepository),
+        comments: comments.clone(),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(
+        test_config(),
+        repos.clone(),
+        Arc::new(TestStorage::default()),
+    );
+
+    assert_internal(ctx.services.comment.list(issue_id, owner.id, None, 0).await);
+}
+
+#[tokio::test]
 async fn watcher_receives_comment_notification() {
     let (ctx, owner, member, _project_id) = ctx_with_real_members().await;
     let board = ctx
@@ -3820,6 +3972,129 @@ async fn worklog_create_rejects_spoofed_author() {
             .time_spent_seconds,
         0
     );
+}
+
+#[tokio::test]
+async fn worklog_create_propagates_author_lookup_error_without_writing() {
+    let (base_ctx, owner) = ctx_with_demo_data().await;
+    let board = base_ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = base_ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "worklog author lookup failure".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    let repos = Arc::new(domain::Repositories {
+        users: Arc::new(FailingUserRepository),
+        worklogs: worklogs.clone(),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(
+        test_config(),
+        repos.clone(),
+        Arc::new(TestStorage::default()),
+    );
+
+    assert_internal(
+        ctx.services
+            .worklog
+            .create(
+                CreateWorklogCommand {
+                    issue_id,
+                    author_id: owner.id,
+                    started_at: shared::now(),
+                    duration_seconds: 300,
+                    description: Some("must not be persisted".to_string()),
+                },
+                owner.id,
+            )
+            .await,
+    );
+    assert!(
+        worklogs.list_by_issue(issue_id).await.unwrap().is_empty(),
+        "failed author lookup must happen before writing the worklog"
+    );
+    let unchanged_issue = base_ctx.repos.issues.get_by_id(issue_id).await.unwrap();
+    assert_eq!(unchanged_issue.time_spent_seconds, 0);
+}
+
+#[tokio::test]
+async fn worklog_list_propagates_author_directory_error() {
+    let (base_ctx, owner) = ctx_with_demo_data().await;
+    let board = base_ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = base_ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "worklog list user lookup failure".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    worklogs
+        .save(&domain::Worklog {
+            id: shared::WorklogId::new(),
+            issue_id,
+            author_id: owner.id,
+            started_at: shared::now(),
+            duration_seconds: 300,
+            description: Some("stored worklog".into()),
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        })
+        .await
+        .unwrap();
+    let repos = Arc::new(domain::Repositories {
+        users: Arc::new(FailingUserRepository),
+        worklogs: worklogs.clone(),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(
+        test_config(),
+        repos.clone(),
+        Arc::new(TestStorage::default()),
+    );
+
+    assert_internal(ctx.services.worklog.list(issue_id, owner.id, None, 0).await);
 }
 
 #[tokio::test]

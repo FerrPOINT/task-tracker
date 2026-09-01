@@ -88,7 +88,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             .list_by_issue_page(issue_id, effective_limit as u64, offset)
             .await?;
         let mut names: std::collections::HashMap<UserId, String> = std::collections::HashMap::new();
-        for u in self.users.list().await.unwrap_or_default() {
+        for u in self.users.list().await? {
             names.insert(u.id, u.display_name.as_ref().to_string());
         }
         let result = worklogs
@@ -119,6 +119,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
                 "duration_seconds must be between 1 and 86400",
             ));
         }
+        let user = self.users.get_by_id(requester).await?;
         let worklog = domain::Worklog {
             id: shared::WorklogId::new(),
             issue_id: cmd.issue_id,
@@ -132,10 +133,9 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         self.worklogs.save(&worklog).await?;
         self.sync_issue_time_tracking(&mut issue).await?;
         self.publish_for_issue(&issue).await;
-        let user = self.users.get_by_id(requester).await.ok();
         Ok(WorklogDto::from_worklog(
             worklog,
-            user.map(|u| u.display_name.as_ref().to_string()),
+            Some(user.display_name.as_ref().to_string()),
         ))
     }
 
@@ -153,6 +153,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         if worklog.author_id != requester {
             return Err(AppError::Forbidden);
         }
+        let user = self.users.get_by_id(worklog.author_id).await?;
         if let Some(started_at) = cmd.started_at {
             worklog.started_at = started_at;
         }
@@ -171,10 +172,9 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         self.worklogs.save(&worklog).await?;
         self.sync_issue_time_tracking(&mut issue).await?;
         self.publish_for_issue(&issue).await;
-        let user = self.users.get_by_id(worklog.author_id).await.ok();
         Ok(WorklogDto::from_worklog(
             worklog,
-            user.map(|u| u.display_name.as_ref().to_string()),
+            Some(user.display_name.as_ref().to_string()),
         ))
     }
 
