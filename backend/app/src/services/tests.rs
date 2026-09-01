@@ -920,6 +920,65 @@ async fn issue_update_distinguishes_omitted_and_null_assignee() {
 }
 
 #[tokio::test]
+async fn issue_update_same_status_is_noop_for_workflow_history() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let initial_status_id = board.columns[0].id.to_string();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Same status update".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: initial_status_id.clone(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let updated = ctx
+        .services
+        .issue
+        .update(
+            issue_id,
+            UpdateIssueCommand {
+                status_id: Some(initial_status_id.clone()),
+                summary: Some("Same status patch accepted".to_string()),
+                actor_id: owner.id,
+                ..Default::default()
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(updated.status_id, initial_status_id);
+    assert_eq!(updated.summary, "Same status patch accepted");
+    let history = ctx
+        .repos
+        .issue_status_history
+        .list_by_issue(issue_id)
+        .await
+        .unwrap();
+    assert_eq!(history.len(), 1);
+}
+
+#[tokio::test]
 async fn dashboard_lists_assigned_issues() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx

@@ -899,6 +899,47 @@ async fn issue_update_assignee_null_empty_and_omitted_contract() {
 }
 
 #[tokio::test]
+async fn issue_update_accepts_current_status_id_as_noop() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let reporter_id = test_user().id.to_string();
+
+    let created = client
+        .post(format!("{}/api/v1/issues", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "summary": "same status contract",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "reporter_id": reporter_id
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201);
+    let issue: serde_json::Value = created.json().await.unwrap();
+    let issue_id = issue["id"].as_str().unwrap();
+    let current_status_id = issue["status_id"].as_str().unwrap();
+
+    let updated = client
+        .patch(format!("{url}/api/v1/issues/{issue_id}"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "status_id": current_status_id,
+            "summary": "same status patch accepted"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(updated.status(), 200);
+    let body: serde_json::Value = updated.json().await.unwrap();
+    assert_eq!(body["status_id"].as_str(), Some(current_status_id));
+    assert_eq!(body["summary"], "same status patch accepted");
+}
+
+#[tokio::test]
 async fn comments_crud() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
