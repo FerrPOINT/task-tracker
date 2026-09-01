@@ -5843,6 +5843,80 @@ async fn notification_created_on_issue_assign() {
     );
 }
 
+#[tokio::test]
+async fn issue_update_same_assignee_does_not_duplicate_assignment_notification() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+    let assignee = notification_recipient(&ctx).await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Idempotent assignee notification".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+
+    ctx.services
+        .issue
+        .update(
+            issue_id,
+            UpdateIssueCommand {
+                assignee_id: Some(Some(assignee.id)),
+                actor_id: owner.id,
+                ..Default::default()
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    ctx.services
+        .issue
+        .update(
+            issue_id,
+            UpdateIssueCommand {
+                summary: Some("Same assignee patch".to_string()),
+                assignee_id: Some(Some(assignee.id)),
+                actor_id: owner.id,
+                ..Default::default()
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+
+    let notifications = ctx
+        .services
+        .notification
+        .list_unread(assignee.id)
+        .await
+        .unwrap();
+    let assignment_count = notifications
+        .notifications
+        .iter()
+        .filter(|notification| notification.event_type == "issue_assigned")
+        .count();
+    assert_eq!(assignment_count, 1);
+}
+
 // ─── Report service tests ───────────────────────────────────────────
 
 use crate::context::ReportService;

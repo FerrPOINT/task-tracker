@@ -477,6 +477,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             .require_project_edit(issue.project_id, requester)
             .await?;
         let project = self.projects.get_by_id(issue.project_id).await?;
+        let previous_assignee_id = issue.assignee_id;
 
         let status_change = if let Some(status_id) = cmd.status_id.as_deref() {
             let sid = status_id
@@ -601,7 +602,12 @@ impl crate::context::IssueService for IssueServiceImpl {
             project_key: project.key.to_string(),
         });
         let key = issue.key.to_string();
-        let assigned_recipient = cmd.assignee_id.flatten();
+        let assigned_recipient = match cmd.assignee_id {
+            Some(Some(assignee_id)) if Some(assignee_id) != previous_assignee_id => {
+                Some(assignee_id)
+            }
+            _ => None,
+        };
         let update_recipients = self
             .issue_recipients(&issue)
             .await
