@@ -468,6 +468,61 @@ impl crate::context::IssueService for IssueServiceImpl {
             .await?;
         let project = self.projects.get_by_id(issue.project_id).await?;
 
+        let status_change = if let Some(status_id) = cmd.status_id.as_deref() {
+            let sid = status_id
+                .parse()
+                .map_err(|_| AppError::invalid_input("status_id"))?;
+            let target = StatusId::from_uuid(sid);
+            let allowed = self.transitions.is_allowed(issue.status_id, target).await?;
+            if !allowed {
+                return Err(AppError::invalid_input("workflow transition not allowed"));
+            }
+            let from_status = issue.status_id;
+            let guard = self.build_wip_guard(issue.project_id, target).await?;
+            Some((from_status, target, guard))
+        } else {
+            None
+        };
+
+        if let Some(Some(assignee_id)) = cmd.assignee_id {
+            self.require_project_user(issue.project_id, assignee_id, "assignee_id")
+                .await?;
+        }
+        // Cross-project references corrupt project-scoped reports/metadata:
+        // every sprint/component/version must belong to the issue's project.
+        if let Some(Some(sid)) = cmd.sprint_id {
+            let sprint = self.sprints.get_by_id(sid).await?;
+            if sprint.project_id != issue.project_id {
+                return Err(AppError::invalid_input(
+                    "sprint belongs to a different project",
+                ));
+            }
+        }
+        if let Some(Some(cid)) = cmd.component_id {
+            let component = self.components.get_by_id(cid).await?;
+            if component.project_id != issue.project_id {
+                return Err(AppError::invalid_input(
+                    "component belongs to a different project",
+                ));
+            }
+        }
+        if let Some(Some(vid)) = cmd.affected_version_id {
+            let version = self.versions.get_by_id(vid).await?;
+            if version.project_id != issue.project_id {
+                return Err(AppError::invalid_input(
+                    "version belongs to a different project",
+                ));
+            }
+        }
+        if let Some(Some(vid)) = cmd.fix_version_id {
+            let version = self.versions.get_by_id(vid).await?;
+            if version.project_id != issue.project_id {
+                return Err(AppError::invalid_input(
+                    "version belongs to a different project",
+                ));
+            }
+        }
+
         if let Some(summary) = cmd.summary {
             if summary.trim().is_empty() || summary.chars().count() > 500 {
                 return Err(AppError::invalid_input(
@@ -493,85 +548,35 @@ impl crate::context::IssueService for IssueServiceImpl {
             issue.priority = priority;
             issue.updated_at = shared::now();
         }
-        if let Some(status_id) = cmd.status_id {
-            let sid = status_id
-                .parse()
-                .map_err(|_| AppError::invalid_input("status_id"))?;
-            let target = StatusId::from_uuid(sid);
-            let allowed = self.transitions.is_allowed(issue.status_id, target).await?;
-            if !allowed {
-                return Err(AppError::invalid_input("workflow transition not allowed"));
-            }
-            let from_status = issue.status_id;
-            let actor = cmd.actor_id;
-            let _ = from_status;
-            let guard = self.build_wip_guard(issue.project_id, target).await?;
+        if let Some((from_status, target, guard)) = status_change {
             self.issues
                 .change_status_atomic(
                     issue.id,
                     issue.project_id,
                     from_status,
                     target,
-                    actor,
+                    cmd.actor_id,
                     &guard,
                 )
                 .await?;
             issue.change_status(target);
         }
         if let Some(assignee_id) = cmd.assignee_id {
-            if let Some(assignee_id) = assignee_id {
-                self.require_project_user(issue.project_id, assignee_id, "assignee_id")
-                    .await?;
-            }
             issue.assign(assignee_id);
         }
-        // Cross-project references corrupt project-scoped reports/metadata:
-        // every sprint/component/version must belong to the issue's project.
         if let Some(sprint_id) = cmd.sprint_id {
-            if let Some(sid) = sprint_id {
-                let sprint = self.sprints.get_by_id(sid).await?;
-                if sprint.project_id != issue.project_id {
-                    return Err(AppError::invalid_input(
-                        "sprint belongs to a different project",
-                    ));
-                }
-            }
             issue.sprint_id = sprint_id;
             issue.updated_at = shared::now();
         }
         if let Some(component_id) = cmd.component_id {
-            if let Some(cid) = component_id {
-                let component = self.components.get_by_id(cid).await?;
-                if component.project_id != issue.project_id {
-                    return Err(AppError::invalid_input(
-                        "component belongs to a different project",
-                    ));
-                }
-            }
             issue.component_id = component_id;
             issue.updated_at = shared::now();
         }
         if let Some(affected_version_id) = cmd.affected_version_id {
-            if let Some(vid) = affected_version_id {
-                let version = self.versions.get_by_id(vid).await?;
-                if version.project_id != issue.project_id {
-                    return Err(AppError::invalid_input(
-                        "version belongs to a different project",
-                    ));
-                }
-            }
             issue.affected_version_id = affected_version_id;
             issue.updated_at = shared::now();
         }
         if let Some(fix_version_id) = cmd.fix_version_id {
-            if let Some(vid) = fix_version_id {
-                let version = self.versions.get_by_id(vid).await?;
-                if version.project_id != issue.project_id {
-                    return Err(AppError::invalid_input(
-                        "version belongs to a different project",
-                    ));
-                }
-            }
             issue.fix_version_id = fix_version_id;
             issue.updated_at = shared::now();
         }

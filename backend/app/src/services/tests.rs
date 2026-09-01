@@ -791,6 +791,70 @@ async fn issue_update_rejects_non_member_assignee() {
 }
 
 #[tokio::test]
+async fn issue_update_prevalidates_assignee_before_status_transition() {
+    let (ctx, owner) = ctx_with_demo_data().await;
+    let outsider = test_user_with("outsider", "outsider@example.com", "Outsider");
+    ctx.repos.users.save(&outsider).await.unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let todo: StatusId = board.columns[0].id.parse().unwrap();
+    let done: StatusId = board.columns[3].id.parse().unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Atomic update".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: todo.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+
+    let err = ctx
+        .services
+        .issue
+        .update(
+            issue_id,
+            UpdateIssueCommand {
+                status_id: Some(done.to_string()),
+                assignee_id: Some(Some(outsider.id)),
+                actor_id: owner.id,
+                ..Default::default()
+            },
+            owner.id,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(err, AppError::Forbidden));
+
+    let persisted = ctx.repos.issues.get_by_id(issue_id).await.unwrap();
+    assert_eq!(persisted.status_id, todo);
+    let history = ctx
+        .repos
+        .issue_status_history
+        .list_by_issue(issue_id)
+        .await
+        .unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].to_status_id, todo);
+}
+
+#[tokio::test]
 async fn issue_update_distinguishes_omitted_and_null_assignee() {
     let (ctx, owner) = ctx_with_demo_data().await;
     let board = ctx
