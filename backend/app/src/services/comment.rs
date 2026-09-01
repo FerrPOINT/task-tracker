@@ -152,7 +152,7 @@ impl crate::context::CommentService for CommentServiceImpl {
             .list_by_issue_page(issue_id, effective_limit as u64, offset)
             .await?;
         let mut names: std::collections::HashMap<UserId, String> = std::collections::HashMap::new();
-        for u in self.users.list().await.unwrap_or_default() {
+        for u in self.users.list().await? {
             names.insert(u.id, u.display_name.as_ref().to_string());
         }
         let result = page
@@ -182,6 +182,7 @@ impl crate::context::CommentService for CommentServiceImpl {
                 "comment body must be between 1 and 100000 characters",
             ));
         }
+        let user = self.users.get_by_id(requester).await?;
         let comment = domain::Comment {
             id: shared::CommentId::new(),
             issue_id: cmd.issue_id,
@@ -191,7 +192,6 @@ impl crate::context::CommentService for CommentServiceImpl {
             updated_at: shared::now(),
         };
         self.comments.save(&comment).await?;
-        let user = self.users.get_by_id(requester).await.ok();
         if let Ok(issue) = self.issues.get_by_id(cmd.issue_id).await {
             if let Ok(project) = self.projects.get_by_id(issue.project_id).await {
                 self.events.publish(shared::TrackerEvent::IssueCommented {
@@ -214,7 +214,7 @@ impl crate::context::CommentService for CommentServiceImpl {
         }
         Ok(CommentDto::from_comment(
             comment,
-            user.map(|u| u.display_name.as_ref().to_string()),
+            Some(user.display_name.as_ref().to_string()),
         ))
     }
 
@@ -232,6 +232,7 @@ impl crate::context::CommentService for CommentServiceImpl {
         if comment.author_id != requester {
             return Err(AppError::Forbidden);
         }
+        let user = self.users.get_by_id(comment.author_id).await?;
         if let Some(body) = cmd.body {
             if body.trim().is_empty() || body.chars().count() > 100_000 {
                 return Err(AppError::invalid_input(
@@ -243,10 +244,9 @@ impl crate::context::CommentService for CommentServiceImpl {
         }
         self.comments.save(&comment).await?;
         self.publish_comment_event(&issue).await;
-        let user = self.users.get_by_id(comment.author_id).await.ok();
         Ok(CommentDto::from_comment(
             comment,
-            user.map(|u| u.display_name.as_ref().to_string()),
+            Some(user.display_name.as_ref().to_string()),
         ))
     }
 
