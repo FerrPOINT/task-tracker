@@ -4279,6 +4279,62 @@ async fn attachment_upload_and_delete_publish_issue_updated_events() {
 }
 
 #[tokio::test]
+async fn labels_validate_names_and_hex_colors() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        labels: Arc::new(MemoryLabelRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let project_key = ProjectKey::new("TT");
+
+    let label = ctx
+        .services
+        .label
+        .create(&project_key, "  qa  ", " #ABC12f ", user.id)
+        .await
+        .unwrap();
+    assert_eq!(label.name, "qa");
+    assert_eq!(label.color, "#ABC12f");
+
+    for invalid_color in ["red", "#12345", "#1234567", "#12zz56", ""] {
+        let err = ctx
+            .services
+            .label
+            .create(&project_key, "bad", invalid_color, user.id)
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            AppError::InvalidInput(ref msg) if msg.contains("#RRGGBB")
+        ));
+    }
+
+    let label_id: shared::LabelId = label.id.parse().unwrap();
+    let err = ctx
+        .services
+        .label
+        .update(label_id, "  ", "#000000", user.id)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        AppError::InvalidInput(ref msg) if msg.contains("name")
+    ));
+
+    let err = ctx
+        .services
+        .label
+        .update(label_id, "renamed", "rgba(0,0,0,1)", user.id)
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        AppError::InvalidInput(ref msg) if msg.contains("#RRGGBB")
+    ));
+}
+
+#[tokio::test]
 async fn label_attach_and_detach_publish_issue_updated_events() {
     let (base_ctx, user) = ctx_with_demo_data().await;
     let repos = Arc::new(domain::Repositories {
