@@ -33,6 +33,18 @@ function invalidateIssueEventQueries(
   }
 }
 
+function invalidateSprintEventQueries(qc: ReturnType<typeof useQueryClient>, projectKey?: string) {
+  qc.invalidateQueries({ queryKey: ['sprints'] })
+  qc.invalidateQueries({ queryKey: ['reports'] })
+  if (projectKey) {
+    qc.invalidateQueries({ queryKey: ['project', projectKey] })
+    qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+  } else {
+    qc.invalidateQueries({ queryKey: ['project'] })
+    qc.invalidateQueries({ queryKey: ['backlog'] })
+  }
+}
+
 /**
  * Subscribe to the backend SSE stream (`/api/v1/events`) and invalidate
  * the affected TanStack Query caches. Bearer auth is passed via a short-lived
@@ -83,7 +95,7 @@ export function useTrackerEvents() {
             }
             break
           case 'sprint_changed':
-            qc.invalidateQueries({ queryKey: ['sprints'] })
+            invalidateSprintEventQueries(qc, pk)
             break
           case 'notification_created':
             qc.invalidateQueries({ queryKey: ['notifications'] })

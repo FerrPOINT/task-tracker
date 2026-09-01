@@ -5,7 +5,7 @@ use crate::authz::Authz;
 use crate::context::EventBus;
 use crate::dto::{IssueDto, SprintDto};
 use domain::{IssueQuery, IssueRepository, LabelRepository, ProjectRepository, SprintRepository};
-use shared::{AppError, ProjectId, SprintId, UserId};
+use shared::{AppError, ProjectId, ProjectKey, SprintId, UserId};
 
 #[async_trait]
 pub trait SprintService: Send + Sync {
@@ -79,6 +79,12 @@ impl SprintServiceImpl {
             issues.into_iter().map(|i| i.id.to_string()).collect(),
         ))
     }
+
+    fn publish_sprint_changed(&self, project_key: &ProjectKey) {
+        self.events.publish(shared::TrackerEvent::SprintChanged {
+            project_key: project_key.to_string(),
+        });
+    }
 }
 
 #[async_trait]
@@ -100,6 +106,7 @@ impl SprintService for SprintServiceImpl {
                 ));
             }
         }
+        let project = self.projects.get_by_id(cmd.project_id).await?;
         let sprint = domain::Sprint {
             id: SprintId::new(),
             project_id: cmd.project_id,
@@ -111,7 +118,9 @@ impl SprintService for SprintServiceImpl {
             velocity: None,
         };
         self.sprints.save(&sprint).await?;
-        self.sprint_dto(sprint).await
+        let dto = self.sprint_dto(sprint).await?;
+        self.publish_sprint_changed(&project.key);
+        Ok(dto)
     }
 
     async fn list(
@@ -148,6 +157,7 @@ impl SprintService for SprintServiceImpl {
         self.authz
             .require_project_edit(sprint.project_id, requester)
             .await?;
+        let project = self.projects.get_by_id(sprint.project_id).await?;
         let mut sprint = sprint;
         if let Some(name) = cmd.name {
             sprint.name = name.into();
@@ -171,7 +181,9 @@ impl SprintService for SprintServiceImpl {
             }
         }
         self.sprints.save(&sprint).await?;
-        self.sprint_dto(sprint).await
+        let dto = self.sprint_dto(sprint).await?;
+        self.publish_sprint_changed(&project.key);
+        Ok(dto)
     }
 
     async fn start(&self, id: SprintId, requester: UserId) -> Result<SprintDto, AppError> {
@@ -179,6 +191,7 @@ impl SprintService for SprintServiceImpl {
         self.authz
             .require_project_edit(sprint.project_id, requester)
             .await?;
+        let project = self.projects.get_by_id(sprint.project_id).await?;
         let mut sprint = sprint;
         if sprint.state != domain::SprintState::Future {
             return Err(AppError::invalid_input("sprint is not in future state"));
@@ -193,7 +206,9 @@ impl SprintService for SprintServiceImpl {
         sprint.state = domain::SprintState::Active;
         sprint.start_date = Some(sprint.start_date.unwrap_or_else(shared::now));
         self.sprints.save(&sprint).await?;
-        self.sprint_dto(sprint).await
+        let dto = self.sprint_dto(sprint).await?;
+        self.publish_sprint_changed(&project.key);
+        Ok(dto)
     }
 
     async fn close(&self, id: SprintId, requester: UserId) -> Result<SprintDto, AppError> {
@@ -201,6 +216,7 @@ impl SprintService for SprintServiceImpl {
         self.authz
             .require_project_edit(sprint.project_id, requester)
             .await?;
+        let project = self.projects.get_by_id(sprint.project_id).await?;
         let mut sprint = sprint;
         if sprint.state != domain::SprintState::Active {
             return Err(AppError::invalid_input("sprint is not active"));
@@ -208,7 +224,9 @@ impl SprintService for SprintServiceImpl {
         sprint.state = domain::SprintState::Closed;
         sprint.end_date = Some(sprint.end_date.unwrap_or_else(shared::now));
         self.sprints.save(&sprint).await?;
-        self.sprint_dto(sprint).await
+        let dto = self.sprint_dto(sprint).await?;
+        self.publish_sprint_changed(&project.key);
+        Ok(dto)
     }
 
     async fn move_issue(
