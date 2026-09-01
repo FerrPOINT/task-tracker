@@ -71,6 +71,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   updateNotificationSettings,
+  type NotificationListOptions,
   type UpdateNotificationSettingsInput,
 } from '@/api/notifications'
 import {
@@ -140,19 +141,27 @@ export function useAdminAuditLog(limit = 100) {
 }
 
 const notificationKeys = {
-  list: ['notifications'] as const,
+  all: ['notifications'] as const,
+  list: (includeRead = false, limit = 10, offset = 0) =>
+    ['notifications', includeRead, limit, offset] as const,
   settings: ['notification-settings'] as const,
 }
 
-export function useNotifications() {
-  return useQuery({ queryKey: notificationKeys.list, queryFn: listNotifications })
+export function useNotifications(options: NotificationListOptions = {}) {
+  const includeRead = options.includeRead ?? false
+  const limit = options.limit ?? 10
+  const offset = options.offset ?? 0
+  return useQuery({
+    queryKey: notificationKeys.list(includeRead, limit, offset),
+    queryFn: () => listNotifications({ includeRead, limit, offset }),
+  })
 }
 
 export function useMarkNotificationRead() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: markNotificationRead,
-    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.list }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.all }),
   })
 }
 
@@ -160,7 +169,7 @@ export function useMarkAllNotificationsRead() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: markAllNotificationsRead,
-    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.list }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.all }),
   })
 }
 

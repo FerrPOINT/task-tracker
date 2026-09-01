@@ -32,11 +32,20 @@ type Notification = {
   created_at: string
 }
 
-function mockHooks(notifications: Notification[] | undefined) {
+function mockHooks(notifications: Notification[] | undefined, unreadCount?: number) {
   useCurrentUser.mockReturnValue({ data: { email: 'user@example.test', display_name: 'User' } })
   useIssue.mockReturnValue({ data: undefined })
   useLogout.mockReturnValue({ mutate: vi.fn() })
-  useNotifications.mockReturnValue({ data: notifications, isLoading: false })
+  useNotifications.mockReturnValue({
+    data: notifications
+      ? {
+          notifications,
+          unread_count:
+            unreadCount ?? notifications.filter((notification) => !notification.is_read).length,
+        }
+      : undefined,
+    isLoading: false,
+  })
   useMarkNotificationRead.mockReturnValue({ mutate: vi.fn() })
   useMarkAllNotificationsRead.mockReturnValue({ mutate: vi.fn() })
 }
@@ -136,16 +145,19 @@ describe('AppShell notifications', () => {
     const user = userEvent.setup()
     const markRead = vi.fn()
     const markAll = vi.fn()
-    mockHooks([
-      {
-        id: 'notification-1',
-        title: 'Issue updated',
-        body: 'TT-12 has moved to done',
-        is_read: false,
-        action_url: '/issues/12',
-        created_at: '2026-08-24T10:00:00Z',
-      },
-    ])
+    mockHooks(
+      [
+        {
+          id: 'notification-1',
+          title: 'Issue updated',
+          body: 'TT-12 has moved to done',
+          is_read: false,
+          action_url: '/issues/12',
+          created_at: '2026-08-24T10:00:00Z',
+        },
+      ],
+      12,
+    )
     useMarkNotificationRead.mockReturnValue({ mutate: markRead })
     useMarkAllNotificationsRead.mockReturnValue({ mutate: markAll })
 
@@ -156,7 +168,7 @@ describe('AppShell notifications', () => {
     )
 
     const trigger = screen.getByTestId('notification-trigger')
-    expect(trigger).toHaveTextContent('1')
+    expect(trigger).toHaveTextContent('12')
     await user.click(trigger)
 
     expect(await screen.findByText('Issue updated')).toBeInTheDocument()

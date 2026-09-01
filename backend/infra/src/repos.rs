@@ -2150,6 +2150,38 @@ impl NotificationRepository for NotificationRepo {
         Ok(models.into_iter().map(map_notification).collect())
     }
 
+    async fn list_for_recipient(
+        &self,
+        recipient_id: UserId,
+        include_read: bool,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Notification>, AppError> {
+        let mut query = notification::Entity::find()
+            .filter(notification::Column::RecipientId.eq(recipient_id.as_uuid()));
+        if !include_read {
+            query = query.filter(notification::Column::IsRead.eq(false));
+        }
+        let models = query
+            .order_by_desc(notification::Column::CreatedAt)
+            .order_by_desc(notification::Column::Id)
+            .offset(offset)
+            .limit(limit)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models.into_iter().map(map_notification).collect())
+    }
+
+    async fn count_unread(&self, recipient_id: UserId) -> Result<u64, AppError> {
+        notification::Entity::find()
+            .filter(notification::Column::RecipientId.eq(recipient_id.as_uuid()))
+            .filter(notification::Column::IsRead.eq(false))
+            .count(&*self.db)
+            .await
+            .map_err(AppError::database)
+    }
+
     async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError> {
         let models = notification::Entity::find()
             .filter(notification::Column::IsRead.eq(false))

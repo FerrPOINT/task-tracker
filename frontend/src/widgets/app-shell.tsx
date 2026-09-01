@@ -93,12 +93,13 @@ export function AppShell() {
   const projectKey = useCurrentProjectKey()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { data: user } = useCurrentUser()
-  const { data: notifications = [] } = useNotifications()
+  const { data: notificationList } = useNotifications()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
   useTrackerEvents()
   const logout = useLogout()
-  const unreadNotifications = notifications.filter((notification) => !notification.is_read)
+  const notifications = notificationList?.notifications ?? []
+  const unreadCount = notificationList?.unread_count ?? 0
 
   // Admin link is only for system admins (checked via /auth/me).
   const navItems = [
@@ -190,9 +191,9 @@ export function AppShell() {
                 data-testid="notification-trigger"
               >
                 <Bell className="h-[18px] w-[18px]" />
-                {unreadNotifications.length > 0 && (
+                {unreadCount > 0 && (
                   <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4 text-white">
-                    {unreadNotifications.length}
+                    {unreadCount}
                   </span>
                 )}
               </Button>
@@ -205,7 +206,7 @@ export function AppShell() {
                   size="sm"
                   className="h-7 px-2"
                   onClick={() => markAllNotificationsRead.mutate()}
-                  disabled={unreadNotifications.length === 0 || markAllNotificationsRead.isPending}
+                  disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
                 >
                   {t('notifications.markAllRead')}
                 </Button>

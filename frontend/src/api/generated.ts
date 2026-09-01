@@ -3552,7 +3552,14 @@ export interface operations {
     };
     list_notifications: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Include read notifications in the returned page (default false) */
+                include_read?: boolean;
+                /** @description Maximum notifications to return (default 10, max 50) */
+                limit?: number;
+                /** @description Pagination offset (default 0) */
+                offset?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;

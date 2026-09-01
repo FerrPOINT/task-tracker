@@ -1316,6 +1316,48 @@ impl NotificationRepository for MemoryNotificationRepository {
         Ok(notifications)
     }
 
+    async fn list_for_recipient(
+        &self,
+        recipient_id: UserId,
+        include_read: bool,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Notification>, AppError> {
+        let mut notifications: Vec<_> = self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|notification| {
+                notification.recipient_id == recipient_id && (include_read || !notification.is_read)
+            })
+            .cloned()
+            .collect();
+        notifications.sort_by_key(|notification| {
+            (
+                std::cmp::Reverse(notification.created_at),
+                std::cmp::Reverse(notification.id.as_uuid()),
+            )
+        });
+        Ok(notifications
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
+
+    async fn count_unread(&self, recipient_id: UserId) -> Result<u64, AppError> {
+        Ok(self
+            .notifications
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|notification| {
+                notification.recipient_id == recipient_id && !notification.is_read
+            })
+            .count() as u64)
+    }
+
     async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError> {
         let mut notifications: Vec<_> = self
             .notifications

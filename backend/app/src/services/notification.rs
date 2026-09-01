@@ -3,6 +3,9 @@ use std::sync::Arc;
 
 use shared::{AppError, UserId};
 
+const DEFAULT_NOTIFICATION_LIMIT: u64 = 10;
+const MAX_NOTIFICATION_LIMIT: u64 = 50;
+
 pub struct NotificationServiceImpl {
     notifications: Arc<dyn domain::NotificationRepository>,
     settings: Arc<dyn domain::UserNotificationSettingsRepository>,
@@ -32,38 +35,58 @@ impl NotificationServiceImpl {
             notify_own_changes: settings.notify_own_changes,
         }
     }
+
+    fn notification_dto(notification: domain::Notification) -> crate::context::NotificationDto {
+        crate::context::NotificationDto {
+            id: notification.id.to_string(),
+            event_type: notification.event_type.to_string(),
+            entity_type: notification.entity_type.to_string(),
+            entity_id: notification.entity_id.map(|id| id.to_string()),
+            actor_id: notification.actor_id.map(|id| id.to_string()),
+            title: notification.title.to_string(),
+            body: notification.body.map(|body| body.to_string()),
+            is_read: notification.is_read,
+            action_url: notification.action_url.map(|url| url.to_string()),
+            metadata: notification.metadata,
+            created_at: notification.created_at.to_rfc3339(),
+        }
+    }
 }
 
 #[async_trait]
 impl crate::context::NotificationService for NotificationServiceImpl {
+    async fn list(
+        &self,
+        user_id: UserId,
+        include_read: bool,
+        limit: u64,
+        offset: u64,
+    ) -> Result<crate::context::NotificationListDto, AppError> {
+        if !(1..=MAX_NOTIFICATION_LIMIT).contains(&limit) {
+            return Err(AppError::invalid_input(format!(
+                "limit must be between 1 and {MAX_NOTIFICATION_LIMIT}",
+            )));
+        }
+        let notifications = self
+            .notifications
+            .list_for_recipient(user_id, include_read, limit, offset)
+            .await?;
+        let unread_count = self.notifications.count_unread(user_id).await? as usize;
+        Ok(crate::context::NotificationListDto {
+            notifications: notifications
+                .into_iter()
+                .map(Self::notification_dto)
+                .collect(),
+            unread_count,
+        })
+    }
+
     async fn list_unread(
         &self,
         user_id: UserId,
     ) -> Result<crate::context::NotificationListDto, AppError> {
-        let notifications = self.notifications.list_unread(user_id).await?;
-        let unread_count = notifications.len();
-        let mut notifications: Vec<_> = notifications
-            .into_iter()
-            .map(|notification| crate::context::NotificationDto {
-                id: notification.id.to_string(),
-                event_type: notification.event_type.to_string(),
-                entity_type: notification.entity_type.to_string(),
-                entity_id: notification.entity_id.map(|id| id.to_string()),
-                actor_id: notification.actor_id.map(|id| id.to_string()),
-                title: notification.title.to_string(),
-                body: notification.body.map(|body| body.to_string()),
-                is_read: notification.is_read,
-                action_url: notification.action_url.map(|url| url.to_string()),
-                metadata: notification.metadata,
-                created_at: notification.created_at.to_rfc3339(),
-            })
-            .collect();
-        notifications.sort_by(|left, right| right.created_at.cmp(&left.created_at));
-        notifications.truncate(10);
-        Ok(crate::context::NotificationListDto {
-            notifications,
-            unread_count,
-        })
+        self.list(user_id, false, DEFAULT_NOTIFICATION_LIMIT, 0)
+            .await
     }
 
     async fn mark_read(&self, id: String, user_id: UserId) -> Result<(), AppError> {

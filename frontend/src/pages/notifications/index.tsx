@@ -55,19 +55,20 @@ export function NotificationsPage() {
   const { t } = useTranslation()
   const [showUnread, setShowUnread] = useState(false)
   const {
-    data: notifications = [],
+    data: notificationList,
     isLoading: notificationsLoading,
     error: notificationsError,
     refetch: refetchNotifications,
-  } = useNotifications()
+  } = useNotifications({ includeRead: true, limit: 50 })
   const { data: settings, isLoading: settingsLoading } = useNotificationSettings()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
   const updateSettings = useUpdateNotificationSettings()
+  const notifications = notificationList?.notifications ?? []
   const visibleNotifications = showUnread
     ? notifications.filter((notification) => !notification.is_read)
     : notifications
-  const unreadCount = notifications.filter((notification) => !notification.is_read).length
+  const unreadCount = notificationList?.unread_count ?? 0
 
   function updatePreference(input: Partial<UpdateNotificationSettingsInput>) {
     const current: UpdateNotificationSettingsInput = settings ?? {

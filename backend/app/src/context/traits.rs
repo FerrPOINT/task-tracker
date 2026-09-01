@@ -269,6 +269,13 @@ pub trait IssueLinkService: Send + Sync {
 
 #[async_trait]
 pub trait NotificationService: Send + Sync {
+    async fn list(
+        &self,
+        user_id: UserId,
+        include_read: bool,
+        limit: u64,
+        offset: u64,
+    ) -> Result<crate::context::NotificationListDto, AppError>;
     async fn list_unread(
         &self,
         user_id: UserId,

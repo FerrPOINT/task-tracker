@@ -2449,6 +2449,79 @@ async fn notifications_list_returns_newest_ten_with_unread_count() {
 }
 
 #[tokio::test]
+async fn notifications_list_can_include_read_items_and_page_results() {
+    let (url, client, repo) = spawn_server_with_notifications().await;
+    let token = login_token(&url, &client).await;
+    let user_id = test_user().id;
+
+    let mut old_unread = make_notification(user_id, 0, "old unread");
+    old_unread.is_read = false;
+    repo.save(&old_unread).await.unwrap();
+
+    let mut read = make_notification(user_id, 1, "already read");
+    read.is_read = true;
+    read.read_at = Some(shared::now() + chrono::Duration::seconds(1));
+    repo.save(&read).await.unwrap();
+
+    let mut new_unread = make_notification(user_id, 2, "new unread");
+    new_unread.is_read = false;
+    repo.save(&new_unread).await.unwrap();
+
+    let default_res = client
+        .get(format!("{url}/api/v1/notifications"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(default_res.status(), 200);
+    let default_body: serde_json::Value = default_res.json().await.unwrap();
+    assert_eq!(default_body["unread_count"], 2);
+    let default_list = default_body["notifications"].as_array().unwrap();
+    assert_eq!(default_list.len(), 2);
+    assert_eq!(default_list[0]["title"], "new unread");
+    assert_eq!(default_list[1]["title"], "old unread");
+
+    let all_res = client
+        .get(format!(
+            "{url}/api/v1/notifications?include_read=true&limit=2&offset=0"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(all_res.status(), 200);
+    let all_body: serde_json::Value = all_res.json().await.unwrap();
+    assert_eq!(all_body["unread_count"], 2);
+    let all_list = all_body["notifications"].as_array().unwrap();
+    assert_eq!(all_list.len(), 2);
+    assert_eq!(all_list[0]["title"], "new unread");
+    assert_eq!(all_list[1]["title"], "already read");
+
+    let next_res = client
+        .get(format!(
+            "{url}/api/v1/notifications?include_read=true&limit=2&offset=2"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(next_res.status(), 200);
+    let next_body: serde_json::Value = next_res.json().await.unwrap();
+    assert_eq!(next_body["unread_count"], 2);
+    let next_list = next_body["notifications"].as_array().unwrap();
+    assert_eq!(next_list.len(), 1);
+    assert_eq!(next_list[0]["title"], "old unread");
+
+    let bad_res = client
+        .get(format!("{url}/api/v1/notifications?limit=51"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_res.status(), 400);
+}
+
+#[tokio::test]
 async fn notifications_read_marks_only_own_unread_and_isolates_ownership() {
     let (url, client, repo) = spawn_server_with_notifications().await;
     let token = login_token(&url, &client).await;
