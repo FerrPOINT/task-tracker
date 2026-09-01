@@ -58,6 +58,46 @@ fn normalize_date_value(value: &str) -> Result<String, AppError> {
     Ok(parsed.date_naive().format("%Y-%m-%d").to_string())
 }
 
+fn normalize_custom_field_options(
+    field_type: domain::CustomFieldType,
+    options: &[String],
+) -> Result<Vec<domain::value_objects::ArcStr>, AppError> {
+    use domain::CustomFieldType;
+
+    let supports_options = matches!(
+        field_type,
+        CustomFieldType::Select | CustomFieldType::MultiSelect
+    );
+    if !supports_options {
+        return Ok(Vec::new());
+    }
+
+    let mut normalized = Vec::new();
+    for option in options {
+        let option = option.trim();
+        if option.is_empty() {
+            return Err(AppError::invalid_input(
+                "custom field options must not be empty",
+            ));
+        }
+        if normalized
+            .iter()
+            .any(|existing: &domain::value_objects::ArcStr| existing.as_ref() == option)
+        {
+            return Err(AppError::invalid_input(
+                "custom field options must be unique",
+            ));
+        }
+        normalized.push(option.to_string().into());
+    }
+    if normalized.is_empty() {
+        return Err(AppError::invalid_input(
+            "select custom fields require at least one option",
+        ));
+    }
+    Ok(normalized)
+}
+
 /// Validate and normalize a JSON value for the given custom field type.
 pub(super) fn normalize_custom_field_value(
     field: &domain::CustomField,
@@ -136,15 +176,13 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
             return Err(AppError::invalid_input("field name must not be empty"));
         }
         let ft: domain::CustomFieldType = field_type.parse().map_err(AppError::invalid_input)?;
+        let options = normalize_custom_field_options(ft, options)?;
         let field = domain::CustomField {
             id: shared::CustomFieldId::new(),
             project_id: project.id,
             name: name.trim().to_string().into(),
             field_type: ft,
-            options: options
-                .iter()
-                .map(|s| s.trim().to_string().into())
-                .collect(),
+            options,
             is_required,
             created_at: shared::now(),
         };
@@ -183,10 +221,7 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
             field.name = name.trim().to_string().into();
         }
         field.field_type = field_type.parse().map_err(AppError::invalid_input)?;
-        field.options = options
-            .iter()
-            .map(|s| s.trim().to_string().into())
-            .collect();
+        field.options = normalize_custom_field_options(field.field_type, options)?;
         field.is_required = is_required;
         self.fields.save(&field).await?;
         Ok(Self::to_dto(&field))

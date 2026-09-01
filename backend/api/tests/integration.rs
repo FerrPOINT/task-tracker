@@ -3949,6 +3949,26 @@ async fn custom_field_create_empty_name_returns_400() {
 }
 
 #[tokio::test]
+async fn custom_field_create_select_without_options_returns_400() {
+    let (url, client) = spawn_server_with_memory_repos().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .post(format!("{url}/api/v1/projects/TT/custom-fields"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "name": "Broken Select",
+            "field_type": "select",
+            "options": [],
+            "is_required": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
 async fn custom_field_create_unknown_project_returns_404() {
     let (url, client) = spawn_server_with_memory_repos().await;
     let token = login_token(&url, &client).await;
