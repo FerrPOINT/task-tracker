@@ -205,6 +205,9 @@ export function ProjectBacklogPage() {
     sprints?.filter((s) => s.id !== activeSprint.id && s.state !== 'closed') ?? []
   const activeFromList = sprints?.find((s) => s.id === activeSprint.id)
   const activeSprintName = activeFromList?.name ?? activeSprint.name
+  const activeSprintIssues = activeFromList
+    ? sprint_issues.filter((issue) => issue.sprint_id === activeFromList.id)
+    : []
 
   function openCreate() {
     setEditingSprint(null)
@@ -312,7 +315,7 @@ export function ProjectBacklogPage() {
             </div>
           ) : undefined
         }
-        items={sprint_issues}
+        items={activeSprintIssues}
         renderItem={(issue) => (
           <IssueRow
             key={issue.id}
