@@ -1744,6 +1744,144 @@ async fn issue_links_create_list_delete_flow() {
 }
 
 #[tokio::test]
+async fn issue_links_hide_soft_deleted_endpoints() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let a_id = create_issue_via_api(&url, &client, &token).await;
+    let b_id = create_second_issue(&url, &client, &token, "link target that can be trashed").await;
+
+    let b = client
+        .get(format!("{url}/api/v1/issues/{b_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(b.status(), 200);
+    let b: serde_json::Value = b.json().await.unwrap();
+    let b_key = b["key"].as_str().unwrap();
+
+    let create = client
+        .post(format!("{url}/api/v1/issues/{a_id}/links"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"target_key": b_key, "link_type": "relates"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201);
+
+    let delete_b = client
+        .delete(format!("{url}/api/v1/issues/{b_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete_b.status(), 204);
+
+    let links = client
+        .get(format!("{url}/api/v1/issues/{a_id}/links"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(links.status(), 200);
+    let links: serde_json::Value = links.json().await.unwrap();
+    assert!(links["links"].as_array().unwrap().is_empty());
+
+    let restore_b = client
+        .post(format!("{url}/api/v1/issues/{b_id}/restore"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(restore_b.status(), 200);
+
+    let delete_a = client
+        .delete(format!("{url}/api/v1/issues/{a_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(delete_a.status(), 204);
+
+    let links = client
+        .get(format!("{url}/api/v1/issues/{b_id}/links"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(links.status(), 200);
+    let links: serde_json::Value = links.json().await.unwrap();
+    assert!(links["links"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn issue_link_duplicate_returns_409_and_keeps_single_link() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let a_id = create_issue_via_api(&url, &client, &token).await;
+    let b_id = create_second_issue(&url, &client, &token, "duplicate link target").await;
+
+    let a = client
+        .get(format!("{url}/api/v1/issues/{a_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(a.status(), 200);
+    let a: serde_json::Value = a.json().await.unwrap();
+    let a_key = a["key"].as_str().unwrap();
+
+    let b = client
+        .get(format!("{url}/api/v1/issues/{b_id}"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(b.status(), 200);
+    let b: serde_json::Value = b.json().await.unwrap();
+    let b_key = b["key"].as_str().unwrap();
+
+    let first = client
+        .post(format!("{url}/api/v1/issues/{a_id}/links"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"target_key": b_key, "link_type": "relates"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(first.status(), 201);
+
+    let duplicate = client
+        .post(format!("{url}/api/v1/issues/{a_id}/links"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"target_key": b_key, "link_type": "relates"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(duplicate.status(), 409);
+
+    let reverse_duplicate = client
+        .post(format!("{url}/api/v1/issues/{b_id}/links"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"target_key": a_key, "link_type": "relates"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(reverse_duplicate.status(), 409);
+
+    for issue_id in [&a_id, &b_id] {
+        let links = client
+            .get(format!("{url}/api/v1/issues/{issue_id}/links"))
+            .bearer_auth(&token)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(links.status(), 200);
+        let links: serde_json::Value = links.json().await.unwrap();
+        assert_eq!(links["links"].as_array().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
 async fn issue_link_self_link_400() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;

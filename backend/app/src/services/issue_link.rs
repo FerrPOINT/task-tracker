@@ -59,6 +59,16 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         if source.id == target.id {
             return Err(AppError::invalid_input("cannot link an issue to itself"));
         }
+        let existing_links = self.links.list_by_issue(source.id).await?;
+        if existing_links.iter().any(|existing| {
+            existing.link_type == lt
+                && ((existing.source_id == source.id && existing.target_id == target.id)
+                    || (lt == domain::LinkType::Relates
+                        && existing.source_id == target.id
+                        && existing.target_id == source.id))
+        }) {
+            return Err(AppError::conflict("issue link already exists"));
+        }
         let link = domain::IssueLink {
             id: shared::IssueLinkId::new(),
             source_id: source.id,
@@ -90,8 +100,19 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         let links = self.links.list_by_issue(issue_id).await?;
         let mut out = Vec::with_capacity(links.len());
         for link in links {
-            let source = self.issues.get_by_id(link.source_id).await?;
-            let target = self.issues.get_by_id(link.target_id).await?;
+            let source = match self.issues.get_by_id_include_deleted(link.source_id).await {
+                Ok(issue) => issue,
+                Err(AppError::NotFound(_)) => continue,
+                Err(err) => return Err(err),
+            };
+            let target = match self.issues.get_by_id_include_deleted(link.target_id).await {
+                Ok(issue) => issue,
+                Err(AppError::NotFound(_)) => continue,
+                Err(err) => return Err(err),
+            };
+            if source.deleted_at.is_some() || target.deleted_at.is_some() {
+                continue;
+            }
             if !self
                 .can_read_link_endpoint(&source, &target, requester)
                 .await?

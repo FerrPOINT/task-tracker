@@ -83,6 +83,7 @@ pub async fn list_links(
         (status = 400, description = "Bad request (unknown link type, self-link)"),
         (status = 401, description = "Unauthorized"),
         (status = 404, description = "Source or target issue not found"),
+        (status = 409, description = "Link already exists"),
     ),
     security(("bearer" = []))
 )]

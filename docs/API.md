@@ -836,6 +836,7 @@ Download/stream.
 ### GET /issues/{id}/links
 
 Список связей задачи.
+Связи с задачами, которые находятся в корзине, скрываются из обычного списка.
 
 **Response 200:** `IssueLinkListResponse`
 
@@ -866,6 +867,8 @@ Download/stream.
 ```
 
 **Response 201:** `IssueLinkResponse`
+
+**Response 409:** связь уже существует. Для `relates` пара задач считается недирекционной, поэтому обратная связь того же типа тоже конфликтует.
 
 ```json
 {
