@@ -46,11 +46,16 @@ function useCurrentProjectKey() {
   const location = useLocation()
   const match = location.pathname.match(projectKeyPattern)
   const issueMatch = location.pathname.match(issuePattern)
-  const issueId = location.pathname === '/issues/create' ? undefined : issueMatch?.[1]
+  const isCreateIssueRoute = location.pathname === '/issues/create'
+  const issueId = isCreateIssueRoute ? undefined : issueMatch?.[1]
+  const createIssueProjectKey = isCreateIssueRoute
+    ? (new URLSearchParams(location.search).get('project_key') ??
+      (location.state as { project_key?: string } | null)?.project_key)
+    : undefined
   // On the issue page the project is not part of the URL; resolve it from
   // the loaded issue so sidebar Board/Backlog/Trash keep their context.
   const { data: issue } = useIssue(issueId ?? '')
-  return match?.[1] ?? issue?.project_key
+  return match?.[1] ?? createIssueProjectKey ?? issue?.project_key
 }
 
 function SidebarLink({

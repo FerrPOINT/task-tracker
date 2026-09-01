@@ -55,6 +55,48 @@ describe('AppShell notifications', () => {
     expect(useIssue).not.toHaveBeenCalledWith('create')
   })
 
+  it('uses the query project key for create issue navigation context', () => {
+    mockHooks([])
+
+    render(
+      <MemoryRouter initialEntries={['/issues/create?project_key=XP']}>
+        <AppShell />
+      </MemoryRouter>,
+    )
+
+    expect(useIssue).toHaveBeenCalledWith('')
+    expect(useIssue).not.toHaveBeenCalledWith('create')
+    expect(screen.getByRole('link', { name: /бэклог|backlog/i })).toHaveAttribute(
+      'href',
+      '/projects/XP/backlog',
+    )
+    expect(screen.getByRole('link', { name: /доска|board/i })).toHaveAttribute(
+      'href',
+      '/projects/XP/board',
+    )
+  })
+
+  it('uses router state project key for create issue navigation context', () => {
+    mockHooks([])
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/issues/create', state: { project_key: 'XP' } }]}>
+        <AppShell />
+      </MemoryRouter>,
+    )
+
+    expect(useIssue).toHaveBeenCalledWith('')
+    expect(useIssue).not.toHaveBeenCalledWith('create')
+    expect(screen.getByRole('link', { name: /бэклог|backlog/i })).toHaveAttribute(
+      'href',
+      '/projects/XP/backlog',
+    )
+    expect(screen.getByRole('link', { name: /доска|board/i })).toHaveAttribute(
+      'href',
+      '/projects/XP/board',
+    )
+  })
+
   it('includes the administration link in the desktop sidebar', () => {
     mockHooks([])
     useCurrentUser.mockReturnValue({
