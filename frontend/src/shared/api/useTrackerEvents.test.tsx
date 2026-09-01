@@ -105,6 +105,8 @@ describe('useTrackerEvents', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-custom-fields', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['attachments', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-votes', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-watchers', 'issue-1'] })
   })
 
   it('invalidates sprint-backed project caches when a sprint SSE event arrives', () => {
