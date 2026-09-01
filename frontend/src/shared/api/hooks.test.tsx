@@ -5,15 +5,34 @@ import type { ReactNode } from 'react'
 import {
   useCreateIssueLink,
   useDeleteIssueLink,
+  useDeleteProject,
   useStartSprint,
   useUpdateIssue,
   useVoteIssue,
   useWatchIssue,
 } from './hooks'
+import { deleteProject } from '@/api/project'
 import { createIssueLink, deleteIssueLink } from '@/api/link'
 import { updateIssue } from '@/api/issue'
 import { startSprint } from '@/api/sprint'
 import { voteIssue, watchIssue } from '@/api/engagement'
+
+const navigate = vi.hoisted(() => vi.fn())
+
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual<typeof import('react-router')>('react-router')
+  return {
+    ...actual,
+    useNavigate: () => navigate,
+  }
+})
+
+vi.mock('@/api/project', () => ({
+  listProjects: vi.fn(),
+  createProject: vi.fn(),
+  updateProject: vi.fn(),
+  deleteProject: vi.fn(),
+}))
 
 vi.mock('@/api/link', () => ({
   listIssueLinks: vi.fn(),
@@ -210,5 +229,32 @@ describe('shared api hooks', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+  })
+
+  it('invalidates project-derived caches after deleting a project', async () => {
+    vi.mocked(deleteProject).mockResolvedValue(undefined)
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useDeleteProject(), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync('TT')
+    })
+
+    expect(vi.mocked(deleteProject).mock.calls[0]?.[0]).toBe('TT')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sprints', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project-members', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['labels', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['custom-fields', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['trash', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+    expect(navigate).toHaveBeenCalledWith('/projects')
   })
 })
