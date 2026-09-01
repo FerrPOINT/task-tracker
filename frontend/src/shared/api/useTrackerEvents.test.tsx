@@ -99,4 +99,26 @@ describe('useTrackerEvents', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-custom-fields', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['attachments', 'issue-1'] })
   })
+
+  it('invalidates sprint-backed project caches when a sprint SSE event arrives', () => {
+    vi.stubGlobal('EventSource', FakeEventSource)
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+
+    render(
+      <QueryClientProvider client={client}>
+        <Subscriber />
+      </QueryClientProvider>,
+    )
+
+    act(() => {
+      FakeEventSource.latest?.emit('sprint_changed', { project_key: 'TT' })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sprints'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+  })
 })

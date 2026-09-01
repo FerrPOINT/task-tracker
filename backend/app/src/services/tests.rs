@@ -20,7 +20,7 @@ use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateSprintCommand,
     CreateWorklogCommand, LoginCommand, MoveIssueToSprintCommand, RegisterCommand,
     UpdateCommentCommand, UpdateIssueCommand, UpdateNotificationSettingsCommand,
-    UpdateWorklogCommand,
+    UpdateSprintCommand, UpdateWorklogCommand,
 };
 use crate::context::{AppContext, AttachmentService, NotificationService};
 use crate::services::{AttachmentServiceImpl, NotificationServiceImpl};
@@ -4747,6 +4747,94 @@ async fn sprint_move_issue_publishes_issue_updated_event() {
             issue_id: ref actual_issue_id,
             project_key: ref actual_project_key,
         } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+}
+
+#[tokio::test]
+async fn sprint_lifecycle_publishes_sprint_changed_events() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let mut receiver = ctx.events.subscribe();
+
+    let sprint = ctx
+        .services
+        .sprint
+        .create(
+            CreateSprintCommand {
+                project_id: project.id,
+                name: "Sprint events".to_string(),
+                goal: None,
+                start_date: None,
+                end_date: None,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let created_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        created_event,
+        shared::TrackerEvent::SprintChanged {
+            project_key: ref actual_project_key,
+        } if actual_project_key == "TT"
+    ));
+
+    let sprint_id: SprintId = sprint.id.parse().unwrap();
+    ctx.services
+        .sprint
+        .update(
+            sprint_id,
+            UpdateSprintCommand {
+                name: Some("Sprint events updated".to_string()),
+                ..Default::default()
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let updated_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        updated_event,
+        shared::TrackerEvent::SprintChanged {
+            project_key: ref actual_project_key,
+        } if actual_project_key == "TT"
+    ));
+
+    ctx.services.sprint.start(sprint_id, user.id).await.unwrap();
+    let started_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        started_event,
+        shared::TrackerEvent::SprintChanged {
+            project_key: ref actual_project_key,
+        } if actual_project_key == "TT"
+    ));
+
+    ctx.services.sprint.close(sprint_id, user.id).await.unwrap();
+    let closed_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        closed_event,
+        shared::TrackerEvent::SprintChanged {
+            project_key: ref actual_project_key,
+        } if actual_project_key == "TT"
     ));
 }
 
