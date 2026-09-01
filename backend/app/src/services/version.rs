@@ -99,9 +99,10 @@ impl crate::context::VersionService for VersionServiceImpl {
         if version.project_id != project.id {
             return Err(AppError::not_found("version", id));
         }
-        if !name.trim().is_empty() {
-            version.name = name.trim().to_string().into();
+        if name.trim().is_empty() {
+            return Err(AppError::invalid_input("version name must not be empty"));
         }
+        version.name = name.trim().to_string().into();
         version.description = description.map(|d| d.to_string().into());
         version.released = released;
         if let Some(rd) = release_date {

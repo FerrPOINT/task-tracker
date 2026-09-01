@@ -3766,6 +3766,36 @@ async fn component_create_empty_name_returns_400() {
 }
 
 #[tokio::test]
+async fn component_update_empty_name_returns_400() {
+    let (url, client) = spawn_server_with_memory_repos().await;
+    let token = login_token(&url, &client).await;
+
+    let create = client
+        .post(format!("{url}/api/v1/projects/TT/components"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "Backend", "description": null}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201);
+    let component_id = create.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = client
+        .put(format!(
+            "{url}/api/v1/projects/TT/components/{component_id}"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "  ", "description": "ignored"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
 async fn component_create_unknown_project_returns_404() {
     let (url, client) = spawn_server_with_memory_repos().await;
     let token = login_token(&url, &client).await;
@@ -3926,6 +3956,34 @@ async fn version_create_empty_name_returns_400() {
 
     let res = client
         .post(format!("{url}/api/v1/projects/TT/versions"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "", "description": null, "released": false}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn version_update_empty_name_returns_400() {
+    let (url, client) = spawn_server_with_memory_repos().await;
+    let token = login_token(&url, &client).await;
+
+    let create = client
+        .post(format!("{url}/api/v1/projects/TT/versions"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "v1", "description": null, "released": false}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(create.status(), 201);
+    let version_id = create.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = client
+        .put(format!("{url}/api/v1/projects/TT/versions/{version_id}"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"name": "", "description": null, "released": false}))
         .send()
