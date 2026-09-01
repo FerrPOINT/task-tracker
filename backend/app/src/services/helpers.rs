@@ -1,7 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use domain::{BoardColumn, Issue, LabelRepository, ProjectRepository, StatusCategory};
-use shared::{AppError, ProjectId, StatusId};
+use shared::{AppError, ProjectId, StatusId, UserId};
 
 pub async fn resolve_names(
     users: Arc<dyn domain::UserRepository>,
@@ -42,6 +45,119 @@ pub async fn project_name(
         .get_by_id(project_id)
         .await
         .map(|p| p.name.as_ref().to_string())
+}
+
+pub async fn issue_notification_recipients(
+    watchers: &Arc<dyn domain::WatcherRepository>,
+    issue: &Issue,
+) -> Vec<UserId> {
+    let mut recipients = vec![issue.reporter_id];
+    if let Some(assignee_id) = issue.assignee_id {
+        recipients.push(assignee_id);
+    }
+    if let Ok(watchers) = watchers.list_by_issue(issue.id).await {
+        recipients.extend(watchers.into_iter().map(|watcher| watcher.user_id));
+    }
+    recipients
+}
+
+async fn create_notification_if_allowed(
+    notifications: &Arc<dyn domain::NotificationRepository>,
+    notification_settings: &Arc<dyn domain::UserNotificationSettingsRepository>,
+    events: &crate::context::EventBus,
+    notification: domain::Notification,
+) {
+    let recipient_id = notification.recipient_id;
+    let event_type = notification.event_type.as_ref();
+    let actor_is_recipient = notification.actor_id == Some(recipient_id);
+    let allowed = match notification_settings.get_settings(recipient_id).await {
+        Ok(settings) => {
+            (settings.notify_own_changes || !actor_is_recipient)
+                && !settings
+                    .disabled_event_types
+                    .iter()
+                    .any(|value| value.as_ref() == event_type)
+        }
+        // Missing settings preserve the existing default delivery behavior.
+        Err(AppError::NotFound(_)) => !actor_is_recipient,
+        Err(_) => return,
+    };
+    if allowed && notifications.save(&notification).await.is_ok() {
+        events.publish(shared::TrackerEvent::NotificationCreated {
+            recipient_id: recipient_id.to_string(),
+        });
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn notify_recipients(
+    notifications: &Arc<dyn domain::NotificationRepository>,
+    notification_settings: &Arc<dyn domain::UserNotificationSettingsRepository>,
+    events: &crate::context::EventBus,
+    recipients: Vec<UserId>,
+    issue: &Issue,
+    actor_id: UserId,
+    event_type: &str,
+    title: String,
+    body: Option<String>,
+    metadata: serde_json::Value,
+) {
+    let mut seen = HashSet::new();
+    let action_url = format!("/issues/{}", issue.id);
+    for recipient_id in recipients {
+        if !seen.insert(recipient_id) {
+            continue;
+        }
+        create_notification_if_allowed(
+            notifications,
+            notification_settings,
+            events,
+            domain::Notification {
+                id: shared::NotificationId::new(),
+                recipient_id,
+                event_type: event_type.into(),
+                entity_type: "issue".into(),
+                entity_id: Some(issue.id.as_uuid()),
+                actor_id: Some(actor_id),
+                title: title.clone().into(),
+                body: body.clone().map(Into::into),
+                is_read: false,
+                read_at: None,
+                action_url: Some(action_url.clone().into()),
+                metadata: metadata.clone(),
+                created_at: shared::now(),
+            },
+        )
+        .await;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn notify_issue_recipients(
+    watchers: &Arc<dyn domain::WatcherRepository>,
+    notifications: &Arc<dyn domain::NotificationRepository>,
+    notification_settings: &Arc<dyn domain::UserNotificationSettingsRepository>,
+    events: &crate::context::EventBus,
+    issue: &Issue,
+    actor_id: UserId,
+    event_type: &str,
+    title: String,
+    body: Option<String>,
+    metadata: serde_json::Value,
+) {
+    notify_recipients(
+        notifications,
+        notification_settings,
+        events,
+        issue_notification_recipients(watchers, issue).await,
+        issue,
+        actor_id,
+        event_type,
+        title,
+        body,
+        metadata,
+    )
+    .await;
 }
 
 pub fn build_issue_dto_from_lookups(

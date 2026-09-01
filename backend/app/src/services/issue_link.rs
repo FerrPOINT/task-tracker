@@ -2,27 +2,38 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::authz::Authz;
+use crate::services::helpers;
 use domain::IssueRepository;
 use shared::{AppError, IssueId, IssueKey, UserId};
 
 pub struct IssueLinkServiceImpl {
     links: Arc<dyn domain::IssueLinkRepository>,
     issues: Arc<dyn IssueRepository>,
+    watchers: Arc<dyn domain::WatcherRepository>,
     events: crate::context::EventBus,
+    notifications: Arc<dyn domain::NotificationRepository>,
+    notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
     authz: Authz,
 }
 
 impl IssueLinkServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         links: Arc<dyn domain::IssueLinkRepository>,
         issues: Arc<dyn IssueRepository>,
+        watchers: Arc<dyn domain::WatcherRepository>,
         events: crate::context::EventBus,
+        notifications: Arc<dyn domain::NotificationRepository>,
+        notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
         authz: Authz,
     ) -> Self {
         Self {
             links,
             issues,
+            watchers,
             events,
+            notifications,
+            notification_settings,
             authz,
         }
     }
@@ -32,6 +43,64 @@ impl IssueLinkServiceImpl {
             issue_id: issue.id.to_string(),
             project_key: issue.key.project_key.to_string(),
         });
+    }
+
+    async fn link_notification_recipients(
+        &self,
+        issue: &domain::Issue,
+        linked_issue: &domain::Issue,
+    ) -> Vec<UserId> {
+        let recipients = helpers::issue_notification_recipients(&self.watchers, issue).await;
+        let mut allowed = Vec::with_capacity(recipients.len());
+        for recipient_id in recipients {
+            match self
+                .can_read_link_endpoint(issue, linked_issue, recipient_id)
+                .await
+            {
+                Ok(true) => allowed.push(recipient_id),
+                Ok(false) => {}
+                Err(err) => {
+                    tracing::warn!(
+                        recipient_id = %recipient_id,
+                        issue_id = %issue.id,
+                        linked_issue_id = %linked_issue.id,
+                        error = %err,
+                        "failed to check issue link notification visibility"
+                    );
+                }
+            }
+        }
+        allowed
+    }
+
+    async fn notify_link_changed(
+        &self,
+        issue: &domain::Issue,
+        linked_issue: &domain::Issue,
+        link: &domain::IssueLink,
+        requester: UserId,
+        event_type: &str,
+        title: String,
+    ) {
+        let recipients = self.link_notification_recipients(issue, linked_issue).await;
+        helpers::notify_recipients(
+            &self.notifications,
+            &self.notification_settings,
+            &self.events,
+            recipients,
+            issue,
+            requester,
+            event_type,
+            title,
+            Some(linked_issue.summary.as_ref().to_string()),
+            serde_json::json!({
+                "issue_key": issue.key.to_string(),
+                "linked_issue_key": linked_issue.key.to_string(),
+                "link_id": link.id.to_string(),
+                "link_type": link.link_type.as_str(),
+            }),
+        )
+        .await;
     }
 }
 
@@ -78,6 +147,24 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         self.links.save(&link).await?;
         self.publish_issue_updated(&source);
         self.publish_issue_updated(&target);
+        self.notify_link_changed(
+            &source,
+            &target,
+            &link,
+            requester,
+            "issue_link_created",
+            format!("{} linked to {}", source.key, target.key),
+        )
+        .await;
+        self.notify_link_changed(
+            &target,
+            &source,
+            &link,
+            requester,
+            "issue_link_created",
+            format!("{} linked to {}", target.key, source.key),
+        )
+        .await;
         Ok(crate::context::IssueLinkDto {
             id: link.id.to_string(),
             source_id: source.id.to_string(),
@@ -152,6 +239,24 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         self.publish_issue_updated(&source);
         if let Some(target) = target {
             self.publish_issue_updated(&target);
+            self.notify_link_changed(
+                &source,
+                &target,
+                &link,
+                requester,
+                "issue_link_deleted",
+                format!("{} unlinked from {}", source.key, target.key),
+            )
+            .await;
+            self.notify_link_changed(
+                &target,
+                &source,
+                &link,
+                requester,
+                "issue_link_deleted",
+                format!("{} unlinked from {}", target.key, source.key),
+            )
+            .await;
         }
         Ok(())
     }
