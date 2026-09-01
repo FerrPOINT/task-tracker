@@ -2248,6 +2248,52 @@ async fn notification_service_lists_newest_ten_and_counts_all_unread() {
 }
 
 #[tokio::test]
+async fn notification_service_can_page_all_notifications_without_losing_unread_count() {
+    let user_id = UserId::new();
+    let repo = Arc::new(MemoryNotificationRepository::default());
+    let service = NotificationServiceImpl::new(repo.clone(), repo.clone());
+    let now = shared::now();
+
+    let mut old_unread = notification(user_id, now);
+    old_unread.title = "Old unread".into();
+    repo.save(&old_unread).await.unwrap();
+
+    let mut read = notification(user_id, now + chrono::Duration::seconds(1));
+    read.title = "Already read".into();
+    read.is_read = true;
+    read.read_at = Some(now + chrono::Duration::seconds(1));
+    repo.save(&read).await.unwrap();
+
+    let mut new_unread = notification(user_id, now + chrono::Duration::seconds(2));
+    new_unread.title = "New unread".into();
+    repo.save(&new_unread).await.unwrap();
+
+    let first_page = service.list(user_id, true, 2, 0).await.unwrap();
+    assert_eq!(first_page.unread_count, 2);
+    assert_eq!(first_page.notifications.len(), 2);
+    assert_eq!(first_page.notifications[0].title, "New unread");
+    assert_eq!(first_page.notifications[1].title, "Already read");
+
+    let second_page = service.list(user_id, true, 2, 2).await.unwrap();
+    assert_eq!(second_page.unread_count, 2);
+    assert_eq!(second_page.notifications.len(), 1);
+    assert_eq!(second_page.notifications[0].title, "Old unread");
+
+    let unread_only = service.list(user_id, false, 10, 0).await.unwrap();
+    assert_eq!(unread_only.unread_count, 2);
+    assert_eq!(unread_only.notifications.len(), 2);
+    assert!(
+        unread_only
+            .notifications
+            .iter()
+            .all(|notification| !notification.is_read)
+    );
+
+    assert!(service.list(user_id, true, 0, 0).await.is_err());
+    assert!(service.list(user_id, true, 51, 0).await.is_err());
+}
+
+#[tokio::test]
 async fn notification_service_marks_only_recipients_unread_notification_read() {
     let user_id = UserId::new();
     let other_user_id = UserId::new();

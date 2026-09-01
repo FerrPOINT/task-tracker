@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
 };
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,13 @@ pub struct NotificationListResponse {
     pub unread_count: usize,
 }
 
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct NotificationListQuery {
+    pub include_read: Option<bool>,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct NotificationSettingsResponse {
     pub email_frequency: String,
@@ -48,15 +55,30 @@ pub struct UpdateNotificationSettingsRequest {
 #[utoipa::path(
     get,
     path = "/api/v1/notifications",
+    params(
+        ("include_read" = Option<bool>, Query, description = "Include read notifications in the returned page (default false)"),
+        ("limit" = Option<u64>, Query, description = "Maximum notifications to return (default 10, max 50)", minimum = 1, maximum = 50),
+        ("offset" = Option<u64>, Query, description = "Pagination offset (default 0)")
+    ),
     responses((status = 200, body = NotificationListResponse)),
     security(("bearer" = []))
 )]
 pub async fn list_notifications(
     State(ctx): State<Arc<app::AppContext>>,
+    Query(query): Query<NotificationListQuery>,
     claims: axum::Extension<app::auth::UserClaims>,
 ) -> Result<Json<NotificationListResponse>, AppError> {
     let user_id = parse_user(&claims)?;
-    let result = ctx.services.notification.list_unread(user_id).await?;
+    let result = ctx
+        .services
+        .notification
+        .list(
+            user_id,
+            query.include_read.unwrap_or(false),
+            query.limit.unwrap_or(10),
+            query.offset.unwrap_or(0),
+        )
+        .await?;
     Ok(Json(NotificationListResponse {
         notifications: result
             .notifications

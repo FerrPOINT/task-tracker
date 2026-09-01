@@ -875,6 +875,25 @@ pub trait NotificationRepository: Send + Sync {
     /// Mark exactly these notifications read (idempotent, ignores others).
     async fn mark_read_batch(&self, ids: &[shared::NotificationId]) -> Result<(), AppError>;
     async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError>;
+    async fn list_for_recipient(
+        &self,
+        recipient_id: UserId,
+        include_read: bool,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Notification>, AppError> {
+        let _ = include_read;
+        let mut notifications = self.list_unread(recipient_id).await?;
+        notifications.sort_by_key(|notification| std::cmp::Reverse(notification.created_at));
+        Ok(notifications
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
+    async fn count_unread(&self, recipient_id: UserId) -> Result<u64, AppError> {
+        Ok(self.list_unread(recipient_id).await?.len() as u64)
+    }
     async fn list_unread(&self, recipient_id: UserId) -> Result<Vec<Notification>, AppError>;
     async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError>;
     async fn mark_read(

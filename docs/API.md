@@ -1105,7 +1105,14 @@ All notification endpoints require authentication.
 
 ### GET /notifications
 
-Returns up to 10 unread notifications for the current user, newest first.
+By default returns up to 10 unread notifications for the current user, newest first.
+
+Query:
+- `include_read` — when `true`, the returned page includes read and unread notifications; default `false`.
+- `limit` — page size, `1..50`, default `10`.
+- `offset` — page offset, default `0`.
+
+`unread_count` is always the total number of unread notifications for the current user, not the length of the returned page.
 
 **Response:** `{ "notifications": [...], "unread_count": 2 }`
 

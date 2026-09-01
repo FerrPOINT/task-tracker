@@ -111,11 +111,17 @@ describe('AdminPage', () => {
     renderPage()
 
     await user.click(screen.getByRole('button', { name: /создать пользователя|create user/i }))
-    await user.type(screen.getByLabelText(/email/i), 'new@example.test')
-    await user.type(screen.getByLabelText(/имя пользователя|username/i), 'new-user')
-    await user.type(screen.getByLabelText(/отображаемое имя|display name/i), 'New User')
-    await user.type(screen.getByLabelText(/пароль|password/i), 'safe-password')
-    await user.click(screen.getByLabelText(/системный администратор|system administrator/i))
+    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'new@example.test' } })
+    fireEvent.change(screen.getByLabelText(/имя пользователя|username/i), {
+      target: { value: 'new-user' },
+    })
+    fireEvent.change(screen.getByLabelText(/отображаемое имя|display name/i), {
+      target: { value: 'New User' },
+    })
+    fireEvent.change(screen.getByLabelText(/пароль|password/i), {
+      target: { value: 'safe-password' },
+    })
+    fireEvent.click(screen.getByLabelText(/системный администратор|system administrator/i))
     await user.click(screen.getByRole('button', { name: /создать пользователя|create user/i }))
 
     expect(mutate).toHaveBeenCalledWith(

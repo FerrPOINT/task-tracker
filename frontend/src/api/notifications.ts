@@ -2,14 +2,27 @@ import type { components } from './generated'
 import { api } from './client'
 
 export type NotificationItem = components['schemas']['NotificationResponse']
+export type NotificationList = components['schemas']['NotificationListResponse']
 export type NotificationSettings = components['schemas']['NotificationSettingsResponse']
 export type UpdateNotificationSettingsInput =
   components['schemas']['UpdateNotificationSettingsRequest']
 
-export async function listNotifications(): Promise<NotificationItem[]> {
-  const { data, error } = await api.GET('/api/v1/notifications')
+export type NotificationListOptions = {
+  includeRead?: boolean
+  limit?: number
+  offset?: number
+}
+
+export async function listNotifications(
+  options: NotificationListOptions = {},
+): Promise<NotificationList> {
+  const query: { include_read?: boolean; limit?: number; offset?: number } = {}
+  if (options.includeRead !== undefined) query.include_read = options.includeRead
+  if (options.limit !== undefined) query.limit = options.limit
+  if (options.offset !== undefined) query.offset = options.offset
+  const { data, error } = await api.GET('/api/v1/notifications', { params: { query } })
   if (!data) throw new Error(error ? JSON.stringify(error) : 'Failed to list notifications')
-  return data.notifications
+  return data
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
