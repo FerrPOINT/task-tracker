@@ -174,6 +174,9 @@ impl crate::context::CommentService for CommentServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
+        if cmd.author_id != requester || cmd.actor_id != requester {
+            return Err(AppError::Forbidden);
+        }
         if cmd.body.trim().is_empty() || cmd.body.chars().count() > 100_000 {
             return Err(AppError::invalid_input(
                 "comment body must be between 1 and 100000 characters",
@@ -182,13 +185,13 @@ impl crate::context::CommentService for CommentServiceImpl {
         let comment = domain::Comment {
             id: shared::CommentId::new(),
             issue_id: cmd.issue_id,
-            author_id: cmd.author_id,
+            author_id: requester,
             body: domain::value_objects::RichText::new(cmd.body),
             created_at: shared::now(),
             updated_at: shared::now(),
         };
         self.comments.save(&comment).await?;
-        let user = self.users.get_by_id(cmd.author_id).await.ok();
+        let user = self.users.get_by_id(requester).await.ok();
         if let Ok(issue) = self.issues.get_by_id(cmd.issue_id).await {
             if let Ok(project) = self.projects.get_by_id(issue.project_id).await {
                 self.events.publish(shared::TrackerEvent::IssueCommented {
@@ -200,7 +203,7 @@ impl crate::context::CommentService for CommentServiceImpl {
                     self.issue_recipients(&issue).await,
                     &issue,
                     &project,
-                    cmd.actor_id,
+                    requester,
                     "issue_commented",
                     format!("New comment on {}", key),
                     None,
