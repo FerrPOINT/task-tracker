@@ -2808,11 +2808,14 @@ async fn reports_control_chart_returns_data() {
     );
     let todo =
         StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let in_progress =
+        StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap());
     let done =
         StatusId::from_uuid(uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap());
 
-    let created = shared::now() - chrono::Duration::days(5);
-    let done_time = shared::now() - chrono::Duration::days(1);
+    let created = chrono::DateTime::parse_from_rfc3339("2026-02-01T00:00:00+00:00").unwrap();
+    let started = chrono::DateTime::parse_from_rfc3339("2026-02-04T00:00:00+00:00").unwrap();
+    let done_time = chrono::DateTime::parse_from_rfc3339("2026-02-06T00:00:00+00:00").unwrap();
     let issue = make_test_issue(
         "dddd0000-0000-0000-0000-000000000001",
         project_id,
@@ -2839,6 +2842,17 @@ async fn reports_control_chart_returns_data() {
             id: shared::IssueStatusHistoryId::new(),
             issue_id: issue.id,
             from_status_id: Some(todo),
+            to_status_id: in_progress,
+            changed_by_id: test_user().id,
+            changed_at: started,
+        },
+        project_id,
+    );
+    history.save_with_project(
+        &domain::IssueStatusHistory {
+            id: shared::IssueStatusHistoryId::new(),
+            issue_id: issue.id,
+            from_status_id: Some(in_progress),
             to_status_id: done,
             changed_by_id: test_user().id,
             changed_at: done_time,
@@ -2860,7 +2874,7 @@ async fn reports_control_chart_returns_data() {
     assert_eq!(points.len(), 1);
     assert!(points[0]["issue_key"].as_str().unwrap().starts_with("TT-"));
     let cycle = points[0]["cycle_time_days"].as_f64().unwrap();
-    assert!((cycle - 4.0).abs() < 0.2);
+    assert!((cycle - 2.0).abs() < 0.2);
 }
 
 #[tokio::test]
