@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 type TestStorage = domain::InMemoryStorage;
 use domain::{
-    Board, BoardColumn, BoardRepository, CommentRepository, FileStorage, Issue, IssueQuery,
-    IssueRepository, Label, LabelRepository, MemoryAttachmentRepository, MemoryBoardRepository,
-    MemoryCommentRepository, MemoryIssueLinkRepository, MemoryIssueRepository,
-    MemoryLabelRepository, MemoryNotificationRepository, MemoryProjectRepository,
-    MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository, Notification,
-    NotificationRepository, Project, ProjectMemberRepository, ProjectQuery, ProjectRepository,
-    Sprint, SprintRepository, Status, StatusCategory, StatusRepository, User,
+    AttachmentRepository, Board, BoardColumn, BoardRepository, CommentRepository, FileStorage,
+    Issue, IssueQuery, IssueRepository, Label, LabelRepository, MemoryAttachmentRepository,
+    MemoryBoardRepository, MemoryCommentRepository, MemoryIssueLinkRepository,
+    MemoryIssueRepository, MemoryLabelRepository, MemoryNotificationRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository,
+    Notification, NotificationRepository, Project, ProjectMemberRepository, ProjectQuery,
+    ProjectRepository, Sprint, SprintRepository, Status, StatusCategory, StatusRepository, User,
     UserNotificationSettingsRepository, UserRepository, WorklogRepository,
 };
 use shared::{
@@ -3495,6 +3495,43 @@ async fn attachment_delete_keeps_blob_when_metadata_delete_fails() {
     assert!(matches!(err, AppError::Internal(_)));
     assert_eq!(storage.file_count(), 1);
     assert_eq!(storage.delete_count(), 0);
+}
+
+#[tokio::test]
+async fn attachment_delete_allows_project_member_who_is_not_author() {
+    let (base_ctx, owner, member, _project_id) = ctx_with_real_members().await;
+    let storage = Arc::new(RecordingStorage::default());
+    let attachments = Arc::new(MemoryAttachmentRepository::default());
+    let repos = Arc::new(domain::Repositories {
+        attachments: attachments.clone(),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, storage.clone());
+    let issue_id = create_demo_issue(&ctx, &owner, "Attachment member delete").await;
+    let attachment = ctx
+        .services
+        .attachment
+        .upload(
+            issue_id,
+            owner.id,
+            "member-delete.txt",
+            "text/plain",
+            b"payload".to_vec(),
+        )
+        .await
+        .unwrap();
+    let attachment_id = attachment.id.parse().unwrap();
+    assert_eq!(storage.file_count(), 1);
+
+    ctx.services
+        .attachment
+        .delete(attachment_id, member.id)
+        .await
+        .unwrap();
+
+    assert!(attachments.get_by_id(attachment_id).await.is_err());
+    assert_eq!(storage.file_count(), 0);
+    assert_eq!(storage.delete_count(), 1);
 }
 
 #[tokio::test]

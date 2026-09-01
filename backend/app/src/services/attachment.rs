@@ -188,9 +188,6 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
-        if a.author_id != requester {
-            return Err(AppError::Forbidden);
-        }
         self.attachments.delete(attachment_id).await?;
         if let Err(err) = self
             .storage
