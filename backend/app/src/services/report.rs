@@ -278,12 +278,17 @@ impl crate::context::ReportService for ReportServiceImpl {
         let mut result = Vec::new();
         for issue in &issues {
             let issue_history: Vec<_> = history.iter().filter(|h| h.issue_id == issue.id).collect();
-            let Some(started_at) = issue_history
+            let explicit_started_at = issue_history
                 .iter()
                 .filter(|h| in_progress_status_ids.contains(&h.to_status_id))
                 .min_by_key(|h| h.changed_at)
-                .map(|h| h.changed_at)
-            else {
+                .map(|h| h.changed_at);
+            let legacy_started_at = explicit_started_at.or_else(|| {
+                status_at(issue, &history, issue.created_at)
+                    .filter(|status_id| in_progress_status_ids.contains(status_id))
+                    .map(|_| issue.created_at)
+            });
+            let Some(started_at) = legacy_started_at else {
                 continue;
             };
             let done_transition = issue_history

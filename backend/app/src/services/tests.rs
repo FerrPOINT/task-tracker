@@ -6161,6 +6161,50 @@ async fn report_control_chart_computes_cycle_time() {
 }
 
 #[tokio::test]
+async fn report_control_chart_uses_first_transition_from_status_for_legacy_started_issues() {
+    let (issues, _sprints, statuses, history, project_id, _todo, in_progress, done, owner) =
+        report_test_setup();
+
+    let created = chrono::DateTime::parse_from_rfc3339("2026-02-01T00:00:00+00:00").unwrap();
+    let done_time = chrono::DateTime::parse_from_rfc3339("2026-02-06T00:00:00+00:00").unwrap();
+
+    let issue = make_issue(
+        "44444444-0000-0000-0000-000000000001",
+        project_id,
+        1,
+        done,
+        None,
+        created,
+    );
+    issues.save(&issue).await.unwrap();
+
+    history.save_with_project(
+        &make_transition_history(
+            "44444444-0000-0000-0000-000000000002",
+            issue.id,
+            Some(in_progress),
+            done,
+            done_time,
+        ),
+        project_id,
+    );
+
+    let service = report_service(
+        issues.clone(),
+        Arc::new(domain::StubSprintRepository),
+        statuses.clone(),
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+    let result = service.get_control_chart(project_id, owner).await.unwrap();
+    assert_eq!(result.len(), 1);
+    assert_eq!(result[0].issue_key, issue.key.to_string());
+    assert!((result[0].cycle_time_days - 5.0).abs() < 0.1);
+}
+
+#[tokio::test]
 async fn report_control_chart_skips_issues_without_done_transition() {
     let (issues, _sprints, statuses, history, project_id, todo, _ip, _done, owner) =
         report_test_setup();
