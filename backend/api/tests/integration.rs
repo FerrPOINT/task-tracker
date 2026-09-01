@@ -2358,6 +2358,77 @@ async fn sse_stream_receives_issue_events() {
 }
 
 #[tokio::test]
+async fn sse_stream_hides_project_events_from_non_members() {
+    let (url, client) = spawn_server().await;
+    let owner_token = login_token(&url, &client).await;
+    let (_outsider_id, outsider_token) = register_user(
+        &url,
+        &client,
+        "sse-outsider@example.com",
+        "sseoutsider",
+        "SSE Outsider",
+    )
+    .await;
+
+    let stream = client
+        .get(format!("{url}/api/v1/events"))
+        .bearer_auth(&outsider_token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(stream.status(), 200);
+
+    use futures_util::StreamExt;
+    let mut byte_stream = stream.bytes_stream();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(8);
+    tokio::spawn(async move {
+        let mut buf = String::new();
+        while let Some(chunk) = byte_stream.next().await {
+            match chunk {
+                Ok(bytes) => {
+                    buf.push_str(&String::from_utf8_lossy(&bytes));
+                    while let Some(pos) = buf.find("\n\n") {
+                        let frame: String = buf.drain(..pos + 2).collect();
+                        let _ = tx.send(frame).await;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let created = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&owner_token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "issue_type": "task",
+            "priority": "medium",
+            "status_id": "00000000-0000-0000-0000-000000000001",
+            "summary": "hidden sse issue",
+            "reporter_id": test_user().id.to_string()
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(created.status(), 201);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    let mut seen = String::new();
+    while std::time::Instant::now() < deadline {
+        if let Ok(Some(frame)) =
+            tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await
+        {
+            seen.push_str(&frame);
+        }
+    }
+    assert!(
+        !seen.contains("issue_created"),
+        "outsider SSE stream leaked project event: {seen}"
+    );
+}
+
+#[tokio::test]
 async fn sse_requires_auth() {
     let (url, client) = spawn_server().await;
     let res = client
