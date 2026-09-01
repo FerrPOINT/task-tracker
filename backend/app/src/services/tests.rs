@@ -1033,6 +1033,103 @@ async fn project_service_list_and_get_by_key() {
     assert_eq!(by_key.key, "TT");
 }
 
+struct ListOnlyProjectRepository {
+    project: Project,
+    get_by_id_error: AppError,
+}
+
+#[async_trait::async_trait]
+impl ProjectRepository for ListOnlyProjectRepository {
+    async fn get_by_id(&self, _id: ProjectId) -> Result<Project, AppError> {
+        match &self.get_by_id_error {
+            AppError::NotFound(message) => Err(AppError::NotFound(message.clone())),
+            AppError::InvalidInput(message) => Err(AppError::InvalidInput(message.clone())),
+            AppError::Validation(message) => Err(AppError::Validation(message.clone())),
+            AppError::Unauthorized => Err(AppError::Unauthorized),
+            AppError::Forbidden => Err(AppError::Forbidden),
+            AppError::Conflict(message) => Err(AppError::Conflict(message.clone())),
+            AppError::Database(message) => Err(AppError::Database(message.clone())),
+            AppError::Internal(message) => Err(AppError::Internal(message.clone())),
+        }
+    }
+
+    async fn get_by_key(&self, _key: &ProjectKey) -> Result<Project, AppError> {
+        Ok(self.project.clone())
+    }
+
+    async fn list(&self, _query: ProjectQuery) -> Result<Vec<Project>, AppError> {
+        Ok(vec![self.project.clone()])
+    }
+
+    async fn save(&self, _project: &Project) -> Result<ProjectId, AppError> {
+        Ok(self.project.id)
+    }
+
+    async fn save_with_board(
+        &self,
+        _project: &Project,
+        _board: &Board,
+    ) -> Result<ProjectId, AppError> {
+        Ok(self.project.id)
+    }
+
+    async fn delete(&self, _id: ProjectId) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    async fn next_issue_number(&self, _project_id: ProjectId) -> Result<u32, AppError> {
+        Ok(1)
+    }
+}
+
+async fn ctx_with_list_only_project_repo(get_by_id_error: AppError) -> (AppContext, UserId) {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let project = base_ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let repos = Arc::new(domain::Repositories {
+        projects: Arc::new(ListOnlyProjectRepository {
+            project,
+            get_by_id_error,
+        }),
+        ..(*base_ctx.repos).clone()
+    });
+    (
+        AppContext::new(test_config(), repos, Arc::new(TestStorage::default())),
+        user.id,
+    )
+}
+
+#[tokio::test]
+async fn project_list_propagates_project_get_error() {
+    let (ctx, user_id) = ctx_with_list_only_project_repo(AppError::Internal("x".into())).await;
+
+    assert_internal(
+        ctx.services
+            .project
+            .list(crate::commands::ProjectQueryDto::default(), user_id)
+            .await,
+    );
+}
+
+#[tokio::test]
+async fn project_list_skips_stale_accessible_project_id() {
+    let (ctx, user_id) =
+        ctx_with_list_only_project_repo(AppError::not_found("project", "stale")).await;
+
+    let list = ctx
+        .services
+        .project
+        .list(crate::commands::ProjectQueryDto::default(), user_id)
+        .await
+        .unwrap();
+
+    assert!(list.is_empty());
+}
+
 #[tokio::test]
 async fn board_service_backlog() {
     let (ctx, user) = ctx_with_demo_data().await;
