@@ -1761,6 +1761,9 @@
           },
           "404": {
             "description": "Source or target issue not found"
+          },
+          "409": {
+            "description": "Link already exists"
           }
         },
         "security": [

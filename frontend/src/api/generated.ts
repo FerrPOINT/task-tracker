@@ -3127,6 +3127,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Link already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     vote_issue: {
