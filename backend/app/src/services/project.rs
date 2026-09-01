@@ -106,8 +106,10 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         let accessible = self.authz.accessible_project_ids(requester).await?;
         let mut projects = Vec::with_capacity(accessible.len());
         for pid in accessible {
-            if let Ok(p) = self.projects.get_by_id(pid).await {
-                projects.push(p);
+            match self.projects.get_by_id(pid).await {
+                Ok(p) => projects.push(p),
+                Err(AppError::NotFound(_)) => {}
+                Err(e) => return Err(e),
             }
         }
         let statuses = self.statuses.list_all().await?;
