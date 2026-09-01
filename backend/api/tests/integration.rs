@@ -4034,6 +4034,31 @@ async fn issue_create_missing_required_custom_field_returns_422() {
         .unwrap();
     assert_eq!(missing.status(), 422);
 
+    for empty_value in [
+        serde_json::Value::Null,
+        serde_json::json!("   "),
+        serde_json::json!([]),
+    ] {
+        let mut custom_fields = serde_json::Map::new();
+        custom_fields.insert(field_id.clone(), empty_value);
+        let mut invalid_body = serde_json::json!({
+            "project_key": "TT",
+            "summary": "Empty required custom field",
+            "issue_type": "task",
+            "priority": "medium"
+        });
+        invalid_body["custom_fields"] = serde_json::Value::Object(custom_fields);
+
+        let invalid = client
+            .post(format!("{url}/api/v1/issues"))
+            .bearer_auth(&token)
+            .json(&invalid_body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), 422);
+    }
+
     let mut custom_fields = serde_json::Map::new();
     custom_fields.insert(field_id, serde_json::json!("filled"));
     let mut valid_body = serde_json::json!({
@@ -4097,6 +4122,27 @@ async fn custom_field_set_and_list_issue_values() {
     assert_eq!(values.len(), 1);
     assert_eq!(values[0]["field_id"], field_id);
     assert_eq!(values[0]["value"], 8);
+
+    let clear = client
+        .put(format!(
+            "{url}/api/v1/issues/{issue_id}/custom-fields/{field_id}/value"
+        ))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"value": null}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(clear.status(), 204);
+
+    let list = client
+        .get(format!("{url}/api/v1/issues/{issue_id}/custom-fields"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(list.status(), 200);
+    let body: serde_json::Value = list.json().await.unwrap();
+    assert!(body["values"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
