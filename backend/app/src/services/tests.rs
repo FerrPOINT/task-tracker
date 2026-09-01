@@ -1032,6 +1032,71 @@ async fn search_finds_issue() {
 }
 
 #[tokio::test]
+async fn issue_service_search_defaults_to_newest_first() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let status_id = board.columns[0].id.parse().unwrap();
+    let now = shared::now();
+    let mut older = Issue::create(
+        &project,
+        700,
+        IssueType::Task,
+        status_id,
+        "issue search sort probe older",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    older.created_at = now - chrono::Duration::minutes(10);
+    older.updated_at = older.created_at;
+    older.position = 0.0;
+    ctx.repos.issues.save(&older).await.unwrap();
+    let mut newer = Issue::create(
+        &project,
+        701,
+        IssueType::Task,
+        status_id,
+        "issue search sort probe newer",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    newer.created_at = now;
+    newer.updated_at = now;
+    newer.position = 100.0;
+    ctx.repos.issues.save(&newer).await.unwrap();
+
+    let results = ctx
+        .services
+        .issue
+        .search(
+            crate::context::SearchFilters {
+                q: Some("issue search sort probe".to_string()),
+                project_key: Some("TT".to_string()),
+                limit: Some(1),
+                ..Default::default()
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, newer.id.to_string());
+}
+
+#[tokio::test]
 async fn project_service_create_list_and_get_by_key() {
     let (ctx, user) = ctx_with_demo_data().await;
     let created = ctx

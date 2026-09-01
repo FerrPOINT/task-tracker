@@ -85,25 +85,29 @@ impl Compiler {
             Field::Labels => self.label_clause(operator, values),
             Field::Sprint => self.sprint_clause(operator, values),
             Field::Assignee | Field::Reporter => self.user_clause(field, operator, values),
-            Field::Project | Field::ProjectKey => self.scalar_clause("p.key", operator, values),
-            Field::Key => self.scalar_clause("i.key", operator, values),
+            Field::Project | Field::ProjectKey => {
+                self.case_insensitive_scalar_clause("p.key", operator, values)
+            }
+            Field::Key => self.case_insensitive_scalar_clause("i.key", operator, values),
             Field::Summary => self.text_clause("i.summary", operator, values),
             Field::Description => self.text_clause("i.description", operator, values),
-            Field::IssueType => self.scalar_clause("i.issue_type", operator, values),
-            Field::Priority => self.scalar_clause("i.priority", operator, values),
+            Field::IssueType => {
+                self.case_insensitive_scalar_clause("i.issue_type", operator, values)
+            }
+            Field::Priority => self.case_insensitive_scalar_clause("i.priority", operator, values),
             Field::Created => self.timestamp_clause("i.created_at", operator, values),
             Field::Updated => self.timestamp_clause("i.updated_at", operator, values),
             Field::DueDate => self.timestamp_clause("i.due_date", operator, values),
         }
     }
 
-    fn scalar_clause(
+    fn case_insensitive_scalar_clause(
         &mut self,
         column: &str,
         operator: BinaryOperator,
         values: &[Value],
     ) -> Result<String, JqlCompileError> {
-        self.comparison(column, operator, values, false)
+        self.case_insensitive_comparison(column, operator, values, false)
     }
 
     fn text_clause(
@@ -165,7 +169,7 @@ impl Compiler {
         operator: BinaryOperator,
         values: &[Value],
     ) -> Result<String, JqlCompileError> {
-        let predicate = self.comparison(column, operator, values, false)?;
+        let predicate = self.case_insensitive_comparison(column, operator, values, false)?;
         Ok(format!(
             "EXISTS (SELECT 1 FROM statuses s WHERE s.id = i.status_id AND {predicate})"
         ))
@@ -176,7 +180,7 @@ impl Compiler {
         operator: BinaryOperator,
         values: &[Value],
     ) -> Result<String, JqlCompileError> {
-        let predicate = self.comparison("l.name", operator, values, false)?;
+        let predicate = self.case_insensitive_comparison("l.name", operator, values, false)?;
         Ok(format!(
             "EXISTS (SELECT 1 FROM issue_labels il JOIN labels l ON l.id = il.label_id WHERE il.issue_id = i.id AND {predicate})"
         ))
@@ -187,7 +191,7 @@ impl Compiler {
         operator: BinaryOperator,
         values: &[Value],
     ) -> Result<String, JqlCompileError> {
-        let predicate = self.comparison("sp.name", operator, values, false)?;
+        let predicate = self.case_insensitive_comparison("sp.name", operator, values, false)?;
         Ok(format!(
             "EXISTS (SELECT 1 FROM sprints sp WHERE sp.id = i.sprint_id AND {predicate})"
         ))
@@ -236,6 +240,35 @@ impl Compiler {
         self.comparison_with_placeholders(column, operator, values, |compiler, value| {
             compiler.text(value)
         })
+        .and_then(|predicate| {
+            if allow_contains
+                || !matches!(
+                    operator,
+                    BinaryOperator::Contains | BinaryOperator::NotContains
+                )
+            {
+                Ok(predicate)
+            } else {
+                Err(JqlCompileError(
+                    "text operators are not valid for this field".into(),
+                ))
+            }
+        })
+    }
+
+    fn case_insensitive_comparison(
+        &mut self,
+        column: &str,
+        operator: BinaryOperator,
+        values: &[Value],
+        allow_contains: bool,
+    ) -> Result<String, JqlCompileError> {
+        self.comparison_with_placeholders(
+            &format!("LOWER({column})"),
+            operator,
+            values,
+            |compiler, value| compiler.lower_text(value),
+        )
         .and_then(|predicate| {
             if allow_contains
                 || !matches!(
@@ -327,6 +360,17 @@ impl Compiler {
         Ok(format!("${}", self.parameters.len()))
     }
 
+    fn lower_text(&mut self, value: &Value) -> Result<String, JqlCompileError> {
+        let Value::Text(value) = value else {
+            return Err(JqlCompileError(
+                "function is not valid for this field".into(),
+            ));
+        };
+        self.parameters
+            .push(JqlParameter::Text(value.to_lowercase()));
+        Ok(format!("${}", self.parameters.len()))
+    }
+
     fn uuid(&mut self, value: Uuid) -> String {
         self.parameters.push(JqlParameter::Uuid(value));
         format!("${}", self.parameters.len())
@@ -353,12 +397,12 @@ mod tests {
 
         assert_eq!(
             query.predicate,
-            "((p.key = $1) AND ((i.priority IN ($2, $3)) OR (i.assignee_id = $4)))"
+            "((LOWER(p.key) = $1) AND ((LOWER(i.priority) IN ($2, $3)) OR (i.assignee_id = $4)))"
         );
         assert_eq!(
             query.parameters,
             vec![
-                JqlParameter::Text("TT".into()),
+                JqlParameter::Text("tt".into()),
                 JqlParameter::Text("high".into()),
                 JqlParameter::Text("urgent".into()),
                 JqlParameter::Uuid(user_id.as_uuid()),
@@ -375,12 +419,12 @@ mod tests {
 
         assert_eq!(
             query.predicate,
-            "(EXISTS (SELECT 1 FROM statuses s WHERE s.id = i.status_id AND (s.name = $1)) AND (i.tsv_search @@ websearch_to_tsquery('simple', $2)))"
+            "(EXISTS (SELECT 1 FROM statuses s WHERE s.id = i.status_id AND (LOWER(s.name) = $1)) AND (i.tsv_search @@ websearch_to_tsquery('simple', $2)))"
         );
         assert_eq!(
             query.parameters,
             vec![
-                JqlParameter::Text("In Progress".into()),
+                JqlParameter::Text("in progress".into()),
                 JqlParameter::Text("a' OR true --".into()),
             ]
         );
@@ -411,8 +455,8 @@ mod tests {
     fn compiles_not_expression() {
         let expr = parse("NOT (project = TT)").expect("valid JQL");
         let query = compile(&expr, UserId::new()).expect("compiles");
-        assert_eq!(query.predicate, "NOT ((p.key = $1))");
-        assert_eq!(query.parameters, vec![JqlParameter::Text("TT".into())]);
+        assert_eq!(query.predicate, "NOT ((LOWER(p.key) = $1))");
+        assert_eq!(query.parameters, vec![JqlParameter::Text("tt".into())]);
     }
 
     #[test]
@@ -424,7 +468,7 @@ mod tests {
                 .predicate
                 .contains("EXISTS (SELECT 1 FROM issue_labels")
         );
-        assert!(query.predicate.contains("l.name = $1"));
+        assert!(query.predicate.contains("LOWER(l.name) = $1"));
         assert_eq!(query.parameters, vec![JqlParameter::Text("backend".into())]);
     }
 
@@ -433,7 +477,11 @@ mod tests {
         let expr = parse("sprint = \"Sprint 1\"").expect("valid JQL");
         let query = compile(&expr, UserId::new()).expect("compiles");
         assert!(query.predicate.contains("EXISTS (SELECT 1 FROM sprints sp"));
-        assert!(query.predicate.contains("sp.name = $1"));
+        assert!(query.predicate.contains("LOWER(sp.name) = $1"));
+        assert_eq!(
+            query.parameters,
+            vec![JqlParameter::Text("sprint 1".into())]
+        );
     }
 
     #[test]
@@ -441,7 +489,7 @@ mod tests {
         let expr = parse("statusCategory = done").expect("valid JQL");
         let query = compile(&expr, UserId::new()).expect("compiles");
         assert!(query.predicate.contains(
-            "EXISTS (SELECT 1 FROM statuses s WHERE s.id = i.status_id AND (s.category = $1))"
+            "EXISTS (SELECT 1 FROM statuses s WHERE s.id = i.status_id AND (LOWER(s.category) = $1))"
         ));
         assert_eq!(query.parameters, vec![JqlParameter::Text("done".into())]);
     }
@@ -450,8 +498,15 @@ mod tests {
     fn compiles_key_and_issue_type_clauses() {
         let expr = parse("key = TT-42 AND issueType = Bug").expect("valid JQL");
         let query = compile(&expr, UserId::new()).expect("compiles");
-        assert!(query.predicate.contains("i.key = $1"));
-        assert!(query.predicate.contains("i.issue_type = $2"));
+        assert!(query.predicate.contains("LOWER(i.key) = $1"));
+        assert!(query.predicate.contains("LOWER(i.issue_type) = $2"));
+        assert_eq!(
+            query.parameters,
+            vec![
+                JqlParameter::Text("tt-42".into()),
+                JqlParameter::Text("bug".into())
+            ]
+        );
     }
 
     #[test]
@@ -479,12 +534,20 @@ mod tests {
     fn compiles_in_and_not_in() {
         let expr = parse("priority IN (high, medium, low)").expect("valid JQL");
         let query = compile(&expr, UserId::new()).expect("compiles");
-        assert!(query.predicate.contains("i.priority IN ($1, $2, $3)"));
+        assert!(
+            query
+                .predicate
+                .contains("LOWER(i.priority) IN ($1, $2, $3)")
+        );
         assert_eq!(query.parameters.len(), 3);
 
         let expr = parse("priority NOT IN (high, urgent)").expect("valid JQL");
         let query = compile(&expr, UserId::new()).expect("compiles");
-        assert!(query.predicate.contains("i.priority NOT IN ($1, $2)"));
+        assert!(
+            query
+                .predicate
+                .contains("LOWER(i.priority) NOT IN ($1, $2)")
+        );
     }
 
     #[test]

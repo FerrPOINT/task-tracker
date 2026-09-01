@@ -339,20 +339,40 @@ impl IssueRepository for MemoryIssueRepository {
                         .to_lowercase()
                         .contains(&q.to_lowercase())
                         || i.key.to_string().to_lowercase().contains(&q.to_lowercase())
+                        || i.description.as_ref().is_some_and(|description| {
+                            description
+                                .as_ref()
+                                .to_lowercase()
+                                .contains(&q.to_lowercase())
+                        })
                 })
+            })
+            .filter(|i| {
+                query
+                    .jql
+                    .as_ref()
+                    .is_none_or(|expr| jql_matches_issue(expr, i, query.jql_user_id))
             })
             .cloned()
             .collect();
         match query.sort_by.as_deref() {
             Some("created") => result.sort_by(|a, b| {
-                b.created_at
-                    .cmp(&a.created_at)
-                    .then_with(|| b.id.to_string().cmp(&a.id.to_string()))
+                compare_with_order(
+                    a.created_at,
+                    b.created_at,
+                    a.id.to_string(),
+                    b.id.to_string(),
+                    query.sort_order.as_deref(),
+                )
             }),
             Some("updated") => result.sort_by(|a, b| {
-                b.updated_at
-                    .cmp(&a.updated_at)
-                    .then_with(|| b.id.to_string().cmp(&a.id.to_string()))
+                compare_with_order(
+                    a.updated_at,
+                    b.updated_at,
+                    a.id.to_string(),
+                    b.id.to_string(),
+                    query.sort_order.as_deref(),
+                )
             }),
             _ => result.sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap()),
         }
@@ -440,6 +460,177 @@ impl IssueRepository for MemoryIssueRepository {
         } else {
             Err(AppError::not_found("issue", id))
         }
+    }
+}
+
+fn compare_with_order<T: Ord>(
+    a: T,
+    b: T,
+    a_tie: String,
+    b_tie: String,
+    sort_order: Option<&str>,
+) -> std::cmp::Ordering {
+    match sort_order {
+        Some("asc") => a.cmp(&b).then_with(|| a_tie.cmp(&b_tie)),
+        _ => b.cmp(&a).then_with(|| b_tie.cmp(&a_tie)),
+    }
+}
+
+fn jql_matches_issue(expr: &crate::jql::Expr, issue: &Issue, current_user: Option<UserId>) -> bool {
+    use crate::jql::Expr;
+    match expr {
+        Expr::And(left, right) => {
+            jql_matches_issue(left, issue, current_user)
+                && jql_matches_issue(right, issue, current_user)
+        }
+        Expr::Or(left, right) => {
+            jql_matches_issue(left, issue, current_user)
+                || jql_matches_issue(right, issue, current_user)
+        }
+        Expr::Not(inner) => !jql_matches_issue(inner, issue, current_user),
+        Expr::IsEmpty { field, negated } => {
+            let empty = jql_field_empty(*field, issue);
+            if *negated { !empty } else { empty }
+        }
+        Expr::Clause {
+            field,
+            operator,
+            values,
+        } => jql_clause_matches(*field, *operator, values, issue, current_user),
+    }
+}
+
+fn jql_clause_matches(
+    field: crate::jql::Field,
+    operator: crate::jql::BinaryOperator,
+    values: &[crate::jql::Value],
+    issue: &Issue,
+    current_user: Option<UserId>,
+) -> bool {
+    use crate::jql::BinaryOperator;
+    let Some(mut field_values) = jql_field_values(field, issue) else {
+        return false;
+    };
+    if field_values.is_empty() {
+        return false;
+    }
+    let Some(mut values) = values
+        .iter()
+        .map(|value| jql_value(value, current_user))
+        .collect::<Option<Vec<_>>>()
+    else {
+        return false;
+    };
+    if values.is_empty() {
+        return false;
+    }
+    if jql_field_is_case_insensitive(field) {
+        field_values = field_values
+            .into_iter()
+            .map(|value| value.to_lowercase())
+            .collect();
+        values = values
+            .into_iter()
+            .map(|value| value.to_lowercase())
+            .collect();
+    }
+    match operator {
+        BinaryOperator::Equals => one_value(&values)
+            .is_some_and(|wanted| field_values.iter().any(|actual| actual == wanted)),
+        BinaryOperator::NotEquals => one_value(&values)
+            .is_some_and(|wanted| field_values.iter().all(|actual| actual != wanted)),
+        BinaryOperator::Contains => one_value(&values).is_some_and(|wanted| {
+            let wanted = wanted.to_lowercase();
+            field_values
+                .iter()
+                .any(|actual| actual.to_lowercase().contains(&wanted))
+        }),
+        BinaryOperator::NotContains => one_value(&values).is_some_and(|wanted| {
+            let wanted = wanted.to_lowercase();
+            field_values
+                .iter()
+                .all(|actual| !actual.to_lowercase().contains(&wanted))
+        }),
+        BinaryOperator::In => field_values.iter().any(|actual| values.contains(actual)),
+        BinaryOperator::NotIn => field_values.iter().all(|actual| !values.contains(actual)),
+        BinaryOperator::LessThan => one_value(&values)
+            .is_some_and(|wanted| field_values.iter().any(|actual| actual < wanted)),
+        BinaryOperator::LessThanOrEqual => one_value(&values)
+            .is_some_and(|wanted| field_values.iter().any(|actual| actual <= wanted)),
+        BinaryOperator::GreaterThan => one_value(&values)
+            .is_some_and(|wanted| field_values.iter().any(|actual| actual > wanted)),
+        BinaryOperator::GreaterThanOrEqual => one_value(&values)
+            .is_some_and(|wanted| field_values.iter().any(|actual| actual >= wanted)),
+    }
+}
+
+fn jql_field_is_case_insensitive(field: crate::jql::Field) -> bool {
+    use crate::jql::Field;
+    matches!(
+        field,
+        Field::Key
+            | Field::Project
+            | Field::ProjectKey
+            | Field::Status
+            | Field::StatusCategory
+            | Field::IssueType
+            | Field::Priority
+            | Field::Labels
+    )
+}
+
+fn one_value(values: &[String]) -> Option<&String> {
+    (values.len() == 1).then(|| &values[0])
+}
+
+fn jql_value(value: &crate::jql::Value, current_user: Option<UserId>) -> Option<String> {
+    match value {
+        crate::jql::Value::Text(value) => Some(value.clone()),
+        crate::jql::Value::Function(name) if name.eq_ignore_ascii_case("currentUser") => {
+            current_user.map(|id| id.to_string())
+        }
+        crate::jql::Value::Function(_) => None,
+    }
+}
+
+fn jql_field_empty(field: crate::jql::Field, issue: &Issue) -> bool {
+    use crate::jql::Field;
+    match field {
+        Field::Assignee => issue.assignee_id.is_none(),
+        Field::Sprint => issue.sprint_id.is_none(),
+        Field::Description => issue.description.is_none(),
+        Field::DueDate => issue.due_date.is_none(),
+        _ => false,
+    }
+}
+
+fn jql_field_values(field: crate::jql::Field, issue: &Issue) -> Option<Vec<String>> {
+    use crate::jql::Field;
+    match field {
+        Field::Key => Some(vec![issue.key.to_string()]),
+        Field::Summary => Some(vec![issue.summary.as_ref().to_string()]),
+        Field::Description => issue
+            .description
+            .as_ref()
+            .map(|value| vec![value.as_ref().to_string()]),
+        Field::Text => {
+            let mut values = vec![issue.key.to_string(), issue.summary.as_ref().to_string()];
+            if let Some(description) = issue.description.as_ref() {
+                values.push(description.as_ref().to_string());
+            }
+            Some(values)
+        }
+        Field::Project | Field::ProjectKey => Some(vec![issue.key.project_key.to_string()]),
+        Field::Status => Some(vec![issue.status_id.to_string()]),
+        Field::IssueType => Some(vec![format!("{:?}", issue.issue_type)]),
+        Field::Assignee => issue.assignee_id.map(|id| vec![id.to_string()]),
+        Field::Reporter => Some(vec![issue.reporter_id.to_string()]),
+        Field::Priority => Some(vec![issue.priority.as_str().to_string()]),
+        Field::Sprint => issue.sprint_id.map(|id| vec![id.to_string()]),
+        Field::Created => Some(vec![issue.created_at.to_rfc3339()]),
+        Field::Updated => Some(vec![issue.updated_at.to_rfc3339()]),
+        Field::DueDate => issue.due_date.map(|value| vec![value.to_rfc3339()]),
+        Field::StatusCategory | Field::Labels => None,
     }
 }
 

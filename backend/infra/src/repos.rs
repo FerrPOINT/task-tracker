@@ -461,10 +461,8 @@ impl IssueRepo {
     async fn search_by_jql(
         &self,
         compiled: &crate::jql::CompiledJql,
-        limit: u64,
-        offset: u64,
+        query: &IssueQuery,
         deleted_filter: &str,
-        accessible_project_ids: Option<&[ProjectId]>,
     ) -> Result<Vec<Issue>, AppError> {
         use sea_orm::FromQueryResult;
         let mut params: Vec<sea_orm::Value> = compiled
@@ -477,43 +475,70 @@ impl IssueRepo {
                 crate::jql::JqlParameter::Uuid(u) => sea_orm::Value::Uuid(Some(Box::new(*u))),
             })
             .collect();
-        let deleted_clause = match deleted_filter {
-            "only" => " AND i.deleted_at IS NOT NULL",
-            "include" => "",
-            _ => " AND i.deleted_at IS NULL",
-        };
-        // The scope parameter must be appended BEFORE limit/offset so the
-        // positional placeholders stay in binding order ($n scope, $n+1
-        // limit, $n+2 offset). Appending it after limit/offset silently
-        // bound the uuid array to OFFSET ("argument of OFFSET must be type
-        // bigint, not type uuid[]").
-        let mut scope_clause = String::new();
-        match accessible_project_ids {
-            Some([]) => {
-                // No accessible projects: the result set is provably empty.
-                scope_clause = " AND FALSE".to_string();
-            }
+        let mut clauses = vec![format!("({})", compiled.predicate)];
+        match deleted_filter {
+            "only" => clauses.push("i.deleted_at IS NOT NULL".to_string()),
+            "exclude" => clauses.push("i.deleted_at IS NULL".to_string()),
+            _ => {}
+        }
+        if let Some(project_id) = query.project_id {
+            let placeholder = Self::push_uuid_param(&mut params, project_id.as_uuid());
+            clauses.push(format!("i.project_id = {placeholder}"));
+        }
+        match query.accessible_project_ids.as_deref() {
+            Some([]) => return Ok(Vec::new()),
             Some(ids) => {
-                scope_clause = format!(" AND i.project_id = ANY(${})", params.len() + 1);
-                params.push(sea_orm::Value::Array(
-                    sea_orm::sea_query::ArrayType::Uuid,
-                    Some(Box::new(
-                        ids.iter()
-                            .map(|id| sea_orm::sea_query::Value::Uuid(Some(Box::new(id.as_uuid()))))
-                            .collect(),
-                    )),
-                ));
+                let placeholder = Self::push_uuid_array_param(&mut params, ids);
+                clauses.push(format!("i.project_id = ANY({placeholder})"));
             }
             None => {}
         }
-        params.push(sea_orm::Value::Unsigned(Some(limit as u32)));
-        params.push(sea_orm::Value::Unsigned(Some(offset as u32)));
+        if let Some(status_id) = query.status_id {
+            let placeholder = Self::push_uuid_param(&mut params, status_id.as_uuid());
+            clauses.push(format!("i.status_id = {placeholder}"));
+        }
+        if let Some(assignee_id) = query.assignee_id {
+            let placeholder = Self::push_uuid_param(&mut params, assignee_id.as_uuid());
+            clauses.push(format!("i.assignee_id = {placeholder}"));
+        }
+        if let Some(sprint_id) = query.sprint_id {
+            let placeholder = Self::push_uuid_param(&mut params, sprint_id.as_uuid());
+            clauses.push(format!("i.sprint_id = {placeholder}"));
+        }
+        if let Some(priority) = query.priority.as_deref().filter(|s| !s.is_empty()) {
+            let placeholder = Self::push_text_param(&mut params, priority);
+            clauses.push(format!("i.priority = {placeholder}"));
+        }
+        if let Some(q) = query.search_text.as_deref().filter(|s| !s.is_empty()) {
+            let placeholder = Self::push_text_param(&mut params, q);
+            clauses.push(format!(
+                "(i.summary ILIKE '%' || replace(replace(replace({placeholder}, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' \
+                 OR i.key ILIKE '%' || replace(replace(replace({placeholder}, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%' \
+                 OR i.description ILIKE '%' || replace(replace(replace({placeholder}, '\\', '\\\\'), '%', '\\%'), '_', '\\_') || '%')"
+            ));
+        }
+        let order_column = match query.sort_by.as_deref() {
+            Some("updated") => "i.updated_at",
+            Some("priority") => "i.priority",
+            _ => "i.created_at",
+        };
+        let order_direction = match query.sort_order.as_deref() {
+            Some("asc") => "ASC",
+            _ => "DESC",
+        };
+        let mut page_clause = String::new();
+        if query.limit != IssueQuery::NO_LIMIT {
+            let placeholder = Self::push_unsigned_param(&mut params, query.limit);
+            page_clause.push_str(&format!(" LIMIT {placeholder}"));
+        }
+        if query.offset > 0 {
+            let placeholder = Self::push_unsigned_param(&mut params, query.offset);
+            page_clause.push_str(&format!(" OFFSET {placeholder}"));
+        }
         let sql = format!(
             "SELECT i.* FROM issues i JOIN projects p ON i.project_id = p.id \
-             WHERE {}{deleted_clause}{scope_clause} ORDER BY i.created_at DESC LIMIT ${} OFFSET ${}",
-            compiled.predicate,
-            params.len() - 1,
-            params.len()
+             WHERE {} ORDER BY {order_column} {order_direction}, i.id {order_direction}{page_clause}",
+            clauses.join(" AND ")
         );
 
         let stmt = sea_orm::Statement::from_sql_and_values(
@@ -526,6 +551,35 @@ impl IssueRepo {
             .await
             .map_err(AppError::database)?;
         Ok(rows.into_iter().map(map_issue).collect())
+    }
+
+    fn push_text_param(params: &mut Vec<sea_orm::Value>, value: &str) -> String {
+        params.push(sea_orm::Value::String(Some(Box::new(value.to_string()))));
+        format!("${}", params.len())
+    }
+
+    fn push_uuid_param(params: &mut Vec<sea_orm::Value>, value: Uuid) -> String {
+        params.push(sea_orm::Value::Uuid(Some(Box::new(value))));
+        format!("${}", params.len())
+    }
+
+    fn push_uuid_array_param(params: &mut Vec<sea_orm::Value>, ids: &[ProjectId]) -> String {
+        params.push(sea_orm::Value::Array(
+            sea_orm::sea_query::ArrayType::Uuid,
+            Some(Box::new(
+                ids.iter()
+                    .map(|id| sea_orm::sea_query::Value::Uuid(Some(Box::new(id.as_uuid()))))
+                    .collect(),
+            )),
+        ));
+        format!("${}", params.len())
+    }
+
+    fn push_unsigned_param(params: &mut Vec<sea_orm::Value>, value: u64) -> String {
+        params.push(sea_orm::Value::Unsigned(Some(
+            value.min(u32::MAX as u64) as u32
+        )));
+        format!("${}", params.len())
     }
 }
 
@@ -656,15 +710,7 @@ impl IssueRepository for IssueRepo {
             let user_id = query.jql_user_id.unwrap_or_default();
             let compiled = crate::jql::compile(jql_expr, user_id)
                 .map_err(|e| AppError::invalid_input(e.to_string()))?;
-            return self
-                .search_by_jql(
-                    &compiled,
-                    query.limit,
-                    query.offset,
-                    deleted_filter,
-                    query.accessible_project_ids.as_deref(),
-                )
-                .await;
+            return self.search_by_jql(&compiled, &query, deleted_filter).await;
         }
         let mut select = issue::Entity::find();
         // Soft-delete filtering.
