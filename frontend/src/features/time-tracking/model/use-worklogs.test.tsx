@@ -35,6 +35,7 @@ function expectIssueCachesRefreshed(client: QueryClient) {
   expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects'] })
   expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
   expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['search'] })
+  expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['reports'] })
   expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
   expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
 }

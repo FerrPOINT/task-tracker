@@ -10,6 +10,7 @@ function invalidateIssueCollectionCaches(qc: QueryClient, projectKey?: string) {
   qc.invalidateQueries({ queryKey: ['projects'] })
   qc.invalidateQueries({ queryKey: ['dashboard'] })
   qc.invalidateQueries({ queryKey: ['search'] })
+  qc.invalidateQueries({ queryKey: ['reports'] })
   if (projectKey) {
     qc.invalidateQueries({ queryKey: ['project', projectKey] })
     qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
