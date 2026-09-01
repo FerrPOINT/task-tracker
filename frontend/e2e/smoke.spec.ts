@@ -1,7 +1,5 @@
 import { test, expect, Route } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
-
 const mockUser = {
   id: '00000000-0000-0000-0000-000000000001',
   key: 'DEMO',
@@ -20,7 +18,9 @@ function routeJson(route: Route, body: unknown, status = 200) {
 test.describe('smoke', () => {
   test('login then navigate through dashboard, projects, board and create issue', async ({
     page,
+    baseURL,
   }, testInfo) => {
+    const appBaseURL = baseURL ?? 'http://127.0.0.1:4173'
     await page.route('**/api/v1/auth/login', (route) =>
       routeJson(route, {
         access_token: 'demo-token',
@@ -179,31 +179,31 @@ test.describe('smoke', () => {
       routeJson(route, { items: [], unread_count: 0 }),
     )
 
-    await page.goto(`${baseURL}/login`)
+    await page.goto(`${appBaseURL}/login`)
     await page.getByRole('textbox').nth(0).fill('demo@example.com')
     await page.getByRole('textbox').nth(1).fill('demo')
-    await page.getByRole('button', { name: /войти/i }).click()
+    await page.getByRole('button', { name: /sign in|войти/i }).click()
 
-    await expect(page).toHaveURL(`${baseURL}/`, { timeout: 10000 })
+    await expect(page).toHaveURL(`${appBaseURL}/`, { timeout: 10000 })
     await expect(
       page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи|командный дашборд/i }),
     ).toBeVisible()
 
-    await page.goto(`${baseURL}/projects`)
+    await page.goto(`${appBaseURL}/projects`)
     await expect(page.getByText(mockUser.name)).toBeVisible()
 
-    await page.goto(`${baseURL}/projects/${mockUser.key}/board`)
+    await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
 
-    await page.goto(`${baseURL}/projects/${mockUser.key}/backlog`)
+    await page.goto(`${appBaseURL}/projects/${mockUser.key}/backlog`)
     await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
     const createLinks = page.locator('main a[href^="/issues/create"]')
     await expect(createLinks).toHaveCount(2)
     await createLinks.last().click()
-    await expect(page).toHaveURL(`${baseURL}/issues/create?project_key=${mockUser.key}`)
+    await expect(page).toHaveURL(`${appBaseURL}/issues/create?project_key=${mockUser.key}`)
     await expect(page.locator('#issue-project')).toHaveValue(mockUser.key)
 
-    await page.goto(`${baseURL}/projects/${mockUser.key}/board`)
+    await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('smoke-board.png') })
   })

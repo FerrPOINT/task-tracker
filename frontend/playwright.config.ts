@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 
-const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
+const previewHost = process.env.PLAYWRIGHT_HOST ?? '127.0.0.1'
+const previewPort = process.env.PLAYWRIGHT_PORT ?? '4173'
+const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://${previewHost}:${previewPort}`
 const useExternalServer = Boolean(process.env.PLAYWRIGHT_BASE_URL)
 
 export default defineConfig({
@@ -31,11 +33,11 @@ export default defineConfig({
   webServer: useExternalServer
     ? undefined
     : {
-        command: 'pnpm preview',
+        command: `pnpm exec vite preview --host ${previewHost} --port ${previewPort} --strictPort`,
         env: {
           VITE_API_BASE_URL: 'http://127.0.0.1:3456/api/v1',
         },
-        url: 'http://localhost:4173',
-        reuseExistingServer: true,
+        url: baseURL,
+        reuseExistingServer: false,
       },
 })
