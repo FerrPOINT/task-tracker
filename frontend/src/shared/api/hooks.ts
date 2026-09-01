@@ -242,6 +242,7 @@ function invalidateIssueCaches(qc: QueryClient, projectKey?: string, issueId?: s
   qc.invalidateQueries({ queryKey: projectKeys.all })
   qc.invalidateQueries({ queryKey: ['dashboard'] })
   qc.invalidateQueries({ queryKey: ['search'] })
+  qc.invalidateQueries({ queryKey: ['reports'] })
   if (projectKey) {
     qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
     qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
@@ -267,6 +268,7 @@ export function useCreateSprint(projectKey: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
       qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: ['reports'] })
     },
   })
 }
@@ -278,6 +280,7 @@ export function useUpdateSprint(projectKey: string, sprintId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
       qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+      qc.invalidateQueries({ queryKey: ['reports'] })
     },
   })
 }
@@ -290,6 +293,7 @@ export function useStartSprint(projectKey: string) {
       qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
       qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
       qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+      qc.invalidateQueries({ queryKey: ['reports'] })
     },
   })
 }
@@ -302,6 +306,7 @@ export function useCloseSprint(projectKey: string) {
       qc.invalidateQueries({ queryKey: projectKeys.sprints(projectKey) })
       qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
       qc.invalidateQueries({ queryKey: projectKeys.detail(projectKey) })
+      qc.invalidateQueries({ queryKey: ['reports'] })
     },
   })
 }
