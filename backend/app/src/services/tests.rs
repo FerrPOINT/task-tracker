@@ -3065,6 +3065,111 @@ async fn custom_field_create_and_list() {
 }
 
 #[tokio::test]
+async fn custom_field_create_validates_and_normalizes_options() {
+    let (ctx, user) = ctx_with_demo_data().await;
+
+    let empty_select = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Empty Select",
+            "select",
+            &[],
+            false,
+            user.id,
+        )
+        .await;
+    assert!(matches!(empty_select, Err(AppError::InvalidInput(_))));
+
+    let blank_option = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Blank Option",
+            "multi-select",
+            &["todo".to_string(), " ".to_string()],
+            false,
+            user.id,
+        )
+        .await;
+    assert!(matches!(blank_option, Err(AppError::InvalidInput(_))));
+
+    let duplicate_options = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Duplicate Options",
+            "select",
+            &["todo".to_string(), "todo".to_string()],
+            false,
+            user.id,
+        )
+        .await;
+    assert!(matches!(duplicate_options, Err(AppError::InvalidInput(_))));
+
+    let text_with_options = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Text With Ignored Options",
+            "text",
+            &["ignored".to_string()],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+    assert!(text_with_options.options.is_empty());
+
+    let valid_select = ctx
+        .services
+        .custom_field
+        .create_field(
+            &ProjectKey::new("TT"),
+            "Valid Select",
+            "select",
+            &["todo".to_string()],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+    let valid_select_id = valid_select.id.parse().unwrap();
+    let empty_update = ctx
+        .services
+        .custom_field
+        .update_field(
+            valid_select_id,
+            "Still Broken",
+            "select",
+            &[],
+            false,
+            user.id,
+        )
+        .await;
+    assert!(matches!(empty_update, Err(AppError::InvalidInput(_))));
+
+    let text_update = ctx
+        .services
+        .custom_field
+        .update_field(
+            valid_select_id,
+            "Text Now",
+            "text",
+            &["ignored".to_string()],
+            false,
+            user.id,
+        )
+        .await
+        .unwrap();
+    assert!(text_update.options.is_empty());
+}
+
+#[tokio::test]
 async fn custom_field_set_and_get_value() {
     let (ctx, user) = ctx_with_demo_data().await;
     let field = ctx
