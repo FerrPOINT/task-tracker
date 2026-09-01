@@ -29,6 +29,9 @@ const issueData = {
   assignee_name: null,
   labels: [],
   sprint_id: null,
+  original_estimate_seconds: 7200,
+  remaining_estimate_seconds: 1800,
+  time_spent_seconds: 5400,
 }
 
 vi.mock('@/api/issue', () => ({
@@ -212,5 +215,34 @@ describe('IssueDetailPage', () => {
     await waitFor(() => expect(screen.getByText('Test issue summary')).toBeInTheDocument())
     // Comments are in the Activity tab (default) and Comments tab
     expect(screen.getAllByText('This is a comment').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('uses issue time tracking totals instead of deriving the sidebar summary from the worklog page', async () => {
+    mockWorklogs.mockReturnValue({
+      data: [
+        {
+          id: 'wl1',
+          issueId: 'i1',
+          userId: 'u1',
+          userDisplayName: 'Alice',
+          timeSpentSeconds: 900,
+          startedAt: '2024-01-01T10:00:00Z',
+          comment: null,
+          createdAt: '2024-01-01T10:00:00Z',
+          updatedAt: '2024-01-01T10:00:00Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    })
+
+    render(wrapper(<IssueDetailPage />))
+
+    await waitFor(() => expect(screen.getByText('Test issue summary')).toBeInTheDocument())
+    const summary = screen.getByTestId('time-tracking-summary')
+    expect(summary.textContent).toContain('1h 30m')
+    expect(summary.textContent).toContain('2h')
+    expect(summary.textContent).toContain('30m')
+    expect(summary.textContent).not.toContain('15m')
   })
 })

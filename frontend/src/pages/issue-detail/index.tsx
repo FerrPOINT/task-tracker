@@ -12,8 +12,6 @@ import {
   useCreateWorklog,
   useUpdateWorklog,
   useDeleteWorklog,
-  totalTimeSpent,
-  latestRemainingEstimate,
 } from '@/features/time-tracking/model/use-worklogs'
 import { TimeTrackingPanel } from '@/features/time-tracking/ui/TimeTrackingPanel'
 import { WorklogTab } from '@/features/time-tracking/ui/WorklogTab'
@@ -69,8 +67,6 @@ export function IssueDetailPage() {
 
   const issue = issueQuery.data
   const worklogs = worklogsData ?? []
-  const timeSpent = totalTimeSpent(worklogs)
-  const remainingEstimate = latestRemainingEstimate(worklogs)
 
   const handleLogWork = () => {
     setEditingWorklog(undefined)
@@ -199,9 +195,9 @@ export function IssueDetailPage() {
               </CardHeader>
               <CardContent>
                 <TimeTrackingPanel
-                  timeSpentSeconds={timeSpent}
-                  originalEstimateSeconds={issue.original_estimate_seconds ?? 0}
-                  remainingEstimateSeconds={remainingEstimate}
+                  timeSpentSeconds={issue.time_spent_seconds}
+                  originalEstimateSeconds={issue.original_estimate_seconds ?? null}
+                  remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
                   onLogWork={handleLogWork}
                 />
               </CardContent>
