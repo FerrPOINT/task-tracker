@@ -15,7 +15,11 @@ use shared::{AppError, CommentId, IssueId, UserId};
     get,
     path = "/api/v1/issues/{issue_id}/comments",
     tag = "comments",
-    params(("issue_id" = String, Path, description = "Issue ID")),
+    params(
+        ("issue_id" = String, Path, description = "Issue ID"),
+        ("limit" = Option<u64>, Query, description = "Maximum comments to return (default 100, max 500)", minimum = 1, maximum = 500),
+        ("offset" = Option<u64>, Query, description = "Pagination offset (default 0)"),
+    ),
     responses(
         (status = 200, description = "Comments listed", body = CommentListResponse),
         (status = 401, description = "Unauthorized"),

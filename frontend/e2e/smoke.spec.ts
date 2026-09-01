@@ -187,10 +187,10 @@ test.describe('smoke', () => {
         time_spent_seconds: 0,
       }),
     )
-    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments`, (route) =>
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
       routeJson(route, { comments: [] }),
     )
-    await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs`, (route) =>
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs**`, (route) =>
       routeJson(route, { worklogs: [] }),
     )
     await page.route(`**/api/v1/issues/${mockUser.issueId}/attachments`, (route) =>
