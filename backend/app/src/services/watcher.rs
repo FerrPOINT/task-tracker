@@ -2,14 +2,13 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::authz::Authz;
-use domain::{IssueRepository, ProjectRepository};
+use domain::IssueRepository;
 use shared::{AppError, IssueId, UserId};
 
 pub struct WatcherServiceImpl {
     watchers: Arc<dyn domain::WatcherRepository>,
     issues: Arc<dyn IssueRepository>,
     users: Arc<dyn domain::UserRepository>,
-    projects: Arc<dyn ProjectRepository>,
     events: crate::context::EventBus,
     authz: Authz,
 }
@@ -19,7 +18,6 @@ impl WatcherServiceImpl {
         watchers: Arc<dyn domain::WatcherRepository>,
         issues: Arc<dyn IssueRepository>,
         users: Arc<dyn domain::UserRepository>,
-        projects: Arc<dyn ProjectRepository>,
         events: crate::context::EventBus,
         authz: Authz,
     ) -> Self {
@@ -27,7 +25,6 @@ impl WatcherServiceImpl {
             watchers,
             issues,
             users,
-            projects,
             events,
             authz,
         }
@@ -45,11 +42,9 @@ impl crate::context::WatcherService for WatcherServiceImpl {
         // Verify the user exists
         self.users.get_by_id(user_id).await?;
         self.watchers.add(issue_id, user_id).await?;
-        let issue = self.issues.get_by_id(issue_id).await?;
-        let project = self.projects.get_by_id(issue.project_id).await?;
         self.events.publish(shared::TrackerEvent::IssueUpdated {
             issue_id: issue_id.to_string(),
-            project_key: project.key.to_string(),
+            project_key: issue.key.project_key.to_string(),
         });
         Ok(())
     }
@@ -60,6 +55,10 @@ impl crate::context::WatcherService for WatcherServiceImpl {
             .require_project_access(issue.project_id, user_id)
             .await?;
         self.watchers.remove(issue_id, user_id).await?;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue_id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
         Ok(())
     }
 

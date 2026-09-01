@@ -38,6 +38,24 @@ impl LabelServiceImpl {
             color: l.color.as_ref().to_string(),
         }
     }
+
+    fn publish_issue_updated(&self, issue: &domain::Issue) {
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
+    }
+
+    async fn publish_issue_updates_for_ids(&self, issue_ids: Vec<IssueId>) -> Result<(), AppError> {
+        for issue_id in issue_ids {
+            match self.issues.get_by_id(issue_id).await {
+                Ok(issue) => self.publish_issue_updated(&issue),
+                Err(AppError::NotFound(_)) => continue,
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -96,6 +114,8 @@ impl crate::context::LabelService for LabelServiceImpl {
         }
         label.color = color.to_string().into();
         self.labels.save(&label).await?;
+        let issue_ids = self.labels.list_issue_ids_by_label(label_id).await?;
+        self.publish_issue_updates_for_ids(issue_ids).await?;
         Ok(Self::to_dto(&label))
     }
 
@@ -104,7 +124,9 @@ impl crate::context::LabelService for LabelServiceImpl {
         self.authz
             .require_project_edit(label.project_id, requester)
             .await?;
+        let issue_ids = self.labels.list_issue_ids_by_label(label_id).await?;
         self.labels.delete(label_id).await?;
+        self.publish_issue_updates_for_ids(issue_ids).await?;
         Ok(())
     }
 
@@ -138,15 +160,10 @@ impl crate::context::LabelService for LabelServiceImpl {
             .await?;
         let label = self.labels.get_by_id(label_id).await?;
         if label.project_id != issue.project_id {
-            return Err(AppError::invalid_input(
-                "label belongs to a different project",
-            ));
+            return Err(AppError::not_found("label", label_id));
         }
         self.labels.attach(issue_id, label_id).await?;
-        self.events.publish(shared::TrackerEvent::IssueUpdated {
-            issue_id: issue.id.to_string(),
-            project_key: issue.key.project_key.to_string(),
-        });
+        self.publish_issue_updated(&issue);
         Ok(())
     }
 
@@ -165,10 +182,7 @@ impl crate::context::LabelService for LabelServiceImpl {
             return Err(AppError::not_found("label", label_id));
         }
         self.labels.detach(issue_id, label_id).await?;
-        self.events.publish(shared::TrackerEvent::IssueUpdated {
-            issue_id: issue.id.to_string(),
-            project_key: issue.key.project_key.to_string(),
-        });
+        self.publish_issue_updated(&issue);
         Ok(())
     }
 }

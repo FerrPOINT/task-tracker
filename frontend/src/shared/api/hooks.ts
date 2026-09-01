@@ -659,7 +659,11 @@ export function useCreateIssueLink(issueId: string) {
   return useMutation({
     mutationFn: ({ targetKey, linkType }: { targetKey: string; linkType: string }) =>
       createIssueLink(issueId, targetKey, linkType),
-    onSuccess: () => qc.invalidateQueries({ queryKey: linkKeys.issue(issueId) }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: linkKeys.issue(issueId) })
+      qc.invalidateQueries({ queryKey: linkKeys.issue(data.source_id) })
+      qc.invalidateQueries({ queryKey: linkKeys.issue(data.target_id) })
+    },
   })
 }
 

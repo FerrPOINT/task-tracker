@@ -953,6 +953,20 @@ impl crate::LabelRepository for MemoryLabelRepository {
             .collect())
     }
 
+    async fn list_issue_ids_by_label(
+        &self,
+        label_id: shared::LabelId,
+    ) -> Result<Vec<IssueId>, AppError> {
+        Ok(self
+            .issue_labels
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, lid)| *lid == label_id)
+            .map(|(iid, _)| *iid)
+            .collect())
+    }
+
     async fn list_by_issues(
         &self,
         issue_ids: &[IssueId],

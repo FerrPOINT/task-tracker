@@ -1383,6 +1383,18 @@ impl LabelRepository for LabelRepo {
             .collect())
     }
 
+    async fn list_issue_ids_by_label(&self, label_id: LabelId) -> Result<Vec<IssueId>, AppError> {
+        let models = issue_label::Entity::find()
+            .filter(issue_label::Column::LabelId.eq(label_id.as_uuid()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .map(|m| IssueId::from_uuid(m.issue_id))
+            .collect())
+    }
+
     async fn list_by_issues(
         &self,
         issue_ids: &[IssueId],

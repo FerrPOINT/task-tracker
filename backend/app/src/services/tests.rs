@@ -4,11 +4,11 @@ type TestStorage = domain::InMemoryStorage;
 use domain::{
     Board, BoardColumn, BoardRepository, FileStorage, Issue, IssueQuery, IssueRepository,
     MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
-    MemoryIssueRepository, MemoryLabelRepository, MemoryNotificationRepository,
-    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, Notification,
-    NotificationRepository, Project, ProjectMemberRepository, ProjectQuery, ProjectRepository,
-    Sprint, SprintRepository, StatusCategory, User, UserNotificationSettingsRepository,
-    UserRepository,
+    MemoryIssueLinkRepository, MemoryIssueRepository, MemoryLabelRepository,
+    MemoryNotificationRepository, MemoryProjectRepository, MemorySprintRepository,
+    MemoryUserRepository, Notification, NotificationRepository, Project, ProjectMemberRepository,
+    ProjectQuery, ProjectRepository, Sprint, SprintRepository, StatusCategory, User,
+    UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{
     AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, NotificationId,
@@ -2191,6 +2191,70 @@ async fn watcher_remove() {
 }
 
 #[tokio::test]
+async fn watcher_watch_and_unwatch_publish_issue_updated_events() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Watched issue realtime".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let mut receiver = ctx.events.subscribe();
+    while receiver.try_recv().is_ok() {}
+
+    ctx.services.watcher.watch(issue_id, user.id).await.unwrap();
+    let watch_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        watch_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+
+    ctx.services
+        .watcher
+        .unwatch(issue_id, user.id)
+        .await
+        .unwrap();
+    let unwatch_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        unwatch_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+}
+
+#[tokio::test]
 async fn vote_add_and_count() {
     let (ctx, user) = ctx_with_demo_data().await;
     let reporter = notification_recipient(&ctx).await;
@@ -2268,6 +2332,67 @@ async fn vote_remove() {
 }
 
 #[tokio::test]
+async fn vote_and_unvote_publish_issue_updated_events() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let reporter = notification_recipient(&ctx).await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Voted issue realtime".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: reporter.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let mut receiver = ctx.events.subscribe();
+    while receiver.try_recv().is_ok() {}
+
+    ctx.services.vote.vote(issue_id, user.id).await.unwrap();
+    let vote_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        vote_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+
+    ctx.services.vote.unvote(issue_id, user.id).await.unwrap();
+    let unvote_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        unvote_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+}
+
+#[tokio::test]
 async fn vote_rejects_reporter_self_vote() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx
@@ -2300,6 +2425,130 @@ async fn vote_rejects_reporter_self_vote() {
     let issue_id: IssueId = issue.id.parse().unwrap();
     let err = ctx.services.vote.vote(issue_id, user.id).await.unwrap_err();
     assert!(matches!(err, AppError::InvalidInput(_)));
+}
+
+#[tokio::test]
+async fn issue_link_create_and_delete_publish_issue_updated_events_for_both_issues() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        issue_links: Arc::new(MemoryIssueLinkRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, user.id)
+        .await
+        .unwrap();
+    let source = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: project_key.clone(),
+                summary: "Source link realtime".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let target = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key,
+                summary: "Target link realtime".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let source_id: IssueId = source.id.parse().unwrap();
+    let mut receiver = ctx.events.subscribe();
+    while receiver.try_recv().is_ok() {}
+
+    let link = ctx
+        .services
+        .issue_link
+        .create(source_id, &target.key, "relates", user.id)
+        .await
+        .unwrap();
+    let first_create_event =
+        tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+    let second_create_event =
+        tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+    let create_event_ids = [first_create_event, second_create_event]
+        .into_iter()
+        .map(|event| match event {
+            shared::TrackerEvent::IssueUpdated {
+                issue_id,
+                project_key,
+            } => {
+                assert_eq!(project_key, "TT");
+                issue_id
+            }
+            other => panic!("unexpected event: {other:?}"),
+        })
+        .collect::<std::collections::HashSet<_>>();
+    assert!(create_event_ids.contains(&source.id));
+    assert!(create_event_ids.contains(&target.id));
+
+    let link_id: shared::IssueLinkId = link.id.parse().unwrap();
+    ctx.services
+        .issue_link
+        .delete(link_id, user.id)
+        .await
+        .unwrap();
+    let first_delete_event =
+        tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+    let second_delete_event =
+        tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+            .await
+            .unwrap()
+            .unwrap();
+    let delete_event_ids = [first_delete_event, second_delete_event]
+        .into_iter()
+        .map(|event| match event {
+            shared::TrackerEvent::IssueUpdated {
+                issue_id,
+                project_key,
+            } => {
+                assert_eq!(project_key, "TT");
+                issue_id
+            }
+            other => panic!("unexpected event: {other:?}"),
+        })
+        .collect::<std::collections::HashSet<_>>();
+    assert!(delete_event_ids.contains(&source.id));
+    assert!(delete_event_ids.contains(&target.id));
 }
 
 #[tokio::test]
@@ -2918,6 +3167,88 @@ async fn label_attach_and_detach_publish_issue_updated_events() {
         .unwrap();
     assert!(matches!(
         detach_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+}
+
+#[tokio::test]
+async fn label_update_and_delete_publish_issue_updated_events_for_attached_issues() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        labels: Arc::new(MemoryLabelRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: project_key.clone(),
+                summary: "Label lifecycle realtime".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let label = ctx
+        .services
+        .label
+        .create(&project_key, "initial", "#22c55e", user.id)
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let label_id: shared::LabelId = label.id.parse().unwrap();
+    ctx.services
+        .label
+        .attach(issue_id, label_id, user.id)
+        .await
+        .unwrap();
+    let mut receiver = ctx.events.subscribe();
+    while receiver.try_recv().is_ok() {}
+
+    ctx.services
+        .label
+        .update(label_id, "renamed", "#0ea5e9", user.id)
+        .await
+        .unwrap();
+    let update_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        update_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+
+    ctx.services.label.delete(label_id, user.id).await.unwrap();
+    let delete_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        delete_event,
         shared::TrackerEvent::IssueUpdated {
             issue_id: ref actual_issue_id,
             project_key: ref actual_project_key,

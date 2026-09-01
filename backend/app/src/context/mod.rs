@@ -233,6 +233,7 @@ impl AppContext {
                 issue_link: Arc::new(crate::services::IssueLinkServiceImpl::new(
                     repos.issue_links.clone(),
                     repos.issues.clone(),
+                    events.clone(),
                     authz.clone(),
                 )),
                 notification: Arc::new(crate::services::NotificationServiceImpl::new(
@@ -255,7 +256,6 @@ impl AppContext {
                     repos.watchers.clone(),
                     repos.issues.clone(),
                     repos.users.clone(),
-                    repos.projects.clone(),
                     events.clone(),
                     authz.clone(),
                 )),
@@ -263,6 +263,7 @@ impl AppContext {
                     repos.votes.clone(),
                     repos.issues.clone(),
                     repos.users.clone(),
+                    events.clone(),
                     authz.clone(),
                 )),
                 component: Arc::new(crate::services::ComponentServiceImpl::new(
