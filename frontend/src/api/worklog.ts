@@ -2,6 +2,8 @@ import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { parseDuration } from '@/shared/lib/time'
 import { api } from './client'
 
+const WORKLOG_PAGE_SIZE = 500
+
 function mapDto(w: {
   id: string
   issue_id: string
@@ -27,11 +29,31 @@ function mapDto(w: {
 }
 
 export async function listWorklogs(issueId: string): Promise<Worklog[]> {
+  const worklogs: Worklog[] = []
+  let offset = 0
+
+  for (;;) {
+    const page = await listWorklogPage(issueId, offset)
+    worklogs.push(...page)
+
+    if (page.length < WORKLOG_PAGE_SIZE) {
+      break
+    }
+    offset += WORKLOG_PAGE_SIZE
+  }
+
+  return worklogs.sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+}
+
+async function listWorklogPage(issueId: string, offset: number): Promise<Worklog[]> {
   const { data, error } = await api.GET('/api/v1/issues/{issue_id}/worklogs', {
-    params: { path: { issue_id: issueId } },
+    params: {
+      path: { issue_id: issueId },
+      query: { limit: WORKLOG_PAGE_SIZE, offset },
+    },
   })
   if (error || !data) throw new Error('Failed to load worklogs')
-  return data.worklogs.map(mapDto).sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+  return data.worklogs.map(mapDto)
 }
 
 export async function createWorklog(issueId: string, input: LogWorkInput): Promise<Worklog> {

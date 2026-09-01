@@ -2756,7 +2756,12 @@ export interface operations {
     };
     list_comments: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum comments to return (default 100, max 500) */
+                limit?: number;
+                /** @description Pagination offset (default 0) */
+                offset?: number;
+            };
             header?: never;
             path: {
                 /** @description Issue ID */
@@ -3326,7 +3331,12 @@ export interface operations {
     };
     list_worklogs: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Maximum worklogs to return (default 100, max 500) */
+                limit?: number;
+                /** @description Pagination offset (default 0) */
+                offset?: number;
+            };
             header?: never;
             path: {
                 /** @description Issue ID */

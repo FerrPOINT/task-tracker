@@ -1,6 +1,8 @@
 import type { Comment, CreateCommentInput, UpdateCommentInput } from '@/entities/comment/model'
 import { api } from './client'
 
+const COMMENT_PAGE_SIZE = 500
+
 function mapDto(c: {
   id: string
   issue_id: string
@@ -22,11 +24,31 @@ function mapDto(c: {
 }
 
 export async function listComments(issueId: string): Promise<Comment[]> {
+  const comments: Comment[] = []
+  let offset = 0
+
+  for (;;) {
+    const page = await listCommentPage(issueId, offset)
+    comments.push(...page)
+
+    if (page.length < COMMENT_PAGE_SIZE) {
+      break
+    }
+    offset += COMMENT_PAGE_SIZE
+  }
+
+  return comments.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+async function listCommentPage(issueId: string, offset: number): Promise<Comment[]> {
   const { data, error } = await api.GET('/api/v1/issues/{issue_id}/comments', {
-    params: { path: { issue_id: issueId } },
+    params: {
+      path: { issue_id: issueId },
+      query: { limit: COMMENT_PAGE_SIZE, offset },
+    },
   })
   if (error || !data) throw new Error('Failed to load comments')
-  return data.comments.map(mapDto).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return data.comments.map(mapDto)
 }
 
 export async function createComment(issueId: string, input: CreateCommentInput): Promise<Comment> {
