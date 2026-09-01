@@ -1,9 +1,10 @@
 use async_trait::async_trait;
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use crate::authz::Authz;
 use crate::commands::{CreateCommentCommand, UpdateCommentCommand};
 use crate::dto::CommentDto;
+use crate::services::helpers;
 use domain::ProjectRepository;
 use shared::{AppError, IssueId, UserId};
 
@@ -45,42 +46,6 @@ impl CommentServiceImpl {
         }
     }
 
-    /// Create a notification and publish a real-time SSE event.
-    async fn create_notification(&self, notification: domain::Notification) {
-        let recipient_id = notification.recipient_id;
-        let event_type = notification.event_type.as_ref();
-        let actor_is_recipient = notification.actor_id == Some(recipient_id);
-        let allowed = match self.notification_settings.get_settings(recipient_id).await {
-            Ok(settings) => {
-                (settings.notify_own_changes || !actor_is_recipient)
-                    && !settings
-                        .disabled_event_types
-                        .iter()
-                        .any(|value| value.as_ref() == event_type)
-            }
-            // Missing settings preserve the existing default delivery behavior.
-            Err(shared::AppError::NotFound(_)) => !actor_is_recipient,
-            Err(_) => return,
-        };
-        if allowed && self.notifications.save(&notification).await.is_ok() {
-            self.events
-                .publish(shared::TrackerEvent::NotificationCreated {
-                    recipient_id: recipient_id.to_string(),
-                });
-        }
-    }
-
-    async fn issue_recipients(&self, issue: &domain::Issue) -> Vec<UserId> {
-        let mut recipients = vec![issue.reporter_id];
-        if let Some(assignee_id) = issue.assignee_id {
-            recipients.push(assignee_id);
-        }
-        if let Ok(watchers) = self.watchers.list_by_issue(issue.id).await {
-            recipients.extend(watchers.into_iter().map(|watcher| watcher.user_id));
-        }
-        recipients
-    }
-
     async fn publish_comment_event(&self, issue: &domain::Issue) {
         if let Ok(project) = self.projects.get_by_id(issue.project_id).await {
             self.events.publish(shared::TrackerEvent::IssueCommented {
@@ -90,41 +55,30 @@ impl CommentServiceImpl {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    async fn notify_issue_recipients(
+    async fn notify_comment_event(
         &self,
-        recipients: Vec<UserId>,
         issue: &domain::Issue,
-        _project: &domain::Project,
         actor_id: UserId,
         event_type: &str,
         title: String,
-        body: Option<String>,
-        metadata: serde_json::Value,
+        comment_id: shared::CommentId,
     ) {
-        let mut seen = HashSet::new();
-        let action_url = format!("/issues/{}", issue.id);
-        for recipient_id in recipients {
-            if !seen.insert(recipient_id) {
-                continue;
-            }
-            self.create_notification(domain::Notification {
-                id: shared::NotificationId::new(),
-                recipient_id,
-                event_type: event_type.into(),
-                entity_type: "issue".into(),
-                entity_id: Some(issue.id.as_uuid()),
-                actor_id: Some(actor_id),
-                title: title.clone().into(),
-                body: body.clone().map(Into::into),
-                is_read: false,
-                read_at: None,
-                action_url: Some(action_url.clone().into()),
-                metadata: metadata.clone(),
-                created_at: shared::now(),
-            })
-            .await;
-        }
+        helpers::notify_issue_recipients(
+            &self.watchers,
+            &self.notifications,
+            &self.notification_settings,
+            &self.events,
+            issue,
+            actor_id,
+            event_type,
+            title,
+            None,
+            serde_json::json!({
+                "issue_key": issue.key.to_string(),
+                "comment_id": comment_id.to_string(),
+            }),
+        )
+        .await;
     }
 }
 
@@ -199,15 +153,20 @@ impl crate::context::CommentService for CommentServiceImpl {
                     project_key: project.key.to_string(),
                 });
                 let key = issue.key.to_string();
-                self.notify_issue_recipients(
-                    self.issue_recipients(&issue).await,
+                helpers::notify_issue_recipients(
+                    &self.watchers,
+                    &self.notifications,
+                    &self.notification_settings,
+                    &self.events,
                     &issue,
-                    &project,
                     requester,
                     "issue_commented",
                     format!("New comment on {}", key),
                     None,
-                    serde_json::json!({"issue_key": key}),
+                    serde_json::json!({
+                        "issue_key": key,
+                        "comment_id": comment.id.to_string(),
+                    }),
                 )
                 .await;
             }
@@ -244,6 +203,14 @@ impl crate::context::CommentService for CommentServiceImpl {
         }
         self.comments.save(&comment).await?;
         self.publish_comment_event(&issue).await;
+        self.notify_comment_event(
+            &issue,
+            requester,
+            "issue_comment_edited",
+            format!("Comment edited on {}", issue.key),
+            comment.id,
+        )
+        .await;
         Ok(CommentDto::from_comment(
             comment,
             Some(user.display_name.as_ref().to_string()),
@@ -261,6 +228,14 @@ impl crate::context::CommentService for CommentServiceImpl {
         }
         self.comments.delete(id).await?;
         self.publish_comment_event(&issue).await;
+        self.notify_comment_event(
+            &issue,
+            requester,
+            "issue_comment_deleted",
+            format!("Comment deleted on {}", issue.key),
+            id,
+        )
+        .await;
         Ok(())
     }
 }

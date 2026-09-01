@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::authz::Authz;
 use crate::commands::{CreateWorklogCommand, UpdateWorklogCommand};
 use crate::dto::WorklogDto;
+use crate::services::helpers;
 use domain::{IssueRepository, ProjectRepository};
 use shared::{AppError, IssueId, UserId};
 
@@ -12,17 +13,24 @@ pub struct WorklogServiceImpl {
     users: Arc<dyn domain::UserRepository>,
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
+    watchers: Arc<dyn domain::WatcherRepository>,
     events: crate::context::EventBus,
+    notifications: Arc<dyn domain::NotificationRepository>,
+    notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
     authz: Authz,
 }
 
 impl WorklogServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         worklogs: Arc<dyn domain::WorklogRepository>,
         users: Arc<dyn domain::UserRepository>,
         issues: Arc<dyn IssueRepository>,
         projects: Arc<dyn ProjectRepository>,
+        watchers: Arc<dyn domain::WatcherRepository>,
         events: crate::context::EventBus,
+        notifications: Arc<dyn domain::NotificationRepository>,
+        notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
         authz: Authz,
     ) -> Self {
         Self {
@@ -30,7 +38,10 @@ impl WorklogServiceImpl {
             users,
             issues,
             projects,
+            watchers,
             events,
+            notifications,
+            notification_settings,
             authz,
         }
     }
@@ -46,6 +57,36 @@ impl WorklogServiceImpl {
         if let Ok(project) = self.projects.get_by_id(issue.project_id).await {
             self.publish_worklog_event(issue, project.key.to_string());
         }
+    }
+
+    async fn notify_worklog_logged(
+        &self,
+        issue: &domain::Issue,
+        actor_id: UserId,
+        worklog: &domain::Worklog,
+    ) {
+        let issue_key = issue.key.to_string();
+        helpers::notify_issue_recipients(
+            &self.watchers,
+            &self.notifications,
+            &self.notification_settings,
+            &self.events,
+            issue,
+            actor_id,
+            "issue_worklog_logged",
+            format!("Work logged on {}", issue_key),
+            worklog
+                .description
+                .as_ref()
+                .map(|description| description.as_ref().to_string()),
+            serde_json::json!({
+                "issue_key": issue_key,
+                "worklog_id": worklog.id.to_string(),
+                "duration_seconds": worklog.duration_seconds,
+                "started_at": worklog.started_at.to_rfc3339(),
+            }),
+        )
+        .await;
     }
 
     async fn sync_issue_time_tracking(&self, issue: &mut domain::Issue) -> Result<(), AppError> {
@@ -142,6 +183,8 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             return Err(err);
         }
         self.publish_for_issue(&issue).await;
+        self.notify_worklog_logged(&issue, requester, &worklog)
+            .await;
         Ok(WorklogDto::from_worklog(
             worklog,
             Some(user.display_name.as_ref().to_string()),

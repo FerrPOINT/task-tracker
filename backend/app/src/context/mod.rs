@@ -201,7 +201,10 @@ impl AppContext {
                     repos.users.clone(),
                     repos.issues.clone(),
                     repos.projects.clone(),
+                    repos.watchers.clone(),
                     events.clone(),
+                    repos.notifications.clone(),
+                    repos.notification_settings.clone(),
                     authz.clone(),
                 )),
                 member: Arc::new(ProjectMemberServiceImpl::new(
