@@ -543,10 +543,10 @@ export function useDeleteIssue() {
   })
 }
 
-export function useTrash(projectKey: string | undefined) {
+export function useTrash(projectKey: string | undefined, offset = 0, limit = 50) {
   return useQuery({
-    queryKey: ['trash', projectKey],
-    queryFn: () => listTrash(projectKey!),
+    queryKey: ['trash', projectKey, offset, limit],
+    queryFn: () => listTrash(projectKey!, limit, offset),
     enabled: !!projectKey,
   })
 }

@@ -34,26 +34,28 @@ function wrapper(children: React.ReactNode) {
   )
 }
 
+function trashIssue(index: number) {
+  return {
+    id: `i${index}`,
+    key: `TT-${index}`,
+    summary: index === 1 ? 'Deleted task' : `Deleted task ${index}`,
+    issue_type: 'Task',
+    priority: 'High',
+    status: 'todo',
+    status_id: 'todo',
+    project_key: 'TT',
+    project_name: 'Task Tracker',
+    description: '',
+    labels: [],
+    reporter_id: 'u1',
+  }
+}
+
 describe('ProjectTrashPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockTrash.mockReturnValue({
-      data: [
-        {
-          id: 'i1',
-          key: 'TT-1',
-          summary: 'Deleted task',
-          issue_type: 'Task',
-          priority: 'High',
-          status: 'todo',
-          status_id: 'todo',
-          project_key: 'TT',
-          project_name: 'Task Tracker',
-          description: '',
-          labels: [],
-          reporter_id: 'u1',
-        },
-      ],
+      data: [trashIssue(1)],
       isLoading: false,
       error: null,
     })
@@ -105,5 +107,28 @@ describe('ProjectTrashPage', () => {
     const confirmButton = screen.getByRole('button', { name: /подтвердить/i })
     await userEvent.click(confirmButton)
     expect(mockPurge).toHaveBeenCalledWith('i1')
+  })
+
+  it('requests the next trash page when the current page is full', async () => {
+    mockTrash.mockImplementation((_projectKey, offset = 0) => ({
+      data:
+        offset === 0
+          ? Array.from({ length: 50 }, (_, index) => trashIssue(index + 1))
+          : [trashIssue(51)],
+      isLoading: false,
+      error: null,
+    }))
+
+    const user = userEvent.setup()
+    render(wrapper(<ProjectTrashPage />))
+
+    await waitFor(() => expect(mockTrash).toHaveBeenCalledWith('TT', 0, 50))
+    expect(screen.getByText('1–50')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /вперёд|next/i }))
+
+    await waitFor(() => expect(mockTrash).toHaveBeenCalledWith('TT', 50, 50))
+    expect(screen.getByText('Deleted task 51')).toBeInTheDocument()
+    expect(screen.getByText('51–51')).toBeInTheDocument()
   })
 })
