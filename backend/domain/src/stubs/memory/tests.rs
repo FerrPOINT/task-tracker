@@ -164,6 +164,16 @@ async fn memory_issue_repository_filters_and_search() {
     assert_eq!(by_priority.len(), 1);
     assert_eq!(by_priority[0].id, high_issue.id);
 
+    let by_jql_priority = repo
+        .list(IssueQuery {
+            jql: Some(crate::jql::parse("priority = high").unwrap()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_jql_priority.len(), 1);
+    assert_eq!(by_jql_priority[0].id, high_issue.id);
+
     let empty = repo
         .list(IssueQuery {
             status_id: Some(StatusId::new()),

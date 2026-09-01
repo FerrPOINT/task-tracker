@@ -113,10 +113,6 @@ impl crate::context::SearchService for SearchServiceImpl {
                 }
             }
         }
-        if let Some(sort_by) = filters.sort_by.as_deref() {
-            query.sort_by = Some(sort_by.to_string());
-            query.sort_order = filters.sort_order.clone();
-        }
         if let Some(project_key) = filters.project_key.as_deref().filter(|s| !s.is_empty()) {
             let key: ProjectKey = project_key
                 .parse()

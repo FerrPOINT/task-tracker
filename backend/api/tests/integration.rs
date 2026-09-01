@@ -4926,6 +4926,66 @@ async fn search_status_filter_applied() {
     assert!(body["issues"].as_array().unwrap().is_empty());
 }
 
+#[tokio::test]
+async fn issues_endpoint_applies_jql_filter() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let high = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "issue_type": "task",
+            "priority": "high",
+            "summary": "jql route high priority",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(high.status(), 201);
+    let high_id = high.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let medium = client
+        .post(format!("{url}/api/v1/issues"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({
+            "project_key": "TT",
+            "issue_type": "task",
+            "priority": "medium",
+            "summary": "jql route medium priority",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(medium.status(), 201);
+    let medium_id = medium.json::<serde_json::Value>().await.unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let res = client
+        .get(format!(
+            "{url}/api/v1/issues?jql={}",
+            urlencoding::encode("priority = high")
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let body: serde_json::Value = res.json().await.unwrap();
+    let issue_ids = body["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|issue| issue["id"].as_str())
+        .collect::<Vec<_>>();
+    assert!(issue_ids.contains(&high_id.as_str()));
+    assert!(!issue_ids.contains(&medium_id.as_str()));
+}
+
 // 19. search_priority_any_case (UI-1)
 #[tokio::test]
 async fn search_priority_any_case() {

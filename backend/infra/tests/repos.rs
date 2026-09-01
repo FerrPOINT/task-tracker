@@ -438,3 +438,70 @@ async fn jql_contains_treats_percent_as_literal() {
     assert_eq!(list.len(), 1, "literal % must match only the 100% issue");
     assert!(list[0].summary.as_ref().contains("100%"));
 }
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn jql_query_combines_with_project_and_text_filters() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project_a = test_project(user.id);
+    let project_b = test_project(user.id);
+    repos.projects.save(&project_a).await.unwrap();
+    repos.projects.save(&project_b).await.unwrap();
+
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let matching = Issue::create(
+        &project_a,
+        1,
+        IssueType::Task,
+        status,
+        "scoped needle",
+        None,
+        user.id,
+        Priority::High,
+    );
+    let wrong_text = Issue::create(
+        &project_a,
+        2,
+        IssueType::Task,
+        status,
+        "scoped haystack",
+        None,
+        user.id,
+        Priority::High,
+    );
+    let wrong_project = Issue::create(
+        &project_b,
+        1,
+        IssueType::Task,
+        status,
+        "scoped needle",
+        None,
+        user.id,
+        Priority::High,
+    );
+    repos.issues.save(&matching).await.unwrap();
+    repos.issues.save(&wrong_text).await.unwrap();
+    repos.issues.save(&wrong_project).await.unwrap();
+
+    let list = repos
+        .issues
+        .list(domain::IssueQuery {
+            project_id: Some(project_a.id),
+            search_text: Some("needle".to_string()),
+            jql: Some(domain::jql::parse("priority = high").expect("valid JQL")),
+            jql_user_id: Some(user.id),
+            sort_by: Some("created".to_string()),
+            sort_order: Some("desc".to_string()),
+            limit: 50,
+            offset: 0,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, matching.id);
+}
