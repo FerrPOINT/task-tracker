@@ -98,7 +98,7 @@ impl crate::context::ReportService for ReportServiceImpl {
         closed.sort_by_key(|s| std::cmp::Reverse(s.end_date));
         closed.truncate(count as usize);
 
-        let statuses = self.statuses.list_all().await.unwrap_or_default();
+        let statuses = self.statuses.list_all().await?;
         let done_status_ids: Vec<StatusId> = statuses
             .iter()
             .filter(|s| s.category == StatusCategory::Done || s.is_closed)
@@ -149,7 +149,7 @@ impl crate::context::ReportService for ReportServiceImpl {
             .await?;
         let total = issues.len();
 
-        let statuses = self.statuses.list_all().await.unwrap_or_default();
+        let statuses = self.statuses.list_all().await?;
         let history = self.history.list_by_project(project_id).await?;
 
         let start = sprint.start_date.unwrap_or_else(shared::now);
@@ -207,7 +207,7 @@ impl crate::context::ReportService for ReportServiceImpl {
             .list_unbounded(IssueQuery::project(project_id))
             .await?;
         let history = self.history.list_by_project(project_id).await?;
-        let statuses = self.statuses.list_all().await.unwrap_or_default();
+        let statuses = self.statuses.list_all().await?;
 
         // Build a sorted list of all dates from history entries + issue created_at
         let mut dates: Vec<shared::Timestamp> = Vec::new();
@@ -257,7 +257,7 @@ impl crate::context::ReportService for ReportServiceImpl {
             .list_unbounded(IssueQuery::project(project_id))
             .await?;
         let history = self.history.list_by_project(project_id).await?;
-        let statuses = self.statuses.list_all().await.unwrap_or_default();
+        let statuses = self.statuses.list_all().await?;
         let done_status_ids: Vec<StatusId> = statuses
             .iter()
             .filter(|s| s.category == StatusCategory::Done || s.is_closed)

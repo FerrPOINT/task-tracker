@@ -3,16 +3,17 @@ use std::sync::Arc;
 type TestStorage = domain::InMemoryStorage;
 use domain::{
     Board, BoardColumn, BoardRepository, CommentRepository, FileStorage, Issue, IssueQuery,
-    IssueRepository, MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
-    MemoryIssueLinkRepository, MemoryIssueRepository, MemoryLabelRepository,
-    MemoryNotificationRepository, MemoryProjectRepository, MemorySprintRepository,
-    MemoryUserRepository, MemoryWorklogRepository, Notification, NotificationRepository, Project,
-    ProjectMemberRepository, ProjectQuery, ProjectRepository, Sprint, SprintRepository,
-    StatusCategory, User, UserNotificationSettingsRepository, UserRepository, WorklogRepository,
+    IssueRepository, Label, LabelRepository, MemoryAttachmentRepository, MemoryBoardRepository,
+    MemoryCommentRepository, MemoryIssueLinkRepository, MemoryIssueRepository,
+    MemoryLabelRepository, MemoryNotificationRepository, MemoryProjectRepository,
+    MemorySprintRepository, MemoryUserRepository, MemoryWorklogRepository, Notification,
+    NotificationRepository, Project, ProjectMemberRepository, ProjectQuery, ProjectRepository,
+    Sprint, SprintRepository, Status, StatusCategory, StatusRepository, User,
+    UserNotificationSettingsRepository, UserRepository, WorklogRepository,
 };
 use shared::{
-    AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, NotificationId,
-    Priority, ProjectId, ProjectKey, ServerConfig, SprintId, StatusId, UserId,
+    AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, LabelId,
+    NotificationId, Priority, ProjectId, ProjectKey, ServerConfig, SprintId, StatusId, UserId,
 };
 
 use crate::commands::{
@@ -168,6 +169,60 @@ impl UserRepository for FailingUserRepository {
 
     async fn list(&self) -> Result<Vec<User>, AppError> {
         Err(AppError::Internal("failing user repo".into()))
+    }
+}
+
+struct FailingStatusRepository;
+
+#[async_trait::async_trait]
+impl StatusRepository for FailingStatusRepository {
+    async fn get_by_id(&self, _id: StatusId) -> Result<Status, AppError> {
+        Err(AppError::Internal("failing status repo".into()))
+    }
+
+    async fn list_all(&self) -> Result<Vec<Status>, AppError> {
+        Err(AppError::Internal("failing status repo".into()))
+    }
+
+    async fn get_default(&self) -> Result<Status, AppError> {
+        Err(AppError::Internal("failing status repo".into()))
+    }
+}
+
+struct FailingLabelRepository;
+
+#[async_trait::async_trait]
+impl LabelRepository for FailingLabelRepository {
+    async fn get_by_id(&self, _id: LabelId) -> Result<Label, AppError> {
+        Err(AppError::Internal("failing label repo".into()))
+    }
+
+    async fn list_by_project(&self, _project_id: ProjectId) -> Result<Vec<Label>, AppError> {
+        Err(AppError::Internal("failing label repo".into()))
+    }
+
+    async fn save(&self, _label: &Label) -> Result<LabelId, AppError> {
+        Err(AppError::Internal("failing label repo".into()))
+    }
+
+    async fn delete(&self, _id: LabelId) -> Result<(), AppError> {
+        Err(AppError::Internal("failing label repo".into()))
+    }
+
+    async fn list_ids_by_issue(&self, _issue_id: IssueId) -> Result<Vec<LabelId>, AppError> {
+        Err(AppError::Internal("failing label repo".into()))
+    }
+
+    async fn list_issue_ids_by_label(&self, _label_id: LabelId) -> Result<Vec<IssueId>, AppError> {
+        Err(AppError::Internal("failing label repo".into()))
+    }
+
+    async fn attach(&self, _issue_id: IssueId, _label_id: LabelId) -> Result<(), AppError> {
+        Err(AppError::Internal("failing label repo".into()))
+    }
+
+    async fn detach(&self, _issue_id: IssueId, _label_id: LabelId) -> Result<(), AppError> {
+        Err(AppError::Internal("failing label repo".into()))
     }
 }
 
@@ -337,6 +392,36 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
         ),
         user_copy,
     )
+}
+
+async fn create_demo_issue(ctx: &AppContext, user: &User, summary: &str) -> IssueId {
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: summary.to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    issue.id.parse().unwrap()
 }
 
 #[tokio::test]
@@ -1688,6 +1773,84 @@ async fn search_propagates_repo_error() {
             .search
             .search(Default::default(), UserId::new())
             .await,
+    );
+}
+
+#[tokio::test]
+async fn issue_get_propagates_user_lookup_error() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let issue_id = create_demo_issue(&base_ctx, &user, "issue user lookup failure").await;
+    let repos = Arc::new(domain::Repositories {
+        users: Arc::new(FailingUserRepository),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+
+    assert_internal(ctx.services.issue.get_by_id(issue_id, user.id).await);
+}
+
+#[tokio::test]
+async fn issue_get_propagates_label_lookup_error() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let issue_id = create_demo_issue(&base_ctx, &user, "issue label lookup failure").await;
+    let repos = Arc::new(domain::Repositories {
+        labels: Arc::new(FailingLabelRepository),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+
+    assert_internal(ctx.services.issue.get_by_id(issue_id, user.id).await);
+}
+
+#[tokio::test]
+async fn board_get_propagates_status_lookup_error() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        statuses: Arc::new(FailingStatusRepository),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+
+    assert_internal(
+        ctx.services
+            .board
+            .get_board(&ProjectKey::new("TT"), user.id)
+            .await,
+    );
+}
+
+#[tokio::test]
+async fn project_get_propagates_owner_lookup_error() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        users: Arc::new(FailingUserRepository),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+
+    assert_internal(
+        ctx.services
+            .project
+            .get_by_key(&ProjectKey::new("TT"), user.id)
+            .await,
+    );
+}
+
+#[tokio::test]
+async fn vote_create_propagates_user_lookup_error_without_writing() {
+    let (base_ctx, owner, member, _project_id) = ctx_with_real_members().await;
+    let issue_id = create_demo_issue(&base_ctx, &owner, "vote user lookup failure").await;
+    let repos = Arc::new(domain::Repositories {
+        users: Arc::new(FailingUserRepository),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+
+    assert_internal(ctx.services.vote.vote(issue_id, member.id).await);
+    assert_eq!(
+        base_ctx.repos.votes.count_by_issue(issue_id).await.unwrap(),
+        0,
+        "failed voter lookup must happen before writing the vote"
     );
 }
 
@@ -4256,9 +4419,7 @@ async fn notification_created_on_issue_assign() {
 // ─── Report service tests ───────────────────────────────────────────
 
 use crate::context::ReportService;
-use domain::{
-    IssueStatusHistory, MemoryIssueStatusHistoryRepository, MemoryStatusRepository, Status,
-};
+use domain::{IssueStatusHistory, MemoryIssueStatusHistoryRepository, MemoryStatusRepository};
 
 fn make_status(id: &str, category: StatusCategory, is_closed: bool) -> Status {
     Status {
@@ -4364,7 +4525,7 @@ fn make_transition_history(
 async fn report_service(
     issues: Arc<MemoryIssueRepository>,
     sprints: Arc<dyn domain::SprintRepository>,
-    statuses: Arc<MemoryStatusRepository>,
+    statuses: Arc<dyn StatusRepository>,
     history: Arc<MemoryIssueStatusHistoryRepository>,
     project_id: ProjectId,
     owner: UserId,
@@ -4447,6 +4608,23 @@ fn report_test_setup() -> (
         done,
         owner_id,
     )
+}
+
+#[tokio::test]
+async fn report_velocity_propagates_status_lookup_error() {
+    let (issues, sprints, _statuses, history, project_id, _todo, _ip, _done, owner) =
+        report_test_setup();
+    let service = report_service(
+        issues,
+        sprints,
+        Arc::new(FailingStatusRepository),
+        history,
+        project_id,
+        owner,
+    )
+    .await;
+
+    assert_internal(service.get_velocity(project_id, 6, owner).await);
 }
 
 #[tokio::test]

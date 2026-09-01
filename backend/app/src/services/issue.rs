@@ -371,7 +371,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             .require_project_edit(issue.project_id, cmd.actor_id)
             .await?;
         let board = self.boards.get_default_by_project(issue.project_id).await?;
-        let statuses = self.statuses.list_all().await.unwrap_or_default();
+        let statuses = self.statuses.list_all().await?;
         let valid = statuses.iter().any(|s| s.id == cmd.target_status_id)
             || board.columns.iter().any(|c| c.id == cmd.target_status_id);
         if !valid {
@@ -447,13 +447,13 @@ impl crate::context::IssueService for IssueServiceImpl {
             .require_project_access(issue.project_id, requester)
             .await?;
         let name = super::helpers::project_name(self.projects.clone(), issue.project_id).await?;
-        Ok(super::helpers::build_issue_dto(
+        super::helpers::build_issue_dto(
             self.users.clone(),
             self.labels.clone(),
             issue,
             name.as_str(),
         )
-        .await)
+        .await
     }
 
     async fn update(

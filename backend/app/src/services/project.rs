@@ -115,8 +115,7 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         let owner_names: std::collections::HashMap<_, _> = self
             .users
             .list()
-            .await
-            .unwrap_or_default()
+            .await?
             .into_iter()
             .map(|u| (u.id, u.display_name.as_ref().to_string()))
             .collect();
@@ -159,8 +158,7 @@ impl crate::context::ProjectService for ProjectServiceImpl {
             .users
             .get_by_id(project.owner_id)
             .await
-            .map(|u| u.display_name.as_ref().to_string())
-            .unwrap_or_default();
+            .map(|u| u.display_name.as_ref().to_string())?;
         Ok(ProjectDto::from_project(
             project,
             owner_name,
@@ -196,8 +194,7 @@ impl crate::context::ProjectService for ProjectServiceImpl {
             .users
             .get_by_id(project.owner_id)
             .await
-            .map(|u| u.display_name.as_ref().to_string())
-            .unwrap_or_default();
+            .map(|u| u.display_name.as_ref().to_string())?;
         Ok(ProjectDto::from_project(
             project,
             owner_name,
