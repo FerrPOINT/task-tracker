@@ -2096,6 +2096,11 @@ async fn watcher_receives_comment_notification() {
         .unwrap();
     assert_eq!(unread.len(), 1);
     assert_eq!(unread[0].event_type.as_ref(), "issue_commented");
+    let expected_url = format!("/issues/{}", issue.id);
+    assert_eq!(
+        unread[0].action_url.as_ref().map(|url| url.as_ref()),
+        Some(expected_url.as_str())
+    );
 }
 
 #[tokio::test]
@@ -3937,7 +3942,8 @@ async fn notification_created_on_issue_assign() {
         .get_board(&ProjectKey::new("TT"), user.id)
         .await
         .unwrap();
-    ctx.services
+    let issue = ctx
+        .services
         .issue
         .create(
             CreateIssueCommand {
@@ -3965,6 +3971,11 @@ async fn notification_created_on_issue_assign() {
         .unwrap();
     assert_eq!(notifications.unread_count, 1);
     assert_eq!(notifications.notifications[0].event_type, "issue_assigned");
+    let expected_url = format!("/issues/{}", issue.id);
+    assert_eq!(
+        notifications.notifications[0].action_url.as_deref(),
+        Some(expected_url.as_str())
+    );
 }
 
 // ─── Report service tests ───────────────────────────────────────────
