@@ -1300,6 +1300,134 @@ async fn board_service_backlog() {
 }
 
 #[tokio::test]
+async fn active_sprint_issue_ids_include_only_issues_in_that_sprint() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project = ctx
+        .repos
+        .projects
+        .get_by_key(&ProjectKey::new("TT"))
+        .await
+        .unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let todo_status_id = board.columns[0].id.to_string();
+    let in_progress_status_id = board.columns[1].id.to_string();
+
+    let sprint_issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "In active sprint".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: todo_status_id.clone(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let backlog_issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Plain backlog item".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: todo_status_id,
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let non_sprint_issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "In progress without sprint".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: in_progress_status_id,
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let sprint = ctx
+        .services
+        .sprint
+        .create(
+            CreateSprintCommand {
+                project_id: project.id,
+                name: "Active sprint".to_string(),
+                goal: None,
+                start_date: None,
+                end_date: None,
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let sprint_id: SprintId = sprint.id.parse().unwrap();
+    ctx.services.sprint.start(sprint_id, user.id).await.unwrap();
+    ctx.services
+        .sprint
+        .move_issue(
+            MoveIssueToSprintCommand {
+                issue_id: sprint_issue.id.parse().unwrap(),
+                sprint_id: Some(sprint_id),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let board_view = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let backlog_view = ctx
+        .services
+        .board
+        .get_backlog(&ProjectKey::new("TT"), user.id, 0, 100)
+        .await
+        .unwrap();
+
+    assert_eq!(board_view.sprint.id, sprint.id);
+    assert_eq!(backlog_view.sprint.id, sprint.id);
+    assert_eq!(board_view.sprint.issue_ids, vec![sprint_issue.id.clone()]);
+    assert_eq!(backlog_view.sprint.issue_ids, vec![sprint_issue.id.clone()]);
+    assert!(!board_view.sprint.issue_ids.contains(&backlog_issue.id));
+    assert!(!backlog_view.sprint.issue_ids.contains(&non_sprint_issue.id));
+}
+
+#[tokio::test]
 async fn backlog_offset_reaches_later_items_without_duplicates() {
     let (ctx, user) = ctx_with_demo_data().await;
     let board = ctx

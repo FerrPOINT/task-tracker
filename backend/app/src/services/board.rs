@@ -132,16 +132,15 @@ impl BoardServiceImpl {
                 .collect()
         };
 
-        let issue_dtos = super::helpers::build_issue_dtos(
-            Arc::clone(&self.users),
-            Arc::clone(&self.labels),
-            issues,
-            project_key.to_string().as_str(),
-        )
-        .await?;
-
         let sprint_dto = sprint
-            .map(|s| SprintDto::from_sprint(s, issue_dtos.iter().map(|i| i.id.clone()).collect()))
+            .map(|s| {
+                let issue_ids = issues
+                    .iter()
+                    .filter(|issue| issue.sprint_id == Some(s.id))
+                    .map(|issue| issue.id.to_string())
+                    .collect();
+                SprintDto::from_sprint(s, issue_ids)
+            })
             .unwrap_or_else(|| SprintDto {
                 id: "none".to_string(),
                 project_id: board.project_id.to_string(),
@@ -154,6 +153,14 @@ impl BoardServiceImpl {
                 start_date: None,
                 end_date: None,
             });
+
+        let issue_dtos = super::helpers::build_issue_dtos(
+            Arc::clone(&self.users),
+            Arc::clone(&self.labels),
+            issues,
+            project_key.to_string().as_str(),
+        )
+        .await?;
 
         Ok(BoardDto {
             project_id: board.project_id.to_string(),
@@ -223,10 +230,12 @@ impl crate::context::BoardService for BoardServiceImpl {
 
         let sprint_dto = sprint
             .map(|s| {
-                SprintDto::from_sprint(
-                    s,
-                    sprint_issues_raw.iter().map(|i| i.id.to_string()).collect(),
-                )
+                let issue_ids = sprint_issues_raw
+                    .iter()
+                    .filter(|issue| issue.sprint_id == Some(s.id))
+                    .map(|issue| issue.id.to_string())
+                    .collect();
+                SprintDto::from_sprint(s, issue_ids)
             })
             .unwrap_or_else(|| SprintDto {
                 id: "none".to_string(),
