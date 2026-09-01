@@ -110,6 +110,9 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
+        if cmd.author_id != requester {
+            return Err(AppError::Forbidden);
+        }
         // Negative or absurd durations corrupt spent-time aggregation.
         if cmd.duration_seconds <= 0 || cmd.duration_seconds > 86_400 {
             return Err(AppError::invalid_input(
@@ -119,7 +122,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         let worklog = domain::Worklog {
             id: shared::WorklogId::new(),
             issue_id: cmd.issue_id,
-            author_id: cmd.author_id,
+            author_id: requester,
             started_at: cmd.started_at,
             duration_seconds: cmd.duration_seconds,
             description: cmd.description.map(|d| d.into()),
@@ -129,7 +132,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         self.worklogs.save(&worklog).await?;
         self.sync_issue_time_tracking(&mut issue).await?;
         self.publish_for_issue(&issue).await;
-        let user = self.users.get_by_id(cmd.author_id).await.ok();
+        let user = self.users.get_by_id(requester).await.ok();
         Ok(WorklogDto::from_worklog(
             worklog,
             user.map(|u| u.display_name.as_ref().to_string()),

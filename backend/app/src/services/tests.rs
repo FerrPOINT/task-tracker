@@ -6,9 +6,9 @@ use domain::{
     MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
     MemoryIssueLinkRepository, MemoryIssueRepository, MemoryLabelRepository,
     MemoryNotificationRepository, MemoryProjectRepository, MemorySprintRepository,
-    MemoryUserRepository, Notification, NotificationRepository, Project, ProjectMemberRepository,
-    ProjectQuery, ProjectRepository, Sprint, SprintRepository, StatusCategory, User,
-    UserNotificationSettingsRepository, UserRepository,
+    MemoryUserRepository, MemoryWorklogRepository, Notification, NotificationRepository, Project,
+    ProjectMemberRepository, ProjectQuery, ProjectRepository, Sprint, SprintRepository,
+    StatusCategory, User, UserNotificationSettingsRepository, UserRepository,
 };
 use shared::{
     AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, NotificationId,
@@ -17,8 +17,8 @@ use shared::{
 
 use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateSprintCommand,
-    LoginCommand, MoveIssueToSprintCommand, RegisterCommand, UpdateCommentCommand,
-    UpdateIssueCommand, UpdateNotificationSettingsCommand,
+    CreateWorklogCommand, LoginCommand, MoveIssueToSprintCommand, RegisterCommand,
+    UpdateCommentCommand, UpdateIssueCommand, UpdateNotificationSettingsCommand,
 };
 use crate::context::{AppContext, AttachmentService, NotificationService};
 use crate::services::{AttachmentServiceImpl, NotificationServiceImpl};
@@ -1975,6 +1975,70 @@ async fn comment_notifications_deduplicate_recipients() {
 }
 
 #[tokio::test]
+async fn comment_create_rejects_spoofed_author_and_actor() {
+    let (base_ctx, owner) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        comments: Arc::new(MemoryCommentRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let other = test_user_with("spoofed", "spoofed@example.com", "Spoofed User");
+    ctx.repos.users.save(&other).await.unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Comment spoofing".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+
+    let err = ctx
+        .services
+        .comment
+        .create(
+            CreateCommentCommand {
+                issue_id,
+                author_id: other.id,
+                body: "pretend this came from someone else".to_string(),
+                actor_id: other.id,
+            },
+            owner.id,
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, AppError::Forbidden));
+    assert!(
+        ctx.repos
+            .comments
+            .list_by_issue(issue_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn watcher_receives_comment_notification() {
     let (ctx, owner, member, _project_id) = ctx_with_real_members().await;
     let board = ctx
@@ -3673,6 +3737,84 @@ async fn issue_purge_from_trash_deletes_attachment_files() {
 
     assert_eq!(storage.file_count(), 0);
     assert_eq!(storage.delete_count(), 1);
+}
+
+#[tokio::test]
+async fn worklog_create_rejects_spoofed_author() {
+    let (base_ctx, owner) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        worklogs: Arc::new(MemoryWorklogRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let other = test_user_with(
+        "worklog-spoof",
+        "worklog-spoof@example.com",
+        "Worklog Spoof",
+    );
+    ctx.repos.users.save(&other).await.unwrap();
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), owner.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Worklog spoofing".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+
+    let err = ctx
+        .services
+        .worklog
+        .create(
+            CreateWorklogCommand {
+                issue_id,
+                author_id: other.id,
+                started_at: shared::now(),
+                duration_seconds: 900,
+                description: Some("not really mine".to_string()),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err, AppError::Forbidden));
+    assert!(
+        ctx.repos
+            .worklogs
+            .list_by_issue(issue_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        ctx.repos
+            .issues
+            .get_by_id(issue_id)
+            .await
+            .unwrap()
+            .time_spent_seconds,
+        0
+    );
 }
 
 #[tokio::test]
