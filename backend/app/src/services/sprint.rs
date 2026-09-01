@@ -251,6 +251,7 @@ impl SprintService for SprintServiceImpl {
         } else {
             issue.sprint_id = None;
         }
+        issue.updated_at = shared::now();
         self.issues.save(&issue).await?;
         let project = self.projects.get_by_id(issue.project_id).await?;
         self.events.publish(shared::TrackerEvent::IssueUpdated {
