@@ -473,13 +473,17 @@ impl crate::context::IssueService for IssueServiceImpl {
                 .parse()
                 .map_err(|_| AppError::invalid_input("status_id"))?;
             let target = StatusId::from_uuid(sid);
-            let allowed = self.transitions.is_allowed(issue.status_id, target).await?;
-            if !allowed {
-                return Err(AppError::invalid_input("workflow transition not allowed"));
+            if target == issue.status_id {
+                None
+            } else {
+                let allowed = self.transitions.is_allowed(issue.status_id, target).await?;
+                if !allowed {
+                    return Err(AppError::invalid_input("workflow transition not allowed"));
+                }
+                let from_status = issue.status_id;
+                let guard = self.build_wip_guard(issue.project_id, target).await?;
+                Some((from_status, target, guard))
             }
-            let from_status = issue.status_id;
-            let guard = self.build_wip_guard(issue.project_id, target).await?;
-            Some((from_status, target, guard))
         } else {
             None
         };
