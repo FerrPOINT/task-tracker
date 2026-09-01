@@ -3,24 +3,32 @@ use std::sync::Arc;
 
 use crate::authz::Authz;
 use crate::dto::ProjectDto;
-use domain::{Board, IssueRepository, ProjectRepository, StatusCategory, StatusRepository};
+use domain::{
+    AttachmentRepository, Board, FileStorage, IssueQuery, IssueRepository, ProjectRepository,
+    StatusCategory, StatusRepository,
+};
 use shared::{AppError, BoardId, ProjectId, ProjectKey, UserId};
 
 pub struct ProjectServiceImpl {
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
+    attachments: Arc<dyn AttachmentRepository>,
+    storage: Arc<dyn FileStorage>,
     users: Arc<dyn domain::UserRepository>,
     statuses: Arc<dyn StatusRepository>,
     authz: Authz,
 }
 
 impl ProjectServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         projects: Arc<dyn ProjectRepository>,
         issues: Arc<dyn IssueRepository>,
         users: Arc<dyn domain::UserRepository>,
         boards: Arc<dyn domain::BoardRepository>,
         statuses: Arc<dyn StatusRepository>,
+        attachments: Arc<dyn AttachmentRepository>,
+        storage: Arc<dyn FileStorage>,
         authz: Authz,
     ) -> Self {
         // `boards` is no longer stored: project creation persists the default
@@ -29,6 +37,8 @@ impl ProjectServiceImpl {
         Self {
             projects,
             issues,
+            attachments,
+            storage,
             users,
             statuses,
             authz,
@@ -209,6 +219,36 @@ impl crate::context::ProjectService for ProjectServiceImpl {
     async fn delete(&self, key: &ProjectKey, requester_id: UserId) -> Result<(), AppError> {
         let project = self.projects.get_by_key(key).await?;
         self.authz.require_owner(project.id, requester_id).await?;
-        self.projects.delete(project.id).await
+        let issues = self
+            .issues
+            .list_unbounded(IssueQuery {
+                project_id: Some(project.id),
+                include_deleted: true,
+                ..Default::default()
+            })
+            .await?;
+        let mut attachment_keys = Vec::new();
+        for issue in &issues {
+            for attachment in self.attachments.list_by_issue(issue.id).await? {
+                attachment_keys.push((
+                    issue.id.to_string(),
+                    attachment.storage_key.as_ref().to_string(),
+                ));
+            }
+        }
+        self.projects.delete(project.id).await?;
+        // Files are external to the database transaction. Best-effort cleanup
+        // happens only after the DB graph is gone.
+        for (issue_id, storage_key) in attachment_keys {
+            if let Err(error) = self.storage.delete(&issue_id, &storage_key).await {
+                tracing::warn!(
+                    issue_id = %issue_id,
+                    storage_key = %storage_key,
+                    error = %error,
+                    "failed to delete project attachment"
+                );
+            }
+        }
+        Ok(())
     }
 }

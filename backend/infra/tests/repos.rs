@@ -1,5 +1,6 @@
 use domain::{
-    Board, BoardColumn, Issue, Project, ProjectQuery, Sprint, SprintState, StatusCategory, User,
+    Board, BoardColumn, Issue, Notification, Project, ProjectQuery, Sprint, SprintState,
+    StatusCategory, User,
 };
 use infra::repos::{SeaOrmRepositories, to_domain_repositories};
 use migration::MigratorTrait;
@@ -155,6 +156,68 @@ async fn project_repo_queries() {
 
 #[tokio::test]
 #[ignore = "requires docker test stack"]
+async fn project_delete_cascades_project_issues_and_notifications() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let issue = Issue::create(
+        &project,
+        1,
+        IssueType::Task,
+        status,
+        "project delete cascade",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&issue).await.unwrap();
+    repos
+        .notifications
+        .save(&Notification {
+            id: shared::NotificationId::new(),
+            recipient_id: user.id,
+            event_type: "issue_updated".into(),
+            entity_type: "issue".into(),
+            entity_id: Some(issue.id.as_uuid()),
+            actor_id: Some(user.id),
+            title: "Issue updated".into(),
+            body: None,
+            is_read: false,
+            read_at: None,
+            action_url: Some(format!("/issues/{}", issue.id).into()),
+            metadata: serde_json::json!({}),
+            created_at: now(),
+        })
+        .await
+        .unwrap();
+
+    repos.projects.delete(project.id).await.unwrap();
+
+    assert!(repos.projects.get_by_id(project.id).await.is_err());
+    assert!(
+        repos
+            .issues
+            .get_by_id_include_deleted(issue.id)
+            .await
+            .is_err()
+    );
+    assert!(
+        repos
+            .notifications
+            .list_unread(user.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
 async fn issue_repo_crud_and_query() {
     let repos = setup().await;
     let user = test_user();
@@ -205,6 +268,68 @@ async fn issue_repo_crud_and_query() {
         .await
         .unwrap();
     assert_eq!(list.len(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn issue_purge_deletes_issue_notifications() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let issue = Issue::create(
+        &project,
+        1,
+        IssueType::Task,
+        status,
+        "purge notifications",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&issue).await.unwrap();
+    repos
+        .notifications
+        .save(&Notification {
+            id: shared::NotificationId::new(),
+            recipient_id: user.id,
+            event_type: "issue_updated".into(),
+            entity_type: "issue".into(),
+            entity_id: Some(issue.id.as_uuid()),
+            actor_id: Some(user.id),
+            title: "Issue updated".into(),
+            body: None,
+            is_read: false,
+            read_at: None,
+            action_url: Some(format!("/issues/{}", issue.id).into()),
+            metadata: serde_json::json!({}),
+            created_at: now(),
+        })
+        .await
+        .unwrap();
+
+    repos.issues.delete(issue.id).await.unwrap();
+    repos.issues.purge(issue.id).await.unwrap();
+
+    assert!(
+        repos
+            .issues
+            .get_by_id_include_deleted(issue.id)
+            .await
+            .is_err()
+    );
+    assert!(
+        repos
+            .notifications
+            .list_unread(user.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]

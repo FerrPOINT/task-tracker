@@ -114,6 +114,8 @@ impl AppContext {
             repos.users.clone(),
             repos.boards.clone(),
             repos.statuses.clone(),
+            repos.attachments.clone(),
+            storage.clone(),
             authz.clone(),
         ));
         let issue: Arc<dyn IssueService> = Arc::new(IssueServiceImpl::new(

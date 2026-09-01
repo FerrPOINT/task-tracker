@@ -420,13 +420,29 @@ impl ProjectRepository for ProjectRepo {
     }
 
     async fn delete(&self, id: ProjectId) -> Result<(), AppError> {
+        let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        txn.execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "DELETE FROM notifications \
+             WHERE entity_type = 'issue' \
+               AND entity_id IN (SELECT id FROM issues WHERE project_id = $1)",
+            [sea_orm::Value::Uuid(Some(Box::new(id.as_uuid())))],
+        ))
+        .await
+        .map_err(AppError::database)?;
+        issue::Entity::delete_many()
+            .filter(issue::Column::ProjectId.eq(id.as_uuid()))
+            .exec(&txn)
+            .await
+            .map_err(AppError::database)?;
         let res = project::Entity::delete_by_id(id.as_uuid())
-            .exec(&*self.db)
+            .exec(&txn)
             .await
             .map_err(AppError::database)?;
         if res.rows_affected == 0 {
             return Err(AppError::not_found("project", id));
         }
+        txn.commit().await.map_err(AppError::database)?;
         Ok(())
     }
 
@@ -983,6 +999,12 @@ impl IssueRepository for IssueRepo {
             .map_err(AppError::database)?;
         issue_watcher::Entity::delete_many()
             .filter(issue_watcher::Column::IssueId.eq(id.as_uuid()))
+            .exec(&txn)
+            .await
+            .map_err(AppError::database)?;
+        notification::Entity::delete_many()
+            .filter(notification::Column::EntityType.eq("issue"))
+            .filter(notification::Column::EntityId.eq(id.as_uuid()))
             .exec(&txn)
             .await
             .map_err(AppError::database)?;
