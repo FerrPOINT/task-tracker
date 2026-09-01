@@ -131,7 +131,16 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             updated_at: shared::now(),
         };
         self.worklogs.save(&worklog).await?;
-        self.sync_issue_time_tracking(&mut issue).await?;
+        if let Err(err) = self.sync_issue_time_tracking(&mut issue).await {
+            if let Err(rollback_err) = self.worklogs.delete(worklog.id).await {
+                tracing::warn!(
+                    error = %rollback_err,
+                    worklog_id = %worklog.id,
+                    "failed to rollback worklog create after issue time tracking sync failed"
+                );
+            }
+            return Err(err);
+        }
         self.publish_for_issue(&issue).await;
         Ok(WorklogDto::from_worklog(
             worklog,
@@ -154,6 +163,7 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             return Err(AppError::Forbidden);
         }
         let user = self.users.get_by_id(worklog.author_id).await?;
+        let previous = worklog.clone();
         if let Some(started_at) = cmd.started_at {
             worklog.started_at = started_at;
         }
@@ -170,7 +180,16 @@ impl crate::context::WorklogService for WorklogServiceImpl {
         }
         worklog.updated_at = shared::now();
         self.worklogs.save(&worklog).await?;
-        self.sync_issue_time_tracking(&mut issue).await?;
+        if let Err(err) = self.sync_issue_time_tracking(&mut issue).await {
+            if let Err(rollback_err) = self.worklogs.save(&previous).await {
+                tracing::warn!(
+                    error = %rollback_err,
+                    worklog_id = %worklog.id,
+                    "failed to rollback worklog update after issue time tracking sync failed"
+                );
+            }
+            return Err(err);
+        }
         self.publish_for_issue(&issue).await;
         Ok(WorklogDto::from_worklog(
             worklog,
@@ -188,7 +207,16 @@ impl crate::context::WorklogService for WorklogServiceImpl {
             return Err(AppError::Forbidden);
         }
         self.worklogs.delete(id).await?;
-        self.sync_issue_time_tracking(&mut issue).await?;
+        if let Err(err) = self.sync_issue_time_tracking(&mut issue).await {
+            if let Err(rollback_err) = self.worklogs.save(&worklog).await {
+                tracing::warn!(
+                    error = %rollback_err,
+                    worklog_id = %id,
+                    "failed to rollback worklog delete after issue time tracking sync failed"
+                );
+            }
+            return Err(err);
+        }
         self.publish_for_issue(&issue).await;
         Ok(())
     }

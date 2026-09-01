@@ -20,6 +20,7 @@ use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateSprintCommand,
     CreateWorklogCommand, LoginCommand, MoveIssueToSprintCommand, RegisterCommand,
     UpdateCommentCommand, UpdateIssueCommand, UpdateNotificationSettingsCommand,
+    UpdateWorklogCommand,
 };
 use crate::context::{AppContext, AttachmentService, NotificationService};
 use crate::services::{AttachmentServiceImpl, NotificationServiceImpl};
@@ -4355,6 +4356,177 @@ async fn worklog_list_propagates_author_directory_error() {
     );
 
     assert_internal(ctx.services.worklog.list(issue_id, owner.id, None, 0).await);
+}
+
+struct SaveFailIssueRepository {
+    inner: Arc<dyn IssueRepository>,
+}
+
+#[async_trait::async_trait]
+impl IssueRepository for SaveFailIssueRepository {
+    async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError> {
+        self.inner.get_by_id(id).await
+    }
+
+    async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError> {
+        self.inner.get_by_id_include_deleted(id).await
+    }
+
+    async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError> {
+        self.inner.get_by_key(key).await
+    }
+
+    async fn change_status_atomic(
+        &self,
+        issue_id: IssueId,
+        project_id: ProjectId,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+        actor_id: UserId,
+        guard: &domain::TransitionGuard,
+    ) -> Result<(), AppError> {
+        self.inner
+            .change_status_atomic(
+                issue_id,
+                project_id,
+                from_status_id,
+                to_status_id,
+                actor_id,
+                guard,
+            )
+            .await
+    }
+
+    async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError> {
+        self.inner.list(query).await
+    }
+
+    async fn save(&self, _issue: &Issue) -> Result<IssueId, AppError> {
+        Err(AppError::Internal("issue save failed".into()))
+    }
+
+    async fn delete(&self, id: IssueId) -> Result<(), AppError> {
+        self.inner.delete(id).await
+    }
+
+    async fn restore(&self, id: IssueId) -> Result<(), AppError> {
+        self.inner.restore(id).await
+    }
+
+    async fn purge(&self, id: IssueId) -> Result<(), AppError> {
+        self.inner.purge(id).await
+    }
+}
+
+async fn ctx_with_issue_save_failure_for_worklogs() -> (AppContext, User, IssueId) {
+    let (base_ctx, owner) = ctx_with_demo_data().await;
+    let issue_id = create_demo_issue(&base_ctx, &owner, "worklog rollback").await;
+    let worklogs = Arc::new(MemoryWorklogRepository::default());
+    let repos = Arc::new(domain::Repositories {
+        issues: Arc::new(SaveFailIssueRepository {
+            inner: base_ctx.repos.issues.clone(),
+        }),
+        worklogs,
+        ..(*base_ctx.repos).clone()
+    });
+    (
+        AppContext::new(test_config(), repos, Arc::new(TestStorage::default())),
+        owner,
+        issue_id,
+    )
+}
+
+#[tokio::test]
+async fn worklog_create_rolls_back_when_issue_time_sync_fails() {
+    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+
+    assert_internal(
+        ctx.services
+            .worklog
+            .create(
+                CreateWorklogCommand {
+                    issue_id,
+                    author_id: owner.id,
+                    started_at: shared::now(),
+                    duration_seconds: 300,
+                    description: Some("rollback create".to_string()),
+                },
+                owner.id,
+            )
+            .await,
+    );
+
+    assert!(
+        ctx.repos
+            .worklogs
+            .list_by_issue(issue_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn worklog_update_rolls_back_when_issue_time_sync_fails() {
+    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+    let worklog = domain::Worklog {
+        id: shared::WorklogId::new(),
+        issue_id,
+        author_id: owner.id,
+        started_at: shared::now(),
+        duration_seconds: 300,
+        description: Some("before".into()),
+        created_at: shared::now(),
+        updated_at: shared::now(),
+    };
+    ctx.repos.worklogs.save(&worklog).await.unwrap();
+
+    assert_internal(
+        ctx.services
+            .worklog
+            .update(
+                worklog.id,
+                UpdateWorklogCommand {
+                    started_at: None,
+                    duration_seconds: Some(900),
+                    description: Some(Some("after".to_string())),
+                },
+                owner.id,
+            )
+            .await,
+    );
+
+    let stored = ctx.repos.worklogs.get_by_id(worklog.id).await.unwrap();
+    assert_eq!(stored.duration_seconds, 300);
+    assert_eq!(
+        stored.description.as_ref().map(|d| d.as_ref()),
+        Some("before")
+    );
+}
+
+#[tokio::test]
+async fn worklog_delete_rolls_back_when_issue_time_sync_fails() {
+    let (ctx, owner, issue_id) = ctx_with_issue_save_failure_for_worklogs().await;
+    let worklog = domain::Worklog {
+        id: shared::WorklogId::new(),
+        issue_id,
+        author_id: owner.id,
+        started_at: shared::now(),
+        duration_seconds: 300,
+        description: Some("restore me".into()),
+        created_at: shared::now(),
+        updated_at: shared::now(),
+    };
+    ctx.repos.worklogs.save(&worklog).await.unwrap();
+
+    assert_internal(ctx.services.worklog.delete(worklog.id, owner.id).await);
+
+    let stored = ctx.repos.worklogs.get_by_id(worklog.id).await.unwrap();
+    assert_eq!(stored.duration_seconds, 300);
+    assert_eq!(
+        stored.description.as_ref().map(|d| d.as_ref()),
+        Some("restore me")
+    );
 }
 
 #[tokio::test]
