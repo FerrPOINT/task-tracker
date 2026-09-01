@@ -121,6 +121,48 @@ test.describe('smoke', () => {
         },
       }),
     )
+    await page.route('**/api/v1/projects/*/backlog**', (route) =>
+      routeJson(route, {
+        project_id: '00000000-0000-0000-0000-000000000010',
+        project_key: mockUser.key,
+        sprint: {
+          id: 'sprint-1',
+          name: 'Sprint 1',
+          goal: '',
+          state: 'active',
+          issue_ids: [],
+          velocity: 0,
+          remaining_days: 14,
+          start_date: null,
+          end_date: null,
+        },
+        sprint_issues: [],
+        backlog_issues: [],
+        backlog_total: 0,
+        backlog_offset: 0,
+        backlog_limit: 100,
+      }),
+    )
+    await page.route('**/api/v1/projects/*/sprints', (route) =>
+      routeJson(route, {
+        sprints: [
+          {
+            id: 'sprint-1',
+            name: 'Sprint 1',
+            goal: '',
+            state: 'active',
+            issue_ids: [],
+            velocity: 0,
+            remaining_days: 14,
+            start_date: null,
+            end_date: null,
+          },
+        ],
+      }),
+    )
+    await page.route('**/api/v1/projects/*/custom-fields', (route) =>
+      routeJson(route, { fields: [] }),
+    )
     await page.route('**/api/v1/notifications', (route) =>
       routeJson(route, { items: [], unread_count: 0 }),
     )
@@ -149,6 +191,17 @@ test.describe('smoke', () => {
 
     await page.goto(`${baseURL}/projects`)
     await expect(page.getByText(mockUser.name)).toBeVisible()
+
+    await page.goto(`${baseURL}/projects/${mockUser.key}/board`)
+    await expect(page.getByText('Smoke issue').first()).toBeVisible()
+
+    await page.goto(`${baseURL}/projects/${mockUser.key}/backlog`)
+    await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
+    const createLinks = page.locator('main a[href^="/issues/create"]')
+    await expect(createLinks).toHaveCount(2)
+    await createLinks.last().click()
+    await expect(page).toHaveURL(`${baseURL}/issues/create?project_key=${mockUser.key}`)
+    await expect(page.locator('#issue-project')).toHaveValue(mockUser.key)
 
     await page.goto(`${baseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
