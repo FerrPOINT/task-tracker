@@ -672,11 +672,11 @@ export function useCreateIssueLink(issueId: string) {
   })
 }
 
-export function useDeleteIssueLink(issueId: string) {
+export function useDeleteIssueLink() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => deleteIssueLink(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: linkKeys.issue(issueId) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['issue-links'] }),
   })
 }
 
