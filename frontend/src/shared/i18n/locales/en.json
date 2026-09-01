@@ -499,7 +499,11 @@
     "summary": "Summary",
     "type": "Type",
     "priority": "Priority",
-    "actions": "Actions"
+    "actions": "Actions",
+    "emptyPage": "No issues on this page.",
+    "prevPage": "Previous",
+    "nextPage": "Next",
+    "pageInfo": "{{from}}–{{to}}"
   },
   "status": {
     "todo": "To Do",

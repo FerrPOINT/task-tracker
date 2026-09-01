@@ -499,7 +499,11 @@
     "summary": "Название",
     "type": "Тип",
     "priority": "Приоритет",
-    "actions": "Действия"
+    "actions": "Действия",
+    "emptyPage": "На этой странице нет задач.",
+    "prevPage": "Назад",
+    "nextPage": "Вперёд",
+    "pageInfo": "{{from}}–{{to}}"
   },
   "status": {
     "todo": "К выполнению",
