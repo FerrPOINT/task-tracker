@@ -180,4 +180,37 @@ describe('ProjectBacklogPage', () => {
       expect(link).toHaveAttribute('href', '/issues/create?project_key=TT')
     })
   })
+
+  it('does not render active sprint actions for the backlog sentinel', async () => {
+    mockBacklog.mockReturnValue({
+      data: {
+        ...backlogData,
+        sprint: {
+          id: 'none',
+          name: 'Backlog',
+          goal: '',
+          state: 'future',
+          issue_ids: [],
+          velocity: 0,
+          remaining_days: null,
+          start_date: null,
+          end_date: null,
+        },
+        sprint_issues: [],
+      },
+      isLoading: false,
+      error: null,
+    })
+    mockSprints.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    })
+
+    render(wrapper(<ProjectBacklogPage />))
+
+    await waitFor(() => expect(screen.getByText(/Backlog · 0 sp/)).toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: /начать спринт/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /завершить спринт/i })).not.toBeInTheDocument()
+  })
 })
