@@ -120,6 +120,9 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 |---|---|---|
 | PUT, DELETE | `/labels/{id}` | Метка: обновление / удаление |
 
+`POST /projects/{project_key}/labels` и `PUT /labels/{id}` принимают непустой
+`name` и `color` в формате `#RRGGBB`. Невалидные значения возвращают `400`.
+
 ### Issue Labels
 
 | Метод | Путь | Назначение |

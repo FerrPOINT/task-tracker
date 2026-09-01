@@ -1575,6 +1575,56 @@ async fn label_create_empty_name_400() {
 }
 
 #[tokio::test]
+async fn label_create_invalid_color_400() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .post(format!("{}/api/v1/projects/TT/labels", url))
+        .bearer_auth(token)
+        .json(&serde_json::json!({"name": "bad-color", "color": "red"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
+async fn label_update_rejects_empty_name_and_invalid_color() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+
+    let res = client
+        .post(format!("{}/api/v1/projects/TT/labels", url))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "ops", "color": "#0ea5e9"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 201);
+    let label: serde_json::Value = res.json().await.unwrap();
+    let label_id = label["id"].as_str().unwrap();
+
+    let res = client
+        .put(format!("{}/api/v1/labels/{}", url, label_id))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "  ", "color": "#000000"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+
+    let res = client
+        .put(format!("{}/api/v1/labels/{}", url, label_id))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"name": "ops", "color": "#12zz56"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+}
+
+#[tokio::test]
 async fn label_create_unknown_project_404() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;

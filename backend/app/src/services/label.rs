@@ -56,6 +56,31 @@ impl LabelServiceImpl {
         }
         Ok(())
     }
+
+    fn normalize_name(name: &str) -> Result<String, AppError> {
+        let name = name.trim();
+        if name.is_empty() {
+            Err(AppError::invalid_input("label name must not be empty"))
+        } else {
+            Ok(name.to_string())
+        }
+    }
+
+    fn normalize_color(color: &str) -> Result<String, AppError> {
+        let color = color.trim();
+        let valid_hex = color.len() == 7
+            && color.starts_with('#')
+            && color.as_bytes()[1..]
+                .iter()
+                .all(|byte| byte.is_ascii_hexdigit());
+        if valid_hex {
+            Ok(color.to_string())
+        } else {
+            Err(AppError::invalid_input(
+                "label color must be a #RRGGBB hex color",
+            ))
+        }
+    }
 }
 
 #[async_trait]
@@ -71,14 +96,13 @@ impl crate::context::LabelService for LabelServiceImpl {
         self.authz
             .require_project_edit(project.id, requester)
             .await?;
-        if name.trim().is_empty() {
-            return Err(AppError::invalid_input("label name must not be empty"));
-        }
+        let name = Self::normalize_name(name)?;
+        let color = Self::normalize_color(color)?;
         let label = domain::Label {
             id: shared::LabelId::new(),
             project_id: project.id,
-            name: name.trim().to_string().into(),
-            color: color.to_string().into(),
+            name: name.into(),
+            color: color.into(),
         };
         self.labels.save(&label).await?;
         Ok(Self::to_dto(&label))
@@ -108,11 +132,11 @@ impl crate::context::LabelService for LabelServiceImpl {
         self.authz
             .require_project_edit(label.project_id, requester)
             .await?;
+        let name = Self::normalize_name(name)?;
+        let color = Self::normalize_color(color)?;
         let mut label = label;
-        if !name.trim().is_empty() {
-            label.name = name.trim().to_string().into();
-        }
-        label.color = color.to_string().into();
+        label.name = name.into();
+        label.color = color.into();
         self.labels.save(&label).await?;
         let issue_ids = self.labels.list_issue_ids_by_label(label_id).await?;
         self.publish_issue_updates_for_ids(issue_ids).await?;
