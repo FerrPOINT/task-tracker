@@ -4429,6 +4429,60 @@ async fn issue_purge_from_trash_deletes_attachment_files() {
 }
 
 #[tokio::test]
+async fn project_delete_deletes_issue_attachment_files() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let storage = Arc::new(RecordingStorage::default());
+    let ctx = AppContext::new(test_config(), base_ctx.repos.clone(), storage.clone());
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Project delete attachment".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    ctx.services
+        .attachment
+        .upload(
+            issue.id.parse().unwrap(),
+            user.id,
+            "project-delete.txt",
+            "text/plain",
+            b"payload".to_vec(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(storage.file_count(), 1);
+    ctx.services
+        .project
+        .delete(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+
+    assert_eq!(storage.file_count(), 0);
+    assert_eq!(storage.delete_count(), 1);
+}
+
+#[tokio::test]
 async fn worklog_create_rejects_spoofed_author() {
     let (base_ctx, owner) = ctx_with_demo_data().await;
     let repos = Arc::new(domain::Repositories {
