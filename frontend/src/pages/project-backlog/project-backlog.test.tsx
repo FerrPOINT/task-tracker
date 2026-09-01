@@ -169,6 +169,40 @@ describe('ProjectBacklogPage', () => {
     expect(screen.getByText(/Sprint 2/)).toBeInTheDocument()
   })
 
+  it('does not duplicate future sprint issues in the active sprint section', async () => {
+    mockBacklog.mockReturnValue({
+      data: {
+        ...backlogData,
+        sprint_issues: [
+          ...backlogData.sprint_issues,
+          {
+            id: 'i3',
+            key: 'TT-3',
+            summary: 'Future sprint issue',
+            priority: 'Low',
+            issue_type: 'Task',
+            status: 'Todo',
+            status_id: 'todo',
+            project_key: 'TT',
+            project_name: 'Task Tracker',
+            description: '',
+            labels: [],
+            reporter_id: 'u1',
+            assignee_name: 'Carol',
+            sprint_id: 's2',
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
+    })
+
+    render(wrapper(<ProjectBacklogPage />))
+
+    await waitFor(() => expect(screen.getByText('Future sprint issue')).toBeInTheDocument())
+    expect(screen.getAllByText('Future sprint issue')).toHaveLength(1)
+  })
+
   it('preserves project key on every issue create link', async () => {
     render(wrapper(<ProjectBacklogPage />))
     const links = await screen.findAllByRole('link')
