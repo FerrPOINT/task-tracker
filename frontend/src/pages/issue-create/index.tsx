@@ -105,7 +105,6 @@ export function IssueCreatePage() {
         summary,
         description: description || null,
         priority: priority.toLowerCase() as 'highest' | 'high' | 'medium' | 'low' | 'lowest',
-        status_id: '00000000-0000-0000-0000-000000000001',
         assignee_id: assignee_id || null,
         custom_fields,
       },

@@ -32,7 +32,7 @@ pub async fn list_comments(
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let (limit, offset) = parse_page_params(raw.as_deref());
+    let (limit, offset) = parse_page_params(raw.as_deref())?;
     let items = ctx
         .services
         .comment
@@ -210,7 +210,7 @@ pub async fn delete_comment(
 }
 
 /// Parse `limit`/`offset` from a raw query string with strict validation.
-pub(crate) fn parse_page_params(raw: Option<&str>) -> (Option<u64>, u64) {
+pub(crate) fn parse_page_params(raw: Option<&str>) -> Result<(Option<u64>, u64), AppError> {
     let mut limit = None;
     let mut offset = 0u64;
     if let Some(q) = raw {
@@ -218,18 +218,19 @@ pub(crate) fn parse_page_params(raw: Option<&str>) -> (Option<u64>, u64) {
             let mut it = pair.splitn(2, '=');
             match (it.next(), it.next()) {
                 (Some("limit"), Some(v)) => {
-                    if let Ok(n) = v.parse::<u64>() {
-                        limit = Some(n);
-                    }
+                    limit = Some(
+                        v.parse::<u64>()
+                            .map_err(|_| AppError::invalid_input("limit"))?,
+                    );
                 }
                 (Some("offset"), Some(v)) => {
-                    if let Ok(n) = v.parse::<u64>() {
-                        offset = n;
-                    }
+                    offset = v
+                        .parse::<u64>()
+                        .map_err(|_| AppError::invalid_input("offset"))?;
                 }
                 _ => {}
             }
         }
     }
-    (limit, offset)
+    Ok((limit, offset))
 }

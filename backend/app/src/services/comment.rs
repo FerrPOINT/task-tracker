@@ -81,6 +81,15 @@ impl CommentServiceImpl {
         recipients
     }
 
+    async fn publish_comment_event(&self, issue: &domain::Issue) {
+        if let Ok(project) = self.projects.get_by_id(issue.project_id).await {
+            self.events.publish(shared::TrackerEvent::IssueCommented {
+                issue_id: issue.id.to_string(),
+                project_key: project.key.to_string(),
+            });
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn notify_issue_recipients(
         &self,
@@ -230,6 +239,7 @@ impl crate::context::CommentService for CommentServiceImpl {
             comment.updated_at = shared::now();
         }
         self.comments.save(&comment).await?;
+        self.publish_comment_event(&issue).await;
         let user = self.users.get_by_id(comment.author_id).await.ok();
         Ok(CommentDto::from_comment(
             comment,
@@ -246,6 +256,8 @@ impl crate::context::CommentService for CommentServiceImpl {
         if comment.author_id != requester {
             return Err(AppError::Forbidden);
         }
-        self.comments.delete(id).await
+        self.comments.delete(id).await?;
+        self.publish_comment_event(&issue).await;
+        Ok(())
     }
 }

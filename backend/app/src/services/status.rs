@@ -19,4 +19,8 @@ impl crate::context::StatusService for StatusServiceImpl {
     async fn list_statuses(&self) -> Result<Vec<domain::Status>, AppError> {
         self.statuses.list_all().await
     }
+
+    async fn get_default_status(&self) -> Result<domain::Status, AppError> {
+        self.statuses.get_default().await
+    }
 }

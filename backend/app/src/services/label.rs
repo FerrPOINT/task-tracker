@@ -9,6 +9,7 @@ pub struct LabelServiceImpl {
     labels: Arc<dyn domain::LabelRepository>,
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
+    events: crate::context::EventBus,
     authz: Authz,
 }
 
@@ -17,12 +18,14 @@ impl LabelServiceImpl {
         labels: Arc<dyn domain::LabelRepository>,
         projects: Arc<dyn ProjectRepository>,
         issues: Arc<dyn IssueRepository>,
+        events: crate::context::EventBus,
         authz: Authz,
     ) -> Self {
         Self {
             labels,
             projects,
             issues,
+            events,
             authz,
         }
     }
@@ -140,6 +143,10 @@ impl crate::context::LabelService for LabelServiceImpl {
             ));
         }
         self.labels.attach(issue_id, label_id).await?;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
         Ok(())
     }
 
@@ -153,7 +160,15 @@ impl crate::context::LabelService for LabelServiceImpl {
         self.authz
             .require_project_edit(issue.project_id, requester)
             .await?;
+        let label = self.labels.get_by_id(label_id).await?;
+        if label.project_id != issue.project_id {
+            return Err(AppError::not_found("label", label_id));
+        }
         self.labels.detach(issue_id, label_id).await?;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
         Ok(())
     }
 }

@@ -206,7 +206,7 @@ pub fn default_board_columns() -> Vec<BoardColumn> {
     vec![
         BoardColumn {
             id: todo_status(),
-            name: "Todo".into(),
+            name: "To Do".into(),
             category: StatusCategory::Todo,
             wip_limit: None,
             position: 0,
@@ -223,14 +223,14 @@ pub fn default_board_columns() -> Vec<BoardColumn> {
             name: "Review".into(),
             category: StatusCategory::InProgress,
             wip_limit: None,
-            position: 3,
+            position: 2,
         },
         BoardColumn {
             id: done_status(),
             name: "Done".into(),
             category: StatusCategory::Done,
             wip_limit: None,
-            position: 4,
+            position: 3,
         },
     ]
 }
@@ -272,5 +272,6 @@ mod tests {
         let dto = build_issue_dto_from_lookups(issue, &projects, &users, &labels);
         assert_eq!(dto.project_name, "Project TT");
         assert_eq!(dto.reporter_name.as_deref(), Some("Reporter"));
+        assert_eq!(dto.status, "To Do");
     }
 }

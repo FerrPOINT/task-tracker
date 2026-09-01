@@ -138,6 +138,7 @@ describe('IssueCreatePage', () => {
     if (!firstCall) throw new Error('createIssue was not called')
     const payload = firstCall[0]
     expect(payload).not.toHaveProperty('reporter_id')
+    expect(payload).not.toHaveProperty('status_id')
     expect(payload).toMatchObject({
       project_key: 'TT',
       summary: 'Test issue',

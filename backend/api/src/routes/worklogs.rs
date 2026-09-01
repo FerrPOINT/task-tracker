@@ -32,7 +32,7 @@ pub async fn list_worklogs(
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let (limit, offset) = crate::routes::comments::parse_page_params(raw.as_deref());
+    let (limit, offset) = crate::routes::comments::parse_page_params(raw.as_deref())?;
     let items = ctx
         .services
         .worklog

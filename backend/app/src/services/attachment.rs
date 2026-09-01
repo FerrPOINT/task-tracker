@@ -31,6 +31,7 @@ pub struct AttachmentServiceImpl {
     attachments: Arc<dyn domain::AttachmentRepository>,
     issues: Arc<dyn IssueRepository>,
     storage: Arc<dyn domain::FileStorage>,
+    events: crate::context::EventBus,
     authz: Authz,
 }
 
@@ -39,12 +40,14 @@ impl AttachmentServiceImpl {
         attachments: Arc<dyn domain::AttachmentRepository>,
         issues: Arc<dyn IssueRepository>,
         storage: Arc<dyn domain::FileStorage>,
+        events: crate::context::EventBus,
         authz: Authz,
     ) -> Self {
         Self {
             attachments,
             issues,
             storage,
+            events,
             authz,
         }
     }
@@ -138,6 +141,10 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
                 .await;
             return Err(err);
         }
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
         Ok(Self::to_dto(&attachment))
     }
 
@@ -184,10 +191,24 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         if a.author_id != requester {
             return Err(AppError::Forbidden);
         }
-        self.storage
-            .delete(&a.issue_id.to_string(), a.storage_key.as_ref())
-            .await?;
         self.attachments.delete(attachment_id).await?;
+        if let Err(err) = self
+            .storage
+            .delete(&a.issue_id.to_string(), a.storage_key.as_ref())
+            .await
+        {
+            tracing::warn!(
+                attachment_id = %attachment_id,
+                issue_id = %a.issue_id,
+                storage_key = %a.storage_key.as_ref(),
+                error = %err,
+                "failed to delete attachment blob after metadata deletion"
+            );
+        }
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
         Ok(())
     }
 }
