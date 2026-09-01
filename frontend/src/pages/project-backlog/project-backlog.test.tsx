@@ -169,10 +169,15 @@ describe('ProjectBacklogPage', () => {
     expect(screen.getByText(/Sprint 2/)).toBeInTheDocument()
   })
 
-  it('preserves project key when opening issue create', async () => {
+  it('preserves project key on every issue create link', async () => {
     render(wrapper(<ProjectBacklogPage />))
     const links = await screen.findAllByRole('link')
-    const createLink = links.find((link) => link.getAttribute('href')?.startsWith('/issues/create'))
-    expect(createLink).toHaveAttribute('href', '/issues/create?project_key=TT')
+    const createLinks = links.filter((link) =>
+      link.getAttribute('href')?.startsWith('/issues/create'),
+    )
+    expect(createLinks).toHaveLength(2)
+    createLinks.forEach((link) => {
+      expect(link).toHaveAttribute('href', '/issues/create?project_key=TT')
+    })
   })
 })

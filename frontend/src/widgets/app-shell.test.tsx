@@ -42,6 +42,19 @@ function mockHooks(notifications: Notification[] | undefined) {
 }
 
 describe('AppShell notifications', () => {
+  it('does not resolve an issue context on the create issue route', () => {
+    mockHooks([])
+
+    render(
+      <MemoryRouter initialEntries={['/issues/create']}>
+        <AppShell />
+      </MemoryRouter>,
+    )
+
+    expect(useIssue).toHaveBeenCalledWith('')
+    expect(useIssue).not.toHaveBeenCalledWith('create')
+  })
+
   it('includes the administration link in the desktop sidebar', () => {
     mockHooks([])
     useCurrentUser.mockReturnValue({
