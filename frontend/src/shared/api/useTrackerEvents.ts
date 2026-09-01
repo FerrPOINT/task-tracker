@@ -48,6 +48,8 @@ function invalidateIssueEventQueries(
     qc.invalidateQueries({ queryKey: ['issue-links', issueId] })
     qc.invalidateQueries({ queryKey: ['issue-custom-fields', issueId] })
     qc.invalidateQueries({ queryKey: ['attachments', issueId] })
+    qc.invalidateQueries({ queryKey: ['issue-votes', issueId] })
+    qc.invalidateQueries({ queryKey: ['issue-watchers', issueId] })
   }
 }
 
