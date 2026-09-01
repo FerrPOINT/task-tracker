@@ -58,6 +58,14 @@ import {
   getControlChartReport,
 } from '@/api/reports'
 import {
+  listIssueVotes,
+  listIssueWatchers,
+  voteIssue,
+  unvoteIssue,
+  watchIssue,
+  unwatchIssue,
+} from '@/api/engagement'
+import {
   getNotificationSettings,
   listNotifications,
   markAllNotificationsRead,
@@ -677,6 +685,71 @@ export function useDeleteIssueLink() {
   return useMutation({
     mutationFn: (id: string) => deleteIssueLink(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['issue-links'] }),
+  })
+}
+
+const engagementKeys = {
+  votes: (issueId: string) => ['issue-votes', issueId] as const,
+  watchers: (issueId: string) => ['issue-watchers', issueId] as const,
+}
+
+export function useIssueVotes(issueId: string | undefined) {
+  return useQuery({
+    queryKey: engagementKeys.votes(issueId ?? ''),
+    queryFn: () => listIssueVotes(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useIssueWatchers(issueId: string | undefined) {
+  return useQuery({
+    queryKey: engagementKeys.watchers(issueId ?? ''),
+    queryFn: () => listIssueWatchers(issueId!),
+    enabled: !!issueId,
+  })
+}
+
+export function useVoteIssue(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => voteIssue(issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: engagementKeys.votes(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
+  })
+}
+
+export function useUnvoteIssue(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => unvoteIssue(issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: engagementKeys.votes(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
+  })
+}
+
+export function useWatchIssue(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => watchIssue(issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: engagementKeys.watchers(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
+  })
+}
+
+export function useUnwatchIssue(issueId: string, projectKey?: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () => unwatchIssue(issueId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: engagementKeys.watchers(issueId) })
+      invalidateIssueCaches(qc, projectKey, issueId)
+    },
   })
 }
 

@@ -2,10 +2,18 @@ import { act, renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import { useCreateIssueLink, useDeleteIssueLink, useStartSprint, useUpdateIssue } from './hooks'
+import {
+  useCreateIssueLink,
+  useDeleteIssueLink,
+  useStartSprint,
+  useUpdateIssue,
+  useVoteIssue,
+  useWatchIssue,
+} from './hooks'
 import { createIssueLink, deleteIssueLink } from '@/api/link'
 import { updateIssue } from '@/api/issue'
 import { startSprint } from '@/api/sprint'
+import { voteIssue, watchIssue } from '@/api/engagement'
 
 vi.mock('@/api/link', () => ({
   listIssueLinks: vi.fn(),
@@ -30,6 +38,15 @@ vi.mock('@/api/sprint', () => ({
   closeSprint: vi.fn(),
   moveIssueToSprint: vi.fn(),
   removeIssueFromSprint: vi.fn(),
+}))
+
+vi.mock('@/api/engagement', () => ({
+  listIssueVotes: vi.fn(),
+  listIssueWatchers: vi.fn(),
+  voteIssue: vi.fn(),
+  unvoteIssue: vi.fn(),
+  watchIssue: vi.fn(),
+  unwatchIssue: vi.fn(),
 }))
 
 function wrapper(client: QueryClient) {
@@ -144,5 +161,54 @@ describe('shared api hooks', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['reports'] })
+  })
+
+  it('invalidates issue-derived caches after voting for an issue', async () => {
+    vi.mocked(voteIssue).mockResolvedValue({
+      user_id: 'user-1',
+      username: 'demo',
+      display_name: 'Demo User',
+      voted_at: '2026-09-01T10:00:00Z',
+    })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useVoteIssue('issue-1', 'TT'), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+
+    expect(voteIssue).toHaveBeenCalledWith('issue-1')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-votes', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
+  })
+
+  it('invalidates issue-derived caches after watching an issue', async () => {
+    vi.mocked(watchIssue).mockResolvedValue(undefined)
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useWatchIssue('issue-1', 'TT'), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+
+    expect(watchIssue).toHaveBeenCalledWith('issue-1')
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-watchers', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['dashboard'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['search'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
   })
 })

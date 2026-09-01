@@ -163,6 +163,72 @@ test.describe('smoke', () => {
     await page.route('**/api/v1/projects/*/custom-fields', (route) =>
       routeJson(route, { fields: [] }),
     )
+    await page.route('**/api/v1/projects/*/labels', (route) => routeJson(route, { labels: [] }))
+    await page.route(`**/api/v1/issues/${mockUser.issueId}`, (route) =>
+      routeJson(route, {
+        id: mockUser.issueId,
+        key: `${mockUser.key}-1`,
+        summary: 'Smoke issue',
+        description: 'Issue detail smoke description',
+        issue_type: 'Task',
+        status: 'To Do',
+        status_id: 'todo',
+        priority: 'Medium',
+        labels: [],
+        assignee_id: null,
+        assignee_name: null,
+        reporter_id: '00000000-0000-0000-0000-000000000002',
+        reporter_name: 'Reporter User',
+        project_key: mockUser.key,
+        project_name: mockUser.name,
+        sprint_id: null,
+        original_estimate_seconds: null,
+        remaining_estimate_seconds: null,
+        time_spent_seconds: 0,
+      }),
+    )
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments`, (route) =>
+      routeJson(route, { comments: [] }),
+    )
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs`, (route) =>
+      routeJson(route, { worklogs: [] }),
+    )
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/attachments`, (route) =>
+      routeJson(route, { attachments: [] }),
+    )
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/labels`, (route) =>
+      routeJson(route, { labels: [] }),
+    )
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/links`, (route) =>
+      routeJson(route, { links: [] }),
+    )
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/custom-fields`, (route) =>
+      routeJson(route, { values: [] }),
+    )
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/votes`, (route) =>
+      routeJson(route, {
+        count: 1,
+        votes: [
+          {
+            user_id: '00000000-0000-0000-0000-000000000003',
+            username: 'voter',
+            display_name: 'Voter User',
+            voted_at: '2026-09-01T10:00:00Z',
+          },
+        ],
+      }),
+    )
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/watchers`, (route) =>
+      routeJson(route, {
+        watchers: [
+          {
+            user_id: mockUser.id,
+            username: 'demo',
+            display_name: 'Demo User',
+          },
+        ],
+      }),
+    )
     await page.route('**/api/v1/notifications', (route) =>
       routeJson(route, { items: [], unread_count: 0 }),
     )
@@ -205,6 +271,13 @@ test.describe('smoke', () => {
 
     await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
+    await page.goto(`${appBaseURL}/issues/${mockUser.issueId}`)
+    await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+    await expect(page.getByRole('button', { name: /vote|голос/i })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: /stop watching|перестать следить/i }),
+    ).toBeVisible()
+    await expect(page.getByText(/1 total|всего 1/i)).toBeVisible()
     await page.screenshot({ path: testInfo.outputPath('smoke-board.png') })
   })
 })

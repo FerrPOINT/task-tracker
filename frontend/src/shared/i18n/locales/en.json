@@ -323,6 +323,20 @@
     "namePlaceholder": "Label name",
     "detach": "Remove label {{name}}"
   },
+  "engagement": {
+    "title": "Engagement",
+    "votes": "Votes",
+    "watchers": "Watchers",
+    "count": "{{count}} total",
+    "vote": "Vote",
+    "voted": "Voted",
+    "unvote": "Remove vote",
+    "watch": "Watch",
+    "watching": "Watching",
+    "unwatch": "Stop watching",
+    "noWatchers": "No watchers",
+    "ownIssue": "You cannot vote for your own issue"
+  },
   "links": {
     "title": "Links",
     "none": "No links",
