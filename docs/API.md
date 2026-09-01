@@ -1223,27 +1223,32 @@ Accept: text/event-stream
 
 **Формат сообщений:**
 
-Каждое SSE-событие имеет поле `event: tracker` и `data` с JSON-представлением `DomainEvent`:
+Каждое SSE-событие имеет поле `event: tracker` и `data` с JSON-представлением
+`TrackerEventPayload`. Поле `type` - runtime discriminator; `event_type` в
+этом payload не используется.
 
 ```
 event: tracker
-data: {"type":"Created","issue_id":"uuid","reporter_id":"uuid"}
+data: {"type":"issue_created","issue_id":"uuid","project_key":"TT"}
 
 event: tracker
-data: {"type":"StatusChanged","issue_id":"uuid","from":"uuid","to":"uuid"}
+data: {"type":"sprint_changed","project_key":"TT"}
 ```
 
 ### Типы событий
 
-Сервер публикует события из `DomainEvent` (enum с тегом `type`):
+Сервер публикует coarse-grained invalidation events из `TrackerEvent`:
 
 | Event Type | When | Payload Fields |
 |------------|------|----------------|
-| `Created` (IssueEvent) | Создана задача | `issue_id`, `reporter_id` |
-| `StatusChanged` (IssueEvent) | Переход workflow | `issue_id`, `from`, `to` |
-| `Assigned` (IssueEvent) | Назначение assignee | `issue_id`, `assignee_id` |
-| `CommentAdded` (IssueEvent) | Новый комментарий | `issue_id`, `comment_id`, `author_id` |
-| `Created` (ProjectEvent) | Создан проект | `project_id`, `owner_id` |
+| `issue_created` | Создана задача | `issue_id`, `project_key` |
+| `issue_updated` | Изменена задача или связанные данные | `issue_id`, `project_key` |
+| `issue_deleted` | Задача отправлена в корзину | `issue_id`, `project_key` |
+| `issue_moved` | Задача перемещена по workflow/board | `issue_id`, `project_key` |
+| `issue_commented` | Добавлен/изменен/удален комментарий | `issue_id`, `project_key` |
+| `worklog_logged` | Изменен worklog задачи | `issue_id`, `project_key` |
+| `sprint_changed` | Изменился sprint lifecycle или состав sprint/backlog | `project_key` |
+| `notification_created` | Создано уведомление для текущего пользователя | `recipient_id` |
 
 ### Client-Side Handling
 
@@ -1260,10 +1265,14 @@ const es = new EventSource(`/api/v1/events?access_token=${encodeURIComponent(acc
 
 es.addEventListener('tracker', (e) => {
   const event = JSON.parse(e.data);
-  // Инвалидация TanStack Query
-  queryClient.invalidateQueries({ queryKey: ['issues'] });
-  if (event.type === 'StatusChanged') {
-    queryClient.invalidateQueries({ queryKey: ['board'] });
+
+  if (['issue_created', 'issue_updated', 'issue_deleted', 'issue_moved'].includes(event.type)) {
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['search'] });
+    queryClient.invalidateQueries({ queryKey: ['project', event.project_key] });
+    queryClient.invalidateQueries({ queryKey: ['backlog', event.project_key] });
+    queryClient.invalidateQueries({ queryKey: ['issue', event.issue_id] });
   }
 });
 
