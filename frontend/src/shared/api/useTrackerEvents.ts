@@ -24,7 +24,12 @@ function invalidateIssueEventQueries(
     qc.invalidateQueries({ queryKey: ['project'] })
     qc.invalidateQueries({ queryKey: ['backlog'] })
   }
-  if (issueId) qc.invalidateQueries({ queryKey: ['issue', issueId] })
+  if (issueId) {
+    qc.invalidateQueries({ queryKey: ['issue', issueId] })
+    qc.invalidateQueries({ queryKey: ['issue-labels', issueId] })
+    qc.invalidateQueries({ queryKey: ['issue-custom-fields', issueId] })
+    qc.invalidateQueries({ queryKey: ['attachments', issueId] })
+  }
 }
 
 /**

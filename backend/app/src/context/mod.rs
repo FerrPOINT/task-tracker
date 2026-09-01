@@ -145,6 +145,7 @@ impl AppContext {
             repos.statuses.clone(),
             repos.transitions.clone(),
             repos.projects.clone(),
+            events.clone(),
             authz.clone(),
         ));
         let search: Arc<dyn SearchService> = Arc::new(SearchServiceImpl::new(
@@ -219,12 +220,14 @@ impl AppContext {
                     repos.attachments.clone(),
                     repos.issues.clone(),
                     storage,
+                    events.clone(),
                     authz.clone(),
                 )),
                 label: Arc::new(crate::services::LabelServiceImpl::new(
                     repos.labels.clone(),
                     repos.projects.clone(),
                     repos.issues.clone(),
+                    events.clone(),
                     authz.clone(),
                 )),
                 issue_link: Arc::new(crate::services::IssueLinkServiceImpl::new(
@@ -276,6 +279,7 @@ impl AppContext {
                     repos.custom_fields.clone(),
                     repos.projects.clone(),
                     repos.issues.clone(),
+                    events.clone(),
                     authz.clone(),
                 )),
                 sprint,

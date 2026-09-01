@@ -24,6 +24,7 @@ pub struct BoardServiceImpl {
     statuses: Arc<dyn StatusRepository>,
     transitions: Arc<dyn WorkflowTransitionRepository>,
     projects: Arc<dyn ProjectRepository>,
+    events: crate::context::EventBus,
     authz: Authz,
 }
 
@@ -62,7 +63,7 @@ impl BoardServiceImpl {
         statuses: Arc<dyn StatusRepository>,
         transitions: Arc<dyn WorkflowTransitionRepository>,
         projects: Arc<dyn ProjectRepository>,
-
+        events: crate::context::EventBus,
         authz: Authz,
     ) -> Self {
         Self {
@@ -74,6 +75,7 @@ impl BoardServiceImpl {
             statuses,
             transitions,
             projects,
+            events,
             authz,
         }
     }
@@ -320,6 +322,10 @@ impl crate::context::BoardService for BoardServiceImpl {
                 &guard,
             )
             .await?;
+        self.events.publish(shared::TrackerEvent::IssueMoved {
+            issue_id: issue.id.to_string(),
+            project_key: project.key.to_string(),
+        });
         self.build_board_dto(project_key).await
     }
 }

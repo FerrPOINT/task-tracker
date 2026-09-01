@@ -2,12 +2,13 @@ use std::sync::Arc;
 
 type TestStorage = domain::InMemoryStorage;
 use domain::{
-    Board, BoardColumn, BoardRepository, Issue, IssueQuery, IssueRepository,
-    MemoryAttachmentRepository, MemoryBoardRepository, MemoryIssueRepository,
-    MemoryNotificationRepository, MemoryProjectRepository, MemorySprintRepository,
-    MemoryUserRepository, Notification, NotificationRepository, Project, ProjectMemberRepository,
-    ProjectQuery, ProjectRepository, Sprint, SprintRepository, StatusCategory, User,
-    UserNotificationSettingsRepository, UserRepository,
+    Board, BoardColumn, BoardRepository, FileStorage, Issue, IssueQuery, IssueRepository,
+    MemoryAttachmentRepository, MemoryBoardRepository, MemoryCommentRepository,
+    MemoryIssueRepository, MemoryLabelRepository, MemoryNotificationRepository,
+    MemoryProjectRepository, MemorySprintRepository, MemoryUserRepository, Notification,
+    NotificationRepository, Project, ProjectMemberRepository, ProjectQuery, ProjectRepository,
+    Sprint, SprintRepository, StatusCategory, User, UserNotificationSettingsRepository,
+    UserRepository,
 };
 use shared::{
     AppConfig, AppError, AuthConfig, DatabaseConfig, IssueId, IssueKey, IssueType, NotificationId,
@@ -16,8 +17,8 @@ use shared::{
 
 use crate::commands::{
     CreateCommentCommand, CreateIssueCommand, CreateProjectCommand, CreateSprintCommand,
-    LoginCommand, MoveIssueToSprintCommand, RegisterCommand, UpdateIssueCommand,
-    UpdateNotificationSettingsCommand,
+    LoginCommand, MoveIssueToSprintCommand, RegisterCommand, UpdateCommentCommand,
+    UpdateIssueCommand, UpdateNotificationSettingsCommand,
 };
 use crate::context::{AppContext, AttachmentService, NotificationService};
 use crate::services::{AttachmentServiceImpl, NotificationServiceImpl};
@@ -133,6 +134,40 @@ impl domain::AttachmentRepository for FailingAttachmentSaveRepository {
 
     async fn delete(&self, _id: shared::AttachmentId) -> Result<(), AppError> {
         Ok(())
+    }
+}
+
+struct FailingAttachmentDeleteRepository {
+    attachment: domain::Attachment,
+}
+
+#[async_trait::async_trait]
+impl domain::AttachmentRepository for FailingAttachmentDeleteRepository {
+    async fn get_by_id(&self, id: shared::AttachmentId) -> Result<domain::Attachment, AppError> {
+        if id == self.attachment.id {
+            Ok(self.attachment.clone())
+        } else {
+            Err(AppError::not_found("attachment", id))
+        }
+    }
+
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<domain::Attachment>, AppError> {
+        if issue_id == self.attachment.issue_id {
+            Ok(vec![self.attachment.clone()])
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    async fn save(
+        &self,
+        _attachment: &domain::Attachment,
+    ) -> Result<shared::AttachmentId, AppError> {
+        Ok(self.attachment.id)
+    }
+
+    async fn delete(&self, _id: shared::AttachmentId) -> Result<(), AppError> {
+        Err(AppError::Internal("metadata delete failed".into()))
     }
 }
 
@@ -469,6 +504,63 @@ async fn issue_service_update_and_move() {
         .find(|c| c.name == "In Progress")
         .unwrap();
     assert!(col.issue_ids.contains(&created.id));
+}
+
+#[tokio::test]
+async fn board_move_issue_publishes_issue_moved_event() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: project_key.clone(),
+                summary: "Move from board".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let mut receiver = ctx.events.subscribe();
+    while receiver.try_recv().is_ok() {}
+
+    ctx.services
+        .board
+        .move_issue(
+            &project_key,
+            issue.id.parse().unwrap(),
+            board.columns[1].id.parse().unwrap(),
+            user.id,
+        )
+        .await
+        .unwrap();
+
+    let event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        event,
+        shared::TrackerEvent::IssueMoved {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
 }
 
 #[tokio::test]
@@ -2498,17 +2590,42 @@ async fn custom_field_null_clears_optional_and_rejects_required() {
     let issue_id: IssueId = issue.id.parse().unwrap();
     let optional_id: shared::CustomFieldId = optional.id.parse().unwrap();
     let required_id: shared::CustomFieldId = required.id.parse().unwrap();
+    let mut receiver = ctx.events.subscribe();
 
     ctx.services
         .custom_field
         .set_value(issue_id, optional_id, serde_json::json!("set"), user.id)
         .await
         .unwrap();
+    let set_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        set_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+
     ctx.services
         .custom_field
         .set_value(issue_id, optional_id, serde_json::Value::Null, user.id)
         .await
         .unwrap();
+    let clear_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        clear_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+
     let values = ctx
         .services
         .custom_field
@@ -2560,6 +2677,7 @@ async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
         Arc::new(FailingAttachmentSaveRepository),
         ctx.repos.issues.clone(),
         storage.clone(),
+        ctx.events.clone(),
         ctx.authz.clone(),
     );
 
@@ -2577,6 +2695,329 @@ async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
     assert!(matches!(err, AppError::Internal(_)));
     assert_eq!(storage.file_count(), 0);
     assert_eq!(storage.delete_count(), 1);
+}
+
+#[tokio::test]
+async fn attachment_delete_keeps_blob_when_metadata_delete_fails() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let board = ctx
+        .services
+        .board
+        .get_board(&ProjectKey::new("TT"), user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: ProjectKey::new("TT"),
+                summary: "Attachment delete failure".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let attachment = domain::Attachment {
+        id: shared::AttachmentId::new(),
+        issue_id,
+        author_id: user.id,
+        file_name: "delete.txt".into(),
+        content_type: "text/plain".into(),
+        size_bytes: 7,
+        storage_key: "delete.txt".into(),
+        created_at: shared::now(),
+    };
+    let storage = Arc::new(RecordingStorage::default());
+    storage
+        .put(
+            &issue_id.to_string(),
+            attachment.storage_key.as_ref(),
+            b"payload".to_vec(),
+        )
+        .await
+        .unwrap();
+    let service = AttachmentServiceImpl::new(
+        Arc::new(FailingAttachmentDeleteRepository {
+            attachment: attachment.clone(),
+        }),
+        ctx.repos.issues.clone(),
+        storage.clone(),
+        ctx.events.clone(),
+        ctx.authz.clone(),
+    );
+
+    let err = service
+        .delete(attachment.id, user.id)
+        .await
+        .expect_err("metadata delete failure must be returned");
+
+    assert!(matches!(err, AppError::Internal(_)));
+    assert_eq!(storage.file_count(), 1);
+    assert_eq!(storage.delete_count(), 0);
+}
+
+#[tokio::test]
+async fn attachment_upload_and_delete_publish_issue_updated_events() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let storage = Arc::new(RecordingStorage::default());
+    let ctx = AppContext::new(test_config(), base_ctx.repos.clone(), storage);
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key,
+                summary: "Attachment realtime".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let mut receiver = ctx.events.subscribe();
+    while receiver.try_recv().is_ok() {}
+
+    let attachment = ctx
+        .services
+        .attachment
+        .upload(
+            issue_id,
+            user.id,
+            "realtime.txt",
+            "text/plain",
+            b"payload".to_vec(),
+        )
+        .await
+        .unwrap();
+    let upload_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        upload_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+
+    ctx.services
+        .attachment
+        .delete(attachment.id.parse().unwrap(), user.id)
+        .await
+        .unwrap();
+    let delete_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        delete_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+}
+
+#[tokio::test]
+async fn label_attach_and_detach_publish_issue_updated_events() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        labels: Arc::new(MemoryLabelRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: project_key.clone(),
+                summary: "Label realtime".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let label = ctx
+        .services
+        .label
+        .create(&project_key, "realtime", "#22c55e", user.id)
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let label_id: shared::LabelId = label.id.parse().unwrap();
+    let mut receiver = ctx.events.subscribe();
+    while receiver.try_recv().is_ok() {}
+
+    ctx.services
+        .label
+        .attach(issue_id, label_id, user.id)
+        .await
+        .unwrap();
+    let attach_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        attach_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+
+    ctx.services
+        .label
+        .detach(issue_id, label_id, user.id)
+        .await
+        .unwrap();
+    let detach_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        detach_event,
+        shared::TrackerEvent::IssueUpdated {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+}
+
+#[tokio::test]
+async fn comment_update_and_delete_publish_comment_events() {
+    let (base_ctx, user) = ctx_with_demo_data().await;
+    let repos = Arc::new(domain::Repositories {
+        comments: Arc::new(MemoryCommentRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, user.id)
+        .await
+        .unwrap();
+    let issue = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key,
+                summary: "Comment realtime".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: user.id,
+                assignee_id: None,
+                actor_id: user.id,
+                custom_fields: Default::default(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let issue_id: IssueId = issue.id.parse().unwrap();
+    let comment = ctx
+        .services
+        .comment
+        .create(
+            CreateCommentCommand {
+                issue_id,
+                author_id: user.id,
+                actor_id: user.id,
+                body: "initial".to_string(),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let comment_id: shared::CommentId = comment.id.parse().unwrap();
+    let mut receiver = ctx.events.subscribe();
+    while receiver.try_recv().is_ok() {}
+
+    ctx.services
+        .comment
+        .update(
+            comment_id,
+            UpdateCommentCommand {
+                body: Some("edited".to_string()),
+            },
+            user.id,
+        )
+        .await
+        .unwrap();
+    let update_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        update_event,
+        shared::TrackerEvent::IssueCommented {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
+
+    ctx.services
+        .comment
+        .delete(comment_id, user.id)
+        .await
+        .unwrap();
+    let delete_event = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(
+        delete_event,
+        shared::TrackerEvent::IssueCommented {
+            issue_id: ref actual_issue_id,
+            project_key: ref actual_project_key,
+        } if actual_issue_id == &issue.id && actual_project_key == "TT"
+    ));
 }
 
 #[tokio::test]

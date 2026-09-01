@@ -39,14 +39,11 @@ pub async fn create_issue(
         Some(status_id) => status_id,
         None => ctx
             .services
-            .board
-            .get_board(&project_key, actor_id)
+            .status
+            .get_default_status()
             .await?
-            .columns
-            .into_iter()
-            .next()
-            .map(|column| column.id)
-            .ok_or_else(|| AppError::invalid_input("project board has no columns"))?,
+            .id
+            .to_string(),
     };
     let reporter_id = req
         .reporter_id

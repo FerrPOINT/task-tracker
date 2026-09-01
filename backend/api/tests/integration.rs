@@ -437,7 +437,7 @@ async fn backlog_offset_pages_without_duplicates() {
 }
 
 #[tokio::test]
-async fn issue_create_defaults_to_first_board_column_for_reporter() {
+async fn issue_create_defaults_to_default_status_for_reporter() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
 
@@ -457,6 +457,7 @@ async fn issue_create_defaults_to_first_board_column_for_reporter() {
     assert_eq!(created.status(), 201);
     let issue: serde_json::Value = created.json().await.unwrap();
     assert_eq!(issue["status_id"], "00000000-0000-0000-0000-000000000001");
+    assert_eq!(issue["status"], "To Do");
     assert_eq!(issue["reporter_id"], test_user().id.to_string());
 }
 
@@ -1598,6 +1599,24 @@ async fn label_attach_unknown_label_404() {
         .post(format!("{}/api/v1/issues/{}/labels", url, issue_id))
         .bearer_auth(token)
         .json(&serde_json::json!({"label_id": "00000000-0000-0000-0000-00c0ffee0099"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 404);
+}
+
+#[tokio::test]
+async fn label_detach_unknown_label_404() {
+    let (url, client) = spawn_server().await;
+    let token = login_token(&url, &client).await;
+    let issue_id = create_issue_via_api(&url, &client, &token).await;
+
+    let res = client
+        .delete(format!(
+            "{}/api/v1/issues/{}/labels/00000000-0000-0000-0000-00c0ffee0099",
+            url, issue_id
+        ))
+        .bearer_auth(token)
         .send()
         .await
         .unwrap();
@@ -5362,6 +5381,22 @@ async fn comments_list_is_bounded() {
 
     let res = client
         .get(format!("{url}/api/v1/issues/{issue_id}/comments?limit=0"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+
+    let res = client
+        .get(format!("{url}/api/v1/issues/{issue_id}/comments?limit=abc"))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 400);
+
+    let res = client
+        .get(format!("{url}/api/v1/issues/{issue_id}/comments?offset=-1"))
         .bearer_auth(&token)
         .send()
         .await

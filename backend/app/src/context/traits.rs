@@ -30,6 +30,7 @@ pub trait AuthService: Send + Sync {
 #[async_trait]
 pub trait StatusService: Send + Sync {
     async fn list_statuses(&self) -> Result<Vec<domain::Status>, AppError>;
+    async fn get_default_status(&self) -> Result<domain::Status, AppError>;
 }
 
 #[async_trait]

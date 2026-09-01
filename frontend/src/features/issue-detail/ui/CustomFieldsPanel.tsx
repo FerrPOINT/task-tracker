@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   useIssueCustomFieldValues,
@@ -46,6 +46,12 @@ export function CustomFieldValueInput({
 }) {
   const { t } = useTranslation()
   const current = customFieldInputValue(field, value)
+  const [draft, setDraft] = useState(current)
+
+  useEffect(() => {
+    setDraft(current)
+  }, [current])
+
   if (field.field_type === 'select') {
     return (
       <select
@@ -95,8 +101,9 @@ export function CustomFieldValueInput({
     <input
       className="w-full rounded border border-border bg-background p-2"
       type={type}
-      defaultValue={current}
-      onBlur={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => onSave(customFieldValueFromInput(field, draft))}
     />
   )
 }

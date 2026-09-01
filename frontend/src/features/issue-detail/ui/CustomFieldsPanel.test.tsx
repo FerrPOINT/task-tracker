@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@/shared/lib/theme'
 import i18n from '@/shared/i18n/config'
-import { CustomFieldsPanel } from './CustomFieldsPanel'
+import { CustomFieldsPanel, CustomFieldValueInput } from './CustomFieldsPanel'
 
 beforeAll(() => {
   i18n.changeLanguage('en')
@@ -100,8 +100,32 @@ describe('CustomFieldsPanel', () => {
 
     render(wrapper(<CustomFieldsPanel issueId="i1" projectKey="TT" />))
     const input = screen.getByDisplayValue('2026-12-31')
-    fireEvent.blur(input, { target: { value: '2027-01-02' } })
+    fireEvent.change(input, { target: { value: '2027-01-02' } })
+    fireEvent.blur(input)
 
     expect(mockSave).toHaveBeenCalledWith({ fieldId: 'f-date', value: '2027-01-02' })
+  })
+
+  it('updates text inputs when server values arrive after mount', () => {
+    const field = {
+      id: 'f-text',
+      project_id: 'p1',
+      name: 'Customer',
+      field_type: 'text' as const,
+      options: [],
+      is_required: false,
+      created_at: '2026-08-01T00:00:00Z',
+    }
+    const onSave = vi.fn()
+    const { rerender } = render(
+      wrapper(<CustomFieldValueInput field={field} value={undefined} onSave={onSave} />),
+    )
+
+    const input = screen.getByRole('textbox')
+    expect(input).toHaveValue('')
+
+    rerender(wrapper(<CustomFieldValueInput field={field} value="Acme" onSave={onSave} />))
+
+    expect(screen.getByRole('textbox')).toHaveValue('Acme')
   })
 })

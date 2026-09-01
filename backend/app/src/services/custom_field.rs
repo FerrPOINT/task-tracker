@@ -9,6 +9,7 @@ pub struct CustomFieldServiceImpl {
     fields: Arc<dyn domain::CustomFieldRepository>,
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
+    events: crate::context::EventBus,
     authz: Authz,
 }
 
@@ -17,12 +18,14 @@ impl CustomFieldServiceImpl {
         fields: Arc<dyn domain::CustomFieldRepository>,
         projects: Arc<dyn ProjectRepository>,
         issues: Arc<dyn IssueRepository>,
+        events: crate::context::EventBus,
         authz: Authz,
     ) -> Self {
         Self {
             fields,
             projects,
             issues,
+            events,
             authz,
         }
     }
@@ -227,12 +230,20 @@ impl crate::context::CustomFieldService for CustomFieldServiceImpl {
                 ));
             }
             self.fields.delete_value(issue_id, field_id).await?;
+            self.events.publish(shared::TrackerEvent::IssueUpdated {
+                issue_id: issue.id.to_string(),
+                project_key: issue.key.project_key.to_string(),
+            });
             return Ok(());
         }
         let normalized = normalize_custom_field_value(&field, &value)?;
         self.fields
             .set_value(issue_id, field_id, &normalized)
             .await?;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
         Ok(())
     }
 
