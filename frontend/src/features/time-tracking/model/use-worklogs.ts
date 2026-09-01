@@ -1,8 +1,30 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import type { components } from '@/api/generated'
 import { listWorklogs, createWorklog, updateWorklog, deleteWorklog } from '@/api/worklog'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 
 const key = (issueId: string) => ['worklogs', issueId]
+type IssueCacheItem = Pick<components['schemas']['IssueResponse'], 'project_key'>
+
+function invalidateIssueCollectionCaches(qc: QueryClient, projectKey?: string) {
+  qc.invalidateQueries({ queryKey: ['projects'] })
+  qc.invalidateQueries({ queryKey: ['dashboard'] })
+  qc.invalidateQueries({ queryKey: ['search'] })
+  if (projectKey) {
+    qc.invalidateQueries({ queryKey: ['project', projectKey] })
+    qc.invalidateQueries({ queryKey: ['backlog', projectKey] })
+  } else {
+    qc.invalidateQueries({ queryKey: ['project'] })
+    qc.invalidateQueries({ queryKey: ['backlog'] })
+  }
+}
+
+async function refreshAfterWorklogMutation(qc: QueryClient, issueId: string) {
+  await qc.refetchQueries({ queryKey: key(issueId), exact: true })
+  await qc.refetchQueries({ queryKey: ['issue', issueId], exact: true })
+  const issue = qc.getQueryData<IssueCacheItem>(['issue', issueId])
+  invalidateIssueCollectionCaches(qc, issue?.project_key)
+}
 
 export function useWorklogs(issueId: string) {
   return useQuery({
@@ -16,8 +38,7 @@ export function useCreateWorklog(issueId: string) {
   return useMutation({
     mutationFn: (input: LogWorkInput) => createWorklog(issueId, input),
     onSuccess: async () => {
-      await qc.refetchQueries({ queryKey: key(issueId), exact: true })
-      await qc.refetchQueries({ queryKey: ['issue', issueId], exact: true })
+      await refreshAfterWorklogMutation(qc, issueId)
     },
   })
 }
@@ -27,8 +48,7 @@ export function useUpdateWorklog(issueId: string) {
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: LogWorkInput }) => updateWorklog(id, input),
     onSuccess: async () => {
-      await qc.refetchQueries({ queryKey: key(issueId), exact: true })
-      await qc.refetchQueries({ queryKey: ['issue', issueId], exact: true })
+      await refreshAfterWorklogMutation(qc, issueId)
     },
   })
 }
@@ -38,8 +58,7 @@ export function useDeleteWorklog(issueId: string) {
   return useMutation({
     mutationFn: (id: string) => deleteWorklog(id),
     onSuccess: async () => {
-      await qc.refetchQueries({ queryKey: key(issueId), exact: true })
-      await qc.refetchQueries({ queryKey: ['issue', issueId], exact: true })
+      await refreshAfterWorklogMutation(qc, issueId)
     },
   })
 }
