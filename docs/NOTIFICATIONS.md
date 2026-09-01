@@ -21,6 +21,7 @@
 | `issue_comment_deleted` | Комментарий удалён |
 | `issue_attachment_added` | Добавлено вложение |
 | `issue_link_created` | Создана связь |
+| `issue_link_deleted` | Удалена связь |
 | `issue_worklog_logged` | Записано время |
 
 ### 1.2 Project Events

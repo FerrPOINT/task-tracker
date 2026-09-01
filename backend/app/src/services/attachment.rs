@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use crate::authz::Authz;
+use crate::services::helpers;
 use domain::IssueRepository;
 use shared::{AppError, IssueId, UserId};
 
@@ -31,23 +32,33 @@ pub struct AttachmentServiceImpl {
     attachments: Arc<dyn domain::AttachmentRepository>,
     issues: Arc<dyn IssueRepository>,
     storage: Arc<dyn domain::FileStorage>,
+    watchers: Arc<dyn domain::WatcherRepository>,
     events: crate::context::EventBus,
+    notifications: Arc<dyn domain::NotificationRepository>,
+    notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
     authz: Authz,
 }
 
 impl AttachmentServiceImpl {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         attachments: Arc<dyn domain::AttachmentRepository>,
         issues: Arc<dyn IssueRepository>,
         storage: Arc<dyn domain::FileStorage>,
+        watchers: Arc<dyn domain::WatcherRepository>,
         events: crate::context::EventBus,
+        notifications: Arc<dyn domain::NotificationRepository>,
+        notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
         authz: Authz,
     ) -> Self {
         Self {
             attachments,
             issues,
             storage,
+            watchers,
             events,
+            notifications,
+            notification_settings,
             authz,
         }
     }
@@ -141,10 +152,28 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
                 .await;
             return Err(err);
         }
+        let issue_key = issue.key.to_string();
         self.events.publish(shared::TrackerEvent::IssueUpdated {
             issue_id: issue.id.to_string(),
             project_key: issue.key.project_key.to_string(),
         });
+        helpers::notify_issue_recipients(
+            &self.watchers,
+            &self.notifications,
+            &self.notification_settings,
+            &self.events,
+            &issue,
+            author_id,
+            "issue_attachment_added",
+            format!("Attachment added to {}", issue_key),
+            Some(file_name.clone()),
+            serde_json::json!({
+                "issue_key": issue_key,
+                "attachment_id": attachment.id.to_string(),
+                "file_name": file_name,
+            }),
+        )
+        .await;
         Ok(Self::to_dto(&attachment))
     }
 

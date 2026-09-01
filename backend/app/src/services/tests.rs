@@ -2833,6 +2833,144 @@ async fn watcher_receives_issue_update_notification() {
     assert_eq!(unread[0].event_type.as_ref(), "issue_updated");
 }
 
+#[tokio::test]
+async fn watcher_receives_attachment_added_notification() {
+    let (base_ctx, owner, member, _project_id) = ctx_with_real_members().await;
+    let repos = Arc::new(domain::Repositories {
+        attachments: Arc::new(MemoryAttachmentRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let issue_id = create_demo_issue(&ctx, &owner, "Watched attachment").await;
+    ctx.services
+        .watcher
+        .watch(issue_id, member.id)
+        .await
+        .unwrap();
+
+    ctx.services
+        .attachment
+        .upload(
+            issue_id,
+            owner.id,
+            "evidence.txt",
+            "text/plain",
+            b"payload".to_vec(),
+        )
+        .await
+        .unwrap();
+
+    let unread = ctx
+        .repos
+        .notifications
+        .list_unread(member.id)
+        .await
+        .unwrap();
+    let attachments: Vec<_> = unread
+        .iter()
+        .filter(|notification| notification.event_type.as_ref() == "issue_attachment_added")
+        .collect();
+    assert_eq!(attachments.len(), 1);
+    assert_eq!(
+        attachments[0].metadata["file_name"],
+        serde_json::Value::String("evidence.txt".to_string())
+    );
+}
+
+#[tokio::test]
+async fn watcher_receives_issue_link_create_and_delete_notifications() {
+    let (base_ctx, owner, member, _project_id) = ctx_with_real_members().await;
+    let repos = Arc::new(domain::Repositories {
+        issue_links: Arc::new(MemoryIssueLinkRepository::default()),
+        ..(*base_ctx.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let project_key = ProjectKey::new("TT");
+    let board = ctx
+        .services
+        .board
+        .get_board(&project_key, owner.id)
+        .await
+        .unwrap();
+    let source = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key: project_key.clone(),
+                summary: "Watched link source".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let target = ctx
+        .services
+        .issue
+        .create(
+            CreateIssueCommand {
+                project_key,
+                summary: "Watched link target".to_string(),
+                description: None,
+                issue_type: IssueType::Task,
+                priority: Priority::Medium,
+                status_id: board.columns[0].id.to_string(),
+                reporter_id: owner.id,
+                assignee_id: None,
+                actor_id: owner.id,
+                custom_fields: Default::default(),
+            },
+            owner.id,
+        )
+        .await
+        .unwrap();
+    let source_id: IssueId = source.id.parse().unwrap();
+    ctx.services
+        .watcher
+        .watch(source_id, member.id)
+        .await
+        .unwrap();
+
+    let link = ctx
+        .services
+        .issue_link
+        .create(source_id, &target.key, "relates", owner.id)
+        .await
+        .unwrap();
+    ctx.services
+        .issue_link
+        .delete(link.id.parse().unwrap(), owner.id)
+        .await
+        .unwrap();
+
+    let unread = ctx
+        .repos
+        .notifications
+        .list_unread(member.id)
+        .await
+        .unwrap();
+    let event_types = unread
+        .iter()
+        .map(|notification| notification.event_type.as_ref())
+        .collect::<Vec<_>>();
+    assert!(
+        event_types.contains(&"issue_link_created"),
+        "watcher notifications should include issue_link_created, got {event_types:?}"
+    );
+    assert!(
+        event_types.contains(&"issue_link_deleted"),
+        "watcher notifications should include issue_link_deleted, got {event_types:?}"
+    );
+}
+
 // ─── v0.2.0 feature tests ────────────────────────────────────────────
 
 #[tokio::test]
@@ -3770,7 +3908,10 @@ async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
         Arc::new(FailingAttachmentSaveRepository),
         ctx.repos.issues.clone(),
         storage.clone(),
+        Arc::new(domain::StubWatcherRepository),
         ctx.events.clone(),
+        Arc::new(domain::StubNotificationRepository),
+        Arc::new(domain::StubUserNotificationSettingsRepository),
         ctx.authz.clone(),
     );
 
@@ -3845,7 +3986,10 @@ async fn attachment_delete_keeps_blob_when_metadata_delete_fails() {
         }),
         ctx.repos.issues.clone(),
         storage.clone(),
+        Arc::new(domain::StubWatcherRepository),
         ctx.events.clone(),
+        Arc::new(domain::StubNotificationRepository),
+        Arc::new(domain::StubUserNotificationSettingsRepository),
         ctx.authz.clone(),
     );
 

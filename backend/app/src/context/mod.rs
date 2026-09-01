@@ -222,7 +222,10 @@ impl AppContext {
                     repos.attachments.clone(),
                     repos.issues.clone(),
                     storage,
+                    repos.watchers.clone(),
                     events.clone(),
+                    repos.notifications.clone(),
+                    repos.notification_settings.clone(),
                     authz.clone(),
                 )),
                 label: Arc::new(crate::services::LabelServiceImpl::new(
@@ -235,7 +238,10 @@ impl AppContext {
                 issue_link: Arc::new(crate::services::IssueLinkServiceImpl::new(
                     repos.issue_links.clone(),
                     repos.issues.clone(),
+                    repos.watchers.clone(),
                     events.clone(),
+                    repos.notifications.clone(),
+                    repos.notification_settings.clone(),
                     authz.clone(),
                 )),
                 notification: Arc::new(crate::services::NotificationServiceImpl::new(
