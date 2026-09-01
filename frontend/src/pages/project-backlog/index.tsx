@@ -270,27 +270,27 @@ export function ProjectBacklogPage() {
           remaining: activeSprint.remaining_days ?? '-',
         })}
         action={
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              className="h-7 px-2.5 text-xs"
-              onClick={() => startSprint.mutate(activeSprint.id)}
-              disabled={activeFromList?.state === 'active'}
-            >
-              <Play className="mr-1 h-3 w-3" />
-              {t('backlog.startSprint')}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 px-2.5 text-xs"
-              onClick={() => closeSprint.mutate(activeSprint.id)}
-              disabled={activeFromList?.state !== 'active'}
-            >
-              <CheckCircle2 className="mr-1 h-3 w-3" />
-              {t('backlog.closeSprint')}
-            </Button>
-            {activeFromList && (
+          activeFromList ? (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                className="h-7 px-2.5 text-xs"
+                onClick={() => startSprint.mutate(activeSprint.id)}
+                disabled={activeFromList?.state === 'active'}
+              >
+                <Play className="mr-1 h-3 w-3" />
+                {t('backlog.startSprint')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2.5 text-xs"
+                onClick={() => closeSprint.mutate(activeSprint.id)}
+                disabled={activeFromList?.state !== 'active'}
+              >
+                <CheckCircle2 className="mr-1 h-3 w-3" />
+                {t('backlog.closeSprint')}
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -309,8 +309,8 @@ export function ProjectBacklogPage() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-            )}
-          </div>
+            </div>
+          ) : undefined
         }
         items={sprint_issues}
         renderItem={(issue) => (
