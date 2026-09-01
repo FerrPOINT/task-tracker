@@ -25,6 +25,7 @@ import { AttachmentPanel } from '@/features/issue-detail/ui/AttachmentPanel'
 import { LabelEditor } from '@/features/issue-detail/ui/LabelEditor'
 import { LinkEditor } from '@/features/issue-detail/ui/LinkEditor'
 import { CustomFieldsPanel } from '@/features/issue-detail/ui/CustomFieldsPanel'
+import { IssueEngagementPanel } from '@/features/issue-detail/ui/IssueEngagementPanel'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
@@ -202,6 +203,20 @@ export function IssueDetailPage() {
                   originalEstimateSeconds={issue.original_estimate_seconds ?? 0}
                   remainingEstimateSeconds={remainingEstimate}
                   onLogWork={handleLogWork}
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">{t('engagement.title')}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <IssueEngagementPanel
+                  issueId={id}
+                  projectKey={issue.project_key}
+                  currentUserId={currentUserId}
+                  reporterId={issue.reporter_id}
                 />
               </CardContent>
             </Card>
