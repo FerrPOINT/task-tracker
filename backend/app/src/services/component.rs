@@ -91,9 +91,10 @@ impl crate::context::ComponentService for ComponentServiceImpl {
         if component.project_id != project.id {
             return Err(AppError::not_found("component", id));
         }
-        if !name.trim().is_empty() {
-            component.name = name.trim().to_string().into();
+        if name.trim().is_empty() {
+            return Err(AppError::invalid_input("component name must not be empty"));
         }
+        component.name = name.trim().to_string().into();
         component.description = description.map(|d| d.to_string().into());
         self.components.save(&component).await?;
         Ok(Self::to_dto(&component))
