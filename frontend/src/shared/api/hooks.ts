@@ -511,8 +511,18 @@ export function useDeleteProject() {
   const navigate = useNavigate()
   return useMutation({
     mutationFn: deleteProject,
-    onSuccess: () => {
+    onSuccess: (_data, key) => {
       qc.invalidateQueries({ queryKey: projectKeys.all })
+      qc.invalidateQueries({ queryKey: projectKeys.detail(key) })
+      qc.invalidateQueries({ queryKey: projectKeys.sprints(key) })
+      qc.invalidateQueries({ queryKey: ['project-members', key] })
+      qc.invalidateQueries({ queryKey: ['labels', key] })
+      qc.invalidateQueries({ queryKey: ['custom-fields', key] })
+      qc.invalidateQueries({ queryKey: ['backlog', key] })
+      qc.invalidateQueries({ queryKey: ['trash', key] })
+      qc.invalidateQueries({ queryKey: ['dashboard'] })
+      qc.invalidateQueries({ queryKey: ['search'] })
+      qc.invalidateQueries({ queryKey: ['reports'] })
       navigate('/projects')
     },
   })
