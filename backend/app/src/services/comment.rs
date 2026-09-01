@@ -95,7 +95,7 @@ impl CommentServiceImpl {
         &self,
         recipients: Vec<UserId>,
         issue: &domain::Issue,
-        project: &domain::Project,
+        _project: &domain::Project,
         actor_id: UserId,
         event_type: &str,
         title: String,
@@ -103,7 +103,7 @@ impl CommentServiceImpl {
         metadata: serde_json::Value,
     ) {
         let mut seen = HashSet::new();
-        let action_url = format!("/projects/{}/issues/{}", project.key, issue.id);
+        let action_url = format!("/issues/{}", issue.id);
         for recipient_id in recipients {
             if !seen.insert(recipient_id) {
                 continue;
