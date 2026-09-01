@@ -124,6 +124,17 @@ async fn memory_issue_repository_filters_and_search() {
     );
     issue.assign(Some(user_id));
     repo.save(&issue).await.unwrap();
+    let high_issue = Issue::create(
+        &project,
+        2,
+        IssueType::Task,
+        status,
+        "urgent work",
+        None,
+        user_id,
+        Priority::High,
+    );
+    repo.save(&high_issue).await.unwrap();
 
     let found = repo.get_by_id(issue.id).await.unwrap();
     assert_eq!(found.summary.as_ref(), "searchable summary");
@@ -141,6 +152,17 @@ async fn memory_issue_repository_filters_and_search() {
         .await
         .unwrap();
     assert_eq!(filtered.len(), 1);
+    assert_eq!(filtered[0].id, issue.id);
+
+    let by_priority = repo
+        .list(IssueQuery {
+            priority: Some("High".to_string()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_priority.len(), 1);
+    assert_eq!(by_priority[0].id, high_issue.id);
 
     let empty = repo
         .list(IssueQuery {

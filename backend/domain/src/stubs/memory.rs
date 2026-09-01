@@ -325,6 +325,12 @@ impl IssueRepository for MemoryIssueRepository {
                     .assignee_id
                     .is_none_or(|aid| i.assignee_id == Some(aid))
             })
+            .filter(|i| {
+                query
+                    .priority
+                    .as_deref()
+                    .is_none_or(|priority| i.priority.as_str() == priority)
+            })
             .filter(|i| query.sprint_id.is_none_or(|spid| i.sprint_id == Some(spid)))
             .filter(|i| {
                 query.search_text.as_ref().is_none_or(|q| {
