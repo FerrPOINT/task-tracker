@@ -473,6 +473,9 @@ impl LabelRepository for StubLabelRepository {
     async fn list_ids_by_issue(&self, _issue_id: IssueId) -> Result<Vec<LabelId>, AppError> {
         Ok(vec![])
     }
+    async fn list_issue_ids_by_label(&self, _label_id: LabelId) -> Result<Vec<IssueId>, AppError> {
+        Ok(vec![])
+    }
     async fn attach(&self, _issue_id: IssueId, _label_id: LabelId) -> Result<(), AppError> {
         Ok(())
     }
@@ -793,6 +796,7 @@ pub trait LabelRepository: Send + Sync {
     async fn save(&self, label: &Label) -> Result<LabelId, AppError>;
     async fn delete(&self, id: LabelId) -> Result<(), AppError>;
     async fn list_ids_by_issue(&self, issue_id: IssueId) -> Result<Vec<LabelId>, AppError>;
+    async fn list_issue_ids_by_label(&self, label_id: LabelId) -> Result<Vec<IssueId>, AppError>;
     async fn list_by_issues(
         &self,
         issue_ids: &[IssueId],

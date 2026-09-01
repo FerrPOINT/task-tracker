@@ -95,6 +95,7 @@ describe('useTrackerEvents', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['backlog', 'TT'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-labels', 'issue-1'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-custom-fields', 'issue-1'] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['attachments', 'issue-1'] })
   })

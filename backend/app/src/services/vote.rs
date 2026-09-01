@@ -9,6 +9,7 @@ pub struct VoteServiceImpl {
     votes: Arc<dyn domain::VoteRepository>,
     issues: Arc<dyn IssueRepository>,
     users: Arc<dyn domain::UserRepository>,
+    events: crate::context::EventBus,
     authz: Authz,
 }
 
@@ -17,12 +18,14 @@ impl VoteServiceImpl {
         votes: Arc<dyn domain::VoteRepository>,
         issues: Arc<dyn IssueRepository>,
         users: Arc<dyn domain::UserRepository>,
+        events: crate::context::EventBus,
         authz: Authz,
     ) -> Self {
         Self {
             votes,
             issues,
             users,
+            events,
             authz,
         }
     }
@@ -63,7 +66,12 @@ impl crate::context::VoteService for VoteServiceImpl {
             return Err(AppError::invalid_input("cannot vote for own issue"));
         }
         let vote = self.votes.add(issue_id, user_id).await?;
-        Ok(self.vote_dto(vote).await)
+        let dto = self.vote_dto(vote).await;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue_id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
+        Ok(dto)
     }
 
     async fn unvote(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError> {
@@ -72,6 +80,10 @@ impl crate::context::VoteService for VoteServiceImpl {
             .require_project_access(issue.project_id, user_id)
             .await?;
         self.votes.remove(issue_id, user_id).await?;
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue_id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
         Ok(())
     }
 

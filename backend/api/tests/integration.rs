@@ -1648,7 +1648,7 @@ async fn label_attach_rejects_cross_project_label() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 400);
+    assert_eq!(res.status(), 404);
 }
 
 #[tokio::test]

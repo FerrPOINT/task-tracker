@@ -8,6 +8,7 @@ use shared::{AppError, IssueId, IssueKey, UserId};
 pub struct IssueLinkServiceImpl {
     links: Arc<dyn domain::IssueLinkRepository>,
     issues: Arc<dyn IssueRepository>,
+    events: crate::context::EventBus,
     authz: Authz,
 }
 
@@ -15,13 +16,22 @@ impl IssueLinkServiceImpl {
     pub fn new(
         links: Arc<dyn domain::IssueLinkRepository>,
         issues: Arc<dyn IssueRepository>,
+        events: crate::context::EventBus,
         authz: Authz,
     ) -> Self {
         Self {
             links,
             issues,
+            events,
             authz,
         }
+    }
+
+    fn publish_issue_updated(&self, issue: &domain::Issue) {
+        self.events.publish(shared::TrackerEvent::IssueUpdated {
+            issue_id: issue.id.to_string(),
+            project_key: issue.key.project_key.to_string(),
+        });
     }
 }
 
@@ -56,6 +66,8 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
             link_type: lt,
         };
         self.links.save(&link).await?;
+        self.publish_issue_updated(&source);
+        self.publish_issue_updated(&target);
         Ok(crate::context::IssueLinkDto {
             id: link.id.to_string(),
             source_id: source.id.to_string(),
@@ -107,10 +119,19 @@ impl crate::context::IssueLinkService for IssueLinkServiceImpl {
         // project. Without this any authenticated user could delete any link.
         let link = self.links.get_by_id(link_id).await?;
         let source = self.issues.get_by_id(link.source_id).await?;
+        let target = match self.issues.get_by_id(link.target_id).await {
+            Ok(issue) => Some(issue),
+            Err(AppError::NotFound(_)) => None,
+            Err(err) => return Err(err),
+        };
         self.authz
             .require_project_edit(source.project_id, requester)
             .await?;
         self.links.delete(link_id).await?;
+        self.publish_issue_updated(&source);
+        if let Some(target) = target {
+            self.publish_issue_updated(&target);
+        }
         Ok(())
     }
 }
