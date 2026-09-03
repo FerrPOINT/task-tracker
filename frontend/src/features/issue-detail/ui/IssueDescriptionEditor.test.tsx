@@ -32,6 +32,8 @@ const issue: Issue = {
   issue_type: 'Bug',
   labels: [],
   time_spent_seconds: 0,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
   assignee_id: null,
   assignee_name: null,
   reporter_name: null,

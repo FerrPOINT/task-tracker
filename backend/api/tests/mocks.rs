@@ -20,6 +20,10 @@ impl UserRepository for FailingUserRepository {
         Err(shared::AppError::Internal("failing user repo".into()))
     }
 
+    async fn clear_refresh_token(&self, _user_id: shared::UserId) -> Result<(), shared::AppError> {
+        Err(shared::AppError::Internal("failing user repo".into()))
+    }
+
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError> {
         // The bearer-auth middleware performs an is_active lookup on every
         // request; it must succeed for these business-flow failure tests.

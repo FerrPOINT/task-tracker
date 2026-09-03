@@ -1,22 +1,25 @@
 #!/usr/bin/env bash
+# Backup task-tracker database and file attachments.
+#
+# Usage:  ./scripts/backup.sh [output-dir]
+#
+# If no output-dir is given, defaults to ${PROJECT_DIR}/backups.
+# Reads POSTGRES_USER / POSTGRES_DB from .env (same names as docker-compose.yml).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
-BACKUP_DIR="${PROJECT_DIR}/backups"
 
 if [ -f "$ENV_FILE" ]; then
-  # shellcheck source=/dev/null
-  set -a
-  # shellcheck source=/dev/null
-  . "$ENV_FILE"
-  set +a
+  # shellcheck disable=SC1090
+  set -a; . "$ENV_FILE"; set +a
 fi
 
-: "${TASKTRACKER_DB_USER:=tasktracker}"
-: "${TASKTRACKER_DB_NAME:=tasktracker}"
+: "${POSTGRES_USER:=tasktracker}"
+: "${POSTGRES_DB:=tasktracker}"
 
+BACKUP_DIR="${1:-${PROJECT_DIR}/backups}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_NAME="task-tracker-${TIMESTAMP}"
 BACKUP_PATH="${BACKUP_DIR}/${BACKUP_NAME}"
@@ -26,16 +29,17 @@ cd "$PROJECT_DIR"
 
 echo "Backing up database..."
 docker compose exec -T postgres pg_dump \
-  -U "$TASKTRACKER_DB_USER" \
-  -d "$TASKTRACKER_DB_NAME" \
+  -U "${POSTGRES_USER}" \
+  -d "${POSTGRES_DB}" \
   -Fc \
   > "${BACKUP_PATH}.dump"
 
 echo "Backing up attachments..."
-# Attachments live in the named Docker volume `uploads` (not a host dir).
+# Resolve the actual volume name via compose (handles project-name prefixes).
+UPLOADS_VOLUME=$(docker compose config --volumes uploads 2>/dev/null || echo "task-tracker_uploads")
 docker run --rm \
-  -v task-tracker_uploads:/var/lib/tasktracker/uploads:ro \
-  -v "$BACKUP_DIR":/backup \
+  -v "${UPLOADS_VOLUME}":/var/lib/tasktracker/uploads:ro \
+  -v "${BACKUP_DIR}":/backup \
   --entrypoint /bin/tar \
   debian:bookworm-slim \
   -czf "/backup/${BACKUP_NAME}-attachments.tar.gz" \
@@ -46,6 +50,6 @@ tar -czf "${BACKUP_PATH}.tar.gz" -C "$BACKUP_DIR" \
   "${BACKUP_NAME}.dump" \
   "${BACKUP_NAME}-attachments.tar.gz"
 
-rm -rf "${BACKUP_PATH}.dump" "${BACKUP_PATH}-attachments"
+rm -f "${BACKUP_PATH}.dump" "${BACKUP_PATH}-attachments.tar.gz"
 
 echo "Backup created: ${BACKUP_PATH}.tar.gz"

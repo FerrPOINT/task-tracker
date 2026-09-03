@@ -107,6 +107,7 @@ impl AppContext {
         let auth: Arc<dyn AuthService> = Arc::new(JwtAuthService::new(
             config.auth.clone(),
             repos.users.clone(),
+            repos.system_settings.clone(),
         ));
         let project: Arc<dyn ProjectService> = Arc::new(ProjectServiceImpl::new(
             repos.projects.clone(),

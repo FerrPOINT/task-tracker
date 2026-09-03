@@ -8,20 +8,63 @@ use std::sync::Arc;
 use crate::commands::{LoginCommand, RegisterCommand};
 use crate::dto::{AuthDto, UserDto};
 
+/// System setting that gates the public register endpoint. Absent setting
+/// means open registration (backwards-compatible default).
+const REGISTRATION_SETTING_KEY: &str = "security.allow_registration";
+/// Minimum password length enforced on self-service registration and admin
+/// user creation.
+pub(crate) const MIN_PASSWORD_LEN: usize = 8;
+
+pub(crate) fn ensure_password_policy(password: &str) -> Result<(), AppError> {
+    if password.chars().count() < MIN_PASSWORD_LEN {
+        return Err(AppError::invalid_input(format!(
+            "password must be at least {MIN_PASSWORD_LEN} characters"
+        )));
+    }
+    if password.chars().count() > 128 {
+        return Err(AppError::invalid_input(
+            "password must not exceed 128 characters",
+        ));
+    }
+    Ok(())
+}
+
 pub struct JwtAuthService {
     config: AuthConfig,
     users: Arc<dyn domain::UserRepository>,
+    system_settings: Arc<dyn domain::SystemSettingRepository>,
 }
 
 impl JwtAuthService {
-    pub fn new(config: AuthConfig, users: Arc<dyn domain::UserRepository>) -> Self {
-        Self { config, users }
+    pub fn new(
+        config: AuthConfig,
+        users: Arc<dyn domain::UserRepository>,
+        system_settings: Arc<dyn domain::SystemSettingRepository>,
+    ) -> Self {
+        Self {
+            config,
+            users,
+            system_settings,
+        }
+    }
+
+    async fn registration_allowed(&self) -> Result<bool, AppError> {
+        match self.system_settings.get(REGISTRATION_SETTING_KEY).await {
+            Ok(setting) => Ok(!matches!(setting.value, serde_json::Value::Bool(false))),
+            // No stored setting → open registration (default).
+            Err(AppError::NotFound(_)) => Ok(true),
+            Err(e) => Err(e),
+        }
     }
 }
 
 #[async_trait]
 impl crate::context::AuthService for JwtAuthService {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthDto, AppError> {
+        if !self.registration_allowed().await? {
+            return Err(AppError::Forbidden);
+        }
+        ensure_password_policy(&cmd.password)?;
         let existing = self.users.get_by_email(&cmd.email).await;
         if existing.is_ok() {
             return Err(AppError::conflict("email already registered"));
@@ -100,9 +143,9 @@ impl crate::context::AuthService for JwtAuthService {
     }
 
     async fn logout(&self, user_id: UserId) -> Result<(), AppError> {
-        let mut user = self.users.get_by_id(user_id).await?;
-        user.refresh_token_hash = None;
-        self.users.save(&user).await.map(|_| ())
+        // Atomic single UPDATE — cannot race with concurrent refresh rotation
+        // (unlike the previous read-modify-write via save()).
+        self.users.clear_refresh_token(user_id).await
     }
 
     async fn me(&self, user_id: UserId) -> Result<crate::dto::UserDto, AppError> {
@@ -266,7 +309,7 @@ mod tests {
             updated_at: shared::now(),
         };
         users.save(&user).await.unwrap();
-        let svc = super::JwtAuthService::new(cfg, users.clone());
+        let svc = super::JwtAuthService::new(cfg, users.clone(), empty_settings());
         let first = svc.refresh("not-a-token").await;
         assert!(first.is_err(), "invalid signature must be rejected");
 
@@ -283,6 +326,11 @@ mod tests {
     use crate::context::AuthService;
     use domain::{User, UserRepository};
     use shared::{UserId, now};
+    use std::sync::Arc as StdArc;
+
+    fn empty_settings() -> StdArc<dyn domain::SystemSettingRepository> {
+        StdArc::new(domain::stubs::memory::MemorySystemSettingRepository::default())
+    }
 
     fn test_user() -> User {
         User {
@@ -344,6 +392,7 @@ mod tests {
         let service = JwtAuthService::new(
             config,
             Arc::new(domain::stubs::memory::MemoryUserRepository::default()),
+            empty_settings(),
         );
         assert!(service.verify_token("not.a.token").is_err());
     }
@@ -365,7 +414,7 @@ mod tests {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         };
-        let service = JwtAuthService::new(config, repo);
+        let service = JwtAuthService::new(config, repo, empty_settings());
         let result = service
             .register(RegisterCommand {
                 email: saved.email.to_string(),
@@ -394,7 +443,7 @@ mod tests {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         };
-        let service = JwtAuthService::new(config, repo);
+        let service = JwtAuthService::new(config, repo, empty_settings());
         let result = service
             .login(LoginCommand {
                 email: user.email.to_string(),
@@ -417,7 +466,7 @@ mod tests {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         };
-        let service = JwtAuthService::new(config, repo);
+        let service = JwtAuthService::new(config, repo, empty_settings());
         let result = service
             .login(LoginCommand {
                 email: "missing@example.com".to_string(),
@@ -425,5 +474,115 @@ mod tests {
             })
             .await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn register_rejects_short_password() {
+        let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
+        let config = test_auth_config();
+        let service = JwtAuthService::new(config, repo, empty_settings());
+        let result = service
+            .register(RegisterCommand {
+                email: "new@example.com".to_string(),
+                username: "newuser".to_string(),
+                name: "Test User".to_string(),
+                password: "short".to_string(),
+            })
+            .await;
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("short password must be rejected"),
+        };
+        assert!(
+            matches!(err, AppError::InvalidInput(ref msg) if msg.contains("password")),
+            "{err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn register_blocked_when_registration_disabled() {
+        use domain::SystemSettingRepository;
+        let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
+        let settings = StdArc::new(domain::stubs::memory::MemorySystemSettingRepository::default());
+        let setting = domain::SystemSetting {
+            key: "security.allow_registration".into(),
+            value: serde_json::json!(false),
+            updated_at: shared::now(),
+        };
+        settings.save(&setting).await.unwrap();
+
+        let config = test_auth_config();
+        let service = JwtAuthService::new(config, repo, settings);
+        let result = service
+            .register(RegisterCommand {
+                email: "new@example.com".to_string(),
+                username: "newuser".to_string(),
+                name: "Test User".to_string(),
+                password: "12345678".to_string(),
+            })
+            .await;
+        assert!(matches!(result, Err(AppError::Forbidden)), "{result:?}");
+    }
+
+    #[tokio::test]
+    async fn register_allowed_by_default_without_setting() {
+        let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
+        let config = test_auth_config();
+        let service = JwtAuthService::new(config, repo, empty_settings());
+        let result = service
+            .register(RegisterCommand {
+                email: "fresh@example.com".to_string(),
+                username: "fresh".to_string(),
+                name: "Fresh User".to_string(),
+                password: "12345678".to_string(),
+            })
+            .await;
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[tokio::test]
+    async fn logout_clears_refresh_token_atomically() {
+        use domain::UserRepository;
+        let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
+        let user = test_user();
+        let id = repo.save(&user).await.unwrap();
+        let dto = {
+            let config = test_auth_config();
+            let service = JwtAuthService::new(config, repo.clone(), empty_settings());
+            service.issue_tokens(user).await.unwrap()
+        };
+        assert!(
+            repo.get_by_id(id)
+                .await
+                .unwrap()
+                .refresh_token_hash
+                .is_some()
+        );
+        {
+            let config = test_auth_config();
+            let service = JwtAuthService::new(config, repo.clone(), empty_settings());
+            service.logout(id).await.unwrap();
+        }
+        assert!(
+            repo.get_by_id(id)
+                .await
+                .unwrap()
+                .refresh_token_hash
+                .is_none()
+        );
+        let _ = dto;
+    }
+
+    fn test_auth_config() -> AuthConfig {
+        AuthConfig {
+            jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            access_token_ttl_minutes: 15,
+            refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
+        }
     }
 }

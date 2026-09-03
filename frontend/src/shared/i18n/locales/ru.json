@@ -26,7 +26,8 @@
     "confirmPassword": "Повтор пароля",
     "createAccount": "Создать аккаунт",
     "haveAccount": "Уже есть аккаунт",
-    "passwordMismatch": "Пароли не совпадают"
+    "passwordMismatch": "Пароли не совпадают",
+    "displayName": "Отображаемое имя"
   },
   "notifications": {
     "title": "Уведомления",
@@ -99,7 +100,7 @@
     "done": "Done",
     "inProgress": "In Progress",
     "subtitle": "Задачи по колонкам статусов",
-    "title": "Доска",
+    "title": "Доска · {{projectName}}",
     "todo": "To Do",
     "columnActions": "Действия с колонкой"
   },
@@ -262,7 +263,8 @@
     "creating": "Создание…",
     "loading": "Загрузка…",
     "edit": "Изменить",
-    "saving": "Сохранение…"
+    "saving": "Сохранение…",
+    "error": "Ошибка"
   },
   "loading": {
     "empty": "Пока ничего нет.",
@@ -503,7 +505,8 @@
     "emptyPage": "На этой странице нет задач.",
     "prevPage": "Назад",
     "nextPage": "Вперёд",
-    "pageInfo": "{{from}}–{{to}}"
+    "pageInfo": "{{from}}–{{to}}",
+    "purgeConfirm": "Удалить задачу навсегда? Это действие нельзя отменить."
   },
   "status": {
     "todo": "К выполнению",

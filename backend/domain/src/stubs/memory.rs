@@ -46,6 +46,17 @@ impl UserRepository for MemoryUserRepository {
         Ok(())
     }
 
+    async fn clear_refresh_token(&self, user_id: UserId) -> Result<(), AppError> {
+        let mut users = self.users.lock().unwrap();
+        let user = users
+            .iter_mut()
+            .find(|u| u.id == user_id)
+            .ok_or_else(|| AppError::not_found("user", user_id))?;
+        user.refresh_token_hash = None;
+        user.updated_at = shared::now();
+        Ok(())
+    }
+
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError> {
         let users = self.users.lock().unwrap();
         users

@@ -1,4 +1,9 @@
-# Task Tracker — General Review Report
+# Task Tracker — General Review Report (ARCHIVED)
+
+> **⚠️ This document is a snapshot from 2026-08-26 and is preserved for
+> historical reference only.** Many findings have been resolved in subsequent
+> commits. For the current audit status, see `review-findings.md` at the
+> repository root.
 
 **Date:** 2026-08-26
 **Scope:** Full project audit — backend, frontend, docs

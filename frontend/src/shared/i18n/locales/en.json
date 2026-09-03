@@ -26,7 +26,8 @@
     "confirmPassword": "Repeat password",
     "createAccount": "Create account",
     "haveAccount": "Already have an account",
-    "passwordMismatch": "Passwords do not match"
+    "passwordMismatch": "Passwords do not match",
+    "displayName": "Display name"
   },
   "notifications": {
     "title": "Notifications",
@@ -99,7 +100,7 @@
     "done": "Done",
     "inProgress": "In Progress",
     "subtitle": "Issues grouped by status columns",
-    "title": "Board",
+    "title": "Board · {{projectName}}",
     "todo": "To Do",
     "columnActions": "Column actions"
   },
@@ -262,7 +263,8 @@
     "creating": "Creating…",
     "loading": "Loading…",
     "edit": "Edit",
-    "saving": "Saving…"
+    "saving": "Saving…",
+    "error": "Error"
   },
   "loading": {
     "empty": "Nothing to show yet.",
@@ -503,7 +505,8 @@
     "emptyPage": "No issues on this page.",
     "prevPage": "Previous",
     "nextPage": "Next",
-    "pageInfo": "{{from}}–{{to}}"
+    "pageInfo": "{{from}}–{{to}}",
+    "purgeConfirm": "Permanently delete this issue? This action cannot be undone."
   },
   "status": {
     "todo": "To Do",

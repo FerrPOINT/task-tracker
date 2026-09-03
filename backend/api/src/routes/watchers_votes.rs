@@ -234,7 +234,9 @@ pub async fn list_votes(
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
     let requester = parse_user_id(&claims)?;
     let votes = ctx.services.vote.list_votes(issue_id, requester).await?;
-    let count = votes.len() as u64;
+    // Count reflects the total votes on the issue from the repository, not
+    // merely the size of the (possibly page-limited) list above.
+    let count = ctx.services.vote.count_votes(issue_id).await?;
     Ok(Json(VoteListResponse {
         votes: votes
             .into_iter()

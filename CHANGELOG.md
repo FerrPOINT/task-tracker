@@ -12,7 +12,7 @@
 - Components и versions в проектах (API + UI).
 - Soft-delete: корзина, restore, purge с каскадным удалением comments/worklogs/attachments/links.
 - Notifications: генерация из событий задач, SSE push, настройки email digest.
-- CLI: 12 групп команд (projects, issues, sprints, board, labels, members, watchers, votes, custom-fields, notifications, admin, search).
+- CLI: 12 групп команд (auth, projects, issues, sprints, board, comments, labels, search, notifications, reports, admin, members).
 - Миграция FK-индексов для 15 внешних ключей.
 - 30 backend integration tests (316 total), 28 frontend component tests (88 total).
 
@@ -42,7 +42,7 @@
 ### Docs
 - MIGRATIONS.md переписан с Refinery на SeaORM Migrator.
 - SECURITY.md: нереализованные controls помечены «не реализовано».
-- .env.example и docker-compose.yml: формат env vars `TASKTRACKER__SECTION__KEY`.
+- .env.example и docker-compose.yml: формат env vars `TASKTRACKER_SECTION__KEY`.
 - ROUTING.md приведён к 14 реальным маршрутам, DATA_MODEL.md — к фактической схеме.
 - API.md: WebSocket секция заменена на SSE.
 

@@ -203,7 +203,7 @@ Router::new()
     .layer(CompressionLayer::new())
 ```
 
-CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию используется `*` без credentialed requests; для browser refresh-cookie в cross-origin окружении нужно задать явный whitelist origins, например `http://localhost:19877,http://localhost:5173`.
+CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию используется явный whitelist localhost-источников (`http://localhost:19877,http://localhost:5173`); wildcard `*` включается только при явном указании `*`.",
 
 ## 7. Security
 

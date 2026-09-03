@@ -230,7 +230,7 @@ test.describe('smoke', () => {
       }),
     )
     await page.route('**/api/v1/notifications', (route) =>
-      routeJson(route, { items: [], unread_count: 0 }),
+      routeJson(route, { notifications: [], unread_count: 0 }),
     )
     await page.route('**/api/v1/events**', (route) => routeJson(route, ''))
     await page.route('**/api/v1/auth/refresh', (route) =>
@@ -242,7 +242,7 @@ test.describe('smoke', () => {
       }),
     )
     await page.route('**/api/v1/notifications**', (route) =>
-      routeJson(route, { items: [], unread_count: 0 }),
+      routeJson(route, { notifications: [], unread_count: 0 }),
     )
 
     await page.goto(`${appBaseURL}/login`)

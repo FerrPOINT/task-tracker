@@ -39,7 +39,7 @@
 - [ ] Тесты проходят: `cargo test`.
 - [ ] Новые endpoint покрыты интеграционными тестами.
 - [ ] Архитектурные слои соблюдены: controller → service → repository.
-- [ ] DI через `AppContext` / `shaku`, нет глобальных состояний.
+- [ ] DI через `AppContext`, нет глобальных состояний.
 - [ ] Все публичные API имеют `utoipa` аннотации.
 - [ ] Ошибки обрабатываются через `ApiError`, не `unwrap`/`expect` в production-коде.
 - [ ] Нет SQL-инъекций: только prepared statements / ORM.

@@ -216,13 +216,29 @@ pub async fn build_issue_dto(
 
 async fn issue_user_name_lookup(
     users: Arc<dyn domain::UserRepository>,
+    issues: &[Issue],
 ) -> Result<HashMap<shared::UserId, String>, AppError> {
-    Ok(users
-        .list()
-        .await?
-        .into_iter()
-        .map(|user| (user.id, user.display_name.to_string()))
-        .collect())
+    // Load only the users actually referenced by the issues (assignees and
+    // reporters), not the whole directory: issue create/update must not
+    // scale with the total user count.
+    let mut wanted: Vec<shared::UserId> = Vec::new();
+    for issue in issues {
+        wanted.push(issue.reporter_id);
+        if let Some(assignee) = issue.assignee_id {
+            wanted.push(assignee);
+        }
+    }
+    wanted.sort();
+    wanted.dedup();
+    let mut lookup = HashMap::with_capacity(wanted.len());
+    for id in wanted {
+        // A referenced user may have been hard-deleted meanwhile; keep the
+        // mapping sparse rather than failing the whole DTO build.
+        if let Ok(user) = users.get_by_id(id).await {
+            lookup.insert(id, user.display_name.to_string());
+        }
+    }
+    Ok(lookup)
 }
 
 async fn issue_label_name_lookup(
@@ -251,8 +267,8 @@ pub async fn build_issue_dtos(
     issues: Vec<Issue>,
     project_name: &str,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
-    let user_names = issue_user_name_lookup(users).await?;
     let issue_ids = issues.iter().map(|issue| issue.id).collect::<Vec<_>>();
+    let user_names = issue_user_name_lookup(users, &issues).await?;
     let label_names = issue_label_name_lookup(labels, &issue_ids).await?;
     let project_names = issues
         .iter()
@@ -270,19 +286,20 @@ async fn build_issue_dtos_prefetched(
     labels: Arc<dyn LabelRepository>,
     issues: Vec<Issue>,
 ) -> Result<Vec<crate::dto::IssueDto>, AppError> {
-    let project_names = projects
-        .list(domain::ProjectQuery::default())
-        .await?
-        .into_iter()
-        .map(|project| (project.id, project.name.to_string()))
-        .collect::<HashMap<_, _>>();
-    let user_names = issue_user_name_lookup(users).await?;
-    if let Some(missing) = issues
-        .iter()
-        .find(|issue| !project_names.contains_key(&issue.project_id))
-    {
-        return Err(AppError::not_found("project", missing.project_id));
+    // Load only the projects actually referenced by the issues instead of
+    // the whole project list.
+    let mut project_ids: Vec<ProjectId> = issues.iter().map(|issue| issue.project_id).collect();
+    project_ids.sort();
+    project_ids.dedup();
+    let mut project_names: HashMap<ProjectId, String> = HashMap::with_capacity(project_ids.len());
+    for id in &project_ids {
+        let project = projects
+            .get_by_id(*id)
+            .await
+            .map_err(|_| AppError::not_found("project", *id))?;
+        project_names.insert(*id, project.name.to_string());
     }
+    let user_names = issue_user_name_lookup(users, &issues).await?;
     let issue_ids = issues.iter().map(|issue| issue.id).collect::<Vec<_>>();
     let label_names = issue_label_name_lookup(labels, &issue_ids).await?;
     Ok(issues

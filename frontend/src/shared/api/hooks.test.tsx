@@ -139,6 +139,8 @@ describe('shared api hooks', () => {
       original_estimate_seconds: null,
       remaining_estimate_seconds: null,
       time_spent_seconds: 0,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
     })
     const client = new QueryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')

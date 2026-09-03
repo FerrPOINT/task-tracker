@@ -96,35 +96,31 @@ test(e2e): cover issue transition
 
 ## 12. Pre-commit / Pre-push
 
+Hooks are managed by [lefthook](https://github.com/evilmartians/lefthook).
+The configuration lives in `lefthook.yml` at the repository root.
+
 ### 12.1 Pre-commit
 
-```bash
-# lefthook.yml — pre-commit
-pre-commit:
-  commands:
-    lint-staged:
-      run: pnpm lint-staged
-```
+Runs in parallel on staged files:
 
-```json
-// package.json
-"lint-staged": {
-  "*.{ts,tsx}": ["eslint --fix", "prettier --write"],
-  "*.rs": ["rustfmt"]
-}
-```
+- `cargo fmt --all -- --check` (Rust files)
+- `cargo clippy --workspace --all-targets` (Rust files)
+- `pnpm typecheck` (TS/TSX files)
+- `pnpm test -- --run` (TS/TSX files)
+- `pnpm exec eslint . --max-warnings=0` (TS/TSX files)
 
-### 12.2 Pre-push (optional)
+### 12.2 Pre-push
 
-```bash
-# lefthook.yml — pre-push
-pre-push:
-  commands:
-    cargo-test:
-      run: cargo test --lib
-    vitest:
-      run: pnpm vitest run
-```
+Runs before push to origin:
+
+- `cargo test --workspace -- --test-threads=1`
+- `pnpm build` (frontend production build)
+- `pnpm exec playwright test --project=chromium --grep="smoke"` (E2E smoke)
+
+### 12.3 Commit message
+
+Enforces [Conventional Commits](https://www.conventionalcommits.org/):
+`feat|fix|docs|style|refactor|test|chore|perf|ci|build(scope)!: description`
 
 ## 13. Communication
 

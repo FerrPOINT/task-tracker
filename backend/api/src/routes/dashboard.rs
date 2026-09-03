@@ -53,5 +53,7 @@ fn map_issue(i: app::dto::IssueDto) -> crate::dto::IssueResponse {
         original_estimate_seconds: i.original_estimate_seconds,
         remaining_estimate_seconds: i.remaining_estimate_seconds,
         time_spent_seconds: i.time_spent_seconds,
+        created_at: i.created_at,
+        updated_at: i.updated_at,
     }
 }

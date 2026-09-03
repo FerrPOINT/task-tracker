@@ -227,6 +227,22 @@ impl UserRepository for UserRepo {
         Ok(())
     }
 
+    async fn clear_refresh_token(&self, user_id: UserId) -> Result<(), AppError> {
+        use sea_orm::Statement;
+        // Single atomic UPDATE: no read-before-write, so it cannot race with
+        // a concurrent refresh rotation and resurrect an old hash.
+        self.db
+            .as_ref()
+            .execute(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "UPDATE users SET refresh_token_hash = NULL, updated_at = NOW() WHERE id = $1",
+                [user_id.as_uuid().into()],
+            ))
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError> {
         let model = user::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
