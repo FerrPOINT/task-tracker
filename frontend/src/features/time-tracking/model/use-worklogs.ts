@@ -68,8 +68,8 @@ export function totalTimeSpent(worklogs: Worklog[]): number {
   return worklogs.reduce((sum, w) => sum + w.timeSpentSeconds, 0)
 }
 
-export function latestRemainingEstimate(_worklogs: Worklog[]): number | null {
+export function latestRemainingEstimate(): number | null {
   // remaining_estimate_seconds lives on the Issue entity, not on individual worklogs.
-  // The caller should read it from the issue DTO instead.
+  // The caller reads it from the issue DTO instead.
   return null
 }

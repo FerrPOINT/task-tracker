@@ -471,7 +471,7 @@ impl ProjectRepository for ProjectRepo {
             .select_only()
             .column_as(
                 sea_orm::sea_query::Expr::cust(
-                    "MAX(NULLIF(regexp_split_to_array(key, '-')[array_length(regexp_split_to_array(key, '-'), 1)], '')::text)::text",
+                    "MAX(NULLIF((regexp_split_to_array(key, '-'))[array_length(regexp_split_to_array(key, '-'), 1)], '')::text)::text",
                 ),
                 "max_num",
             )
