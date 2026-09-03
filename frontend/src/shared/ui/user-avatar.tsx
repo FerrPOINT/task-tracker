@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { createAvatar, type Style } from '@dicebear/core'
 import * as micah from '@dicebear/micah'
 import { UserRound } from 'lucide-react'
@@ -28,7 +29,7 @@ function avatarSource(seed: string) {
   }).toDataUri()
 }
 
-export function UserAvatar({ name, userId, size = 'sm' }: UserAvatarProps) {
+function UserAvatarInner({ name, userId, size = 'sm' }: UserAvatarProps) {
   const className = `${sizeClasses[size]} shrink-0 rounded-full`
   const seed = userId || name
 
@@ -45,3 +46,5 @@ export function UserAvatar({ name, userId, size = 'sm' }: UserAvatarProps) {
 
   return <img alt={name || 'User'} className={className} src={avatarSource(seed)} />
 }
+
+export const UserAvatar = memo(UserAvatarInner)

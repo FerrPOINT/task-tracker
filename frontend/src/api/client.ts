@@ -30,12 +30,16 @@ export async function refreshAccessToken(): Promise<boolean> {
         access_token?: string
         user_id?: string
         email?: string
+        username?: string
+        display_name?: string
       }
       if (data.access_token && data.user_id && data.email) {
         useAuthStore.getState().setAuth({
           token: data.access_token,
           userId: data.user_id,
           email: data.email,
+          username: data.username,
+          displayName: data.display_name,
         })
       } else {
         useAuthStore.getState().logout()

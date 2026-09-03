@@ -68,8 +68,8 @@ export function totalTimeSpent(worklogs: Worklog[]): number {
   return worklogs.reduce((sum, w) => sum + w.timeSpentSeconds, 0)
 }
 
-export function latestRemainingEstimate(worklogs: Worklog[]): number | null {
-  if (worklogs.length === 0) return null
-  const sorted = [...worklogs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-  return sorted[0]?.remainingEstimateSeconds ?? null
+export function latestRemainingEstimate(): number | null {
+  // remaining_estimate_seconds lives on the Issue entity, not on individual worklogs.
+  // The caller reads it from the issue DTO instead.
+  return null
 }

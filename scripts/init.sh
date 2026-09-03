@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
+# Initialize a fresh task-tracker installation.
+#
+# Creates .env from .env.example if missing, starts Postgres + Redis,
+# and waits for health.  Migrations are applied automatically when the
+# backend container starts (server/src/lib.rs).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${PROJECT_DIR}/.env"
-
-if [ -f "$ENV_FILE" ]; then
-  # shellcheck source=/dev/null
-  set -a
-  # shellcheck source=/dev/null
-  . "$ENV_FILE"
-  set +a
-fi
 
 cd "$PROJECT_DIR"
 
@@ -33,9 +30,15 @@ echo "Starting infrastructure..."
 docker compose up -d postgres redis
 
 echo "Waiting for postgres healthy..."
-docker compose exec -T postgres pg_isready -U "${TASKTRACKER_DB_USER:-tasktracker}" -d "${TASKTRACKER_DB_NAME:-tasktracker}" > /dev/null
+# shellcheck disable=SC1090
+if [ -f "$ENV_FILE" ]; then
+  set -a; . "$ENV_FILE"; set +a
+fi
+PG_USER="${POSTGRES_USER:-tasktracker}"
+PG_DB="${POSTGRES_DB:-tasktracker}"
+docker compose exec -T postgres pg_isready -U "${PG_USER}" -d "${PG_DB}" > /dev/null
 
-echo "Running migrations..."
-docker compose run --rm migrator
+echo "Starting backend (migrations run on startup)..."
+docker compose up -d backend
 
 echo "Init complete."

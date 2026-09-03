@@ -707,9 +707,13 @@ Soft delete → trash.
 }
 ```
 
-### PUT /issues/{id}/comments/{commentId}
+### PATCH /comments/{id}
 
-### DELETE /issues/{id}/comments/{commentId}
+Updates the body of a comment. The authenticated user must be the comment author.
+
+### DELETE /comments/{id}
+
+Deletes a comment. The authenticated user must be the comment author or a project editor.
 
 ---
 

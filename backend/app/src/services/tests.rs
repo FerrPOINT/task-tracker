@@ -164,6 +164,10 @@ impl UserRepository for FailingUserRepository {
         Err(AppError::Internal("failing user repo".into()))
     }
 
+    async fn clear_refresh_token(&self, _user_id: UserId) -> Result<(), AppError> {
+        Err(AppError::Internal("failing user repo".into()))
+    }
+
     async fn save(&self, _user: &User) -> Result<UserId, AppError> {
         Err(AppError::Internal("failing user repo".into()))
     }
@@ -2128,6 +2132,13 @@ fn failing_context() -> AppContext {
             _user_id: shared::UserId,
             _expected_hash: &str,
             _new_hash: &str,
+        ) -> Result<(), shared::AppError> {
+            Err(shared::AppError::Internal("failing user repo".into()))
+        }
+
+        async fn clear_refresh_token(
+            &self,
+            _user_id: shared::UserId,
         ) -> Result<(), shared::AppError> {
             Err(shared::AppError::Internal("failing user repo".into()))
         }

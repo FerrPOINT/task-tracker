@@ -182,7 +182,7 @@ Epic
 
 ### 5.4. Self links
 
-Каждый ресурс API содержит поле `self` с полным URL: `https://host:19876/api/v1/{resource}/{id}`.
+Каждый ресурс API содержит поле `self` с полным URL: `https://host:19877/api/v1/{resource}/{id}`.
 
 ### 5.5. Issue watchers
 

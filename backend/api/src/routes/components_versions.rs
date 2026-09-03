@@ -88,6 +88,9 @@ pub async fn list_components(
     Path(project_key): Path<String>,
 ) -> Result<Json<ComponentListResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let requester = parse_user_id(&claims)?;
     let components = ctx
         .services
@@ -107,6 +110,9 @@ pub async fn create_component(
     Json(body): Json<ComponentRequest>,
 ) -> Result<(StatusCode, Json<ComponentResponse>), AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let requester = parse_user_id(&claims)?;
     let component = ctx
         .services
@@ -124,6 +130,9 @@ pub async fn update_component(
     Json(body): Json<ComponentRequest>,
 ) -> Result<Json<ComponentResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let id: ProjectComponentId = component_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid component id"))?;
@@ -143,6 +152,9 @@ pub async fn delete_component(
     Path((project_key, component_id)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let id: ProjectComponentId = component_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid component id"))?;
@@ -158,6 +170,9 @@ pub async fn list_versions(
     Path(project_key): Path<String>,
 ) -> Result<Json<VersionListResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let requester = parse_user_id(&claims)?;
     let versions = ctx
         .services
@@ -177,6 +192,9 @@ pub async fn create_version(
     Json(body): Json<VersionRequest>,
 ) -> Result<(StatusCode, Json<VersionResponse>), AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let requester = parse_user_id(&claims)?;
     let version = ctx
         .services
@@ -201,6 +219,9 @@ pub async fn update_version(
     Json(body): Json<VersionRequest>,
 ) -> Result<Json<VersionResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let id: ProjectVersionId = version_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid version id"))?;
@@ -228,6 +249,9 @@ pub async fn delete_version(
     Path((project_key, version_id)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let id: ProjectVersionId = version_id
         .parse()
         .map_err(|_| AppError::invalid_input("invalid version id"))?;

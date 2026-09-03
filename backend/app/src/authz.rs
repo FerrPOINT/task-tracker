@@ -78,7 +78,7 @@ impl Authz {
     /// Used to scope cross-project queries (global search, dashboard) so they
     /// never return issues from projects the requester has no access to.
     pub async fn accessible_project_ids(&self, user: UserId) -> Result<Vec<ProjectId>, AppError> {
-        let mut ids: Vec<ProjectId> = self
+        let mut seen: std::collections::HashSet<ProjectId> = self
             .projects
             .list(domain::ProjectQuery {
                 owner_id: Some(user),
@@ -90,11 +90,9 @@ impl Authz {
             .map(|p| p.id)
             .collect();
         for m in self.members.list_by_user(user).await? {
-            if !ids.contains(&m.project_id) {
-                ids.push(m.project_id);
-            }
+            seen.insert(m.project_id);
         }
-        Ok(ids)
+        Ok(seen.into_iter().collect())
     }
 
     async fn is_owner(&self, project_id: ProjectId, user: UserId) -> Result<bool, AppError> {

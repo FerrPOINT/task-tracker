@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { Layers } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
@@ -13,6 +13,7 @@ export function RegisterPage() {
   const navigate = useNavigate()
   const { mutate, isPending, error } = useRegister()
   const [username, setUsername] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -26,7 +27,7 @@ export function RegisterPage() {
     }
     setPasswordError('')
     mutate(
-      { username, email, password },
+      { username, email, password, name: displayName || username },
       {
         onSuccess: () => navigate('/'),
       },
@@ -54,6 +55,17 @@ export function RegisterPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="register-display-name">
+              {t('auth.displayName')}
+            </label>
+            <Input
+              id="register-display-name"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
             />
           </div>
           <div className="space-y-2">
@@ -98,7 +110,7 @@ export function RegisterPage() {
             {isPending ? `${t('auth.register')}…` : t('auth.register')}
           </Button>
           <Button variant="outline" className="w-full" asChild>
-            <a href="/login">{t('auth.haveAccount')}</a>
+            <Link to="/login">{t('auth.haveAccount')}</Link>
           </Button>
         </form>
       </div>

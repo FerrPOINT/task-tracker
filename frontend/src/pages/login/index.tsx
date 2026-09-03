@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { Layers } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/shared/ui/button'
@@ -65,7 +65,7 @@ export function LoginPage() {
             {isPending ? `${t('auth.login')}…` : t('auth.login')}
           </Button>
           <Button variant="outline" className="w-full" asChild>
-            <a href="/register">{t('auth.createAccount')}</a>
+            <Link to="/register">{t('auth.createAccount')}</Link>
           </Button>
         </form>
       </div>

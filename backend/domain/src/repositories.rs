@@ -51,6 +51,9 @@ pub trait UserRepository: Send + Sync {
         expected_hash: &str,
         new_hash: &str,
     ) -> Result<(), AppError>;
+    /// Atomic logout: NULL the stored refresh-token hash without a
+    /// read-before-write, so it cannot race with concurrent rotation.
+    async fn clear_refresh_token(&self, user_id: UserId) -> Result<(), AppError>;
     async fn save(&self, user: &User) -> Result<UserId, AppError>;
     async fn list(&self) -> Result<Vec<User>, AppError>;
 }
@@ -545,6 +548,10 @@ impl UserRepository for StubUserRepository {
         _new_hash: &str,
     ) -> Result<(), AppError> {
         Err(AppError::Unauthorized)
+    }
+
+    async fn clear_refresh_token(&self, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
     }
 
     async fn get_by_id(&self, _id: UserId) -> Result<User, AppError> {

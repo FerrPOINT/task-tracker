@@ -65,5 +65,7 @@ pub async fn transition_issue(
         original_estimate_seconds: dto.original_estimate_seconds,
         remaining_estimate_seconds: dto.remaining_estimate_seconds,
         time_spent_seconds: dto.time_spent_seconds,
+        created_at: dto.created_at,
+        updated_at: dto.updated_at,
     }))
 }

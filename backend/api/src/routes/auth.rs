@@ -178,6 +178,8 @@ fn map_auth(dto: app::dto::AuthDto) -> AuthResponse {
         token_type: "Bearer".to_string(),
         user_id: dto.user.id,
         email: dto.user.email,
+        username: dto.user.username,
+        display_name: dto.user.display_name,
         expires_in: dto.expires_in,
     }
 }

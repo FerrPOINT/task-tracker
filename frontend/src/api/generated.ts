@@ -1182,11 +1182,13 @@ export interface components {
         };
         AuthResponse: {
             access_token: string;
+            display_name: string;
             email: string;
             /** Format: int64 */
             expires_in: number;
             token_type: string;
             user_id: string;
+            username: string;
         };
         BacklogResponse: {
             backlog_issues: components["schemas"]["IssueResponse"][];
@@ -1206,6 +1208,8 @@ export interface components {
             wip_limit?: number | null;
         };
         BoardResponse: {
+            /** @description Total number of backlog (unscheduled) issues for the project. */
+            backlog_total: number;
             columns: components["schemas"]["BoardColumnResponse"][];
             issues: components["schemas"]["IssueResponse"][];
             project_id: string;
@@ -1359,6 +1363,11 @@ export interface components {
         IssueResponse: {
             assignee_id?: string | null;
             assignee_name?: string | null;
+            /**
+             * Format: date-time
+             * @description Format: date-time
+             */
+            created_at: string;
             description: string;
             id: string;
             issue_type: string;
@@ -1388,6 +1397,11 @@ export interface components {
              * @description Logged work in seconds, derived from worklogs.
              */
             time_spent_seconds: number;
+            /**
+             * Format: date-time
+             * @description Format: date-time
+             */
+            updated_at: string;
         };
         IssueTypeResponse: {
             color?: string | null;

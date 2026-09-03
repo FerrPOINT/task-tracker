@@ -35,7 +35,6 @@ const worklog: Worklog = {
   userId: 'u2',
   userDisplayName: 'Bob',
   timeSpentSeconds: 3600,
-  remainingEstimateSeconds: null,
   startedAt: '2026-08-01T12:00:00Z',
   comment: 'Working on it',
   createdAt: '2026-08-01T12:00:00Z',

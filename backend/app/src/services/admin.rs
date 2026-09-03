@@ -112,6 +112,9 @@ impl AdminService for AdminServiceImpl {
             return Err(AppError::conflict("email already registered"));
         }
 
+        // Enforce the same password policy as self-service registration.
+        crate::auth::ensure_password_policy(&cmd.password)?;
+
         // Hash the password — plaintext is never persisted or logged.
         let password_hash = hash_password(&cmd.password)?;
 

@@ -141,7 +141,11 @@ async fn register_returns_500_when_user_repo_fails() {
         r#"{"email":"t@e.com","username":"t","name":"T","password":"12345678"}"#,
     )
     .await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
@@ -155,7 +159,11 @@ async fn login_returns_500_when_user_repo_fails() {
         r#"{"email":"t@e.com","password":"12345678"}"#,
     )
     .await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
@@ -169,28 +177,44 @@ async fn create_project_returns_500_when_repo_fails() {
         r#"{"key":"KEY","name":"Test"}"#,
     )
     .await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
 async fn get_project_returns_500_when_repo_fails() {
     let (app, token) = app_with_failing_repos();
     let status = authorized_request(&app, &token, "GET", "/api/v1/projects/KEY", "").await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
 async fn get_board_returns_500_when_repo_fails() {
     let (app, token) = app_with_failing_repos();
     let status = authorized_request(&app, &token, "GET", "/api/v1/projects/KEY/board", "").await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
 async fn get_backlog_returns_500_when_repo_fails() {
     let (app, token) = app_with_failing_repos();
     let status = authorized_request(&app, &token, "GET", "/api/v1/projects/KEY/backlog", "").await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
@@ -204,7 +228,11 @@ async fn move_issue_returns_500_when_repo_fails() {
         r#"{"issue_id":"00000000-0000-0000-0000-000000000000","status_id":"00000000-0000-0000-0000-000000000000"}"#,
     )
     .await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
@@ -218,14 +246,22 @@ async fn create_issue_returns_500_when_repo_fails() {
         r#"{"project_key":"KEY","issue_type":"task","summary":"T","priority":"medium","status_id":"00000000-0000-0000-0000-000000000000","reporter_id":"00000000-0000-0000-0000-000000000000"}"#,
     )
     .await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
 async fn search_issues_returns_500_when_repo_fails() {
     let (app, token) = app_with_failing_repos();
     let status = authorized_request(&app, &token, "GET", "/api/v1/issues?q=query", "").await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
@@ -239,7 +275,11 @@ async fn get_issue_returns_500_when_repo_fails() {
         "",
     )
     .await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]
@@ -253,7 +293,11 @@ async fn update_issue_returns_500_when_repo_fails() {
         r#"{}"#,
     )
     .await;
-    assert!(status.is_server_error());
+    assert_eq!(
+        status.as_u16(),
+        500,
+        "expected 500 for failing repo, got {status}"
+    );
 }
 
 #[tokio::test]

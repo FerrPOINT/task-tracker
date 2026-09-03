@@ -253,7 +253,7 @@
 | **PostgreSQL 17.6** | Основная БД | Row-level security, JSONB, full-text search |
 | **Redis 8.0** | Кэш, сессии, pub/sub, job queue backend | Быстрая временная и распределённая память |
 | **MinIO** | S3-совместимое хранилище вложений | Self-hosted альтернатива AWS S3 |
-| **Nginx / Caddy** | Reverse proxy, статика, TLS | Единая точка входа на порту `19876` |
+| **Nginx / Caddy** | Reverse proxy, статика, TLS | Единая точка входа на порту `19877` |
 | **Prometheus + Grafana** | Метрики и дашборды | Стандарт observability |
 | **Loki / vector** | Централизованные логи | JSON-логи из tracing-subscriber |
 

@@ -27,6 +27,8 @@ pub struct AuthResponse {
     pub token_type: String,
     pub user_id: String,
     pub email: String,
+    pub username: String,
+    pub display_name: String,
     pub expires_in: u64,
 }
 
@@ -115,6 +117,10 @@ pub struct IssueResponse {
     pub remaining_estimate_seconds: Option<i64>,
     /// Logged work in seconds, derived from worklogs.
     pub time_spent_seconds: i64,
+    /** Format: date-time */
+    pub created_at: DateTime<FixedOffset>,
+    /** Format: date-time */
+    pub updated_at: DateTime<FixedOffset>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -166,6 +172,8 @@ pub struct BoardResponse {
     pub columns: Vec<BoardColumnResponse>,
     pub issues: Vec<IssueResponse>,
     pub sprint: SprintResponse,
+    /// Total number of backlog (unscheduled) issues for the project.
+    pub backlog_total: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

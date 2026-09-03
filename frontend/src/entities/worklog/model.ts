@@ -4,7 +4,6 @@ export interface Worklog {
   userId: string
   userDisplayName: string
   timeSpentSeconds: number
-  remainingEstimateSeconds?: number | null
   startedAt: string
   comment: string | null
   createdAt: string

@@ -4484,10 +4484,15 @@
           "token_type",
           "user_id",
           "email",
+          "username",
+          "display_name",
           "expires_in"
         ],
         "properties": {
           "access_token": {
+            "type": "string"
+          },
+          "display_name": {
             "type": "string"
           },
           "email": {
@@ -4502,6 +4507,9 @@
             "type": "string"
           },
           "user_id": {
+            "type": "string"
+          },
+          "username": {
             "type": "string"
           }
         }
@@ -4591,9 +4599,15 @@
           "project_key",
           "columns",
           "issues",
-          "sprint"
+          "sprint",
+          "backlog_total"
         ],
         "properties": {
+          "backlog_total": {
+            "type": "integer",
+            "description": "Total number of backlog (unscheduled) issues for the project.",
+            "minimum": 0
+          },
           "columns": {
             "type": "array",
             "items": {
@@ -5213,7 +5227,9 @@
           "labels",
           "reporter_id",
           "project_name",
-          "time_spent_seconds"
+          "time_spent_seconds",
+          "created_at",
+          "updated_at"
         ],
         "properties": {
           "assignee_id": {
@@ -5227,6 +5243,11 @@
               "string",
               "null"
             ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Format: date-time"
           },
           "description": {
             "type": "string"
@@ -5299,6 +5320,11 @@
             "type": "integer",
             "format": "int64",
             "description": "Logged work in seconds, derived from worklogs."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Format: date-time"
           }
         }
       },

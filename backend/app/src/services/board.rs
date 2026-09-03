@@ -92,6 +92,23 @@ impl BoardServiceImpl {
             .await?;
 
         let db_statuses = self.statuses.list_all().await?;
+        // Backlog = issues in the first Todo-category status that are not in a sprint.
+        let todo_status = db_statuses
+            .iter()
+            .find(|s| s.category == StatusCategory::Todo)
+            .map(|s| s.id)
+            .unwrap_or_else(|| {
+                board
+                    .columns
+                    .iter()
+                    .find(|c| c.category == StatusCategory::Todo)
+                    .map(|c| c.id)
+                    .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()))
+            });
+        let backlog_total = self
+            .issues
+            .count_backlog(board.project_id, todo_status)
+            .await? as usize;
         let columns: Vec<BoardColumnDto> = if board.columns.iter().all(|c| c.id.as_uuid().is_nil())
         {
             db_statuses
@@ -168,6 +185,7 @@ impl BoardServiceImpl {
             columns,
             issues: issue_dtos,
             sprint: sprint_dto,
+            backlog_total,
         })
     }
 }

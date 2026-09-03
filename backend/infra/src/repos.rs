@@ -100,7 +100,7 @@ fn issue_active_model(issue: &Issue) -> issue::ActiveModel {
         remaining_estimate_seconds: Set(issue.remaining_estimate_seconds),
         time_spent_seconds: Set(issue.time_spent_seconds),
         created_at: Set(issue.created_at),
-        updated_at: Set(shared::now()),
+        updated_at: Set(issue.updated_at),
         deleted_at: Set(issue.deleted_at),
     }
 }
@@ -224,6 +224,22 @@ impl UserRepository for UserRepo {
             return Err(AppError::Unauthorized);
         }
         txn.commit().await.map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn clear_refresh_token(&self, user_id: UserId) -> Result<(), AppError> {
+        use sea_orm::Statement;
+        // Single atomic UPDATE: no read-before-write, so it cannot race with
+        // a concurrent refresh rotation and resurrect an old hash.
+        self.db
+            .as_ref()
+            .execute(Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "UPDATE users SET refresh_token_hash = NULL, updated_at = NOW() WHERE id = $1",
+                [user_id.as_uuid().into()],
+            ))
+            .await
+            .map_err(AppError::database)?;
         Ok(())
     }
 
@@ -447,23 +463,26 @@ impl ProjectRepository for ProjectRepo {
     }
 
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError> {
-        // MAX(number) parsed from issue keys, so deleted issues never cause key reuse
-        // and concurrent counters can only collide on truly parallel inserts (handled by retry).
-        let keys = issue::Entity::find()
+        // MAX(number) computed in SQL from the numeric suffix of issue keys, so
+        // deleted issues never cause key reuse and we ship one row back instead
+        // of every key in the project.
+        let suffix = issue::Entity::find()
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
             .select_only()
-            .column(issue::Column::Key)
-            .into_tuple::<String>()
-            .all(&*self.db)
+            .column_as(
+                sea_orm::sea_query::Expr::cust("MAX((substring(key FROM '-([0-9]+)$'))::bigint)"),
+                "max_num",
+            )
+            .into_tuple::<Option<i64>>()
+            .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
-        let max = keys
-            .iter()
-            .filter_map(|k| k.rsplit('-').next())
-            .filter_map(|suffix| suffix.parse::<u32>().ok())
-            .max()
-            .unwrap_or(0);
-        Ok(max + 1)
+            .map_err(AppError::database)?
+            .flatten();
+        let next = suffix
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or_else(|| AppError::invalid_input("issue number overflow"))?;
+        u32::try_from(next).map_err(|_| AppError::invalid_input("issue number overflow"))
     }
 }
 

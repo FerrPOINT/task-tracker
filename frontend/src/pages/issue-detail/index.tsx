@@ -1,7 +1,7 @@
 import { useParams } from 'react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, MessageSquare, UserPlus, MoreHorizontal, Pencil } from 'lucide-react'
+import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
 import { Toaster, toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
@@ -117,14 +117,6 @@ export function IssueDetailPage() {
             <Button variant="secondary" size="sm" onClick={copyKey}>
               <Copy className="h-4 w-4" />
               {t('issue.copyKey')}
-            </Button>
-            <Button variant="secondary" size="sm">
-              <Pencil className="h-4 w-4" />
-              {t('issue.edit')}
-            </Button>
-            <Button variant="secondary" size="sm">
-              <MessageSquare className="h-4 w-4" />
-              {t('issue.comment')}
             </Button>
             <Button
               variant="secondary"
