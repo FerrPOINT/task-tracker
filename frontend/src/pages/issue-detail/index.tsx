@@ -3,10 +3,10 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
 import { Toaster, toast } from 'sonner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { Button } from '@/shared/ui/button'
-import { ConfirmDialog } from '@/shared/ui/async-states'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@sdlc/ui/ui'
+import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
+import { Button } from '@sdlc/ui/ui'
+import { ConfirmDialog } from '@sdlc/ui/ui'
 import {
   useWorklogs,
   useCreateWorklog,

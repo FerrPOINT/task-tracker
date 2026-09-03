@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router'
 
 import { LoginPage } from './'
 import { useAuthStore } from '@/shared/auth/store'
-import { ThemeProvider } from '@/shared/lib/theme'
+import { ThemeProvider } from '@sdlc/ui/lib'
 
 const login = vi.hoisted(() => vi.fn())
 vi.mock('@/api/auth', () => ({ login }))

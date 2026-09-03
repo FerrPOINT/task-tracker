@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/dialog'
+import { Button } from '@sdlc/ui/ui'
+import { Input } from '@sdlc/ui/ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@sdlc/ui/ui'
 import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
 
 interface SprintFormDialogProps {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { ThemeProvider } from '@/shared/lib/theme'
+import { ThemeProvider } from '@sdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
 import { SprintFormDialog } from './SprintFormDialog'
 import type { Sprint } from '@/api/sprint'

@@ -6,7 +6,7 @@ import { Toaster } from 'sonner'
 import i18n from './shared/i18n/config'
 import { RouterProvider } from 'react-router'
 import { router } from './app/router'
-import { ThemeProvider } from './shared/lib/theme'
+import { ThemeProvider } from '@sdlc/ui/lib'
 import './index.css'
 
 const queryClient = new QueryClient({

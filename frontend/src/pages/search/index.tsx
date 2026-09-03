@@ -2,15 +2,15 @@ import { Link, useSearchParams } from 'react-router'
 import { Search, X, ArrowUpDown, Filter } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState, useMemo, useEffect } from 'react'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
-import { Card, CardContent } from '@/shared/ui/card'
+import { Button } from '@sdlc/ui/ui'
+import { Input } from '@sdlc/ui/ui'
+import { Card, CardContent } from '@sdlc/ui/ui'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/shared/ui/dropdown-menu'
+} from '@sdlc/ui/ui'
 import { useIssues, useProjects, useUsers } from '@/shared/api/hooks'
 import type { Issue } from '@/api/search'
 

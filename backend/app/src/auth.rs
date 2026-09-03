@@ -35,6 +35,40 @@ pub struct JwtAuthService {
     system_settings: Arc<dyn domain::SystemSettingRepository>,
 }
 
+#[path = "auth_central_login_mod.rs"]
+mod auth_central_login;
+use auth_central_login::{central_login_config, try_central_login};
+
+impl JwtAuthService {
+    /// Finds a local user by the central identity's email; links (creates) a
+    /// shadow account on first login. Central users never have a usable local
+    /// password ("!" hash — local verify always fails).
+    async fn find_or_link_central_user(&self, email: &str) -> Result<User, AppError> {
+        let email = email.trim().to_lowercase();
+        if let Ok(existing) = self.users.get_by_email(&email).await {
+            if !existing.is_active {
+                return Err(AppError::Unauthorized);
+            }
+            return Ok(existing);
+        }
+        let username = email.split('@').next().unwrap_or("central").to_string();
+        let user = User {
+            id: UserId::new(),
+            email: email.into(),
+            username: username.clone().into(),
+            display_name: username.into(),
+            password_hash: "!".into(),
+            refresh_token_hash: None,
+            is_system_admin: false,
+            is_active: true,
+            created_at: shared::now(),
+            updated_at: shared::now(),
+        };
+        let id = self.users.save(&user).await?;
+        self.users.get_by_id(id).await
+    }
+}
+
 impl JwtAuthService {
     pub fn new(
         config: AuthConfig,
@@ -90,6 +124,30 @@ impl crate::context::AuthService for JwtAuthService {
     }
 
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError> {
+        // Central fleet auth first; local password login remains the fallback
+        // during the migration window (see central_login module).
+        if let Some(config) = central_login_config() {
+            match try_central_login(&config, &cmd.email, &cmd.password).await {
+                Ok(Some(pair)) => {
+                    // Link the shadow user by verified email so /me and
+                    // role checks keep working for central identities.
+                    let user = self.find_or_link_central_user(&cmd.email).await?;
+                    return Ok(AuthDto {
+                        access_token: pair.access_token,
+                        refresh_token: pair.refresh_token,
+                        expires_in: pair
+                            .expires_in
+                            .unwrap_or(self.config.access_token_ttl_minutes * 60),
+                        user: UserDto::from(user),
+                    });
+                }
+                Ok(None) => unreachable!("config is Some"),
+                Err(Some(error)) => {
+                    tracing::warn!(%error, "central login failed; falling back to local");
+                }
+                Err(None) => { /* credentials unknown centrally; local path */ }
+            }
+        }
         let user = self.users.get_by_email(&cmd.email).await?;
         if !verify_password(&cmd.password, &user.password_hash)? {
             return Err(AppError::Unauthorized);

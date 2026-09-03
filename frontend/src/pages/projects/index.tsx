@@ -2,10 +2,10 @@ import { Link } from 'react-router'
 import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
-import { Button } from '@/shared/ui/button'
-import { ErrorState, LoadingState } from '@/shared/ui/async-states'
-import { Input } from '@/shared/ui/input'
-import { Card, CardContent } from '@/shared/ui/card'
+import { Button } from '@sdlc/ui/ui'
+import { ErrorState, LoadingState } from '@sdlc/ui/ui'
+import { Input } from '@sdlc/ui/ui'
+import { Card, CardContent } from '@sdlc/ui/ui'
 import {
   useProjects,
   useCreateProject,
@@ -21,7 +21,7 @@ import {
   AlertDialogDescription,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/shared/ui/alert-dialog'
+} from '@sdlc/ui/ui'
 import type { Project } from '@/api/project'
 
 function ProjectAvatar({ projectKey }: { projectKey: string }) {

@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectBacklogPage } from './'
-import { ThemeProvider } from '@/shared/lib/theme'
+import { ThemeProvider } from '@sdlc/ui/lib'
 
 const mockBacklog = vi.hoisted(() => vi.fn())
 const mockSprints = vi.hoisted(() => vi.fn())

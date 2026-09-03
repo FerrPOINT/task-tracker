@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/shared/ui/table'
-import { Button } from '@/shared/ui/button'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@sdlc/ui/ui'
+import { Button } from '@sdlc/ui/ui'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,8 +12,8 @@ import {
   AlertDialogDescription,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/shared/ui/alert-dialog'
-import { Card, CardContent } from '@/shared/ui/card'
+} from '@sdlc/ui/ui'
+import { Card, CardContent } from '@sdlc/ui/ui'
 import { formatDuration } from '@/shared/lib/time'
 import type { Worklog } from '@/entities/worklog/model'
 

@@ -8,8 +8,8 @@ import {
   useDetachLabel,
   useCreateLabel,
 } from '@/shared/api/hooks'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
+import { Button } from '@sdlc/ui/ui'
+import { Input } from '@sdlc/ui/ui'
 
 const PALETTE = [
   '#ef4444',

@@ -23,10 +23,10 @@ import {
   useCumulativeFlowReport,
   useControlChartReport,
 } from '@/shared/api/hooks'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs'
-import { Card, CardHeader, CardTitle, CardContent } from '@/shared/ui/card'
-import { Input } from '@/shared/ui/input'
-import { Label } from '@/shared/ui/label'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@sdlc/ui/ui'
+import { Card, CardHeader, CardTitle, CardContent } from '@sdlc/ui/ui'
+import { Input } from '@sdlc/ui/ui'
+import { Label } from '@sdlc/ui/ui'
 
 type TabValue = 'velocity' | 'burndown' | 'cumulative-flow' | 'control-chart'
 

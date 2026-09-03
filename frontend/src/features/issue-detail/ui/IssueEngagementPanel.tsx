@@ -8,7 +8,7 @@ import {
   useWatchIssue,
   useUnwatchIssue,
 } from '@/shared/api/hooks'
-import { Button } from '@/shared/ui/button'
+import { Button } from '@sdlc/ui/ui'
 import { UserAvatar } from '@/shared/ui/user-avatar'
 
 type IssueEngagementPanelProps = {

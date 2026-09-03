@@ -1,5 +1,5 @@
 import { Moon, CloudSun, Sun } from 'lucide-react'
-import { Button } from '@/shared/ui/button'
+import { Button } from '@sdlc/ui/ui'
 import { useTheme } from '@/shared/lib/theme'
 import { useTranslation } from 'react-i18next'
 

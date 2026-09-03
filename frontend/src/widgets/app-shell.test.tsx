@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
+import { ThemeProvider } from '@sdlc/ui/lib'
 
 import { AppShell } from './app-shell'
 
@@ -21,7 +22,6 @@ vi.mock('@/shared/api/hooks', () => ({
   useIssue,
 }))
 vi.mock('@/shared/api/useTrackerEvents', () => ({ useTrackerEvents: vi.fn() }))
-vi.mock('@/shared/ui/theme-toggle', () => ({ ThemeToggle: () => null }))
 
 type Notification = {
   id: string
@@ -55,9 +55,11 @@ describe('AppShell notifications', () => {
     mockHooks([])
 
     render(
-      <MemoryRouter initialEntries={['/issues/create']}>
-        <AppShell />
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/issues/create']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     expect(useIssue).toHaveBeenCalledWith('')
@@ -68,9 +70,11 @@ describe('AppShell notifications', () => {
     mockHooks([])
 
     render(
-      <MemoryRouter initialEntries={['/issues/create?project_key=XP']}>
-        <AppShell />
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/issues/create?project_key=XP']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     expect(useIssue).toHaveBeenCalledWith('')
@@ -89,9 +93,13 @@ describe('AppShell notifications', () => {
     mockHooks([])
 
     render(
-      <MemoryRouter initialEntries={[{ pathname: '/issues/create', state: { project_key: 'XP' } }]}>
-        <AppShell />
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter
+          initialEntries={[{ pathname: '/issues/create', state: { project_key: 'XP' } }]}
+        >
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     expect(useIssue).toHaveBeenCalledWith('')
@@ -113,9 +121,11 @@ describe('AppShell notifications', () => {
     })
 
     render(
-      <MemoryRouter>
-        <AppShell />
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     expect(screen.getByRole('link', { name: /администрирование|administration/i })).toHaveAttribute(
@@ -129,9 +139,11 @@ describe('AppShell notifications', () => {
     mockHooks([])
 
     render(
-      <MemoryRouter>
-        <AppShell />
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     const trigger = screen.getByTestId('notification-trigger')
@@ -162,9 +174,11 @@ describe('AppShell notifications', () => {
     useMarkAllNotificationsRead.mockReturnValue({ mutate: markAll })
 
     render(
-      <MemoryRouter>
-        <AppShell />
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     const trigger = screen.getByTestId('notification-trigger')

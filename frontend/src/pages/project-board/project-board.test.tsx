@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectBoardPage } from './'
-import { ThemeProvider } from '@/shared/lib/theme'
+import { ThemeProvider } from '@sdlc/ui/lib'
 
 vi.mock('@/shared/api/hooks', () => ({
   useBoard: () => ({

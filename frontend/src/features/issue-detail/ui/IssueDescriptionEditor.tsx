@@ -5,8 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Pencil, Check, X } from 'lucide-react'
 import type { Issue } from '@/api/issue'
-import { Button } from '@/shared/ui/button'
-import { Textarea } from '@/shared/ui/textarea'
+import { Button } from '@sdlc/ui/ui'
+import { Textarea } from '@sdlc/ui/ui'
 
 const schema = z.object({
   summary: z.string().min(1),

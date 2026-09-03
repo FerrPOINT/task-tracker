@@ -11,9 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: task-tracker/backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -26,15 +35,24 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: task-tracker/backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend
+          workspaces: task-tracker/backend
       - name: Regenerate OpenAPI
         run: |
           mkdir -p openapi
@@ -46,7 +64,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: task-tracker/backend
     services:
       postgres:
         image: postgres:17.6-alpine
@@ -63,6 +81,15 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Apply all migrations to clean DB
@@ -78,9 +105,18 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: task-tracker/backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -101,9 +137,18 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: task-tracker/backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: dtolnay/rust-toolchain@stable
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -115,7 +160,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: task-tracker/backend
     services:
       postgres:
         image: postgres:17.6-alpine
@@ -132,10 +177,19 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend
+          workspaces: task-tracker/backend
       - name: Prepare infra test DB
         run: |
           PGPASSWORD=test psql -h localhost -U tasktracker -d tasktracker -c "CREATE DATABASE tasktracker_infra_test;"
@@ -155,13 +209,22 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: task-tracker/backend
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend
+          workspaces: task-tracker/backend
       - uses: taiki-e/install-action@cargo-audit
       - run: cargo audit
 
@@ -169,9 +232,18 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: task-tracker/frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -179,7 +251,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: task-tracker/frontend/pnpm-lock.yaml
       - run: pnpm install
       - run: pnpm generate:api
       - run: pnpm typecheck
@@ -196,6 +268,15 @@ jobs:
       TASKTRACKER_JWT_SECRET: ci-test-secret-ci-test-secret-ci-test-32b
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      # Fleet shared crates live in a sibling services-base checkout
+      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
+      - uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -203,13 +284,13 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
+          cache-dependency-path: task-tracker/frontend/pnpm-lock.yaml
       - run: pnpm install
-        working-directory: frontend
+        working-directory: task-tracker/frontend
       - run: pnpm build
-        working-directory: frontend
+        working-directory: task-tracker/frontend
       - run: docker compose up -d postgres redis backend
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ github.workspace }}/task-tracker
       - name: Wait for backend readiness (retry loop)
         run: |
           for i in $(seq 1 120); do
@@ -222,13 +303,13 @@ jobs:
           docker compose ps
           docker compose logs backend
           exit 1
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ github.workspace }}/task-tracker
       - run: pnpm exec playwright install --with-deps chromium
-        working-directory: frontend
+        working-directory: task-tracker/frontend
       - run: pnpm exec playwright test e2e/smoke.spec.ts --project=chromium
-        working-directory: frontend
+        working-directory: task-tracker/frontend
         env:
           VITE_API_BASE_URL: http://localhost:3456/api/v1
       - run: docker compose down -v
-        working-directory: ${{ github.workspace }}
+        working-directory: ${{ github.workspace }}/task-tracker
         if: always()

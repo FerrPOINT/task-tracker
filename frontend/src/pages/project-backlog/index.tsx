@@ -11,15 +11,15 @@ import {
   X,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/shared/ui/button'
-import { ErrorState, LoadingState } from '@/shared/ui/async-states'
+import { Button } from '@sdlc/ui/ui'
+import { ErrorState, LoadingState } from '@sdlc/ui/ui'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
-} from '@/shared/ui/dropdown-menu'
+} from '@sdlc/ui/ui'
 import {
   useBacklog,
   useSprints,

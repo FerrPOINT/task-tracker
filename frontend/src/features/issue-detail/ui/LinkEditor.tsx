@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
 import { Link } from 'react-router'
 import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
+import { Button } from '@sdlc/ui/ui'
+import { Input } from '@sdlc/ui/ui'
 
 const LINK_TYPES = ['blocks', 'duplicates', 'relates'] as const
 

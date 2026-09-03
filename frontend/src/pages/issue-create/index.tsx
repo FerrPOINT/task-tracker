@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/shared/ui/button'
-import { ErrorState } from '@/shared/ui/async-states'
-import { Input } from '@/shared/ui/input'
+import { Button } from '@sdlc/ui/ui'
+import { ErrorState } from '@sdlc/ui/ui'
+import { Input } from '@sdlc/ui/ui'
 import {
   useCreateIssue,
   useIssueTypes,

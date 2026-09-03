@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectTrashPage } from './'
-import { ThemeProvider } from '@/shared/lib/theme'
+import { ThemeProvider } from '@sdlc/ui/lib'
 
 const mockRestore = vi.hoisted(() => vi.fn())
 const mockPurge = vi.hoisted(() => vi.fn())

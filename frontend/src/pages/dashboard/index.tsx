@@ -1,8 +1,8 @@
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/shared/ui/button'
-import { ErrorState } from '@/shared/ui/async-states'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
+import { Button } from '@sdlc/ui/ui'
+import { ErrorState } from '@sdlc/ui/ui'
+import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
 
 export function DashboardPage() {

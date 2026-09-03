@@ -9,10 +9,10 @@ import {
   useNotifications,
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
-import { Button } from '@/shared/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
-import { ErrorState } from '@/shared/ui/async-states'
-import { Label } from '@/shared/ui/label'
+import { Button } from '@sdlc/ui/ui'
+import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
+import { ErrorState } from '@sdlc/ui/ui'
+import { Label } from '@sdlc/ui/ui'
 
 const NotificationCard = memo(function NotificationCard({
   notification,

@@ -2,8 +2,8 @@ import { useParams, Link } from 'react-router'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useEffect, useState } from 'react'
-import { Button } from '@/shared/ui/button'
-import { ConfirmDialog, ErrorState } from '@/shared/ui/async-states'
+import { Button } from '@sdlc/ui/ui'
+import { ConfirmDialog, ErrorState } from '@sdlc/ui/ui'
 import { useTrash, useRestoreIssue, usePurgeIssue } from '@/shared/api/hooks'
 
 const TRASH_PAGE_SIZE = 50

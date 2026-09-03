@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectCustomFieldsPage } from './'
-import { ThemeProvider } from '@/shared/lib/theme'
+import { ThemeProvider } from '@sdlc/ui/lib'
 
 const mockCreate = vi.hoisted(() => vi.fn())
 const mockDelete = vi.hoisted(() => vi.fn())

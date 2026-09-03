@@ -3,10 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Button } from '@/shared/ui/button'
-import { Textarea } from '@/shared/ui/textarea'
-import { Label } from '@/shared/ui/label'
-import { ConfirmDialog } from '@/shared/ui/async-states'
+import { Button } from '@sdlc/ui/ui'
+import { Textarea } from '@sdlc/ui/ui'
+import { Label } from '@sdlc/ui/ui'
+import { ConfirmDialog } from '@sdlc/ui/ui'
 import {
   useComments,
   useCreateComment,

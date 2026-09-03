@@ -19,8 +19,8 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/shared/ui/button'
-import { ThemeToggle } from '@/shared/ui/theme-toggle'
+import { Button } from '@sdlc/ui/ui'
+import { ThemeToggle } from '@sdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
   useCurrentUser,
@@ -35,7 +35,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@/shared/ui/dropdown-menu'
+} from '@sdlc/ui/ui'
 
 const systemItems: Array<{ to: string; icon: typeof Trash2; labelKey: string }> = []
 

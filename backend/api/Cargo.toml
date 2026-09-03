@@ -36,13 +36,17 @@ utoipa-swagger-ui.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
 uuid.workspace = true
-time = { version = "0.3", features = ["std"] }
+time = { version = "=0.3.41", features = ["std"] }
 urlencoding = "2"
+
+# Fleet auth core: sibling services-base checkout (umbrella compose + CI);
+# reqwest backs the central login proxy.
+reqwest.workspace = true
+sdlc-auth-core = { path = "../../../services-base/crates/sdlc-auth-core" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tower.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
-reqwest.workspace = true
 jsonwebtoken = { workspace = true }
