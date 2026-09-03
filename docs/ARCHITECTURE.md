@@ -166,8 +166,8 @@ task-tracker/
 ### 4.4 Infrastructure layer (`infra/`)
 
 - `repos.rs` — SeaORM Postgres-реализации repository traits
-- `event_bus.rs` — in-memory event bus
 - `entities/` — SeaORM models
+- `storage.rs` — file attachment storage (local filesystem / S3-compatible)
 
 ## 5. Конфигурация
 

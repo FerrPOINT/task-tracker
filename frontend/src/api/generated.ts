@@ -1208,6 +1208,8 @@ export interface components {
             wip_limit?: number | null;
         };
         BoardResponse: {
+            /** @description Total number of backlog (unscheduled) issues for the project. */
+            backlog_total: number;
             columns: components["schemas"]["BoardColumnResponse"][];
             issues: components["schemas"]["IssueResponse"][];
             project_id: string;

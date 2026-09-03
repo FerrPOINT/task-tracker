@@ -64,6 +64,9 @@ pub async fn list_labels(
     Path(project_key): Path<String>,
 ) -> Result<Json<LabelListResponse>, AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let requester = parse_user_id(&claims)?;
     let items = ctx.services.label.list_by_project(&key, requester).await?;
     Ok(Json(LabelListResponse {
@@ -100,6 +103,9 @@ pub async fn create_label(
     Json(body): Json<CreateLabelRequest>,
 ) -> Result<(StatusCode, Json<LabelResponse>), AppError> {
     let key = ProjectKey::new(project_key.as_str());
+    if !key.is_valid() {
+        return Err(AppError::invalid_input("project_key"));
+    }
     let requester = parse_user(&claims)?;
     let l = ctx
         .services

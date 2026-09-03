@@ -74,9 +74,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
                   {formatDuration(w.timeSpentSeconds)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
-                  {w.remainingEstimateSeconds != null
-                    ? formatDuration(w.remainingEstimateSeconds)
-                    : '-'}
+                  -
                 </TableCell>
                 <TableCell className="max-w-[200px] truncate">{w.comment ?? '-'}</TableCell>
                 <TableCell className="whitespace-nowrap text-right">
@@ -170,9 +168,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
                 <span className="text-text-primary">{formatDuration(w.timeSpentSeconds)}</span>
                 <span className="text-text-muted">{t('timeTracking.worklog.remaining')}</span>
                 <span className="text-text-primary">
-                  {w.remainingEstimateSeconds != null
-                    ? formatDuration(w.remainingEstimateSeconds)
-                    : '-'}
+                  -
                 </span>
                 {w.comment && (
                   <>

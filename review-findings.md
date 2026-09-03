@@ -12,6 +12,48 @@ Verified findings below. Rejected during verification (false positives): run-e2e
 
 ---
 
+
+
+## Fix Status (PR #48 + this commit)
+
+| Finding | Status |
+|---------|--------|
+| P1.1–P1.2 scripts | ✅ Fixed (PR #48) |
+| P1.3 allow_registration | ✅ Fixed (PR #48) |
+| P1.4 e2e smoke mock | ✅ Fixed (PR #48) |
+| P1.5 refresh profile | ✅ Fixed (PR #48) |
+| P2.1 API.md comments | ✅ Fixed (PR #48) |
+| P2.2 CHANGELOG env/CLI | ✅ Fixed (PR #48) |
+| P2.3 CONTRIBUTING hooks | ✅ Fixed (PR #48) |
+| P2.4 REVIEW.md archived | ✅ Fixed (PR #48) |
+| P2.5 backup/restore scripts | ✅ Fixed (PR #48) |
+| P2.6 password policy | ✅ Fixed (PR #48) |
+| P2.7 N+1 users/projects | ✅ Fixed (PR #48) |
+| P2.8 SSE per-event SQL | 📋 Deferred (requires moka cache integration) |
+| P2.9 N+1 sprints/watchers/votes | ✅ Fixed (PR #48 — votes count; sprints/watchers batched) |
+| P2.10 dead infra code | ✅ Fixed (PR #48) |
+| P2.11 dead UI buttons | ✅ Fixed (PR #48) |
+| P2.12 i18n interpolation/42 | ✅ Fixed (PR #48 + this commit — placeholders added, 42→backlog_total) |
+| P2.13 OpenAPI IssueResponse timestamps | ✅ Fixed (PR #48) |
+| P3.1 stale doc details | ✅ Fixed (PR #48) |
+| P3.2 votes count from page | ✅ Fixed (PR #48) |
+| P3.3 updated_at overwritten | ✅ Fixed (this commit — issue_active_model uses domain value) |
+| P3.4 logout race | ✅ Fixed (PR #48 — atomic clear_refresh_token) |
+| P3.5 next_issue_number O(n) | ✅ Fixed (PR #48 — SQL MAX) |
+| P3.6 O(n²) accessible_project_ids | ✅ Fixed (this commit — HashSet) |
+| P3.7 naive date boundary | 📋 Deferred |
+| P3.8 FE minor (a→Link, empty dirs, avatar memo, parseDuration) | ✅ Fixed (PR #48 + this commit — avatar memo) |
+| P3.9 test-quality gaps | ✅ Partial (this commit — 500-tests assert exact status; coverage gate unchanged) |
+| P3.10 worklog remainingEstimate | ✅ Fixed (this commit — dead field removed from FE model) |
+| P3.11 ProjectKey validation | ✅ Fixed (this commit — is_valid() in labels/components_versions) |
+| P3.12 Traefik labels | 📋 Deferred (infra config, not code) |
+| D1 CACHING.md/ARCHITECTURE.md stale refs | ✅ Fixed (this commit) |
+| D2 BoardResponse backlog_total | ✅ Fixed (this commit) |
+| D3 i18n board.subtitle placeholders | ✅ Fixed (this commit) |
+| D4 worklog remainingEstimate | ✅ Fixed (this commit) |
+
+---
+
 ## P1 — Broken functionality / guaranteed-broken paths
 
 | # | Finding | Evidence |

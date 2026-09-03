@@ -172,6 +172,8 @@ pub struct BoardResponse {
     pub columns: Vec<BoardColumnResponse>,
     pub issues: Vec<IssueResponse>,
     pub sprint: SprintResponse,
+    /// Total number of backlog (unscheduled) issues for the project.
+    pub backlog_total: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

@@ -4599,9 +4599,15 @@
           "project_key",
           "columns",
           "issues",
-          "sprint"
+          "sprint",
+          "backlog_total"
         ],
         "properties": {
+          "backlog_total": {
+            "type": "integer",
+            "description": "Total number of backlog (unscheduled) issues for the project.",
+            "minimum": 0
+          },
           "columns": {
             "type": "array",
             "items": {

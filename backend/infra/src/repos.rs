@@ -100,7 +100,7 @@ fn issue_active_model(issue: &Issue) -> issue::ActiveModel {
         remaining_estimate_seconds: Set(issue.remaining_estimate_seconds),
         time_spent_seconds: Set(issue.time_spent_seconds),
         created_at: Set(issue.created_at),
-        updated_at: Set(shared::now()),
+        updated_at: Set(issue.updated_at),
         deleted_at: Set(issue.deleted_at),
     }
 }

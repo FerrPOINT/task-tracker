@@ -133,6 +133,7 @@ fn map_board(b: app::dto::BoardDto) -> BoardResponse {
             start_date: b.sprint.start_date,
             end_date: b.sprint.end_date,
         },
+        backlog_total: b.backlog_total,
     }
 }
 

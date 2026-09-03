@@ -196,6 +196,8 @@ pub struct BoardDto {
     pub columns: Vec<BoardColumnDto>,
     pub issues: Vec<IssueDto>,
     pub sprint: SprintDto,
+    /// Total number of backlog (unscheduled) issues for the project.
+    pub backlog_total: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

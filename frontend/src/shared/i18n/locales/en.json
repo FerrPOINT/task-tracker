@@ -99,8 +99,8 @@
     "backlog": "Backlog",
     "done": "Done",
     "inProgress": "In Progress",
-    "subtitle": "Issues grouped by status columns",
-    "title": "Board · {{projectName}}",
+    "subtitle": "Backlog: {{backlog}} · Days left: {{remainingDays}}",
+    "title": "Board · {{projectName}} — {{sprintName}}",
     "todo": "To Do",
     "columnActions": "Column actions"
   },
