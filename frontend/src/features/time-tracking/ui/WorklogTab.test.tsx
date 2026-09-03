@@ -36,7 +36,7 @@ const worklogs: Worklog[] = [
     userId: 'u2',
     userDisplayName: 'Bob',
     timeSpentSeconds: 1800,
-      startedAt: '2026-08-02T10:00:00Z',
+    startedAt: '2026-08-02T10:00:00Z',
     comment: null,
     createdAt: '2026-08-02T10:00:00Z',
     updatedAt: '2026-08-02T10:00:00Z',

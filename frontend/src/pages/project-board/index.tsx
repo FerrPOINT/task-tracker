@@ -141,7 +141,10 @@ export function ProjectBoardPage() {
             {t('board.title', { projectName: key, sprintName: sprint?.name ?? 'Sprint' })}
           </h1>
           <div className="text-sm text-text-muted">
-            {t('board.subtitle', { backlog: board.backlog_total, remainingDays: sprint?.remaining_days ?? '-' })}
+            {t('board.subtitle', {
+              backlog: board.backlog_total,
+              remainingDays: sprint?.remaining_days ?? '-',
+            })}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
