@@ -470,18 +470,19 @@ impl ProjectRepository for ProjectRepo {
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
             .select_only()
             .column_as(
-                sea_orm::sea_query::Expr::cust(
-                    "MAX(NULLIF((regexp_split_to_array(key, '-'))[array_length(regexp_split_to_array(key, '-'), 1)], '')::text)::text",
-                ),
+                sea_orm::sea_query::Expr::cust("MAX((substring(key FROM '-([0-9]+)$'))::bigint)"),
                 "max_num",
             )
-            .into_tuple::<Option<String>>()
+            .into_tuple::<Option<i64>>()
             .one(&*self.db)
             .await
             .map_err(AppError::database)?
             .flatten();
-        let max = suffix.and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
-        Ok(max + 1)
+        let next = suffix
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or_else(|| AppError::invalid_input("issue number overflow"))?;
+        u32::try_from(next).map_err(|_| AppError::invalid_input("issue number overflow"))
     }
 }
 

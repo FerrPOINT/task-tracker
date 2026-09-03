@@ -415,6 +415,44 @@ async fn project_repo_rejects_duplicate_key() {
 
 #[tokio::test]
 #[ignore = "requires docker test stack"]
+async fn project_next_issue_number_uses_numeric_suffix_ordering() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let issue_9 = Issue::create(
+        &project,
+        9,
+        IssueType::Task,
+        status,
+        "ninth",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    let issue_10 = Issue::create(
+        &project,
+        10,
+        IssueType::Task,
+        status,
+        "tenth",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&issue_9).await.unwrap();
+    repos.issues.save(&issue_10).await.unwrap();
+
+    let next = repos.projects.next_issue_number(project.id).await.unwrap();
+    assert_eq!(next, 11);
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
 async fn issue_repo_save_updates_existing_issue() {
     let repos = setup().await;
     let user = test_user();
