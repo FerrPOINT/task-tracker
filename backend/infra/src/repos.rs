@@ -463,22 +463,24 @@ impl ProjectRepository for ProjectRepo {
     }
 
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError> {
-        // MAX(number) parsed from issue keys, so deleted issues never cause key reuse
-        // and concurrent counters can only collide on truly parallel inserts (handled by retry).
-        let keys = issue::Entity::find()
+        // MAX(number) computed in SQL from the numeric suffix of issue keys, so
+        // deleted issues never cause key reuse and we ship one row back instead
+        // of every key in the project.
+        let suffix = issue::Entity::find()
             .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
             .select_only()
-            .column(issue::Column::Key)
-            .into_tuple::<String>()
-            .all(&*self.db)
+            .column_as(
+                sea_orm::sea_query::Expr::cust(
+                    "MAX(NULLIF(regexp_split_to_array(key, '-')[array_length(regexp_split_to_array(key, '-'), 1)], '')::text)::text",
+                ),
+                "max_num",
+            )
+            .into_tuple::<Option<String>>()
+            .one(&*self.db)
             .await
-            .map_err(AppError::database)?;
-        let max = keys
-            .iter()
-            .filter_map(|k| k.rsplit('-').next())
-            .filter_map(|suffix| suffix.parse::<u32>().ok())
-            .max()
-            .unwrap_or(0);
+            .map_err(AppError::database)?
+            .flatten();
+        let max = suffix.and_then(|s| s.parse::<u32>().ok()).unwrap_or(0);
         Ok(max + 1)
     }
 }

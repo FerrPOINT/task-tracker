@@ -1,8 +1,8 @@
 const UNITS: { regex: RegExp; seconds: number }[] = [
   { regex: /(\d+(?:\.\d+)?)\s*d/i, seconds: 28800 },
   { regex: /(\d+(?:\.\d+)?)\s*h/i, seconds: 3600 },
-  { regex: /(\d+)\s*m/i, seconds: 60 },
-  { regex: /(\d+)\s*s/i, seconds: 1 },
+  { regex: /(\d+(?:\.\d+)?)\s*m/i, seconds: 60 },
+  { regex: /(\d+(?:\.\d+)?)\s*s/i, seconds: 1 },
 ]
 
 export function parseDuration(input: string): number | null {
