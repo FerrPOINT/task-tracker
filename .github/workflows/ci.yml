@@ -157,7 +157,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
-          manifest-path: backend/Cargo.toml
+          manifest-path: task-tracker/backend/Cargo.toml
           command: check
           arguments: --all-features
 
