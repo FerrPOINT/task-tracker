@@ -23,7 +23,6 @@ chrono.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
 jsonwebtoken.workspace = true
-argon2.workspace = true
 rand_core.workspace = true
 sha2 = "0.10"
 hex = "0.4"

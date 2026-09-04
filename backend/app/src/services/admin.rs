@@ -266,19 +266,10 @@ impl AdminService for AdminServiceImpl {
 /// Argon2 password hashing — same implementation as `app::auth`.
 /// Kept private to this module; the plaintext password is never logged.
 fn hash_password(password: &str) -> Result<String, AppError> {
-    use argon2::{
-        Argon2,
-        password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
-    };
     if password.is_empty() {
         return Err(AppError::invalid_input("password must not be empty"));
     }
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(AppError::internal)?;
-    Ok(hash.to_string())
+    sdlc_auth_core::password::hash_password(password).map_err(AppError::internal)
 }
 
 #[cfg(test)]

@@ -254,27 +254,11 @@ fn hash_refresh_token(token: &str) -> String {
 }
 
 fn hash_password(password: &str) -> Result<String, AppError> {
-    use argon2::{
-        Argon2,
-        password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
-    };
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(AppError::internal)?;
-    Ok(hash.to_string())
+    sdlc_auth_core::password::hash_password(password).map_err(AppError::internal)
 }
 
 fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
-    use argon2::{
-        Argon2,
-        password_hash::{PasswordHash, PasswordVerifier},
-    };
-    let parsed = PasswordHash::new(hash).map_err(AppError::internal)?;
-    Ok(Argon2::default()
-        .verify_password(password.as_bytes(), &parsed)
-        .is_ok())
+    sdlc_auth_core::password::verify_password(password, hash).map_err(AppError::internal)
 }
 
 fn create_access_token(config: &AuthConfig, user_id: UserId) -> Result<String, AppError> {
