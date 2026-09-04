@@ -35,9 +35,9 @@ pub struct JwtAuthService {
     system_settings: Arc<dyn domain::SystemSettingRepository>,
 }
 
-#[path = "auth_central_login_mod.rs"]
-mod auth_central_login;
-use auth_central_login::{central_login_config, try_central_login};
+#[path = "central_login.rs"]
+mod central_login;
+use central_login::try_central_login;
 
 impl JwtAuthService {
     /// Finds a local user by the central identity's email; links (creates) a
@@ -126,27 +126,18 @@ impl crate::context::AuthService for JwtAuthService {
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError> {
         // Central fleet auth first; local password login remains the fallback
         // during the migration window (see central_login module).
-        if let Some(config) = central_login_config() {
-            match try_central_login(&config, &cmd.email, &cmd.password).await {
-                Ok(Some(pair)) => {
-                    // Link the shadow user by verified email so /me and
-                    // role checks keep working for central identities.
-                    let user = self.find_or_link_central_user(&cmd.email).await?;
-                    return Ok(AuthDto {
-                        access_token: pair.access_token,
-                        refresh_token: pair.refresh_token,
-                        expires_in: pair
-                            .expires_in
-                            .unwrap_or(self.config.access_token_ttl_minutes * 60),
-                        user: UserDto::from(user),
-                    });
-                }
-                Ok(None) => unreachable!("config is Some"),
-                Err(Some(error)) => {
-                    tracing::warn!(%error, "central login failed; falling back to local");
-                }
-                Err(None) => { /* credentials unknown centrally; local path */ }
-            }
+        if let Some(pair) = try_central_login(&cmd.email, &cmd.password).await {
+            // Link the shadow user by verified email so /me and
+            // role checks keep working for central identities.
+            let user = self.find_or_link_central_user(&cmd.email).await?;
+            return Ok(AuthDto {
+                access_token: pair.access_token,
+                refresh_token: pair.refresh_token.unwrap_or_default(),
+                expires_in: pair
+                    .expires_in
+                    .unwrap_or(self.config.access_token_ttl_minutes * 60),
+                user: UserDto::from(user),
+            });
         }
         let user = self.users.get_by_email(&cmd.email).await?;
         if !verify_password(&cmd.password, &user.password_hash)? {

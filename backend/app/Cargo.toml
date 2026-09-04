@@ -9,6 +9,8 @@ publish = false
 [dependencies]
 # Central login proxy (fleet auth-server)
 reqwest.workspace = true
+# Fleet auth core: sibling services-base checkout.
+sdlc-auth-core = { path = "../../../services-base/crates/sdlc-auth-core" }
 tokio = { workspace = true, features = ["sync"] }
 shared = { path = "../shared" }
 domain = { path = "../domain" }

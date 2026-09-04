@@ -38,22 +38,22 @@ pub async fn bearer_auth(
 
     // Central fleet auth-server first (ES256 via JWKS); legacy HS256 access
     // tokens remain valid during the migration window.
-    if let Some(central) = super::central_auth::try_central(&token)
-        .await
-        .ok()
-        .flatten()
-    {
-        let user = find_or_link_central_user(&ctx, &central)
-            .await
-            .map_err(|_| StatusCode::UNAUTHORIZED)?;
-        let claims = app::auth::UserClaims {
-            sub: user.id.as_uuid().to_string(),
-            exp: 0, // central token lifetime is enforced by the central validator
-            typ: Some("access".to_string()),
-            jti: None,
-        };
-        req.extensions_mut().insert(claims);
-        return Ok(next.run(req).await);
+    match super::central_auth::check_token(&token).await {
+        super::central_auth::CentralCheck::Validated(central) => {
+            let user = find_or_link_central_user(&ctx, &central)
+                .await
+                .map_err(|_| StatusCode::UNAUTHORIZED)?;
+            let claims = app::auth::UserClaims {
+                sub: user.id.as_uuid().to_string(),
+                exp: 0, // central token lifetime is enforced by the central validator
+                typ: Some("access".to_string()),
+                jti: None,
+            };
+            req.extensions_mut().insert(claims);
+            return Ok(next.run(req).await);
+        }
+        super::central_auth::CentralCheck::Expired => return Err(StatusCode::UNAUTHORIZED),
+        super::central_auth::CentralCheck::FallThrough => {}
     }
 
     let claims = ctx
