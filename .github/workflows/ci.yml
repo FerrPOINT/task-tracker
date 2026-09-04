@@ -252,7 +252,7 @@ jobs:
           path: services-base
           ref: main
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10.28.1
       - uses: actions/setup-node@v4
@@ -285,7 +285,7 @@ jobs:
           path: services-base
           ref: main
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 10
       - uses: actions/setup-node@v4
