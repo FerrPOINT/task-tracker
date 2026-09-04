@@ -7,29 +7,13 @@ on:
     branches: [main]
 
 jobs:
+  # fmt + clippy + test via the shared fleet gate (services-base).
   backend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: task-tracker/backend
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: task-tracker
-      # Fleet shared crates live in a sibling services-base checkout
-      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
-      - uses: actions/checkout@v4
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo fmt --check
-      - run: cargo clippy --workspace -- -D warnings
-      - run: cargo test --workspace
+    uses: FerrPOINT/services-base/.github/workflows/backend-gate.yml@main
+    with:
+      working-directory: backend
+      checkout-path: task-tracker
+      services-base-sibling: true
 
   openapi-check:
     runs-on: ubuntu-latest
@@ -228,37 +212,15 @@ jobs:
       - uses: taiki-e/install-action@cargo-audit
       - run: cargo audit
 
+  # install + generate:api + test + lint + build via the shared fleet gate.
   frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: task-tracker/frontend
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          path: task-tracker
-      # Fleet shared crates live in a sibling services-base checkout
-      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
-      - uses: actions/checkout@v4
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: task-tracker/frontend/pnpm-lock.yaml
-      - run: pnpm install
-      - run: pnpm generate:api
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm format:check
-      - run: pnpm test -- --run
-      - run: pnpm build
+    uses: FerrPOINT/services-base/.github/workflows/frontend-gate.yml@main
+    with:
+      working-directory: frontend
+      checkout-path: task-tracker
+      services-base-sibling: true
+      pnpm-version: "10"
+      pretest: pnpm generate:api && pnpm typecheck && pnpm format:check
 
   e2e:
     runs-on: ubuntu-latest
