@@ -1,0 +1,8 @@
+# CI e2e overlay: the backend build needs the services-base sibling in its
+# context (path deps), so the umbrella Dockerfile with workspace-level context
+# is used. Apply on top of docker-compose.yml from the repo root.
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: task-tracker/backend/Dockerfile.umbrella

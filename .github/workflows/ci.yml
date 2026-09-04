@@ -297,7 +297,7 @@ jobs:
         working-directory: task-tracker/frontend
       - run: pnpm build
         working-directory: task-tracker/frontend
-      - run: docker compose up -d postgres redis backend
+      - run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres redis backend
         working-directory: ${{ github.workspace }}/task-tracker
       - name: Wait for backend readiness (retry loop)
         run: |
