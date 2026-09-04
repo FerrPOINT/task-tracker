@@ -9,20 +9,57 @@ on:
 jobs:
   # fmt + clippy + test via the shared fleet gate (services-base).
   backend:
-    uses: FerrPOINT/services-base/.github/workflows/backend-gate.yml@main
-    with:
-      working-directory: backend
-      checkout-path: task-tracker
-      services-base-sibling: true
-
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: task-tracker/backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      - name: Check out services-base sibling (path deps)
+        uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: task-tracker/backend
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace -- --test-threads=1
   openapi-check:
-    uses: FerrPOINT/services-base/.github/workflows/openapi-gate.yml@main
-    with:
-      checkout-path: task-tracker
-      bin: gen-openapi
-      spec: openapi/openapi.json
-      services-base-sibling: true
-
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: task-tracker/backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      - name: Check out services-base sibling (path deps)
+        uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: task-tracker/backend
+      - name: Regenerate OpenAPI
+        run: |
+          mkdir -p ../openapi
+          cargo run -p api --bin gen-openapi > ../openapi/openapi.json.generated
+      - name: Check committed spec matches code
+        run: diff -u ../openapi/openapi.json openapi/openapi.json.generated
   migrations:
     runs-on: ubuntu-latest
     defaults:
@@ -193,14 +230,35 @@ jobs:
 
   # install + generate:api + test + lint + build via the shared fleet gate.
   frontend:
-    uses: FerrPOINT/services-base/.github/workflows/frontend-gate.yml@main
-    with:
-      working-directory: frontend
-      checkout-path: task-tracker
-      services-base-sibling: true
-      pnpm-version: "10"
-      pretest: pnpm generate:api && pnpm typecheck && pnpm format:check
-
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: task-tracker/frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: task-tracker
+      - name: Check out services-base sibling (@sdlc/ui file dep)
+        uses: actions/checkout@v4
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: main
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: task-tracker/frontend/pnpm-lock.yaml
+      - run: pnpm install --no-frozen-lockfile
+        env:
+          CI: "true"
+      - run: pnpm openapi:check
+      - run: pnpm test -- --run
+      - run: pnpm lint
+      - run: pnpm build
   e2e:
     runs-on: ubuntu-latest
     env:
