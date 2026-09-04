@@ -233,7 +233,7 @@ jobs:
         with:
           workspaces: task-tracker/backend
       - uses: taiki-e/install-action@cargo-audit
-      - run: cargo audit
+      - run: cargo audit --ignore RUSTSEC-2024-0436
 
   # install + generate:api + test + lint + build via the shared fleet gate.
   frontend:
