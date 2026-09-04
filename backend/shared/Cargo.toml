@@ -7,6 +7,8 @@ license-file.workspace = true
 publish = false
 
 [dependencies]
+# Fleet shared primitives: sibling services-base checkout.
+sdlc-shared = { path = "../../../services-base/crates/sdlc-shared" }
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

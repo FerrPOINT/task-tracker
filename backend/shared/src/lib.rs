@@ -1,12 +1,14 @@
 pub mod config;
-pub mod error;
 pub mod events;
 pub mod id;
 
 pub use config::*;
-pub use error::*;
 pub use events::*;
 pub use id::*;
+
+// Fleet-shared error/envelope live in sdlc-shared (services-base); re-export
+// keeps every `shared::AppError` / `shared::EventEnvelope` call site intact.
+pub use sdlc_shared::{AppError, AppResult, ErrorBody, ErrorEnvelope, EventEnvelope};
 
 use chrono::{DateTime, FixedOffset, Utc};
 

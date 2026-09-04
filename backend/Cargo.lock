@@ -3159,6 +3159,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdlc-shared"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "config",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "sea-bae"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3524,6 +3537,7 @@ dependencies = [
  "config",
  "http",
  "proptest",
+ "sdlc-shared",
  "serde",
  "serde_json",
  "thiserror 2.0.20",

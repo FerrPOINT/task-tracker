@@ -1348,6 +1348,7 @@ impl ProjectRepository for ListOnlyProjectRepository {
             AppError::Conflict(message) => Err(AppError::Conflict(message.clone())),
             AppError::Database(message) => Err(AppError::Database(message.clone())),
             AppError::Internal(message) => Err(AppError::Internal(message.clone())),
+            AppError::TooManyRequests => Err(AppError::TooManyRequests),
         }
     }
 
