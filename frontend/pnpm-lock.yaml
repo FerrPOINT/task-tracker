@@ -37,7 +37,7 @@ importers:
         version: 1.1.18(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@sdlc/ui':
         specifier: file:../../services-base/frontend
-        version: file:../../services-base/frontend(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3))(react@19.2.7)
+        version: file:../../services-base/frontend(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3))(react-router@8.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.7))
       '@tanstack/react-query':
         specifier: ^5.74.4
         version: 5.101.2(react@19.2.7)
@@ -1237,6 +1237,8 @@ packages:
       react: '>=19 <20'
       react-dom: '>=19 <20'
       react-i18next: '>=15 <17'
+      react-router: ^7.0.0
+      zustand: ^5.0.0
 
   '@sentry-internal/tracing@7.120.4':
     resolution: {integrity: sha512-Fz5+4XCg3akeoFK+K7g+d7HqGMjmnLoY2eJlpONJmaeT9pXY7yfUyXKZMmMajdE2LxxKJgQ2YKvSCaGVamTjHw==}
@@ -4724,7 +4726,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.2':
     optional: true
 
-  '@sdlc/ui@file:../../services-base/frontend(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3))(react@19.2.7)':
+  '@sdlc/ui@file:../../services-base/frontend(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3))(react-router@8.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7))(react@19.2.7)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.7))':
     dependencies:
       '@radix-ui/react-alert-dialog': 1.1.20(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@radix-ui/react-dialog': 1.1.20(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -4739,7 +4741,9 @@ snapshots:
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       react-i18next: 15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@5.9.3)
+      react-router: 8.2.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       tailwind-merge: 3.6.0
+      zustand: 5.0.14(@types/react@19.2.17)(react@19.2.7)
     transitivePeerDependencies:
       - '@types/react'
       - '@types/react-dom'
