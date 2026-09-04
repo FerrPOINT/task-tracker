@@ -61,7 +61,7 @@ jobs:
           mkdir -p ../openapi
           cargo run -p api --bin gen-openapi > ../openapi/openapi.json.generated
       - name: Check committed spec matches code
-        run: diff -u ../openapi/openapi.json openapi/openapi.json.generated
+        run: diff -u ../openapi/openapi.json ../openapi/openapi.json.generated
   migrations:
     runs-on: ubuntu-latest
     defaults:
