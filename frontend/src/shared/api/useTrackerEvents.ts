@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/auth/store'
+import { connectEventStream } from '@sdlc/ui/lib'
 
 type TrackerEvent = {
   type: string
@@ -77,26 +78,13 @@ export function useTrackerEvents() {
 
   useEffect(() => {
     if (!token) return
-    let es: EventSource | null = null
-    let retryDelay = 1000
-    let closed = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-
-    const connect = () => {
-      if (closed) return
-      es = new EventSource(`/api/v1/events?access_token=${encodeURIComponent(token)}`)
-
-      es.addEventListener('tracker', (e) => {
-        let evt: TrackerEvent | null = null
-        try {
-          evt = JSON.parse((e as MessageEvent).data)
-        } catch {
-          return
-        }
-        if (!evt) return
-        // A healthy stream resets the reconnect backoff.
-        retryDelay = 1000
-
+    // Transport (query-token auth, exponential backoff) comes from the
+    // shared fleet kit; this hook only maps events to cache invalidations.
+    return connectEventStream({
+      url: `/api/v1/events?access_token=${encodeURIComponent(token)}`,
+      eventTypes: ['tracker'],
+      onEvent: (_type, payload) => {
+        const evt = payload as TrackerEvent
         const pk = evt.project_key
         switch (evt.type) {
           case 'issue_created':
@@ -121,29 +109,7 @@ export function useTrackerEvents() {
             qc.invalidateQueries({ queryKey: ['notifications'] })
             break
         }
-      })
-
-      es.onopen = () => {
-        retryDelay = 1000
-      }
-
-      es.onerror = () => {
-        // Reconnect manually with exponential backoff: EventSource's built-in
-        // retry has no delay and hammers the rate limiter when the stream is
-        // refused with 429, starving every other request from the same IP.
-        es?.close()
-        if (closed) return
-        timer = setTimeout(connect, retryDelay)
-        retryDelay = Math.min(retryDelay * 2, 15_000)
-      }
-    }
-
-    connect()
-
-    return () => {
-      closed = true
-      if (timer) clearTimeout(timer)
-      es?.close()
-    }
+      },
+    })
   }, [qc, token])
 }
