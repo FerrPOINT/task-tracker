@@ -8,10 +8,10 @@ RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 WORKDIR /app
 COPY task-tracker/frontend/package.json task-tracker/frontend/pnpm-lock.yaml task-tracker/frontend/pnpm-workspace.yaml ./
 COPY services-base/frontend /services-base/frontend
+COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
 RUN pnpm install --frozen-lockfile
 
 COPY task-tracker/frontend/ ./
-COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
 RUN pnpm build
 
 FROM nginx:alpine
