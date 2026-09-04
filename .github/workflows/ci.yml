@@ -23,6 +23,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
@@ -48,6 +49,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
@@ -90,6 +92,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Apply all migrations to clean DB
@@ -117,6 +120,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -149,6 +153,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
@@ -186,6 +191,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -221,6 +227,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -244,6 +251,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.28.1
@@ -276,6 +284,7 @@ jobs:
           repository: FerrPOINT/services-base
           path: services-base
           ref: main
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10
