@@ -4,7 +4,6 @@ use axum::{
     handler::Handler,
     http::HeaderName,
     http::HeaderValue,
-    http::Method,
     middleware::from_fn_with_state,
     routing::{delete, get, patch, post, put},
 };
@@ -14,7 +13,6 @@ use std::sync::{Arc, OnceLock};
 use tower::ServiceBuilder;
 use tower_governor::GovernorLayer;
 use tower_governor::governor::GovernorConfigBuilder;
-use tower_http::cors::{Any, CorsLayer};
 use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::openapi::{
     info::License,
@@ -332,51 +330,7 @@ fn apply_security(operation: Option<&mut Operation>, security: Option<Vec<Securi
 }
 
 pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
-    let cors = if ctx.config.server.cors_allowed_origins.len() == 1
-        && ctx.config.server.cors_allowed_origins[0] == "*"
-    {
-        CorsLayer::new()
-            .allow_methods([
-                Method::GET,
-                Method::POST,
-                Method::PUT,
-                Method::PATCH,
-                Method::DELETE,
-            ])
-            .allow_origin(Any)
-            .allow_headers(Any)
-    } else {
-        let origins: Vec<HeaderValue> = ctx
-            .config
-            .server
-            .cors_allowed_origins
-            .iter()
-            .filter(|o| !o.is_empty())
-            .map(|o| {
-                o.parse::<HeaderValue>()
-                    .expect("invalid cors allowed origin")
-            })
-            .collect();
-        let allowed = tower_http::cors::AllowOrigin::list(origins);
-        CorsLayer::new()
-            .allow_methods([
-                Method::GET,
-                Method::POST,
-                Method::PUT,
-                Method::PATCH,
-                Method::DELETE,
-            ])
-            .allow_origin(allowed)
-            // Credentialed CORS cannot use `*` for headers. Keep this list to
-            // the browser-visible headers used by the generated client.
-            .allow_headers([
-                axum::http::header::ACCEPT,
-                axum::http::header::AUTHORIZATION,
-                axum::http::header::CONTENT_TYPE,
-            ])
-            // Refresh cookies must reach the API cross-origin (dev preview).
-            .allow_credentials(true)
-    };
+    let cors = sdlc_shared::cors::cors_layer(&ctx.config.server.cors_allowed_origins);
 
     // Rate limiter for auth endpoints (configurable, default 5 requests per 15 seconds per IP).
     let auth_limiter = GovernorConfigBuilder::default()

@@ -107,6 +107,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "reqwest",
  "sdlc-auth-core",
+ "sdlc-shared",
  "serde",
  "serde_json",
  "shared",
@@ -3167,6 +3168,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tower-http 0.6.11",
  "tracing",
  "uuid",
 ]
