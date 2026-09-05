@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation, Outlet } from 'react-router'
 import {
-  Layers,
   LayoutDashboard,
   FolderKanban,
   Search,
@@ -19,7 +18,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@sdlc/ui/ui'
+import { Button, PlatformMark } from '@sdlc/ui/ui'
 import { ThemeToggle } from '@sdlc/ui/ui'
 import { ServiceSwitcher } from '@sdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
@@ -149,7 +148,7 @@ export function AppShell() {
             )}
           </Button>
           <Link to="/" className="flex items-center gap-2 font-bold">
-            <Layers className="h-[18px] w-[18px] text-accent" />
+            <PlatformMark size="sm" withName={false} />
             <span className="hidden sm:inline">{t('app.name')}</span>
           </Link>
           <Link
@@ -315,7 +314,7 @@ export function AppShell() {
           ))}
 
           <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
-            Task Tracker · {projectKey ?? 'TT'}
+            <span className="inline-flex items-center gap-1.5">Task Tracker · {projectKey ?? 'TT'}</span>
           </div>
           {projectItems.map((item) => (
             <SidebarLink
