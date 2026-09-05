@@ -21,6 +21,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
 import { ThemeToggle } from '@sdlc/ui/ui'
+import { ServiceSwitcher } from '@sdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
   useCurrentUser,
@@ -180,6 +181,7 @@ export function AppShell() {
               <span className="hidden sm:inline">{t('navigation.create')}</span>
             </Link>
           </Button>
+          <ServiceSwitcher currentKey="task-tracker" />
           <ThemeToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

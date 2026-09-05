@@ -6,7 +6,7 @@ import { Toaster } from 'sonner'
 import i18n from './shared/i18n/config'
 import { RouterProvider } from 'react-router'
 import { router } from './app/router'
-import { ThemeProvider, PlatformProvider } from '@sdlc/ui/lib'
+import { ThemeProvider, PlatformProvider, PlatformServicesProvider } from '@sdlc/ui/lib'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -45,8 +45,10 @@ function Boot() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <PlatformProvider configUrl={import.meta.env.VITE_PLATFORM_BRANDING_URL ?? null}>
+      <PlatformServicesProvider catalogUrl={import.meta.env.VITE_PLATFORM_SERVICES_URL ?? null}>
             <RouterProvider router={router} />
-          </PlatformProvider>
+          </PlatformServicesProvider>
+    </PlatformProvider>
           <Toaster theme="dark" />
         </ThemeProvider>
       </QueryClientProvider>
