@@ -136,7 +136,8 @@
 - OAuth/OpenID/LDAP SSO.
 - TOTP MFA.
 - Email-to-issue.
-- CSV import/export.
+- [x] CSV export: project-scoped CSV/JSON download with project access control.
+- CSV import.
 - Dashboard gadgets.
 - Public boards (read-only).
 - Mobile app (PWA/capacitor).

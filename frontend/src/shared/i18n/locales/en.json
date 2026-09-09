@@ -471,7 +471,12 @@
       "empty": "No control chart data yet."
     },
     "loading": "Loading report…",
-    "noProject": "Select a project to view reports."
+    "noProject": "Select a project to view reports.",
+    "export": "Issue export",
+    "exportCsv": "CSV",
+    "exportJson": "JSON",
+    "exporting": "Preparing…",
+    "exportError": "Could not export issues."
   },
   "customFields": {
     "title": "Custom fields",

@@ -849,9 +849,9 @@ sprint IN ("Sprint 1", "Sprint 2") AND epic = "EPIC-5"
 
 ### 21.2. Export
 
-- CSV
-- JSON
-- PDF (отчёты)
+- [x] CSV — активные задачи одного доступного проекта через `POST /api/v1/export/csv`.
+- [x] JSON — активные задачи одного доступного проекта через `POST /api/v1/export/json`.
+- PDF (отчёты).
 
 ---
 

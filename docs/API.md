@@ -240,6 +240,16 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 | GET | `/reports/cumulative-flow` | Отчёт по кумулятивному потоку |
 | GET | `/reports/control-chart` | Контрольная диаграмма cycle time |
 
+### Export
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| POST | `/export/csv` | Скачать все доступные активные задачи проекта в CSV |
+| POST | `/export/json` | Скачать все доступные активные задачи проекта в JSON |
+
+Оба пути принимают `{ "project_key": "TT" }`, требуют обычный project-access и
+возвращают attachment с детерминированным порядком задач (`created_at DESC`).
+
 ### Real-time (SSE)
 
 | Метод | Путь | Назначение |

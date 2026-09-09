@@ -322,6 +322,41 @@ async fn dashboard_and_search() {
     let body: serde_json::Value = search.json().await.unwrap();
     assert!(!body["issues"].as_array().unwrap().is_empty());
 
+    let export = client
+        .post(format!("{url}/api/v1/export/csv"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"project_key":"TT"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(export.status(), 200);
+    assert_eq!(
+        export.headers()[reqwest::header::CONTENT_TYPE],
+        "text/csv; charset=utf-8"
+    );
+    assert_eq!(
+        export.headers()[reqwest::header::CONTENT_DISPOSITION],
+        "attachment; filename=\"issues.csv\""
+    );
+    let csv = export.text().await.unwrap();
+    assert!(csv.starts_with("key,summary,description,issue_type,project_key,status,priority,"));
+    assert!(csv.contains("searchable issue"));
+
+    let json_export = client
+        .post(format!("{url}/api/v1/export/json"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({"project_key":"TT"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(json_export.status(), 200);
+    assert_eq!(
+        json_export.headers()[reqwest::header::CONTENT_TYPE],
+        "application/json"
+    );
+    let exported: serde_json::Value = json_export.json().await.unwrap();
+    assert_eq!(exported["issues"][0]["summary"], "searchable issue");
+
     let dash = client
         .get(format!("{}/api/v1/dashboard", url))
         .bearer_auth(&token)
@@ -4912,6 +4947,17 @@ async fn non_member_cannot_view_project_issues() {
         .await
         .unwrap();
     assert_eq!(res.status(), 403);
+
+    for format in ["csv", "json"] {
+        let export = client
+            .post(format!("{url}/api/v1/export/{format}"))
+            .bearer_auth(&b_token)
+            .json(&serde_json::json!({"project_key":"TT"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(export.status(), 403, "outsider must not export {format}");
+    }
 }
 
 // 3. non_member_cannot_create_issue — B POST /issues with PA's project_key → 403

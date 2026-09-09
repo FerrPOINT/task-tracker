@@ -1885,7 +1885,9 @@ impl WorklogRepository for WorklogRepo {
     }
 
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
-        self.list_by_issue_page(issue_id, u64::MAX, 0).await
+        // SeaORM binds the limit through PostgreSQL's signed BIGINT. u64::MAX
+        // overflows that conversion and panics after inserting a worklog.
+        self.list_by_issue_page(issue_id, i64::MAX as u64, 0).await
     }
 
     async fn save(&self, worklog_item: &Worklog) -> Result<WorklogId, AppError> {

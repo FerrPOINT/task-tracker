@@ -127,6 +127,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::attachments::download_attachment,
         routes::attachments::delete_attachment,
         routes::events::events,
+        routes::exports::export_csv,
+        routes::exports::export_json,
         routes::workflow::list_statuses,
         routes::workflow::list_transitions,
         routes::workflow::list_issue_types,
@@ -493,6 +495,8 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             patch(routes::worklogs::update_worklog).delete(routes::worklogs::delete_worklog),
         )
         .route("/search", get(routes::search::search_global))
+        .route("/export/csv", post(routes::exports::export_csv))
+        .route("/export/json", post(routes::exports::export_json))
         .route(
             "/notifications",
             get(routes::notifications::list_notifications),

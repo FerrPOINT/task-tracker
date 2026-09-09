@@ -763,6 +763,72 @@
         ]
       }
     },
+    "/api/v1/export/csv": {
+      "post": {
+        "tags": [
+          "routes::exports"
+        ],
+        "operationId": "export_csv",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportIssuesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "CSV issue export",
+            "content": {
+              "text/csv": {}
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/export/json": {
+      "post": {
+        "tags": [
+          "routes::exports"
+        ],
+        "operationId": "export_json",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportIssuesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "JSON issue export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportIssuesResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "tags": [
@@ -5150,6 +5216,31 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "ExportIssuesRequest": {
+        "type": "object",
+        "required": [
+          "project_key"
+        ],
+        "properties": {
+          "project_key": {
+            "type": "string"
+          }
+        }
+      },
+      "ExportIssuesResponse": {
+        "type": "object",
+        "required": [
+          "issues"
+        ],
+        "properties": {
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IssueResponse"
+            }
           }
         }
       },

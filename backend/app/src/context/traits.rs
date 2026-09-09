@@ -133,6 +133,12 @@ pub trait IssueService: Send + Sync {
         filters: crate::context::SearchFilters,
         requester: UserId,
     ) -> Result<Vec<IssueDto>, AppError>;
+    /// Export every visible live issue from a single project in a stable order.
+    async fn export_project(
+        &self,
+        project_key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<Vec<IssueDto>, AppError>;
     /// Soft-delete an issue (move to trash).
     async fn delete(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError>;
     /// Restore a soft-deleted issue from trash.

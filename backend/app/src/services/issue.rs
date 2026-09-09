@@ -759,6 +759,33 @@ impl crate::context::IssueService for IssueServiceImpl {
         .await
     }
 
+    async fn export_project(
+        &self,
+        project_key: &ProjectKey,
+        requester: UserId,
+    ) -> Result<Vec<IssueDto>, AppError> {
+        let project = self.projects.get_by_key(project_key).await?;
+        self.authz
+            .require_project_access(project.id, requester)
+            .await?;
+        let issues = self
+            .issues
+            .list_unbounded(IssueQuery {
+                project_id: Some(project.id),
+                sort_by: Some("created".to_string()),
+                sort_order: Some("desc".to_string()),
+                ..Default::default()
+            })
+            .await?;
+        super::helpers::build_issue_dtos_with_projects(
+            Arc::clone(&self.projects),
+            Arc::clone(&self.users),
+            Arc::clone(&self.labels),
+            issues,
+        )
+        .await
+    }
+
     async fn delete(&self, id: IssueId, actor_id: UserId) -> Result<(), AppError> {
         let issue = self.issues.get_by_id(id).await?;
         self.authz

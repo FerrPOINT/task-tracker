@@ -138,10 +138,10 @@
 - PNG / SVG.
 - CSV data export.
 
-### 9.2 Report Export
+### 9.2 Issue Export
 
-- PDF (опционально, через headless browser).
-- CSV / Excel.
+- [x] CSV и JSON export активных задач доступного проекта: `POST /api/v1/export/csv` и `POST /api/v1/export/json`.
+- PDF / Excel остаются последующим расширением отчётов.
 
 ## 10. Implementation Notes
 

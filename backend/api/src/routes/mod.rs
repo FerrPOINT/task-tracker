@@ -16,6 +16,7 @@ pub mod worklogs;
 pub mod admin;
 pub mod attachments;
 pub mod events;
+pub mod exports;
 pub mod labels;
 pub mod links;
 pub mod notifications;

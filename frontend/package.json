@@ -17,7 +17,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "openapi:check": "node node_modules/@sdlc/ui/scripts/sdlc-openapi-check.mjs --spec ../openapi/openapi.json --schema src/api/generated.ts",
-    "openapi:compat": "SPEC=openapi/openapi.json SPEC_NAME=openapi/openapi.json node node_modules/@sdlc/ui/scripts/sdlc-openapi-compat.mjs",
+    "openapi:compat": "SPEC=openapi/openapi.json SPEC_NAME=openapi/openapi.json node node_modules/@sdlc/ui/scripts/sdlc-openapi-compat.mjs --base-ref origin/main",
     "postinstall": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts"
   },
   "dependencies": {
@@ -52,7 +52,6 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
-    "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/vite": "^4.1.0",
     "@testing-library/jest-dom": "^6.6.4",

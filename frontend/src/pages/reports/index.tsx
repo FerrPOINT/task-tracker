@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart,
@@ -26,7 +27,9 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@sdlc/ui/ui'
 import { Card, CardHeader, CardTitle, CardContent } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
+import { Button } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
+import { fetchIssueExport, type IssueExportFormat } from '@/api/export'
 
 type TabValue = 'velocity' | 'burndown' | 'cumulative-flow' | 'control-chart'
 
@@ -35,7 +38,29 @@ export function ReportsPage() {
   const { data: projects = [] } = useProjects()
   const [projectId, setProjectId] = useState('')
   const [sprintId, setSprintId] = useState('')
+  const [exporting, setExporting] = useState<IssueExportFormat | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
   const [tab, setTab] = useState<TabValue>('velocity')
+  const projectKey = projects.find((project) => project.id === projectId)?.key
+
+  async function downloadExport(format: IssueExportFormat) {
+    if (!projectKey) return
+    setExporting(format)
+    setExportError(null)
+    try {
+      const file = await fetchIssueExport(projectKey, format)
+      const url = URL.createObjectURL(file.blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = file.filename
+      anchor.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportError(t('reports.exportError'))
+    } finally {
+      setExporting(null)
+    }
+  }
 
   const velocity = useVelocityReport(projectId || undefined)
   const burndown = useBurndownReport(sprintId || undefined)
@@ -75,6 +100,32 @@ export function ReportsPage() {
             className="w-64"
           />
         </div>
+
+        <div className="flex gap-2" aria-label={t('reports.export')}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!projectKey || exporting !== null}
+            onClick={() => void downloadExport('csv')}
+          >
+            <Download className="mr-1.5 h-4 w-4" />
+            {exporting === 'csv' ? t('reports.exporting') : t('reports.exportCsv')}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!projectKey || exporting !== null}
+            onClick={() => void downloadExport('json')}
+          >
+            <Download className="mr-1.5 h-4 w-4" />
+            {exporting === 'json' ? t('reports.exporting') : t('reports.exportJson')}
+          </Button>
+        </div>
+        {exportError && (
+          <p role="alert" className="text-sm text-danger">
+            {exportError}
+          </p>
+        )}
       </div>
 
       {!projectId ? (
