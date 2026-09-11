@@ -314,7 +314,9 @@ export function AppShell() {
           ))}
 
           <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
-            <span className="inline-flex items-center gap-1.5">Task Tracker · {projectKey ?? 'TT'}</span>
+            <span className="inline-flex items-center gap-1.5">
+              Task Tracker · {projectKey ?? 'TT'}
+            </span>
           </div>
           {projectItems.map((item) => (
             <SidebarLink

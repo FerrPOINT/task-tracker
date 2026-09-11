@@ -45,10 +45,12 @@ function Boot() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <PlatformProvider configUrl={import.meta.env.VITE_PLATFORM_BRANDING_URL ?? null}>
-      <PlatformServicesProvider catalogUrl={import.meta.env.VITE_PLATFORM_SERVICES_URL ?? null}>
-            <RouterProvider router={router} />
-          </PlatformServicesProvider>
-    </PlatformProvider>
+            <PlatformServicesProvider
+              catalogUrl={import.meta.env.VITE_PLATFORM_SERVICES_URL ?? null}
+            >
+              <RouterProvider router={router} />
+            </PlatformServicesProvider>
+          </PlatformProvider>
           <Toaster theme="dark" />
         </ThemeProvider>
       </QueryClientProvider>
