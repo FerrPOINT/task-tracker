@@ -35,7 +35,7 @@ impl MigrationTrait for Migration {
                         ForeignKey::create()
                             .name("fk_password_reset_user")
                             .from(PasswordResetToken::Table, PasswordResetToken::UserId)
-                            .to(User::Table, User::Id)
+                            .to(Users::Table, Users::Id)
                             .on_delete(ForeignKeyAction::Cascade),
                     )
                     .to_owned(),
@@ -71,7 +71,7 @@ enum PasswordResetToken {
 }
 
 #[derive(DeriveIden)]
-enum User {
+enum Users {
     Table,
     Id,
 }
