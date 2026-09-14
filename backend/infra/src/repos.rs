@@ -2885,7 +2885,7 @@ impl TotpRepository for TotpRepo {
         let row = crate::entities::totp::Entity::find_by_id(user_id.as_uuid())
             .one(&*self.db)
             .await
-            .map_err(|e| AppError::internal(&e.to_string()))?;
+            .map_err(|e| AppError::internal(e.to_string()))?;
         Ok(row.as_ref().map(Self::to_domain).unwrap_or(TotpConfig {
             user_id,
             secret_cipher: "".into(),
@@ -2907,7 +2907,7 @@ impl TotpRepository for TotpRepo {
         let existing = Entity::find_by_id(uid)
             .one(&*self.db)
             .await
-            .map_err(|e| AppError::internal(&e.to_string()))?;
+            .map_err(|e| AppError::internal(e.to_string()))?;
         let now = chrono::Utc::now().fixed_offset();
         match existing {
             Some(_) => {
@@ -2923,7 +2923,7 @@ impl TotpRepository for TotpRepo {
                 };
                 am.update(&*self.db)
                     .await
-                    .map_err(|e| AppError::internal(&e.to_string()))?;
+                    .map_err(|e| AppError::internal(e.to_string()))?;
             }
             None => {
                 let am = ActiveModel {
@@ -2935,11 +2935,10 @@ impl TotpRepository for TotpRepo {
                     recovery_codes: Set("[]".to_string()),
                     created_at: Set(now),
                     updated_at: Set(now),
-                    ..Default::default()
                 };
                 am.insert(&*self.db)
                     .await
-                    .map_err(|e| AppError::internal(&e.to_string()))?;
+                    .map_err(|e| AppError::internal(e.to_string()))?;
             }
         }
         Ok(())
@@ -2969,7 +2968,7 @@ impl TotpRepository for TotpRepo {
             .filter(Column::UserId.eq(uid))
             .exec(&*self.db)
             .await
-            .map_err(|e| AppError::internal(&e.to_string()))?;
+            .map_err(|e| AppError::internal(e.to_string()))?;
         if res.rows_affected == 0 {
             return Err(AppError::not_found("totp", "no enrollment"));
         }
@@ -2984,7 +2983,7 @@ impl TotpRepository for TotpRepo {
             .filter(Column::UserId.eq(user_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(|e| AppError::internal(&e.to_string()))?;
+            .map_err(|e| AppError::internal(e.to_string()))?;
         Ok(())
     }
 
@@ -3000,7 +2999,7 @@ impl TotpRepository for TotpRepo {
             .filter(Column::UserId.eq(user_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(|e| AppError::internal(&e.to_string()))?;
+            .map_err(|e| AppError::internal(e.to_string()))?;
         Ok(())
     }
 
@@ -3011,7 +3010,7 @@ impl TotpRepository for TotpRepo {
             .filter(Column::UserId.eq(user_id.as_uuid()))
             .exec(&*self.db)
             .await
-            .map_err(|e| AppError::internal(&e.to_string()))?;
+            .map_err(|e| AppError::internal(e.to_string()))?;
         Ok(())
     }
 }
