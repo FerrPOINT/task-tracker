@@ -8,14 +8,13 @@ use domain::{
     CustomFieldType, CustomFieldValue, Issue, IssueLink, IssueLinkRepository, IssueQuery,
     IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository, IssueTypeEntity,
     IssueTypeRepository, IssueVote, IssueWatcher, Label, LabelRepository, LinkType, Notification,
-    NotificationRepository, NotificationUserSettings, OidcAuthState, OidcIdentity, OidcRepository,
-    PasswordResetRepository, Project, ProjectComponent, ProjectComponentRepository, ProjectMember,
-    ProjectMemberRepository, ProjectRepository, ProjectRole, ProjectVersion,
-    ProjectVersionRepository, Sprint, SprintRepository, SprintState, Status, StatusCategory,
-    StatusRepository, SystemSetting, SystemSettingRepository, TotpConfig, TotpRepository, User,
-    UserNotificationSettingsRepository, UserRepository, VoteRepository, WatcherRepository,
-    WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository, Worklog,
-    WorklogRepository,
+    NotificationRepository, NotificationUserSettings, OidcRepository, PasswordResetRepository,
+    Project, ProjectComponent, ProjectComponentRepository, ProjectMember, ProjectMemberRepository,
+    ProjectRepository, ProjectRole, ProjectVersion, ProjectVersionRepository, Sprint,
+    SprintRepository, SprintState, Status, StatusCategory, StatusRepository, SystemSetting,
+    SystemSettingRepository, TotpConfig, TotpRepository, User, UserNotificationSettingsRepository,
+    UserRepository, VoteRepository, WatcherRepository, WorkflowTransition, WorkflowTransitionId,
+    WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::sea_query::extension::postgres::PgExpr as _;
 use sea_orm::{
