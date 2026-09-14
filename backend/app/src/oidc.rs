@@ -10,7 +10,7 @@
 
 use std::sync::Arc;
 
-use chrono::{FixedOffset, Utc};
+use chrono::Utc;
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 
