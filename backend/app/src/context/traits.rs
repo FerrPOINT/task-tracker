@@ -20,6 +20,10 @@ use crate::context::filters::SearchFilters;
 pub trait AuthService: Send + Sync {
     async fn register(&self, cmd: RegisterCommand) -> Result<AuthDto, AppError>;
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError>;
+    /// Issue a fresh session for an already-authenticated external identity
+    /// (OIDC callback; SYSTEM_ADMIN 4.2). Requires the user to be active and
+    /// not TOTP-gated (TOTP applies to password logins only).
+    async fn issue_session(&self, user_id: UserId) -> Result<AuthDto, AppError>;
     fn verify_token(&self, token: &str) -> Result<UserClaims, AppError>;
     async fn refresh(&self, refresh_token: &str) -> Result<AuthDto, AppError>;
     async fn logout(&self, user_id: UserId) -> Result<(), AppError>;

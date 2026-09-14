@@ -19,3 +19,5 @@ pub use super::sprint::Entity as Sprint;
 pub use super::system_setting::Entity as SystemSetting;
 pub use super::totp::Entity as Totp;
 pub use super::user::Entity as User;
+pub use super::oidc_identity::Entity as OidcIdentity;
+pub use super::oidc_state::Entity as OidcState;

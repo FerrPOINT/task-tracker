@@ -36,6 +36,27 @@ pub struct PasswordResetToken {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OidcIdentity {
+    pub id: String,
+    pub user_id: UserId,
+    pub provider: String,
+    pub subject: String,
+    pub email: Option<String>,
+    pub created_at: Timestamp,
+    pub updated_at: Timestamp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OidcAuthState {
+    pub id: String,
+    pub state: String,
+    pub code_verifier: String,
+    pub nonce: String,
+    pub expires_at: Timestamp,
+    pub created_at: Timestamp,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: UserId,
     pub email: ArcStr,

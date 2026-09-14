@@ -57,6 +57,10 @@ fn test_config() -> Arc<AppConfig> {
             jwt_secret: "test-secret".to_string(),
             totp_key: String::new(),
             reset_base_url: "http://localhost:5173".to_string(),
+            oidc_issuer_url: String::new(),
+            oidc_client_id: String::new(),
+            oidc_client_secret: String::new(),
+            oidc_redirect_url: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -361,6 +365,7 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
@@ -2209,6 +2214,7 @@ fn failing_context() -> AppContext {
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
@@ -2320,6 +2326,7 @@ async fn issue_get_propagates_user_lookup_error() {
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         ..(*base_ctx.repos).clone()
     });
@@ -2364,6 +2371,7 @@ async fn project_get_propagates_owner_lookup_error() {
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         ..(*base_ctx.repos).clone()
     });
@@ -2384,6 +2392,7 @@ async fn vote_create_propagates_user_lookup_error_without_writing() {
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         ..(*base_ctx.repos).clone()
     });
@@ -2858,6 +2867,7 @@ async fn comment_create_propagates_author_lookup_error_without_writing() {
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         comments: comments.clone(),
         ..(*base_ctx.repos).clone()
@@ -2933,6 +2943,7 @@ async fn comment_list_propagates_author_directory_error() {
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         comments: comments.clone(),
         ..(*base_ctx.repos).clone()
@@ -5274,6 +5285,7 @@ async fn worklog_create_propagates_author_lookup_error_without_writing() {
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         worklogs: worklogs.clone(),
         ..(*base_ctx.repos).clone()
@@ -5354,6 +5366,7 @@ async fn worklog_list_propagates_author_directory_error() {
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         worklogs: worklogs.clone(),
         ..(*base_ctx.repos).clone()
@@ -7182,6 +7195,7 @@ async fn ctx_with_real_members() -> (AppContext, User, User, ProjectId) {
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),

@@ -91,6 +91,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::auth::totp_disable,
         routes::auth::password_reset_request,
         routes::auth::password_reset_confirm,
+        routes::auth::oidc_begin,
+        routes::auth::oidc_callback,
         routes::auth::logout_openapi,
         routes::projects::list_projects,
         routes::projects::create_project,
@@ -381,6 +383,9 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         // Refresh must stay public: it exists precisely for the moment the
         // access token has expired, so it cannot require a valid bearer.
         .route("/auth/refresh", post(routes::auth::refresh))
+        // OIDC SSO (SYSTEM_ADMIN 4.2): browser redirect flow, no bearer.
+        .route("/auth/oidc/begin", get(routes::auth::oidc_begin))
+        .route("/auth/oidc/callback", get(routes::auth::oidc_callback))
         .layer(GovernorLayer::new(auth_limiter));
 
     let auth = from_fn_with_state(ctx.clone(), middleware::auth::bearer_auth);

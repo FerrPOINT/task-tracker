@@ -18,7 +18,8 @@ Task Tracker — self-hosted приложение с конфиденциаль�
   замещает предыдущий токен, отсутствие аккаунта неотличимо от успеха (202 без
   письма). Сброс пароля атомарно потребляет токен, обновляет argon2id hash и
   отзывает все refresh-сессии.
-- OAuth/OpenID/LDAP — не реализовано (future).
+- OIDC SSO — реализовано (single provider, SYSTEM_ADMIN 4.2): authorization code + PKCE S256, server-side single-use state/nonce (TTL 10 мин), связывание по (provider, sub) с уникальным индексом, JIT-провижининг с неработоспособным локальным паролем. Ограничение: id_token принимается из прямого TLS-ответа token endpoint провайдера (валидация подписи JWKS не выполняется в текущем single-provider режиме).
+- SAML/LDAP — не реализовано (future).
 
 ## 3. Authorization
 

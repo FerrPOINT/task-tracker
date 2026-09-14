@@ -2,7 +2,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use domain::{
+use domain::{OidcAuthState, OidcIdentity, OidcRepository,
     Attachment, AttachmentRepository, AuditLog, AuditLogRepository, Board, BoardColumn,
     BoardRepository, Comment, CommentRepository, CustomField, CustomFieldRepository,
     CustomFieldType, CustomFieldValue, Issue, IssueLink, IssueLinkRepository, IssueQuery,
@@ -132,6 +132,7 @@ fn custom_field_value_active_model(
 pub struct SeaOrmRepositories {
     pub users: Arc<dyn UserRepository>,
     pub totp: Arc<dyn TotpRepository>,
+    pub oidc: Arc<dyn OidcRepository>,
     pub password_resets: Arc<dyn PasswordResetRepository>,
     pub audit_logs: Arc<dyn AuditLogRepository>,
     pub system_settings: Arc<dyn SystemSettingRepository>,
@@ -165,6 +166,7 @@ impl SeaOrmRepositories {
             users: Arc::new(UserRepo { db: db.clone() }),
             totp: Arc::new(TotpRepo { db: db.clone() }),
             password_resets: Arc::new(PasswordResetRepo { db: db.clone() }),
+            oidc: Arc::new(OidcRepo { db: db.clone() }),
             audit_logs: Arc::new(AuditLogRepo { db: db.clone() }),
             system_settings: Arc::new(SystemSettingRepo { db: db.clone() }),
             projects: Arc::new(ProjectRepo { db: db.clone() }),
@@ -1306,6 +1308,7 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
     domain::Repositories {
         users: sea.users,
         totp: sea.totp,
+        oidc: sea.oidc,
         password_resets: sea.password_resets,
         audit_logs: sea.audit_logs,
         system_settings: sea.system_settings,
@@ -3093,5 +3096,119 @@ impl domain::PasswordResetRepository for PasswordResetRepo {
             return Err(AppError::not_found("password_reset", "already used"));
         }
         Ok(())
+    }
+}
+
+
+
+pub struct OidcRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+fn oidc_identity_from_row(row: crate::entities::oidc_identity::Model) -> domain::OidcIdentity {
+    domain::OidcIdentity {
+        id: row.id.to_string(),
+        user_id: UserId::from_uuid(row.user_id),
+        provider: row.provider,
+        subject: row.subject,
+        email: row.email,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    }
+}
+
+#[async_trait::async_trait]
+impl OidcRepository for OidcRepo {
+    async fn find_identity(
+        &self,
+        provider: &str,
+        subject: &str,
+    ) -> Result<domain::OidcIdentity, AppError> {
+        use crate::entities::oidc_identity::{Column, Entity};
+        use sea_orm::EntityTrait;
+        let row = Entity::find()
+            .filter(Column::Provider.eq(provider))
+            .filter(Column::Subject.eq(subject))
+            .one(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(e.to_string()))?
+            .ok_or_else(|| AppError::not_found("oidc", "identity"))?;
+        Ok(oidc_identity_from_row(row))
+    }
+
+    async fn link_identity(&self, identity: &domain::OidcIdentity) -> Result<domain::OidcIdentity, AppError> {
+        use crate::entities::oidc_identity::{ActiveModel, Column, Entity};
+        use sea_orm::*;
+        // Replace any previous link for (provider, subject).
+        Entity::delete_many()
+            .filter(Column::Provider.eq(&identity.provider))
+            .filter(Column::Subject.eq(&identity.subject))
+            .exec(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(e.to_string()))?;
+        let uuid = uuid::Uuid::parse_str(&identity.id)
+            .map_err(|e| AppError::internal(e.to_string()))?;
+        let row = ActiveModel {
+            id: Set(uuid),
+            user_id: Set(identity.user_id.as_uuid()),
+            provider: Set(identity.provider.clone()),
+            subject: Set(identity.subject.clone()),
+            email: Set(identity.email.clone()),
+            created_at: Set(identity.created_at),
+            updated_at: Set(identity.updated_at),
+        }
+        .insert(&*self.db)
+        .await
+        .map_err(|e| AppError::internal(e.to_string()))?;
+        Ok(oidc_identity_from_row(row))
+    }
+
+    async fn put_state(&self, state: &domain::OidcAuthState) -> Result<(), AppError> {
+        use crate::entities::oidc_state::ActiveModel;
+        use sea_orm::*;
+        let uuid =
+            uuid::Uuid::parse_str(&state.id).map_err(|e| AppError::internal(e.to_string()))?;
+        ActiveModel {
+            id: Set(uuid),
+            state: Set(state.state.clone()),
+            code_verifier: Set(state.code_verifier.clone()),
+            nonce: Set(state.nonce.clone()),
+            expires_at: Set(state.expires_at),
+            created_at: Set(state.created_at),
+        }
+        .insert(&*self.db)
+        .await
+        .map_err(|e| AppError::internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn take_state(&self, state: &str) -> Result<domain::OidcAuthState, AppError> {
+        use crate::entities::oidc_state::{Column, Entity};
+        use sea_orm::EntityTrait;
+        let row = Entity::find()
+            .filter(Column::State.eq(state))
+            .one(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(e.to_string()))?
+            .ok_or_else(|| AppError::not_found("oidc", "state"))?;
+        use sea_orm::ActiveModelTrait;
+        let deleted = crate::entities::oidc_state::ActiveModel {
+            id: sea_orm::Set(row.id),
+            ..Default::default()
+        }
+        .delete(&*self.db)
+        .await
+        .map_err(|e| AppError::internal(e.to_string()))?;
+        if deleted.rows_affected == 0 {
+            return Err(AppError::not_found("oidc", "state already consumed"));
+        }
+        Ok(domain::OidcAuthState {
+            id: row.id.to_string(),
+            state: row.state,
+            code_verifier: row.code_verifier,
+            nonce: row.nonce,
+            expires_at: row.expires_at,
+            created_at: row.created_at,
+        })
     }
 }

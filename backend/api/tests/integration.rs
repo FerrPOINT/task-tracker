@@ -36,6 +36,10 @@ fn test_config() -> Arc<AppConfig> {
             jwt_secret: "test-secret".to_string(),
             totp_key: String::new(),
             reset_base_url: "http://localhost:5173".to_string(),
+            oidc_issuer_url: String::new(),
+            oidc_client_id: String::new(),
+            oidc_client_secret: String::new(),
+            oidc_redirect_url: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -88,6 +92,7 @@ async fn spawn_server_for_password_reset() -> (
     let repos = Arc::new(domain::Repositories {
         users,
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: resets.clone(),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
@@ -245,6 +250,7 @@ async fn spawn_server_with_notifications()
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
@@ -3085,6 +3091,7 @@ async fn spawn_server_with_reports() -> (
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
@@ -4039,6 +4046,7 @@ async fn spawn_server_with_memory_repos() -> (String, reqwest::Client) {
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
         totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
+        oidc: Arc::new(domain::StubOidcRepository),
         password_resets: Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),

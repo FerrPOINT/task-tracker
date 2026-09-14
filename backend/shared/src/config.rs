@@ -123,6 +123,16 @@ pub struct AuthConfig {
     /// Public frontend origin used to build password-reset links.
     #[serde(default)]
     pub reset_base_url: String,
+    /// Single configurable OIDC provider (SYSTEM_ADMIN 4.2). Disabled while
+    /// `issuer_url` is empty.
+    #[serde(default)]
+    pub oidc_issuer_url: String,
+    #[serde(default)]
+    pub oidc_client_id: String,
+    #[serde(default)]
+    pub oidc_client_secret: String,
+    #[serde(default)]
+    pub oidc_redirect_url: String,
     pub access_token_ttl_minutes: u64,
     pub refresh_token_ttl_days: u64,
     pub refresh_cookie_name: String,
@@ -213,6 +223,18 @@ impl AppConfig {
         }
         if let Ok(base) = env::var("TASKTRACKER_RESET_BASE_URL") {
             cfg.auth.reset_base_url = base;
+        }
+        if let Ok(v) = env::var("TASKTRACKER_OIDC_ISSUER_URL") {
+            cfg.auth.oidc_issuer_url = v;
+        }
+        if let Ok(v) = env::var("TASKTRACKER_OIDC_CLIENT_ID") {
+            cfg.auth.oidc_client_id = v;
+        }
+        if let Ok(v) = env::var("TASKTRACKER_OIDC_CLIENT_SECRET") {
+            cfg.auth.oidc_client_secret = v;
+        }
+        if let Ok(v) = env::var("TASKTRACKER_OIDC_REDIRECT_URL") {
+            cfg.auth.oidc_redirect_url = v;
         }
 
         if cfg.auth.jwt_secret == "[CHANGE_ME]" {
@@ -313,6 +335,10 @@ impl Default for AuthConfig {
             jwt_secret: "[CHANGE_ME]".to_string(),
             totp_key: String::new(),
             reset_base_url: "http://localhost:5173".to_string(),
+            oidc_issuer_url: String::new(),
+            oidc_client_id: String::new(),
+            oidc_client_secret: String::new(),
+            oidc_redirect_url: "http://localhost:7721/api/v1/auth/oidc/callback".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),

@@ -426,6 +426,78 @@
         ]
       }
     },
+    "/api/v1/auth/oidc/begin": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "oidc_begin",
+        "responses": {
+          "302": {
+            "description": "Redirect to the configured OIDC provider authorization endpoint (state + PKCE)"
+          },
+          "404": {
+            "description": "OIDC is not configured"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/oidc/callback": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "oidc_callback",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Single-use authorization state",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "description": "Provider authorization code",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OIDC login complete; local session tokens issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid/expired state, nonce mismatch or provider error"
+          },
+          "404": {
+            "description": "OIDC is not configured"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/password/request": {
       "post": {
         "tags": [

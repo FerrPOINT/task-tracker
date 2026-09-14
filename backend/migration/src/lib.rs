@@ -15,6 +15,7 @@ pub mod m20260827_0000028_core_fk_constraints;
 pub mod m20260831_0000029_notification_digest_state;
 pub mod m20260914_0000030_totp;
 mod m20260914_0000031_password_reset;
+mod m20260914_0000032_oidc;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -41,6 +42,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260831_0000029_notification_digest_state::Migration),
             Box::new(m20260914_0000030_totp::Migration),
             Box::new(m20260914_0000031_password_reset::Migration),
+            Box::new(m20260914_0000032_oidc::Migration),
         ]
     }
 }

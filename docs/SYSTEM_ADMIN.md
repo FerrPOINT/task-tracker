@@ -70,8 +70,14 @@
 
 ### 4.2 OAuth2 / OIDC
 
-- Настраиваемые OAuth2 провайдеры (Google, GitHub, Keycloak, etc.).
-- SAML 2.0 — опционально.
+Реализовано (single provider, authorization code + PKCE S256):
+
+- Настройка через env: `TASKTRACKER_OIDC_ISSUER_URL` (пусто = SSO выключен), `TASKTRACKER_OIDC_CLIENT_ID`, `TASKTRACKER_OIDC_CLIENT_SECRET`, `TASKTRACKER_OIDC_REDIRECT_URL` (default `http://localhost:7721/api/v1/auth/oidc/callback`).
+- `GET /api/v1/auth/oidc/begin` → 302 на authorization endpoint провайдера (state + nonce + PKCE, single-use state в БД, TTL 10 минут).
+- `GET /api/v1/auth/oidc/callback?state&code` → обмен кода на id_token, проверка nonce; связывание по (provider, sub); существующий локальный email привязывается, иначе JIT-провижининг (неактивный локальный пароль `!`); выдача локальных access/refresh токенов как при обычном логине.
+- Identity-линки хранятся в `oidc_identities` (миграция 0032); states — в `oidc_state`, single-use.
+- Поддерживаются OIDC-совместимые провайдеры: rauthy (стенд), Keycloak, Google, GitHub (OIDC-приложения).
+- SAML 2.0 — опционально, не реализовано (future).
 
 ### 4.3 LDAP / Active Directory
 

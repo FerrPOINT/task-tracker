@@ -5,6 +5,7 @@ pub mod context;
 pub mod dto;
 pub mod services;
 pub mod totp;
+pub mod oidc;
 
 pub use auth::*;
 pub use commands::*;

@@ -383,3 +383,58 @@ pub async fn password_reset_confirm(
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/oidc/begin",
+    tag = "auth",
+    responses(
+        (status = 302, description = "Redirect to the configured OIDC provider authorization endpoint (state + PKCE)"),
+        (status = 404, description = "OIDC is not configured"),
+    )
+)]
+pub async fn oidc_begin(
+    State(ctx): State<Arc<app::AppContext>>,
+) -> Result<impl axum::response::IntoResponse, AppError> {
+    let oidc = ctx
+        .services
+        .oidc
+        .as_ref()
+        .ok_or_else(|| AppError::not_found("oidc", "not configured"))?;
+    let url = oidc.begin().await?;
+    Ok(axum::response::Redirect::temporary(&url))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/v1/auth/oidc/callback",
+    tag = "auth",
+    params(
+        ("state" = String, Query, description = "Single-use authorization state"),
+        ("code" = String, Query, description = "Provider authorization code"),
+    ),
+    responses(
+        (status = 200, description = "OIDC login complete; local session tokens issued", body = AuthResponse),
+        (status = 401, description = "Invalid/expired state, nonce mismatch or provider error"),
+        (status = 404, description = "OIDC is not configured"),
+    )
+)]
+pub async fn oidc_callback(
+    State(ctx): State<Arc<app::AppContext>>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::Json<AuthResponse>, AppError> {
+    let oidc = ctx
+        .services
+        .oidc
+        .as_ref()
+        .ok_or_else(|| AppError::not_found("oidc", "not configured"))?;
+    let state = params
+        .get("state")
+        .ok_or_else(|| AppError::invalid_input("missing state"))?;
+    let code = params
+        .get("code")
+        .ok_or_else(|| AppError::invalid_input("missing code"))?;
+    let dto = oidc.callback(state, code).await?;
+    Ok(axum::Json(map_auth(dto)))
+}

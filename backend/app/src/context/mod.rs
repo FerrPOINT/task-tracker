@@ -56,6 +56,7 @@ pub struct AppContext {
 pub struct Services {
     pub auth: Arc<dyn AuthService>,
     pub totp: Arc<dyn TotpService>,
+    pub oidc: Option<Arc<crate::oidc::OidcService>>,
     pub project: Arc<dyn ProjectService>,
     pub issue: Arc<dyn IssueService>,
     pub board: Arc<dyn BoardService>,
@@ -116,6 +117,16 @@ impl AppContext {
             repos.clone(),
             std::sync::Arc::new(config.auth.clone()),
         ));
+        let oidc = if config.auth.oidc_issuer_url.trim().is_empty() {
+            None
+        } else {
+            Some(Arc::new(crate::oidc::OidcService::new(
+                repos.oidc.clone(),
+                repos.users.clone(),
+                auth.clone(),
+                config.clone(),
+            )))
+        };
         let project: Arc<dyn ProjectService> = Arc::new(ProjectServiceImpl::new(
             repos.projects.clone(),
             repos.issues.clone(),
@@ -189,6 +200,7 @@ impl AppContext {
             services: Services {
                 auth,
                 totp,
+                oidc,
                 project,
                 issue,
                 board,

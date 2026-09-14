@@ -9,7 +9,7 @@ use crate::{
     AuditLog, Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity,
     IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, PasswordResetToken,
     Project, ProjectComponent, ProjectMember, ProjectVersion, Sprint, Status, SystemSetting,
-    TotpConfig, User, WorkflowTransition, Worklog,
+    OidcAuthState, OidcIdentity, TotpConfig, User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
@@ -71,6 +71,20 @@ pub trait PasswordResetRepository: Send + Sync {
     async fn find_active(&self, token_hash: &str) -> Result<PasswordResetToken, AppError>;
     /// Mark the token consumed; returns NotFound when already used/expired.
     async fn mark_used(&self, token_hash: &str) -> Result<(), AppError>;
+}
+
+/// OIDC identities and single-use authorization states (SYSTEM_ADMIN 4.2).
+#[async_trait]
+pub trait OidcRepository: Send + Sync {
+    async fn find_identity(
+        &self,
+        provider: &str,
+        subject: &str,
+    ) -> Result<OidcIdentity, AppError>;
+    async fn link_identity(&self, identity: &OidcIdentity) -> Result<OidcIdentity, AppError>;
+    async fn put_state(&self, state: &OidcAuthState) -> Result<(), AppError>;
+    /// Consume (delete) the state row; NotFound when unknown or already used.
+    async fn take_state(&self, state: &str) -> Result<OidcAuthState, AppError>;
 }
 
 #[async_trait]
@@ -420,6 +434,7 @@ pub struct Repositories {
     pub components: Arc<dyn ProjectComponentRepository>,
     pub versions: Arc<dyn ProjectVersionRepository>,
     pub custom_fields: Arc<dyn CustomFieldRepository>,
+    pub oidc: Arc<dyn OidcRepository>,
 }
 
 impl Default for Repositories {
@@ -427,6 +442,7 @@ impl Default for Repositories {
         Self {
             users: Arc::new(StubUserRepository),
             totp: Arc::new(StubTotpRepository),
+            oidc: Arc::new(StubOidcRepository),
             password_resets: Arc::new(StubPasswordResetRepository),
             audit_logs: Arc::new(StubAuditLogRepository),
             system_settings: Arc::new(StubSystemSettingRepository),
@@ -668,6 +684,27 @@ impl PasswordResetRepository for StubPasswordResetRepository {
     }
     async fn mark_used(&self, _token_hash: &str) -> Result<(), AppError> {
         Ok(())
+    }
+}
+
+pub struct StubOidcRepository;
+#[async_trait]
+impl OidcRepository for StubOidcRepository {
+    async fn find_identity(
+        &self,
+        _provider: &str,
+        _subject: &str,
+    ) -> Result<OidcIdentity, AppError> {
+        Err(AppError::not_found("oidc", "stub"))
+    }
+    async fn link_identity(&self, _identity: &OidcIdentity) -> Result<OidcIdentity, AppError> {
+        Err(AppError::not_found("oidc", "stub"))
+    }
+    async fn put_state(&self, _state: &OidcAuthState) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn take_state(&self, _state: &str) -> Result<OidcAuthState, AppError> {
+        Err(AppError::not_found("oidc", "stub"))
     }
 }
 
