@@ -11,10 +11,10 @@ use domain::{
     NotificationRepository, NotificationUserSettings, Project, ProjectComponent,
     ProjectComponentRepository, ProjectMember, ProjectMemberRepository, ProjectRepository,
     ProjectRole, ProjectVersion, ProjectVersionRepository, Sprint, SprintRepository, SprintState,
-    Status, StatusCategory, StatusRepository, SystemSetting, SystemSettingRepository, User,
-    UserNotificationSettingsRepository, UserRepository, VoteRepository, WatcherRepository,
-    WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository, Worklog,
-    WorklogRepository,
+    Status, StatusCategory, StatusRepository, SystemSetting, SystemSettingRepository, TotpConfig,
+    TotpRepository, User, UserNotificationSettingsRepository, UserRepository, VoteRepository,
+    WatcherRepository, WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository,
+    Worklog, WorklogRepository,
 };
 use sea_orm::sea_query::extension::postgres::PgExpr as _;
 use sea_orm::{
@@ -131,6 +131,7 @@ fn custom_field_value_active_model(
 }
 pub struct SeaOrmRepositories {
     pub users: Arc<dyn UserRepository>,
+    pub totp: Arc<dyn TotpRepository>,
     pub audit_logs: Arc<dyn AuditLogRepository>,
     pub system_settings: Arc<dyn SystemSettingRepository>,
     pub projects: Arc<dyn ProjectRepository>,
@@ -161,6 +162,7 @@ impl SeaOrmRepositories {
         let db = Arc::new(db);
         Self {
             users: Arc::new(UserRepo { db: db.clone() }),
+            totp: Arc::new(TotpRepo { db: db.clone() }),
             audit_logs: Arc::new(AuditLogRepo { db: db.clone() }),
             system_settings: Arc::new(SystemSettingRepo { db: db.clone() }),
             projects: Arc::new(ProjectRepo { db: db.clone() }),
@@ -1301,6 +1303,7 @@ fn map_sprint(m: sprint::Model) -> Sprint {
 pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
     domain::Repositories {
         users: sea.users,
+        totp: sea.totp,
         audit_logs: sea.audit_logs,
         system_settings: sea.system_settings,
         projects: sea.projects,
@@ -2851,6 +2854,164 @@ impl ProjectVersionRepository for ProjectVersionRepo {
             .exec(&*self.db)
             .await
             .map_err(AppError::database)?;
+        Ok(())
+    }
+}
+
+pub struct TotpRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+impl TotpRepo {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db: Arc::new(db) }
+    }
+
+    fn to_domain(m: &crate::entities::totp::Model) -> TotpConfig {
+        TotpConfig {
+            user_id: UserId::from_uuid(m.user_id),
+            secret_cipher: m.secret_cipher.as_str().into(),
+            enabled: m.enabled,
+            confirmed_at: m.confirmed_at,
+            last_used_step: m.last_used_step,
+            recovery_codes: m.recovery_codes.as_str().into(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl TotpRepository for TotpRepo {
+    async fn get(&self, user_id: domain::UserId) -> Result<TotpConfig, AppError> {
+        let row = crate::entities::totp::Entity::find_by_id(user_id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(&e.to_string()))?;
+        Ok(row.as_ref().map(Self::to_domain).unwrap_or(TotpConfig {
+            user_id,
+            secret_cipher: "".into(),
+            enabled: false,
+            confirmed_at: None,
+            last_used_step: 0,
+            recovery_codes: "[]".into(),
+        }))
+    }
+
+    async fn upsert_unconfirmed(
+        &self,
+        user_id: domain::UserId,
+        secret_cipher: &str,
+    ) -> Result<(), AppError> {
+        use crate::entities::totp::{ActiveModel, Entity};
+        use sea_orm::*;
+        let uid = user_id.as_uuid();
+        let existing = Entity::find_by_id(uid)
+            .one(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(&e.to_string()))?;
+        let now = chrono::Utc::now().fixed_offset();
+        match existing {
+            Some(_) => {
+                let am = ActiveModel {
+                    user_id: Set(uid),
+                    secret_cipher: Set(secret_cipher.to_string()),
+                    enabled: Set(false),
+                    confirmed_at: Set(None),
+                    last_used_step: Set(0),
+                    recovery_codes: Set("[]".to_string()),
+                    updated_at: Set(now),
+                    ..Default::default()
+                };
+                am.update(&*self.db)
+                    .await
+                    .map_err(|e| AppError::internal(&e.to_string()))?;
+            }
+            None => {
+                let am = ActiveModel {
+                    user_id: Set(uid),
+                    secret_cipher: Set(secret_cipher.to_string()),
+                    enabled: Set(false),
+                    confirmed_at: Set(None),
+                    last_used_step: Set(0),
+                    recovery_codes: Set("[]".to_string()),
+                    created_at: Set(now),
+                    updated_at: Set(now),
+                    ..Default::default()
+                };
+                am.insert(&*self.db)
+                    .await
+                    .map_err(|e| AppError::internal(&e.to_string()))?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn confirm_enable(
+        &self,
+        user_id: domain::UserId,
+        recovery_codes_json: &str,
+        step: i64,
+    ) -> Result<(), AppError> {
+        use crate::entities::totp::{Column, Entity};
+        use sea_orm::*;
+        let uid = user_id.as_uuid();
+        let res = Entity::update_many()
+            .col_expr(Column::Enabled, Expr::value(true))
+            .col_expr(Column::RecoveryCodes, Expr::value(recovery_codes_json))
+            .col_expr(Column::LastUsedStep, Expr::value(step))
+            .col_expr(
+                Column::ConfirmedAt,
+                Expr::value(chrono::Utc::now().fixed_offset()),
+            )
+            .col_expr(
+                Column::UpdatedAt,
+                Expr::value(chrono::Utc::now().fixed_offset()),
+            )
+            .filter(Column::UserId.eq(uid))
+            .exec(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(&e.to_string()))?;
+        if res.rows_affected == 0 {
+            return Err(AppError::not_found("totp", "no enrollment"));
+        }
+        Ok(())
+    }
+
+    async fn mark_used_step(&self, user_id: domain::UserId, step: i64) -> Result<(), AppError> {
+        use crate::entities::totp::{Column, Entity};
+        use sea_orm::*;
+        Entity::update_many()
+            .col_expr(Column::LastUsedStep, Expr::value(step))
+            .filter(Column::UserId.eq(user_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(&e.to_string()))?;
+        Ok(())
+    }
+
+    async fn update_recovery_codes(
+        &self,
+        user_id: domain::UserId,
+        json: &str,
+    ) -> Result<(), AppError> {
+        use crate::entities::totp::{Column, Entity};
+        use sea_orm::*;
+        Entity::update_many()
+            .col_expr(Column::RecoveryCodes, Expr::value(json))
+            .filter(Column::UserId.eq(user_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(&e.to_string()))?;
+        Ok(())
+    }
+
+    async fn disable(&self, user_id: domain::UserId) -> Result<(), AppError> {
+        use crate::entities::totp::{Column, Entity};
+        use sea_orm::*;
+        Entity::delete_many()
+            .filter(Column::UserId.eq(user_id.as_uuid()))
+            .exec(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(&e.to_string()))?;
         Ok(())
     }
 }

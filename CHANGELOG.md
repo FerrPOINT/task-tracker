@@ -4,6 +4,11 @@
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версионирование — [SemVer](https://semver.org/lang/ru/).
 
+## [Unreleased]
+
+### Added
+- TOTP MFA (SECURITY.md §2): зашифрованные AES-256-GCM RFC 6238 секреты, replay protection, 8 одноразовых recovery-кодов; challenge при логине (`totp_code`), self-service энроллмент `POST /api/v1/auth/totp/{setup,enable,disable}`.
+
 ## [0.2.0] — 2026-08-26
 
 ### Added

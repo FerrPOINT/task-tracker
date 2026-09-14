@@ -55,6 +55,7 @@ pub struct AppContext {
 #[derive(Clone)]
 pub struct Services {
     pub auth: Arc<dyn AuthService>,
+    pub totp: Arc<dyn TotpService>,
     pub project: Arc<dyn ProjectService>,
     pub issue: Arc<dyn IssueService>,
     pub board: Arc<dyn BoardService>,
@@ -108,6 +109,10 @@ impl AppContext {
             config.auth.clone(),
             repos.users.clone(),
             repos.system_settings.clone(),
+        ));
+        let totp: Arc<dyn TotpService> = Arc::new(crate::totp::TotpService::new(
+            repos.clone(),
+            std::sync::Arc::new(config.auth.clone()),
         ));
         let project: Arc<dyn ProjectService> = Arc::new(ProjectServiceImpl::new(
             repos.projects.clone(),
@@ -181,6 +186,7 @@ impl AppContext {
             authz: authz.clone(),
             services: Services {
                 auth,
+                totp,
                 project,
                 issue,
                 board,

@@ -49,6 +49,41 @@ pub async fn login(
     jar: CookieJar,
     Json(body): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<AuthResponse>), AppError> {
+    // MFA (docs/SECURITY.md): when TOTP is enabled the password alone is not
+    // enough — respond with totp_required instead of tokens.
+    let probe = ctx
+        .services
+        .auth
+        .login(LoginCommand {
+            email: body.email.clone(),
+            password: body.password.clone(),
+        })
+        .await?;
+    let totp_user_id: shared::UserId = probe.user.id.parse().map_err(|_| AppError::Unauthorized)?;
+    if ctx.services.totp.is_enabled(totp_user_id.clone()).await? {
+        let code = body.totp_code.as_deref().unwrap_or("");
+        if code.is_empty()
+            || !ctx
+                .services
+                .totp
+                .login_verify(totp_user_id.clone(), code)
+                .await?
+        {
+            return Ok((
+                jar,
+                Json(AuthResponse {
+                    access_token: String::new(),
+                    token_type: "Bearer".to_string(),
+                    user_id: probe.user.id.to_string(),
+                    email: probe.user.email.clone(),
+                    username: probe.user.username.clone(),
+                    display_name: probe.user.display_name.clone(),
+                    expires_in: 0,
+                    totp_required: true,
+                }),
+            ));
+        }
+    }
     let cmd = LoginCommand {
         email: body.email,
         password: body.password,
@@ -175,6 +210,7 @@ fn map_auth(dto: app::dto::AuthDto) -> AuthResponse {
     // caller; it must never be serialized into the JSON body.
     AuthResponse {
         access_token: dto.access_token,
+        totp_required: false,
         token_type: "Bearer".to_string(),
         user_id: dto.user.id,
         email: dto.user.email,
@@ -214,4 +250,85 @@ mod tests {
         assert!(header.contains("HttpOnly"), "{header}");
         assert!(header.contains("Max-Age=0"), "{header}");
     }
+}
+
+// --- TOTP MFA management (docs/SECURITY.md, docs/SYSTEM_ADMIN.md) ---
+
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct TotpCodeRequest {
+    pub code: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/totp/setup",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Enrollment started; secret returned exactly once", body = TotpSetupResponse),
+        (status = 401, description = "Not authenticated"),
+    )
+)]
+pub async fn totp_setup(
+    State(ctx): State<Arc<app::AppContext>>,
+    claims: axum::Extension<app::auth::UserClaims>,
+) -> Result<Json<TotpSetupResponse>, AppError> {
+    let user_id: shared::UserId = claims.sub.parse().map_err(|_| AppError::Unauthorized)?;
+    let dto = ctx.services.totp.setup(user_id).await?;
+    Ok(Json(TotpSetupResponse {
+        secret: dto.secret,
+        otpauth_uri: dto.otpauth_uri,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/totp/enable",
+    tag = "auth",
+    request_body = TotpCodeRequest,
+    responses(
+        (status = 200, description = "MFA enabled; recovery codes returned exactly once", body = TotpEnabledResponse),
+        (status = 400, description = "Invalid code"),
+    )
+)]
+pub async fn totp_enable(
+    State(ctx): State<Arc<app::AppContext>>,
+    claims: axum::Extension<app::auth::UserClaims>,
+    Json(body): Json<TotpCodeRequest>,
+) -> Result<Json<TotpEnabledResponse>, AppError> {
+    let user_id: shared::UserId = claims.sub.parse().map_err(|_| AppError::Unauthorized)?;
+    let dto = ctx.services.totp.enable(user_id, &body.code).await?;
+    Ok(Json(TotpEnabledResponse {
+        recovery_codes: dto.recovery_codes,
+    }))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/totp/disable",
+    tag = "auth",
+    request_body = TotpCodeRequest,
+    responses(
+        (status = 204, description = "MFA disabled"),
+        (status = 400, description = "Invalid code or not enabled"),
+    )
+)]
+pub async fn totp_disable(
+    State(ctx): State<Arc<app::AppContext>>,
+    claims: axum::Extension<app::auth::UserClaims>,
+    Json(body): Json<TotpCodeRequest>,
+) -> Result<StatusCode, AppError> {
+    let user_id: shared::UserId = claims.sub.parse().map_err(|_| AppError::Unauthorized)?;
+    ctx.services.totp.disable(user_id, &body.code).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct TotpSetupResponse {
+    pub secret: String,
+    pub otpauth_uri: String,
+}
+
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
+pub struct TotpEnabledResponse {
+    pub recovery_codes: Vec<String>,
 }

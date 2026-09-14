@@ -28,6 +28,23 @@ pub trait AuthService: Send + Sync {
 }
 
 #[async_trait]
+pub trait TotpService: Send + Sync {
+    /// Start enrollment: returns base32 secret + otpauth URI exactly once.
+    async fn setup(&self, user_id: UserId) -> Result<crate::totp::TotpSetupDto, AppError>;
+    /// Confirm enrollment with a valid code; mints single-use recovery codes.
+    async fn enable(
+        &self,
+        user_id: UserId,
+        code: &str,
+    ) -> Result<crate::totp::TotpEnabledDto, AppError>;
+    /// Disable MFA (valid code or unused recovery code required).
+    async fn disable(&self, user_id: UserId, code: &str) -> Result<(), AppError>;
+    /// Second-factor verification during login (no-op when not enrolled).
+    async fn login_verify(&self, user_id: UserId, code: &str) -> Result<bool, AppError>;
+    async fn is_enabled(&self, user_id: UserId) -> Result<bool, AppError>;
+}
+
+#[async_trait]
 pub trait StatusService: Send + Sync {
     async fn list_statuses(&self) -> Result<Vec<domain::Status>, AppError>;
     async fn get_default_status(&self) -> Result<domain::Status, AppError>;

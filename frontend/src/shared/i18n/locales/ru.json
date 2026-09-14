@@ -27,7 +27,8 @@
     "createAccount": "Создать аккаунт",
     "haveAccount": "Уже есть аккаунт",
     "passwordMismatch": "Пароли не совпадают",
-    "displayName": "Отображаемое имя"
+    "displayName": "Отображаемое имя",
+    "totpCode": "Код двухфакторной аутентификации"
   },
   "notifications": {
     "title": "Уведомления",

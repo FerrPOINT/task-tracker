@@ -19,11 +19,18 @@ pub struct RegisterRequest {
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
+    /// Second factor (docs/SECURITY.md MFA): required once TOTP is enabled.
+    #[serde(default)]
+    pub totp_code: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct AuthResponse {
     pub access_token: String,
+    /// True when MFA is enabled and totp_code was missing/invalid: the client
+    /// must retry the login with the second factor.
+    #[serde(default)]
+    pub totp_required: bool,
     pub token_type: String,
     pub user_id: String,
     pub email: String,

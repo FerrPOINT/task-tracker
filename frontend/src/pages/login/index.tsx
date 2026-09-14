@@ -14,13 +14,23 @@ export function LoginPage() {
   const { mutate, isPending, error } = useLogin()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // MFA challenge (docs/SECURITY.md): shown when the backend answers
+  // totp_required instead of issuing tokens.
+  const [totpRequired, setTotpRequired] = useState(false)
+  const [totpCode, setTotpCode] = useState('')
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     mutate(
-      { email, password },
+      { email, password, ...(totpRequired ? { totp_code: totpCode } : {}) },
       {
-        onSuccess: () => navigate('/'),
+        onSuccess: (data) => {
+          if (data.totp_required) {
+            setTotpRequired(true)
+            return
+          }
+          navigate('/')
+        },
       },
     )
   }
@@ -60,6 +70,21 @@ export function LoginPage() {
               required
             />
           </div>
+          {totpRequired && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="login-totp">
+                {t('auth.totpCode')}
+              </label>
+              <Input
+                id="login-totp"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value)}
+                required
+              />
+            </div>
+          )}
           {error && <ErrorState message={error.message} />}
           <Button type="submit" className="w-full" disabled={isPending}>
             {isPending ? `${t('auth.login')}…` : t('auth.login')}

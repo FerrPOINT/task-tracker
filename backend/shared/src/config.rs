@@ -116,6 +116,10 @@ fn default_general_rate_per_second() -> u64 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuthConfig {
     pub jwt_secret: String,
+    /// Dedicated key for TOTP secret encryption (AES-256-GCM). Falls back to
+    /// the JWT secret when unset (docs/SECURITY.md MFA).
+    #[serde(default)]
+    pub totp_key: String,
     pub access_token_ttl_minutes: u64,
     pub refresh_token_ttl_days: u64,
     pub refresh_cookie_name: String,
@@ -194,6 +198,15 @@ impl AppConfig {
         // Backwards-compatible alias: TASKTRACKER_JWT_SECRET maps to auth.jwt_secret
         if let Ok(secret) = env::var("TASKTRACKER_JWT_SECRET") {
             cfg.auth.jwt_secret = secret;
+        }
+
+        // TOTP secrets are AES-256-GCM encrypted; a dedicated
+        // TASKTRACKER_TOTP_KEY overrides the JWT-secret fallback.
+        if let Ok(totp_key) = env::var("TASKTRACKER_TOTP_KEY") {
+            cfg.auth.totp_key = totp_key;
+        }
+        if cfg.auth.totp_key.trim().is_empty() {
+            cfg.auth.totp_key = cfg.auth.jwt_secret.clone();
         }
 
         if cfg.auth.jwt_secret == "[CHANGE_ME]" {
@@ -292,6 +305,7 @@ impl Default for AuthConfig {
     fn default() -> Self {
         Self {
             jwt_secret: "[CHANGE_ME]".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),

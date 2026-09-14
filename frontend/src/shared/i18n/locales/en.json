@@ -27,7 +27,8 @@
     "createAccount": "Create account",
     "haveAccount": "Already have an account",
     "passwordMismatch": "Passwords do not match",
-    "displayName": "Display name"
+    "displayName": "Display name",
+    "totpCode": "Two-factor code"
   },
   "notifications": {
     "title": "Notifications",

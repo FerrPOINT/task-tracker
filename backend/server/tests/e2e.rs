@@ -23,6 +23,7 @@ fn test_config() -> Arc<AppConfig> {
         },
         auth: AuthConfig {
             jwt_secret: "test-secret".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),

@@ -24,7 +24,10 @@
 - Self-registration (опционально, отключается в настройках).
 - Password reset по email.
 - Change password / email.
-- Two-factor authentication (TOTP) — опционально.
+- Two-factor authentication (TOTP) — опционально, self-service: authenticated
+  user starts enrollment via `POST /api/v1/auth/totp/setup`, scans `otpauth_uri`,
+  confirms with `POST /enable` and stores the returned recovery codes offline.
+  `POST /disable` requires a current TOTP or an unused recovery code.
 
 ## 2. Groups
 

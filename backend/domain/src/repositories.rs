@@ -8,8 +8,8 @@ mod tests;
 use crate::{
     AuditLog, Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity,
     IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, Project,
-    ProjectComponent, ProjectMember, ProjectVersion, Sprint, Status, SystemSetting, User,
-    WorkflowTransition, Worklog,
+    ProjectComponent, ProjectMember, ProjectVersion, Sprint, Status, SystemSetting, TotpConfig,
+    User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
@@ -34,6 +34,28 @@ pub trait SystemSettingRepository: Send + Sync {
     async fn get(&self, key: &str) -> Result<SystemSetting, AppError>;
     async fn list(&self) -> Result<Vec<SystemSetting>, AppError>;
     async fn save(&self, setting: &SystemSetting) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait TotpRepository: Send + Sync {
+    /// Existing row or a disabled default (enrollment not started).
+    async fn get(&self, user_id: UserId) -> Result<TotpConfig, AppError>;
+    /// Insert/overwrite the encrypted secret as unconfirmed.
+    async fn upsert_unconfirmed(
+        &self,
+        user_id: UserId,
+        secret_cipher: &str,
+    ) -> Result<(), AppError>;
+    /// Flip enabled with recovery codes and replay cursor.
+    async fn confirm_enable(
+        &self,
+        user_id: UserId,
+        recovery_codes_json: &str,
+        step: i64,
+    ) -> Result<(), AppError>;
+    async fn mark_used_step(&self, user_id: UserId, step: i64) -> Result<(), AppError>;
+    async fn update_recovery_codes(&self, user_id: UserId, json: &str) -> Result<(), AppError>;
+    async fn disable(&self, user_id: UserId) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -358,6 +380,7 @@ pub trait EventBus: Send + Sync {
 #[derive(Clone)]
 pub struct Repositories {
     pub users: Arc<dyn UserRepository>,
+    pub totp: Arc<dyn TotpRepository>,
     pub audit_logs: Arc<dyn AuditLogRepository>,
     pub system_settings: Arc<dyn SystemSettingRepository>,
     pub projects: Arc<dyn ProjectRepository>,
@@ -387,6 +410,7 @@ impl Default for Repositories {
     fn default() -> Self {
         Self {
             users: Arc::new(StubUserRepository),
+            totp: Arc::new(StubTotpRepository),
             audit_logs: Arc::new(StubAuditLogRepository),
             system_settings: Arc::new(StubSystemSettingRepository),
             projects: Arc::new(StubProjectRepository),
@@ -569,6 +593,45 @@ impl UserRepository for StubUserRepository {
 
     async fn list(&self) -> Result<Vec<User>, AppError> {
         Ok(vec![])
+    }
+}
+
+pub struct StubTotpRepository;
+#[async_trait]
+impl TotpRepository for StubTotpRepository {
+    async fn get(&self, _user_id: UserId) -> Result<TotpConfig, AppError> {
+        Ok(TotpConfig {
+            user_id: _user_id,
+            secret_cipher: "".into(),
+            enabled: false,
+            confirmed_at: None,
+            last_used_step: 0,
+            recovery_codes: "[]".into(),
+        })
+    }
+    async fn upsert_unconfirmed(
+        &self,
+        _user_id: UserId,
+        _secret_cipher: &str,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn confirm_enable(
+        &self,
+        _user_id: UserId,
+        _recovery_codes_json: &str,
+        _step: i64,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn mark_used_step(&self, _user_id: UserId, _step: i64) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn update_recovery_codes(&self, _user_id: UserId, _json: &str) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn disable(&self, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
     }
 }
 

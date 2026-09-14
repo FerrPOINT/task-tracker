@@ -11,9 +11,9 @@ use crate::{
     IssueVote, IssueWatcher, Notification, NotificationRepository, NotificationUserSettings,
     Project, ProjectComponent, ProjectComponentRepository, ProjectMember, ProjectMemberRepository,
     ProjectQuery, ProjectRepository, ProjectVersion, ProjectVersionRepository, Sprint,
-    SprintRepository, Status, StatusRepository, SystemSetting, SystemSettingRepository,
-    TransitionGuard, UnitOfWork, User, UserNotificationSettingsRepository, UserRepository,
-    VoteRepository, WatcherRepository, Worklog, WorklogRepository,
+    SprintRepository, Status, StatusRepository, SystemSetting, SystemSettingRepository, TotpConfig,
+    TotpRepository, TransitionGuard, UnitOfWork, User, UserNotificationSettingsRepository,
+    UserRepository, VoteRepository, WatcherRepository, Worklog, WorklogRepository,
 };
 use shared::{
     AppError, BoardId, CommentId, CustomFieldId, IssueId, NotificationId, ProjectComponentId,
@@ -1944,6 +1944,88 @@ impl ProjectVersionRepository for MemoryProjectVersionRepository {
     }
     async fn delete(&self, id: ProjectVersionId) -> Result<(), AppError> {
         self.versions.lock().unwrap().retain(|v| v.id != id);
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryTotpRepository {
+    rows: Arc<Mutex<Vec<TotpConfig>>>,
+}
+
+#[async_trait]
+impl TotpRepository for MemoryTotpRepository {
+    async fn get(&self, user_id: UserId) -> Result<TotpConfig, AppError> {
+        let rows = self.rows.lock().unwrap();
+        Ok(rows
+            .iter()
+            .find(|r| r.user_id == user_id)
+            .cloned()
+            .unwrap_or(TotpConfig {
+                user_id,
+                secret_cipher: "".into(),
+                enabled: false,
+                confirmed_at: None,
+                last_used_step: 0,
+                recovery_codes: "[]".into(),
+            }))
+    }
+
+    async fn upsert_unconfirmed(
+        &self,
+        user_id: UserId,
+        secret_cipher: &str,
+    ) -> Result<(), AppError> {
+        let mut rows = self.rows.lock().unwrap();
+        rows.retain(|r| r.user_id != user_id);
+        rows.push(TotpConfig {
+            user_id,
+            secret_cipher: secret_cipher.into(),
+            enabled: false,
+            confirmed_at: None,
+            last_used_step: 0,
+            recovery_codes: "[]".into(),
+        });
+        Ok(())
+    }
+
+    async fn confirm_enable(
+        &self,
+        user_id: UserId,
+        recovery_codes_json: &str,
+        step: i64,
+    ) -> Result<(), AppError> {
+        let mut rows = self.rows.lock().unwrap();
+        let row = rows
+            .iter_mut()
+            .find(|r| r.user_id == user_id)
+            .ok_or_else(|| AppError::not_found("totp", user_id))?;
+        row.enabled = true;
+        row.confirmed_at = Some(shared::now());
+        row.recovery_codes = recovery_codes_json.into();
+        row.last_used_step = step;
+        Ok(())
+    }
+
+    async fn mark_used_step(&self, user_id: UserId, step: i64) -> Result<(), AppError> {
+        let mut rows = self.rows.lock().unwrap();
+        if let Some(row) = rows.iter_mut().find(|r| r.user_id == user_id) {
+            row.last_used_step = step;
+        }
+        Ok(())
+    }
+
+    async fn update_recovery_codes(&self, user_id: UserId, json: &str) -> Result<(), AppError> {
+        let mut rows = self.rows.lock().unwrap();
+        if let Some(row) = rows.iter_mut().find(|r| r.user_id == user_id) {
+            row.recovery_codes = json.into();
+        }
+        Ok(())
+    }
+
+    async fn disable(&self, user_id: UserId) -> Result<(), AppError> {
+        let mut rows = self.rows.lock().unwrap();
+        rows.retain(|r| r.user_id != user_id);
         Ok(())
     }
 }

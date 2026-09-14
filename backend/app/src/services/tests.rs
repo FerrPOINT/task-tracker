@@ -55,6 +55,7 @@ fn test_config() -> Arc<AppConfig> {
         server: ServerConfig::default(),
         auth: AuthConfig {
             jwt_secret: "test-secret".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -358,6 +359,7 @@ async fn ctx_with_demo_data() -> (AppContext, User) {
     let notifications = Arc::new(MemoryNotificationRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: projects.clone(),
@@ -2204,6 +2206,7 @@ fn failing_context() -> AppContext {
 
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: Arc::new(FailingProjectRepository),
@@ -2313,6 +2316,7 @@ async fn issue_get_propagates_user_lookup_error() {
     let issue_id = create_demo_issue(&base_ctx, &user, "issue user lookup failure").await;
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         ..(*base_ctx.repos).clone()
     });
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
@@ -2355,6 +2359,7 @@ async fn project_get_propagates_owner_lookup_error() {
     let (base_ctx, user) = ctx_with_demo_data().await;
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         ..(*base_ctx.repos).clone()
     });
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
@@ -2373,6 +2378,7 @@ async fn vote_create_propagates_user_lookup_error_without_writing() {
     let issue_id = create_demo_issue(&base_ctx, &owner, "vote user lookup failure").await;
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         ..(*base_ctx.repos).clone()
     });
     let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
@@ -2845,6 +2851,7 @@ async fn comment_create_propagates_author_lookup_error_without_writing() {
     let comments = Arc::new(MemoryCommentRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         comments: comments.clone(),
         ..(*base_ctx.repos).clone()
     });
@@ -2918,6 +2925,7 @@ async fn comment_list_propagates_author_directory_error() {
         .unwrap();
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         comments: comments.clone(),
         ..(*base_ctx.repos).clone()
     });
@@ -5257,6 +5265,7 @@ async fn worklog_create_propagates_author_lookup_error_without_writing() {
     let worklogs = Arc::new(MemoryWorklogRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         worklogs: worklogs.clone(),
         ..(*base_ctx.repos).clone()
     });
@@ -5335,6 +5344,7 @@ async fn worklog_list_propagates_author_directory_error() {
         .unwrap();
     let repos = Arc::new(domain::Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         worklogs: worklogs.clone(),
         ..(*base_ctx.repos).clone()
     });
@@ -7161,6 +7171,7 @@ async fn ctx_with_real_members() -> (AppContext, User, User, ProjectId) {
     let notifications = Arc::new(MemoryNotificationRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: projects.clone(),

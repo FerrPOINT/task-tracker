@@ -9,7 +9,10 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 - Passwords hashed with **argon2id**.
 - JWT access token (15 min) + httpOnly refresh cookie (7 days, rotation).
 - Failed login lockout после 5 попыток на 15 минут.
-- MFA/TOTP — не реализовано (future).
+- MFA/TOTP — реализовано: RFC 6238 (SHA-1, 6 digits, 30-second step, +/-1 window),
+  replay protection, AES-256-GCM encryption of enrollment secrets and 8 one-time
+  recovery codes. Enrollment requires the authenticated `/auth/totp/setup` then
+  `/enable` flow; users with MFA enabled must include `totp_code` in `/auth/login`.
 - OAuth/OpenID/LDAP — не реализовано (future).
 
 ## 3. Authorization

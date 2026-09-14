@@ -16,4 +16,5 @@ pub use super::project_member::Entity as ProjectMember;
 pub use super::project_version::Entity as ProjectVersion;
 pub use super::sprint::Entity as Sprint;
 pub use super::system_setting::Entity as SystemSetting;
+pub use super::totp::Entity as Totp;
 pub use super::user::Entity as User;

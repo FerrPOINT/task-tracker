@@ -26,6 +26,10 @@ jsonwebtoken.workspace = true
 rand_core.workspace = true
 sha2 = "0.10"
 hex = "0.4"
+hmac = "0.12"
+sha1 = "0.10"
+data-encoding = "2"
+aes-gcm = "0.10"
 
 [dev-dependencies]
 proptest.workspace = true

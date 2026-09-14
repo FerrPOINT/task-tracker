@@ -13,6 +13,7 @@ fn test_config() -> Arc<shared::AppConfig> {
         server: shared::ServerConfig::default(),
         auth: shared::AuthConfig {
             jwt_secret: "test-secret".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -35,6 +36,7 @@ async fn ctx_with_user() -> Arc<app::context::AppContext> {
     let sprints = Arc::new(domain::MemorySprintRepository::default());
     let repos = Arc::new(domain::Repositories {
         users: users.clone(),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: projects.clone(),

@@ -12,6 +12,18 @@ pub use crate::value_objects::{ArcStr, RichText};
 #[cfg(test)]
 mod tests;
 
+/// TOTP MFA enrollment state (docs/SECURITY.md). `secret_cipher` is
+/// AES-256-GCM ciphertext (base32); recovery codes are SHA-256 hashes.
+#[derive(Debug, Clone)]
+pub struct TotpConfig {
+    pub user_id: UserId,
+    pub secret_cipher: ArcStr,
+    pub enabled: bool,
+    pub confirmed_at: Option<Timestamp>,
+    pub last_used_step: i64,
+    pub recovery_codes: ArcStr,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: UserId,

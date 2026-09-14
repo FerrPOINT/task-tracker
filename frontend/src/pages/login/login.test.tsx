@@ -39,6 +39,27 @@ describe('LoginPage', () => {
     vi.restoreAllMocks()
   })
 
+  it('shows a second-factor field when the server answers totp_required', async () => {
+    login.mockResolvedValueOnce({
+      access_token: '',
+      totp_required: true,
+      user_id: 'u1',
+      email: 'demo@example.com',
+    })
+
+    render(wrapper(<LoginPage />))
+    const email = screen.getByLabelText(/email/i) as HTMLInputElement
+    await userEvent.type(email, 'demo@example.com')
+    const password = screen.getByLabelText('Пароль') as HTMLInputElement
+    await userEvent.type(password, 'demo')
+
+    await userEvent.click(screen.getByRole('button', { name: /войти|Log in/i }))
+
+    const code = await screen.findByLabelText(/код|code/i)
+    expect(code).toBeInTheDocument()
+    expect(screen.queryByLabelText(/код|code/i)).toBeInTheDocument()
+  })
+
   it('renders login form and submits', async () => {
     login.mockResolvedValueOnce({
       access_token: 'tok',

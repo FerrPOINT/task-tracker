@@ -86,6 +86,9 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::auth::register,
         routes::auth::login,
         routes::auth::refresh_openapi,
+        routes::auth::totp_setup,
+        routes::auth::totp_enable,
+        routes::auth::totp_disable,
         routes::auth::logout_openapi,
         routes::projects::list_projects,
         routes::projects::create_project,
@@ -373,6 +376,9 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let auth = from_fn_with_state(ctx.clone(), middleware::auth::bearer_auth);
 
     let protected = Router::new()
+        .route("/auth/totp/setup", post(routes::auth::totp_setup))
+        .route("/auth/totp/enable", post(routes::auth::totp_enable))
+        .route("/auth/totp/disable", post(routes::auth::totp_disable))
         .route(
             "/projects",
             get(routes::projects::list_projects).post(routes::projects::create_project),

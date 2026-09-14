@@ -320,6 +320,7 @@ mod tests {
         use crate::context::AuthService as _;
         let cfg = shared::AuthConfig {
             jwt_secret: "test-secret".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -384,6 +385,7 @@ mod tests {
     fn create_token_ok() {
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -414,6 +416,7 @@ mod tests {
     fn verify_token_rejects_garbage() {
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -439,6 +442,7 @@ mod tests {
 
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -468,6 +472,7 @@ mod tests {
 
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -491,6 +496,7 @@ mod tests {
         let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -609,6 +615,7 @@ mod tests {
     fn test_auth_config() -> AuthConfig {
         AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+            totp_key: String::new(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),

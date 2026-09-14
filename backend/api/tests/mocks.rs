@@ -200,6 +200,7 @@ pub fn failing_context_with_config(config: Arc<shared::AppConfig>) -> Arc<app::A
 
     let repos = Arc::new(Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: Arc::new(FailingProjectRepository),
@@ -236,6 +237,7 @@ pub fn failing_context() -> Arc<app::AppContext> {
 
     let repos = Arc::new(Repositories {
         users: Arc::new(FailingUserRepository),
+        totp: std::sync::Arc::new(domain::stubs::memory::MemoryTotpRepository::default()),
         audit_logs: Arc::new(domain::StubAuditLogRepository),
         system_settings: Arc::new(domain::StubSystemSettingRepository),
         projects: Arc::new(FailingProjectRepository),
@@ -266,6 +268,7 @@ pub fn failing_context() -> Arc<app::AppContext> {
             server: shared::ServerConfig::default(),
             auth: shared::AuthConfig {
                 jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
+                totp_key: String::new(),
                 access_token_ttl_minutes: 15,
                 refresh_token_ttl_days: 7,
                 refresh_cookie_name: "refresh_token".to_string(),
