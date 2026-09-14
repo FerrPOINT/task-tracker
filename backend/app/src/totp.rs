@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 pub const TOTP_STEP_SECONDS: u64 = 30;
 pub const TOTP_DIGITS: usize = 6;
-const TOTP_ALLOW_STEPS: i64 = 1;
 
 type HmacSha1 = Hmac<sha1::Sha1>;
 
@@ -148,7 +147,7 @@ impl TotpService {
     /// secret is returned exactly once.
     pub async fn setup(&self, user_id: shared::UserId) -> Result<TotpSetupDto, AppError> {
         let user = self.repos.users.get_by_id(user_id).await?;
-        let (secret, uri) = self.setup_secret(&user.email.to_string());
+        let (secret, uri) = self.setup_secret(user.email.as_ref());
         let cipher = self.encrypt_secret(&secret)?;
         self.repos.totp.upsert_unconfirmed(user_id, &cipher).await?;
         Ok(TotpSetupDto {
