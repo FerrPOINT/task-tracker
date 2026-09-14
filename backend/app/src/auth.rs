@@ -222,6 +222,10 @@ impl crate::context::AuthService for JwtAuthService {
         self.password_resets
             .upsert(user.id, &hash, expires_at)
             .await?;
+        let reset_url = format!(
+            "{base}/reset-password?token={token}",
+            base = self.config.reset_base_url
+        );
         self.email
             .send(&domain::EmailNotification {
                 recipient_address: email.clone(),
@@ -229,12 +233,9 @@ impl crate::context::AuthService for JwtAuthService {
                 subject: "TaskTracker: password reset".to_string(),
                 body: format!(
                     "Use the link below to reset your password. The link is valid for 30 minutes and can be used once.\n\n{reset_url}\n\nIf you did not request a reset, ignore this email.",
-                    reset_url = format!(
-                        "{base}/reset-password?token={token}",
-                        base = self.config.reset_base_url
-                    ),
+                    reset_url = reset_url
                 ),
-                action_url: Some(format!("{base}/reset-password?token={token}", base = self.config.reset_base_url)),
+                action_url: Some(reset_url),
             })
             .await?;
         Ok(())
