@@ -3079,7 +3079,7 @@ impl domain::PasswordResetRepository for PasswordResetRepo {
     }
 
     async fn mark_used(&self, token_hash: &str) -> Result<(), AppError> {
-        use crate::entities::password_reset_token::{ActiveModel, Column, Entity};
+        use crate::entities::password_reset_token::{Column, Entity};
         use sea_orm::*;
         let now = chrono::Utc::now().fixed_offset();
         let res = Entity::update_many()

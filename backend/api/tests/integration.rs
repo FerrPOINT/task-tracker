@@ -6758,18 +6758,19 @@ async fn password_reset_full_flow() {
         .await
         .unwrap();
     assert_eq!(res.status(), 202);
-    let sent = emails.sent.lock().unwrap();
-    assert_eq!(sent.len(), 1);
-    let action_url = sent[0]
-        .action_url
-        .clone()
-        .expect("action_url in reset email");
-    let token = action_url
-        .split("token=")
-        .nth(1)
-        .expect("token in link")
-        .to_string();
-    drop(sent);
+    let token = {
+        let sent = emails.sent.lock().unwrap();
+        assert_eq!(sent.len(), 1);
+        let action_url = sent[0]
+            .action_url
+            .clone()
+            .expect("action_url in reset email");
+        action_url
+            .split("token=")
+            .nth(1)
+            .expect("token in link")
+            .to_string()
+    };
 
     // Only the hash is stored, never the raw token.
     {
