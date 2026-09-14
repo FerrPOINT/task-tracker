@@ -136,17 +136,17 @@ impl OidcService {
             .map_err(|_| AppError::Unauthorized)?;
         let id_token = token_response["id_token"]
             .as_str()
-            .ok_or_else(|| AppError::Unauthorized)?;
+            .ok_or(AppError::Unauthorized)?;
         let claims = IdTokenClaims::decode_unverified(id_token)?;
         if claims.nonce.as_deref() != Some(auth_state.nonce.as_str()) {
             return Err(AppError::Unauthorized);
         }
-        let subject = claims.subject.ok_or_else(|| AppError::Unauthorized)?;
+        let subject = claims.subject.ok_or(AppError::Unauthorized)?;
         let provider = provider_key(&self.config.auth.oidc_issuer_url);
         let user = match self.repo.find_identity(&provider, &subject).await {
             Ok(identity) => self.users.get_by_id(identity.user_id).await?,
             Err(AppError::NotFound(_)) => {
-                let email = claims.email.clone().ok_or_else(|| AppError::Unauthorized)?;
+                let email = claims.email.clone().ok_or(AppError::Unauthorized)?;
                 let user = match self.users.get_by_email(&email).await {
                     Ok(existing) => existing,
                     Err(AppError::NotFound(_)) => {
@@ -228,11 +228,8 @@ pub struct IdTokenClaims {
 
 impl IdTokenClaims {
     fn decode_unverified(token: &str) -> Result<Self, AppError> {
-        let payload = token
-            .split('.')
-            .nth(1)
-            .ok_or_else(|| AppError::Unauthorized)?;
-        let bytes = base64_decode_url(payload).ok_or_else(|| AppError::Unauthorized)?;
+        let payload = token.split('.').nth(1).ok_or(AppError::Unauthorized)?;
+        let bytes = base64_decode_url(payload).ok_or(AppError::Unauthorized)?;
         serde_json::from_slice(&bytes).map_err(|_| AppError::Unauthorized)
     }
 }
