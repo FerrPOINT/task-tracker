@@ -7,9 +7,9 @@ mod tests;
 
 use crate::{
     AuditLog, Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity,
-    IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, PasswordResetToken,
-    Project, ProjectComponent, ProjectMember, ProjectVersion, Sprint, Status, SystemSetting,
-    OidcAuthState, OidcIdentity, TotpConfig, User, WorkflowTransition, Worklog,
+    IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, OidcAuthState,
+    OidcIdentity, PasswordResetToken, Project, ProjectComponent, ProjectMember, ProjectVersion,
+    Sprint, Status, SystemSetting, TotpConfig, User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
@@ -76,11 +76,7 @@ pub trait PasswordResetRepository: Send + Sync {
 /// OIDC identities and single-use authorization states (SYSTEM_ADMIN 4.2).
 #[async_trait]
 pub trait OidcRepository: Send + Sync {
-    async fn find_identity(
-        &self,
-        provider: &str,
-        subject: &str,
-    ) -> Result<OidcIdentity, AppError>;
+    async fn find_identity(&self, provider: &str, subject: &str) -> Result<OidcIdentity, AppError>;
     async fn link_identity(&self, identity: &OidcIdentity) -> Result<OidcIdentity, AppError>;
     async fn put_state(&self, state: &OidcAuthState) -> Result<(), AppError>;
     /// Consume (delete) the state row; NotFound when unknown or already used.

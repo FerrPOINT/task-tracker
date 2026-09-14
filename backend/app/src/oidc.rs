@@ -17,8 +17,8 @@ use sha2::{Digest, Sha256};
 use crate::context::AuthService;
 use crate::dto::AuthDto;
 use domain::{OidcAuthState, OidcIdentity, OidcRepository, User, UserRepository};
-use shared::{AppError, UserId};
 use shared::config::AppConfig;
+use shared::{AppError, UserId};
 
 const STATE_TTL_SECONDS: i64 = 600;
 
@@ -141,30 +141,18 @@ impl OidcService {
         if claims.nonce.as_deref() != Some(auth_state.nonce.as_str()) {
             return Err(AppError::Unauthorized);
         }
-        let subject = claims
-            .subject
-            .ok_or_else(|| AppError::Unauthorized)?;
+        let subject = claims.subject.ok_or_else(|| AppError::Unauthorized)?;
         let provider = provider_key(&self.config.auth.oidc_issuer_url);
         let user = match self.repo.find_identity(&provider, &subject).await {
             Ok(identity) => self.users.get_by_id(identity.user_id).await?,
             Err(AppError::NotFound(_)) => {
-                let email = claims
-                    .email
-                    .clone()
-                    .ok_or_else(|| AppError::Unauthorized)?;
+                let email = claims.email.clone().ok_or_else(|| AppError::Unauthorized)?;
                 let user = match self.users.get_by_email(&email).await {
                     Ok(existing) => existing,
                     Err(AppError::NotFound(_)) => {
                         // JIT provisioning: unusable local password marker.
-                        let username = email
-                            .split('@')
-                            .next()
-                            .unwrap_or("oidc-user")
-                            .to_string();
-                        let display_name = claims
-                            .name
-                            .clone()
-                            .unwrap_or_else(|| username.clone());
+                        let username = email.split('@').next().unwrap_or("oidc-user").to_string();
+                        let display_name = claims.name.clone().unwrap_or_else(|| username.clone());
                         User {
                             id: UserId::new(),
                             email: email.clone().into(),
@@ -244,10 +232,8 @@ impl IdTokenClaims {
             .split('.')
             .nth(1)
             .ok_or_else(|| AppError::Unauthorized)?;
-        let bytes = base64_decode_url(payload)
-            .ok_or_else(|| AppError::Unauthorized)?;
-        serde_json::from_slice(&bytes)
-            .map_err(|_| AppError::Unauthorized)
+        let bytes = base64_decode_url(payload).ok_or_else(|| AppError::Unauthorized)?;
+        serde_json::from_slice(&bytes).map_err(|_| AppError::Unauthorized)
     }
 }
 

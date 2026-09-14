@@ -2,19 +2,20 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use domain::{OidcAuthState, OidcIdentity, OidcRepository,
+use domain::{
     Attachment, AttachmentRepository, AuditLog, AuditLogRepository, Board, BoardColumn,
     BoardRepository, Comment, CommentRepository, CustomField, CustomFieldRepository,
     CustomFieldType, CustomFieldValue, Issue, IssueLink, IssueLinkRepository, IssueQuery,
     IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository, IssueTypeEntity,
     IssueTypeRepository, IssueVote, IssueWatcher, Label, LabelRepository, LinkType, Notification,
-    NotificationRepository, NotificationUserSettings, PasswordResetRepository, Project,
-    ProjectComponent, ProjectComponentRepository, ProjectMember, ProjectMemberRepository,
-    ProjectRepository, ProjectRole, ProjectVersion, ProjectVersionRepository, Sprint,
-    SprintRepository, SprintState, Status, StatusCategory, StatusRepository, SystemSetting,
-    SystemSettingRepository, TotpConfig, TotpRepository, User, UserNotificationSettingsRepository,
-    UserRepository, VoteRepository, WatcherRepository, WorkflowTransition, WorkflowTransitionId,
-    WorkflowTransitionRepository, Worklog, WorklogRepository,
+    NotificationRepository, NotificationUserSettings, OidcAuthState, OidcIdentity, OidcRepository,
+    PasswordResetRepository, Project, ProjectComponent, ProjectComponentRepository, ProjectMember,
+    ProjectMemberRepository, ProjectRepository, ProjectRole, ProjectVersion,
+    ProjectVersionRepository, Sprint, SprintRepository, SprintState, Status, StatusCategory,
+    StatusRepository, SystemSetting, SystemSettingRepository, TotpConfig, TotpRepository, User,
+    UserNotificationSettingsRepository, UserRepository, VoteRepository, WatcherRepository,
+    WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository, Worklog,
+    WorklogRepository,
 };
 use sea_orm::sea_query::extension::postgres::PgExpr as _;
 use sea_orm::{
@@ -3099,8 +3100,6 @@ impl domain::PasswordResetRepository for PasswordResetRepo {
     }
 }
 
-
-
 pub struct OidcRepo {
     db: Arc<DatabaseConnection>,
 }
@@ -3136,7 +3135,10 @@ impl OidcRepository for OidcRepo {
         Ok(oidc_identity_from_row(row))
     }
 
-    async fn link_identity(&self, identity: &domain::OidcIdentity) -> Result<domain::OidcIdentity, AppError> {
+    async fn link_identity(
+        &self,
+        identity: &domain::OidcIdentity,
+    ) -> Result<domain::OidcIdentity, AppError> {
         use crate::entities::oidc_identity::{ActiveModel, Column, Entity};
         use sea_orm::*;
         // Replace any previous link for (provider, subject).
@@ -3146,8 +3148,8 @@ impl OidcRepository for OidcRepo {
             .exec(&*self.db)
             .await
             .map_err(|e| AppError::internal(e.to_string()))?;
-        let uuid = uuid::Uuid::parse_str(&identity.id)
-            .map_err(|e| AppError::internal(e.to_string()))?;
+        let uuid =
+            uuid::Uuid::parse_str(&identity.id).map_err(|e| AppError::internal(e.to_string()))?;
         let row = ActiveModel {
             id: Set(uuid),
             user_id: Set(identity.user_id.as_uuid()),

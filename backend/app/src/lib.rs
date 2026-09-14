@@ -3,9 +3,9 @@ pub mod authz;
 pub mod commands;
 pub mod context;
 pub mod dto;
+pub mod oidc;
 pub mod services;
 pub mod totp;
-pub mod oidc;
 
 pub use auth::*;
 pub use commands::*;

@@ -384,7 +384,6 @@ pub async fn password_reset_confirm(
     Ok(StatusCode::NO_CONTENT)
 }
 
-
 #[utoipa::path(
     get,
     path = "/api/v1/auth/oidc/begin",

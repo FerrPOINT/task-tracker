@@ -18,7 +18,12 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(OidcIdentity::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(OidcIdentity::Id).uuid().not_null().primary_key())
+                    .col(
+                        ColumnDef::new(OidcIdentity::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
+                    )
                     .col(ColumnDef::new(OidcIdentity::UserId).uuid().not_null())
                     .col(
                         ColumnDef::new(OidcIdentity::Provider)
@@ -69,22 +74,19 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(OidcState::Table)
                     .if_not_exists()
-                    .col(ColumnDef::new(OidcState::Id).uuid().not_null().primary_key())
                     .col(
-                        ColumnDef::new(OidcState::State)
-                            .string_len(128)
-                            .not_null(),
+                        ColumnDef::new(OidcState::Id)
+                            .uuid()
+                            .not_null()
+                            .primary_key(),
                     )
+                    .col(ColumnDef::new(OidcState::State).string_len(128).not_null())
                     .col(
                         ColumnDef::new(OidcState::CodeVerifier)
                             .string_len(128)
                             .not_null(),
                     )
-                    .col(
-                        ColumnDef::new(OidcState::Nonce)
-                            .string_len(128)
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(OidcState::Nonce).string_len(128).not_null())
                     .col(
                         ColumnDef::new(OidcState::ExpiresAt)
                             .timestamp_with_time_zone()
