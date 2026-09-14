@@ -60,13 +60,13 @@ pub async fn login(
         })
         .await?;
     let totp_user_id: shared::UserId = probe.user.id.parse().map_err(|_| AppError::Unauthorized)?;
-    if ctx.services.totp.is_enabled(totp_user_id.clone()).await? {
+    if ctx.services.totp.is_enabled(totp_user_id).await? {
         let code = body.totp_code.as_deref().unwrap_or("");
         if code.is_empty()
             || !ctx
                 .services
                 .totp
-                .login_verify(totp_user_id.clone(), code)
+                .login_verify(totp_user_id, code)
                 .await?
         {
             return Ok((
