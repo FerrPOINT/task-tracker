@@ -229,7 +229,10 @@ impl crate::context::AuthService for JwtAuthService {
                 subject: "TaskTracker: password reset".to_string(),
                 body: format!(
                     "Use the link below to reset your password. The link is valid for 30 minutes and can be used once.\n\n{reset_url}\n\nIf you did not request a reset, ignore this email.",
-                    reset_url = format!("{base}/reset-password?token={token}", base = self.config.reset_base_url),
+                    reset_url = format!(
+                        "{base}/reset-password?token={token}",
+                        base = self.config.reset_base_url
+                    ),
                 ),
                 action_url: Some(format!("{base}/reset-password?token={token}", base = self.config.reset_base_url)),
             })
