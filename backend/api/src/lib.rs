@@ -89,6 +89,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::auth::totp_setup,
         routes::auth::totp_enable,
         routes::auth::totp_disable,
+        routes::auth::password_reset_request,
+        routes::auth::password_reset_confirm,
         routes::auth::logout_openapi,
         routes::projects::list_projects,
         routes::projects::create_project,
@@ -368,6 +370,14 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let auth_routes = Router::new()
         .route("/auth/register", post(routes::auth::register))
         .route("/auth/login", post(routes::auth::login))
+        .route(
+            "/auth/password/request",
+            post(routes::auth::password_reset_request),
+        )
+        .route(
+            "/auth/password/reset",
+            post(routes::auth::password_reset_confirm),
+        )
         // Refresh must stay public: it exists precisely for the moment the
         // access token has expired, so it cannot require a valid bearer.
         .route("/auth/refresh", post(routes::auth::refresh))

@@ -13,6 +13,7 @@ fn main() {
         auth: AuthConfig {
             jwt_secret: "gen-openapi".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),

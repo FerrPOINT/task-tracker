@@ -426,6 +426,71 @@
         ]
       }
     },
+    "/api/v1/auth/password/request": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "password_reset_request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Reset email sent when the account exists; indistinguishable for unknown emails"
+          },
+          "400": {
+            "description": "Invalid email"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "password_reset_confirm",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetConfirm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Password changed; refresh sessions revoked"
+          },
+          "400": {
+            "description": "Weak password"
+          },
+          "404": {
+            "description": "Unknown, expired or already used token"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/auth/refresh": {
       "post": {
         "tags": [
@@ -5742,6 +5807,32 @@
           },
           "notify_own_changes": {
             "type": "boolean"
+          }
+        }
+      },
+      "PasswordResetConfirm": {
+        "type": "object",
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "properties": {
+          "new_password": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        }
+      },
+      "PasswordResetRequest": {
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
           }
         }
       },

@@ -23,6 +23,11 @@ pub trait AuthService: Send + Sync {
     fn verify_token(&self, token: &str) -> Result<UserClaims, AppError>;
     async fn refresh(&self, refresh_token: &str) -> Result<AuthDto, AppError>;
     async fn logout(&self, user_id: UserId) -> Result<(), AppError>;
+    /// Issue a single-use reset token for the account and send the email.
+    /// Always succeeds for unknown emails (no account enumeration).
+    async fn request_password_reset(&self, email: &str) -> Result<(), AppError>;
+    /// Consume the token and set the new password.
+    async fn reset_password(&self, token: &str, new_password: &str) -> Result<(), AppError>;
     async fn me(&self, user_id: UserId) -> Result<crate::dto::UserDto, AppError>;
     async fn list_active_users(&self) -> Result<Vec<crate::dto::UserDto>, AppError>;
 }

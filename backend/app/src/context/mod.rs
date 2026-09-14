@@ -109,6 +109,8 @@ impl AppContext {
             config.auth.clone(),
             repos.users.clone(),
             repos.system_settings.clone(),
+            repos.password_resets.clone(),
+            email.clone(),
         ));
         let totp: Arc<dyn TotpService> = Arc::new(crate::totp::TotpService::new(
             repos.clone(),

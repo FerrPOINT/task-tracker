@@ -7,15 +7,15 @@ mod tests;
 
 use crate::{
     AuditLog, Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity,
-    IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, Project,
-    ProjectComponent, ProjectMember, ProjectVersion, Sprint, Status, SystemSetting, TotpConfig,
-    User, WorkflowTransition, Worklog,
+    IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, PasswordResetToken,
+    Project, ProjectComponent, ProjectMember, ProjectVersion, Sprint, Status, SystemSetting,
+    TotpConfig, User, WorkflowTransition, Worklog,
 };
 use shared::IssueTypeId;
 use shared::{
     AppError, AttachmentId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey, IssueLinkId,
     LabelId, ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId,
-    UserId, WorklogId,
+    Timestamp, UserId, WorklogId,
 };
 
 #[async_trait]
@@ -56,6 +56,21 @@ pub trait TotpRepository: Send + Sync {
     async fn mark_used_step(&self, user_id: UserId, step: i64) -> Result<(), AppError>;
     async fn update_recovery_codes(&self, user_id: UserId, json: &str) -> Result<(), AppError>;
     async fn disable(&self, user_id: UserId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait PasswordResetRepository: Send + Sync {
+    /// Replace any previous token for the user with a fresh one.
+    async fn upsert(
+        &self,
+        user_id: UserId,
+        token_hash: &str,
+        expires_at: Timestamp,
+    ) -> Result<(), AppError>;
+    /// Active (unused, unexpired) token by hash, or NotFound.
+    async fn find_active(&self, token_hash: &str) -> Result<PasswordResetToken, AppError>;
+    /// Mark the token consumed; returns NotFound when already used/expired.
+    async fn mark_used(&self, token_hash: &str) -> Result<(), AppError>;
 }
 
 #[async_trait]
@@ -381,6 +396,7 @@ pub trait EventBus: Send + Sync {
 pub struct Repositories {
     pub users: Arc<dyn UserRepository>,
     pub totp: Arc<dyn TotpRepository>,
+    pub password_resets: Arc<dyn PasswordResetRepository>,
     pub audit_logs: Arc<dyn AuditLogRepository>,
     pub system_settings: Arc<dyn SystemSettingRepository>,
     pub projects: Arc<dyn ProjectRepository>,
@@ -411,6 +427,7 @@ impl Default for Repositories {
         Self {
             users: Arc::new(StubUserRepository),
             totp: Arc::new(StubTotpRepository),
+            password_resets: Arc::new(StubPasswordResetRepository),
             audit_logs: Arc::new(StubAuditLogRepository),
             system_settings: Arc::new(StubSystemSettingRepository),
             projects: Arc::new(StubProjectRepository),
@@ -631,6 +648,25 @@ impl TotpRepository for StubTotpRepository {
         Ok(())
     }
     async fn disable(&self, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubPasswordResetRepository;
+#[async_trait]
+impl PasswordResetRepository for StubPasswordResetRepository {
+    async fn upsert(
+        &self,
+        _user_id: UserId,
+        _token_hash: &str,
+        _expires_at: Timestamp,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn find_active(&self, _token_hash: &str) -> Result<PasswordResetToken, AppError> {
+        Err(AppError::not_found("password_reset", "stub"))
+    }
+    async fn mark_used(&self, _token_hash: &str) -> Result<(), AppError> {
         Ok(())
     }
 }

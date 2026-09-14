@@ -326,3 +326,60 @@ pub struct TotpSetupResponse {
 pub struct TotpEnabledResponse {
     pub recovery_codes: Vec<String>,
 }
+
+// --- Password reset (docs/SYSTEM_ADMIN.md §1.2) ---
+
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct PasswordResetRequest {
+    pub email: String,
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct PasswordResetConfirm {
+    pub token: String,
+    pub new_password: String,
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/password/request",
+    tag = "auth",
+    request_body = PasswordResetRequest,
+    responses(
+        (status = 202, description = "Reset email sent when the account exists; indistinguishable for unknown emails"),
+        (status = 400, description = "Invalid email"),
+    )
+)]
+pub async fn password_reset_request(
+    State(ctx): State<Arc<app::AppContext>>,
+    Json(body): Json<PasswordResetRequest>,
+) -> Result<StatusCode, AppError> {
+    let email = body.email.trim().to_lowercase();
+    if !email.contains('@') || email.len() < 5 {
+        return Err(AppError::invalid_input("invalid email"));
+    }
+    ctx.services.auth.request_password_reset(&email).await?;
+    Ok(StatusCode::ACCEPTED)
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/password/reset",
+    tag = "auth",
+    request_body = PasswordResetConfirm,
+    responses(
+        (status = 204, description = "Password changed; refresh sessions revoked"),
+        (status = 400, description = "Weak password"),
+        (status = 404, description = "Unknown, expired or already used token"),
+    )
+)]
+pub async fn password_reset_confirm(
+    State(ctx): State<Arc<app::AppContext>>,
+    Json(body): Json<PasswordResetConfirm>,
+) -> Result<StatusCode, AppError> {
+    ctx.services
+        .auth
+        .reset_password(&body.token, &body.new_password)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}

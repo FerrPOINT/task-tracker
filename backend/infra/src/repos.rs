@@ -8,13 +8,13 @@ use domain::{
     CustomFieldType, CustomFieldValue, Issue, IssueLink, IssueLinkRepository, IssueQuery,
     IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository, IssueTypeEntity,
     IssueTypeRepository, IssueVote, IssueWatcher, Label, LabelRepository, LinkType, Notification,
-    NotificationRepository, NotificationUserSettings, Project, ProjectComponent,
-    ProjectComponentRepository, ProjectMember, ProjectMemberRepository, ProjectRepository,
-    ProjectRole, ProjectVersion, ProjectVersionRepository, Sprint, SprintRepository, SprintState,
-    Status, StatusCategory, StatusRepository, SystemSetting, SystemSettingRepository, TotpConfig,
-    TotpRepository, User, UserNotificationSettingsRepository, UserRepository, VoteRepository,
-    WatcherRepository, WorkflowTransition, WorkflowTransitionId, WorkflowTransitionRepository,
-    Worklog, WorklogRepository,
+    NotificationRepository, NotificationUserSettings, PasswordResetRepository, Project,
+    ProjectComponent, ProjectComponentRepository, ProjectMember, ProjectMemberRepository,
+    ProjectRepository, ProjectRole, ProjectVersion, ProjectVersionRepository, Sprint,
+    SprintRepository, SprintState, Status, StatusCategory, StatusRepository, SystemSetting,
+    SystemSettingRepository, TotpConfig, TotpRepository, User, UserNotificationSettingsRepository,
+    UserRepository, VoteRepository, WatcherRepository, WorkflowTransition, WorkflowTransitionId,
+    WorkflowTransitionRepository, Worklog, WorklogRepository,
 };
 use sea_orm::sea_query::extension::postgres::PgExpr as _;
 use sea_orm::{
@@ -132,6 +132,7 @@ fn custom_field_value_active_model(
 pub struct SeaOrmRepositories {
     pub users: Arc<dyn UserRepository>,
     pub totp: Arc<dyn TotpRepository>,
+    pub password_resets: Arc<dyn PasswordResetRepository>,
     pub audit_logs: Arc<dyn AuditLogRepository>,
     pub system_settings: Arc<dyn SystemSettingRepository>,
     pub projects: Arc<dyn ProjectRepository>,
@@ -163,6 +164,7 @@ impl SeaOrmRepositories {
         Self {
             users: Arc::new(UserRepo { db: db.clone() }),
             totp: Arc::new(TotpRepo { db: db.clone() }),
+            password_resets: Arc::new(PasswordResetRepo { db: db.clone() }),
             audit_logs: Arc::new(AuditLogRepo { db: db.clone() }),
             system_settings: Arc::new(SystemSettingRepo { db: db.clone() }),
             projects: Arc::new(ProjectRepo { db: db.clone() }),
@@ -1304,6 +1306,7 @@ pub fn to_domain_repositories(sea: SeaOrmRepositories) -> domain::Repositories {
     domain::Repositories {
         users: sea.users,
         totp: sea.totp,
+        password_resets: sea.password_resets,
         audit_logs: sea.audit_logs,
         system_settings: sea.system_settings,
         projects: sea.projects,
@@ -3011,6 +3014,84 @@ impl TotpRepository for TotpRepo {
             .exec(&*self.db)
             .await
             .map_err(|e| AppError::internal(e.to_string()))?;
+        Ok(())
+    }
+}
+
+pub struct PasswordResetRepo {
+    db: Arc<DatabaseConnection>,
+}
+
+impl PasswordResetRepo {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db: Arc::new(db) }
+    }
+}
+
+#[async_trait::async_trait]
+impl domain::PasswordResetRepository for PasswordResetRepo {
+    async fn upsert(
+        &self,
+        user_id: domain::UserId,
+        token_hash: &str,
+        expires_at: shared::Timestamp,
+    ) -> Result<(), AppError> {
+        use crate::entities::password_reset_token::{ActiveModel, Column, Entity};
+        use sea_orm::*;
+        let uid = user_id.as_uuid();
+        // Single active token per user: replace the previous row.
+        Entity::delete_many()
+            .filter(Column::UserId.eq(uid))
+            .exec(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(e.to_string()))?;
+        let now = chrono::Utc::now().fixed_offset();
+        ActiveModel {
+            token_hash: Set(token_hash.to_string()),
+            user_id: Set(uid),
+            expires_at: Set(expires_at),
+            used_at: Set(None),
+            created_at: Set(now),
+        }
+        .insert(&*self.db)
+        .await
+        .map_err(|e| AppError::internal(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn find_active(&self, token_hash: &str) -> Result<domain::PasswordResetToken, AppError> {
+        use crate::entities::password_reset_token::Entity;
+        use sea_orm::*;
+        let row = Entity::find_by_id(token_hash.to_string())
+            .one(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(e.to_string()))?
+            .ok_or_else(|| AppError::not_found("password_reset", "token"))?;
+        if row.used_at.is_some() || row.expires_at < chrono::Utc::now().fixed_offset() {
+            return Err(AppError::not_found("password_reset", "expired or used"));
+        }
+        Ok(domain::PasswordResetToken {
+            user_id: UserId::from_uuid(row.user_id),
+            token_hash: row.token_hash.into(),
+            expires_at: row.expires_at,
+            used_at: row.used_at,
+        })
+    }
+
+    async fn mark_used(&self, token_hash: &str) -> Result<(), AppError> {
+        use crate::entities::password_reset_token::{ActiveModel, Column, Entity};
+        use sea_orm::*;
+        let now = chrono::Utc::now().fixed_offset();
+        let res = Entity::update_many()
+            .col_expr(Column::UsedAt, Expr::value(now))
+            .filter(Column::TokenHash.eq(token_hash))
+            .filter(Column::UsedAt.is_null())
+            .exec(&*self.db)
+            .await
+            .map_err(|e| AppError::internal(e.to_string()))?;
+        if res.rows_affected == 0 {
+            return Err(AppError::not_found("password_reset", "already used"));
+        }
         Ok(())
     }
 }

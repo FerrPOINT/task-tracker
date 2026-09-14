@@ -10,6 +10,7 @@ pub use super::issue_link::Entity as IssueLinkEntity;
 pub use super::label::Entity as Label;
 pub use super::notification::Entity as Notification;
 pub use super::notification_user_settings::Entity as NotificationUserSettings;
+pub use super::password_reset_token::Entity as PasswordResetToken;
 pub use super::project::Entity as Project;
 pub use super::project_component::Entity as ProjectComponent;
 pub use super::project_member::Entity as ProjectMember;

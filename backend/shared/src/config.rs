@@ -120,6 +120,9 @@ pub struct AuthConfig {
     /// the JWT secret when unset (docs/SECURITY.md MFA).
     #[serde(default)]
     pub totp_key: String,
+    /// Public frontend origin used to build password-reset links.
+    #[serde(default)]
+    pub reset_base_url: String,
     pub access_token_ttl_minutes: u64,
     pub refresh_token_ttl_days: u64,
     pub refresh_cookie_name: String,
@@ -207,6 +210,9 @@ impl AppConfig {
         }
         if cfg.auth.totp_key.trim().is_empty() {
             cfg.auth.totp_key = cfg.auth.jwt_secret.clone();
+        }
+        if let Ok(base) = env::var("TASKTRACKER_RESET_BASE_URL") {
+            cfg.auth.reset_base_url = base;
         }
 
         if cfg.auth.jwt_secret == "[CHANGE_ME]" {
@@ -306,6 +312,7 @@ impl Default for AuthConfig {
         Self {
             jwt_secret: "[CHANGE_ME]".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),

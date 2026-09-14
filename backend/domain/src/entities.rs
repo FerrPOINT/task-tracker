@@ -24,6 +24,17 @@ pub struct TotpConfig {
     pub recovery_codes: ArcStr,
 }
 
+/// Single-use password reset token (docs/SYSTEM_ADMIN.md §1.2).
+/// `token_hash` is SHA-256 of the raw token; the raw value only ever
+/// travels inside the reset email.
+#[derive(Debug, Clone)]
+pub struct PasswordResetToken {
+    pub user_id: UserId,
+    pub token_hash: ArcStr,
+    pub expires_at: Timestamp,
+    pub used_at: Option<Timestamp>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: UserId,

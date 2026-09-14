@@ -9,15 +9,16 @@ use crate::{
     AuditLog, AuditLogRepository, Board, BoardRepository, Comment, CommentRepository, EventBus,
     Issue, IssueQuery, IssueRepository, IssueStatusHistory, IssueStatusHistoryRepository,
     IssueVote, IssueWatcher, Notification, NotificationRepository, NotificationUserSettings,
-    Project, ProjectComponent, ProjectComponentRepository, ProjectMember, ProjectMemberRepository,
-    ProjectQuery, ProjectRepository, ProjectVersion, ProjectVersionRepository, Sprint,
-    SprintRepository, Status, StatusRepository, SystemSetting, SystemSettingRepository, TotpConfig,
-    TotpRepository, TransitionGuard, UnitOfWork, User, UserNotificationSettingsRepository,
-    UserRepository, VoteRepository, WatcherRepository, Worklog, WorklogRepository,
+    PasswordResetRepository, PasswordResetToken, Project, ProjectComponent,
+    ProjectComponentRepository, ProjectMember, ProjectMemberRepository, ProjectQuery,
+    ProjectRepository, ProjectVersion, ProjectVersionRepository, Sprint, SprintRepository, Status,
+    StatusRepository, SystemSetting, SystemSettingRepository, TotpConfig, TotpRepository,
+    TransitionGuard, UnitOfWork, User, UserNotificationSettingsRepository, UserRepository,
+    VoteRepository, WatcherRepository, Worklog, WorklogRepository,
 };
 use shared::{
     AppError, BoardId, CommentId, CustomFieldId, IssueId, NotificationId, ProjectComponentId,
-    ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId, UserId, WorklogId,
+    ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId, Timestamp, UserId, WorklogId,
 };
 
 #[derive(Default)]
@@ -2026,6 +2027,49 @@ impl TotpRepository for MemoryTotpRepository {
     async fn disable(&self, user_id: UserId) -> Result<(), AppError> {
         let mut rows = self.rows.lock().unwrap();
         rows.retain(|r| r.user_id != user_id);
+        Ok(())
+    }
+}
+
+#[derive(Default)]
+pub struct MemoryPasswordResetRepository {
+    rows: Arc<Mutex<Vec<PasswordResetToken>>>,
+}
+
+#[async_trait]
+impl PasswordResetRepository for MemoryPasswordResetRepository {
+    async fn upsert(
+        &self,
+        user_id: UserId,
+        token_hash: &str,
+        expires_at: Timestamp,
+    ) -> Result<(), AppError> {
+        let mut rows = self.rows.lock().unwrap();
+        rows.retain(|r| r.user_id != user_id);
+        rows.push(PasswordResetToken {
+            user_id,
+            token_hash: token_hash.into(),
+            expires_at,
+            used_at: None,
+        });
+        Ok(())
+    }
+
+    async fn find_active(&self, token_hash: &str) -> Result<PasswordResetToken, AppError> {
+        let rows = self.rows.lock().unwrap();
+        rows.iter()
+            .find(|r| r.token_hash.as_ref() == token_hash && r.used_at.is_none())
+            .cloned()
+            .ok_or_else(|| AppError::not_found("password_reset", "expired or used"))
+    }
+
+    async fn mark_used(&self, token_hash: &str) -> Result<(), AppError> {
+        let mut rows = self.rows.lock().unwrap();
+        let row = rows
+            .iter_mut()
+            .find(|r| r.token_hash.as_ref() == token_hash && r.used_at.is_none())
+            .ok_or_else(|| AppError::not_found("password_reset", "already used"))?;
+        row.used_at = Some(shared::now());
         Ok(())
     }
 }

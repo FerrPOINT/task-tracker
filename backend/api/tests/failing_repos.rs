@@ -66,6 +66,7 @@ async fn serve_forever_responds_to_request() {
         auth: AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -113,6 +114,7 @@ async fn bind_returns_listener_on_valid_addr() {
         auth: AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),

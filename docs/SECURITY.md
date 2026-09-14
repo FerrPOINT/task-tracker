@@ -13,6 +13,11 @@ Task Tracker — self-hosted приложение с конфиденциаль�
   replay protection, AES-256-GCM encryption of enrollment secrets and 8 one-time
   recovery codes. Enrollment requires the authenticated `/auth/totp/setup` then
   `/enable` flow; users with MFA enabled must include `totp_code` in `/auth/login`.
+- Password reset по email — реализовано: одноразовые токены (256-bit entropy,
+  base64url), в БД хранится только SHA-256 hash, TTL 30 минут, повторный запрос
+  замещает предыдущий токен, отсутствие аккаунта неотличимо от успеха (202 без
+  письма). Сброс пароля атомарно потребляет токен, обновляет argon2id hash и
+  отзывает все refresh-сессии.
 - OAuth/OpenID/LDAP — не реализовано (future).
 
 ## 3. Authorization

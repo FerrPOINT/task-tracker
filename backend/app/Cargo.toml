@@ -24,6 +24,7 @@ uuid.workspace = true
 anyhow.workspace = true
 jsonwebtoken.workspace = true
 rand_core.workspace = true
+base64 = "0.22"
 sha2 = "0.10"
 hex = "0.4"
 hmac = "0.12"

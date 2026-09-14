@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{Duration, Utc};
 use domain::User;
 use jsonwebtoken::{EncodingKey, Header};
@@ -33,6 +35,8 @@ pub struct JwtAuthService {
     config: AuthConfig,
     users: Arc<dyn domain::UserRepository>,
     system_settings: Arc<dyn domain::SystemSettingRepository>,
+    password_resets: Arc<dyn domain::PasswordResetRepository>,
+    email: Arc<dyn domain::EmailPort>,
 }
 
 #[path = "central_login.rs"]
@@ -74,11 +78,15 @@ impl JwtAuthService {
         config: AuthConfig,
         users: Arc<dyn domain::UserRepository>,
         system_settings: Arc<dyn domain::SystemSettingRepository>,
+        password_resets: Arc<dyn domain::PasswordResetRepository>,
+        email: Arc<dyn domain::EmailPort>,
     ) -> Self {
         Self {
             config,
             users,
             system_settings,
+            password_resets,
+            email,
         }
     }
 
@@ -189,6 +197,67 @@ impl crate::context::AuthService for JwtAuthService {
             user: crate::dto::UserDto::from(user),
             expires_in,
         })
+    }
+
+    async fn request_password_reset(&self, email: &str) -> Result<(), AppError> {
+        let email = email.trim().to_lowercase();
+        let user = match self.users.get_by_email(&email).await {
+            Ok(u) if u.is_active => u,
+            // Unknown/inactive accounts must be indistinguishable from the
+            // happy path: no enumeration, no timing-relevant error text.
+            _ => return Ok(()),
+        };
+        // 32 bytes of entropy, base64url; only the SHA-256 hash is stored.
+        let mut raw = [0u8; 32];
+        use rand_core::{OsRng, RngCore};
+        OsRng.fill_bytes(&mut raw);
+        let token = URL_SAFE_NO_PAD.encode(raw);
+        let hash = {
+            use sha2::{Digest, Sha256};
+            let mut h = Sha256::new();
+            h.update(token.as_bytes());
+            URL_SAFE_NO_PAD.encode(h.finalize())
+        };
+        let expires_at = shared::now() + chrono::Duration::minutes(30);
+        self.password_resets
+            .upsert(user.id, &hash, expires_at)
+            .await?;
+        self.email
+            .send(&domain::EmailNotification {
+                recipient_address: email.clone(),
+                recipient_name: Some(user.display_name.to_string()),
+                subject: "TaskTracker: password reset".to_string(),
+                body: format!(
+                    "Use the link below to reset your password. The link is valid for 30 minutes and can be used once.\n\n{reset_url}\n\nIf you did not request a reset, ignore this email.",
+                    reset_url = format!("{base}/reset-password?token={token}", base = self.config.reset_base_url),
+                ),
+                action_url: Some(format!("{base}/reset-password?token={token}", base = self.config.reset_base_url)),
+            })
+            .await?;
+        Ok(())
+    }
+
+    async fn reset_password(&self, token: &str, new_password: &str) -> Result<(), AppError> {
+        if new_password.len() < 8 {
+            return Err(AppError::invalid_input(
+                "password must be at least 8 characters",
+            ));
+        }
+        let hash_of = |t: &str| -> String {
+            use sha2::{Digest, Sha256};
+            let mut h = Sha256::new();
+            h.update(t.as_bytes());
+            URL_SAFE_NO_PAD.encode(h.finalize())
+        };
+        let record = self.password_resets.find_active(&hash_of(token)).await?;
+        // Consume first (single-use even if the password update fails).
+        self.password_resets.mark_used(&hash_of(token)).await?;
+        let mut user = self.users.get_by_id(record.user_id).await?;
+        user.password_hash = hash_password(new_password)?.into();
+        // Any stolen refresh session dies with the old password.
+        user.clear_refresh_token();
+        self.users.save(&user).await?;
+        Ok(())
     }
 
     async fn logout(&self, user_id: UserId) -> Result<(), AppError> {
@@ -321,6 +390,7 @@ mod tests {
         let cfg = shared::AuthConfig {
             jwt_secret: "test-secret".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -343,7 +413,13 @@ mod tests {
             updated_at: shared::now(),
         };
         users.save(&user).await.unwrap();
-        let svc = super::JwtAuthService::new(cfg, users.clone(), empty_settings());
+        let svc = super::JwtAuthService::new(
+            cfg,
+            users.clone(),
+            empty_settings(),
+            StdArc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+            StdArc::new(domain::StubEmailPort),
+        );
         let first = svc.refresh("not-a-token").await;
         assert!(first.is_err(), "invalid signature must be rejected");
 
@@ -386,6 +462,7 @@ mod tests {
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -417,6 +494,7 @@ mod tests {
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -429,6 +507,8 @@ mod tests {
             config,
             Arc::new(domain::stubs::memory::MemoryUserRepository::default()),
             empty_settings(),
+            Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+            Arc::new(domain::StubEmailPort),
         );
         assert!(service.verify_token("not.a.token").is_err());
     }
@@ -443,6 +523,7 @@ mod tests {
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -451,7 +532,13 @@ mod tests {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         };
-        let service = JwtAuthService::new(config, repo, empty_settings());
+        let service = JwtAuthService::new(
+            config,
+            repo,
+            empty_settings(),
+            Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+            Arc::new(domain::StubEmailPort),
+        );
         let result = service
             .register(RegisterCommand {
                 email: saved.email.to_string(),
@@ -473,6 +560,7 @@ mod tests {
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -481,7 +569,13 @@ mod tests {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         };
-        let service = JwtAuthService::new(config, repo, empty_settings());
+        let service = JwtAuthService::new(
+            config,
+            repo,
+            empty_settings(),
+            Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+            Arc::new(domain::StubEmailPort),
+        );
         let result = service
             .login(LoginCommand {
                 email: user.email.to_string(),
@@ -497,6 +591,7 @@ mod tests {
         let config = AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -505,7 +600,13 @@ mod tests {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         };
-        let service = JwtAuthService::new(config, repo, empty_settings());
+        let service = JwtAuthService::new(
+            config,
+            repo,
+            empty_settings(),
+            Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+            Arc::new(domain::StubEmailPort),
+        );
         let result = service
             .login(LoginCommand {
                 email: "missing@example.com".to_string(),
@@ -519,7 +620,13 @@ mod tests {
     async fn register_rejects_short_password() {
         let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
         let config = test_auth_config();
-        let service = JwtAuthService::new(config, repo, empty_settings());
+        let service = JwtAuthService::new(
+            config,
+            repo,
+            empty_settings(),
+            Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+            Arc::new(domain::StubEmailPort),
+        );
         let result = service
             .register(RegisterCommand {
                 email: "new@example.com".to_string(),
@@ -551,7 +658,13 @@ mod tests {
         settings.save(&setting).await.unwrap();
 
         let config = test_auth_config();
-        let service = JwtAuthService::new(config, repo, settings);
+        let service = JwtAuthService::new(
+            config,
+            repo,
+            settings,
+            Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+            Arc::new(domain::StubEmailPort),
+        );
         let result = service
             .register(RegisterCommand {
                 email: "new@example.com".to_string(),
@@ -567,7 +680,13 @@ mod tests {
     async fn register_allowed_by_default_without_setting() {
         let repo = Arc::new(domain::stubs::memory::MemoryUserRepository::default());
         let config = test_auth_config();
-        let service = JwtAuthService::new(config, repo, empty_settings());
+        let service = JwtAuthService::new(
+            config,
+            repo,
+            empty_settings(),
+            Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+            Arc::new(domain::StubEmailPort),
+        );
         let result = service
             .register(RegisterCommand {
                 email: "fresh@example.com".to_string(),
@@ -587,7 +706,13 @@ mod tests {
         let id = repo.save(&user).await.unwrap();
         let dto = {
             let config = test_auth_config();
-            let service = JwtAuthService::new(config, repo.clone(), empty_settings());
+            let service = JwtAuthService::new(
+                config,
+                repo.clone(),
+                empty_settings(),
+                Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+                Arc::new(domain::StubEmailPort),
+            );
             service.issue_tokens(user).await.unwrap()
         };
         assert!(
@@ -599,7 +724,13 @@ mod tests {
         );
         {
             let config = test_auth_config();
-            let service = JwtAuthService::new(config, repo.clone(), empty_settings());
+            let service = JwtAuthService::new(
+                config,
+                repo.clone(),
+                empty_settings(),
+                Arc::new(domain::stubs::memory::MemoryPasswordResetRepository::default()),
+                Arc::new(domain::StubEmailPort),
+            );
             service.logout(id).await.unwrap();
         }
         assert!(
@@ -616,6 +747,7 @@ mod tests {
         AuthConfig {
             jwt_secret: "test-secret-32-chars-long!!!!!".to_string(),
             totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
             access_token_ttl_minutes: 15,
             refresh_token_ttl_days: 7,
             refresh_cookie_name: "refresh_token".to_string(),
@@ -624,5 +756,77 @@ mod tests {
             refresh_cookie_domain: None,
             refresh_cookie_path: "/api/v1/auth".to_string(),
         }
+    }
+
+    #[tokio::test]
+    async fn reset_password_rotates_hash_and_revokes_sessions() {
+        let cfg = shared::AuthConfig {
+            jwt_secret: "test-secret".to_string(),
+            totp_key: String::new(),
+            reset_base_url: "http://localhost:5173".to_string(),
+            access_token_ttl_minutes: 15,
+            refresh_token_ttl_days: 7,
+            refresh_cookie_name: "refresh_token".to_string(),
+            refresh_cookie_secure: true,
+            refresh_cookie_same_site: "Lax".to_string(),
+            refresh_cookie_domain: None,
+            refresh_cookie_path: "/api/v1/auth".to_string(),
+        };
+        let users = StdArc::new(domain::MemoryUserRepository::default());
+        // Known-good argon2 hash for "old-password-123".
+        let user = domain::User {
+            id: UserId::new(),
+            email: "reset@e.com".into(),
+            username: "r".into(),
+            display_name: "R".into(),
+            password_hash: "$argon2id$v=19$m=65536,t=3,p=4$stN/enhZ9yOvgWC9E8Y6BA$IL9I0WONb/I6zoT4rdmdkrPcIFADFxsLCjrO0ySSl0Y".into(),
+            refresh_token_hash: None,
+            is_system_admin: false,
+            is_active: true,
+            created_at: now(),
+            updated_at: now(),
+        };
+        users.save(&user).await.unwrap();
+
+        struct Capture(StdArc<std::sync::Mutex<Vec<domain::EmailNotification>>>);
+        #[async_trait::async_trait]
+        impl domain::EmailPort for Capture {
+            fn is_enabled(&self) -> bool {
+                true
+            }
+            async fn send(&self, n: &domain::EmailNotification) -> Result<(), shared::AppError> {
+                self.0.lock().unwrap().push(n.clone());
+                Ok(())
+            }
+        }
+        let sent = StdArc::new(std::sync::Mutex::new(Vec::new()));
+        let resets = StdArc::new(domain::stubs::memory::MemoryPasswordResetRepository::default());
+        let svc = super::JwtAuthService::new(
+            cfg,
+            users.clone(),
+            empty_settings(),
+            resets,
+            StdArc::new(Capture(sent.clone())),
+        );
+
+        // Request: unknown email silently ignored.
+        svc.request_password_reset("ghost@e.com").await.unwrap();
+        assert!(sent.lock().unwrap().is_empty());
+
+        // Request: known email captures a link with a token.
+        svc.request_password_reset("reset@e.com").await.unwrap();
+        let link = sent.lock().unwrap()[0].action_url.clone().unwrap();
+        let token: String = link.split("token=").nth(1).unwrap().to_string();
+
+        // Reset changes the hash: the old password stops verifying.
+        svc.reset_password(&token, "brand-new-pass-9")
+            .await
+            .unwrap();
+        let updated = users.get_by_id(user.id).await.unwrap();
+        assert_ne!(updated.password_hash, user.password_hash);
+        // Session revocation: refresh hash must be cleared after reset.
+        assert!(updated.refresh_token_hash.is_none());
+        // Single use.
+        assert!(svc.reset_password(&token, "another-pass-10").await.is_err());
     }
 }

@@ -22,7 +22,12 @@
 - Создание / блокировка / удаление пользователя.
 - Bulk import из CSV.
 - Self-registration (опционально, отключается в настройках).
-- Password reset по email.
+- Password reset по email — реализовано: `POST /api/v1/auth/password/request`
+  (202 всегда; письмо с одноразовой ссылкой 30 минут) + `POST /api/v1/auth/password/reset`
+  (token + новый пароль; refresh-сессии отзываются). Базовый URL ссылки —
+  `TASKTRACKER_RESET_BASE_URL` (default `http://localhost:5173`); отправка через
+  SMTP-конфигурацию `email.*` (при `email.enabled=false` письмо не уходит, токен
+  всё равно выпускается — для dev/staging).
 - Change password / email.
 - Two-factor authentication (TOTP) — опционально, self-service: authenticated
   user starts enrollment via `POST /api/v1/auth/totp/setup`, scans `otpauth_uri`,
