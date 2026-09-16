@@ -143,7 +143,7 @@ async fn middleware_accepts_lowercase_bearer_prefix() {
     let app = api::router(ctx.clone()).with_state(ctx);
     let req = Request::builder()
         .uri("/api/v1/dashboard")
-        .header("authorization", format!("bearer {}", token))
+        .header("authorization", format!("bearer {token}"))
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
@@ -167,7 +167,7 @@ async fn middleware_rejects_expired_token() {
     let app = api::router(ctx.clone()).with_state(ctx);
     let req = Request::builder()
         .uri("/api/v1/dashboard")
-        .header("authorization", format!("Bearer {}", token))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
@@ -181,7 +181,7 @@ async fn middleware_accepts_valid_token() {
     let app = api::router(ctx.clone()).with_state(ctx);
     let req = Request::builder()
         .uri("/api/v1/dashboard")
-        .header("authorization", format!("Bearer {}", token))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
@@ -219,7 +219,7 @@ async fn create_project_creates_when_authenticated() {
         .uri("/api/v1/projects")
         .method("POST")
         .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {}", token))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::from(body.to_string()))
         .unwrap();
     let res = app.oneshot(req).await.unwrap();
@@ -233,7 +233,7 @@ async fn get_project_not_found() {
     let app = api::router(ctx.clone()).with_state(ctx);
     let req = Request::builder()
         .uri("/api/v1/projects/NONEXIST")
-        .header("authorization", format!("Bearer {}", token))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::empty())
         .unwrap();
     let res = app.oneshot(req).await.unwrap();

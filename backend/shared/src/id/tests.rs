@@ -48,7 +48,7 @@ fn all_uuid_ids_roundtrip_and_nil() {
     ];
     for (maker, parse) in cases {
         let s = maker();
-        assert!(parse(&s), "roundtrip failed for {}", s);
+        assert!(parse(&s), "roundtrip failed for {s}");
     }
     assert_eq!(
         UserId::nil().to_string(),
@@ -85,7 +85,7 @@ fn issue_key_edge_cases() {
     assert!(IssueKey::parse("-5").is_err());
     let key = IssueKey::new(ProjectKey::new("XX"), 99);
     assert_eq!(key.to_string(), "XX-99");
-    assert_eq!(format!("{}", key), "XX-99");
+    assert_eq!(format!("{key}"), "XX-99");
 }
 
 #[test]

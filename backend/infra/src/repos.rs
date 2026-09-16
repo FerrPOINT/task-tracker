@@ -809,7 +809,7 @@ impl IssueRepository for IssueRepo {
                 .replace('\\', "\\\\")
                 .replace('%', "\\%")
                 .replace('_', "\\_");
-            let pattern = format!("%{}%", escaped);
+            let pattern = format!("%{escaped}%");
             select = select.filter(
                 sea_orm::Condition::any()
                     .add(Expr::col(issue::Column::Summary).ilike(&pattern))

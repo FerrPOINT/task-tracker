@@ -346,7 +346,7 @@ impl crate::context::IssueService for IssueServiceImpl {
                 &project,
                 cmd.actor_id,
                 "issue_assigned",
-                format!("You were assigned to {}", key),
+                format!("You were assigned to {key}"),
                 Some(issue.summary.as_ref().to_string()),
                 serde_json::json!({"issue_key": key}),
             )
@@ -436,7 +436,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             &project,
             cmd.actor_id,
             "issue_moved",
-            format!("{} moved to {}", key, status),
+            format!("{key} moved to {status}"),
             None,
             serde_json::json!({"issue_key": key, "status": status}),
         )
@@ -620,7 +620,7 @@ impl crate::context::IssueService for IssueServiceImpl {
             &project,
             cmd.actor_id,
             "issue_updated",
-            format!("{} updated", key),
+            format!("{key} updated"),
             Some(issue.summary.as_ref().to_string()),
             serde_json::json!({"issue_key": key}),
         )
@@ -632,7 +632,7 @@ impl crate::context::IssueService for IssueServiceImpl {
                 &project,
                 cmd.actor_id,
                 "issue_assigned",
-                format!("You were assigned to {}", key),
+                format!("You were assigned to {key}"),
                 Some(issue.summary.as_ref().to_string()),
                 serde_json::json!({"issue_key": key}),
             )

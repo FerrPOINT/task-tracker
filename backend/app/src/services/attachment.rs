@@ -165,7 +165,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             &issue,
             author_id,
             "issue_attachment_added",
-            format!("Attachment added to {}", issue_key),
+            format!("Attachment added to {issue_key}"),
             Some(file_name.clone()),
             serde_json::json!({
                 "issue_key": issue_key,

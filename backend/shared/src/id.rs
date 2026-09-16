@@ -147,7 +147,7 @@ impl FromStr for ProjectKey {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() || s.len() > 10 || !s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
         {
-            return Err(format!("invalid project key: {}", s));
+            return Err(format!("invalid project key: {s}"));
         }
         Ok(Self::new(s))
     }
@@ -177,12 +177,12 @@ impl IssueKey {
     pub fn parse(s: &str) -> Result<Self, String> {
         let dash = s
             .rfind('-')
-            .ok_or_else(|| format!("invalid issue key: {}", s))?;
+            .ok_or_else(|| format!("invalid issue key: {s}"))?;
         let (project, num) = s.split_at(dash);
         let number: u32 = num
             .trim_start_matches('-')
             .parse()
-            .map_err(|_| format!("invalid issue key number: {}", s))?;
+            .map_err(|_| format!("invalid issue key number: {s}"))?;
         Ok(Self::new(ProjectKey::from_str(project)?, number))
     }
 
@@ -218,7 +218,7 @@ impl FromStr for IssueType {
             "story" | "история" => Ok(Self::Story),
             "epic" | "эпик" => Ok(Self::Epic),
             "subtask" | "подзадача" => Ok(Self::SubTask),
-            _ => Err(format!("unknown issue type: {}", s)),
+            _ => Err(format!("unknown issue type: {s}")),
         }
     }
 }
@@ -256,7 +256,7 @@ impl FromStr for Priority {
             "medium" => Ok(Self::Medium),
             "high" => Ok(Self::High),
             "highest" => Ok(Self::Highest),
-            _ => Err(format!("unknown priority: {}", s)),
+            _ => Err(format!("unknown priority: {s}")),
         }
     }
 }

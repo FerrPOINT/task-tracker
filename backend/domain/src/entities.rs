@@ -321,7 +321,7 @@ impl FromStr for SprintState {
             "future" => Ok(Self::Future),
             "active" => Ok(Self::Active),
             "closed" => Ok(Self::Closed),
-            _ => Err(format!("unknown sprint state: {}", s)),
+            _ => Err(format!("unknown sprint state: {s}")),
         }
     }
 }

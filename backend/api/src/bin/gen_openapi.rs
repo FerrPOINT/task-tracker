@@ -42,5 +42,5 @@ fn main() {
     let _ = ctx; // keep alive to avoid dead_code warning
     let openapi = ApiDoc::openapi();
     let json = serde_json::to_string_pretty(&openapi).expect("serialize openapi");
-    print!("{}", json);
+    print!("{json}");
 }

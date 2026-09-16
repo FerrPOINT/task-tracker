@@ -161,7 +161,7 @@ impl crate::context::CommentService for CommentServiceImpl {
                     &issue,
                     requester,
                     "issue_commented",
-                    format!("New comment on {}", key),
+                    format!("New comment on {key}"),
                     None,
                     serde_json::json!({
                         "issue_key": key,

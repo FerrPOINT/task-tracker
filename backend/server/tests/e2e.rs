@@ -56,7 +56,7 @@ async fn server_starts_runs_migrations_and_serves_health() {
         .await
         .expect("server did not become ready")
         .expect("ready channel closed");
-    let url = format!("http://{}/api/v1/health", addr);
+    let url = format!("http://{addr}/api/v1/health");
 
     let client = reqwest::Client::new();
     let res = client
@@ -96,7 +96,7 @@ async fn full_smoke_with_real_repositories() {
         .await
         .expect("server did not become ready")
         .expect("ready channel closed");
-    let url = format!("http://{}", addr);
+    let url = format!("http://{addr}");
     let client = reqwest::Client::new();
 
     // The isolated database intentionally has no demo seed. Register through
@@ -106,7 +106,7 @@ async fn full_smoke_with_real_repositories() {
     let email = format!("server-e2e-{unique}@example.com");
     let username = format!("e2e{}", &unique.simple().to_string()[..8]);
     let register = client
-        .post(format!("{}/api/v1/auth/register", url))
+        .post(format!("{url}/api/v1/auth/register"))
         .json(&serde_json::json!({
             "email": email,
             "username": username,
@@ -123,7 +123,7 @@ async fn full_smoke_with_real_repositories() {
 
     let project_key = format!("E{}", &uuid::Uuid::new_v4().simple().to_string()[..8]);
     let project = client
-        .post(format!("{}/api/v1/projects", url))
+        .post(format!("{url}/api/v1/projects"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "key": project_key,
@@ -141,7 +141,7 @@ async fn full_smoke_with_real_repositories() {
     );
 
     let projects = client
-        .get(format!("{}/api/v1/projects", url))
+        .get(format!("{url}/api/v1/projects"))
         .bearer_auth(&token)
         .send()
         .await
@@ -157,7 +157,7 @@ async fn full_smoke_with_real_repositories() {
     );
 
     let board = client
-        .get(format!("{}/api/v1/projects/{}/board", url, project_key))
+        .get(format!("{url}/api/v1/projects/{project_key}/board"))
         .bearer_auth(&token)
         .send()
         .await

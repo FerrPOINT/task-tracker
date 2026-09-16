@@ -51,7 +51,7 @@ fn test_user() -> User {
     let suffix = Uuid::new_v4().to_string();
     User {
         id: UserId::new(),
-        email: format!("repo-test-{}@example.com", suffix).into(),
+        email: format!("repo-test-{suffix}@example.com").into(),
         username: format!("repotest-{}", &suffix[..8]).into(),
         display_name: "Repo Test".into(),
         password_hash: "$argon2id$v=19$m=65536,t=3,p=4$stN/enhZ9yOvgWC9E8Y6BA$IL9I0WONb/I6zoT4rdmdkrPcIFADFxsLCjrO0ySSl0Y".into(),

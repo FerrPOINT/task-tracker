@@ -212,7 +212,7 @@ impl MigrationTrait for Migration {
             ("issues", "fk_issues_status"),
             ("issues", "fk_issues_project"),
         ] {
-            let sql = format!("ALTER TABLE {} DROP CONSTRAINT IF EXISTS {}", table, name);
+            let sql = format!("ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {name}");
             manager.get_connection().execute_unprepared(&sql).await?;
         }
         Ok(())

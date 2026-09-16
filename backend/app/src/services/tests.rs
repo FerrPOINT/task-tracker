@@ -2246,7 +2246,7 @@ fn failing_context() -> AppContext {
 fn assert_internal(err: Result<impl std::fmt::Debug, AppError>) {
     match err {
         Err(AppError::Internal(msg)) => assert!(!msg.is_empty()),
-        other => panic!("expected AppError::Internal, got {:?}", other),
+        other => panic!("expected AppError::Internal, got {other:?}"),
     }
 }
 

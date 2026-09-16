@@ -132,7 +132,7 @@ async fn spawn_admin_server() -> (String, reqwest::Client, String, String) {
 
 async fn login(url: &str, client: &reqwest::Client, email: &str) -> String {
     let res = client
-        .post(format!("{}/api/v1/auth/login", url))
+        .post(format!("{url}/api/v1/auth/login"))
         .json(&serde_json::json!({"email": email, "password": "demo"}))
         .send()
         .await
@@ -146,7 +146,7 @@ async fn login(url: &str, client: &reqwest::Client, email: &str) -> String {
 async fn admin_endpoints_require_auth() {
     let (url, client, _, _) = spawn_admin_server().await;
     let res = client
-        .get(format!("{}/api/v1/admin/users", url))
+        .get(format!("{url}/api/v1/admin/users"))
         .send()
         .await
         .unwrap();
@@ -159,7 +159,7 @@ async fn admin_users_list_requires_system_admin() {
 
     // Regular user → 403
     let res = client
-        .get(format!("{}/api/v1/admin/users", url))
+        .get(format!("{url}/api/v1/admin/users"))
         .bearer_auth(&regular_token)
         .send()
         .await
@@ -168,7 +168,7 @@ async fn admin_users_list_requires_system_admin() {
 
     // Admin → 200
     let res = client
-        .get(format!("{}/api/v1/admin/users", url))
+        .get(format!("{url}/api/v1/admin/users"))
         .bearer_auth(&admin_token)
         .send()
         .await
@@ -190,7 +190,7 @@ async fn admin_users_list_requires_system_admin() {
 async fn admin_create_user_success() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
     let res = client
-        .post(format!("{}/api/v1/admin/users", url))
+        .post(format!("{url}/api/v1/admin/users"))
         .bearer_auth(&admin_token)
         .json(&serde_json::json!({
             "email": "new@example.com",
@@ -217,7 +217,7 @@ async fn admin_create_user_success() {
 async fn admin_create_user_requires_admin() {
     let (url, client, _, regular_token) = spawn_admin_server().await;
     let res = client
-        .post(format!("{}/api/v1/admin/users", url))
+        .post(format!("{url}/api/v1/admin/users"))
         .bearer_auth(&regular_token)
         .json(&serde_json::json!({
             "email": "new@example.com",
@@ -236,7 +236,7 @@ async fn admin_create_user_requires_admin() {
 async fn admin_create_user_duplicate_email() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
     let res = client
-        .post(format!("{}/api/v1/admin/users", url))
+        .post(format!("{url}/api/v1/admin/users"))
         .bearer_auth(&admin_token)
         .json(&serde_json::json!({
             "email": "admin@example.com",
@@ -256,8 +256,7 @@ async fn admin_update_user_status_deactivates() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
     let res = client
         .put(format!(
-            "{}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status",
-            url
+            "{url}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status"
         ))
         .bearer_auth(&admin_token)
         .json(&serde_json::json!({"is_active": false}))
@@ -274,8 +273,7 @@ async fn admin_update_user_status_requires_admin() {
     let (url, client, _, regular_token) = spawn_admin_server().await;
     let res = client
         .put(format!(
-            "{}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status",
-            url
+            "{url}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status"
         ))
         .bearer_auth(&regular_token)
         .json(&serde_json::json!({"is_active": false}))
@@ -291,8 +289,7 @@ async fn admin_update_user_status_prevents_last_admin_deactivation() {
     // Deactivate the regular user first (should succeed).
     let _ = client
         .put(format!(
-            "{}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status",
-            url
+            "{url}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status"
         ))
         .bearer_auth(&admin_token)
         .json(&serde_json::json!({"is_active": false}))
@@ -303,8 +300,7 @@ async fn admin_update_user_status_prevents_last_admin_deactivation() {
     // Now try to deactivate the only admin → should fail.
     let res = client
         .put(format!(
-            "{}/api/v1/admin/users/11111111-1111-1111-1111-111111111111/status",
-            url
+            "{url}/api/v1/admin/users/11111111-1111-1111-1111-111111111111/status"
         ))
         .bearer_auth(&admin_token)
         .json(&serde_json::json!({"is_active": false}))
@@ -320,7 +316,7 @@ async fn admin_audit_log_list_requires_admin() {
 
     // Regular user → 403
     let res = client
-        .get(format!("{}/api/v1/admin/audit-log", url))
+        .get(format!("{url}/api/v1/admin/audit-log"))
         .bearer_auth(&regular_token)
         .send()
         .await
@@ -329,7 +325,7 @@ async fn admin_audit_log_list_requires_admin() {
 
     // Admin → 200
     let res = client
-        .get(format!("{}/api/v1/admin/audit-log", url))
+        .get(format!("{url}/api/v1/admin/audit-log"))
         .bearer_auth(&admin_token)
         .send()
         .await
@@ -345,7 +341,7 @@ async fn admin_system_settings_list_requires_admin() {
 
     // Regular user → 403
     let res = client
-        .get(format!("{}/api/v1/admin/system-settings", url))
+        .get(format!("{url}/api/v1/admin/system-settings"))
         .bearer_auth(&regular_token)
         .send()
         .await
@@ -354,7 +350,7 @@ async fn admin_system_settings_list_requires_admin() {
 
     // Admin → 200
     let res = client
-        .get(format!("{}/api/v1/admin/system-settings", url))
+        .get(format!("{url}/api/v1/admin/system-settings"))
         .bearer_auth(&admin_token)
         .send()
         .await
@@ -368,7 +364,7 @@ async fn admin_system_settings_list_requires_admin() {
 async fn admin_system_settings_update_success() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
     let res = client
-        .put(format!("{}/api/v1/admin/system-settings", url))
+        .put(format!("{url}/api/v1/admin/system-settings"))
         .bearer_auth(&admin_token)
         .json(&serde_json::json!({
             "key": "instance.name",
@@ -387,7 +383,7 @@ async fn admin_system_settings_update_success() {
 async fn admin_system_settings_update_rejects_unsafe_key() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
     let res = client
-        .put(format!("{}/api/v1/admin/system-settings", url))
+        .put(format!("{url}/api/v1/admin/system-settings"))
         .bearer_auth(&admin_token)
         .json(&serde_json::json!({
             "key": "mail.password",
@@ -403,7 +399,7 @@ async fn admin_system_settings_update_rejects_unsafe_key() {
 async fn admin_system_settings_update_requires_admin() {
     let (url, client, _, regular_token) = spawn_admin_server().await;
     let res = client
-        .put(format!("{}/api/v1/admin/system-settings", url))
+        .put(format!("{url}/api/v1/admin/system-settings"))
         .bearer_auth(&regular_token)
         .json(&serde_json::json!({
             "key": "instance.name",
@@ -424,8 +420,7 @@ async fn admin_audit_log_pages_with_offset() {
     for _ in 0..4 {
         let res = client
             .put(format!(
-                "{}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status",
-                url
+                "{url}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status"
             ))
             .bearer_auth(&admin_token)
             .json(&serde_json::json!({"is_active": false}))
@@ -436,7 +431,7 @@ async fn admin_audit_log_pages_with_offset() {
     }
 
     let page1 = client
-        .get(format!("{}/api/v1/admin/audit-log?limit=2&offset=0", url))
+        .get(format!("{url}/api/v1/admin/audit-log?limit=2&offset=0"))
         .bearer_auth(&admin_token)
         .send()
         .await
@@ -444,7 +439,7 @@ async fn admin_audit_log_pages_with_offset() {
     assert_eq!(page1.status(), 200);
     let page1: serde_json::Value = page1.json().await.unwrap();
     let page2 = client
-        .get(format!("{}/api/v1/admin/audit-log?limit=2&offset=2", url))
+        .get(format!("{url}/api/v1/admin/audit-log?limit=2&offset=2"))
         .bearer_auth(&admin_token)
         .send()
         .await

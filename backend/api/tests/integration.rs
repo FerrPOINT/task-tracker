@@ -297,7 +297,7 @@ async fn spawn_server_with_notifications()
 async fn health_is_public() {
     let (url, client) = spawn_server().await;
     let res = client
-        .get(format!("{}/api/v1/health", url))
+        .get(format!("{url}/api/v1/health"))
         .send()
         .await
         .unwrap();
@@ -309,7 +309,7 @@ async fn health_is_public() {
 async fn projects_requires_auth() {
     let (url, client) = spawn_server().await;
     let res = client
-        .get(format!("{}/api/v1/projects", url))
+        .get(format!("{url}/api/v1/projects"))
         .send()
         .await
         .unwrap();
@@ -320,7 +320,7 @@ async fn projects_requires_auth() {
 async fn login_issues_token() {
     let (url, client) = spawn_server().await;
     let res = client
-        .post(format!("{}/api/v1/auth/login", url))
+        .post(format!("{url}/api/v1/auth/login"))
         .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
         .send()
         .await
@@ -336,7 +336,7 @@ async fn login_issues_token() {
 async fn register_and_list_projects() {
     let (url, client) = spawn_server().await;
     let res = client
-        .post(format!("{}/api/v1/auth/register", url))
+        .post(format!("{url}/api/v1/auth/register"))
         .json(&serde_json::json!({
             "email": "new@example.com",
             "username": "newuser",
@@ -352,7 +352,7 @@ async fn register_and_list_projects() {
     let token = body["access_token"].as_str().unwrap().to_string();
 
     let projects = client
-        .get(format!("{}/api/v1/projects", url))
+        .get(format!("{url}/api/v1/projects"))
         .bearer_auth(&token)
         .send()
         .await
@@ -369,7 +369,7 @@ async fn register_and_list_projects() {
 async fn dashboard_and_search() {
     let (url, client) = spawn_server().await;
     let login = client
-        .post(format!("{}/api/v1/auth/login", url))
+        .post(format!("{url}/api/v1/auth/login"))
         .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
         .send()
         .await
@@ -381,7 +381,7 @@ async fn dashboard_and_search() {
 
     // create an issue to search for
     let created = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -398,7 +398,7 @@ async fn dashboard_and_search() {
     assert_eq!(created.status(), 201);
 
     let search = client
-        .get(format!("{}/api/v1/search?q=searchable", url))
+        .get(format!("{url}/api/v1/search?q=searchable"))
         .bearer_auth(&token)
         .send()
         .await
@@ -443,7 +443,7 @@ async fn dashboard_and_search() {
     assert_eq!(exported["issues"][0]["summary"], "searchable issue");
 
     let dash = client
-        .get(format!("{}/api/v1/dashboard", url))
+        .get(format!("{url}/api/v1/dashboard"))
         .bearer_auth(&token)
         .send()
         .await
@@ -457,7 +457,7 @@ async fn dashboard_and_search() {
 async fn backlog_requires_auth_and_returns_issues() {
     let (url, client) = spawn_server().await;
     let login = client
-        .post(format!("{}/api/v1/auth/login", url))
+        .post(format!("{url}/api/v1/auth/login"))
         .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
         .send()
         .await
@@ -468,14 +468,14 @@ async fn backlog_requires_auth_and_returns_issues() {
         .to_string();
 
     let noauth = client
-        .get(format!("{}/api/v1/projects/TT/backlog", url))
+        .get(format!("{url}/api/v1/projects/TT/backlog"))
         .send()
         .await
         .unwrap();
     assert_eq!(noauth.status(), 401);
 
     let backlog = client
-        .get(format!("{}/api/v1/projects/TT/backlog", url))
+        .get(format!("{url}/api/v1/projects/TT/backlog"))
         .bearer_auth(&token)
         .send()
         .await
@@ -587,7 +587,7 @@ async fn issue_create_validation_errors() {
     let token = login_token(&url, &client).await;
 
     let bad_project = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "INVALID_KEY",
@@ -603,7 +603,7 @@ async fn issue_create_validation_errors() {
     assert_eq!(bad_project.status(), 400);
 
     let bad_reporter = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -619,7 +619,7 @@ async fn issue_create_validation_errors() {
     assert_eq!(bad_reporter.status(), 400);
 
     let unknown_reporter = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -635,7 +635,7 @@ async fn issue_create_validation_errors() {
     assert_eq!(unknown_reporter.status(), 400);
 
     let bad_assignee = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -652,7 +652,7 @@ async fn issue_create_validation_errors() {
     assert_eq!(bad_assignee.status(), 400);
 
     let unknown_assignee = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -669,7 +669,7 @@ async fn issue_create_validation_errors() {
     assert_eq!(unknown_assignee.status(), 400);
 
     let bad_issue_type = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -685,7 +685,7 @@ async fn issue_create_validation_errors() {
     assert_eq!(bad_issue_type.status(), 400);
 
     let bad_priority = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -701,7 +701,7 @@ async fn issue_create_validation_errors() {
     assert_eq!(bad_priority.status(), 400);
 
     let bad_status = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -724,8 +724,7 @@ async fn issue_get_and_update_not_found() {
 
     let missing = client
         .get(format!(
-            "{}/api/v1/issues/00000000-0000-0000-0000-000000000000",
-            url
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000000"
         ))
         .bearer_auth(&token)
         .send()
@@ -734,7 +733,7 @@ async fn issue_get_and_update_not_found() {
     assert_eq!(missing.status(), 404);
 
     let bad_update_id = client
-        .patch(format!("{}/api/v1/issues/not-a-uuid", url))
+        .patch(format!("{url}/api/v1/issues/not-a-uuid"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"summary": "nope"}))
         .send()
@@ -743,7 +742,7 @@ async fn issue_get_and_update_not_found() {
     assert_eq!(bad_update_id.status(), 400);
 
     let bad_get_id = client
-        .get(format!("{}/api/v1/issues/not-a-uuid", url))
+        .get(format!("{url}/api/v1/issues/not-a-uuid"))
         .bearer_auth(&token)
         .send()
         .await
@@ -752,8 +751,7 @@ async fn issue_get_and_update_not_found() {
 
     let missing_update = client
         .patch(format!(
-            "{}/api/v1/issues/00000000-0000-0000-0000-000000000000",
-            url
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000000"
         ))
         .bearer_auth(&token)
         .json(&serde_json::json!({"summary": "nope"}))
@@ -769,7 +767,7 @@ async fn board_move_validation() {
     let token = login_token(&url, &client).await;
 
     let bad_key = client
-        .get(format!("{}/api/v1/projects/!!/board", url))
+        .get(format!("{url}/api/v1/projects/!!/board"))
         .bearer_auth(&token)
         .send()
         .await
@@ -777,7 +775,7 @@ async fn board_move_validation() {
     assert_eq!(bad_key.status(), 400);
 
     let bad_move_issue = client
-        .post(format!("{}/api/v1/projects/TT/board/move", url))
+        .post(format!("{url}/api/v1/projects/TT/board/move"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"issue_id": "not-a-uuid", "status_id": test_status_done().to_string()}))
         .send()
@@ -786,7 +784,7 @@ async fn board_move_validation() {
     assert_eq!(bad_move_issue.status(), 400);
 
     let bad_move_status = client
-        .post(format!("{}/api/v1/projects/TT/board/move", url))
+        .post(format!("{url}/api/v1/projects/TT/board/move"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"issue_id": "00000000-0000-0000-0000-000000000000", "status_id": "not-a-uuid"}))
         .send()
@@ -795,7 +793,7 @@ async fn board_move_validation() {
     assert_eq!(bad_move_status.status(), 400);
 
     let missing_issue = client
-        .post(format!("{}/api/v1/projects/TT/board/move", url))
+        .post(format!("{url}/api/v1/projects/TT/board/move"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"issue_id": "00000000-0000-0000-0000-000000000000", "status_id": test_status_done().to_string()}))
         .send()
@@ -812,7 +810,7 @@ async fn board_move_accepts_current_status_id_as_noop() {
     let status_id = "00000000-0000-0000-0000-000000000001";
 
     let res = client
-        .post(format!("{}/api/v1/projects/TT/board/move", url))
+        .post(format!("{url}/api/v1/projects/TT/board/move"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "issue_id": &issue_id,
@@ -841,7 +839,7 @@ async fn board_move_accepts_current_status_id_as_noop() {
 
 async fn login_token(url: &str, client: &reqwest::Client) -> String {
     let res = client
-        .post(format!("{}/api/v1/auth/login", url))
+        .post(format!("{url}/api/v1/auth/login"))
         .json(&serde_json::json!({"email":"demo@example.com","password":"demo"}))
         .send()
         .await
@@ -878,7 +876,7 @@ async fn board_success_and_move() {
     let token = login_token(&url, &client).await;
 
     let board = client
-        .get(format!("{}/api/v1/projects/TT/board", url))
+        .get(format!("{url}/api/v1/projects/TT/board"))
         .bearer_auth(&token)
         .send()
         .await
@@ -888,7 +886,7 @@ async fn board_success_and_move() {
     assert!(!body["columns"].as_array().unwrap().is_empty());
 
     let created = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -906,7 +904,7 @@ async fn board_success_and_move() {
     let issue_id = issue["id"].as_str().unwrap();
 
     let moved = client
-        .post(format!("{}/api/v1/projects/TT/board/move", url))
+        .post(format!("{url}/api/v1/projects/TT/board/move"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "issue_id": issue_id,
@@ -925,7 +923,7 @@ async fn dashboard_returns_assigned_issues() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
     let created = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -942,7 +940,7 @@ async fn dashboard_returns_assigned_issues() {
     assert_eq!(created.status(), 201);
 
     let res = client
-        .get(format!("{}/api/v1/dashboard", url))
+        .get(format!("{url}/api/v1/dashboard"))
         .bearer_auth(&token)
         .send()
         .await
@@ -957,8 +955,7 @@ async fn issue_get_not_found() {
     let token = login_token(&url, &client).await;
     let res = client
         .get(format!(
-            "{}/api/v1/issues/00000000-0000-0000-0000-000000000000",
-            url
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000000"
         ))
         .bearer_auth(&token)
         .send()
@@ -973,8 +970,7 @@ async fn issue_update_not_found() {
     let token = login_token(&url, &client).await;
     let res = client
         .patch(format!(
-            "{}/api/v1/issues/00000000-0000-0000-0000-000000000000",
-            url
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000000"
         ))
         .bearer_auth(&token)
         .json(&serde_json::json!({"summary":"x"}))
@@ -991,7 +987,7 @@ async fn issue_update_assignee_null_empty_and_omitted_contract() {
     let assignee_id = test_user().id.to_string();
 
     let created = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -1060,7 +1056,7 @@ async fn issue_update_accepts_current_status_id_as_noop() {
     let reporter_id = test_user().id.to_string();
 
     let created = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -1100,7 +1096,7 @@ async fn comments_crud() {
     let token = login_token(&url, &client).await;
 
     let created = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -1118,7 +1114,7 @@ async fn comments_crud() {
     let issue_id = issue["id"].as_str().unwrap();
 
     let list0 = client
-        .get(format!("{}/api/v1/issues/{issue_id}/comments", url))
+        .get(format!("{url}/api/v1/issues/{issue_id}/comments"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1128,7 +1124,7 @@ async fn comments_crud() {
     assert!(body["comments"].as_array().unwrap().is_empty());
 
     let create = client
-        .post(format!("{}/api/v1/issues/{issue_id}/comments", url))
+        .post(format!("{url}/api/v1/issues/{issue_id}/comments"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"body": "first comment"}))
         .send()
@@ -1140,7 +1136,7 @@ async fn comments_crud() {
     assert_eq!(comment["body"], "first comment");
 
     let update = client
-        .patch(format!("{}/api/v1/comments/{comment_id}", url))
+        .patch(format!("{url}/api/v1/comments/{comment_id}"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"body": "updated comment"}))
         .send()
@@ -1151,7 +1147,7 @@ async fn comments_crud() {
     assert_eq!(body["body"], "updated comment");
 
     let delete = client
-        .delete(format!("{}/api/v1/comments/{comment_id}", url))
+        .delete(format!("{url}/api/v1/comments/{comment_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1165,7 +1161,7 @@ async fn worklogs_crud() {
     let token = login_token(&url, &client).await;
 
     let created = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -1183,7 +1179,7 @@ async fn worklogs_crud() {
     let issue_id = issue["id"].as_str().unwrap();
 
     let list0 = client
-        .get(format!("{}/api/v1/issues/{issue_id}/worklogs", url))
+        .get(format!("{url}/api/v1/issues/{issue_id}/worklogs"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1191,7 +1187,7 @@ async fn worklogs_crud() {
     assert_eq!(list0.status(), 200);
 
     let create = client
-        .post(format!("{}/api/v1/issues/{issue_id}/worklogs", url))
+        .post(format!("{url}/api/v1/issues/{issue_id}/worklogs"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "started_at": "2026-07-21T10:00:00+00:00",
@@ -1208,7 +1204,7 @@ async fn worklogs_crud() {
     assert_eq!(worklog["description"], "e2e worklog");
 
     let update = client
-        .patch(format!("{}/api/v1/worklogs/{worklog_id}", url))
+        .patch(format!("{url}/api/v1/worklogs/{worklog_id}"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "started_at": "2026-07-21T11:00:00+00:00",
@@ -1223,7 +1219,7 @@ async fn worklogs_crud() {
     assert_eq!(body["description"], "e2e worklog");
 
     let issue_after_update = client
-        .get(format!("{}/api/v1/issues/{issue_id}", url))
+        .get(format!("{url}/api/v1/issues/{issue_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1233,7 +1229,7 @@ async fn worklogs_crud() {
     assert_eq!(issue_after_update["time_spent_seconds"], 7200);
 
     let clear_description = client
-        .patch(format!("{}/api/v1/worklogs/{worklog_id}", url))
+        .patch(format!("{url}/api/v1/worklogs/{worklog_id}"))
         .bearer_auth(&token)
         .json(&serde_json::json!({ "description": null }))
         .send()
@@ -1244,7 +1240,7 @@ async fn worklogs_crud() {
     assert!(body["description"].is_null());
 
     let delete = client
-        .delete(format!("{}/api/v1/worklogs/{worklog_id}", url))
+        .delete(format!("{url}/api/v1/worklogs/{worklog_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1252,7 +1248,7 @@ async fn worklogs_crud() {
     assert_eq!(delete.status(), 204);
 
     let issue_after_delete = client
-        .get(format!("{}/api/v1/issues/{issue_id}", url))
+        .get(format!("{url}/api/v1/issues/{issue_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1268,7 +1264,7 @@ async fn project_members_crud() {
     let token = login_token(&url, &client).await;
 
     let register = client
-        .post(format!("{}/api/v1/auth/register", url))
+        .post(format!("{url}/api/v1/auth/register"))
         .json(&serde_json::json!({
             "email": "member@example.com",
             "username": "member",
@@ -1284,7 +1280,7 @@ async fn project_members_crud() {
     let project_key = "TT";
 
     let list0 = client
-        .get(format!("{}/api/v1/projects/{project_key}/members", url))
+        .get(format!("{url}/api/v1/projects/{project_key}/members"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1292,7 +1288,7 @@ async fn project_members_crud() {
     assert_eq!(list0.status(), 200);
 
     let add = client
-        .post(format!("{}/api/v1/projects/{project_key}/members", url))
+        .post(format!("{url}/api/v1/projects/{project_key}/members"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"user_id": user_id, "role": "member"}))
         .send()
@@ -1304,8 +1300,7 @@ async fn project_members_crud() {
 
     let remove = client
         .delete(format!(
-            "{}/api/v1/projects/{project_key}/members/{user_id}",
-            url
+            "{url}/api/v1/projects/{project_key}/members/{user_id}"
         ))
         .bearer_auth(&token)
         .send()
@@ -1344,7 +1339,7 @@ async fn issue_transition() {
     let token = login_token(&url, &client).await;
 
     let created = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -1362,7 +1357,7 @@ async fn issue_transition() {
     let issue_id = issue["id"].as_str().unwrap();
 
     let res = client
-        .post(format!("{}/api/v1/issues/{issue_id}/transition", url))
+        .post(format!("{url}/api/v1/issues/{issue_id}/transition"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"target_status_id": test_status_done().to_string()}))
         .send()
@@ -1381,7 +1376,7 @@ async fn transition_accepts_current_status_id_as_noop() {
     let status_id = "00000000-0000-0000-0000-000000000001";
 
     let res = client
-        .post(format!("{}/api/v1/issues/{issue_id}/transition", url))
+        .post(format!("{url}/api/v1/issues/{issue_id}/transition"))
         .bearer_auth(&token)
         .json(&serde_json::json!({ "target_status_id": status_id }))
         .send()
@@ -1402,7 +1397,7 @@ async fn issue_create_invalid_project_key() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
     let res = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(&token)
         .json(&serde_json::json!({
             "project_key": "invalid key!",
@@ -1423,7 +1418,7 @@ async fn users_me_returns_current_user() {
     let (url, client) = spawn_server().await;
 
     let res = client
-        .post(format!("{}/api/v1/auth/register", url))
+        .post(format!("{url}/api/v1/auth/register"))
         .json(&serde_json::json!({
             "email": "me@example.com",
             "username": "meuser",
@@ -1438,7 +1433,7 @@ async fn users_me_returns_current_user() {
     let token = body["access_token"].as_str().unwrap();
 
     let res = client
-        .get(format!("{}/api/v1/users/me", url))
+        .get(format!("{url}/api/v1/users/me"))
         .bearer_auth(token)
         .send()
         .await
@@ -1453,7 +1448,7 @@ async fn users_me_returns_current_user() {
 
 async fn create_issue_via_api(url: &str, client: &reqwest::Client, token: &str) -> String {
     let res = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -1491,7 +1486,7 @@ async fn attachment_upload_download_delete_flow() {
     let issue_id = create_issue_via_api(&url, &client, &token).await;
 
     // upload
-    let res = auth(client.post(format!("{}/api/v1/issues/{}/attachments", url, issue_id)))
+    let res = auth(client.post(format!("{url}/api/v1/issues/{issue_id}/attachments")))
         .multipart(multipart_file(
             "notes.txt",
             "text/plain",
@@ -1507,7 +1502,7 @@ async fn attachment_upload_download_delete_flow() {
     assert_eq!(body["size_bytes"], 16);
 
     // list
-    let res = auth(client.get(format!("{}/api/v1/issues/{}/attachments", url, issue_id)))
+    let res = auth(client.get(format!("{url}/api/v1/issues/{issue_id}/attachments")))
         .send()
         .await
         .unwrap();
@@ -1516,7 +1511,7 @@ async fn attachment_upload_download_delete_flow() {
     assert_eq!(list["attachments"].as_array().unwrap().len(), 1);
 
     // download
-    let res = auth(client.get(format!("{}/api/v1/attachments/{}/download", url, id)))
+    let res = auth(client.get(format!("{url}/api/v1/attachments/{id}/download")))
         .send()
         .await
         .unwrap();
@@ -1525,14 +1520,14 @@ async fn attachment_upload_download_delete_flow() {
     assert_eq!(&bytes[..], b"hello attachment");
 
     // delete
-    let res = auth(client.delete(format!("{}/api/v1/attachments/{}", url, id)))
+    let res = auth(client.delete(format!("{url}/api/v1/attachments/{id}")))
         .send()
         .await
         .unwrap();
     assert_eq!(res.status(), 204);
 
     // list empty after delete
-    let res = auth(client.get(format!("{}/api/v1/issues/{}/attachments", url, issue_id)))
+    let res = auth(client.get(format!("{url}/api/v1/issues/{issue_id}/attachments")))
         .send()
         .await
         .unwrap();
@@ -1548,8 +1543,7 @@ async fn attachment_upload_requires_file_field() {
     let empty = reqwest::multipart::Form::new();
     let res = client
         .post(format!(
-            "{}/api/v1/issues/00000000-0000-0000-0000-000000000101/attachments",
-            url
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000101/attachments"
         ))
         .bearer_auth(token)
         .multipart(empty)
@@ -1566,8 +1560,7 @@ async fn attachment_upload_unknown_issue_404() {
 
     let res = client
         .post(format!(
-            "{}/api/v1/issues/00000000-0000-0000-0000-00c0ffee0001/attachments",
-            url
+            "{url}/api/v1/issues/00000000-0000-0000-0000-00c0ffee0001/attachments"
         ))
         .bearer_auth(token)
         .multipart(multipart_file("x.txt", "text/plain", b"data"))
@@ -1585,8 +1578,7 @@ async fn attachment_download_unknown_404() {
 
     let res = client
         .get(format!(
-            "{}/api/v1/attachments/00000000-0000-0000-0000-00c0ffee0002/download",
-            url
+            "{url}/api/v1/attachments/00000000-0000-0000-0000-00c0ffee0002/download"
         ))
         .bearer_auth(token)
         .send()
@@ -1602,7 +1594,7 @@ async fn attachment_upload_empty_file_400() {
     let issue_id = create_issue_via_api(&url, &client, &token).await;
 
     let res = client
-        .post(format!("{}/api/v1/issues/{}/attachments", url, issue_id))
+        .post(format!("{url}/api/v1/issues/{issue_id}/attachments"))
         .bearer_auth(token)
         .multipart(multipart_file("empty.txt", "text/plain", b""))
         .send()
@@ -1618,7 +1610,7 @@ async fn attachment_upload_rejects_disallowed_content_type() {
     let issue_id = create_issue_via_api(&url, &client, &token).await;
 
     let res = client
-        .post(format!("{}/api/v1/issues/{}/attachments", url, issue_id))
+        .post(format!("{url}/api/v1/issues/{issue_id}/attachments"))
         .bearer_auth(token)
         .multipart(multipart_file(
             "payload.exe",
@@ -1637,8 +1629,7 @@ async fn attachments_require_auth() {
     let (url, client) = spawn_server().await;
     let res = client
         .get(format!(
-            "{}/api/v1/issues/00000000-0000-0000-0000-000000000101/attachments",
-            url
+            "{url}/api/v1/issues/00000000-0000-0000-0000-000000000101/attachments"
         ))
         .send()
         .await
@@ -1656,7 +1647,7 @@ async fn labels_crud_and_issue_attach_flow() {
 
     // create
     let res = client
-        .post(format!("{}/api/v1/projects/TT/labels", url))
+        .post(format!("{url}/api/v1/projects/TT/labels"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"name": "bug", "color": "#ef4444"}))
         .send()
@@ -1669,7 +1660,7 @@ async fn labels_crud_and_issue_attach_flow() {
 
     // list by project
     let res = client
-        .get(format!("{}/api/v1/projects/TT/labels", url))
+        .get(format!("{url}/api/v1/projects/TT/labels"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1686,7 +1677,7 @@ async fn labels_crud_and_issue_attach_flow() {
 
     // attach to issue
     let res = client
-        .post(format!("{}/api/v1/issues/{}/labels", url, issue_id))
+        .post(format!("{url}/api/v1/issues/{issue_id}/labels"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"label_id": label_id}))
         .send()
@@ -1696,7 +1687,7 @@ async fn labels_crud_and_issue_attach_flow() {
 
     // list issue labels
     let res = client
-        .get(format!("{}/api/v1/issues/{}/labels", url, issue_id))
+        .get(format!("{url}/api/v1/issues/{issue_id}/labels"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1706,7 +1697,7 @@ async fn labels_crud_and_issue_attach_flow() {
     assert_eq!(issue_labels["labels"].as_array().unwrap().len(), 1);
 
     let res = client
-        .get(format!("{}/api/v1/issues/{}", url, issue_id))
+        .get(format!("{url}/api/v1/issues/{issue_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1716,7 +1707,7 @@ async fn labels_crud_and_issue_attach_flow() {
     assert_eq!(issue["labels"], serde_json::json!(["bug"]));
 
     let res = client
-        .get(format!("{}/api/v1/search?q=attachment", url))
+        .get(format!("{url}/api/v1/search?q=attachment"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1733,7 +1724,7 @@ async fn labels_crud_and_issue_attach_flow() {
 
     // update
     let res = client
-        .put(format!("{}/api/v1/labels/{}", url, label_id))
+        .put(format!("{url}/api/v1/labels/{label_id}"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"name": "critical-bug", "color": "#dc2626"}))
         .send()
@@ -1744,7 +1735,7 @@ async fn labels_crud_and_issue_attach_flow() {
     assert_eq!(updated["name"], "critical-bug");
 
     let res = client
-        .get(format!("{}/api/v1/issues/{}", url, issue_id))
+        .get(format!("{url}/api/v1/issues/{issue_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1755,10 +1746,7 @@ async fn labels_crud_and_issue_attach_flow() {
 
     // detach
     let res = client
-        .delete(format!(
-            "{}/api/v1/issues/{}/labels/{}",
-            url, issue_id, label_id
-        ))
+        .delete(format!("{url}/api/v1/issues/{issue_id}/labels/{label_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1767,7 +1755,7 @@ async fn labels_crud_and_issue_attach_flow() {
 
     // delete label
     let res = client
-        .delete(format!("{}/api/v1/labels/{}", url, label_id))
+        .delete(format!("{url}/api/v1/labels/{label_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1781,7 +1769,7 @@ async fn label_create_empty_name_400() {
     let token = login_token(&url, &client).await;
 
     let res = client
-        .post(format!("{}/api/v1/projects/TT/labels", url))
+        .post(format!("{url}/api/v1/projects/TT/labels"))
         .bearer_auth(token)
         .json(&serde_json::json!({"name": "  ", "color": "#000000"}))
         .send()
@@ -1796,7 +1784,7 @@ async fn label_create_invalid_color_400() {
     let token = login_token(&url, &client).await;
 
     let res = client
-        .post(format!("{}/api/v1/projects/TT/labels", url))
+        .post(format!("{url}/api/v1/projects/TT/labels"))
         .bearer_auth(token)
         .json(&serde_json::json!({"name": "bad-color", "color": "red"}))
         .send()
@@ -1811,7 +1799,7 @@ async fn label_update_rejects_empty_name_and_invalid_color() {
     let token = login_token(&url, &client).await;
 
     let res = client
-        .post(format!("{}/api/v1/projects/TT/labels", url))
+        .post(format!("{url}/api/v1/projects/TT/labels"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"name": "ops", "color": "#0ea5e9"}))
         .send()
@@ -1822,7 +1810,7 @@ async fn label_update_rejects_empty_name_and_invalid_color() {
     let label_id = label["id"].as_str().unwrap();
 
     let res = client
-        .put(format!("{}/api/v1/labels/{}", url, label_id))
+        .put(format!("{url}/api/v1/labels/{label_id}"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"name": "  ", "color": "#000000"}))
         .send()
@@ -1831,7 +1819,7 @@ async fn label_update_rejects_empty_name_and_invalid_color() {
     assert_eq!(res.status(), 400);
 
     let res = client
-        .put(format!("{}/api/v1/labels/{}", url, label_id))
+        .put(format!("{url}/api/v1/labels/{label_id}"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"name": "ops", "color": "#12zz56"}))
         .send()
@@ -1846,7 +1834,7 @@ async fn label_create_unknown_project_404() {
     let token = login_token(&url, &client).await;
 
     let res = client
-        .post(format!("{}/api/v1/projects/NOPE/labels", url))
+        .post(format!("{url}/api/v1/projects/NOPE/labels"))
         .bearer_auth(token)
         .json(&serde_json::json!({"name": "x", "color": "#000000"}))
         .send()
@@ -1862,7 +1850,7 @@ async fn label_attach_unknown_label_404() {
     let issue_id = create_issue_via_api(&url, &client, &token).await;
 
     let res = client
-        .post(format!("{}/api/v1/issues/{}/labels", url, issue_id))
+        .post(format!("{url}/api/v1/issues/{issue_id}/labels"))
         .bearer_auth(token)
         .json(&serde_json::json!({"label_id": "00000000-0000-0000-0000-00c0ffee0099"}))
         .send()
@@ -1879,8 +1867,7 @@ async fn label_detach_unknown_label_404() {
 
     let res = client
         .delete(format!(
-            "{}/api/v1/issues/{}/labels/00000000-0000-0000-0000-00c0ffee0099",
-            url, issue_id
+            "{url}/api/v1/issues/{issue_id}/labels/00000000-0000-0000-0000-00c0ffee0099"
         ))
         .bearer_auth(token)
         .send()
@@ -1897,7 +1884,7 @@ async fn label_attach_rejects_cross_project_label() {
     create_project_via_api(&url, &client, &token, "LB", "Labels B").await;
 
     let other_label = client
-        .post(format!("{}/api/v1/projects/LB/labels", url))
+        .post(format!("{url}/api/v1/projects/LB/labels"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"name": "other", "color": "#22c55e"}))
         .send()
@@ -1908,7 +1895,7 @@ async fn label_attach_rejects_cross_project_label() {
     let other_label_id = other_label["id"].as_str().unwrap();
 
     let res = client
-        .post(format!("{}/api/v1/issues/{}/labels", url, issue_id))
+        .post(format!("{url}/api/v1/issues/{issue_id}/labels"))
         .bearer_auth(token)
         .json(&serde_json::json!({"label_id": other_label_id}))
         .send()
@@ -1921,7 +1908,7 @@ async fn label_attach_rejects_cross_project_label() {
 async fn labels_require_auth() {
     let (url, client) = spawn_server().await;
     let res = client
-        .get(format!("{}/api/v1/projects/TT/labels", url))
+        .get(format!("{url}/api/v1/projects/TT/labels"))
         .send()
         .await
         .unwrap();
@@ -1937,7 +1924,7 @@ async fn create_second_issue(
     summary: &str,
 ) -> String {
     let res = client
-        .post(format!("{}/api/v1/issues", url))
+        .post(format!("{url}/api/v1/issues"))
         .bearer_auth(token)
         .json(&serde_json::json!({
             "project_key": "TT",
@@ -1964,7 +1951,7 @@ async fn issue_links_create_list_delete_flow() {
 
     // fetch key of b
     let res = client
-        .get(format!("{}/api/v1/issues/{}", url, b_id))
+        .get(format!("{url}/api/v1/issues/{b_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -1974,7 +1961,7 @@ async fn issue_links_create_list_delete_flow() {
 
     // create link a -> b (blocks)
     let res = client
-        .post(format!("{}/api/v1/issues/{}/links", url, a))
+        .post(format!("{url}/api/v1/issues/{a}/links"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"target_key": b_key, "link_type": "blocks"}))
         .send()
@@ -1989,7 +1976,7 @@ async fn issue_links_create_list_delete_flow() {
     // list links from both sides
     for iid in [&a, &b_id] {
         let res = client
-            .get(format!("{}/api/v1/issues/{}/links", url, iid))
+            .get(format!("{url}/api/v1/issues/{iid}/links"))
             .bearer_auth(&token)
             .send()
             .await
@@ -2001,7 +1988,7 @@ async fn issue_links_create_list_delete_flow() {
 
     // delete
     let res = client
-        .delete(format!("{}/api/v1/issue-links/{}", url, link_id))
+        .delete(format!("{url}/api/v1/issue-links/{link_id}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -2154,7 +2141,7 @@ async fn issue_link_self_link_400() {
     let a = create_issue_via_api(&url, &client, &token).await;
 
     let res = client
-        .get(format!("{}/api/v1/issues/{}", url, a))
+        .get(format!("{url}/api/v1/issues/{a}"))
         .bearer_auth(&token)
         .send()
         .await
@@ -2163,7 +2150,7 @@ async fn issue_link_self_link_400() {
     let key = issue["key"].as_str().unwrap();
 
     let res = client
-        .post(format!("{}/api/v1/issues/{}/links", url, a))
+        .post(format!("{url}/api/v1/issues/{a}/links"))
         .bearer_auth(token)
         .json(&serde_json::json!({"target_key": key, "link_type": "relates"}))
         .send()
@@ -2179,7 +2166,7 @@ async fn issue_link_unknown_type_400() {
     let a = create_issue_via_api(&url, &client, &token).await;
 
     let res = client
-        .post(format!("{}/api/v1/issues/{}/links", url, a))
+        .post(format!("{url}/api/v1/issues/{a}/links"))
         .bearer_auth(token)
         .json(&serde_json::json!({"target_key": "TT-999", "link_type": "banana"}))
         .send()
@@ -2195,7 +2182,7 @@ async fn issue_link_unknown_target_404() {
     let a = create_issue_via_api(&url, &client, &token).await;
 
     let res = client
-        .post(format!("{}/api/v1/issues/{}/links", url, a))
+        .post(format!("{url}/api/v1/issues/{a}/links"))
         .bearer_auth(token)
         .json(&serde_json::json!({"target_key": "TT-424242", "link_type": "relates"}))
         .send()
@@ -2215,7 +2202,7 @@ async fn issue_link_rejects_target_in_inaccessible_project() {
     let b_issue = create_issue_in_project(&url, &client, &b_token, "LK", &b_id).await;
 
     let res = client
-        .get(format!("{}/api/v1/issues/{}", url, b_issue))
+        .get(format!("{url}/api/v1/issues/{b_issue}"))
         .bearer_auth(&b_token)
         .send()
         .await
@@ -2225,7 +2212,7 @@ async fn issue_link_rejects_target_in_inaccessible_project() {
     let b_key = b_issue["key"].as_str().unwrap();
 
     let res = client
-        .post(format!("{}/api/v1/issues/{}/links", url, a_issue))
+        .post(format!("{url}/api/v1/issues/{a_issue}/links"))
         .bearer_auth(a_token)
         .json(&serde_json::json!({"target_key": b_key, "link_type": "relates"}))
         .send()
@@ -2244,7 +2231,7 @@ async fn member_readd_is_idempotent_upsert() {
 
     // register a second user
     let register = client
-        .post(format!("{}/api/v1/auth/register", url))
+        .post(format!("{url}/api/v1/auth/register"))
         .json(&serde_json::json!({
             "email": "readd@example.com",
             "username": "readd",
@@ -2260,7 +2247,7 @@ async fn member_readd_is_idempotent_upsert() {
     // add twice
     for expected_role in ["member", "admin"] {
         let res = client
-            .post(format!("{}/api/v1/projects/{project_key}/members", url))
+            .post(format!("{url}/api/v1/projects/{project_key}/members"))
             .bearer_auth(&token)
             .json(&serde_json::json!({"user_id": user_id, "role": expected_role}))
             .send()
@@ -2273,7 +2260,7 @@ async fn member_readd_is_idempotent_upsert() {
 
     // list shows exactly one membership with the latest role
     let res = client
-        .get(format!("{}/api/v1/projects/{project_key}/members", url))
+        .get(format!("{url}/api/v1/projects/{project_key}/members"))
         .bearer_auth(&token)
         .send()
         .await
@@ -2294,7 +2281,7 @@ async fn member_add_unknown_project_404() {
     let token = login_token(&url, &client).await;
 
     let res = client
-        .post(format!("{}/api/v1/projects/UNKNOWN/members", url))
+        .post(format!("{url}/api/v1/projects/UNKNOWN/members"))
         .bearer_auth(token)
         .json(&serde_json::json!({"user_id": "00000000-0000-0000-0000-000000000001", "role": "member"}))
         .send()
@@ -2310,7 +2297,7 @@ async fn member_remove_returns_204() {
     let project_key = "TT";
 
     let register = client
-        .post(format!("{}/api/v1/auth/register", url))
+        .post(format!("{url}/api/v1/auth/register"))
         .json(&serde_json::json!({
             "email": "remove-me@example.com",
             "username": "removeme",
@@ -2324,7 +2311,7 @@ async fn member_remove_returns_204() {
     let user_id = user["user_id"].as_str().unwrap();
 
     let add = client
-        .post(format!("{}/api/v1/projects/{project_key}/members", url))
+        .post(format!("{url}/api/v1/projects/{project_key}/members"))
         .bearer_auth(&token)
         .json(&serde_json::json!({"user_id": user_id, "role": "member"}))
         .send()
@@ -2334,8 +2321,7 @@ async fn member_remove_returns_204() {
 
     let remove = client
         .delete(format!(
-            "{}/api/v1/projects/{project_key}/members/{user_id}",
-            url
+            "{url}/api/v1/projects/{project_key}/members/{user_id}"
         ))
         .bearer_auth(token)
         .send()
@@ -6750,7 +6736,7 @@ async fn password_reset_full_flow() {
 
     // Unknown email must be indistinguishable (202, no email).
     let res = client
-        .post(format!("{}/api/v1/auth/password/request", url))
+        .post(format!("{url}/api/v1/auth/password/request"))
         .json(&serde_json::json!({ "email": "nobody@example.com" }))
         .send()
         .await
@@ -6760,7 +6746,7 @@ async fn password_reset_full_flow() {
 
     // Known email: 202 + exactly one email containing a token link.
     let res = client
-        .post(format!("{}/api/v1/auth/password/request", url))
+        .post(format!("{url}/api/v1/auth/password/request"))
         .json(&serde_json::json!({ "email": "demo@example.com" }))
         .send()
         .await
@@ -6789,7 +6775,7 @@ async fn password_reset_full_flow() {
 
     // Short password rejected without consuming the token.
     let res = client
-        .post(format!("{}/api/v1/auth/password/reset", url))
+        .post(format!("{url}/api/v1/auth/password/reset"))
         .json(&serde_json::json!({ "token": token, "new_password": "short" }))
         .send()
         .await
@@ -6798,7 +6784,7 @@ async fn password_reset_full_flow() {
 
     // Reset with a valid password.
     let res = client
-        .post(format!("{}/api/v1/auth/password/reset", url))
+        .post(format!("{url}/api/v1/auth/password/reset"))
         .json(&serde_json::json!({ "token": token, "new_password": "new-secure-Pass1" }))
         .send()
         .await
@@ -6807,7 +6793,7 @@ async fn password_reset_full_flow() {
 
     // Token is single-use.
     let res = client
-        .post(format!("{}/api/v1/auth/password/reset", url))
+        .post(format!("{url}/api/v1/auth/password/reset"))
         .json(&serde_json::json!({ "token": token, "new_password": "another-Pass2" }))
         .send()
         .await
@@ -6832,7 +6818,7 @@ async fn password_reset_full_flow() {
 async fn password_reset_request_invalid_email() {
     let (url, client, _resets, emails) = spawn_server_for_password_reset().await;
     let res = client
-        .post(format!("{}/api/v1/auth/password/request", url))
+        .post(format!("{url}/api/v1/auth/password/request"))
         .json(&serde_json::json!({ "email": "not-an-email" }))
         .send()
         .await

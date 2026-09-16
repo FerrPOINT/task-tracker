@@ -241,8 +241,7 @@ impl crate::context::AuthService for JwtAuthService {
                 recipient_name: Some(user.display_name.to_string()),
                 subject: "TaskTracker: password reset".to_string(),
                 body: format!(
-                    "Use the link below to reset your password. The link is valid for 30 minutes and can be used once.\n\n{reset_url}\n\nIf you did not request a reset, ignore this email.",
-                    reset_url = reset_url
+                    "Use the link below to reset your password. The link is valid for 30 minutes and can be used once.\n\n{reset_url}\n\nIf you did not request a reset, ignore this email."
                 ),
                 action_url: Some(reset_url),
             })

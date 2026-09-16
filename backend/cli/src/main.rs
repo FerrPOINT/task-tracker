@@ -531,14 +531,14 @@ impl Api {
         } else {
             path
         };
-        let url = format!("{}{}", base_trimmed, path);
+        let url = format!("{base_trimmed}{path}");
         let mut req = match method {
             "GET" => self.client.get(&url),
             "POST" => self.client.post(&url).json(&payload),
             "PATCH" => self.client.patch(&url).json(&payload),
             "PUT" => self.client.put(&url).json(&payload),
             "DELETE" => self.client.delete(&url),
-            _ => bail!("unsupported method: {}", method),
+            _ => bail!("unsupported method: {method}"),
         };
         if !path.ends_with("/auth/register") && !path.ends_with("/auth/login") {
             req = req.bearer_auth(self.auth_header()?);
@@ -552,7 +552,7 @@ impl Api {
             serde_json::from_str(&text).unwrap_or(Value::String(text.clone()))
         };
         if !status.is_success() {
-            bail!("API error {}: {}", status, body);
+            bail!("API error {status}: {body}");
         }
         Ok(body)
     }
@@ -645,7 +645,7 @@ fn print_table(value: &Value) {
 async fn main() -> ExitCode {
     let cli = Cli::parse();
     if let Err(e) = run(cli).await {
-        eprintln!("error: {:#}", e);
+        eprintln!("error: {e:#}");
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
@@ -739,7 +739,7 @@ async fn run(cli: Cli) -> Result<()> {
             ProjectCommands::Delete { key } => {
                 api.delete(&format!("/api/v1/projects/{}", enc(&key)))
                     .await?;
-                println!("project {} deleted", key);
+                println!("project {key} deleted");
             }
         },
 
@@ -807,7 +807,7 @@ async fn run(cli: Cli) -> Result<()> {
             }
             IssueCommands::Delete { key } => {
                 api.delete(&format!("/api/v1/issues/{}", enc(&key))).await?;
-                println!("issue {} deleted", key);
+                println!("issue {key} deleted");
             }
             IssueCommands::Transition { key, to } => {
                 let body = api
@@ -993,7 +993,7 @@ async fn run(cli: Cli) -> Result<()> {
             CommentCommands::Delete { comment_id } => {
                 api.delete(&format!("/api/v1/comments/{}", enc(&comment_id)))
                     .await?;
-                println!("comment {} deleted", comment_id);
+                println!("comment {comment_id} deleted");
             }
         },
 
@@ -1025,7 +1025,7 @@ async fn run(cli: Cli) -> Result<()> {
             LabelCommands::Delete { label_id } => {
                 api.delete(&format!("/api/v1/labels/{}", enc(&label_id)))
                     .await?;
-                println!("label {} deleted", label_id);
+                println!("label {label_id} deleted");
             }
             LabelCommands::Attach { issue_id, label_id } => {
                 let body = api
@@ -1092,7 +1092,7 @@ async fn run(cli: Cli) -> Result<()> {
                     json!({}),
                 )
                 .await?;
-                println!("notification {} marked as read", id);
+                println!("notification {id} marked as read");
             }
             NotificationCommands::ReadAll => {
                 api.post("/api/v1/notifications/read-all", json!({}))
@@ -1209,7 +1209,7 @@ async fn run(cli: Cli) -> Result<()> {
             }
             AdminCommands::AuditLog { limit } => {
                 let body = api
-                    .get(&format!("/api/v1/admin/audit-log?limit={}", limit))
+                    .get(&format!("/api/v1/admin/audit-log?limit={limit}"))
                     .await?;
                 print_output(out, &body);
             }

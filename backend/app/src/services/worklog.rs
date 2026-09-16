@@ -74,7 +74,7 @@ impl WorklogServiceImpl {
             issue,
             actor_id,
             "issue_worklog_logged",
-            format!("Work logged on {}", issue_key),
+            format!("Work logged on {issue_key}"),
             worklog
                 .description
                 .as_ref()

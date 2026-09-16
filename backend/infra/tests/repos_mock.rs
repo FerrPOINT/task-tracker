@@ -22,7 +22,7 @@ fn assert_database_error(err: Result<impl std::fmt::Debug, AppError>) {
         Err(AppError::Database(msg)) => {
             assert!(msg.contains("mock") || msg.contains("Query Error"))
         }
-        other => panic!("expected AppError::Database, got {:?}", other),
+        other => panic!("expected AppError::Database, got {other:?}"),
     }
 }
 

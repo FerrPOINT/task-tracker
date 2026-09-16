@@ -45,7 +45,7 @@ async fn authorized_request(
         .method(method)
         .uri(path)
         .header("content-type", "application/json")
-        .header("authorization", format!("Bearer {}", token))
+        .header("authorization", format!("Bearer {token}"))
         .body(Body::from(body.to_string()))
         .unwrap();
     app.clone().oneshot(req).await.unwrap().status()
@@ -93,7 +93,7 @@ async fn serve_forever_responds_to_request() {
     let client = reqwest::Client::new();
     let response = timeout(
         Duration::from_secs(5),
-        client.get(format!("http://{}/api/v1/health", addr)).send(),
+        client.get(format!("http://{addr}/api/v1/health")).send(),
     )
     .await
     .unwrap()
@@ -320,7 +320,7 @@ async fn project_get_invalid_key_returns_400() {
             Request::builder()
                 .method("GET")
                 .uri("/api/v1/projects/toolongkeyxx")
-                .header("authorization", format!("Bearer {}", token))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -349,7 +349,7 @@ async fn issue_create_invalid_project_key_returns_400() {
                 .method("POST")
                 .uri("/api/v1/issues")
                 .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {}", token))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::from(serde_json::to_string(&req).unwrap()))
                 .unwrap(),
         )
@@ -378,7 +378,7 @@ async fn issue_create_invalid_reporter_id_returns_400() {
                 .method("POST")
                 .uri("/api/v1/issues")
                 .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {}", token))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::from(serde_json::to_string(&req).unwrap()))
                 .unwrap(),
         )
@@ -395,7 +395,7 @@ async fn issue_get_invalid_id_returns_400() {
             Request::builder()
                 .method("GET")
                 .uri("/api/v1/issues/not-a-uuid")
-                .header("authorization", format!("Bearer {}", token))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -417,7 +417,7 @@ async fn board_move_invalid_issue_id_returns_400() {
                 .method("POST")
                 .uri("/api/v1/projects/KEY/board/move")
                 .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {}", token))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::from(serde_json::to_string(&req).unwrap()))
                 .unwrap(),
         )
@@ -439,7 +439,7 @@ async fn board_move_invalid_status_id_returns_400() {
                 .method("POST")
                 .uri("/api/v1/projects/KEY/board/move")
                 .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {}", token))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::from(serde_json::to_string(&req).unwrap()))
                 .unwrap(),
         )
@@ -468,7 +468,7 @@ async fn update_issue_invalid_assignee_id_returns_400() {
                 .method("PATCH")
                 .uri("/api/v1/issues/00000000-0000-0000-0000-000000000000")
                 .header("content-type", "application/json")
-                .header("authorization", format!("Bearer {}", token))
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::from(serde_json::to_string(&req).unwrap()))
                 .unwrap(),
         )
