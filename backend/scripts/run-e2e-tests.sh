@@ -21,6 +21,9 @@ MANAGE_STACK=false
 export TASKTRACKER_DATABASE_URL="postgres://${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
 export TT_TEST_DATABASE_URL="postgres://${DB_USER}@${DB_HOST}:${DB_PORT}/${INFRA_DB_NAME}"
 export RUST_LOG="${RUST_LOG:-warn}"
+# Coverage links large test binaries; serialize by default to keep the disposable
+# gate reproducible on the standard local runner. Callers may opt in to more jobs.
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-1}"
 
 validate_db_name() {
     case "$1" in

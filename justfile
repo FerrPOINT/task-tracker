@@ -89,9 +89,9 @@ test-frontend:
 test-backend:
     cd backend && cargo test --workspace -- --test-threads=1
 
-# Run backend coverage gate (requires DB password in TT_DB_PASS)
+# Run backend coverage gate (Rust 1.88, cargo-llvm-cov and Docker Compose required).
 test-backend-coverage:
-    cd backend && bash scripts/run-e2e-tests.sh
+    cd backend && ./scripts/run-e2e-tests.sh
 
 # Run all fast tests
 @test: test-backend test-frontend

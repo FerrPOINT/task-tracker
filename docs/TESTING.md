@@ -45,8 +45,10 @@ cd backend && cargo test -p infra --test repos --test fk_regression -- --include
 ### Coverage gate
 
 ```bash
-# скрипт читает пароль тест-БД из /root/.tt_db_pass
-cd backend && bash scripts/run-e2e-tests.sh
+# Требуются Rust 1.88, cargo-llvm-cov и Docker Compose; disposable test stack
+# использует local trust authentication и по умолчанию serial Cargo build, чтобы
+# не исчерпать память runner-а. Пароль из host files не читается.
+cd backend && ./scripts/run-e2e-tests.sh
 ```
 
 CI-порог покрытия — 60% (`coverage` job); цель по слоям ниже — ориентир, не гейт.
@@ -128,7 +130,7 @@ Lefthook (`lefthook.yml`):
 - [ ] `pnpm typecheck` clean
 - [ ] `pnpm test` green
 - [ ] `cargo test --workspace -- --test-threads=1` green
-- [ ] `bash scripts/run-e2e-tests.sh` green
+- [ ] `./scripts/run-e2e-tests.sh` green
 - [ ] `pnpm build` green
 - [ ] Playwright critical path green
 - [ ] Документация обновлена

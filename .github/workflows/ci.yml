@@ -26,7 +26,7 @@ jobs:
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: 1.88.0
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
@@ -52,7 +52,7 @@ jobs:
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: 1.88.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: task-tracker/backend
@@ -94,6 +94,8 @@ jobs:
           ref: main
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - uses: Swatinem/rust-cache@v2
       - name: Apply all migrations to clean DB
         run: cargo run -p migration -- up
@@ -123,6 +125,7 @@ jobs:
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.88.0
           components: llvm-tools-preview
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-llvm-cov
@@ -155,6 +158,8 @@ jobs:
           ref: main
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           manifest-path: task-tracker/backend/Cargo.toml
@@ -193,6 +198,8 @@ jobs:
           ref: main
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: task-tracker/backend
@@ -229,6 +236,8 @@ jobs:
           ref: main
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: task-tracker/backend

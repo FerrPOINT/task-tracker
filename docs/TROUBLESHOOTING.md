@@ -5,7 +5,7 @@
 ### `cargo build` падает с ошибкой линковки
 
 - Убедиться, что установлены dev-зависимости: `openssl-dev`, `pkg-config` (Debian/Ubuntu: `libssl-dev pkg-config`).
-- Проверить версию Rust: `rustc --version` ≥ 1.80.
+- Проверить версию Rust: `rustc --version` ≥ 1.88; workspace pins this MSRV because `time 0.3.47` no longer compiles on Rust 1.86.
 
 ### Frontend dev-сервер не стартует
 

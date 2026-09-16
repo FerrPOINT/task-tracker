@@ -7,7 +7,7 @@
 | Инструмент | Минимальная версия | Примечание |
 |---|---|---|
 | Docker + Compose | 24.x | весь стек: Postgres, Redis, backend, frontend |
-| Rust | 1.86+ | backend (workspace в `backend/`) |
+| Rust | 1.88+ | backend (workspace в `backend/`; требуется `time 0.3.47`) |
 | Node.js | 22 LTS | frontend |
 | pnpm | 9.x+ | frontend package manager |
 | git | 2.40+ | — |
