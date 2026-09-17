@@ -118,10 +118,7 @@ export function IssueCreatePage() {
     <div>
       <h1 className="mb-5 text-xl font-bold sm:text-2xl">{t('issueCreate.title')}</h1>
 
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-4 rounded-lg border border-border bg-surface p-4 sm:p-6"
-      >
+      <form onSubmit={handleSubmit} className="max-w-4xl space-y-5 border-t border-border pt-5">
         {error && <ErrorState message={error.message} />}
         {validationError && <ErrorState message={validationError} />}
         {!userId && <div className="text-sm text-amber-500">{t('issueCreate.noReporter')}</div>}
@@ -165,7 +162,7 @@ export function IssueCreatePage() {
                     ))
                 : ['Task', 'Story', 'Bug', 'Epic'].map((name) => (
                     <option key={name} value={name}>
-                      {name}
+                      {t(`issueType.${name.toLowerCase()}`, { defaultValue: name })}
                     </option>
                   ))}
             </select>
@@ -261,13 +258,6 @@ export function IssueCreatePage() {
             </div>
           </div>
         )}
-
-        <div className="space-y-2">
-          <label htmlFor="issue-reporter" className="text-sm font-medium">
-            {t('issueCreate.reporter')}
-          </label>
-          <Input id="issue-reporter" type="text" value={t('issueCreate.me')} disabled />
-        </div>
 
         <div className="flex gap-2 pt-2">
           <Button type="submit" disabled={isPending || !userId} className="gap-1">

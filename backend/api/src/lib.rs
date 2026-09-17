@@ -652,6 +652,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let prometheus_layer: PrometheusMetricLayer = GenericMetricLayer::new();
 
     let mut root = Router::new()
+        .route("/health", get(routes::health::health))
         .route("/api/v1/health", get(routes::health::health))
         .nest("/api/v1", api.layer(GovernorLayer::new(general_limiter)))
         .nest("/api/v1", events_router)

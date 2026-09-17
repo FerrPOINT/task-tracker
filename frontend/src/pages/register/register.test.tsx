@@ -41,7 +41,7 @@ describe('RegisterPage', () => {
     })
 
     render(wrapper(<RegisterPage />))
-    expect(screen.getByText('TaskTracker')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /зарегистрироваться|sign up/i })).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText(/имя пользователя|username/i), 'newuser')
     await userEvent.type(screen.getByLabelText(/email/i), 'new@example.com')

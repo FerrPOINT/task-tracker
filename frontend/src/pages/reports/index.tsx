@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router'
 import { Download } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -23,10 +24,10 @@ import {
   useBurndownReport,
   useCumulativeFlowReport,
   useControlChartReport,
+  useSprints,
 } from '@/shared/api/hooks'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@sdlc/ui/ui'
 import { Card, CardHeader, CardTitle, CardContent } from '@sdlc/ui/ui'
-import { Input } from '@sdlc/ui/ui'
 import { Button } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
 import { fetchIssueExport, type IssueExportFormat } from '@/api/export'
@@ -35,13 +36,43 @@ type TabValue = 'velocity' | 'burndown' | 'cumulative-flow' | 'control-chart'
 
 export function ReportsPage() {
   const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { data: projects = [] } = useProjects()
+  const requestedProjectKey = searchParams.get('project_key') ?? ''
   const [projectId, setProjectId] = useState('')
-  const [sprintId, setSprintId] = useState('')
+  const sprintId = searchParams.get('sprint_id') ?? ''
   const [exporting, setExporting] = useState<IssueExportFormat | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
-  const [tab, setTab] = useState<TabValue>('velocity')
+  const requestedTab = searchParams.get('tab')
+  const tab: TabValue =
+    requestedTab === 'burndown' ||
+    requestedTab === 'cumulative-flow' ||
+    requestedTab === 'control-chart'
+      ? requestedTab
+      : 'velocity'
   const projectKey = projects.find((project) => project.id === projectId)?.key
+  const { data: sprints = [] } = useSprints(projectKey)
+
+  useEffect(() => {
+    if (!projectId && requestedProjectKey) {
+      const project = projects.find((candidate) => candidate.key === requestedProjectKey)
+      if (project) setProjectId(project.id)
+    }
+  }, [projectId, projects, requestedProjectKey])
+
+  function updateParams(values: Record<string, string | undefined>) {
+    setSearchParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        for (const [key, value] of Object.entries(values)) {
+          if (value) next.set(key, value)
+          else next.delete(key)
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }
 
   async function downloadExport(format: IssueExportFormat) {
     if (!projectKey) return
@@ -79,7 +110,12 @@ export function ReportsPage() {
             aria-label={t('reports.project')}
             className="h-9 rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary"
             value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
+            onChange={(e) => {
+              const nextId = e.target.value
+              setProjectId(nextId)
+              const nextProject = projects.find((project) => project.id === nextId)
+              updateParams({ project_key: nextProject?.key, sprint_id: undefined })
+            }}
           >
             <option value="">{t('reports.selectProject')}</option>
             {projects.map((p) => (
@@ -91,14 +127,22 @@ export function ReportsPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="report-sprint">{t('reports.sprintId')}</Label>
-          <Input
+          <Label htmlFor="report-sprint">Спринт</Label>
+          <select
             id="report-sprint"
-            placeholder={t('reports.sprintIdPlaceholder')}
+            aria-label="Спринт"
+            disabled={!projectKey}
             value={sprintId}
-            onChange={(e) => setSprintId(e.target.value)}
-            className="w-64"
-          />
+            onChange={(e) => updateParams({ sprint_id: e.target.value || undefined })}
+            className="h-9 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:w-64"
+          >
+            <option value="">Выберите спринт</option>
+            {sprints.map((sprint) => (
+              <option key={sprint.id} value={sprint.id}>
+                {sprint.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex gap-2" aria-label={t('reports.export')}>
@@ -131,8 +175,8 @@ export function ReportsPage() {
       {!projectId ? (
         <p className="py-8 text-center text-text-muted">{t('reports.noProject')}</p>
       ) : (
-        <Tabs value={tab} onValueChange={(v) => setTab(v as TabValue)}>
-          <TabsList>
+        <Tabs value={tab} onValueChange={(value) => updateParams({ tab: value })}>
+          <TabsList className="grid h-auto w-full grid-cols-2 gap-1 lg:grid-cols-4">
             <TabsTrigger value="velocity">{t('reports.tabVelocity')}</TabsTrigger>
             <TabsTrigger value="burndown">{t('reports.tabBurndown')}</TabsTrigger>
             <TabsTrigger value="cumulative-flow">{t('reports.tabCumulativeFlow')}</TabsTrigger>
@@ -184,7 +228,11 @@ export function ReportsPage() {
                 <p className="text-sm text-text-muted">{t('reports.burndown.subtitle')}</p>
               </CardHeader>
               <CardContent>
-                {burndown.isLoading ? (
+                {!sprintId ? (
+                  <p className="py-8 text-center text-text-muted">
+                    Выберите спринт для построения графика.
+                  </p>
+                ) : burndown.isLoading ? (
                   <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
                 ) : !burndown.data || burndown.data.points.length === 0 ? (
                   <p className="py-8 text-center text-text-muted">{t('reports.burndown.empty')}</p>

@@ -2,11 +2,19 @@ import { useParams } from 'react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
-import { Toaster, toast } from 'sonner'
+import { toast } from 'sonner'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@sdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import { Button } from '@sdlc/ui/ui'
 import { ConfirmDialog } from '@sdlc/ui/ui'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  LoadingState,
+  ErrorState,
+} from '@sdlc/ui/ui'
 import {
   useWorklogs,
   useCreateWorklog,
@@ -50,19 +58,11 @@ export function IssueDetailPage() {
   const remove = useDeleteWorklog(id)
 
   if (issueQuery.isLoading || worklogsLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent"></div>
-      </div>
-    )
+    return <LoadingState message={t('issue.loading')} />
   }
 
   if (!issueQuery.data) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-background text-text-secondary">
-        {t('issue.notFound')}
-      </div>
-    )
+    return <ErrorState message={issueQuery.error?.message ?? t('issue.notFound')} />
   }
 
   const issue = issueQuery.data
@@ -80,9 +80,24 @@ export function IssueDetailPage() {
 
   const handleSubmit = (input: LogWorkInput) => {
     if (editingWorklog) {
-      update.mutate({ id: editingWorklog.id, input })
+      update.mutate(
+        { id: editingWorklog.id, input },
+        {
+          onSuccess: () => {
+            setDialogOpen(false)
+            toast.success(t('common.saved'))
+          },
+          onError: (error) => toast.error(error.message),
+        },
+      )
     } else {
-      create.mutate(input)
+      create.mutate(input, {
+        onSuccess: () => {
+          setDialogOpen(false)
+          toast.success(t('common.saved'))
+        },
+        onError: (error) => toast.error(error.message),
+      })
     }
   }
 
@@ -96,28 +111,17 @@ export function IssueDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-w-0 bg-background">
       <div>
         <div className="mb-2 text-sm text-text-muted">
           {issue.project_name} / {issue.key}
         </div>
 
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="mt-1 rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-accent">
-              Task
-            </span>
-            <div>
-              <h1 className="text-2xl font-semibold text-text-primary">
-                {issue.key} {issue.summary}
-              </h1>
-            </div>
-          </div>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <span className="rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-accent">
+            {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
+          </span>
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" size="sm" onClick={copyKey}>
-              <Copy className="h-4 w-4" />
-              {t('issue.copyKey')}
-            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -127,34 +131,45 @@ export function IssueDetailPage() {
               <UserPlus className="h-4 w-4" />
               {t('issue.assignToMe')}
             </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={deleteIssueMutation.isPending}
-              onClick={() => setDeleteConfirmOpen(true)}
-            >
-              {t('issue.delete')}
-            </Button>
-            <Button variant="secondary" size="icon" aria-label={t('issue.actions')}>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="icon" aria-label={t('issue.actions')}>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={copyKey} className="gap-2">
+                  <Copy className="h-4 w-4" />
+                  {t('issue.copyKey')}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setDeleteConfirmOpen(true)}
+                  className="gap-2 text-danger"
+                >
+                  {t('issue.delete')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
-          <div className="space-y-6">
-            <Card>
-              <CardContent className="pt-6">
-                <IssueDescriptionEditor
-                  issue={issue}
-                  disabled={updateIssue.isPending}
-                  onSubmit={(patch) => updateIssue.mutate(patch)}
-                />
-              </CardContent>
-            </Card>
+        <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 space-y-6">
+            <section className="border-t border-border pt-5">
+              <IssueDescriptionEditor
+                issue={issue}
+                disabled={updateIssue.isPending}
+                onSubmit={(patch) =>
+                  updateIssue.mutate(patch, {
+                    onSuccess: () => toast.success(t('common.saved')),
+                    onError: (error) => toast.error(error.message),
+                  })
+                }
+              />
+            </section>
 
             <Tabs defaultValue="activity">
-              <TabsList>
+              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
                 <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
                 <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
                 <TabsTrigger value="worklog">{t('timeTracking.worklog.title')}</TabsTrigger>
@@ -178,9 +193,47 @@ export function IssueDetailPage() {
                 <AttachmentPanel issueId={id} />
               </TabsContent>
             </Tabs>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card>
+                <CardContent className="pt-5">
+                  <LabelEditor issueId={id} projectKey={issue.project_key} />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
+                </CardContent>
+              </Card>
+              <Card className="md:col-span-2">
+                <CardContent className="pt-5">
+                  <LinkEditor issueId={id} currentKey={issue.key} />
+                </CardContent>
+              </Card>
+            </div>
           </div>
 
-          <div className="space-y-4">
+          <aside className="space-y-4 lg:sticky lg:top-16 lg:self-start">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm">
+                <IssueMetaEditor
+                  issue={issue}
+                  columns={boardQuery.data?.columns ?? []}
+                  sprints={sprintsQuery.data ?? []}
+                  disabled={updateIssue.isPending}
+                  onChange={(patch) =>
+                    updateIssue.mutate(patch, { onError: (error) => toast.error(error.message) })
+                  }
+                />
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
@@ -208,49 +261,7 @@ export function IssueDetailPage() {
                 />
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('labels.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <LabelEditor issueId={id} projectKey={issueQuery.data?.project_key ?? ''} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('links.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <LinkEditor issueId={id} currentKey={issueQuery.data?.key ?? ''} />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm">
-                <IssueMetaEditor
-                  issue={issue}
-                  columns={boardQuery.data?.columns ?? []}
-                  sprints={sprintsQuery.data ?? []}
-                  disabled={updateIssue.isPending}
-                  onChange={(patch) => updateIssue.mutate(patch)}
-                />
-              </CardContent>
-            </Card>
-          </div>
+          </aside>
         </div>
       </div>
 
@@ -259,6 +270,8 @@ export function IssueDetailPage() {
         onOpenChange={setDialogOpen}
         onSubmit={handleSubmit}
         worklog={editingWorklog}
+        isPending={create.isPending || update.isPending}
+        error={(create.error ?? update.error) as Error | null}
       />
       <ConfirmDialog
         open={deleteConfirmOpen}
@@ -266,11 +279,12 @@ export function IssueDetailPage() {
         title={t('issue.delete')}
         description={t('issue.deleteConfirm')}
         onConfirm={() => {
-          deleteIssueMutation.mutate(id)
-          setDeleteConfirmOpen(false)
+          deleteIssueMutation.mutate(id, {
+            onSuccess: () => setDeleteConfirmOpen(false),
+            onError: (error) => toast.error(error.message),
+          })
         }}
       />
-      <Toaster position="top-center" richColors />
     </div>
   )
 }

@@ -16,7 +16,6 @@ describe('UserAvatar', () => {
   it('renders a neutral person icon for an unassigned issue', () => {
     render(<UserAvatar />)
 
-    expect(screen.getByLabelText('Unassigned')).toBeInTheDocument()
-    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Не назначено' })).toBeInTheDocument()
   })
 })

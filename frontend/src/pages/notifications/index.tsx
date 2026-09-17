@@ -14,6 +14,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
 
+const NOTIFICATION_EVENTS = [
+  ['issue_assigned', 'Назначение задачи'],
+  ['issue_moved', 'Смена статуса'],
+  ['issue_updated', 'Изменение задачи'],
+  ['issue_commented', 'Новый комментарий'],
+  ['issue_comment_edited', 'Изменение комментария'],
+  ['issue_comment_deleted', 'Удаление комментария'],
+  ['issue_worklog_logged', 'Учёт времени'],
+  ['issue_attachment_added', 'Новый файл'],
+  ['issue_link_created', 'Новая связь'],
+  ['issue_link_deleted', 'Удаление связи'],
+] as const
+
 const NotificationCard = memo(function NotificationCard({
   notification,
   onMarkRead,
@@ -77,6 +90,13 @@ export function NotificationsPage() {
       notify_own_changes: false,
     }
     updateSettings.mutate({ ...current, ...input })
+  }
+
+  function toggleEvent(eventType: string, enabled: boolean) {
+    const disabled = new Set(settings?.disabled_event_types ?? [])
+    if (enabled) disabled.delete(eventType)
+    else disabled.add(eventType)
+    updatePreference({ disabled_event_types: [...disabled] })
   }
 
   return (
@@ -147,6 +167,17 @@ export function NotificationsPage() {
               <p className="text-sm text-text-muted">{t('notifications.loading')}</p>
             ) : (
               <>
+                <div aria-live="polite" className="min-h-5 text-xs">
+                  {updateSettings.isPending && (
+                    <span className="text-text-muted">{t('common.saving')}</span>
+                  )}
+                  {updateSettings.isSuccess && (
+                    <span className="text-success">{t('common.saved')}</span>
+                  )}
+                  {updateSettings.isError && (
+                    <span className="text-danger">{updateSettings.error.message}</span>
+                  )}
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="notification-frequency">{t('notifications.frequency')}</Label>
                   <select
@@ -181,6 +212,24 @@ export function NotificationsPage() {
                     {t('notifications.ownChanges')}
                   </Label>
                 </div>
+                <fieldset className="space-y-2 border-t border-border pt-4">
+                  <legend className="mb-2 text-sm font-medium">События</legend>
+                  {NOTIFICATION_EVENTS.map(([eventType, label]) => (
+                    <label
+                      key={eventType}
+                      className="flex items-center gap-2 text-sm text-text-secondary"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 accent-accent"
+                        checked={!(settings?.disabled_event_types ?? []).includes(eventType)}
+                        onChange={(event) => toggleEvent(eventType, event.target.checked)}
+                        disabled={updateSettings.isPending}
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </fieldset>
               </>
             )}
           </CardContent>

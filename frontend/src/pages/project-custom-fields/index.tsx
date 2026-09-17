@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@sdlc/ui/ui'
+import { Button, ConfirmDialog } from '@sdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import {
   useCreateCustomField,
@@ -12,11 +12,19 @@ import type { CustomFieldInput, CustomFieldType } from '@/api/custom-fields'
 
 const types: CustomFieldType[] = ['text', 'number', 'select', 'multi-select', 'date']
 const initial: CustomFieldInput = { name: '', field_type: 'text', options: [], is_required: false }
+const typeLabels: Record<CustomFieldType, string> = {
+  text: 'Текст',
+  number: 'Число',
+  select: 'Один вариант',
+  'multi-select': 'Несколько вариантов',
+  date: 'Дата',
+}
 
 export function ProjectCustomFieldsPage() {
   const { t } = useTranslation()
   const { projectKey = '' } = useParams()
   const [draft, setDraft] = useState<CustomFieldInput>(initial)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
   const fields = useProjectCustomFields(projectKey)
   const create = useCreateCustomField(projectKey)
   const remove = useDeleteCustomField(projectKey)
@@ -41,6 +49,11 @@ export function ProjectCustomFieldsPage() {
               create.mutate(draft, { onSuccess: () => setDraft(initial) })
             }}
           >
+            {create.error && (
+              <p role="alert" className="text-sm text-danger">
+                {create.error.message}
+              </p>
+            )}
             <input
               aria-label={t('customFields.fieldName')}
               className="rounded border border-border bg-background p-2"
@@ -57,7 +70,9 @@ export function ProjectCustomFieldsPage() {
               }
             >
               {types.map((type) => (
-                <option key={type}>{type}</option>
+                <option key={type} value={type}>
+                  {typeLabels[type]}
+                </option>
               ))}
             </select>
             {needsOptions && (
@@ -117,11 +132,11 @@ export function ProjectCustomFieldsPage() {
                       {field.is_required ? ' *' : ''}
                     </p>
                     <p className="text-sm text-text-muted">
-                      {field.field_type}
+                      {typeLabels[field.field_type]}
                       {field.options.length ? `: ${field.options.join(', ')}` : ''}
                     </p>
                   </div>
-                  <Button variant="secondary" size="sm" onClick={() => remove.mutate(field.id)}>
+                  <Button variant="secondary" size="sm" onClick={() => setPendingDelete(field.id)}>
                     {t('common.delete')}
                   </Button>
                 </div>
@@ -130,8 +145,22 @@ export function ProjectCustomFieldsPage() {
           ) : (
             <p className="text-sm text-text-muted">{t('customFields.noFields')}</p>
           )}
+          {remove.error && (
+            <p role="alert" className="mt-3 text-sm text-danger">
+              {remove.error.message}
+            </p>
+          )}
         </CardContent>
       </Card>
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        title="Удалить поле?"
+        description="Значения этого поля у задач будут недоступны. Действие нельзя отменить."
+        onConfirm={() =>
+          pendingDelete && remove.mutate(pendingDelete, { onSuccess: () => setPendingDelete(null) })
+        }
+      />
     </div>
   )
 }

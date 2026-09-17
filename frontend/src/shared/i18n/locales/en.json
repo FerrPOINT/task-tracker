@@ -14,6 +14,7 @@
     "logout": "Log out",
     "reports": "Reports",
     "admin": "Administration",
+    "settings": "Project settings",
     "toggleMenu": "Toggle menu",
     "account": "Account"
   },
@@ -103,7 +104,12 @@
     "subtitle": "Backlog: {{backlog}} · Days left: {{remainingDays}}",
     "title": "Board · {{projectName}} — {{sprintName}}",
     "todo": "To Do",
-    "columnActions": "Column actions"
+    "columnActions": "Column actions",
+    "moveTo": "Move to: {{status}}",
+    "noTransitions": "No available transitions",
+    "statusChanged": "Issue status changed",
+    "emptyStatus": "No issues in this status",
+    "notAvailable": "not available"
   },
   "backlog": {
     "createSprint": "Create sprint",
@@ -115,6 +121,8 @@
     "backlogCount": "Backlog: {{count}}",
     "backlogSection": "Backlog · {{count}}",
     "activeSprint": "{{name}} · {{velocity}} sp · {{remaining}} days",
+    "noActiveSprint": "No active sprint",
+    "notAvailable": "not available",
     "futureSprint": "{{name}}",
     "emptySprint": "No issues in this sprint.",
     "emptyBacklog": "Backlog is empty.",
@@ -265,7 +273,10 @@
     "loading": "Loading…",
     "edit": "Edit",
     "saving": "Saving…",
-    "error": "Error"
+    "saved": "Saved",
+    "error": "Error",
+    "unassigned": "Unassigned",
+    "user": "User"
   },
   "loading": {
     "empty": "Nothing to show yet.",
@@ -516,6 +527,7 @@
   },
   "status": {
     "todo": "To Do",
+    "to_do": "To Do",
     "in_progress": "In Progress",
     "review": "Review",
     "done": "Done"

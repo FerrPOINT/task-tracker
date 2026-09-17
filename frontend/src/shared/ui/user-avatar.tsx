@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { createAvatar, type Style } from '@dicebear/core'
 import * as micah from '@dicebear/micah'
 import { UserRound } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 type UserAvatarProps = {
   name?: string | null
@@ -30,13 +31,15 @@ function avatarSource(seed: string) {
 }
 
 function UserAvatarInner({ name, userId, size = 'sm' }: UserAvatarProps) {
+  const { t } = useTranslation()
   const className = `${sizeClasses[size]} shrink-0 rounded-full`
   const seed = userId || name
 
   if (!seed) {
     return (
       <span
-        aria-label="Unassigned"
+        role="img"
+        aria-label={t('common.unassigned')}
         className={`flex ${className} items-center justify-center bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300`}
       >
         <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
@@ -44,7 +47,7 @@ function UserAvatarInner({ name, userId, size = 'sm' }: UserAvatarProps) {
     )
   }
 
-  return <img alt={name || 'User'} className={className} src={avatarSource(seed)} />
+  return <img alt={name || t('common.user')} className={className} src={avatarSource(seed)} />
 }
 
 export const UserAvatar = memo(UserAvatarInner)

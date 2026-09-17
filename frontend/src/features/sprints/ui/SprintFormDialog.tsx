@@ -88,31 +88,42 @@ export function SprintFormDialog({
               {t('sprints.goal')}
             </label>
             <textarea
+              id="sprint-form-goal"
               className="min-h-[80px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder={t('sprints.goalPlaceholder')}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <label htmlFor="sprint-form-startdate" className="text-sm font-medium">
                 {t('sprints.startDate')}
               </label>
-              <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <Input
+                id="sprint-form-startdate"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
             </div>
             <div className="space-y-2">
               <label htmlFor="sprint-form-enddate" className="text-sm font-medium">
                 {t('sprints.endDate')}
               </label>
-              <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <Input
+                id="sprint-form-enddate"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
             </div>
           </div>
-          <div className="flex justify-end gap-2 pt-2">
+          {dateError && <p className="text-sm text-danger">{dateError}</p>}
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
               {t('common.cancel')}
             </Button>
-            {dateError && <p className="text-sm text-destructive">{dateError}</p>}
             <Button type="submit" disabled={isPending}>
               {isPending ? t('common.saving') : isEdit ? t('common.save') : t('sprints.create')}
             </Button>

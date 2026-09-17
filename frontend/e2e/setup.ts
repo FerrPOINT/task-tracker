@@ -8,6 +8,8 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 export const API_BASE = process.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:3456/api/v1'
 
@@ -29,8 +31,8 @@ let seedPromise: Promise<ApiContext> | null = null
 // process, so the module-level seedPromise does not dedupe logins between
 // projects. The lock file serializes seeds and lets the first finished
 // process publish the token for the others to reuse.
-const seedLockPath = '/tmp/tt-e2e-seed.lock'
-const seedCachePath = '/tmp/tt-e2e-seed.json'
+const seedLockPath = join(tmpdir(), 'tt-e2e-seed.lock')
+const seedCachePath = join(tmpdir(), 'tt-e2e-seed.json')
 
 function acquireSeedLock(): number {
   const deadline = Date.now() + 90_000
@@ -106,7 +108,7 @@ async function _fetchJsonWithRetry(url: string, init: RequestInit, attempts = 24
 async function seed(): Promise<ApiContext> {
   const credentials = {
     email: 'demo@example.com',
-    password: 'demo',
+    password: 'demo-password',
     username: 'demo',
     name: 'Demo User',
   }
@@ -231,7 +233,7 @@ export async function seedIntegrationData(): Promise<ApiContext> {
           const loginRes = await fetchJsonWithRetry(`${API_BASE}/auth/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: 'demo@example.com', password: 'demo' }),
+            body: JSON.stringify({ email: 'demo@example.com', password: 'demo-password' }),
           })
           if (loginRes.status === 200) {
             const ctx = {
@@ -263,14 +265,14 @@ export async function apiLogin() {
   return fetchJsonWithRetry(`${API_BASE}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'demo@example.com', password: 'demo' }),
+    body: JSON.stringify({ email: 'demo@example.com', password: 'demo-password' }),
   })
 }
 
 export async function authenticatePage(page: Page): Promise<AuthResponse> {
   for (let i = 0; i < 24; i++) {
     const res = await page.request.post(`${API_BASE}/auth/login`, {
-      data: { email: 'demo@example.com', password: 'demo' },
+      data: { email: 'demo@example.com', password: 'demo-password' },
     })
     const data = await res.json().catch(() => ({}))
     if (res.status() === 200) {
@@ -312,7 +314,7 @@ export const API_BASE_URL = API_BASE
 export async function uiLogin(
   page: import('@playwright/test').Page,
   email = 'demo@example.com',
-  password = 'demo',
+  password = 'demo-password',
 ) {
   const base = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:4173'
   for (let attempt = 0; attempt < 8; attempt++) {

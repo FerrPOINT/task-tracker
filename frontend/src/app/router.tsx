@@ -42,7 +42,11 @@ const AdminPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.A
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center py-16 text-sm text-text-muted">Loading…</div>
+    <div className="space-y-4 py-3" role="status" aria-label="Загрузка страницы">
+      <div className="h-7 w-48 animate-pulse rounded bg-surface-raised" />
+      <div className="h-24 animate-pulse rounded-md bg-surface-raised" />
+      <div className="h-40 animate-pulse rounded-md bg-surface-raised" />
+    </div>
   )
 }
 

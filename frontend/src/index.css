@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@source "../../../services-base/frontend/src";
 
 @theme {
   /* Default dark theme tokens */
@@ -11,10 +12,22 @@
   --color-text-secondary: #d4d4d8;
   --color-text-muted: #a1a1aa;
   --color-accent: #818cf8;
+  --color-accent-foreground: #18181b;
   --color-accent-hover: #6366f1;
   --color-danger: #f87171;
   --color-success: #4ade80;
   --color-warning: #fbbf24;
+  --color-focus: var(--color-accent);
+  --color-popover: var(--color-surface);
+  --color-popover-foreground: var(--color-text-primary);
+  --color-primary: var(--color-accent);
+  --color-primary-foreground: var(--color-accent-foreground);
+  --color-secondary: var(--color-surface-raised);
+  --color-secondary-foreground: var(--color-text-primary);
+  --color-muted: var(--color-surface-raised);
+  --color-muted-foreground: var(--color-text-muted);
+  --color-destructive: var(--color-danger);
+  --color-destructive-foreground: #ffffff;
 }
 
 [data-theme='gray'] {
@@ -27,6 +40,7 @@
   --color-text-secondary: #e4e4e7;
   --color-text-muted: #a1a1aa;
   --color-accent: #a5b4fc;
+  --color-accent-foreground: #18181b;
   --color-accent-hover: #818cf8;
   --color-danger: #fca5a5;
   --color-success: #86efac;
@@ -43,6 +57,7 @@
   --color-text-secondary: #3f3f46;
   --color-text-muted: #71717a;
   --color-accent: #4f46e5;
+  --color-accent-foreground: #ffffff;
   --color-accent-hover: #4338ca;
   --color-danger: #dc2626;
   --color-success: #16a34a;

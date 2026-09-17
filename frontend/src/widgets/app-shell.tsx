@@ -16,6 +16,9 @@ import {
   LogOut,
   BarChart3,
   ShieldCheck,
+  Settings2,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button, PlatformMark } from '@sdlc/ui/ui'
@@ -29,6 +32,7 @@ import {
   useMarkNotificationRead,
   useIssue,
   useNotifications,
+  useProjects,
 } from '@/shared/api/hooks'
 import {
   DropdownMenu,
@@ -36,8 +40,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@sdlc/ui/ui'
-
-const systemItems: Array<{ to: string; icon: typeof Trash2; labelKey: string }> = []
 
 const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
 const issuePattern = /^\/issues\/([^/]+)$/
@@ -64,25 +66,28 @@ function SidebarLink({
   label,
   active,
   onClick,
+  compact = false,
 }: {
   to: string
   icon: React.ElementType
   label: string
   active: boolean
   onClick?: () => void
+  compact?: boolean
 }) {
   return (
     <Link
       to={to}
       onClick={onClick}
-      className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors ${
+      title={compact ? label : undefined}
+      className={`flex min-h-10 items-center rounded-md px-3 text-sm transition-colors ${compact ? 'justify-center' : 'gap-3'} ${
         active
           ? 'bg-surface-raised text-text-primary'
           : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
       }`}
     >
       <Icon className="h-4 w-4 shrink-0" />
-      <span className="truncate">{label}</span>
+      {!compact && <span className="truncate">{label}</span>}
     </Link>
   )
 }
@@ -92,7 +97,13 @@ export function AppShell() {
   const location = useLocation()
   const projectKey = useCurrentProjectKey()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.localStorage.getItem('tt-sidebar-collapsed') === 'true',
+  )
   const { data: user } = useCurrentUser()
+  const { data: projects = [] } = useProjects()
   const { data: notificationList } = useNotifications()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
@@ -100,6 +111,7 @@ export function AppShell() {
   const logout = useLogout()
   const notifications = notificationList?.notifications ?? []
   const unreadCount = notificationList?.unread_count ?? 0
+  const currentProject = projects.find((project) => project.key === projectKey)
 
   // Admin link is only for system admins (checked via /auth/me).
   const navItems = [
@@ -112,18 +124,31 @@ export function AppShell() {
       : []),
   ]
 
-  const projectItems = [
-    { to: `/projects/${projectKey ?? 'TT'}/backlog`, icon: List, labelKey: 'navigation.backlog' },
-    { to: `/projects/${projectKey ?? 'TT'}/board`, icon: Columns2, labelKey: 'navigation.board' },
-    { to: `/projects/${projectKey ?? 'TT'}/trash`, icon: Trash2, labelKey: 'trash.title' },
-  ]
+  const projectItems = projectKey
+    ? [
+        { to: `/projects/${projectKey}/board`, icon: Columns2, labelKey: 'navigation.board' },
+        { to: `/projects/${projectKey}/backlog`, icon: List, labelKey: 'navigation.backlog' },
+        {
+          to: `/reports?project_key=${projectKey}`,
+          icon: BarChart3,
+          labelKey: 'navigation.reports',
+        },
+        { to: `/projects/${projectKey}/trash`, icon: Trash2, labelKey: 'trash.title' },
+        {
+          to: `/projects/${projectKey}/settings/custom-fields`,
+          icon: Settings2,
+          labelKey: 'navigation.settings',
+        },
+      ]
+    : []
 
   function isActive(path: string) {
-    if (path === '/') return location.pathname === '/'
-    if (path.startsWith('/projects/') && projectKey) {
+    const pathname = path.split('?')[0] ?? path
+    if (pathname === '/') return location.pathname === '/'
+    if (pathname.startsWith('/projects/') && projectKey) {
       return location.pathname.startsWith(`/projects/${projectKey}/`)
     }
-    return location.pathname.startsWith(path)
+    return location.pathname.startsWith(pathname)
   }
 
   function closeMobileMenu() {
@@ -147,35 +172,51 @@ export function AppShell() {
               <Menu className="h-[18px] w-[18px]" />
             )}
           </Button>
-          <Link to="/" className="flex items-center gap-2 font-bold">
+          <Link to="/" className="flex items-center gap-2 font-bold" aria-label={t('app.name')}>
             <PlatformMark size="sm" withName={false} />
             <span className="hidden sm:inline">{t('app.name')}</span>
           </Link>
-          <Link
-            to="/projects"
-            className="hidden items-center gap-1 rounded-md px-2 py-1 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
-          >
-            <span>{t('navigation.projects')}</span>
-            <ChevronDown className="h-3.5 w-3.5" />
-          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="hidden min-h-10 max-w-52 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
+              >
+                <span className="truncate">{currentProject?.name ?? t('navigation.projects')}</span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              <DropdownMenuItem asChild>
+                <Link to="/projects" className="gap-2">
+                  <FolderKanban className="h-4 w-4" />
+                  Все проекты
+                </Link>
+              </DropdownMenuItem>
+              {projects.map((project) => (
+                <DropdownMenuItem key={project.key} asChild>
+                  <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
+                    <span className="truncate">{project.name}</span>
+                    <span className="text-xs text-text-muted">{project.key}</span>
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Link
             to="/search"
-            className="hidden items-center gap-2 rounded-md px-2 py-1 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
+            className="hidden min-h-10 items-center gap-2 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
           >
             <Search className="h-4 w-4" />
             <span>{t('navigation.search')}</span>
           </Link>
-          <Link
-            to="/reports"
-            className="hidden items-center gap-2 rounded-md px-2 py-1 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
-          >
-            <BarChart3 className="h-4 w-4" />
-            <span>{t('navigation.reports')}</span>
-          </Link>
         </div>
         <div className="flex items-center gap-2 md:gap-3">
-          <Button asChild size="sm" className="h-7 gap-1 px-2.5 text-xs">
-            <Link to="/issues/create">
+          <Button asChild size="sm" className="min-h-10 gap-1 px-2.5 text-xs">
+            <Link
+              to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
+              aria-label={t('navigation.create')}
+            >
               <Plus className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{t('navigation.create')}</span>
             </Link>
@@ -187,7 +228,7 @@ export function AppShell() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="relative h-8 w-8"
+                className="relative h-10 w-10"
                 aria-label={t('notifications.open')}
                 data-testid="notification-trigger"
               >
@@ -277,7 +318,7 @@ export function AppShell() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8"
+                className="h-10 w-10"
                 aria-label={t('navigation.account')}
               >
                 <User className="h-[18px] w-[18px]" />
@@ -288,6 +329,14 @@ export function AppShell() {
                 {user?.display_name ?? user?.email ?? 'User'}
               </div>
               <div className="px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
+              {user?.is_system_admin && (
+                <DropdownMenuItem asChild>
+                  <Link to="/admin" className="gap-2 text-text-secondary">
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>{t('navigation.admin')}</span>
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => logout.mutate()}
                 className="gap-2 text-text-secondary"
@@ -301,46 +350,50 @@ export function AppShell() {
       </header>
 
       <div className="flex min-h-[calc(100vh-3rem)]">
-        {/* Desktop sidebar */}
-        <aside className="hidden w-60 shrink-0 flex-col gap-2 border-r border-border bg-surface p-3 md:flex">
-          {navItems.map((item) => (
-            <SidebarLink
-              key={item.to}
-              to={item.to}
-              icon={item.icon}
-              label={t(item.labelKey)}
-              active={isActive(item.to)}
-            />
-          ))}
-
-          <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
-            <span className="inline-flex items-center gap-1.5">
-              Task Tracker · {projectKey ?? 'TT'}
-            </span>
-          </div>
-          {projectItems.map((item) => (
-            <SidebarLink
-              key={item.labelKey}
-              to={item.to}
-              icon={item.icon}
-              label={t(item.labelKey)}
-              active={isActive(item.to)}
-            />
-          ))}
-
-          <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
-            {t('navigation.system')}
-          </div>
-          {systemItems.map((item) => (
-            <SidebarLink
-              key={item.to}
-              to={item.to}
-              icon={item.icon}
-              label={t(item.labelKey)}
-              active={isActive(item.to)}
-            />
-          ))}
-        </aside>
+        {projectKey && (
+          <aside
+            className={`hidden shrink-0 flex-col gap-2 border-r border-border bg-surface p-3 md:flex ${sidebarCollapsed ? 'w-16' : 'w-60'}`}
+          >
+            <div
+              className={`flex min-h-9 items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}
+            >
+              {!sidebarCollapsed && (
+                <span className="truncate text-xs font-medium uppercase text-text-muted">
+                  {currentProject?.name ?? projectKey}
+                </span>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9"
+                aria-label={
+                  sidebarCollapsed ? 'Развернуть боковую панель' : 'Свернуть боковую панель'
+                }
+                onClick={() => {
+                  const next = !sidebarCollapsed
+                  setSidebarCollapsed(next)
+                  window.localStorage.setItem('tt-sidebar-collapsed', String(next))
+                }}
+              >
+                {sidebarCollapsed ? (
+                  <PanelLeftOpen className="h-4 w-4" />
+                ) : (
+                  <PanelLeftClose className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+            {projectItems.map((item) => (
+              <SidebarLink
+                key={item.labelKey}
+                to={item.to}
+                icon={item.icon}
+                label={t(item.labelKey)}
+                active={isActive(item.to)}
+                compact={sidebarCollapsed}
+              />
+            ))}
+          </aside>
+        )}
 
         {/* Mobile menu overlay */}
         {mobileMenuOpen && (
@@ -361,33 +414,23 @@ export function AppShell() {
                 />
               ))}
 
-              <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
-                Task Tracker · {projectKey ?? 'TT'}
-              </div>
-              {projectItems.map((item) => (
-                <SidebarLink
-                  key={item.labelKey}
-                  to={item.to}
-                  icon={item.icon}
-                  label={t(item.labelKey)}
-                  active={isActive(item.to)}
-                  onClick={closeMobileMenu}
-                />
-              ))}
-
-              <div className="mt-3 px-3 text-xs font-medium uppercase tracking-wider text-text-muted">
-                {t('navigation.system')}
-              </div>
-              {systemItems.map((item) => (
-                <SidebarLink
-                  key={item.to}
-                  to={item.to}
-                  icon={item.icon}
-                  label={t(item.labelKey)}
-                  active={isActive(item.to)}
-                  onClick={closeMobileMenu}
-                />
-              ))}
+              {projectKey && (
+                <>
+                  <div className="mt-4 px-3 text-xs font-medium uppercase text-text-muted">
+                    {currentProject?.name ?? projectKey}
+                  </div>
+                  {projectItems.map((item) => (
+                    <SidebarLink
+                      key={item.labelKey}
+                      to={item.to}
+                      icon={item.icon}
+                      label={t(item.labelKey)}
+                      active={isActive(item.to)}
+                      onClick={closeMobileMenu}
+                    />
+                  ))}
+                </>
+              )}
             </aside>
           </div>
         )}

@@ -68,7 +68,7 @@ describe('LoginPage', () => {
     })
 
     render(wrapper(<LoginPage />))
-    expect(screen.getByText('TaskTracker')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /войти|log in/i })).toBeInTheDocument()
 
     const email = screen.getByLabelText(/email/i) as HTMLInputElement
     await userEvent.type(email, 'demo@example.com')

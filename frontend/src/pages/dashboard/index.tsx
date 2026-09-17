@@ -2,16 +2,15 @@ import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
+import { LoadingState } from '@sdlc/ui/ui'
 
 export function DashboardPage() {
   const { t } = useTranslation()
   const { data: dashboard, isLoading: dashboardLoading, error: dashboardError } = useDashboard()
   const { data: projects, isLoading: projectsLoading } = useProjects()
 
-  if (dashboardLoading || projectsLoading)
-    return <div className="p-4 text-text-muted">{t('issue.loading')}</div>
+  if (dashboardLoading || projectsLoading) return <LoadingState message={t('issue.loading')} />
   if (dashboardError) return <ErrorState message={dashboardError.message} />
 
   const assigned = dashboard?.assigned_issues ?? []
@@ -25,12 +24,10 @@ export function DashboardPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="sm:col-span-2 lg:col-span-1">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">{t('dashboard.assignedToMe')}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <section className="min-w-0 border-t border-border pt-4">
+          <h2 className="mb-3 text-sm font-semibold">{t('dashboard.assignedToMe')}</h2>
+          <div className="space-y-3">
             {assigned.length === 0 && (
               <p className="text-sm text-text-muted">{t('dashboard.noAssigned')}</p>
             )}
@@ -48,25 +45,23 @@ export function DashboardPage() {
                 </span>
               </Link>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <Card className="sm:col-span-2">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">
-              {t('dashboard.projects')} · {projects?.length ?? 0}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <section className="min-w-0 border-t border-border pt-4">
+          <h2 className="mb-3 text-sm font-semibold">
+            {t('dashboard.projects')} · {projects?.length ?? 0}
+          </h2>
+          <div className="space-y-3">
             {projects?.length === 0 && (
               <p className="text-sm text-text-muted">{t('dashboard.noProjects')}</p>
             )}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="divide-y divide-border rounded-md border border-border">
               {projects?.map((project) => (
                 <Link
                   key={project.id}
                   to={`/projects/${project.key}/board`}
-                  className="rounded-md border border-border p-3 hover:bg-surface-raised"
+                  className="block p-3 hover:bg-surface-raised"
                 >
                   <div className="mb-1 text-sm font-medium text-text-primary">
                     {project.key} · {project.name}
@@ -85,8 +80,8 @@ export function DashboardPage() {
                 </Link>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
     </div>
   )

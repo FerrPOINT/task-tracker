@@ -1,13 +1,21 @@
-import { Link, useParams } from 'react-router'
-import { List } from 'lucide-react'
+import { Link, useParams, useSearchParams } from 'react-router'
+import { List, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
-import { Button } from '@sdlc/ui/ui'
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@sdlc/ui/ui'
 import { ErrorState, LoadingState } from '@sdlc/ui/ui'
 import { useBoard, useMoveIssue, useTransitions } from '@/shared/api/hooks'
 import { ProjectMembersPanel } from '@/features/project-members/ui/ProjectMembersPanel'
 import { UserAvatar } from '@/shared/ui/user-avatar'
 import type { components } from '@/api/generated'
+import { toast } from 'sonner'
+import type { TFunction } from 'i18next'
 
 export type Issue = components['schemas']['IssueResponse']
 
@@ -17,25 +25,50 @@ type DragState = {
   dragging: boolean
 }
 
+function statusLabel(name: string, t: TFunction): string {
+  const key = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/_+$/, '')
+  return t(`status.${key}`, { defaultValue: name })
+}
+
 function PriorityBadge({ priority }: { priority: string }) {
+  const normalizedPriority = priority.toLowerCase()
   const color =
-    priority === 'High'
+    normalizedPriority === 'high' || normalizedPriority === 'highest'
       ? 'text-rose-500'
-      : priority === 'Medium'
+      : normalizedPriority === 'medium'
         ? 'text-amber-500'
         : 'text-emerald-500'
-  return <span className={`text-xs font-medium ${color}`}>{priority}</span>
+  const labels: Record<string, string> = {
+    highest: 'Наивысший',
+    high: 'Высокий',
+    medium: 'Средний',
+    low: 'Низкий',
+    lowest: 'Наинизший',
+  }
+  return (
+    <span className={`text-xs font-medium ${color}`}>{labels[normalizedPriority] ?? priority}</span>
+  )
 }
 
 function IssueCard({
   issue,
   columnId,
   onDragStart,
+  destinations,
+  onMove,
+  isMoving,
 }: {
   issue: Issue
   columnId: string
   onDragStart: (issueId: string, columnId: string) => void
+  destinations: Array<{ id: string; name: string }>
+  onMove: (issueId: string, statusId: string) => void
+  isMoving: boolean
 }) {
+  const { t } = useTranslation()
   function handleDragStart(e: React.DragEvent) {
     onDragStart(issue.id, columnId)
     e.dataTransfer.effectAllowed = 'move'
@@ -43,32 +76,63 @@ function IssueCard({
   }
 
   return (
-    <Link
-      key={issue.id}
-      to={`/issues/${issue.id}`}
+    <article
       draggable
       onDragStart={handleDragStart}
-      className="block cursor-grab rounded-md border border-border bg-surface-raised p-3 hover:border-border-strong active:cursor-grabbing"
+      className="cursor-grab rounded-md border border-border bg-surface-raised p-3 hover:border-border-strong active:cursor-grabbing"
     >
-      <div className="text-xs text-text-muted">{issue.key}</div>
-      <div className="my-1 text-sm font-medium">{issue.summary}</div>
+      <div className="flex items-start gap-2">
+        <Link
+          to={`/issues/${issue.id}`}
+          className="min-w-0 flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        >
+          <div className="text-xs text-text-muted">{issue.key}</div>
+          <div className="my-1 break-words text-sm font-medium">{issue.summary}</div>
+        </Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              aria-label={`Изменить статус ${issue.key}`}
+              disabled={isMoving}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            {destinations.length > 0 ? (
+              destinations.map((status) => (
+                <DropdownMenuItem key={status.id} onClick={() => onMove(issue.id, status.id)}>
+                  {t('board.moveTo', { status: statusLabel(status.name, t) })}
+                </DropdownMenuItem>
+              ))
+            ) : (
+              <DropdownMenuItem disabled>{t('board.noTransitions')}</DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <PriorityBadge priority={issue.priority} />
           <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">
-            {issue.issue_type}
+            {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
           </span>
         </div>
         <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
       </div>
-    </Link>
+    </article>
   )
 }
 
 export function ProjectBoardPage() {
   const { t } = useTranslation()
   const { projectKey } = useParams<{ projectKey?: string }>()
-  const key = projectKey ?? 'TT'
+  const [searchParams, setSearchParams] = useSearchParams()
+  const key = projectKey ?? ''
   const { data: board, isLoading, error } = useBoard(key)
   const move = useMoveIssue(key)
   // Workflow transitions gate DnD client-side; the backend still enforces
@@ -85,6 +149,10 @@ export function ProjectBoardPage() {
   if (error || !board) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { columns, issues, sprint } = board
+  const requestedColumn = searchParams.get('status')
+  const activeColumnId = columns.some((column) => column.id === requestedColumn)
+    ? requestedColumn!
+    : columns[0]?.id
 
   function issuesByColumn(columnId: string) {
     return issues.filter((i) => columns.find((c) => c.id === columnId)?.issue_ids.includes(i.id))
@@ -122,7 +190,7 @@ export function ProjectBoardPage() {
         ? issue.status_id
         : statusIdOfColumn(sourceColumnId ?? targetColumnId)
       if (fromStatusId && transitionAllowed(fromStatusId, targetColumnId)) {
-        move.mutate({ issue_id: issueId, status_id: targetColumnId })
+        moveIssue(issueId, targetColumnId)
       }
     }
     setDrag({ issueId: null, sourceColumnId: null, dragging: false })
@@ -133,22 +201,38 @@ export function ProjectBoardPage() {
     setDropTarget(null)
   }
 
+  function moveIssue(issueId: string, statusId: string) {
+    move.mutate(
+      { issue_id: issueId, status_id: statusId },
+      {
+        onSuccess: () => toast.success(t('board.statusChanged')),
+        onError: (moveError) => toast.error(moveError.message),
+      },
+    )
+  }
+
   return (
-    <div className="flex flex-col md:h-[calc(100vh-10rem)] md:max-h-[800px]">
+    <div className="min-w-0">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h1 className="truncate text-lg font-bold sm:text-xl">
-            {t('board.title', { projectName: key, sprintName: sprint?.name ?? 'Sprint' })}
+            {t('board.title', { projectName: key, sprintName: sprint?.name ?? t('board.backlog') })}
           </h1>
           <div className="text-sm text-text-muted">
             {t('board.subtitle', {
               backlog: board.backlog_total,
-              remainingDays: sprint?.remaining_days ?? '-',
+              remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
             })}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" className="gap-1" asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            asChild
+            aria-label={t('board.backlog')}
+          >
             <Link to={`/projects/${key}/backlog`}>
               <List className="h-4 w-4" />
               <span className="hidden sm:inline">{t('board.backlog')}</span>
@@ -158,9 +242,32 @@ export function ProjectBoardPage() {
         </div>
       </div>
 
-      {/* Single responsive board: horizontal scroll on desktop, stacked on
-          mobile — one DOM tree instead of two full copies. */}
-      <div className="flex flex-1 gap-4 overflow-x-auto pb-2 md:overflow-y-auto">
+      <div
+        className="mb-3 grid grid-cols-2 gap-1 rounded-md border border-border bg-surface p-1 md:hidden"
+        aria-label="Статус задач"
+      >
+        {columns.map((column) => (
+          <button
+            key={column.id}
+            type="button"
+            aria-pressed={activeColumnId === column.id}
+            onClick={() => {
+              const next = new URLSearchParams(searchParams)
+              next.set('status', column.id)
+              setSearchParams(next, { replace: true })
+            }}
+            className={`min-h-10 min-w-0 rounded px-2 text-sm font-medium ${
+              activeColumnId === column.id
+                ? 'bg-accent text-accent-foreground'
+                : 'text-text-secondary hover:bg-surface-raised'
+            }`}
+          >
+            <span className="block truncate">{statusLabel(column.name, t)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((column) => {
           const wipLimit = column.wip_limit ?? null
           const colIssues = issuesByColumn(column.id)
@@ -172,13 +279,15 @@ export function ProjectBoardPage() {
               onDragOver={(e) => handleDragOver(e, column.id)}
               onDrop={(e) => handleDrop(e, column.id)}
               onDragLeave={handleDragLeave}
-              className={`flex min-w-[260px] flex-1 flex-col rounded-lg border bg-surface transition-colors ${
+              className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col rounded-lg border bg-surface transition-colors md:flex ${
                 isDropTarget ? 'border-accent ring-1 ring-accent' : 'border-border'
               }`}
             >
               <div className="flex items-center justify-between border-b border-border p-3">
                 <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold">{column.name}</div>
+                  <div className="truncate text-sm font-semibold">
+                    {statusLabel(column.name, t)}
+                  </div>
                   <div className="text-xs text-text-muted">
                     {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
                     {overLimit && (
@@ -188,15 +297,25 @@ export function ProjectBoardPage() {
                 </div>
               </div>
 
-              <div className="flex-1 space-y-2 overflow-y-auto p-2">
+              <div className="min-h-24 flex-1 space-y-2 p-2">
                 {colIssues.map((issue) => (
                   <IssueCard
                     key={issue.id}
                     issue={issue}
                     columnId={column.id}
                     onDragStart={handleDragStart}
+                    destinations={columns.filter((candidate) =>
+                      transitionAllowed(issue.status_id, candidate.id),
+                    )}
+                    onMove={moveIssue}
+                    isMoving={move.isPending}
                   />
                 ))}
+                {colIssues.length === 0 && (
+                  <p className="px-2 py-6 text-center text-sm text-text-muted">
+                    {t('board.emptyStatus')}
+                  </p>
+                )}
               </div>
 
               <Link

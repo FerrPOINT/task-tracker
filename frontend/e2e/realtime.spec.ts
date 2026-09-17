@@ -9,7 +9,7 @@ test.describe('real-time board updates (SSE)', () => {
 
     // first tab: open the board
     await page.goto('/projects/DEMO/board')
-    await expect(page.getByText('To Do').first()).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/К выполнению|To Do/).first()).toBeVisible({ timeout: 15_000 })
 
     // second "tab": create an issue through the API (same as another user action)
     const summary = `SSE Live ${Date.now() % 100000}`

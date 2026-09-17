@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@sdlc/ui/ui'
@@ -23,13 +23,24 @@ import {
   AlertDialogTitle,
 } from '@sdlc/ui/ui'
 import type { Project } from '@/api/project'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@sdlc/ui/ui'
 
 function ProjectAvatar({ projectKey }: { projectKey: string }) {
-  const colors = ['bg-accent', 'bg-emerald-500', 'bg-amber-500', 'bg-rose-500']
+  const colors = [
+    'bg-accent text-accent-foreground',
+    'bg-emerald-500 text-zinc-950',
+    'bg-amber-500 text-zinc-950',
+    'bg-rose-500 text-zinc-950',
+  ]
   const color = colors[projectKey.charCodeAt(0) % colors.length]
   return (
     <div
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-sm font-bold text-white sm:h-12 sm:w-12 ${color}`}
+      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-sm font-bold sm:h-12 sm:w-12 ${color}`}
     >
       {projectKey.slice(0, 2).toUpperCase()}
     </div>
@@ -65,10 +76,13 @@ export function ProjectsPage() {
         }}
         onSubmit={(values) => {
           if (editingProject) {
-            update.mutate(values as import('@/api/project').UpdateProjectRequest)
-            if (!update.isPending) setFormOpen(false)
+            update.mutate(values as import('@/api/project').UpdateProjectRequest, {
+              onSuccess: () => setFormOpen(false),
+            })
           } else {
-            create.mutate(values as import('@/api/project').CreateProjectRequest)
+            create.mutate(values as import('@/api/project').CreateProjectRequest, {
+              onSuccess: () => setFormOpen(false),
+            })
           }
         }}
         isPending={isFormPending}
@@ -93,8 +107,9 @@ export function ProjectsPage() {
             <AlertDialogAction
               onClick={() => {
                 if (deletingProject) {
-                  remove.mutate(deletingProject.key)
-                  setDeletingProject(null)
+                  remove.mutate(deletingProject.key, {
+                    onSuccess: () => setDeletingProject(null),
+                  })
                 }
               }}
               disabled={remove.isPending}
@@ -128,22 +143,31 @@ export function ProjectsPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {projects
-          ?.filter((project) =>
-            search
-              ? `${project.name} ${project.key}`.toLowerCase().includes(search.toLowerCase())
-              : true,
-          )
-          .map((project) => (
-            <Link key={project.id} to={`/projects/${project.key}/board`}>
-              <Card className="group transition-colors hover:border-border-strong">
+      {projects?.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
+          Проектов пока нет. Создайте первый проект, чтобы начать работу.
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {projects
+            ?.filter((project) =>
+              search
+                ? `${project.name} ${project.key}`.toLowerCase().includes(search.toLowerCase())
+                : true,
+            )
+            .map((project) => (
+              <Card key={project.id} className="transition-colors hover:border-border-strong">
                 <CardContent className="p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div className="flex min-w-0 items-center gap-3">
                       <ProjectAvatar projectKey={project.key} />
                       <div className="min-w-0">
-                        <div className="truncate font-semibold">{project.name}</div>
+                        <Link
+                          to={`/projects/${project.key}/board`}
+                          className="block truncate font-semibold hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                        >
+                          {project.name}
+                        </Link>
                         <div className="text-xs text-text-muted">
                           {project.key} · {t('projects.lead')}:{' '}
                           {project.owner_name || project.owner_id} ·{' '}
@@ -155,33 +179,37 @@ export function ProjectsPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          setEditingProject(project)
-                          setFormOpen(true)
-                        }}
-                        aria-label={t('common.edit')}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          setDeletingProject(project)
-                        }}
-                        aria-label={t('common.delete')}
-                      >
-                        <Trash2 className="h-4 w-4 text-rose-500" />
-                      </Button>
-                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0"
+                          aria-label={t('projects.moreActions')}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setEditingProject(project)
+                            setFormOpen(true)
+                          }}
+                          className="gap-2"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          {t('common.edit')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setDeletingProject(project)}
+                          className="gap-2 text-danger"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {t('common.delete')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center text-xs sm:text-sm">
                     <div className="rounded bg-surface-raised py-1">
@@ -199,9 +227,20 @@ export function ProjectsPage() {
                   </div>
                 </CardContent>
               </Card>
-            </Link>
-          ))}
-      </div>
+            ))}
+          {projects &&
+            projects.length > 0 &&
+            projects.filter((project) =>
+              search
+                ? `${project.name} ${project.key}`.toLowerCase().includes(search.toLowerCase())
+                : true,
+            ).length === 0 && (
+              <div className="col-span-full rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
+                По вашему запросу проекты не найдены.
+              </div>
+            )}
+        </div>
+      )}
     </div>
   )
 }

@@ -35,6 +35,7 @@ export default function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [query, setQuery] = useState(() => searchParams.get('q') ?? '')
   const [jql, setJql] = useState(() => searchParams.get('jql') ?? '')
+  const mode = searchParams.get('mode') === 'jql' || searchParams.has('jql') ? 'jql' : 'simple'
 
   const projectKey = searchParams.get('project_key') ?? undefined
   const status = searchParams.get('status') ?? undefined
@@ -45,36 +46,36 @@ export default function SearchPage() {
   useEffect(() => {
     const timeout = setTimeout(() => {
       setSearchParams((prev) => {
-        if (query) prev.set('q', query)
+        if (query && mode === 'simple') prev.set('q', query)
         else prev.delete('q')
         return prev
       })
     }, 250)
     return () => clearTimeout(timeout)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query])
+  }, [query, mode])
 
   useEffect(() => {
     setSearchParams((prev) => {
-      if (jql) prev.set('jql', jql)
+      if (jql && mode === 'jql') prev.set('jql', jql)
       else prev.delete('jql')
       return prev
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jql])
+  }, [jql, mode])
 
   const filters = useMemo(
     () => ({
-      q: query || undefined,
-      project_key: projectKey,
-      status,
-      assignee_id: assigneeId,
-      priority,
+      q: mode === 'simple' ? query || undefined : undefined,
+      project_key: mode === 'simple' ? projectKey : undefined,
+      status: mode === 'simple' ? status : undefined,
+      assignee_id: mode === 'simple' ? assigneeId : undefined,
+      priority: mode === 'simple' ? priority : undefined,
       sort_by: sort.split('_')[0],
       sort_order: sort.split('_')[1] ?? 'desc',
-      jql: jql || undefined,
+      jql: mode === 'jql' ? jql || undefined : undefined,
     }),
-    [query, projectKey, status, assigneeId, priority, sort, jql],
+    [query, projectKey, status, assigneeId, priority, sort, jql, mode],
   )
 
   const { data: issues, isLoading } = useIssues(filters)
@@ -97,12 +98,26 @@ export default function SearchPage() {
     setSearchParams(new URLSearchParams())
   }
 
+  const setMode = (nextMode: 'simple' | 'jql') => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.set('mode', nextMode)
+      if (nextMode === 'jql') {
+        for (const key of ['q', 'project_key', 'status', 'assignee_id', 'priority'])
+          next.delete(key)
+      } else {
+        next.delete('jql')
+      }
+      return next
+    })
+  }
+
   const hasFilters =
     projectKey || status || assigneeId || priority || sort !== 'created_desc' || query || jql
 
   const projectName =
     projects?.find((p) => p.key === projectKey)?.name ?? projectKey ?? t('search.project')
-  const statusLabel = status ?? t('search.status')
+  const statusLabel = status ? t(`status.${status}`) : t('search.status')
   const priorityLabel = priority ? t(`priority.${priority.toLowerCase()}`) : t('search.priority')
   const assigneeName =
     users?.find((u) => u.id === assigneeId)?.display_name ?? assigneeId ?? t('search.assignee')
@@ -119,150 +134,172 @@ export default function SearchPage() {
         </Button>
       </div>
 
-      <Card className="mb-6">
-        <CardContent className="flex flex-col gap-4 pt-6 md:flex-row md:items-end">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              aria-label={t('search.placeholder')}
-              placeholder={t('search.placeholder')}
-              className="pl-9"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="w-full md:w-44 justify-between">
-                {projectName}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuItem onClick={() => setFilter('project_key', undefined)}>
-                {t('search.allProjects')}
-              </DropdownMenuItem>
-              {projects?.map((p) => (
-                <DropdownMenuItem key={p.key} onClick={() => setFilter('project_key', p.key)}>
-                  {p.key} — {p.name}
+      <div className="mb-4 inline-grid grid-cols-2 rounded-md border border-border bg-surface p-1">
+        <button
+          type="button"
+          onClick={() => setMode('simple')}
+          aria-pressed={mode === 'simple'}
+          className={`min-h-9 rounded px-4 text-sm ${mode === 'simple' ? 'bg-surface-raised font-medium text-text-primary' : 'text-text-muted'}`}
+        >
+          Простой
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('jql')}
+          aria-pressed={mode === 'jql'}
+          className={`min-h-9 rounded px-4 text-sm ${mode === 'jql' ? 'bg-surface-raised font-medium text-text-primary' : 'text-text-muted'}`}
+        >
+          JQL
+        </button>
+      </div>
+
+      {mode === 'simple' ? (
+        <Card className="mb-6">
+          <CardContent className="grid gap-3 pt-6 sm:grid-cols-2 xl:grid-cols-6">
+            <div className="relative min-w-0 sm:col-span-2 xl:col-span-6">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
+              <Input
+                aria-label={t('search.placeholder')}
+                placeholder={t('search.placeholder')}
+                className="pl-9"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  {projectName}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={() => setFilter('project_key', undefined)}>
+                  {t('search.allProjects')}
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {projects?.map((p) => (
+                  <DropdownMenuItem key={p.key} onClick={() => setFilter('project_key', p.key)}>
+                    {p.key} — {p.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="w-full md:w-40 justify-between">
-                {statusLabel}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => setFilter('status', undefined)}>
-                {t('search.allStatuses')}
-              </DropdownMenuItem>
-              {STATUS_OPTIONS.map((s) => (
-                <DropdownMenuItem key={s} onClick={() => setFilter('status', s)}>
-                  {t(`status.${s}`)}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  {statusLabel}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => setFilter('status', undefined)}>
+                  {t('search.allStatuses')}
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {STATUS_OPTIONS.map((s) => (
+                  <DropdownMenuItem key={s} onClick={() => setFilter('status', s)}>
+                    {t(`status.${s}`)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="w-full md:w-40 justify-between">
-                {priorityLabel}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => setFilter('priority', undefined)}>
-                {t('search.allPriorities')}
-              </DropdownMenuItem>
-              {PRIORITY_OPTIONS.map((p) => (
-                <DropdownMenuItem
-                  key={p}
-                  onClick={() => setFilter('priority', titleCasePriority(p))}
-                >
-                  {t(`priority.${p}`)}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  {priorityLabel}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => setFilter('priority', undefined)}>
+                  {t('search.allPriorities')}
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {PRIORITY_OPTIONS.map((p) => (
+                  <DropdownMenuItem
+                    key={p}
+                    onClick={() => setFilter('priority', titleCasePriority(p))}
+                  >
+                    {t(`priority.${p}`)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="w-full md:w-44 justify-between">
-                {assigneeName}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
-              <DropdownMenuItem onClick={() => setFilter('assignee_id', undefined)}>
-                {t('search.allAssignees')}
-              </DropdownMenuItem>
-              {users?.map((u) => (
-                <DropdownMenuItem key={u.id} onClick={() => setFilter('assignee_id', u.id)}>
-                  {u.display_name}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  {assigneeName}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={() => setFilter('assignee_id', undefined)}>
+                  {t('search.allAssignees')}
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {users?.map((u) => (
+                  <DropdownMenuItem key={u.id} onClick={() => setFilter('assignee_id', u.id)}>
+                    {u.display_name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="w-full md:w-44 justify-between">
-                <ArrowUpDown className="mr-2 h-4 w-4" />
-                {sortLabel}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="w-full justify-between">
+                  <ArrowUpDown className="mr-2 h-4 w-4" />
+                  {sortLabel}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                {SORT_OPTIONS.map((o) => (
+                  <DropdownMenuItem key={o.value} onClick={() => setFilter('sort', o.value)}>
+                    {t(o.labelKey)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {hasFilters && mode === 'simple' && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={clearFilters}
+                aria-label={t('search.clear')}
+              >
+                <X className="h-4 w-4" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              {SORT_OPTIONS.map((o) => (
-                <DropdownMenuItem key={o.value} onClick={() => setFilter('sort', o.value)}>
-                  {t(o.labelKey)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
 
-          {hasFilters && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={clearFilters}
-              aria-label={t('search.clear')}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* JQL Search Section */}
-      <Card className="mb-6">
-        <CardContent className="flex flex-col gap-3 pt-6">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">{t('jql.title')}</span>
-          </div>
-          <div className="flex gap-2">
-            <Input
-              aria-label={t('jql.placeholder')}
-              placeholder={t('jql.placeholder')}
-              value={jql}
-              onChange={(e) => setJql(e.target.value)}
-              className="flex-1 font-mono text-sm"
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">{t('jql.help')}</p>
-        </CardContent>
-      </Card>
+      {mode === 'jql' ? (
+        <Card className="mb-6">
+          <CardContent className="flex flex-col gap-3 pt-6">
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-text-muted" />
+              <span className="text-sm font-medium">{t('jql.title')}</span>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                aria-label={t('jql.placeholder')}
+                placeholder={t('jql.placeholder')}
+                value={jql}
+                onChange={(e) => setJql(e.target.value)}
+                className="flex-1 font-mono text-sm"
+              />
+            </div>
+            <p className="text-xs text-text-muted">{t('jql.help')}</p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {isLoading ? (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="h-16 w-full animate-pulse rounded-md bg-muted" />
+            <div key={i} className="h-16 w-full animate-pulse rounded-md bg-surface-raised" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-12 text-center text-muted-foreground">{t('search.noResults')}</div>
+        <div className="py-12 text-center text-text-muted">{t('search.noResults')}</div>
       ) : (
         <div className="space-y-2">
           {filtered.map((issue: Issue) => (
@@ -275,8 +312,11 @@ export default function SearchPage() {
 }
 
 function SearchResultRow({ issue }: { issue: Issue }) {
+  const { t } = useTranslation()
+  const normalizedStatus = issue.status.toLowerCase().replaceAll(' ', '_')
+  const normalizedPriority = issue.priority.toLowerCase()
   return (
-    <Card className="hover:bg-muted/50 transition-colors">
+    <Card className="transition-colors hover:bg-surface-raised">
       <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <span className="shrink-0 rounded border px-2 py-0.5 text-xs font-medium">
@@ -284,15 +324,17 @@ function SearchResultRow({ issue }: { issue: Issue }) {
           </span>
           <Link
             to={`/issues/${issue.id}`}
-            className="min-w-0 truncate font-medium hover:text-primary hover:underline"
+            className="min-w-0 truncate font-medium hover:text-accent hover:underline"
           >
             {issue.summary}
           </Link>
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
-          <span className="rounded bg-secondary px-2 py-0.5 text-xs">{issue.status}</span>
-          <span>{issue.priority}</span>
-          <span className="truncate">{issue.assignee_name ?? 'Unassigned'}</span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
+          <span className="rounded bg-surface-raised px-2 py-0.5 text-xs">
+            {t(`status.${normalizedStatus}`, issue.status)}
+          </span>
+          <span>{t(`priority.${normalizedPriority}`, issue.priority)}</span>
+          <span className="truncate">{issue.assignee_name ?? t('issue.unassigned')}</span>
         </div>
       </CardContent>
     </Card>
