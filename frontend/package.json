@@ -14,7 +14,7 @@
     "preview": "vite preview --port 4173",
     "generate:api": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts",
     "lint": "eslint . --max-warnings=0 && pnpm lint:semantic",
-    "lint:semantic": "node node_modules/@sdlc/ui/scripts/sdlc-semantic-classes-check.mjs --css src/index.css --src src",
+    "lint:semantic": "node scripts/sdlc-semantic-classes-check.mjs --css src/index.css --src src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "openapi:check": "node node_modules/@sdlc/ui/scripts/sdlc-openapi-check.mjs --spec ../openapi/openapi.json --schema src/api/generated.ts",
