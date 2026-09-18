@@ -171,6 +171,44 @@ test.describe('live platform switcher', () => {
     })
   }
 
+  test('switcher keyboard focus returns after Escape', async ({ page }) => {
+    await page.goto('http://localhost:7722/login')
+    await page.locator('input').nth(0).fill(account.email)
+    await page.locator('input').nth(1).fill(account.password)
+    await page.getByRole('button', { name: 'Войти' }).click()
+    await expect(page).not.toHaveURL(/\/login$/, { timeout: 15_000 })
+    const trigger = page.getByRole('button', { name: 'Открыть список сервисов' })
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+    const menu = page.getByRole('menu', { name: /сервисов|Сервисы платформы/i })
+    await expect(menu).toBeVisible()
+    await page.keyboard.press('ArrowDown')
+    await expect(menu.getByRole('menuitem').nth(1)).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(menu).toBeHidden()
+    await expect(trigger).toBeFocused()
+  })
+
+  test('switcher opens by touch at mobile width', async ({ browser }) => {
+    const context = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 375, height: 812 },
+    })
+    try {
+      const page = await context.newPage()
+      await page.goto('http://localhost:7722/login')
+      await page.locator('input').nth(0).fill(account.email)
+      await page.locator('input').nth(1).fill(account.password)
+      await page.getByRole('button', { name: 'Войти' }).tap()
+      await expect(page).not.toHaveURL(/\/login$/, { timeout: 15_000 })
+      await page.getByRole('button', { name: 'Открыть список сервисов' }).tap()
+      const menu = page.getByRole('menu', { name: /сервисов|Сервисы платформы/i })
+      await expect(menu.getByRole('menuitem')).toHaveCount(6)
+    } finally {
+      await context.close()
+    }
+  })
+
   test('Task Tracker board stays within four viewports', async ({ page }) => {
     test.setTimeout(120_000)
     await page.goto('http://localhost:7722/login')
