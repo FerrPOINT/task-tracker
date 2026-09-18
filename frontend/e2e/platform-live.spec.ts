@@ -3,13 +3,21 @@ import { fileURLToPath } from 'node:url'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 
-test.skip(process.env.SDLC_LIVE_QA !== '1', 'Requires the local QA bootstrap and running Compose fleet')
+test.skip(
+  process.env.SDLC_LIVE_QA !== '1',
+  'Requires the local QA bootstrap and running Compose fleet',
+)
 
-const account = (process.env.SDLC_LIVE_QA === '1'
-  ? JSON.parse(
-      readFileSync(fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)), 'utf8'),
-    )
-  : { runId: '', email: '', username: '', password: '' }) as {
+const account = (
+  process.env.SDLC_LIVE_QA === '1'
+    ? JSON.parse(
+        readFileSync(
+          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          'utf8',
+        ),
+      )
+    : { runId: '', email: '', username: '', password: '' }
+) as {
   runId: string
   email: string
   username: string
@@ -42,7 +50,9 @@ test.describe('live platform switcher', () => {
     const projects = await request.get('http://127.0.0.1:7721/api/v1/projects', {
       headers: { Authorization: `Bearer ${token}` },
     })
-    const existing = (await projects.json()).projects.some((project: { key: string }) => project.key === projectKey)
+    const existing = (await projects.json()).projects.some(
+      (project: { key: string }) => project.key === projectKey,
+    )
     if (!existing) {
       const created = await request.post('http://127.0.0.1:7721/api/v1/projects', {
         headers: { Authorization: `Bearer ${token}` },
@@ -92,30 +102,48 @@ test.describe('live platform switcher', () => {
             await page.getByRole('combobox', { name: 'Тема' }).selectOption(theme)
           } else {
             for (let step = 0; step < 3; step++) {
-              if (await page.locator('html').getAttribute('data-theme') === theme) break
-              await page.getByRole('button', { name: /Тема:|Theme:|Переключить тему|Switch theme/i }).click()
+              if ((await page.locator('html').getAttribute('data-theme')) === theme) break
+              await page
+                .getByRole('button', { name: /Тема:|Theme:|Переключить тему|Switch theme/i })
+                .click()
             }
             await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
           }
-          for (const [width, height] of [[375, 812], [768, 1024], [1280, 800], [1920, 1080]]) {
+          for (const [width, height] of [
+            [375, 812],
+            [768, 1024],
+            [1280, 800],
+            [1920, 1080],
+          ]) {
             await page.setViewportSize({ width, height })
-            await expect.poll(() => page.evaluate(() =>
-              document.documentElement.scrollWidth - document.documentElement.clientWidth,
-            )).toBeLessThanOrEqual(1)
-            await page.screenshot({ path: `${screenshotDir}/${app.key}-${theme}-${width}.png`, fullPage: true, animations: 'disabled' })
+            await expect
+              .poll(() =>
+                page.evaluate(
+                  () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                ),
+              )
+              .toBeLessThanOrEqual(1)
+            await page.screenshot({
+              path: `${screenshotDir}/${app.key}-${theme}-${width}.png`,
+              fullPage: true,
+              animations: 'disabled',
+            })
             if ((theme === 'dark' && width === 375) || (theme === 'light' && width === 1280)) {
               const results = await new AxeBuilder({ page }).analyze()
-              expect(results.violations.filter((issue) =>
-                issue.impact === 'serious' || issue.impact === 'critical',
-              )).toEqual([])
+              expect(
+                results.violations.filter(
+                  (issue) => issue.impact === 'serious' || issue.impact === 'critical',
+                ),
+              ).toEqual([])
             }
           }
         }
       }
 
-      const trigger = app.key === 'project-workflow'
-        ? page.locator('summary[aria-label="Открыть список сервисов платформы"]')
-        : page.getByRole('button', { name: /Открыть список сервисов/ })
+      const trigger =
+        app.key === 'project-workflow'
+          ? page.locator('summary[aria-label="Открыть список сервисов платформы"]')
+          : page.getByRole('button', { name: /Открыть список сервисов/ })
       await trigger.click()
       const menu = page.getByRole('menu', { name: /сервисов|Сервисы платформы/i })
       await expect(menu).toBeVisible()
@@ -153,22 +181,35 @@ test.describe('live platform switcher', () => {
 
     for (const theme of ['dark', 'gray', 'light']) {
       for (let step = 0; step < 3; step++) {
-        if (await page.locator('html').getAttribute('data-theme') === theme) break
+        if ((await page.locator('html').getAttribute('data-theme')) === theme) break
         await page.getByRole('button', { name: /Тема:/ }).click()
       }
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-      for (const [width, height] of [[375, 812], [768, 1024], [1280, 800], [1920, 1080]]) {
+      for (const [width, height] of [
+        [375, 812],
+        [768, 1024],
+        [1280, 800],
+        [1920, 1080],
+      ]) {
         await page.setViewportSize({ width, height })
-        const overflow = await page.evaluate(() =>
-          document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        const overflow = await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
         )
         expect(overflow).toBeLessThanOrEqual(1)
         if (process.env.SDLC_LIVE_VISUAL === '1') {
           mkdirSync(screenshotDir, { recursive: true })
-          await page.screenshot({ path: `${screenshotDir}/task-board-${theme}-${width}.png`, fullPage: true, animations: 'disabled' })
+          await page.screenshot({
+            path: `${screenshotDir}/task-board-${theme}-${width}.png`,
+            fullPage: true,
+            animations: 'disabled',
+          })
           if ((theme === 'dark' && width === 375) || (theme === 'light' && width === 1280)) {
             const results = await new AxeBuilder({ page }).analyze()
-            expect(results.violations.filter((issue) => issue.impact === 'serious' || issue.impact === 'critical')).toEqual([])
+            expect(
+              results.violations.filter(
+                (issue) => issue.impact === 'serious' || issue.impact === 'critical',
+              ),
+            ).toEqual([])
           }
         }
       }
@@ -178,7 +219,10 @@ test.describe('live platform switcher', () => {
   test('Admin Panel internal pages expose complete runtime catalog', async ({ page, request }) => {
     test.setTimeout(90_000)
     if (adminToken) {
-      await page.addInitScript((token) => sessionStorage.setItem('base.admin.token', token), adminToken)
+      await page.addInitScript(
+        (token) => sessionStorage.setItem('base.admin.token', token),
+        adminToken,
+      )
     } else {
       await page.goto('http://localhost:7772/login')
       await page.locator('input').nth(0).fill(account.email)
@@ -186,25 +230,51 @@ test.describe('live platform switcher', () => {
       await page.getByRole('button', { name: /Войти/ }).click()
       await expect(page).not.toHaveURL(/\/login$/, { timeout: 15_000 })
       adminToken = await page.evaluate(() => sessionStorage.getItem('base.admin.token') ?? '')
-      await page.addInitScript((token) => sessionStorage.setItem('base.admin.token', token), adminToken)
+      await page.addInitScript(
+        (token) => sessionStorage.setItem('base.admin.token', token),
+        adminToken,
+      )
     }
-    const pages = ['/services', '/services/admin-panel', '/revisions', '/branding', '/role-bindings', '/audit', '/runtime']
+    const pages = [
+      '/services',
+      '/services/admin-panel',
+      '/revisions',
+      '/branding',
+      '/role-bindings',
+      '/audit',
+      '/runtime',
+    ]
     for (const path of pages) {
       await page.goto(`http://localhost:7772${path}`)
       await expect(page.locator('h1').first()).toBeVisible()
-      for (const [width, height] of [[375, 812], [1280, 800]]) {
+      for (const [width, height] of [
+        [375, 812],
+        [1280, 800],
+      ]) {
         await page.setViewportSize({ width, height })
         if (process.env.SDLC_LIVE_VISUAL === '1') {
-          await page.screenshot({ path: `${screenshotDir}/admin-${path.slice(1).replace('/', '-')}-${width}.png`, fullPage: true, animations: 'disabled' })
+          await page.screenshot({
+            path: `${screenshotDir}/admin-${path.slice(1).replace('/', '-')}-${width}.png`,
+            fullPage: true,
+            animations: 'disabled',
+          })
         }
-        await expect.poll(() => page.evaluate(() =>
-          document.documentElement.scrollWidth - document.documentElement.clientWidth,
-        ), { message: `${path} at ${width}px overflows horizontally` }).toBeLessThanOrEqual(1)
+        await expect
+          .poll(
+            () =>
+              page.evaluate(
+                () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+              ),
+            { message: `${path} at ${width}px overflows horizontally` },
+          )
+          .toBeLessThanOrEqual(1)
       }
     }
     const catalog = await request.get('http://127.0.0.1:7771/api/v1/runtime/services')
     expect(catalog.ok()).toBeTruthy()
-    const payload = await catalog.json() as { services: { key: string; ui_url: string | null; health: string }[] }
+    const payload = (await catalog.json()) as {
+      services: { key: string; ui_url: string | null; health: string }[]
+    }
     expect(payload.services).toHaveLength(8)
     expect(payload.services.filter((service) => service.ui_url)).toHaveLength(6)
     expect(payload.services.every((service) => service.health === 'healthy')).toBe(true)
@@ -224,7 +294,10 @@ test.describe('live platform switcher', () => {
 
     const projectName = `QA ${account.runId} updated`
     const projectLink = page.getByRole('link', { name: `QA ${account.runId}` })
-    await projectLink.locator('xpath=../../../..').getByRole('button', { name: 'Ещё действия' }).click()
+    await projectLink
+      .locator('xpath=../../../..')
+      .getByRole('button', { name: 'Ещё действия' })
+      .click()
     await page.getByRole('menuitem', { name: 'Изменить' }).click()
     await page.locator('#project-form-name').fill(projectName)
     await page.getByRole('dialog').getByRole('button', { name: 'Сохранить' }).click()
@@ -248,14 +321,21 @@ test.describe('live platform switcher', () => {
     await expect(card).toBeVisible()
     if (process.env.SDLC_LIVE_VISUAL === '1') {
       await page.setViewportSize({ width: 375, height: 812 })
-      await page.screenshot({ path: `${screenshotDir}/task-board-filled-375.png`, fullPage: true, animations: 'disabled' })
+      await page.screenshot({
+        path: `${screenshotDir}/task-board-filled-375.png`,
+        fullPage: true,
+        animations: 'disabled',
+      })
     }
 
     const sprintName = `QA ${account.runId} sprint`
-    const sprint = await request.post(`http://127.0.0.1:7721/api/v1/projects/${projectKey}/sprints`, {
-      headers: { Authorization: `Bearer ${taskToken}` },
-      data: { name: sprintName, goal: 'Live report validation' },
-    })
+    const sprint = await request.post(
+      `http://127.0.0.1:7721/api/v1/projects/${projectKey}/sprints`,
+      {
+        headers: { Authorization: `Bearer ${taskToken}` },
+        data: { name: sprintName, goal: 'Live report validation' },
+      },
+    )
     expect(sprint.ok()).toBeTruthy()
     await page.goto('http://localhost:7722/reports')
     await expect(page.getByRole('heading', { name: /Отчёт/ }).first()).toBeVisible()
@@ -263,16 +343,33 @@ test.describe('live platform switcher', () => {
     await page.locator('#report-sprint').selectOption({ label: sprintName })
     await expect(page).toHaveURL(/sprint_id=/)
 
-    for (const path of [detailPath!, `/projects/${projectKey}/backlog`, `/projects/${projectKey}/settings/custom-fields`,
-      `/projects/${projectKey}/trash`, '/search', '/notifications', '/reports']) {
+    for (const path of [
+      detailPath!,
+      `/projects/${projectKey}/backlog`,
+      `/projects/${projectKey}/settings/custom-fields`,
+      `/projects/${projectKey}/trash`,
+      '/search',
+      '/notifications',
+      '/reports',
+    ]) {
       await page.goto(`http://localhost:7722${path}`)
       await expect(page.locator('h1').first()).toBeVisible()
       await page.setViewportSize({ width: 375, height: 812 })
-      await expect.poll(() => page.evaluate(() =>
-        document.documentElement.scrollWidth - document.documentElement.clientWidth,
-      ), { message: `${path} at 375px overflows` }).toBeLessThanOrEqual(1)
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            ),
+          { message: `${path} at 375px overflows` },
+        )
+        .toBeLessThanOrEqual(1)
       if (process.env.SDLC_LIVE_VISUAL === '1') {
-        await page.screenshot({ path: `${screenshotDir}/task-${path.replaceAll('/', '-').slice(1)}-375.png`, fullPage: true, animations: 'disabled' })
+        await page.screenshot({
+          path: `${screenshotDir}/task-${path.replaceAll('/', '-').slice(1)}-375.png`,
+          fullPage: true,
+          animations: 'disabled',
+        })
       }
     }
   })
@@ -286,8 +383,10 @@ test.describe('live platform switcher', () => {
     await page.locator('input').nth(1).fill(account.password)
     let loginResponse
     for (let attempt = 0; attempt < 3; attempt++) {
-      const response = page.waitForResponse((candidate) =>
-        candidate.url().includes('/api/v1/auth/login') && candidate.request().method() === 'POST')
+      const response = page.waitForResponse(
+        (candidate) =>
+          candidate.url().includes('/api/v1/auth/login') && candidate.request().method() === 'POST',
+      )
       await page.getByRole('button', { name: /Войти/ }).click()
       loginResponse = await response
       if (loginResponse.status() !== 429) break
@@ -326,7 +425,10 @@ test.describe('live platform switcher', () => {
       spaceCreated = true
       const created = await request.post(`${api}/spaces/${spaceKey}/documents`, {
         headers,
-        data: { title: `QA ${account.runId} document`, content_markdown: '# First published revision' },
+        data: {
+          title: `QA ${account.runId} document`,
+          content_markdown: '# First published revision',
+        },
       })
       expect(created.ok(), `${created.status()} ${await created.text()}`).toBeTruthy()
       const doc = await created.json()
@@ -349,14 +451,26 @@ test.describe('live platform switcher', () => {
       expect(republished.ok()).toBeTruthy()
       const listed = await request.get(`${api}/spaces`, { headers })
       expect(listed.ok()).toBeTruthy()
-      expect((await listed.json()).spaces.some((space: { key: string }) => space.key === spaceKey)).toBe(true)
+      expect(
+        (await listed.json()).spaces.some((space: { key: string }) => space.key === spaceKey),
+      ).toBe(true)
 
-      await page.getByRole('link', { name: /пространства/i }).first().click()
+      await page
+        .getByRole('link', { name: /пространства/i })
+        .first()
+        .click()
       await expect(page).toHaveURL(/\/spaces$/, { timeout: 15_000 })
-      await expect(page.getByText(`${spaceKey} · QA ${account.runId} wiki`), wikiFailures.join(', ')).toBeVisible({ timeout: 20_000 })
+      await expect(
+        page.getByText(`${spaceKey} · QA ${account.runId} wiki`),
+        wikiFailures.join(', '),
+      ).toBeVisible({ timeout: 20_000 })
       if (process.env.SDLC_LIVE_VISUAL === '1') {
         mkdirSync(screenshotDir, { recursive: true })
-        await page.screenshot({ path: `${screenshotDir}/wiki-qa-spaces.png`, fullPage: true, animations: 'disabled' })
+        await page.screenshot({
+          path: `${screenshotDir}/wiki-qa-spaces.png`,
+          fullPage: true,
+          animations: 'disabled',
+        })
       }
       await page.getByRole('link', { name: `QA ${account.runId} revised` }).click()
       await expect(page.getByRole('heading', { name: 'Revised QA content' })).toBeVisible()
@@ -385,8 +499,11 @@ test.describe('live platform switcher', () => {
       const created = await request.post(`${api}/agents`, {
         headers,
         data: {
-          kind: 'hermes', product_role: 'executor', role: 'developer',
-          display_name: name, description: 'Local QA, not started',
+          kind: 'hermes',
+          product_role: 'executor',
+          role: 'developer',
+          display_name: name,
+          description: 'Local QA, not started',
         },
       })
       expect(created.ok(), `${created.status()} ${await created.text()}`).toBeTruthy()
@@ -402,7 +519,10 @@ test.describe('live platform switcher', () => {
       await page.locator('input').nth(1).fill(account.password)
       await page.getByRole('button', { name: /Sign in|Войти/ }).click()
       await expect(page).not.toHaveURL(/\/login$/, { timeout: 15_000 })
-      await page.getByRole('link', { name: /Agents/i }).first().click()
+      await page
+        .getByRole('link', { name: /Agents/i })
+        .first()
+        .click()
       await expect(page.getByText(`${name} updated`).first()).toBeVisible()
     } finally {
       if (agentId) {
@@ -451,7 +571,10 @@ test.describe('live platform switcher', () => {
     page.setDefaultTimeout(10_000)
     const claimValue = `qa-audit-${account.runId}@example.test`
     if (adminToken) {
-      await page.addInitScript((token) => sessionStorage.setItem('base.admin.token', token), adminToken)
+      await page.addInitScript(
+        (token) => sessionStorage.setItem('base.admin.token', token),
+        adminToken,
+      )
       await page.goto('http://localhost:7772/')
     } else {
       await page.goto('http://localhost:7772/login')
@@ -479,11 +602,19 @@ test.describe('live platform switcher', () => {
       const token = await page.evaluate(() => sessionStorage.getItem('base.admin.token'))
       if (token) {
         const headers = { Authorization: `Bearer ${token}` }
-        const bindings = await request.get('http://127.0.0.1:7771/api/v1/role-bindings', { headers })
+        const bindings = await request.get('http://127.0.0.1:7771/api/v1/role-bindings', {
+          headers,
+        })
         if (bindings.ok()) {
-          for (const binding of (await bindings.json()).bindings as { id: string; claim_value: string }[]) {
+          for (const binding of (await bindings.json()).bindings as {
+            id: string
+            claim_value: string
+          }[]) {
             if (binding.claim_value === claimValue) {
-              const removed = await request.delete(`http://127.0.0.1:7771/api/v1/role-bindings/${binding.id}`, { headers })
+              const removed = await request.delete(
+                `http://127.0.0.1:7771/api/v1/role-bindings/${binding.id}`,
+                { headers },
+              )
               expect(removed.ok()).toBeTruthy()
             }
           }
@@ -496,14 +627,20 @@ test.describe('live platform switcher', () => {
     test.skip(process.env.SDLC_CICD_QA !== '1', 'Requires the isolated CI/CD QA Compose project')
     page.setDefaultTimeout(10_000)
     const state = JSON.parse(
-      readFileSync(fileURLToPath(new URL('../../../.local/cicd-qa-state.json', import.meta.url)), 'utf8'),
+      readFileSync(
+        fileURLToPath(new URL('../../../.local/cicd-qa-state.json', import.meta.url)),
+        'utf8',
+      ),
     ) as { projectId: string }
     await page.goto('http://localhost:17712/login')
     await page.locator('input').nth(0).fill(account.username)
     await page.locator('input').nth(1).fill(account.password)
     await page.getByRole('button', { name: /Войти|Sign in/ }).click()
     await expect(page).not.toHaveURL(/\/login$/, { timeout: 15_000 })
-    await page.getByRole('link', { name: /Проекты/ }).first().click()
+    await page
+      .getByRole('link', { name: /Проекты/ })
+      .first()
+      .click()
     await page.getByRole('link', { name: `QA ${account.runId} CI` }).click()
     await expect(page).toHaveURL(new RegExp(`/projects/${state.projectId}/pipelines`))
     await page.getByRole('link', { name: /main/ }).first().click()
