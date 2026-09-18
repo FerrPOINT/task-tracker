@@ -106,7 +106,10 @@ describe('ProjectTrashPage', () => {
     await userEvent.click(purgeButton)
     const confirmButton = screen.getByRole('button', { name: /подтвердить/i })
     await userEvent.click(confirmButton)
-    expect(mockPurge).toHaveBeenCalledWith('i1')
+    expect(mockPurge).toHaveBeenCalledWith(
+      'i1',
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
   })
 
   it('requests the next trash page when the current page is full', async () => {

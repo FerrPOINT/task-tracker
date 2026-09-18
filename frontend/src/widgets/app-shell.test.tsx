@@ -8,6 +8,7 @@ import { AppShell } from './app-shell'
 
 const useCurrentUser = vi.hoisted(() => vi.fn())
 const useIssue = vi.hoisted(() => vi.fn())
+const useProjects = vi.hoisted(() => vi.fn())
 const useLogout = vi.hoisted(() => vi.fn())
 const useNotifications = vi.hoisted(() => vi.fn())
 const useMarkNotificationRead = vi.hoisted(() => vi.fn())
@@ -20,6 +21,7 @@ vi.mock('@/shared/api/hooks', () => ({
   useMarkNotificationRead,
   useMarkAllNotificationsRead,
   useIssue,
+  useProjects,
 }))
 vi.mock('@/shared/api/useTrackerEvents', () => ({ useTrackerEvents: vi.fn() }))
 
@@ -35,6 +37,7 @@ type Notification = {
 function mockHooks(notifications: Notification[] | undefined, unreadCount?: number) {
   useCurrentUser.mockReturnValue({ data: { email: 'user@example.test', display_name: 'User' } })
   useIssue.mockReturnValue({ data: undefined })
+  useProjects.mockReturnValue({ data: [] })
   useLogout.mockReturnValue({ mutate: vi.fn() })
   useNotifications.mockReturnValue({
     data: notifications
@@ -114,7 +117,8 @@ describe('AppShell notifications', () => {
     )
   })
 
-  it('includes the administration link in the desktop sidebar', () => {
+  it('includes the administration link in the account menu', async () => {
+    const user = userEvent.setup()
     mockHooks([])
     useCurrentUser.mockReturnValue({
       data: { email: 'admin@example.test', display_name: 'Admin', is_system_admin: true },
@@ -128,10 +132,10 @@ describe('AppShell notifications', () => {
       </ThemeProvider>,
     )
 
-    expect(screen.getByRole('link', { name: /администрирование|administration/i })).toHaveAttribute(
-      'href',
-      '/admin',
-    )
+    await user.click(screen.getByRole('button', { name: /аккаунт|account/i }))
+    expect(
+      await screen.findByRole('menuitem', { name: /администрирование|administration/i }),
+    ).toHaveAttribute('href', '/admin')
   })
 
   it('opens an empty notification dropdown without a badge', async () => {

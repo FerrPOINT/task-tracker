@@ -62,57 +62,53 @@ export function ProjectTrashPage() {
       )}
 
       {trashedIssues.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-border">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="border-b border-border bg-surface-raised text-text-secondary">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium">{t('trash.key')}</th>
-                  <th className="px-4 py-2 text-left font-medium">{t('trash.summary')}</th>
-                  <th className="px-4 py-2 text-left font-medium">{t('trash.type')}</th>
-                  <th className="px-4 py-2 text-left font-medium">{t('trash.priority')}</th>
-                  <th className="px-4 py-2 text-right font-medium">{t('trash.actions')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trashedIssues.map((issue) => (
-                  <tr
-                    key={issue.id}
-                    className="border-b border-border last:border-0 hover:bg-surface-raised"
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-text-secondary">{issue.key}</td>
-                    <td className="px-4 py-3">{issue.summary}</td>
-                    <td className="px-4 py-3 text-text-secondary">{issue.issue_type}</td>
-                    <td className="px-4 py-3 text-text-secondary">{issue.priority}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1 px-2 text-xs"
-                          disabled={restoreMutation.isPending}
-                          onClick={() => restoreMutation.mutate(issue.id)}
-                        >
-                          <RotateCcw className="h-3 w-3" />
-                          {t('trash.restore', 'Restore')}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1 px-2 text-xs text-danger hover:text-danger"
-                          disabled={purgeMutation.isPending}
-                          onClick={() => setPurgeConfirmId(issue.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                          {t('trash.purge', 'Delete forever')}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="overflow-hidden rounded-md border border-border bg-surface text-sm">
+          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] gap-3 border-b border-border bg-surface-raised px-4 py-2 text-text-secondary sm:grid">
+            <span>{t('trash.key')}</span>
+            <span>{t('trash.summary')}</span>
+            <span>{t('trash.type')}</span>
+            <span>{t('trash.priority')}</span>
+            <span className="text-right">{t('trash.actions')}</span>
           </div>
+          {trashedIssues.map((issue) => (
+            <article
+              key={issue.id}
+              className="grid gap-2 border-b border-border p-3 last:border-0 hover:bg-surface-raised sm:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] sm:items-center sm:gap-3 sm:px-4"
+            >
+              <div className="font-mono text-xs text-text-secondary">{issue.key}</div>
+              <div className="min-w-0 break-words font-medium sm:font-normal">{issue.summary}</div>
+              <div className="text-xs text-text-secondary sm:text-sm">
+                {t(`issueType.${issue.issue_type.toLowerCase()}`, {
+                  defaultValue: issue.issue_type,
+                })}
+              </div>
+              <div className="text-xs text-text-secondary sm:text-sm">
+                {t(`priority.${issue.priority.toLowerCase()}`, { defaultValue: issue.priority })}
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-2 sm:mt-0 sm:flex sm:justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-9 gap-1 px-2 text-xs"
+                  disabled={restoreMutation.isPending}
+                  onClick={() => restoreMutation.mutate(issue.id)}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {t('trash.restore', 'Restore')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-9 gap-1 px-2 text-xs text-danger hover:text-danger"
+                  disabled={purgeMutation.isPending}
+                  onClick={() => setPurgeConfirmId(issue.id)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t('trash.purge', 'Delete forever')}
+                </Button>
+              </div>
+            </article>
+          ))}
         </div>
       )}
 
@@ -145,6 +141,8 @@ export function ProjectTrashPage() {
       <ConfirmDialog
         open={purgeConfirmId !== null}
         onOpenChange={(open) => !open && setPurgeConfirmId(null)}
+        isPending={purgeMutation.isPending}
+        error={purgeMutation.error?.message}
         title={t('trash.purge', 'Delete forever')}
         description={t(
           'trash.purgeConfirm',
@@ -152,9 +150,8 @@ export function ProjectTrashPage() {
         )}
         onConfirm={() => {
           if (purgeConfirmId) {
-            purgeMutation.mutate(purgeConfirmId)
+            purgeMutation.mutate(purgeConfirmId, { onSuccess: () => setPurgeConfirmId(null) })
           }
-          setPurgeConfirmId(null)
         }}
       />
     </div>

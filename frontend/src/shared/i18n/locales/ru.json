@@ -14,6 +14,7 @@
     "logout": "Выйти",
     "reports": "Отчёты",
     "admin": "Администрирование",
+    "settings": "Настройки проекта",
     "toggleMenu": "Открыть/закрыть меню",
     "account": "Аккаунт"
   },
@@ -97,24 +98,31 @@
     "create": "Создать",
     "wip": "WIP",
     "wipWarning": "⚠️",
-    "backlog": "Backlog",
+    "backlog": "Бэклог",
     "done": "Done",
     "inProgress": "In Progress",
     "subtitle": "Бэклог: {{backlog}} · Осталось дней: {{remainingDays}}",
     "title": "Доска · {{projectName}} — {{sprintName}}",
     "todo": "To Do",
-    "columnActions": "Действия с колонкой"
+    "columnActions": "Действия с колонкой",
+    "moveTo": "Переместить: {{status}}",
+    "noTransitions": "Нет доступных переходов",
+    "statusChanged": "Статус задачи изменён",
+    "emptyStatus": "В этом статусе нет задач",
+    "notAvailable": "нет данных"
   },
   "backlog": {
     "createSprint": "Создать спринт",
     "createIssue": "Создать задачу",
     "startSprint": "Начать спринт",
     "closeSprint": "Завершить спринт",
-    "title": "Backlog · {{projectName}}",
-    "velocity": "Скорость: {{velocity}} sp",
+    "title": "Бэклог · {{projectName}}",
+    "velocity": "Скорость: {{velocity}} баллов",
     "backlogCount": "В бэклоге: {{count}}",
-    "backlogSection": "Backlog · {{count}}",
-    "activeSprint": "{{name}} · {{velocity}} sp · {{remaining}} дн.",
+    "backlogSection": "Бэклог · {{count}}",
+    "activeSprint": "{{name}} · {{velocity}} баллов · Осталось дней: {{remaining}}",
+    "noActiveSprint": "Активного спринта нет",
+    "notAvailable": "нет данных",
     "futureSprint": "{{name}}",
     "emptySprint": "В спринте нет задач.",
     "emptyBacklog": "Бэклог пуст.",
@@ -265,7 +273,10 @@
     "loading": "Загрузка…",
     "edit": "Изменить",
     "saving": "Сохранение…",
-    "error": "Ошибка"
+    "saved": "Сохранено",
+    "error": "Ошибка",
+    "unassigned": "Не назначено",
+    "user": "Пользователь"
   },
   "loading": {
     "empty": "Пока ничего нет.",
@@ -516,6 +527,7 @@
   },
   "status": {
     "todo": "К выполнению",
+    "to_do": "К выполнению",
     "in_progress": "В работе",
     "review": "Ревью",
     "done": "Готово"

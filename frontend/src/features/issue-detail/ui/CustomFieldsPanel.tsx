@@ -6,6 +6,7 @@ import {
   useSetIssueCustomFieldValue,
 } from '@/shared/api/hooks'
 import type { CustomField } from '@/api/custom-fields'
+import { toast } from 'sonner'
 
 export function customFieldDateInputValue(value: unknown) {
   if (typeof value !== 'string') return ''
@@ -135,7 +136,15 @@ export function CustomFieldsPanel({
             <CustomFieldValueInput
               field={field}
               value={byField.get(field.id)}
-              onSave={(value) => save.mutate({ fieldId: field.id, value })}
+              onSave={(value) =>
+                save.mutate(
+                  { fieldId: field.id, value },
+                  {
+                    onSuccess: () => toast.success(t('common.saved')),
+                    onError: (error) => toast.error(error.message),
+                  },
+                )
+              }
             />
           </div>
         </label>

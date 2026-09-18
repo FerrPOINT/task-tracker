@@ -10,7 +10,7 @@ let lastToken: string | undefined
 async function loginToken(page: Page): Promise<string> {
   for (let attempt = 0; attempt < 6; attempt++) {
     const res = await page.request.post(`${API}/auth/login`, {
-      data: { email: 'demo@example.com', password: 'demo' },
+      data: { email: 'demo@example.com', password: 'demo-password' },
     })
     if (res.ok()) return (await res.json()).access_token
     await page.waitForTimeout(3000)

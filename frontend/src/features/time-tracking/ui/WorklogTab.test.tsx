@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@sdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
@@ -82,5 +82,19 @@ describe('WorklogTab', () => {
     )
     // Alice's worklog (u1 === currentUserId) should have edit buttons (desktop + mobile)
     expect(screen.getAllByLabelText(/edit worklog/i)).toHaveLength(2)
+  })
+
+  it('keeps delete confirmation open when the request fails', async () => {
+    const onDelete = vi.fn().mockRejectedValue(new Error('Server rejected deletion'))
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={onDelete} currentUserId="u1" />,
+      ),
+    )
+    fireEvent.click(screen.getAllByLabelText(/delete worklog/i)[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith('w1'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Server rejected deletion')
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 })

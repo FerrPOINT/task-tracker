@@ -17,18 +17,19 @@ type FormData = z.infer<typeof schema>
 
 interface IssueDescriptionEditorProps {
   issue: Issue
-  onSubmit: (patch: { summary: string; description: string | null }) => void
+  onSubmit: (patch: { summary: string; description: string | null }) => Promise<unknown>
   disabled?: boolean
 }
 
 export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescriptionEditorProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -39,6 +40,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
 
   const startEdit = () => {
     reset({ summary: issue.summary, description: issue.description ?? '' })
+    setSaveError(null)
     setEditing(true)
   }
 
@@ -47,12 +49,17 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
     reset()
   }
 
-  const submit = handleSubmit((data) => {
-    onSubmit({
-      summary: data.summary,
-      description: data.description.trim() || null,
-    })
-    setEditing(false)
+  const submit = handleSubmit(async (data) => {
+    setSaveError(null)
+    try {
+      await onSubmit({
+        summary: data.summary,
+        description: data.description.trim() || null,
+      })
+      setEditing(false)
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : t('common.error'))
+    }
   })
 
   if (!editing) {
@@ -63,7 +70,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           <Button
             variant="ghost"
             size="icon"
-            className="opacity-0 group-hover:opacity-100"
+            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               startEdit()
@@ -88,6 +95,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
       <div>
         <input
           {...register('summary')}
+          aria-label={t('issueCreate.summary')}
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-2xl font-semibold text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />
         {errors.summary && (
@@ -99,12 +107,23 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
         rows={8}
         placeholder={t('issue.descriptionPlaceholder')}
       />
+      {saveError && (
+        <p role="alert" className="text-sm text-danger">
+          {saveError}
+        </p>
+      )}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={disabled}>
+        <Button type="submit" size="sm" disabled={disabled || isSubmitting}>
           <Check className="mr-1 h-4 w-4" />
-          {t('common.save')}
+          {isSubmitting ? t('common.saving') : t('common.save')}
         </Button>
-        <Button type="button" variant="secondary" size="sm" onClick={cancel} disabled={disabled}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={cancel}
+          disabled={disabled || isSubmitting}
+        >
           <X className="mr-1 h-4 w-4" />
           {t('common.cancel')}
         </Button>

@@ -7,7 +7,7 @@ test('token refresh keeps session alive when access token expires (HTTP)', async
   // Login over the same origin the app uses (vite preview proxy), so the
   // HttpOnly refresh cookie lands in the browser jar.
   const loginApi = await page.request.post(`${baseURL}/api/v1/auth/login`, {
-    data: { email: 'demo@example.com', password: 'demo' },
+    data: { email: 'demo@example.com', password: 'demo-password' },
   })
   expect(loginApi.ok()).toBeTruthy()
   const data = (await loginApi.json()) as { access_token: string; refresh_token?: string }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tag, Plus, X } from 'lucide-react'
 import {
@@ -10,6 +10,7 @@ import {
 } from '@/shared/api/hooks'
 import { Button } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
+import { toast } from 'sonner'
 
 const PALETTE = [
   '#ef4444',
@@ -22,6 +23,16 @@ const PALETTE = [
   '#6b7280',
 ]
 
+export function labelForeground(color: string): '#000000' | '#ffffff' {
+  if (!/^#[0-9a-f]{6}$/i.test(color)) return '#000000'
+  const channels = [1, 3, 5].map((index) => {
+    const value = parseInt(color.slice(index, index + 2), 16) / 255
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+  })
+  const luminance = 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
+  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) ? '#000000' : '#ffffff'
+}
+
 export function LabelEditor({ issueId, projectKey }: { issueId: string; projectKey: string }) {
   const { t } = useTranslation()
   const { data: projectLabels = [] } = useProjectLabels(projectKey)
@@ -31,6 +42,8 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
   const create = useCreateLabel(projectKey)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const createdLabel = useRef<{ name: string; id: string } | null>(null)
 
   const issueLabelIds = new Set(issueLabels.map((l) => l.id))
 
@@ -38,10 +51,27 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
     const name = newName.trim()
     if (!name) return
     const color = PALETTE[projectLabels.length % PALETTE.length] ?? '#6b7280'
-    const label = await create.mutateAsync({ name, color })
-    await attach.mutateAsync(label.id)
-    setNewName('')
-    setCreating(false)
+    setCreateError(null)
+    try {
+      let labelId = projectLabels.find((item) => item.name === name)?.id
+      if (!labelId && createdLabel.current?.name === name) labelId = createdLabel.current.id
+      if (!labelId) {
+        const label = await create.mutateAsync({ name, color })
+        labelId = label.id
+        createdLabel.current = { name, id: labelId }
+      }
+      await attach.mutateAsync(labelId)
+      createdLabel.current = null
+      setNewName('')
+      setCreating(false)
+      toast.success(t('common.saved'))
+    } catch (error) {
+      setCreateError(
+        error instanceof Error
+          ? error.message
+          : t('labels.createFailed', 'Не удалось добавить метку'),
+      )
+    }
   }
 
   return (
@@ -56,15 +86,17 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
           {issueLabels.map((l) => (
             <span
               key={l.id}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white"
-              style={{ backgroundColor: l.color }}
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+              style={{ backgroundColor: l.color, color: labelForeground(l.color) }}
               data-testid="issue-label"
             >
               {l.name}
               <button
                 type="button"
                 aria-label={t('labels.detach', { name: l.name })}
-                onClick={() => detach.mutate(l.id)}
+                onClick={() =>
+                  detach.mutate(l.id, { onError: (error) => toast.error(error.message) })
+                }
                 className="rounded-full p-0.5 hover:bg-black/20"
               >
                 <X className="h-3 w-3" aria-hidden />
@@ -78,20 +110,36 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
       )}
 
       {creating ? (
-        <div className="flex gap-1">
-          <Input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder={t('labels.namePlaceholder')}
-            className="h-8 text-xs"
-            data-testid="label-name-input"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void onCreate()
-            }}
-          />
-          <Button type="button" size="sm" className="h-8" onClick={() => void onCreate()}>
-            {t('labels.add')}
-          </Button>
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t('labels.namePlaceholder')}
+              className="h-8 text-xs"
+              data-testid="label-name-input"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void onCreate()
+                }
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="h-8"
+              disabled={create.isPending || attach.isPending}
+              onClick={() => void onCreate()}
+            >
+              {create.isPending || attach.isPending ? t('common.loading') : t('labels.add')}
+            </Button>
+          </div>
+          {createError && (
+            <p role="alert" className="text-xs text-danger">
+              {createError}
+            </p>
+          )}
         </div>
       ) : (
         <div className="flex flex-wrap gap-1">
@@ -101,9 +149,11 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
               <button
                 key={l.id}
                 type="button"
-                onClick={() => attach.mutate(l.id)}
-                className="rounded-full px-2 py-0.5 text-xs font-medium text-white opacity-70 transition hover:opacity-100"
-                style={{ backgroundColor: l.color }}
+                onClick={() =>
+                  attach.mutate(l.id, { onError: (error) => toast.error(error.message) })
+                }
+                className="rounded-full px-2 py-0.5 text-xs font-medium transition hover:brightness-110"
+                style={{ backgroundColor: l.color, color: labelForeground(l.color) }}
               >
                 + {l.name}
               </button>

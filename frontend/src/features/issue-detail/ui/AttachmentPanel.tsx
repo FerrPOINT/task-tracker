@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-react'
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
-import { Button } from '@sdlc/ui/ui'
+import { Button, ConfirmDialog } from '@sdlc/ui/ui'
+import { toast } from 'sonner'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -23,20 +24,49 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
   const upload = useUploadAttachment(issueId)
   const remove = useDeleteAttachment(issueId)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [progress, setProgress] = useState<UploadProgress | null>(null)
+  const [progress, setProgress] = useState<Record<string, UploadProgress>>({})
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!upload.isPending) setProgress(null)
-  }, [upload.isPending])
-
-  const onPick = (files: FileList | null) => {
+  const onPick = async (files: FileList | null) => {
     if (!files) return
-    Array.from(files).forEach((f) =>
-      upload.mutate({
-        file: f,
-        onProgress: (loaded, total) => setProgress({ fileName: f.name, loaded, total }),
-      }),
+    const selected = Array.from(files)
+    if (selected.length === 0) return
+    setUploading(true)
+    setUploadError(false)
+    setProgress(
+      Object.fromEntries(
+        selected.map((file, index) => [
+          index,
+          { fileName: file.name, loaded: 0, total: file.size },
+        ]),
+      ),
     )
+    try {
+      const results = await Promise.allSettled(
+        selected.map((file, index) =>
+          upload.mutateAsync({
+            file,
+            onProgress: (loaded, total) =>
+              setProgress((current) => ({
+                ...current,
+                [index]: { fileName: file.name, loaded, total },
+              })),
+          }),
+        ),
+      )
+      if (results.every((result) => result.status === 'fulfilled')) {
+        toast.success(t('attachments.uploaded', 'Файлы загружены'))
+      } else {
+        setUploadError(true)
+      }
+    } catch {
+      setUploadError(true)
+    } finally {
+      setUploading(false)
+      setProgress({})
+    }
   }
 
   return (
@@ -57,7 +87,7 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
             className="hidden"
             data-testid="attachment-input"
             onChange={(e) => {
-              onPick(e.target.files)
+              void onPick(e.target.files)
               e.target.value = ''
             }}
           />
@@ -66,33 +96,34 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
             variant="outline"
             size="sm"
             onClick={() => inputRef.current?.click()}
-            disabled={upload.isPending}
+            disabled={uploading}
             aria-label={t('attachments.upload')}
           >
             <Paperclip className="mr-1 h-4 w-4" aria-hidden />
-            {upload.isPending ? t('attachments.uploading') : t('attachments.upload')}
+            {uploading ? t('attachments.uploading') : t('attachments.upload')}
           </Button>
         </div>
       </div>
 
-      {upload.isPending && progress && (
-        <div className="space-y-1" data-testid="upload-progress">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span className="truncate">{progress.fileName}</span>
-            <span>
-              {formatSize(progress.loaded)} / {formatSize(progress.total)}
-            </span>
+      {uploading &&
+        Object.entries(progress).map(([index, item]) => (
+          <div key={index} className="space-y-1" data-testid="upload-progress">
+            <div className="flex items-center justify-between gap-3 text-xs text-text-muted">
+              <span className="truncate">{item.fileName}</span>
+              <span>
+                {formatSize(item.loaded)} / {formatSize(item.total)}
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-raised">
+              <div
+                className="h-full rounded-full bg-accent transition-all"
+                style={{
+                  width: `${item.total > 0 ? Math.round((item.loaded / item.total) * 100) : 0}%`,
+                }}
+              />
+            </div>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-accent transition-all"
-              style={{
-                width: `${progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 0}%`,
-              }}
-            />
-          </div>
-        </div>
-      )}
+        ))}
 
       {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading')}</p>}
 
@@ -136,7 +167,7 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
                   variant="ghost"
                   size="icon"
                   aria-label={t('attachments.delete', { name: a.file_name })}
-                  onClick={() => remove.mutate(a.id)}
+                  onClick={() => setPendingDelete(a.id)}
                   disabled={remove.isPending}
                 >
                   <Trash2 className="h-4 w-4" aria-hidden />
@@ -147,11 +178,25 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
         </ul>
       )}
 
-      {upload.isError && (
+      {uploadError && (
         <p className="text-sm text-destructive" data-testid="attachment-error">
           {t('attachments.uploadFailed')}
         </p>
       )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && setPendingDelete(null)}
+        isPending={remove.isPending}
+        error={remove.error?.message}
+        title={t('attachments.deleteTitle', 'Удалить файл?')}
+        description={t(
+          'attachments.deleteConfirm',
+          'Файл будет удалён без возможности восстановления.',
+        )}
+        onConfirm={() =>
+          pendingDelete && remove.mutate(pendingDelete, { onSuccess: () => setPendingDelete(null) })
+        }
+      />
     </div>
   )
 }

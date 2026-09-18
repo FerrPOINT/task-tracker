@@ -1,7 +1,14 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { X, UserPlus } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@sdlc/ui/ui'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  ConfirmDialog,
+} from '@sdlc/ui/ui'
 import { Button } from '@sdlc/ui/ui'
 import {
   useProjectMembers,
@@ -28,6 +35,9 @@ export function ProjectMembersPanel({
   const remove = useRemoveProjectMember(projectKey)
   const [open, setOpen] = React.useState(false)
   const [selectedUserId, setSelectedUserId] = React.useState('')
+  const [pendingRemove, setPendingRemove] = React.useState<{ id: string; name: string } | null>(
+    null,
+  )
 
   const memberUserIds = new Set(data?.members.map((m) => m.user_id) ?? [])
   const candidates = users?.filter((u) => !memberUserIds.has(u.id)) ?? []
@@ -35,15 +45,17 @@ export function ProjectMembersPanel({
   function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     if (!selectedUserId) return
-    add.mutate({ user_id: selectedUserId, role: 'member' })
-    setSelectedUserId('')
+    add.mutate(
+      { user_id: selectedUserId, role: 'member' },
+      { onSuccess: () => setSelectedUserId('') },
+    )
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger ?? (
-          <Button variant="outline" size="sm" className="gap-1">
+          <Button variant="outline" size="sm" className="gap-1" aria-label={t('board.members')}>
             <UserPlus className="h-4 w-4" />
             <span className="hidden sm:inline">{t('board.members')}</span>
           </Button>
@@ -80,6 +92,11 @@ export function ProjectMembersPanel({
                 <UserPlus className="h-4 w-4" />
               </Button>
             </form>
+            {(add.error || remove.error) && (
+              <p role="alert" className="text-sm text-danger">
+                {(add.error ?? remove.error)?.message}
+              </p>
+            )}
 
             <div className="max-h-72 space-y-2 overflow-y-auto">
               {data?.members.length === 0 && (
@@ -99,7 +116,9 @@ export function ProjectMembersPanel({
                       <UserAvatar name={name} userId={m.user_id} size="md" />
                       <div className="min-w-0">
                         <div className="truncate text-sm font-medium">{name}</div>
-                        <div className="text-xs text-text-muted capitalize">{m.role}</div>
+                        <div className="text-xs text-text-muted">
+                          {m.role === 'member' ? 'Участник' : m.role}
+                        </div>
                       </div>
                     </div>
                     <Button
@@ -107,7 +126,7 @@ export function ProjectMembersPanel({
                       size="icon"
                       className="h-7 w-7 shrink-0 text-text-muted hover:text-rose-500"
                       aria-label={t('projectMembers.remove', { name })}
-                      onClick={() => remove.mutate(m.user_id)}
+                      onClick={() => setPendingRemove({ id: m.user_id, name })}
                       disabled={remove.isPending}
                     >
                       <X className="h-4 w-4" />
@@ -118,6 +137,18 @@ export function ProjectMembersPanel({
             </div>
           </div>
         )}
+        <ConfirmDialog
+          open={pendingRemove !== null}
+          onOpenChange={(nextOpen) => !nextOpen && setPendingRemove(null)}
+          isPending={remove.isPending}
+          error={remove.error?.message}
+          title="Удалить участника?"
+          description={pendingRemove ? `${pendingRemove.name} потеряет доступ к проекту.` : ''}
+          onConfirm={() =>
+            pendingRemove &&
+            remove.mutate(pendingRemove.id, { onSuccess: () => setPendingRemove(null) })
+          }
+        />
       </DialogContent>
     </Dialog>
   )

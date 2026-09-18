@@ -30,11 +30,6 @@ class MemoryStorage implements Storage {
 }
 
 function installStorage(name: 'localStorage' | 'sessionStorage') {
-  const current = globalThis[name]
-  if (current && typeof current.getItem === 'function' && typeof current.setItem === 'function') {
-    return
-  }
-
   const storage = new MemoryStorage()
   Object.defineProperty(globalThis, name, {
     value: storage,

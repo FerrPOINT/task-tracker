@@ -103,7 +103,10 @@ describe('CustomFieldsPanel', () => {
     fireEvent.change(input, { target: { value: '2027-01-02' } })
     fireEvent.blur(input)
 
-    expect(mockSave).toHaveBeenCalledWith({ fieldId: 'f-date', value: '2027-01-02' })
+    expect(mockSave).toHaveBeenCalledWith(
+      { fieldId: 'f-date', value: '2027-01-02' },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    )
   })
 
   it('updates text inputs when server values arrive after mount', () => {

@@ -16,9 +16,18 @@ interface LogWorkDialogProps {
   onOpenChange: (open: boolean) => void
   onSubmit: (input: LogWorkInput) => void
   worklog?: Worklog
+  isPending?: boolean
+  error?: Error | null
 }
 
-export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWorkDialogProps) {
+export function LogWorkDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  worklog,
+  isPending = false,
+  error,
+}: LogWorkDialogProps) {
   const { t } = useTranslation()
   const isEdit = Boolean(worklog)
   const [timerRunning, setTimerRunning] = useState(false)
@@ -64,6 +73,9 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
           : new Date().toISOString().slice(0, 10),
         comment: wl?.comment ?? '',
       })
+    } else {
+      setTimerRunning(false)
+      setTimerSeconds(0)
     }
   }, [open, worklog, form])
 
@@ -90,11 +102,18 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
       startedAt: new Date(values.startedAt).toISOString(),
       comment: values.comment,
     })
-    onOpenChange(false)
   })
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      setTimerRunning(false)
+      setTimerSeconds(0)
+    }
+    onOpenChange(nextOpen)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -103,6 +122,11 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <p role="alert" className="text-sm text-danger">
+              {error.message}
+            </p>
+          )}
           <div className="space-y-1">
             <Label htmlFor="timeSpent">{t('timeTracking.fields.timeSpent')}</Label>
             <div className="flex gap-2">
@@ -142,10 +166,17 @@ export function LogWorkDialog({ open, onOpenChange, onSubmit, worklog }: LogWork
           </div>
 
           <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => handleOpenChange(false)}
+              disabled={isPending}
+            >
               {t('common.cancel')}
             </Button>
-            <Button type="submit">{t('common.save')}</Button>
+            <Button type="submit" disabled={isPending}>
+              {isPending ? t('common.saving') : t('common.save')}
+            </Button>
           </div>
         </form>
       </DialogContent>

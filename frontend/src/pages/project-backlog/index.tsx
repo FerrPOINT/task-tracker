@@ -1,15 +1,6 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
-import {
-  Plus,
-  MoreHorizontal,
-  GripVertical,
-  Play,
-  CheckCircle2,
-  Pencil,
-  ArrowRightLeft,
-  X,
-} from 'lucide-react'
+import { Plus, MoreHorizontal, Play, CheckCircle2, Pencil, ArrowRightLeft, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
 import { ErrorState, LoadingState } from '@sdlc/ui/ui'
@@ -38,29 +29,41 @@ import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/spr
 type Issue = components['schemas']['IssueResponse']
 
 function PriorityBadge({ priority }: { priority: string }) {
+  const normalizedPriority = priority.toLowerCase()
   const color =
-    priority === 'High'
-      ? 'text-rose-500'
-      : priority === 'Medium'
-        ? 'text-amber-500'
-        : 'text-emerald-500'
-  return <span className={`text-xs font-medium ${color}`}>{priority}</span>
+    normalizedPriority === 'high' || normalizedPriority === 'highest'
+      ? 'bg-danger'
+      : normalizedPriority === 'medium'
+        ? 'bg-warning'
+        : 'bg-success'
+  const labels: Record<string, string> = {
+    highest: 'Наивысший',
+    high: 'Высокий',
+    medium: 'Средний',
+    low: 'Низкий',
+    lowest: 'Наинизший',
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-text-primary">
+      <span aria-hidden className={`h-2 w-2 rounded-full ${color}`} />
+      {labels[normalizedPriority] ?? priority}
+    </span>
+  )
 }
 
 function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode }) {
   return (
-    <div className="group flex items-center gap-2 border-b border-border px-3 py-2.5 text-sm hover:bg-surface-raised sm:grid sm:grid-cols-[24px_80px_1fr_90px_40px_40px] sm:gap-3">
-      <GripVertical className="h-4 w-4 shrink-0 text-text-muted sm:order-1" />
+    <div className="group flex items-center gap-2 border-b border-border px-3 py-2.5 text-sm hover:bg-surface-raised sm:grid sm:grid-cols-[80px_1fr_90px_40px_40px] sm:gap-3">
       <Link to={`/issues/${issue.id}`} className="contents">
-        <span className="shrink-0 text-text-muted sm:order-2">{issue.key}</span>
-        <span className="min-w-0 flex-1 truncate font-medium sm:order-3">{issue.summary}</span>
+        <span className="shrink-0 text-text-muted sm:order-1">{issue.key}</span>
+        <span className="min-w-0 flex-1 truncate font-medium sm:order-2">{issue.summary}</span>
       </Link>
-      <div className="ml-auto flex shrink-0 items-center gap-2 sm:order-4 sm:ml-0">
+      <div className="ml-auto flex shrink-0 items-center gap-2 sm:order-3 sm:ml-0">
         <PriorityBadge priority={issue.priority} />
         <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
       </div>
-      <div className="sm:order-5" />
-      <div className="flex justify-end sm:order-6">{action}</div>
+      <div className="sm:order-4" />
+      <div className="flex justify-end sm:order-5">{action}</div>
     </div>
   )
 }
@@ -89,7 +92,7 @@ function MoveIssueAction({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 focus:opacity-100 data-[state=open]:opacity-100"
+          className="h-8 w-8"
           aria-label={t('backlog.issueActions')}
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -173,7 +176,7 @@ const BACKLOG_PAGE_SIZE = 100
 export function ProjectBacklogPage() {
   const { t } = useTranslation()
   const { projectKey } = useParams<{ projectKey?: string }>()
-  const key = projectKey ?? 'TT'
+  const key = projectKey ?? ''
   const [backlogOffset, setBacklogOffset] = useState(0)
   const {
     data: backlog,
@@ -196,6 +199,7 @@ export function ProjectBacklogPage() {
   if (error || !backlog) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { sprint: activeSprint, sprint_issues, backlog_issues } = backlog
+  const hasActiveSprint = activeSprint.id !== 'none'
   const backlogTotal = backlog.backlog_total ?? backlog_issues.length
   const currentOffset = backlog.backlog_offset ?? backlogOffset
   const pageSize = backlog.backlog_limit ?? BACKLOG_PAGE_SIZE
@@ -203,7 +207,9 @@ export function ProjectBacklogPage() {
   const hasNext = currentOffset + backlog_issues.length < backlogTotal
   const futureSprints =
     sprints?.filter((s) => s.id !== activeSprint.id && s.state !== 'closed') ?? []
-  const activeFromList = sprints?.find((s) => s.id === activeSprint.id)
+  const activeFromList = hasActiveSprint
+    ? sprints?.find((s) => s.id === activeSprint.id)
+    : undefined
   const activeSprintName = activeFromList?.name ?? activeSprint.name
   const activeSprintIssues = activeFromList
     ? sprint_issues.filter((issue) => issue.sprint_id === activeFromList.id)
@@ -267,11 +273,15 @@ export function ProjectBacklogPage() {
       </div>
 
       <Section
-        title={t('backlog.activeSprint', {
-          name: activeSprintName,
-          velocity: activeSprint.velocity,
-          remaining: activeSprint.remaining_days ?? '-',
-        })}
+        title={
+          hasActiveSprint
+            ? t('backlog.activeSprint', {
+                name: activeSprintName,
+                velocity: activeSprint.velocity,
+                remaining: activeSprint.remaining_days ?? t('backlog.notAvailable'),
+              })
+            : t('backlog.noActiveSprint')
+        }
         action={
           activeFromList ? (
             <div className="flex items-center gap-2">

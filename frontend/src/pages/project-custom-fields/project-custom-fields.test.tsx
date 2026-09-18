@@ -85,6 +85,10 @@ describe('ProjectCustomFieldsPage', () => {
     await waitFor(() => expect(screen.getByText('Priority Label')).toBeInTheDocument())
     const deleteButton = screen.getByRole('button', { name: /удалить/i })
     await userEvent.click(deleteButton)
-    expect(mockDelete).toHaveBeenCalledWith('cf1')
+    await userEvent.click(screen.getByRole('button', { name: /подтвердить/i }))
+    expect(mockDelete).toHaveBeenCalledWith(
+      'cf1',
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
   })
 })

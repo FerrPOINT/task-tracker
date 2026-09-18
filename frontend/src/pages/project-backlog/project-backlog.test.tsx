@@ -243,7 +243,7 @@ describe('ProjectBacklogPage', () => {
 
     render(wrapper(<ProjectBacklogPage />))
 
-    await waitFor(() => expect(screen.getByText(/Backlog · 0 sp/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Активного спринта нет')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /начать спринт/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /завершить спринт/i })).not.toBeInTheDocument()
   })

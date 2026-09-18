@@ -3,11 +3,11 @@ import { test, expect } from '@playwright/test'
 
 test('backlog pager pages through the full backlog', async ({ page }) => {
   const login = await page.request.post('http://localhost:3456/api/v1/auth/login', {
-    data: { email: 'demo@example.com', password: 'demo' },
+    data: { email: 'demo@example.com', password: 'demo-password' },
   })
   expect(login.ok()).toBeTruthy()
   await page.goto('http://localhost:19877/projects/DEMO/backlog')
-  await page.waitForFunction(() => document.body.innerText.includes('Backlog'), null, {
+  await page.waitForFunction(() => /Бэклог|Backlog/.test(document.body.innerText), null, {
     timeout: 20000,
   })
   await page.waitForTimeout(1500)

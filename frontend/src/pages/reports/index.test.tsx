@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -12,6 +12,7 @@ const useVelocityReport = vi.hoisted(() => vi.fn())
 const useBurndownReport = vi.hoisted(() => vi.fn())
 const useCumulativeFlowReport = vi.hoisted(() => vi.fn())
 const useControlChartReport = vi.hoisted(() => vi.fn())
+const useSprints = vi.hoisted(() => vi.fn())
 
 vi.mock('@/shared/api/hooks', async () => {
   const actual = await vi.importActual<typeof import('@/shared/api/hooks')>('@/shared/api/hooks')
@@ -22,6 +23,7 @@ vi.mock('@/shared/api/hooks', async () => {
     useBurndownReport,
     useCumulativeFlowReport,
     useControlChartReport,
+    useSprints,
   }
 })
 
@@ -159,6 +161,11 @@ async function selectProject(user: ReturnType<typeof userEvent.setup>) {
   await user.selectOptions(select, 'proj-1')
 }
 
+async function selectSprint(user: ReturnType<typeof userEvent.setup>) {
+  const select = screen.getByRole('combobox', { name: /спринт|sprint/i })
+  await user.selectOptions(select, 'sprint-1')
+}
+
 // --- Tests --------------------------------------------------------------------
 
 describe('ReportsPage', () => {
@@ -169,6 +176,10 @@ describe('ReportsPage', () => {
     useBurndownReport.mockReturnValue({ data: undefined, isLoading: true })
     useCumulativeFlowReport.mockReturnValue({ data: undefined, isLoading: true })
     useControlChartReport.mockReturnValue({ data: undefined, isLoading: true })
+    useSprints.mockReturnValue({
+      data: [{ id: 'sprint-1', name: 'Sprint 1' }],
+      isLoading: false,
+    })
   })
 
   it('renders the page title and project selector', () => {
@@ -205,8 +216,8 @@ describe('ReportsPage', () => {
 
     // Bar chart renders sprint names and values as text via mock
     await waitFor(() => {
-      expect(screen.getByText('Sprint 1')).toBeInTheDocument()
-      expect(screen.getByText('Sprint 2')).toBeInTheDocument()
+      expect(within(screen.getByTestId('chart')).getByText('Sprint 1')).toBeInTheDocument()
+      expect(within(screen.getByTestId('chart')).getByText('Sprint 2')).toBeInTheDocument()
     })
     expect(screen.getByTestId('chart')).toBeInTheDocument()
     expect(screen.getByTestId('legend')).toBeInTheDocument()
@@ -228,6 +239,7 @@ describe('ReportsPage', () => {
     })
     renderPage()
     await selectProject(user)
+    await selectSprint(user)
 
     await user.click(screen.getByRole('tab', { name: /burndown/i }))
 
@@ -301,6 +313,7 @@ describe('ReportsPage', () => {
     })
     renderPage()
     await selectProject(user)
+    await selectSprint(user)
 
     await user.click(screen.getByRole('tab', { name: /burndown/i }))
     expect(screen.getByText(/нет данных burndown|no burndown data/i)).toBeInTheDocument()

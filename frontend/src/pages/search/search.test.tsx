@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 
 import SearchPage from './'
@@ -46,10 +47,11 @@ describe('SearchPage', () => {
     expect(screen.getByText('TT-1')).toBeInTheDocument()
   })
 
-  it('passes JQL input to the search hook', () => {
+  it('passes JQL input to the search hook', async () => {
     mockHooks()
 
     render(wrapper(<SearchPage />))
+    await userEvent.click(screen.getByRole('button', { name: 'JQL' }))
     fireEvent.change(screen.getByPlaceholderText(/например: project|for example: project/i), {
       target: { value: 'project = TT' },
     })
