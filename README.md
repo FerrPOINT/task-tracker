@@ -3,11 +3,13 @@
 </p>
 
 <p align="center">
-  <a href="#capabilities"><img src="https://img.shields.io/badge/Capabilities-1d4ed8?style=for-the-badge" alt="Capabilities" /></a>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-1e40af?style=for-the-badge" alt="Quick start" /></a>
-  <a href="#visual-proof"><img src="https://img.shields.io/badge/Visual_Proof-0f766e?style=for-the-badge" alt="Visual proof" /></a>
-  <a href="#safety"><img src="https://img.shields.io/badge/Safety-155e75?style=for-the-badge" alt="Safety" /></a>
-  <a href="#quality"><img src="https://img.shields.io/badge/Quality-334155?style=for-the-badge" alt="Quality" /></a>
+  <a href="#overview"><img src="https://img.shields.io/badge/Overview-1d4ed8?style=for-the-badge" alt="Overview" /></a>
+  <a href="#capabilities"><img src="https://img.shields.io/badge/Capabilities-1e40af?style=for-the-badge" alt="Capabilities" /></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick_Start-0f766e?style=for-the-badge" alt="Quick start" /></a>
+  <a href="#visual-proof"><img src="https://img.shields.io/badge/Visual_Proof-155e75?style=for-the-badge" alt="Visual proof" /></a>
+  <a href="#cli"><img src="https://img.shields.io/badge/CLI-334155?style=for-the-badge" alt="CLI" /></a>
+  <a href="#safety"><img src="https://img.shields.io/badge/Safety-3f3f46?style=for-the-badge" alt="Safety" /></a>
+  <a href="#quality"><img src="https://img.shields.io/badge/Quality-52525b?style=for-the-badge" alt="Quality" /></a>
 </p>
 
 <p align="center">
@@ -16,100 +18,250 @@
   <img src="https://img.shields.io/badge/PostgreSQL-17-4169e1?style=flat-square&logo=postgresql&logoColor=white" alt="PostgreSQL 17" />
   <img src="https://img.shields.io/badge/Redis-8-dc2626?style=flat-square&logo=redis&logoColor=white" alt="Redis 8" />
   <img src="https://img.shields.io/badge/React-19-38bdf8?style=flat-square&logo=react&logoColor=0f172a" alt="React 19" />
+  <img src="https://img.shields.io/badge/OpenAPI-6BA539?style=flat-square&logo=openapiinitiative&logoColor=white" alt="OpenAPI" />
   <img src="https://img.shields.io/badge/CI-.github%2Fworkflows%2Fci.yml-15803d?style=flat-square" alt="Repository CI" />
 </p>
 
-> **Base Task Tracker** is a self-hosted project-operations application for projects, issues, kanban, planning, work records and reports. It is a product MVP/hardening branch, not a hosted multi-tenant service.
+---
+
+> **Base Task Tracker** — self-hosted task tracker для FerrPOINT: проекты, задачи, kanban, backlog, sprints, comments, attachments, notifications, reports и admin tooling. Это продуктовый MVP/hardening branch, а не hosted multi-tenant SaaS. Env-префикс: `TASKTRACKER_`.
 
 <a name="overview"></a>
-## Overview
 
-Task Tracker combines project and issue workflows with an API-backed React UI and an HTTP-only `task-tracker` CLI. Its public contract is [openapi/openapi.json](openapi/openapi.json); the backend is a Rust workspace with PostgreSQL persistence, Redis-backed runtime services and a non-root attachment volume.
+## Обзор и Snapshot
 
-| Surface | Current behavior | Boundary |
+| Поле | Значение |
+|---|---|
+| Backend | Rust 2024 workspace: api, app, domain, infra, shared, server, cli, migration |
+| Data | PostgreSQL 17, Redis 8 |
+| Frontend | React 19, Vite, Tailwind CSS |
+| API | [openapi/openapi.json](openapi/openapi.json) — canonical contract |
+| Порты | repository-local: frontend `19877`, backend `3456`; Base umbrella: frontend `7722`, API `7721`, PostgreSQL/Redis — loopback `7723`/`7724` |
+| Identity | Локальная auth + TOTP MFA (RFC 6238, recovery codes); в Base umbrella — бридж к central auth |
+| License | FerrPOINT Proprietary Source-Available Evaluation License v1.0 |
+
+### Default Ports
+
+| Сервис | Доступ | Описание |
 |---|---|---|
-| Project work | Projects, members, issues, comments, attachments, issue links, labels and search. | PostgreSQL and Redis are Compose-internal by default. |
-| Planning | Boards, backlog, sprints, worklogs and velocity/burndown/cumulative-flow/control-chart reports. | Reports describe tracker data; they do not run pipeline or deployment jobs. |
-| Delivery signals | In-app notifications, SSE, email-digest settings and audit records. | Email/ingress policy remains deployment-owned. |
-| Administration | Users, instance settings, security headers, rate limits and optional public Prometheus metrics. | Auth, CORS, cookies, TLS and reverse proxy require an operator review for shared deployments. |
-| Interfaces | React SPA, CLI and generated OpenAPI client. | All clients use the same `/api/v1` API boundary. |
-
-The implementation and target architecture are indexed in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TZ.md](docs/TZ.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
+| Frontend Docker | `19877` | Nginx static frontend |
+| Backend | `3456` | API |
+| PostgreSQL | internal compose network | DB, не публикуется наружу |
+| Redis | internal compose network | cache, не публикуется наружу |
 
 <a name="capabilities"></a>
-## Capabilities
 
-- **Issues in context.** Create and move issues, add comments and attachments, track watchers/votes, relate issues and capture worklogs.
-- **Planning surfaces.** Work with boards, backlog and sprints; inspect velocity, burndown, cumulative flow and control charts.
-- **Project metadata.** Maintain priorities, labels, issue types, custom fields, components, versions and release metadata.
-- **Safe operations.** Use role-aware API/UI boundaries, request-rate controls, security headers, audit records and health/metrics endpoints.
-- **Identity bridge.** In the Base umbrella runtime, configured central-auth tokens can be validated and central login can be proxied; local authentication remains the fallback where that bridge is absent.
+## Возможности
+
+| Feature | Описание |
+|---|---|
+| Projects and issues | Projects, members, issue detail, comments, attachments и search. |
+| Planning | Kanban boards, backlog, sprints и worklog. |
+| Metadata | Priorities, labels, issue types, links, watchers, votes, components и versions. |
+| Reporting | Velocity, burndown, cumulative flow и control chart. |
+| Notifications | In-app center, SSE push, email digest worker и per-user delivery settings. |
+| Administration | Users, instance settings, audit log, security headers, rate limits и Prometheus metrics. |
+| CLI | `task-tracker` binary с JSON/table/compact output. |
+
+### Capability Details
+
+| Area | Details |
+|---|---|
+| Projects and issues | Projects с kanban boards, backlog, dashboard и search; issue create/edit/status transitions, comments, attachments, priorities, labels, issue types, links, assignees и worklog. |
+| Kanban and sprints | Drag-and-drop board columns, sprint planning и reports: velocity, burndown, cumulative flow и control chart. |
+| Notifications | In-app center, unread counters, SSE `NotificationCreated`, hourly/daily email digest, `email_frequency`, `disabled_event_types` и `notify_own_changes`. |
+| Watchers and votes | Watch subscriptions, issue votes и vote counters. |
+| Custom fields | Project-level text, number, select, multi-select и date fields с required flags и issue-level values. |
+| Components and versions | Project components, release/milestone versions, `released`/`release_date`, affected/fix version links. |
+| Soft delete | `deleted_at` trash model, restore и permanent purge. |
+| Search/admin | JQL search, admin panel, users, instance settings, audit log, security headers, rate limiting и Prometheus metrics. |
 
 <a name="quick-start"></a>
-## Quick Start
 
-The repository Compose file intentionally has no usable database-password or JWT defaults. Copy the template, supply operator-owned secrets, and keep `.env` ignored.
+## Быстрый старт
 
 ```bash
 cp .env.example .env
-# Edit .env: set POSTGRES_PASSWORD and TASKTRACKER_JWT_SECRET.
+# Задать POSTGRES_PASSWORD и TASKTRACKER_JWT_SECRET в .env
 docker compose up --build -d
 curl -fsS http://127.0.0.1:3456/api/v1/health
 ```
 
-Repository-local defaults are frontend `19877` and API `3456`; PostgreSQL and Redis remain internal. In the Base umbrella runtime, frontend/API are published at `7722`/`7721`, while PostgreSQL/Redis bind only to loopback `7723`/`7724`. Those are deployment-local coordinates, not public endpoints.
+Frontend dev:
 
-Use [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md) and [docs/CLI.md](docs/CLI.md) for deployment, contract and CLI detail.
+```bash
+cd frontend
+pnpm install
+pnpm generate:api
+pnpm dev
+```
+
+Vite открывает `http://localhost:5173` и проксирует API-вызовы на backend.
+
+Port override:
+
+```env
+BACKEND_PORT=3456
+FRONTEND_PORT=19877
+```
+
+После смены host-портов пересоздайте сервисы через `docker compose up -d`. Внутри compose-сети backend слушает `3456`; настройки backend используют формат `TASKTRACKER_SECTION__KEY`, например `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`.
+
+Развернутые материалы: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/API.md](docs/API.md), [docs/CLI.md](docs/CLI.md).
 
 <a name="visual-proof"></a>
-## Visual Proof
 
-The root README retains only reviewed seeded evidence. It deliberately excludes the login surface because it advertises MVP demo authentication behavior, and excludes issue/detail views that carry more workflow fixture context than an entry point needs. The full route gallery is available under [docs/screenshots](docs/screenshots).
+## Визуальные доказательства
 
-### Planning evidence
+Скриншоты — реальные поверхности продукта с детерминированными seeded-данными. Формат: desktop full-page и обязательные mobile-свидетельства `375x812`.
 
-![Task Tracker reports](docs/screenshots/10-reports.png)
+### Дашборд
 
-### Kanban on mobile
+![Дашборд](docs/screenshots/02-dashboard.png)
 
-![Task Tracker mobile board](docs/screenshots/m-board-viewport.png)
+### Проекты
 
-This is a `375x812` viewport proof. The board intentionally becomes a vertical card stack at mobile width; columns with many cards remain scroll-heavy by design.
+![Проекты](docs/screenshots/03-projects.png)
+
+### Канбан-доска
+
+![Канбан-доска](docs/screenshots/04-board.png)
+
+### Бэклог
+
+![Бэклог](docs/screenshots/05-backlog.png)
+
+### Поиск
+
+![Поиск](docs/screenshots/08-search.png)
+
+### Уведомления
+
+![Уведомления](docs/screenshots/09-notifications.png)
+
+### Отчёты
+
+![Отчёты](docs/screenshots/10-reports.png)
+
+### Администрирование
+
+![Администрирование](docs/screenshots/11-admin.png)
+
+### Кастомные поля
+
+![Кастомные поля](docs/screenshots/07-custom-fields.png)
+
+### Корзина
+
+![Корзина](docs/screenshots/06-trash.png)
+
+### Доска на мобильном
+
+![Доска на мобильном](docs/screenshots/m-board-viewport.png)
+
+Доска на `375x812` намеренно превращается в вертикальный стек карточек; колонки с большим числом карточек остаются scroll-heavy by design.
+
+### Доска (fixture-вариант)
+
+![Доска (fixture-вариант)](docs/screenshots/15-board-mobile.png)
+
+### Проекты на мобильном
+
+![Проекты на мобильном](docs/screenshots/16-projects-mobile.png)
+
+Полная route-галерея (включая login/register и issue detail) — в [docs/screenshots](docs/screenshots).
+
+<a name="cli"></a>
+
+## CLI
+
+```bash
+cd backend
+cargo build --bin task-tracker
+
+export TASKTRACKER_API_URL=http://localhost:3456/api/v1
+export TASKTRACKER_TOKEN=<jwt_token>
+
+./target/debug/task-tracker project list
+./target/debug/task-tracker issue create --project-key DEMO --summary "Fix bug" --priority high
+./target/debug/task-tracker issue list --project-key DEMO --output table
+./target/debug/task-tracker board get --project-key DEMO
+```
+
+CLI command documentation: [docs/CLI.md](docs/CLI.md). AI usage notes: [cli/SKILL.md](cli/SKILL.md).
+
+## Архитектура
+
+```mermaid
+flowchart TD
+    UI[React SPA] --> API[Axum API]
+    CLI[task-tracker CLI] --> API
+    API --> App[Application services]
+    App --> Domain[Domain contracts]
+    App --> Repo[SeaORM repositories]
+    Repo --> DB[(PostgreSQL)]
+    API --> Redis[(Redis)]
+    App --> Notify[SSE + email digest]
+    API --> OpenAPI[OpenAPI contract]
+    OpenAPI --> Gen[Generated frontend client]
+```
 
 <a name="safety"></a>
-## Safety Boundaries
 
-- **Deployment secrets.** Compose startup requires a database password and JWT secret. Never commit `.env`, API tokens or real data.
-- **Network surface.** PostgreSQL and Redis are internal in repository Compose. The umbrella publishes their debugging ports only on loopback.
-- **Auth and ingress.** Central identity integration is configuration-dependent; shared deployment still needs explicit JWT, CORS, cookie, TLS and reverse-proxy review.
-- **Metrics exposure.** `/metrics` is configurable so an operator can keep Prometheus scraping on an internal network. It is not an authorization substitute.
-- **Health semantics.** `/api/v1/health` is the current liveness endpoint. Do not infer database, email or central-auth provider health solely from a successful liveness response.
+## Границы
 
-Read [docs/SECURITY.md](docs/SECURITY.md) and [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) before any shared deployment.
+- PostgreSQL и Redis внутренние в Compose по умолчанию; публикуйте их только осознанно.
+- Перед shared deployments замените все `[CHANGE_ME]` значения и проверьте JWT, CORS, cookies, TLS и reverse-proxy настройки.
+- Сгенерированный frontend API-код обязан обновляться после изменений OpenAPI.
+- `/api/v1/health` — liveness; не выводите готовность БД, Redis, email или central-auth из успешного liveness-ответа.
 
 <a name="quality"></a>
-## Quality and Verification
 
-| Gate | Command |
+## Качество и проверки
+
+| Проверка | Команда |
 |---|---|
 | README contract tests | `python3 -m unittest scripts.tests.test_verify_readme -v` |
-| README assets and anchors | `python3 scripts/verify_readme.py` |
+| README assets и anchors | `python3 scripts/verify_readme.py` |
+| Setup / dependencies | `just setup` / `just db-up` / `just db-down` |
+| Backend dev | `just backend-dev` |
+| Frontend dev | `just frontend-dev` |
+| API codegen | `just api-codegen` |
 | Backend workspace | `cd backend && cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace -- --test-threads=1` |
-| Frontend API/type/test/lint/build | `cd frontend && pnpm openapi:check && pnpm typecheck && pnpm test -- --run && pnpm lint && pnpm format:check && pnpm build` |
+| Frontend | `cd frontend && pnpm openapi:check && pnpm typecheck && pnpm test -- --run && pnpm lint && pnpm build` |
 | Browser E2E | `cd frontend && pnpm test:e2e -- --project=chromium` |
 | Compose contract | `docker compose config -q` |
-| Runtime liveness | `curl -fsS http://127.0.0.1:3456/api/v1/health` |
+| Full gates | `just gate` / `just test` / `just e2e` |
 
-GitHub Actions runs backend formatting/lint/tests, OpenAPI/migrations, coverage, dependency checks, real PostgreSQL tests, frontend gates and browser E2E. The independent README job guards required anchors, reviewed proof, local images, placeholders and accidental local filesystem paths.
+GitHub Actions прогоняет backend formatting/lint/tests, OpenAPI/migrations, coverage, dependency checks, real-PostgreSQL тесты, frontend gates и browser E2E. Независимый README job проверяет обязательные anchors, reviewed proof, local images, placeholders и случайные локальные пути.
 
-## Documentation Map
+## Карта проекта
 
-- **Architecture and scope:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/TZ.md](docs/TZ.md), [docs/ROADMAP.md](docs/ROADMAP.md)
-- **API and data:** [docs/API.md](docs/API.md), [docs/DATA_MODEL.md](docs/DATA_MODEL.md), [openapi/openapi.json](openapi/openapi.json)
-- **Operators:** [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/TESTING.md](docs/TESTING.md)
-- **Security and code rules:** [docs/SECURITY.md](docs/SECURITY.md), [docs/AGENTS.md](docs/AGENTS.md)
+```text
+task-tracker/
+├── backend/     # Rust workspace: api, app, domain, infra, shared, server, cli, migration
+├── frontend/    # React SPA: pages, widgets, generated API client
+├── cli/         # CLI binary notes и agent skill
+├── openapi/     # canonical API contract
+├── docs/        # architecture, deployment, testing, roadmap
+└── docker-compose.yml
+```
+
+## Документы
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура.
+- [docs/TZ.md](docs/TZ.md) — техническое задание.
+- [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — модель данных.
+- [docs/API.md](docs/API.md) — API notes.
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — deployment.
+- [docs/TESTING.md](docs/TESTING.md) — проверки.
+- [docs/ROADMAP.md](docs/ROADMAP.md) — roadmap.
+- [docs/AGENTS.md](docs/AGENTS.md) — agent instructions.
 
 <a name="license"></a>
-## License
 
-FerrPOINT Proprietary Source-Available Evaluation License v1.0. This repository is not open source. Viewing and evaluation are allowed under [LICENSE](LICENSE); commercial, production, resale, redistribution and SaaS/hosting use require a written FerrPOINT license. See [NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+## Лицензия
+
+Proprietary source-available. Not open source. Viewing/evaluation only.
+
+Commercial, production, resale, redistribution, SaaS/hosting use require written license from FerrPOINT. См. [LICENSE](LICENSE), [NOTICE](NOTICE) и [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
