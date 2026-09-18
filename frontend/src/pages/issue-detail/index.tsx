@@ -116,7 +116,7 @@ export function IssueDetailPage() {
         </div>
 
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <span className="rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-accent">
+          <span className="rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-text-primary">
             {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
           </span>
           <div className="flex flex-wrap items-center gap-2">

@@ -32,10 +32,10 @@ function PriorityBadge({ priority }: { priority: string }) {
   const normalizedPriority = priority.toLowerCase()
   const color =
     normalizedPriority === 'high' || normalizedPriority === 'highest'
-      ? 'text-rose-500'
+      ? 'bg-danger'
       : normalizedPriority === 'medium'
-        ? 'text-amber-500'
-        : 'text-emerald-500'
+        ? 'bg-warning'
+        : 'bg-success'
   const labels: Record<string, string> = {
     highest: 'Наивысший',
     high: 'Высокий',
@@ -44,7 +44,10 @@ function PriorityBadge({ priority }: { priority: string }) {
     lowest: 'Наинизший',
   }
   return (
-    <span className={`text-xs font-medium ${color}`}>{labels[normalizedPriority] ?? priority}</span>
+    <span className="inline-flex items-center gap-1 text-xs font-medium text-text-primary">
+      <span aria-hidden className={`h-2 w-2 rounded-full ${color}`} />
+      {labels[normalizedPriority] ?? priority}
+    </span>
   )
 }
 

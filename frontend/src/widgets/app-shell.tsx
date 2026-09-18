@@ -158,7 +158,7 @@ export function AppShell() {
   return (
     <div className="min-h-screen bg-background text-text-primary">
       <header className="sticky top-0 z-50 flex h-12 items-center justify-between border-b border-border bg-surface px-3 md:px-4">
-        <div className="flex items-center gap-3 md:gap-4">
+        <div className="flex min-w-0 items-center gap-3 md:gap-4">
           <Button
             variant="ghost"
             size="icon"
@@ -180,7 +180,7 @@ export function AppShell() {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="hidden min-h-10 max-w-52 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
+                className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex lg:max-w-52"
               >
                 <span className="truncate">{currentProject?.name ?? t('navigation.projects')}</span>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0" />
@@ -205,20 +205,21 @@ export function AppShell() {
           </DropdownMenu>
           <Link
             to="/search"
+            aria-label={t('navigation.search')}
             className="hidden min-h-10 items-center gap-2 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
           >
             <Search className="h-4 w-4" />
-            <span>{t('navigation.search')}</span>
+            <span className="hidden lg:inline">{t('navigation.search')}</span>
           </Link>
         </div>
-        <div className="flex items-center gap-2 md:gap-3">
+        <div className="flex shrink-0 items-center gap-2 md:gap-3">
           <Button asChild size="sm" className="min-h-10 gap-1 px-2.5 text-xs">
             <Link
               to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
               aria-label={t('navigation.create')}
             >
               <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{t('navigation.create')}</span>
+              <span className="hidden lg:inline">{t('navigation.create')}</span>
             </Link>
           </Button>
           <ServiceSwitcher currentKey="task-tracker" />

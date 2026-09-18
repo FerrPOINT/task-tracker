@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 test.skip(
   process.env.SDLC_LIVE_QA !== '1',
@@ -29,6 +29,15 @@ const account = (
 }
 const projectKey = `QA${account.runId.slice(0, 6).toUpperCase()}`
 const screenshotDir = fileURLToPath(new URL('../../../.local/screenshots/', import.meta.url))
+
+async function visitClientRoute(page: Page, path: string) {
+  await page.evaluate((next) => {
+    window.history.pushState({}, '', next)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, path)
+  await expect(page).toHaveURL(`http://localhost:7722${path}`)
+  await expect(page.locator('main h1').first()).toBeVisible()
+}
 
 const apps = [
   { key: 'admin-panel', label: 'Admin Panel', port: 7772, login: true },
@@ -288,7 +297,8 @@ test.describe('live platform switcher', () => {
     ]
     for (const path of pages) {
       await page.goto(`http://localhost:7772${path}`)
-      await expect(page.locator('h1').first()).toBeVisible()
+      await expect(page).toHaveURL(`http://localhost:7772${path}`)
+      await expect(page.locator('main h1').first()).toBeVisible()
       for (const theme of ['dark', 'gray', 'light']) {
         for (let step = 0; step < 3; step++) {
           if ((await page.locator('html').getAttribute('data-theme')) === theme) break
@@ -516,8 +526,7 @@ test.describe('live platform switcher', () => {
       '/notifications',
       '/reports',
     ]) {
-      await page.goto(`http://localhost:7722${path}`)
-      await expect(page.locator('h1').first()).toBeVisible()
+      await visitClientRoute(page, path)
       for (const theme of ['dark', 'gray', 'light']) {
         for (let step = 0; step < 3; step++) {
           if ((await page.locator('html').getAttribute('data-theme')) === theme) break
@@ -664,7 +673,11 @@ test.describe('live platform switcher', () => {
         })
       }
       await page.getByRole('link', { name: `QA ${account.runId} revised` }).click()
-      await expect(page.getByRole('heading', { name: 'Revised QA content' })).toBeVisible()
+      await expect(page).toHaveURL(/\/documents\//)
+      await expect(
+        page.getByRole('heading', { name: 'Revised QA content' }),
+        `Wiki document responses: ${wikiFailures.join(', ') || 'no HTTP errors'}`,
+      ).toBeVisible({ timeout: 20_000 })
     } finally {
       if (documentId) {
         await archive(`documents/${documentId}/archive`)

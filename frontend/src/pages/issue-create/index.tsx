@@ -121,7 +121,7 @@ export function IssueCreatePage() {
       <form onSubmit={handleSubmit} className="max-w-4xl space-y-5 border-t border-border pt-5">
         {error && <ErrorState message={error.message} />}
         {validationError && <ErrorState message={validationError} />}
-        {!userId && <div className="text-sm text-amber-500">{t('issueCreate.noReporter')}</div>}
+        {!userId && <div className="text-sm text-danger">{t('issueCreate.noReporter')}</div>}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
