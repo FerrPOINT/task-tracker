@@ -161,13 +161,11 @@ FRONTEND_PORT=19877
 
 Доска на `375x812` намеренно превращается в вертикальный стек карточек; колонки с большим числом карточек остаются scroll-heavy by design.
 
-### Доска (fixture-вариант)
+### Мобильный интерфейс (375×812)
 
-![Доска (fixture-вариант)](docs/screenshots/15-board-mobile.png)
-
-### Проекты на мобильном
-
-![Проекты на мобильном](docs/screenshots/16-projects-mobile.png)
+|   |   |
+| :---: | :---: |
+| ![Доска (fixture-вариант)](docs/screenshots/15-board-mobile.png) | ![Проекты на мобильном](docs/screenshots/16-projects-mobile.png) |
 
 Полная route-галерея (включая login/register и issue detail) — в [docs/screenshots](docs/screenshots).
 
