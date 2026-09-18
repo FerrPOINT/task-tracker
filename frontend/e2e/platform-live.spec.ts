@@ -259,7 +259,7 @@ test.describe('live platform switcher', () => {
   })
 
   test('Admin Panel internal pages expose complete runtime catalog', async ({ page, request }) => {
-    test.setTimeout(90_000)
+    test.setTimeout(180_000)
     if (adminToken) {
       await page.addInitScript(
         (token) => sessionStorage.setItem('base.admin.token', token),
@@ -289,27 +289,46 @@ test.describe('live platform switcher', () => {
     for (const path of pages) {
       await page.goto(`http://localhost:7772${path}`)
       await expect(page.locator('h1').first()).toBeVisible()
-      for (const [width, height] of [
-        [375, 812],
-        [1280, 800],
-      ]) {
-        await page.setViewportSize({ width, height })
-        if (process.env.SDLC_LIVE_VISUAL === '1') {
-          await page.screenshot({
-            path: `${screenshotDir}/admin-${path.slice(1).replace('/', '-')}-${width}.png`,
-            fullPage: true,
-            animations: 'disabled',
-          })
+      for (const theme of ['dark', 'gray', 'light']) {
+        for (let step = 0; step < 3; step++) {
+          if ((await page.locator('html').getAttribute('data-theme')) === theme) break
+          await page
+            .getByRole('button', { name: /Тема:|Theme:|Переключить тему|Switch theme/i })
+            .click()
         }
-        await expect
-          .poll(
-            () =>
-              page.evaluate(
-                () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-              ),
-            { message: `${path} at ${width}px overflows horizontally` },
-          )
-          .toBeLessThanOrEqual(1)
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        for (const [width, height] of [
+          [375, 812],
+          [768, 1024],
+          [1280, 800],
+          [1920, 1080],
+        ]) {
+          await page.setViewportSize({ width, height })
+          await expect
+            .poll(
+              () =>
+                page.evaluate(
+                  () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                ),
+              { message: `${path} in ${theme} at ${width}px overflows horizontally` },
+            )
+            .toBeLessThanOrEqual(1)
+          if (process.env.SDLC_LIVE_VISUAL === '1') {
+            await page.screenshot({
+              path: `${screenshotDir}/admin-${path.slice(1).replace('/', '-')}-${theme}-${width}.png`,
+              fullPage: true,
+              animations: 'disabled',
+            })
+            if ((theme === 'dark' && width === 375) || (theme === 'light' && width === 1280)) {
+              const results = await new AxeBuilder({ page }).analyze()
+              expect(
+                results.violations.filter(
+                  (issue) => issue.impact === 'serious' || issue.impact === 'critical',
+                ),
+              ).toEqual([])
+            }
+          }
+        }
       }
     }
     const catalog = await request.get('http://127.0.0.1:7771/api/v1/runtime/services')
@@ -324,7 +343,7 @@ test.describe('live platform switcher', () => {
   })
 
   test('Task Tracker project, issue, status, sprint and report', async ({ page, request }) => {
-    test.setTimeout(90_000)
+    test.setTimeout(180_000)
     page.setDefaultTimeout(10_000)
     await page.goto('http://localhost:7722/login')
     await page.locator('input').nth(0).fill(account.email)
@@ -499,22 +518,44 @@ test.describe('live platform switcher', () => {
     ]) {
       await page.goto(`http://localhost:7722${path}`)
       await expect(page.locator('h1').first()).toBeVisible()
-      await page.setViewportSize({ width: 375, height: 812 })
-      await expect
-        .poll(
-          () =>
-            page.evaluate(
-              () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-            ),
-          { message: `${path} at 375px overflows` },
-        )
-        .toBeLessThanOrEqual(1)
-      if (process.env.SDLC_LIVE_VISUAL === '1') {
-        await page.screenshot({
-          path: `${screenshotDir}/task-${path.replaceAll('/', '-').slice(1)}-375.png`,
-          fullPage: true,
-          animations: 'disabled',
-        })
+      for (const theme of ['dark', 'gray', 'light']) {
+        for (let step = 0; step < 3; step++) {
+          if ((await page.locator('html').getAttribute('data-theme')) === theme) break
+          await page.getByRole('button', { name: /Тема:/ }).click()
+        }
+        await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+        for (const [width, height] of [
+          [375, 812],
+          [768, 1024],
+          [1280, 800],
+          [1920, 1080],
+        ]) {
+          await page.setViewportSize({ width, height })
+          await expect
+            .poll(
+              () =>
+                page.evaluate(
+                  () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+                ),
+              { message: `${path} in ${theme} at ${width}px overflows` },
+            )
+            .toBeLessThanOrEqual(1)
+          if (process.env.SDLC_LIVE_VISUAL === '1') {
+            await page.screenshot({
+              path: `${screenshotDir}/task-${path.replaceAll('/', '-').slice(1)}-${theme}-${width}.png`,
+              fullPage: true,
+              animations: 'disabled',
+            })
+            if ((theme === 'dark' && width === 375) || (theme === 'light' && width === 1280)) {
+              const results = await new AxeBuilder({ page }).analyze()
+              expect(
+                results.violations.filter(
+                  (issue) => issue.impact === 'serious' || issue.impact === 'critical',
+                ),
+              ).toEqual([])
+            }
+          }
+        }
       }
     }
     const closed = await request.post(

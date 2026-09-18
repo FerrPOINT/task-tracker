@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@sdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
-import { LabelEditor } from './LabelEditor'
+import { LabelEditor, labelForeground } from './LabelEditor'
 
 beforeAll(() => {
   i18n.changeLanguage('en')
@@ -39,6 +39,10 @@ function wrapper(children: React.ReactNode) {
 }
 
 describe('LabelEditor', () => {
+  it('chooses readable text for bright and dark label colors', () => {
+    expect(labelForeground('#ef4444')).toBe('#000000')
+    expect(labelForeground('#1e293b')).toBe('#ffffff')
+  })
   it('renders issue labels', () => {
     render(wrapper(<LabelEditor issueId="i1" projectKey="TT" />))
     expect(screen.getByTestId('label-editor')).toBeInTheDocument()
