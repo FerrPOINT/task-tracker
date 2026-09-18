@@ -7,6 +7,10 @@ test.skip(
   process.env.SDLC_LIVE_QA !== '1',
   'Requires the local QA bootstrap and running Compose fleet',
 )
+test.skip(
+  ({ browserName }) => browserName !== 'chromium',
+  'Stateful local QA uses a single browser',
+)
 
 const account = (
   process.env.SDLC_LIVE_QA === '1'
@@ -326,7 +330,87 @@ test.describe('live platform switcher', () => {
         fullPage: true,
         animations: 'disabled',
       })
+      await page.setViewportSize({ width: 1280, height: 800 })
     }
+
+    await card.locator('a[href^="/issues/"]').first().click()
+    await page.getByRole('button', { name: 'Изменить', exact: true }).first().click()
+    const updatedSummary = `${summary} updated`
+    await page.getByRole('textbox', { name: 'Заголовок' }).fill(updatedSummary)
+    await page.getByRole('button', { name: 'Сохранить' }).click()
+    await expect(page.getByRole('heading', { name: updatedSummary })).toBeVisible()
+    await page.getByRole('tab', { name: 'Комментарии' }).click()
+    await page.getByPlaceholder('Напишите комментарий...').fill(`QA ${account.runId} comment`)
+    await page.getByRole('button', { name: 'Добавить комментарий' }).click()
+    await expect(page.getByText(`QA ${account.runId} comment`)).toBeVisible()
+
+    await page.getByRole('button', { name: 'Новая метка' }).click()
+    const labelName = `qa-${account.runId}`
+    await page.getByTestId('label-name-input').fill(labelName)
+    await page.getByRole('button', { name: 'Добавить', exact: true }).click()
+    await expect(page.getByTestId('issue-label').filter({ hasText: labelName })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Записать время' }).click()
+    await page.locator('#timeSpent').fill('5m')
+    await page.locator('#comment').fill(`QA ${account.runId} worklog`)
+    await page.getByRole('dialog').getByRole('button', { name: 'Сохранить' }).click()
+    await expect(page.getByRole('dialog')).toBeHidden()
+    await page.getByRole('tab', { name: 'Журнал работ' }).click()
+    await expect(
+      page.getByTestId('worklog-table').getByText(`QA ${account.runId} worklog`),
+    ).toBeVisible()
+
+    await page.getByRole('tab', { name: 'Вложения' }).click()
+    const fileName = `QA-${account.runId}.txt`
+    await page.getByTestId('attachment-input').setInputFiles({
+      name: fileName,
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Local QA attachment'),
+    })
+    await expect(page.getByTestId('attachment-row').filter({ hasText: fileName })).toBeVisible()
+    await page.getByRole('button', { name: `Удалить ${fileName}` }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Подтвердить' }).click()
+    await expect(page.getByTestId('attachment-row').filter({ hasText: fileName })).toBeHidden()
+
+    const linkedIssue = await request.post('http://127.0.0.1:7721/api/v1/issues', {
+      headers: { Authorization: `Bearer ${taskToken}` },
+      data: {
+        project_key: projectKey,
+        issue_type: 'Task',
+        summary: `QA ${account.runId} linked issue`,
+        priority: 'Medium',
+      },
+    })
+    expect(linkedIssue.ok(), `${linkedIssue.status()} ${await linkedIssue.text()}`).toBeTruthy()
+    const linkedKey = (await linkedIssue.json()).key as string
+    await page.getByRole('button', { name: 'Добавить связь' }).click()
+    await page.getByTestId('link-target-input').fill(linkedKey)
+    await page.getByTestId('link-submit').click()
+    await expect(
+      page.getByTestId('link-editor').getByRole('link', { name: linkedKey }),
+    ).toBeVisible()
+
+    await page.locator(`a[href="/projects/${projectKey}/settings/custom-fields"]`).click()
+    const fieldName = `QA ${account.runId} field`
+    await page.getByRole('textbox', { name: 'Название поля' }).fill(fieldName)
+    await page.getByRole('button', { name: 'Добавить поле' }).click()
+    await expect(page.getByText(fieldName)).toBeVisible()
+    await page.goBack()
+    await expect(page).toHaveURL(new RegExp(detailPath!))
+    const fieldInput = page.getByRole('textbox', { name: fieldName })
+    await fieldInput.fill('verified')
+    await fieldInput.blur()
+    await expect
+      .poll(async () => {
+        const values = await request.get(
+          `http://127.0.0.1:7721/api/v1/issues/${detailPath!.split('/').pop()}/custom-fields`,
+          { headers: { Authorization: `Bearer ${taskToken}` } },
+        )
+        return (await values.json()).values.some(
+          (entry: { value: unknown }) => entry.value === 'verified',
+        )
+      })
+      .toBe(true)
 
     const sprintName = `QA ${account.runId} sprint`
     const sprint = await request.post(
@@ -337,7 +421,7 @@ test.describe('live platform switcher', () => {
       },
     )
     expect(sprint.ok()).toBeTruthy()
-    await page.goto('http://localhost:7722/reports')
+    await page.locator('a[href^="/reports"]').first().click()
     await expect(page.getByRole('heading', { name: /Отчёт/ }).first()).toBeVisible()
     await page.locator('#report-project').selectOption({ label: projectName })
     await page.locator('#report-sprint').selectOption({ label: sprintName })

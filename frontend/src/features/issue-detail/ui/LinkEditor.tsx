@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
 import { Button } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
+import { toast } from 'sonner'
 
 const LINK_TYPES = ['blocks', 'duplicates', 'relates'] as const
 
@@ -24,6 +25,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
       await create.mutateAsync({ targetKey: targetKey.trim(), linkType })
       setTargetKey('')
       setAdding(false)
+      toast.success(t('common.saved'))
     } catch {
       setError(t('links.notFound', { key: targetKey.trim() }))
     }
@@ -59,7 +61,12 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
                 <button
                   type="button"
                   aria-label={t('links.delete', { key: otherKey })}
-                  onClick={() => remove.mutate(l.id)}
+                  onClick={() =>
+                    remove.mutate(l.id, {
+                      onSuccess: () => toast.success(t('common.saved')),
+                      onError: (error) => toast.error(error.message),
+                    })
+                  }
                   className="rounded p-0.5 text-muted-foreground hover:text-destructive"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden />
@@ -80,7 +87,10 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
             className="h-8 w-28 text-xs"
             data-testid="link-target-input"
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void onAdd()
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                void onAdd()
+              }
             }}
           />
           <select
@@ -100,11 +110,16 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
             size="sm"
             className="h-8"
             onClick={() => void onAdd()}
+            disabled={create.isPending || !targetKey.trim()}
             data-testid="link-submit"
           >
-            {t('links.submit')}
+            {create.isPending ? t('common.saving') : t('links.submit')}
           </Button>
-          {error && <p className="w-full text-xs text-destructive">{error}</p>}
+          {error && (
+            <p role="alert" className="w-full text-xs text-destructive">
+              {error}
+            </p>
+          )}
         </div>
       ) : (
         <Button

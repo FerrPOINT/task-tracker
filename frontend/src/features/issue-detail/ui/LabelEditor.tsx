@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Tag, Plus, X } from 'lucide-react'
 import {
@@ -10,6 +10,7 @@ import {
 } from '@/shared/api/hooks'
 import { Button } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
+import { toast } from 'sonner'
 
 const PALETTE = [
   '#ef4444',
@@ -31,6 +32,8 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
   const create = useCreateLabel(projectKey)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
+  const [createError, setCreateError] = useState<string | null>(null)
+  const createdLabel = useRef<{ name: string; id: string } | null>(null)
 
   const issueLabelIds = new Set(issueLabels.map((l) => l.id))
 
@@ -38,10 +41,27 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
     const name = newName.trim()
     if (!name) return
     const color = PALETTE[projectLabels.length % PALETTE.length] ?? '#6b7280'
-    const label = await create.mutateAsync({ name, color })
-    await attach.mutateAsync(label.id)
-    setNewName('')
-    setCreating(false)
+    setCreateError(null)
+    try {
+      let labelId = projectLabels.find((item) => item.name === name)?.id
+      if (!labelId && createdLabel.current?.name === name) labelId = createdLabel.current.id
+      if (!labelId) {
+        const label = await create.mutateAsync({ name, color })
+        labelId = label.id
+        createdLabel.current = { name, id: labelId }
+      }
+      await attach.mutateAsync(labelId)
+      createdLabel.current = null
+      setNewName('')
+      setCreating(false)
+      toast.success(t('common.saved'))
+    } catch (error) {
+      setCreateError(
+        error instanceof Error
+          ? error.message
+          : t('labels.createFailed', 'Не удалось добавить метку'),
+      )
+    }
   }
 
   return (
@@ -64,7 +84,9 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
               <button
                 type="button"
                 aria-label={t('labels.detach', { name: l.name })}
-                onClick={() => detach.mutate(l.id)}
+                onClick={() =>
+                  detach.mutate(l.id, { onError: (error) => toast.error(error.message) })
+                }
                 className="rounded-full p-0.5 hover:bg-black/20"
               >
                 <X className="h-3 w-3" aria-hidden />
@@ -78,20 +100,36 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
       )}
 
       {creating ? (
-        <div className="flex gap-1">
-          <Input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder={t('labels.namePlaceholder')}
-            className="h-8 text-xs"
-            data-testid="label-name-input"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void onCreate()
-            }}
-          />
-          <Button type="button" size="sm" className="h-8" onClick={() => void onCreate()}>
-            {t('labels.add')}
-          </Button>
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder={t('labels.namePlaceholder')}
+              className="h-8 text-xs"
+              data-testid="label-name-input"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void onCreate()
+                }
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="h-8"
+              disabled={create.isPending || attach.isPending}
+              onClick={() => void onCreate()}
+            >
+              {create.isPending || attach.isPending ? t('common.loading') : t('labels.add')}
+            </Button>
+          </div>
+          {createError && (
+            <p role="alert" className="text-xs text-danger">
+              {createError}
+            </p>
+          )}
         </div>
       ) : (
         <div className="flex flex-wrap gap-1">
@@ -101,7 +139,9 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
               <button
                 key={l.id}
                 type="button"
-                onClick={() => attach.mutate(l.id)}
+                onClick={() =>
+                  attach.mutate(l.id, { onError: (error) => toast.error(error.message) })
+                }
                 className="rounded-full px-2 py-0.5 text-xs font-medium text-white opacity-70 transition hover:opacity-100"
                 style={{ backgroundColor: l.color }}
               >

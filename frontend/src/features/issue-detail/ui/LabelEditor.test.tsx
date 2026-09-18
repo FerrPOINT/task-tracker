@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@sdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
@@ -8,6 +8,8 @@ import { LabelEditor } from './LabelEditor'
 beforeAll(() => {
   i18n.changeLanguage('en')
 })
+
+const mutations = vi.hoisted(() => ({ create: vi.fn(), attach: vi.fn() }))
 
 vi.mock('@/shared/api/hooks', () => ({
   useProjectLabels: () => ({
@@ -23,9 +25,9 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
     error: null,
   }),
-  useAttachLabel: () => ({ mutate: vi.fn(), isPending: false }),
+  useAttachLabel: () => ({ mutate: vi.fn(), mutateAsync: mutations.attach, isPending: false }),
   useDetachLabel: () => ({ mutate: vi.fn(), isPending: false }),
-  useCreateLabel: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useCreateLabel: () => ({ mutateAsync: mutations.create, isPending: false }),
 }))
 
 function wrapper(children: React.ReactNode) {
@@ -47,5 +49,20 @@ describe('LabelEditor', () => {
     render(wrapper(<LabelEditor issueId="i1" projectKey="TT" />))
     fireEvent.click(screen.getByText(/new label/i))
     expect(screen.getByTestId('label-name-input')).toBeInTheDocument()
+  })
+
+  it('retains the name and reuses a created label when attachment fails', async () => {
+    mutations.create.mockResolvedValueOnce({ id: 'l3', name: 'qa' })
+    mutations.attach.mockRejectedValueOnce(new Error('Attach failed')).mockResolvedValueOnce({})
+    render(wrapper(<LabelEditor issueId="i1" projectKey="TT" />))
+    fireEvent.click(screen.getByText(/new label/i))
+    const input = screen.getByTestId('label-name-input')
+    fireEvent.change(input, { target: { value: 'qa' } })
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Attach failed')
+    expect(input).toHaveValue('qa')
+    fireEvent.click(screen.getByRole('button', { name: /^add$/i }))
+    await waitFor(() => expect(mutations.attach).toHaveBeenCalledTimes(2))
+    expect(mutations.create).toHaveBeenCalledTimes(1)
   })
 })

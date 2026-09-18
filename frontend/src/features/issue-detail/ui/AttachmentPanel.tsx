@@ -4,6 +4,7 @@ import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
 import { Button, ConfirmDialog } from '@sdlc/ui/ui'
+import { toast } from 'sonner'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -25,30 +26,43 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<Record<string, UploadProgress>>({})
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<string | null>(null)
 
   const onPick = async (files: FileList | null) => {
     if (!files) return
     const selected = Array.from(files)
+    if (selected.length === 0) return
     setUploading(true)
+    setUploadError(false)
     setProgress(
       Object.fromEntries(
-        selected.map((file) => [file.name, { fileName: file.name, loaded: 0, total: file.size }]),
+        selected.map((file, index) => [
+          index,
+          { fileName: file.name, loaded: 0, total: file.size },
+        ]),
       ),
     )
     try {
-      await Promise.all(
-        selected.map((file) =>
+      const results = await Promise.allSettled(
+        selected.map((file, index) =>
           upload.mutateAsync({
             file,
             onProgress: (loaded, total) =>
               setProgress((current) => ({
                 ...current,
-                [file.name]: { fileName: file.name, loaded, total },
+                [index]: { fileName: file.name, loaded, total },
               })),
           }),
         ),
       )
+      if (results.every((result) => result.status === 'fulfilled')) {
+        toast.success(t('attachments.uploaded', 'Файлы загружены'))
+      } else {
+        setUploadError(true)
+      }
+    } catch {
+      setUploadError(true)
     } finally {
       setUploading(false)
       setProgress({})
@@ -92,8 +106,8 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
       </div>
 
       {uploading &&
-        Object.values(progress).map((item) => (
-          <div key={item.fileName} className="space-y-1" data-testid="upload-progress">
+        Object.entries(progress).map(([index, item]) => (
+          <div key={index} className="space-y-1" data-testid="upload-progress">
             <div className="flex items-center justify-between gap-3 text-xs text-text-muted">
               <span className="truncate">{item.fileName}</span>
               <span>
@@ -164,7 +178,7 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
         </ul>
       )}
 
-      {upload.isError && (
+      {uploadError && (
         <p className="text-sm text-destructive" data-testid="attachment-error">
           {t('attachments.uploadFailed')}
         </p>
@@ -172,6 +186,8 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
+        isPending={remove.isPending}
+        error={remove.error?.message}
         title={t('attachments.deleteTitle', 'Удалить файл?')}
         description={t(
           'attachments.deleteConfirm',

@@ -4,15 +4,7 @@ import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@sdlc/ui/ui'
 import { Button } from '@sdlc/ui/ui'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@sdlc/ui/ui'
+import { ConfirmDialog } from '@sdlc/ui/ui'
 import { Card, CardContent } from '@sdlc/ui/ui'
 import { formatDuration } from '@/shared/lib/time'
 import type { Worklog } from '@/entities/worklog/model'
@@ -20,13 +12,29 @@ import type { Worklog } from '@/entities/worklog/model'
 interface WorklogTabProps {
   worklogs: Worklog[]
   onEdit: (worklog: Worklog) => void
-  onDelete: (id: string) => void
+  onDelete: (id: string) => Promise<unknown>
   currentUserId: string
 }
 
 export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: WorklogTabProps) {
   const { t } = useTranslation()
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
+  const confirmDelete = async () => {
+    if (!deletingId) return
+    setDeletePending(true)
+    setDeleteError(null)
+    try {
+      await onDelete(deletingId)
+      setDeletingId(null)
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : t('common.error'))
+    } finally {
+      setDeletePending(false)
+    }
+  }
 
   const total = worklogs.reduce((sum, w) => sum + w.timeSpentSeconds, 0)
 
@@ -105,28 +113,15 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
         </Table>
       </div>
 
-      {worklogs.map((w) => (
-        <AlertDialog
-          key={`desktop-${w.id}`}
-          open={deletingId === w.id}
-          onOpenChange={(open) => setDeletingId(open ? w.id : null)}
-        >
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t('timeTracking.deleteWorklog')}</AlertDialogTitle>
-              <AlertDialogDescription>{t('timeTracking.deleteConfirm')}</AlertDialogDescription>
-            </AlertDialogHeader>
-            <div className="flex justify-end gap-2">
-              <AlertDialogCancel onClick={() => setDeletingId(null)}>
-                {t('common.cancel')}
-              </AlertDialogCancel>
-              <AlertDialogAction onClick={() => onDelete(w.id)}>
-                {t('common.delete')}
-              </AlertDialogAction>
-            </div>
-          </AlertDialogContent>
-        </AlertDialog>
-      ))}
+      <ConfirmDialog
+        open={deletingId !== null}
+        onOpenChange={(open) => !open && setDeletingId(null)}
+        title={t('timeTracking.deleteWorklog')}
+        description={t('timeTracking.deleteConfirm')}
+        isPending={deletePending}
+        error={deleteError}
+        onConfirm={() => void confirmDelete()}
+      />
 
       <div className="space-y-3 md:hidden">
         {worklogs.map((w) => (

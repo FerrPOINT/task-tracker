@@ -97,4 +97,19 @@ describe('CommentForm', () => {
     fireEvent.click(screen.getByText(/add/i))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith({ body: 'New comment' }))
   })
+
+  it('retains the draft and shows an error when saving fails', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Network failed'))
+    render(
+      <Wrapper>
+        <CommentForm onSubmit={onSubmit} submitLabel="Add" />
+      </Wrapper>,
+    )
+    const textarea = screen.getByPlaceholderText(/напишите/i)
+    fireEvent.change(textarea, { target: { value: 'Keep this draft' } })
+    fireEvent.click(screen.getByText(/add/i))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Network failed')
+    expect(textarea).toHaveValue('Keep this draft')
+    expect(screen.getByText(/add/i)).toBeEnabled()
+  })
 })

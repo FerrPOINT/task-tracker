@@ -155,6 +155,8 @@ export function ProjectCustomFieldsPage() {
       <ConfirmDialog
         open={pendingDelete !== null}
         onOpenChange={(open) => !open && setPendingDelete(null)}
+        isPending={remove.isPending}
+        error={remove.error?.message}
         title="Удалить поле?"
         description="Значения этого поля у задач будут недоступны. Действие нельзя отменить."
         onConfirm={() =>

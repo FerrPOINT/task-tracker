@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@sdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
@@ -52,5 +52,18 @@ describe('IssueDescriptionEditor', () => {
     fireEvent.click(screen.getByText('Fix login bug'))
     expect(screen.getByDisplayValue('Fix login bug')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument()
+  })
+
+  it('retains the edited summary and description when saving fails', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Save failed'))
+    render(wrapper(<IssueDescriptionEditor issue={issue} onSubmit={onSubmit} />))
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+    const summary = screen.getByRole('textbox', { name: /summary/i })
+    fireEvent.change(summary, { target: { value: 'Revised summary' } })
+    fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce())
+    expect(await screen.findByRole('alert')).toHaveTextContent('Save failed')
+    expect(summary).toHaveValue('Revised summary')
+    expect(screen.getByRole('button', { name: /save/i })).toBeEnabled()
   })
 })

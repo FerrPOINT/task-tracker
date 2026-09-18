@@ -3,10 +3,18 @@ import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Button } from '@sdlc/ui/ui'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  Button,
+} from '@sdlc/ui/ui'
 import { Textarea } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
-import { ConfirmDialog } from '@sdlc/ui/ui'
 import {
   useComments,
   useCreateComment,
@@ -37,11 +45,15 @@ export function CommentForm({
     resolver: zodResolver(schema),
     defaultValues: { body: initialBody },
   })
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   const handleSubmit = form.handleSubmit(async (values) => {
-    await onSubmit({ body: values.body.trim() })
-    if (!onCancel) {
-      form.reset({ body: '' })
+    setSubmitError(null)
+    try {
+      await onSubmit({ body: values.body.trim() })
+      if (!onCancel) form.reset({ body: '' })
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : t('common.error'))
     }
   })
 
@@ -57,6 +69,11 @@ export function CommentForm({
         />
         {form.formState.errors.body && (
           <p className="text-xs text-danger">{form.formState.errors.body.message}</p>
+        )}
+        {submitError && (
+          <p role="alert" className="text-xs text-danger">
+            {submitError}
+          </p>
         )}
       </div>
       <div className="flex justify-end gap-2">
@@ -162,6 +179,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   const [editing, setEditing] = useState<Comment | null>(null)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const { data: comments, isLoading } = useComments(issueId)
   const create = useCreateComment(issueId)
   const update = useUpdateComment(issueId)
@@ -185,6 +203,7 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
 
   const handleDelete = (commentId: string) => {
     setPendingDeleteId(commentId)
+    setDeleteError(null)
     setDeleteConfirmOpen(true)
   }
 
@@ -206,18 +225,38 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
         onEdit={handleEdit}
         onDelete={handleDelete}
       />
-      <ConfirmDialog
+      <AlertDialog
         open={deleteConfirmOpen}
-        onOpenChange={setDeleteConfirmOpen}
-        title={t('common.delete')}
-        description={t('comments.deleteConfirm')}
-        onConfirm={() => {
-          if (pendingDeleteId) {
-            remove.mutate(pendingDeleteId)
-          }
-          setDeleteConfirmOpen(false)
-        }}
-      />
+        onOpenChange={(open) => !remove.isPending && setDeleteConfirmOpen(open)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('common.delete')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('comments.deleteConfirm')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <p role="alert" className="text-sm text-danger">
+              {deleteError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <AlertDialogCancel disabled={remove.isPending}>{t('common.cancel')}</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={remove.isPending}
+              onClick={(event) => {
+                event.preventDefault()
+                if (!pendingDeleteId) return
+                remove.mutate(pendingDeleteId, {
+                  onSuccess: () => setDeleteConfirmOpen(false),
+                  onError: (error) => setDeleteError(error.message),
+                })
+              }}
+            >
+              {remove.isPending ? t('common.loading') : t('common.confirm')}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

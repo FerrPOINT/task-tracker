@@ -141,6 +141,8 @@ export function ProjectTrashPage() {
       <ConfirmDialog
         open={purgeConfirmId !== null}
         onOpenChange={(open) => !open && setPurgeConfirmId(null)}
+        isPending={purgeMutation.isPending}
+        error={purgeMutation.error?.message}
         title={t('trash.purge', 'Delete forever')}
         description={t(
           'trash.purgeConfirm',

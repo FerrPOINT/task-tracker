@@ -140,6 +140,8 @@ export function ProjectMembersPanel({
         <ConfirmDialog
           open={pendingRemove !== null}
           onOpenChange={(nextOpen) => !nextOpen && setPendingRemove(null)}
+          isPending={remove.isPending}
+          error={remove.error?.message}
           title="Удалить участника?"
           description={pendingRemove ? `${pendingRemove.name} потеряет доступ к проекту.` : ''}
           onConfirm={() =>

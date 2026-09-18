@@ -101,9 +101,7 @@ export function IssueDetailPage() {
     }
   }
 
-  const handleDelete = (worklogId: string) => {
-    remove.mutate(worklogId)
-  }
+  const handleDelete = (worklogId: string) => remove.mutateAsync(worklogId)
 
   const copyKey = () => {
     navigator.clipboard.writeText(issue.key)
@@ -159,12 +157,10 @@ export function IssueDetailPage() {
               <IssueDescriptionEditor
                 issue={issue}
                 disabled={updateIssue.isPending}
-                onSubmit={(patch) =>
-                  updateIssue.mutate(patch, {
-                    onSuccess: () => toast.success(t('common.saved')),
-                    onError: (error) => toast.error(error.message),
-                  })
-                }
+                onSubmit={async (patch) => {
+                  await updateIssue.mutateAsync(patch)
+                  toast.success(t('common.saved'))
+                }}
               />
             </section>
 
@@ -276,6 +272,8 @@ export function IssueDetailPage() {
       <ConfirmDialog
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
+        isPending={deleteIssueMutation.isPending}
+        error={deleteIssueMutation.error?.message}
         title={t('issue.delete')}
         description={t('issue.deleteConfirm')}
         onConfirm={() => {
