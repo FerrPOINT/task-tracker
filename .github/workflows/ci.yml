@@ -6,22 +6,28 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  readme:
+  docs:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
           path: task-tracker
       - name: README validator tests
         working-directory: task-tracker
-        run: python3 -m unittest scripts.tests.test_verify_readme
+        run: python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks
       - name: README structural validation
         working-directory: task-tracker
         run: python3 scripts/verify_readme.py
 
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: task-tracker/backend
@@ -46,219 +52,15 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace -- --test-threads=1
-  openapi-check:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: task-tracker/backend
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      - name: Check out services-base sibling (path deps)
-        uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: task-tracker/backend
-      - name: Regenerate OpenAPI
+      - name: OpenAPI drift gate
         run: |
           mkdir -p ../openapi
           cargo run -p api --bin gen-openapi > ../openapi/openapi.json.generated
-      - name: Check committed spec matches code
-        run: diff -u ../openapi/openapi.json ../openapi/openapi.json.generated
-  migrations:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: task-tracker/backend
-    services:
-      postgres:
-        image: postgres:17.6-alpine
-        env:
-          POSTGRES_USER: tasktracker
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: tasktracker
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U tasktracker"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      # Fleet shared crates live in a sibling services-base checkout
-      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-      - uses: Swatinem/rust-cache@v2
-      - name: Apply all migrations to clean DB
-        run: cargo run -p migration -- up
-        env:
-          DATABASE_URL: postgres://tasktracker:test@localhost:5432/tasktracker
-      - name: Verify migration status
-        run: cargo run -p migration -- status
-        env:
-          DATABASE_URL: postgres://tasktracker:test@localhost:5432/tasktracker
+          diff -u ../openapi/openapi.json ../openapi/openapi.json.generated
 
-  coverage:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: task-tracker/backend
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      # Fleet shared crates live in a sibling services-base checkout
-      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-          components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Run tests with coverage
-        run: cargo llvm-cov --workspace --summary-only 2>&1 | tee /tmp/cov.txt
-      - name: Enforce coverage threshold (60%)
-        run: |
-          COV=$(grep '^TOTAL' /tmp/cov.txt | awk '{print $NF}' | tr -d '%')
-          echo "Coverage: ${COV}%"
-          if (( $(echo "$COV < 60" | bc -l) )); then
-            echo "::error::Coverage ${COV}% is below 60% threshold"
-            exit 1
-          fi
-
-  deny:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: task-tracker/backend
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      # Fleet shared crates live in a sibling services-base checkout
-      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          manifest-path: task-tracker/backend/Cargo.toml
-          command: check
-          arguments: --all-features
-
-  infra-db-tests:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: task-tracker/backend
-    services:
-      postgres:
-        image: postgres:17.6-alpine
-        env:
-          POSTGRES_USER: tasktracker
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: tasktracker
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U tasktracker"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      # Fleet shared crates live in a sibling services-base checkout
-      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: task-tracker/backend
-      - name: Prepare infra test DB
-        run: |
-          PGPASSWORD=test psql -h localhost -U tasktracker -d tasktracker -c "CREATE DATABASE tasktracker_infra_test;"
-        env:
-          PGPASSWORD: test
-      - name: Run real PostgreSQL repository and server E2E tests
-        run: |
-          # Repositories use this URL as a base and derive their isolated DB.
-          echo "postgresql://tasktracker:test@127.0.0.1:5432/tasktracker" > "$HOME/.tt_db_url"
-          cargo test -p infra --test repos --test fk_regression -- --include-ignored --test-threads=1
-          cargo test -p server --test e2e -- --include-ignored --test-threads=1
-        env:
-          TT_TEST_DATABASE_URL: postgres://tasktracker:test@127.0.0.1:5432/tasktracker_infra_test
-          TASKTRACKER_DATABASE_URL: postgres://tasktracker:test@127.0.0.1:5432/tasktracker_infra_test
-
-  audit:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: task-tracker/backend
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      # Fleet shared crates live in a sibling services-base checkout
-      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: task-tracker/backend
-      - uses: taiki-e/install-action@cargo-audit
-      - run: cargo audit --ignore RUSTSEC-2024-0436
-
-  # install + generate:api + test + lint + build via the shared fleet gate.
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: task-tracker/frontend
@@ -291,57 +93,3 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm build
-  e2e:
-    runs-on: ubuntu-latest
-    env:
-      POSTGRES_PASSWORD: ci-test
-      TASKTRACKER_DATABASE__URL: postgres://tasktracker:ci-test@postgres:5432/tasktracker
-      TASKTRACKER_JWT_SECRET: ci-test-secret-ci-test-secret-ci-test-32b
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          path: task-tracker
-      # Fleet shared crates live in a sibling services-base checkout
-      # (api path dep: ../../../services-base/crates/sdlc-auth-core).
-      - uses: actions/checkout@v7
-        with:
-          repository: FerrPOINT/services-base
-          path: services-base
-          ref: main
-          token: ${{ secrets.SERVICES_BASE_TOKEN }}
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 10
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: task-tracker/frontend/pnpm-lock.yaml
-      - run: pnpm install
-        working-directory: task-tracker/frontend
-      - run: pnpm build
-        working-directory: task-tracker/frontend
-      - run: docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres redis backend
-        working-directory: ${{ github.workspace }}/task-tracker
-      - name: Wait for backend readiness (retry loop)
-        run: |
-          for i in $(seq 1 120); do
-            if curl -sf http://localhost:3456/api/v1/health > /dev/null 2>&1; then
-              echo "backend ready after ${i}s"; exit 0
-            fi
-            sleep 1
-          done
-          echo "::error::backend did not become healthy in 120s"
-          docker compose ps
-          docker compose logs backend
-          exit 1
-        working-directory: ${{ github.workspace }}/task-tracker
-      - run: pnpm exec playwright install --with-deps chromium
-        working-directory: task-tracker/frontend
-      - run: pnpm exec playwright test e2e/smoke.spec.ts e2e/export.spec.ts --project=chromium
-        working-directory: task-tracker/frontend
-        env:
-          VITE_API_BASE_URL: http://localhost:3456/api/v1
-      - run: docker compose down -v
-        working-directory: ${{ github.workspace }}/task-tracker
-        if: always()

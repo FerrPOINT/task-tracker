@@ -229,7 +229,7 @@ flowchart TD
 | Compose contract | `docker compose config -q` |
 | Full gates | `just gate` / `just test` / `just e2e` |
 
-GitHub Actions прогоняет backend formatting/lint/tests, OpenAPI/migrations, coverage, dependency checks, real-PostgreSQL тесты, frontend gates и browser E2E. Независимый README job проверяет обязательные anchors, reviewed proof, local images, placeholders и случайные локальные пути.
+GitHub Actions прогоняет docs-гейт, backend fmt/clippy/tests, OpenAPI drift и frontend gates (typecheck/tests/lint/build). Browser E2E и тяжёлые проверки запускаются локально по необходимости.
 
 ## Карта проекта
 

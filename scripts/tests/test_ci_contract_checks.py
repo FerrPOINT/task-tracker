@@ -13,7 +13,7 @@ WORKFLOW = ROOT / ".github/workflows/ci.yml"
 class CiContractChecksTest(unittest.TestCase):
     def test_frontend_job_checks_openapi_backward_compatibility(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
-        frontend_job = workflow.split("\n  frontend:\n", 1)[1].split("\n  e2e:\n", 1)[0]
+        frontend_job = workflow.split("\n  frontend:\n", 1)[1]
         self.assertIn("fetch-depth: 0", frontend_job)
         self.assertIn("pnpm openapi:check", frontend_job)
         self.assertIn("pnpm openapi:compat", frontend_job)
