@@ -334,6 +334,7 @@ test.describe('live platform switcher', () => {
     }
 
     await card.locator('a[href^="/issues/"]').first().click()
+    await expect(page.locator('#issue-status option:checked')).toHaveText('В работе')
     await page.getByRole('button', { name: 'Изменить', exact: true }).first().click()
     const updatedSummary = `${summary} updated`
     await page.getByRole('textbox', { name: 'Заголовок' }).fill(updatedSummary)
@@ -421,11 +422,33 @@ test.describe('live platform switcher', () => {
       },
     )
     expect(sprint.ok()).toBeTruthy()
+    const sprintId = (await sprint.json()).id as string
+    const assigned = await request.post(
+      `http://127.0.0.1:7721/api/v1/projects/${projectKey}/sprints/${sprintId}/issues`,
+      {
+        headers: { Authorization: `Bearer ${taskToken}` },
+        data: { issue_id: detailPath!.split('/').pop() },
+      },
+    )
+    expect(assigned.ok(), `${assigned.status()} ${await assigned.text()}`).toBeTruthy()
+    const started = await request.post(
+      `http://127.0.0.1:7721/api/v1/projects/${projectKey}/sprints/${sprintId}/start`,
+      { headers: { Authorization: `Bearer ${taskToken}` } },
+    )
+    expect(started.ok(), `${started.status()} ${await started.text()}`).toBeTruthy()
     await page.locator('a[href^="/reports"]').first().click()
     await expect(page.getByRole('heading', { name: /Отчёт/ }).first()).toBeVisible()
     await page.locator('#report-project').selectOption({ label: projectName })
     await page.locator('#report-sprint').selectOption({ label: sprintName })
     await expect(page).toHaveURL(/sprint_id=/)
+    await page.getByRole('tab', { name: 'Burndown' }).click()
+    await expect(page).toHaveURL(/tab=burndown/)
+    const burndown = await request.get(
+      `http://127.0.0.1:7721/api/v1/reports/burndown?sprint_id=${sprintId}`,
+      { headers: { Authorization: `Bearer ${taskToken}` } },
+    )
+    expect(burndown.ok(), `${burndown.status()} ${await burndown.text()}`).toBeTruthy()
+    expect((await burndown.json()).sprint_name).toBe(sprintName)
 
     for (const path of [
       detailPath!,
@@ -456,6 +479,11 @@ test.describe('live platform switcher', () => {
         })
       }
     }
+    const closed = await request.post(
+      `http://127.0.0.1:7721/api/v1/projects/${projectKey}/sprints/${sprintId}/close`,
+      { headers: { Authorization: `Bearer ${taskToken}` } },
+    )
+    expect(closed.ok(), `${closed.status()} ${await closed.text()}`).toBeTruthy()
   })
 
   test('Wiki publishes and revises a QA document', async ({ page, request }) => {
