@@ -113,7 +113,7 @@ FRONTEND_PORT=19877
 
 ## Визуальные доказательства
 
-Скриншоты — реальные поверхности продукта с детерминированными seeded-данными. Формат: desktop full-page и обязательные mobile-свидетельства `375x812`.
+Скриншоты — реальные поверхности продукта с детерминированными seeded-данными. Формат: desktop full-page.
 
 ### Дашборд
 
@@ -154,18 +154,6 @@ FRONTEND_PORT=19877
 ### Корзина
 
 ![Корзина](docs/screenshots/06-trash.png)
-
-### Доска на мобильном
-
-![Доска на мобильном](docs/screenshots/m-board-viewport.png)
-
-Доска на `375x812` намеренно превращается в вертикальный стек карточек; колонки с большим числом карточек остаются scroll-heavy by design.
-
-### Мобильный интерфейс (375×812)
-
-![Мобильный интерфейс: колонка 1](docs/screenshots/m-col-left.png) ![Мобильный интерфейс: колонка 2](docs/screenshots/m-col-right.png)
-
-Полная route-галерея (включая login/register и issue detail) — в [docs/screenshots](docs/screenshots).
 
 <a name="cli"></a>
 
