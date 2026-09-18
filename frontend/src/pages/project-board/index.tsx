@@ -15,7 +15,7 @@ import { ProjectMembersPanel } from '@/features/project-members/ui/ProjectMember
 import { UserAvatar } from '@/shared/ui/user-avatar'
 import type { components } from '@/api/generated'
 import { toast } from 'sonner'
-import type { TFunction } from 'i18next'
+import { statusLabel } from '@/shared/lib/status-label'
 
 export type Issue = components['schemas']['IssueResponse']
 
@@ -23,14 +23,6 @@ type DragState = {
   issueId: string | null
   sourceColumnId: string | null
   dragging: boolean
-}
-
-function statusLabel(name: string, t: TFunction): string {
-  const key = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/_+$/, '')
-  return t(`status.${key}`, { defaultValue: name })
 }
 
 function PriorityBadge({ priority }: { priority: string }) {

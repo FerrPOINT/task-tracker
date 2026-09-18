@@ -179,7 +179,7 @@ export function ProjectsPage() {
                         </div>
                       </div>
                     </div>
-                    <DropdownMenu>
+                    <DropdownMenu modal={false}>
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="ghost"

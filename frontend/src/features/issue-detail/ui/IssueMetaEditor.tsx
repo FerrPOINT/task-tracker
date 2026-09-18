@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
+import { statusLabel } from '@/shared/lib/status-label'
 import {
   useProjectMembers,
   useProjects,
@@ -113,7 +114,7 @@ export function IssueMetaEditor({
         >
           {statusOptions.map((s) => (
             <option key={s.id} value={s.id}>
-              {s.name}
+              {statusLabel(s.name, t)}
             </option>
           ))}
         </select>
