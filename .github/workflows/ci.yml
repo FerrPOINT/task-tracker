@@ -7,7 +7,19 @@ on:
     branches: [main]
 
 jobs:
-  # fmt + clippy + test via the shared fleet gate (services-base).
+  readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+      - name: README validator tests
+        working-directory: task-tracker
+        run: python3 -m unittest scripts.tests.test_verify_readme
+      - name: README structural validation
+        working-directory: task-tracker
+        run: python3 scripts/verify_readme.py
+
   backend:
     runs-on: ubuntu-latest
     defaults:

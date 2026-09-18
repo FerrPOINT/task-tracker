@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" role="img" aria-labelledby="title desc">
+  <title id="title">Base Task Tracker</title>
+  <desc id="desc">Planning, kanban, issues and reporting for Base.</desc>
+  <defs>
+    <linearGradient id="field" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#0b1f3a"/><stop offset=".55" stop-color="#1d4ed8"/><stop offset="1" stop-color="#0f766e"/></linearGradient>
+    <linearGradient id="line" x1="0" x2="1"><stop stop-color="#93c5fd"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1600" height="420" fill="url(#field)"/>
+  <path d="M0 354C210 264 330 438 510 330S728 282 836 332" fill="none" stroke="#67e8f9" stroke-opacity=".2" stroke-width="2"/>
+  <path d="M0 82C220 178 355 35 570 120s343 95 527 7 290-7 503 86" fill="none" stroke="#bfdbfe" stroke-opacity=".2" stroke-width="2"/>
+  <g transform="translate(122 89)" fill="none" stroke="url(#line)" stroke-width="5" filter="url(#glow)">
+    <rect x="0" y="28" width="182" height="178" rx="12"/>
+    <path d="M30 75h122M30 119h76M30 163h103"/>
+    <path d="M223 59h158M223 119h108M223 179h136"/>
+  </g>
+  <g fill="#e0f2fe"><circle cx="303" cy="59" r="10"/><circle cx="381" cy="119" r="10"/><circle cx="359" cy="179" r="10"/></g>
+  <text x="620" y="182" fill="#f8fafc" font-family="Georgia, serif" font-size="72" font-weight="700" letter-spacing="-2">Task Tracker</text>
+  <text x="624" y="239" fill="#bfdbfe" font-family="ui-monospace, monospace" font-size="31" letter-spacing="2">PLAN / KANBAN / DELIVERY</text>
+  <rect x="624" y="274" width="430" height="5" rx="2.5" fill="url(#line)"/>
+  <text x="624" y="325" fill="#ccfbf1" font-family="ui-monospace, monospace" font-size="27">SELF-HOSTED PROJECT OPERATIONS</text>
+</svg>
