@@ -34,7 +34,8 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| GET | `/health` | Health-check (plain text) |
+| GET | `/health` | Base catalog compatibility alias; same liveness response as `/api/v1/health`. |
+| GET | `/api/v1/health` | Current public liveness endpoint; plain `ok`, no dependency-readiness claim. |
 
 ### Auth
 

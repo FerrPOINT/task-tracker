@@ -4576,6 +4576,26 @@
           }
         ]
       }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "routes::health"
+        ],
+        "operationId": "catalog_health",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {

@@ -82,6 +82,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::health::catalog_health,
         routes::health::health,
         routes::auth::register,
         routes::auth::login,
@@ -304,7 +305,8 @@ impl Modify for SecurityAddon {
 
         for (path, item) in openapi.paths.paths.iter_mut() {
             let security = match path.as_str() {
-                "/api/v1/health"
+                "/health"
+                | "/api/v1/health"
                 | "/api/v1/auth/login"
                 | "/api/v1/auth/register"
                 | "/api/v1/auth/refresh" => None,
@@ -652,7 +654,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let prometheus_layer: PrometheusMetricLayer = GenericMetricLayer::new();
 
     let mut root = Router::new()
-        .route("/health", get(routes::health::health))
+        .route("/health", get(routes::health::catalog_health))
         .route("/api/v1/health", get(routes::health::health))
         .nest("/api/v1", api.layer(GovernorLayer::new(general_limiter)))
         .nest("/api/v1", events_router)
@@ -724,7 +726,8 @@ mod tests {
         for (path, item) in document.paths.paths.iter() {
             let is_public = matches!(
                 path.as_str(),
-                "/api/v1/health"
+                "/health"
+                    | "/api/v1/health"
                     | "/api/v1/auth/login"
                     | "/api/v1/auth/register"
                     | "/api/v1/auth/refresh"

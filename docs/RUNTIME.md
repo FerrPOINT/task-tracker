@@ -10,27 +10,25 @@
 
 | Probe | Path | Success | Failure |
 |-------|------|---------|---------|
-| Liveness | `GET /health/live` | HTTP 200 | HTTP 503 |
-| Readiness | `GET /health/ready` | DB, Redis OK | HTTP 503 |
-| Startup | `GET /health/startup` | migrations done | HTTP 503 |
+| Liveness | `GET /api/v1/health` | HTTP 200; текущий public liveness API | Process unavailable |
+| Catalog compatibility | `GET /health` | HTTP 200; alias for the fixed Base `health.read` path | Process unavailable |
+| Readiness / startup | not exposed separately | Liveness does not prove DB, Redis, email or central-auth readiness | Use owned dependency and deployment checks |
 
-### 2.2 Startup Probe
+### 2.2 Historical target probes
 
-- Выполняется только во время старта.
-- Проверяет, что миграции применены и seed-данные на месте.
-- Период: 10s, failureThreshold: 30 (≈5 минут).
-- После success не повторяется.
+The former `/health/startup` and `/health/ready` descriptions are target-only
+material and do not describe the current Task Tracker runtime. Operators use
+the documented public liveness endpoint plus owned dependency and deployment
+checks; they must not infer readiness from a successful liveness response.
 
-### 2.3 Readiness Probe
+### 2.3 Liveness behavior
 
-- Проверяет соединение с PostgreSQL и Redis.
-- Если БД недоступна — readiness 503, трафик не направляется.
-- Период: 5s.
-
-### 2.4 Liveness Probe
-
-- Простой ping.
-- Если не отвечает 3 раза подряд — контейнер перезапускается.
+- Both `GET /api/v1/health` and the Base catalog alias `GET /health` return the
+  same public process-liveness response.
+- Docker and monitoring may use either current route according to their
+  deployment contract.
+- A successful response does not assert PostgreSQL, Redis, SMTP or central-auth
+  readiness.
 
 ## 3. Startup Order
 

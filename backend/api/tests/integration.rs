@@ -294,6 +294,14 @@ async fn spawn_server_with_notifications()
 }
 
 #[tokio::test]
+async fn health_is_public_from_catalog_alias() {
+    let (url, client) = spawn_server().await;
+    let res = client.get(format!("{url}/health")).send().await.unwrap();
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.text().await.unwrap(), "ok");
+}
+
+#[tokio::test]
 async fn health_is_public() {
     let (url, client) = spawn_server().await;
     let res = client
