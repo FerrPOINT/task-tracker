@@ -163,7 +163,7 @@ FRONTEND_PORT=19877
 
 ### Мобильный интерфейс (375×812)
 
-![Доска (fixture-вариант)](docs/screenshots/15-board-mobile.png) ![Проекты на мобильном](docs/screenshots/16-projects-mobile.png)
+<img src="docs/screenshots/15-board-mobile.png" alt="Доска (fixture-вариант)" width="49.5%" /> <img src="docs/screenshots/16-projects-mobile.png" alt="Проекты на мобильном" width="49.5%" />
 
 Полная route-галерея (включая login/register и issue detail) — в [docs/screenshots](docs/screenshots).
 

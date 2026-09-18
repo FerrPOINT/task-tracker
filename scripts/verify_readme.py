@@ -42,7 +42,7 @@ def validate(root: Path) -> list[str]:
     if "{{" in text or LOCAL_PATH_RE.search(text):
         findings.append("RMD003: README.md: placeholder or local filesystem path")
 
-    proof = set(re.findall(r"docs/screenshots/([^)]+\.png)", text))
+    proof = set(re.findall(r"docs/screenshots/([^\"')]+\.png)", text))
     for name in sorted(REQUIRED_PROOF - proof):
         findings.append(f"RMD004: README.md: missing proof asset: {name}")
 
