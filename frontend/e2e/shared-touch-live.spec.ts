@@ -73,3 +73,62 @@ test('shared controls stay touch-sized without mobile overflow', async ({ page }
     await page.screenshot({ path: `${screenshotDir}/${key}-375.png`, fullPage: true })
   }
 })
+
+test('Workflow mobile shell keeps touch targets and keyboard focus inside its drawer', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  mkdirSync(screenshotDir, { recursive: true })
+  await page.setViewportSize({ width: 375, height: 812 })
+  const base = 'http://localhost:8812/'
+  const serviceMenu = page.locator('summary[aria-label="Открыть список сервисов платформы"]')
+  await signInAt(page, base, account, serviceMenu)
+  await page.waitForLoadState('load')
+
+  const smallControls = await page
+    .locator('.header button, .header select, .header summary, .header a')
+    .evaluateAll((elements) =>
+      elements
+        .map((element) => {
+          const box = element.getBoundingClientRect()
+          return {
+            name: element.getAttribute('aria-label') ?? element.textContent?.trim(),
+            width: box.width,
+            height: box.height,
+          }
+        })
+        .filter(
+          (control) =>
+            control.width > 0 && control.height > 0 && (control.width < 40 || control.height < 40),
+        ),
+    )
+  expect(smallControls, 'Workflow visible header controls').toEqual([])
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    ),
+  ).toBeLessThanOrEqual(1)
+
+  const sidebar = page.locator('#sidebar')
+  const burger = page.getByRole('button', { name: 'Открыть навигацию' })
+  await expect(sidebar).toHaveAttribute('inert')
+  await burger.click()
+  await expect(burger).toHaveAttribute('aria-expanded', 'true')
+  await expect(sidebar).not.toHaveAttribute('inert')
+  await expect(page.getByRole('button', { name: 'Закрыть навигацию' })).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await page.keyboard.press('Shift+Tab')
+  expect(
+    await page.evaluate(() => document.getElementById('sidebar')?.contains(document.activeElement)),
+  ).toBe(true)
+  await page.keyboard.press('Escape')
+  await expect(sidebar).toHaveAttribute('inert')
+  await expect(burger).toHaveAttribute('aria-expanded', 'false')
+  await expect(burger).toBeFocused()
+
+  await serviceMenu.click()
+  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveCount(6)
+  await page.keyboard.press('Escape')
+  await expect(serviceMenu).toBeFocused()
+  await page.screenshot({ path: `${screenshotDir}/workflow-375.png`, fullPage: true })
+})
