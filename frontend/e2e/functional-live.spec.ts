@@ -148,6 +148,8 @@ test('Wiki publishes and revises a page', async ({ page, request }) => {
     })
     expect(republished.ok(), await republished.text()).toBeTruthy()
     await enter(page, 'http://localhost:7732/spaces')
+    await page.getByRole('searchbox', { name: 'Найти пространство' }).fill(key)
+    await page.getByRole('button', { name: new RegExp(`QA ${key}`) }).click()
     await page.getByRole('link', { name: `QA ${key} revised` }).click()
     await expect(page.getByRole('heading', { name: 'Revised QA content' })).toBeVisible()
   } finally {
