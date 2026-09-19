@@ -31,7 +31,9 @@ const IssueDetailPage = lazy(() =>
   import('@/pages/issue-detail').then((m) => ({ default: m.IssueDetailPage })),
 )
 const LoginPage = lazy(() => import('@/pages/login').then((m) => ({ default: m.LoginPage })))
-const SsoCallbackPage = lazy(() => import('@/pages/sso-callback').then((m) => ({ default: m.SsoCallbackPage })))
+const SsoCallbackPage = lazy(() =>
+  import('@/pages/sso-callback').then((m) => ({ default: m.SsoCallbackPage })),
+)
 const NotificationsPage = lazy(() =>
   import('@/pages/notifications').then((m) => ({ default: m.NotificationsPage })),
 )

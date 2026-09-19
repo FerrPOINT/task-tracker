@@ -10,7 +10,13 @@ const beginSso = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('@sdlc/ui/sso', () => ({ beginSso }))
 
 function renderLogin(path = '/login') {
-  return render(<ThemeProvider><MemoryRouter initialEntries={[path]}><LoginPage /></MemoryRouter></ThemeProvider>)
+  return render(
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <LoginPage />
+      </MemoryRouter>
+    </ThemeProvider>,
+  )
 }
 
 describe('LoginPage', () => {
@@ -21,9 +27,12 @@ describe('LoginPage', () => {
 
   it('starts the central authorization flow without a local password form', async () => {
     renderLogin()
-    await waitFor(() => expect(beginSso).toHaveBeenCalledWith(
-      expect.objectContaining({ clientId: 'task-tracker' }), '/',
-    ))
+    await waitFor(() =>
+      expect(beginSso).toHaveBeenCalledWith(
+        expect.objectContaining({ clientId: 'task-tracker' }),
+        '/',
+      ),
+    )
     expect(screen.queryByLabelText(/пароль/i)).not.toBeInTheDocument()
     expect(screen.getByText(/второй фактор.*отключён/i)).toBeInTheDocument()
   })

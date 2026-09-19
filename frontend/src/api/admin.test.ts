@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  listAdminAuditLog,
-  listAdminSettings,
-  updateAdminSetting,
-} from './admin'
+import { listAdminAuditLog, listAdminSettings, updateAdminSetting } from './admin'
 
 const GET = vi.hoisted(() => vi.fn())
 const PUT = vi.hoisted(() => vi.fn())
@@ -14,8 +10,9 @@ describe('admin API wrapper', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('uses generated admin paths and unwraps list responses', async () => {
-    GET.mockResolvedValueOnce({ data: { settings: [{ key: 'instance.name' }] } })
-      .mockResolvedValueOnce({ data: { entries: [{ id: 'a1' }] } })
+    GET.mockResolvedValueOnce({
+      data: { settings: [{ key: 'instance.name' }] },
+    }).mockResolvedValueOnce({ data: { entries: [{ id: 'a1' }] } })
 
     await expect(listAdminSettings()).resolves.toEqual([{ key: 'instance.name' }])
     await expect(listAdminAuditLog(25)).resolves.toEqual([{ id: 'a1' }])

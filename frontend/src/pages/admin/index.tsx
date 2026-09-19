@@ -1,11 +1,7 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
-import {
-  useAdminAuditLog,
-  useAdminSettings,
-  useUpdateAdminSetting,
-} from '@/shared/api/hooks'
+import { useAdminAuditLog, useAdminSettings, useUpdateAdminSetting } from '@/shared/api/hooks'
 import { Button } from '@sdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'

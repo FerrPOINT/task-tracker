@@ -58,7 +58,9 @@ describe('AdminPage', () => {
       screen.getByRole('heading', { name: /администрирование|administration/i }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('tab', { name: /пользователи|users/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /создать пользователя|create user/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /создать пользователя|create user/i }),
+    ).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: /настройки инстанса|instance settings/i }))
     expect(screen.getByText('instance.name')).toBeInTheDocument()
@@ -83,5 +85,4 @@ describe('AdminPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/корректный json|valid json/i)
     expect(mutate).not.toHaveBeenCalled()
   })
-
 })

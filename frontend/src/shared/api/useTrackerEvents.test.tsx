@@ -35,9 +35,12 @@ describe('useTrackerEvents', () => {
         <Subscriber />
       </QueryClientProvider>,
     )
-    expect(connectAuthenticatedEventStream).toHaveBeenCalledWith(expect.objectContaining({
-      url: '/api/v1/events', token: 'test.token+/=',
-    }))
+    expect(connectAuthenticatedEventStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/api/v1/events',
+        token: 'test.token+/=',
+      }),
+    )
   })
 
   it('invalidates worklogs and issue detail when a worklog SSE event arrives', () => {

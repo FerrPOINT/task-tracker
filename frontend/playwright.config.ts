@@ -7,9 +7,17 @@ const useExternalServer = Boolean(process.env.PLAYWRIGHT_BASE_URL)
 
 export default defineConfig({
   testDir: 'e2e',
-  testMatch: process.env.SDLC_LIVE_QA === '1' && process.env.SDLC_LEGACY_QA !== '1'
-    ? ['**/sso-live.spec.ts', '**/functional-live.spec.ts', '**/visual-live.spec.ts', '**/pat-live.spec.ts', '**/admin-live.spec.ts', '**/frontend-p1-fixes-live.spec.ts']
-    : '**/*.spec.ts',
+  testMatch:
+    process.env.SDLC_LIVE_QA === '1' && process.env.SDLC_LEGACY_QA !== '1'
+      ? [
+          '**/sso-live.spec.ts',
+          '**/functional-live.spec.ts',
+          '**/visual-live.spec.ts',
+          '**/pat-live.spec.ts',
+          '**/admin-live.spec.ts',
+          '**/frontend-p1-fixes-live.spec.ts',
+        ]
+      : '**/*.spec.ts',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
