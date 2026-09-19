@@ -1,9 +1,10 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 export async function signInAt(
   page: Page,
   url: string,
   account: { email: string; password: string },
+  ready?: Locator,
 ) {
   test.setTimeout(Math.max(test.info().timeout, 150_000))
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -22,7 +23,9 @@ export async function signInAt(
       continue
     }
     expect(response.status(), 'Central Auth browser login').toBeLessThan(400)
-    await expect(page.getByRole('button', { name: 'Открыть список сервисов' })).toBeVisible({
+    await expect(
+      ready ?? page.getByRole('button', { name: 'Открыть список сервисов' }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     return
