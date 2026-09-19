@@ -13,6 +13,7 @@ export default defineConfig({
           '**/sso-live.spec.ts',
           '**/functional-live.spec.ts',
           '**/visual-live.spec.ts',
+          '**/task-pages-live.spec.ts',
           '**/pat-live.spec.ts',
           '**/admin-live.spec.ts',
           '**/frontend-p1-fixes-live.spec.ts',
