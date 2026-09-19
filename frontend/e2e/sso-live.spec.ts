@@ -238,16 +238,24 @@ test('managed user receives a one-use setup link and loses access when disabled'
   const { access_token: operatorToken } = (await operator.json()) as { access_token: string }
   const operatorHeaders = { Authorization: `Bearer ${operatorToken}` }
 
-  await page.getByRole('button', { name: 'Добавить' }).first().click()
-  const dialog = page.getByRole('dialog')
-  await dialog.getByLabel('Email').fill(email)
-  await dialog.getByLabel('Имя').fill('QA SSO User')
-  await dialog.getByRole('button', { name: 'Добавить' }).click()
-  await expect(page.getByText(email, { exact: false })).toBeVisible()
   let disabled = false
   try {
+    await page.getByRole('button', { name: 'Добавить' }).first().click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Email').fill(email)
+    await dialog.getByLabel('Имя').fill('QA SSO User')
+    await dialog.getByRole('button', { name: 'Добавить' }).click()
+    await expect(dialog).toBeHidden()
+    const filtered = page.waitForResponse((response) =>
+      response.url().includes(`/api/v1/users?q=${encodeURIComponent(email)}`),
+    )
+    const search = page.getByPlaceholder('Имя или email')
+    await search.fill(email)
+    await expect(search).toHaveValue(email)
+    expect((await filtered).ok()).toBeTruthy()
+    await expect(page.getByText(email, { exact: false })).toBeVisible()
     await page.getByRole('link', { name: 'Аудит' }).click()
-    await expect(page.getByText('central_user.created').first()).toBeVisible()
+    await expect(page.getByText('Добавлен пользователь').first()).toBeVisible()
     const profileRequest = page.waitForRequest(
       (req) => req.url().includes('/api/v1/users/me') && Boolean(req.headers().authorization),
     )
