@@ -7,6 +7,11 @@
 ## [Unreleased]
 
 ### Added
+- Live E2E-покрытие: Workflow- и CI/CD-страницы по темам и viewport (#58, #59); SSO-тест синхронизирован с Admin UI (#60).
+- Root AGENTS.md и SECURITY.md (стандарты Base); из индекса удалён артефакт аудита review-findings.md.
+### Fixed
+- Usability борда и уведомлений (#61).
+### Added
 - OIDC SSO (SYSTEM_ADMIN 4.2): single provider, authorization code + PKCE S256, single-use state/nonce, JIT-provisioning, identity linking (миграция 0032: `oidc_identities`, `oidc_state`).
 - Password reset по email (SYSTEM_ADMIN §1.2): одноразовые SHA-256-hashed токены (TTL 30 мин), no-enumeration 202, атомарное потребление + отзыв refresh-сессий; `POST /auth/password/{request,reset}`; миграция m31 `password_reset_token`; env `TASKTRACKER_RESET_BASE_URL`.
 - TOTP MFA (SECURITY.md §2): зашифрованные AES-256-GCM RFC 6238 секреты, replay protection, 8 одноразовых recovery-кодов; challenge при логине (`totp_code`), self-service энроллмент `POST /api/v1/auth/totp/{setup,enable,disable}`.
