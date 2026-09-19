@@ -86,7 +86,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
           {issueLabels.map((l) => (
             <span
               key={l.id}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+              className="inline-flex min-h-10 items-center gap-1 rounded-full pl-3 pr-0 text-xs font-medium"
               style={{ backgroundColor: l.color, color: labelForeground(l.color) }}
               data-testid="issue-label"
             >
@@ -97,7 +97,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
                 onClick={() =>
                   detach.mutate(l.id, { onError: (error) => toast.error(error.message) })
                 }
-                className="rounded-full p-0.5 hover:bg-black/20"
+                className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-full hover:bg-black/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
               >
                 <X className="h-3 w-3" aria-hidden />
               </button>
@@ -115,8 +115,9 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             <Input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
+              aria-label={t('labels.nameLabel')}
               placeholder={t('labels.namePlaceholder')}
-              className="h-8 text-xs"
+              className="min-h-10 min-w-0 flex-1 text-xs"
               data-testid="label-name-input"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -128,7 +129,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             <Button
               type="button"
               size="sm"
-              className="h-8"
+              className="min-h-10"
               disabled={create.isPending || attach.isPending}
               onClick={() => void onCreate()}
             >
@@ -152,7 +153,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
                 onClick={() =>
                   attach.mutate(l.id, { onError: (error) => toast.error(error.message) })
                 }
-                className="rounded-full px-2 py-0.5 text-xs font-medium transition hover:brightness-110"
+                className="min-h-10 rounded-full px-3 text-xs font-medium transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-current"
                 style={{ backgroundColor: l.color, color: labelForeground(l.color) }}
               >
                 + {l.name}
@@ -162,7 +163,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             type="button"
             variant="ghost"
             size="sm"
-            className="h-7 px-2 text-xs"
+            className="min-h-10 px-2 text-xs"
             onClick={() => setCreating(true)}
             aria-label={t('labels.create')}
           >

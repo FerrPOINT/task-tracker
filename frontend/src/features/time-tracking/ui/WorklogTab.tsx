@@ -44,10 +44,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
 
   return (
     <div className="space-y-4">
-      <div
-        className="hidden overflow-x-auto rounded-md border border-border md:block"
-        data-testid="worklog-table"
-      >
+      <div className="hidden rounded-md border border-border 2xl:block" data-testid="worklog-table">
         <Table className="min-w-[720px]">
           <TableHeader>
             <TableRow>
@@ -89,7 +86,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8"
+                        className="h-10 w-10"
                         onClick={() => onEdit(w)}
                         aria-label={t('timeTracking.editWorklog')}
                       >
@@ -98,7 +95,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-danger hover:opacity-80"
+                        className="h-10 w-10 text-danger hover:opacity-80"
                         onClick={() => setDeletingId(w.id)}
                         aria-label={t('timeTracking.deleteWorklog')}
                       >
@@ -123,18 +120,20 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
         onConfirm={() => void confirmDelete()}
       />
 
-      <div className="space-y-3 md:hidden">
+      <div className="space-y-3 2xl:hidden">
         {worklogs.map((w) => (
           <Card key={w.id}>
             <CardContent className="space-y-2 p-3">
               <div className="flex items-start justify-between gap-3">
-                <div className="font-medium text-text-primary">{w.userDisplayName}</div>
+                <div className="min-w-0 break-words font-medium text-text-primary">
+                  {w.userDisplayName}
+                </div>
                 {w.userId === currentUserId && (
                   <div className="flex items-center gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8"
+                      className="h-10 w-10"
                       onClick={() => onEdit(w)}
                       aria-label={t('timeTracking.editWorklog')}
                     >
@@ -143,7 +142,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 text-danger hover:opacity-80"
+                      className="h-10 w-10 text-danger hover:opacity-80"
                       onClick={() => setDeletingId(w.id)}
                       aria-label={t('timeTracking.deleteWorklog')}
                     >
@@ -164,7 +163,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
                 {w.comment && (
                   <>
                     <span className="text-text-muted">{t('timeTracking.worklog.comment')}</span>
-                    <span className="text-text-primary">{w.comment}</span>
+                    <span className="min-w-0 break-words text-text-primary">{w.comment}</span>
                   </>
                 )}
               </div>

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { Buffer } from 'node:buffer'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import { signInAt } from './qa-login'
@@ -97,6 +98,157 @@ test('Task Tracker creates and edits a project, issue, sprint and report', async
       headers,
     })
     expect(closed.ok(), await closed.text()).toBeTruthy()
+  } finally {
+    if (created) {
+      const removed = await request.delete(`${api}/projects/${key}`, { headers })
+      expect(removed.ok(), await removed.text()).toBeTruthy()
+    }
+  }
+})
+
+test('Task Tracker manages issue labels, links, attachments and worklogs', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(120_000)
+  const headers = await centralHeaders(request)
+  const api = 'http://localhost:7721/api/v1'
+  const key = `Q${Date.now().toString(36).slice(-7).toUpperCase()}`
+  const name = `QA ${account.runId} detail ${key}`
+  let created = false
+  try {
+    const project = await request.post(`${api}/projects`, {
+      headers,
+      data: { key, name, description: 'QA issue detail smoke' },
+    })
+    expect(project.ok(), await project.text()).toBeTruthy()
+    created = true
+
+    const issues = [] as { id: string; key: string }[]
+    for (const summary of [`${name} source`, `${name} target`]) {
+      const response = await request.post(`${api}/issues`, {
+        headers,
+        data: { project_key: key, issue_type: 'Task', summary, priority: 'Medium' },
+      })
+      expect(response.ok(), await response.text()).toBeTruthy()
+      issues.push((await response.json()) as { id: string; key: string })
+    }
+    const [source, target] = issues
+    expect(source).toBeDefined()
+    expect(target).toBeDefined()
+
+    await enter(page, `http://localhost:7722/issues/${source!.id}`)
+    await expect(page.getByRole('heading', { name: `${name} source` })).toBeVisible()
+
+    const labels = page.getByTestId('label-editor')
+    await labels.getByRole('button', { name: 'Новая метка' }).click()
+    await labels.getByRole('textbox', { name: 'Название метки' }).fill(`qa-${account.runId}`)
+    await labels.getByRole('button', { name: 'Добавить' }).click()
+    await expect(labels.getByTestId('issue-label')).toContainText(`qa-${account.runId}`)
+
+    const links = page.getByTestId('link-editor')
+    await links.getByRole('button', { name: 'Добавить связь' }).click()
+    const invalidKey = `${key}-9999`
+    await links.getByRole('textbox', { name: 'Ключ задачи' }).fill(invalidKey)
+    await links.getByTestId('link-submit').click()
+    await expect(links.getByRole('alert')).toContainText(invalidKey)
+    await expect(links.getByRole('textbox', { name: 'Ключ задачи' })).toHaveValue(invalidKey)
+    await links.getByRole('textbox', { name: 'Ключ задачи' }).fill(target!.key)
+    await links.getByTestId('link-submit').click()
+    await expect(links.getByRole('link', { name: target!.key })).toBeVisible()
+
+    await page.getByRole('tab', { name: 'Вложения' }).click()
+    const attachments = page.getByTestId('attachment-panel')
+    const fileA = `qa-${account.runId}-one.txt`
+    const fileB = `qa-${account.runId}-two.txt`
+    await attachments.getByTestId('attachment-input').setInputFiles([
+      { name: fileA, mimeType: 'text/plain', buffer: Buffer.from('QA first attachment') },
+      { name: fileB, mimeType: 'text/plain', buffer: Buffer.from('QA second attachment') },
+    ])
+    await expect(attachments.getByTestId('attachment-row')).toHaveCount(2)
+    const downloadStarted = page.waitForEvent('download')
+    await attachments.getByRole('button', { name: `Скачать ${fileA}` }).click()
+    expect((await downloadStarted).suggestedFilename()).toBe(fileA)
+    await attachments.getByRole('button', { name: `Удалить ${fileA}` }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Подтвердить' }).click()
+    await expect(attachments.getByTestId('attachment-row')).toHaveCount(1)
+
+    await page.getByRole('button', { name: 'Записать время' }).click()
+    const workDialog = page.getByRole('dialog')
+    await workDialog.getByRole('button', { name: 'Запустить таймер' }).click()
+    await expect(workDialog.getByText(/^[1-9]\d*s$/)).toBeVisible({ timeout: 5_000 })
+    await workDialog.getByRole('button', { name: 'Остановить таймер' }).click()
+    await expect(workDialog.getByRole('textbox', { name: 'Затрачено времени' })).not.toBeEmpty()
+    await workDialog.getByRole('textbox', { name: 'Затрачено времени' }).fill('1m')
+    const comment = `QA ${account.runId} worklog`
+    await workDialog.getByRole('textbox', { name: 'Комментарий' }).fill(comment)
+    await workDialog.getByRole('button', { name: 'Сохранить' }).click()
+    await expect(workDialog).toBeHidden()
+    await page.getByRole('tab', { name: 'Журнал работ' }).click()
+    await expect(page.getByText(comment, { exact: true }).filter({ visible: true })).toBeVisible()
+    await expect(page.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 10_000 })
+
+    for (const [width, height] of [
+      [375, 812],
+      [768, 1024],
+      [1280, 800],
+      [1920, 1080],
+      [2560, 1440],
+    ] as const) {
+      await page.setViewportSize({ width, height })
+      await expect(page.getByText(comment, { exact: true }).filter({ visible: true })).toBeVisible()
+      const scroll = await page.evaluate(() => ({
+        width: document.documentElement.clientWidth,
+        content: document.documentElement.scrollWidth,
+      }))
+      expect(scroll.content, `issue detail overflow at ${width}px`).toBeLessThanOrEqual(
+        scroll.width,
+      )
+      for (const [name, button] of [
+        ['label', labels.getByRole('button', { name: `Убрать метку qa-${account.runId}` })],
+        ['link', links.getByRole('button', { name: `Удалить связь с ${target!.key}` })],
+        [
+          'worklog',
+          page.getByRole('button', { name: 'Изменить запись' }).filter({ visible: true }),
+        ],
+      ] as const) {
+        const box = await button.boundingBox()
+        expect(box?.width, `${name} touch width at ${width}px`).toBeGreaterThanOrEqual(40)
+        expect(box?.height, `${name} touch height at ${width}px`).toBeGreaterThanOrEqual(40)
+      }
+      if (width === 375 || width === 1920 || width === 2560) {
+        await page.screenshot({
+          path: testInfo.outputPath(`issue-detail-${width}.png`),
+          fullPage: true,
+        })
+      }
+    }
+
+    await page.getByRole('button', { name: 'Изменить запись' }).filter({ visible: true }).click()
+    const editDialog = page.getByRole('dialog')
+    const revisedComment = `${comment} revised`
+    await editDialog.getByRole('textbox', { name: 'Комментарий' }).fill(revisedComment)
+    await editDialog.getByRole('button', { name: 'Сохранить' }).click()
+    await expect(editDialog).toBeHidden()
+    await expect(
+      page.getByText(revisedComment, { exact: true }).filter({ visible: true }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: 'Удалить запись' }).filter({ visible: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Подтвердить' }).click()
+    await expect(page.getByText('Пока нет записей.')).toBeVisible()
+
+    await page.getByRole('tab', { name: 'Комментарии' }).click()
+    const commentBody = `QA ${account.runId} comment`
+    await page.getByRole('textbox', { name: 'Комментарий' }).fill(commentBody)
+    await page.getByRole('button', { name: 'Добавить комментарий' }).click()
+    await expect(page.getByText(commentBody, { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Изменить', exact: true }).last().click()
+    await page.getByRole('textbox', { name: 'Комментарий' }).fill(`${commentBody} revised`)
+    await page.getByRole('button', { name: 'Сохранить' }).click()
+    await expect(page.getByText(`${commentBody} revised`, { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Удалить', exact: true }).click()
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Подтвердить' }).click()
+    await expect(page.getByText('Пока нет комментариев.')).toBeVisible()
   } finally {
     if (created) {
       const removed = await request.delete(`${api}/projects/${key}`, { headers })

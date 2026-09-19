@@ -334,6 +334,7 @@
     "none": "No labels",
     "create": "New label",
     "add": "Add",
+    "nameLabel": "Label name",
     "namePlaceholder": "Label name",
     "detach": "Remove label {{name}}"
   },
@@ -355,6 +356,7 @@
     "title": "Links",
     "none": "No links",
     "add": "Add link",
+    "targetKey": "Issue key",
     "typeLabel": "Link type",
     "notFound": "Issue {{key}} not found",
     "delete": "Remove link to {{key}}",
