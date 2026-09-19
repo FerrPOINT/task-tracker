@@ -138,14 +138,16 @@ describe('NotificationsPage', () => {
     mockHooks()
     useNotifications.mockReturnValue({
       data: {
-        notifications: [{
-          id: 'notification-3',
-          title: 'Build completed',
-          body: null,
-          is_read: false,
-          action_url: null,
-          created_at: '2026-08-24T11:00:00Z',
-        }],
+        notifications: [
+          {
+            id: 'notification-3',
+            title: 'Build completed',
+            body: null,
+            is_read: false,
+            action_url: null,
+            created_at: '2026-08-24T11:00:00Z',
+          },
+        ],
         unread_count: 1,
       },
       isLoading: false,

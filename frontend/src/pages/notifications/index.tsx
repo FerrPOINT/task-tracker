@@ -88,7 +88,12 @@ export function NotificationsPage() {
     error: notificationsError,
     refetch: refetchNotifications,
   } = useNotifications({ includeRead: true, limit: 50 })
-  const { data: settings, isLoading: settingsLoading, error: settingsError, refetch: refetchSettings } = useNotificationSettings()
+  const {
+    data: settings,
+    isLoading: settingsLoading,
+    error: settingsError,
+    refetch: refetchSettings,
+  } = useNotificationSettings()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
   const updateSettings = useUpdateNotificationSettings()
