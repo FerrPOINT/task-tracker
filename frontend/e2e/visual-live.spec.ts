@@ -33,9 +33,20 @@ const apps = [
 test('real pages fit four viewports in three themes without serious accessibility errors', async ({
   page,
 }) => {
-  test.setTimeout(240_000)
+  test.setTimeout(360_000)
   mkdirSync(screenshotDir, { recursive: true })
   await signInAt(page, 'http://localhost:7772/users', account)
+  const runtimeErrors: string[] = []
+  page.on('pageerror', (error) => runtimeErrors.push(`page: ${error.message}`))
+  page.on('console', (message) => {
+    if (message.type() === 'error') runtimeErrors.push(`console: ${message.text()}`)
+  })
+  page.on('requestfailed', (request) => {
+    const reason = request.failure()?.errorText ?? 'unknown'
+    if (!reason.includes('ERR_ABORTED')) {
+      runtimeErrors.push(`request: ${request.method()} ${request.url()} (${reason})`)
+    }
+  })
 
   for (const app of apps) {
     await page.goto(app.url)
@@ -80,21 +91,56 @@ test('real pages fit four viewports in three themes without serious accessibilit
             { message: `${app.key} ${theme} ${width}px overflow` },
           )
           .toBeLessThanOrEqual(1)
+        const nestedScrollers = await page.evaluate(() =>
+          [...document.querySelectorAll<HTMLElement>('*')]
+            .filter((element) => {
+              if (element === document.body || element === document.documentElement) return false
+              if (!element.getClientRects().length) return false
+              const style = getComputedStyle(element)
+              const scrollsX =
+                /^(auto|scroll)$/.test(style.overflowX) &&
+                element.scrollWidth > element.clientWidth + 1
+              const scrollsY =
+                /^(auto|scroll)$/.test(style.overflowY) &&
+                element.scrollHeight > element.clientHeight + 1
+              return scrollsX || scrollsY
+            })
+            .map(
+              (element) =>
+                `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''}.${[
+                  ...element.classList,
+                ]
+                  .slice(0, 3)
+                  .join('.')}`,
+            ),
+        )
+        expect(nestedScrollers, `${app.key} ${theme} ${width}px nested scrollers`).toEqual([])
+        if (app.key === 'fleet' && theme === 'dark' && width === 375) {
+          const section = page.getByRole('combobox', { name: 'Fleet section' })
+          await section.selectOption('/settings')
+          await expect(page).toHaveURL('http://localhost:7742/settings')
+          await section.selectOption('/agents')
+          await expect(page).toHaveURL(app.url)
+        }
         await page.screenshot({
           path: `${screenshotDir}/sso-${app.key}-${theme}-${width}.png`,
           fullPage: true,
           animations: 'disabled',
         })
-        if ((theme === 'dark' && width === 375) || (theme === 'light' && width === 1280)) {
-          const result = await new AxeBuilder({ page }).analyze()
-          expect(
-            result.violations.filter(
-              (issue) => issue.impact === 'serious' || issue.impact === 'critical',
-            ),
-            `${app.key} ${theme} ${width}px`,
-          ).toEqual([])
-        }
+        const result = await new AxeBuilder({ page }).analyze()
+        expect(
+          result.violations
+            .filter((issue) => issue.impact === 'serious' || issue.impact === 'critical')
+            .map((issue) => ({
+              id: issue.id,
+              impact: issue.impact,
+              count: issue.nodes.length,
+              targets: issue.nodes.slice(0, 5).map((node) => node.target),
+            })),
+          `${app.key} ${theme} ${width}px`,
+        ).toEqual([])
       }
     }
   }
+  expect(runtimeErrors, 'Console, page and network errors').toEqual([])
 })
