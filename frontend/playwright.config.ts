@@ -14,6 +14,7 @@ export default defineConfig({
           '**/functional-live.spec.ts',
           '**/visual-live.spec.ts',
           '**/task-pages-live.spec.ts',
+          '**/wiki-pages-live.spec.ts',
           '**/pat-live.spec.ts',
           '**/admin-live.spec.ts',
           '**/frontend-p1-fixes-live.spec.ts',
