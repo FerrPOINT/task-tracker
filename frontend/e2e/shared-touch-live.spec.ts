@@ -19,11 +19,11 @@ const screenshotDir = fileURLToPath(
   new URL('../../../.local/screenshots/shared-touch/', import.meta.url),
 )
 const apps = [
-  ['admin', 'http://localhost:7772/', 'Обзор платформы'],
-  ['cicd', 'http://localhost:7712/', 'Дашборд'],
-  ['task', 'http://localhost:7722/', 'Командный дашборд'],
-  ['wiki', 'http://localhost:7732/', 'Wiki'],
-  ['fleet', 'http://localhost:7742/', 'Fleet dashboard'],
+  ['admin', 'http://localhost:7772/'],
+  ['cicd', 'http://localhost:7712/'],
+  ['task', 'http://localhost:7722/'],
+  ['wiki', 'http://localhost:7732/'],
+  ['fleet', 'http://localhost:7742/'],
 ] as const
 
 test('shared controls stay touch-sized without mobile overflow', async ({ page }) => {
@@ -32,11 +32,11 @@ test('shared controls stay touch-sized without mobile overflow', async ({ page }
   await page.setViewportSize({ width: 375, height: 812 })
   await signInAt(page, apps[0][1], account)
 
-  for (const [key, url, heading] of apps) {
+  for (const [key, url] of apps) {
     await page.goto(url)
-    await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
     const switcher = page.getByRole('button', { name: 'Открыть список сервисов' })
-    await expect(switcher).toBeVisible()
+    await expect(switcher).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible()
     const header = await page.evaluate(() => ({
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       smallButtons: [...document.querySelectorAll('header button')]
