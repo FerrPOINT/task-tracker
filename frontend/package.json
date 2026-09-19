@@ -44,7 +44,7 @@
     "react-dom": "^19.1.0",
     "react-hook-form": "^7.55.0",
     "react-i18next": "^15.5.0",
-    "react-router": "^8.1.0",
+    "react-router": "^8.4.0",
     "recharts": "^2.15.0",
     "sonner": "^2.0.3",
     "tailwind-merge": "^3.2.0",
@@ -74,7 +74,20 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.31.1",
     "vite": "^6.2.0",
-    "vitest": "^4.1.10",
+    "vitest": "^4.1.11",
     "yaml": "^2.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "tmp": "0.2.7",
+      "js-yaml@^3": "3.15.2",
+      "postcss": "8.5.23",
+      "js-yaml": "4.3.2",
+      "brace-expansion@^1": "1.1.18",
+      "brace-expansion@^2": "2.1.4",
+      "brace-expansion@^5": "5.0.9",
+      "nanoid": "3.3.18",
+      "browserslist": "4.28.7"
+    }
   }
 }
