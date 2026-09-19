@@ -13,6 +13,7 @@ import { Button } from '@sdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
+import { Check } from 'lucide-react'
 
 const NOTIFICATION_EVENTS = [
   ['issue_assigned', 'Назначение задачи'],
@@ -34,16 +35,17 @@ const NotificationCard = memo(function NotificationCard({
   notification: NotificationItem
   onMarkRead: (id: string) => void
 }) {
+  const { t } = useTranslation()
   const handleClick = () => {
     if (!notification.is_read) onMarkRead(notification.id)
   }
   return (
     <Card className={!notification.is_read ? 'border-l-4 border-l-accent' : undefined}>
-      <CardContent className="p-4">
+      <CardContent className="flex items-start gap-3 p-3">
         {notification.action_url ? (
           <Link
             to={notification.action_url}
-            className="block hover:text-accent"
+            className="block min-w-0 flex-1 py-1 hover:text-accent"
             onClick={handleClick}
           >
             <h2 className="font-semibold">{notification.title}</h2>
@@ -52,12 +54,25 @@ const NotificationCard = memo(function NotificationCard({
             )}
           </Link>
         ) : (
-          <div onClick={handleClick} className="block">
+          <div className="min-w-0 flex-1 py-1">
             <h2 className="font-semibold">{notification.title}</h2>
             {notification.body && (
               <p className="mt-1 text-sm text-text-secondary">{notification.body}</p>
             )}
           </div>
+        )}
+        {!notification.is_read && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 shrink-0"
+            aria-label={`${t('notifications.markRead')}: ${notification.title}`}
+            title={t('notifications.markRead')}
+            onClick={() => onMarkRead(notification.id)}
+          >
+            <Check className="h-4 w-4" />
+          </Button>
         )}
       </CardContent>
     </Card>
@@ -73,7 +88,12 @@ export function NotificationsPage() {
     error: notificationsError,
     refetch: refetchNotifications,
   } = useNotifications({ includeRead: true, limit: 50 })
-  const { data: settings, isLoading: settingsLoading } = useNotificationSettings()
+  const {
+    data: settings,
+    isLoading: settingsLoading,
+    error: settingsError,
+    refetch: refetchSettings,
+  } = useNotificationSettings()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
   const updateSettings = useUpdateNotificationSettings()
@@ -84,12 +104,7 @@ export function NotificationsPage() {
   const unreadCount = notificationList?.unread_count ?? 0
 
   function updatePreference(input: Partial<UpdateNotificationSettingsInput>) {
-    const current: UpdateNotificationSettingsInput = settings ?? {
-      email_frequency: 'immediate',
-      disabled_event_types: [],
-      notify_own_changes: false,
-    }
-    updateSettings.mutate({ ...current, ...input })
+    if (settings) updateSettings.mutate({ ...settings, ...input })
   }
 
   function toggleEvent(eventType: string, enabled: boolean) {
@@ -109,6 +124,7 @@ export function NotificationsPage() {
         <Button
           variant="outline"
           size="sm"
+          className="min-h-10"
           onClick={() => markAllNotificationsRead.mutate()}
           disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
         >
@@ -165,6 +181,8 @@ export function NotificationsPage() {
           <CardContent className="space-y-5">
             {settingsLoading ? (
               <p className="text-sm text-text-muted">{t('notifications.loading')}</p>
+            ) : settingsError || !settings ? (
+              <ErrorState message={t('common.error')} onRetry={() => void refetchSettings()} />
             ) : (
               <>
                 <div aria-live="polite" className="min-h-5 text-xs">
@@ -182,7 +200,7 @@ export function NotificationsPage() {
                   <Label htmlFor="notification-frequency">{t('notifications.frequency')}</Label>
                   <select
                     id="notification-frequency"
-                    className="flex h-9 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary"
+                    className="flex min-h-10 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary"
                     value={settings?.email_frequency ?? 'immediate'}
                     onChange={(event) =>
                       updatePreference({
@@ -197,7 +215,7 @@ export function NotificationsPage() {
                     <option value="never">{t('notifications.frequencyNone')}</option>
                   </select>
                 </div>
-                <div className="flex items-start gap-2">
+                <div className="flex min-h-10 items-center gap-2">
                   <input
                     id="notify-own-changes"
                     type="checkbox"
@@ -217,7 +235,7 @@ export function NotificationsPage() {
                   {NOTIFICATION_EVENTS.map(([eventType, label]) => (
                     <label
                       key={eventType}
-                      className="flex items-center gap-2 text-sm text-text-secondary"
+                      className="flex min-h-10 cursor-pointer items-center gap-2 text-sm text-text-secondary"
                     >
                       <input
                         type="checkbox"

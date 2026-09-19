@@ -132,4 +132,48 @@ describe('NotificationsPage', () => {
     expect(screen.queryByText('Issue updated')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /повторить|retry/i })).toBeInTheDocument()
   })
+
+  it('provides an explicit mark-read action for a notification without a link', () => {
+    const markRead = vi.fn()
+    mockHooks()
+    useNotifications.mockReturnValue({
+      data: {
+        notifications: [
+          {
+            id: 'notification-3',
+            title: 'Build completed',
+            body: null,
+            is_read: false,
+            action_url: null,
+            created_at: '2026-08-24T11:00:00Z',
+          },
+        ],
+        unread_count: 1,
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    useMarkNotificationRead.mockReturnValue({ mutate: markRead })
+
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: /Build completed/i }))
+    expect(markRead).toHaveBeenCalledWith('notification-3')
+  })
+
+  it('does not expose default preferences when settings fail to load', () => {
+    mockHooks()
+    const retry = vi.fn()
+    useNotificationSettings.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('network error'),
+      refetch: retry,
+    })
+
+    renderPage()
+    expect(screen.queryByLabelText(/email frequency|частота email/i)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
 })
