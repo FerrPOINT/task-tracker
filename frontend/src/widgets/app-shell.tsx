@@ -112,6 +112,7 @@ export function AppShell() {
   const notifications = notificationList?.notifications ?? []
   const unreadCount = notificationList?.unread_count ?? 0
   const currentProject = projects.find((project) => project.key === projectKey)
+  const isWideWorkspace = location.pathname.endsWith('/board') || location.pathname === '/reports'
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
@@ -432,7 +433,7 @@ export function AppShell() {
         )}
 
         <main className="min-w-0 flex-1 p-4 md:p-6">
-          <div className="mx-auto w-full max-w-7xl">
+          <div className={`mx-auto w-full ${isWideWorkspace ? 'max-w-none' : 'max-w-7xl'}`}>
             <Outlet />
           </div>
         </main>

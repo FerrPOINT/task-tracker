@@ -90,7 +90,7 @@ function IssueCard({
               type="button"
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className="h-10 w-10 shrink-0"
               aria-label={`Изменить статус ${issue.key}`}
               disabled={isMoving}
             >
@@ -314,7 +314,7 @@ export function ProjectBoardPage() {
               <Link
                 to="/issues/create"
                 state={{ project_key: key }}
-                className="m-2 block rounded-md border border-dashed border-border-strong py-1.5 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary"
+                className="m-2 flex min-h-10 items-center justify-center rounded-md border border-dashed border-border-strong px-2 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary"
               >
                 + {t('board.create')}
               </Link>
