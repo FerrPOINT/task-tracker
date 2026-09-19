@@ -200,6 +200,50 @@ struct UserRepo {
 
 #[async_trait]
 impl UserRepository for UserRepo {
+    async fn find_or_create_central_user(
+        &self,
+        sub: &str,
+        email: &str,
+        display_name: &str,
+    ) -> Result<User, AppError> {
+        if sub.trim().is_empty() || email.trim().is_empty() {
+            return Err(AppError::Unauthorized);
+        }
+        let id = uuid::Uuid::new_v4();
+        self.db
+            .as_ref()
+            .execute(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "INSERT INTO users (id, email, username, display_name, password_hash, central_sub, \
+               is_system_admin, is_active, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, '!', $5, true, true, now(), now()) \
+             ON CONFLICT (central_sub) WHERE central_sub IS NOT NULL DO NOTHING",
+                [
+                    id.into(),
+                    email.trim().to_lowercase().into(),
+                    format!("central-{}", id.simple()).into(),
+                    display_name.trim().into(),
+                    sub.trim().into(),
+                ],
+            ))
+            .await
+            .map_err(AppError::database)?;
+        self.db.as_ref().execute(sea_orm::Statement::from_sql_and_values(
+            sea_orm::DatabaseBackend::Postgres,
+            "UPDATE users SET is_system_admin = true WHERE central_sub = $1 AND NOT is_system_admin",
+            [sub.trim().into()],
+        )).await.map_err(AppError::database)?;
+        let model = user::Entity::find()
+            .filter(user::Column::CentralSub.eq(sub.trim()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .ok_or(AppError::Unauthorized)?;
+        if !model.is_active {
+            return Err(AppError::Unauthorized);
+        }
+        Ok(map_user(model))
+    }
     async fn rotate_refresh_token(
         &self,
         user_id: UserId,
@@ -262,6 +306,7 @@ impl UserRepository for UserRepo {
     async fn get_by_email(&self, email: &str) -> Result<User, AppError> {
         let model = user::Entity::find()
             .filter(user::Column::Email.eq(email))
+            .filter(user::Column::CentralSub.is_null())
             .one(&*self.db)
             .await
             .map_err(AppError::database)?;
@@ -285,6 +330,7 @@ impl UserRepository for UserRepo {
         let active = user::ActiveModel {
             id: Set(user.id.as_uuid()),
             email: Set(user.email.as_ref().to_string()),
+            central_sub: sea_orm::ActiveValue::NotSet,
             username: Set(user.username.as_ref().to_string()),
             display_name: Set(user.display_name.as_ref().to_string()),
             password_hash: Set(user.password_hash.as_ref().to_string()),

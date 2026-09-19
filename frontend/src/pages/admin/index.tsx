@@ -1,50 +1,16 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
-import {
-  useAdminAuditLog,
-  useAdminSettings,
-  useAdminUsers,
-  useCreateAdminUser,
-  useUpdateAdminSetting,
-  useUpdateAdminUserStatus,
-} from '@/shared/api/hooks'
+import { useAdminAuditLog, useAdminSettings, useUpdateAdminSetting } from '@/shared/api/hooks'
 import { Button } from '@sdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@sdlc/ui/ui'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@sdlc/ui/ui'
 import { Textarea } from '@sdlc/ui/ui'
 import { ErrorState, LoadingState, EmptyState } from '@sdlc/ui/ui'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@sdlc/ui/ui'
-
-type TabValue = 'users' | 'settings' | 'audit'
-
-type CreateUserForm = {
-  email: string
-  username: string
-  display_name: string
-  password: string
-  is_system_admin: boolean
-}
-
-const initialCreateUserForm: CreateUserForm = {
-  email: '',
-  username: '',
-  display_name: '',
-  password: '',
-  is_system_admin: false,
-}
+type TabValue = 'settings' | 'audit'
 
 function formatJson(value: unknown) {
   return JSON.stringify(value, null, 2)
@@ -77,35 +43,15 @@ function QueryState({
 
 export function AdminPage() {
   const { t } = useTranslation()
-  const [tab, setTab] = useState<TabValue>('users')
-  const [createOpen, setCreateOpen] = useState(false)
-  const [createForm, setCreateForm] = useState<CreateUserForm>(initialCreateUserForm)
-  const [statusTarget, setStatusTarget] = useState<{
-    id: string
-    isActive: boolean
-    name: string
-  } | null>(null)
+  const [tab, setTab] = useState<TabValue>('settings')
   const [settingKey, setSettingKey] = useState('')
   const [settingValue, setSettingValue] = useState('null')
   const [settingError, setSettingError] = useState<string | null>(null)
   const [auditLimit, setAuditLimit] = useState(20)
 
-  const users = useAdminUsers()
   const settings = useAdminSettings()
   const auditLog = useAdminAuditLog(auditLimit)
-  const createUser = useCreateAdminUser()
-  const updateStatus = useUpdateAdminUserStatus()
   const updateSetting = useUpdateAdminSetting()
-
-  function submitCreateUser(event: React.FormEvent) {
-    event.preventDefault()
-    createUser.mutate(createForm, {
-      onSuccess: () => {
-        setCreateOpen(false)
-        setCreateForm(initialCreateUserForm)
-      },
-    })
-  }
 
   function submitSetting(event: React.FormEvent) {
     event.preventDefault()
@@ -127,75 +73,9 @@ export function AdminPage() {
 
       <Tabs value={tab} onValueChange={(value) => setTab(value as TabValue)}>
         <TabsList className="h-auto max-w-full flex-wrap justify-start">
-          <TabsTrigger value="users">{t('admin.tabs.users')}</TabsTrigger>
           <TabsTrigger value="settings">{t('admin.tabs.settings')}</TabsTrigger>
           <TabsTrigger value="audit">{t('admin.tabs.audit')}</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="users">
-          <Card>
-            <CardHeader className="flex-row items-center justify-between gap-3">
-              <CardTitle>{t('admin.users.title')}</CardTitle>
-              <Button onClick={() => setCreateOpen(true)}>{t('admin.users.create')}</Button>
-            </CardHeader>
-            <CardContent>
-              <QueryState
-                isLoading={users.isLoading}
-                error={users.error}
-                empty={(users.data?.length ?? 0) === 0}
-              >
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t('admin.users.name')}</TableHead>
-                      <TableHead>{t('admin.users.email')}</TableHead>
-                      <TableHead>{t('admin.users.role')}</TableHead>
-                      <TableHead>{t('admin.users.status')}</TableHead>
-                      <TableHead>{t('admin.users.actions')}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {users.data?.map((user) => (
-                      <TableRow key={user.id}>
-                        <TableCell>
-                          <div className="font-medium">{user.display_name}</div>
-                          <div className="text-xs text-text-muted">{user.username}</div>
-                        </TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>
-                          {user.is_system_admin
-                            ? t('admin.users.systemAdmin')
-                            : t('admin.users.member')}
-                        </TableCell>
-                        <TableCell>
-                          {user.is_active ? t('admin.users.active') : t('admin.users.inactive')}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant={user.is_active ? 'outline' : 'secondary'}
-                            size="sm"
-                            disabled={updateStatus.isPending}
-                            onClick={() =>
-                              setStatusTarget({
-                                id: user.id,
-                                isActive: user.is_active,
-                                name: user.display_name,
-                              })
-                            }
-                          >
-                            {user.is_active
-                              ? t('admin.users.deactivate')
-                              : t('admin.users.activate')}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </QueryState>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         <TabsContent value="settings">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
@@ -337,109 +217,6 @@ export function AdminPage() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('admin.users.create')}</DialogTitle>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={submitCreateUser}>
-            <div className="space-y-1.5">
-              <Label htmlFor="admin-user-email">{t('admin.users.email')}</Label>
-              <Input
-                id="admin-user-email"
-                type="email"
-                value={createForm.email}
-                onChange={(event) => setCreateForm({ ...createForm, email: event.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="admin-user-username">{t('admin.users.username')}</Label>
-              <Input
-                id="admin-user-username"
-                value={createForm.username}
-                onChange={(event) => setCreateForm({ ...createForm, username: event.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="admin-user-display-name">{t('admin.users.displayName')}</Label>
-              <Input
-                id="admin-user-display-name"
-                value={createForm.display_name}
-                onChange={(event) =>
-                  setCreateForm({ ...createForm, display_name: event.target.value })
-                }
-                required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="admin-user-password">{t('admin.users.password')}</Label>
-              <Input
-                id="admin-user-password"
-                type="password"
-                value={createForm.password}
-                onChange={(event) => setCreateForm({ ...createForm, password: event.target.value })}
-                required
-              />
-            </div>
-            <label className="flex items-center gap-2 text-sm text-text-primary">
-              <input
-                type="checkbox"
-                checked={createForm.is_system_admin}
-                onChange={(event) =>
-                  setCreateForm({ ...createForm, is_system_admin: event.target.checked })
-                }
-              />
-              {t('admin.users.systemAdmin')}
-            </label>
-            {createUser.error && (
-              <p role="alert" className="text-sm text-danger">
-                {t('admin.error')}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
-                {t('common.cancel')}
-              </Button>
-              <Button type="submit" disabled={createUser.isPending}>
-                {t('admin.users.create')}
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog
-        open={statusTarget !== null}
-        onOpenChange={(open) => !open && setStatusTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {statusTarget?.isActive
-                ? t('admin.users.deactivateTitle')
-                : t('admin.users.activateTitle')}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t('admin.users.statusDescription', { name: statusTarget?.name })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="flex justify-end gap-2">
-            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (!statusTarget) return
-                updateStatus.mutate({ id: statusTarget.id, is_active: !statusTarget.isActive })
-                setStatusTarget(null)
-              }}
-            >
-              {statusTarget?.isActive ? t('admin.users.deactivate') : t('admin.users.activate')}
-            </AlertDialogAction>
-          </div>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

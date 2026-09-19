@@ -19,22 +19,19 @@
 
 ### 1.2 User Management
 
-- Создание / блокировка / удаление пользователя.
-- Bulk import из CSV.
-- Self-registration (опционально, отключается в настройках).
-- Password reset по email — реализовано: `POST /api/v1/auth/password/request`
-  (202 всегда; письмо с одноразовой ссылкой 30 минут) + `POST /api/v1/auth/password/reset`
-  (token + новый пароль; refresh-сессии отзываются). Базовый URL ссылки —
-  `TASKTRACKER_RESET_BASE_URL` (default `http://localhost:5173`); отправка через
-  SMTP-конфигурацию `email.*` (при `email.enabled=false` письмо не уходит, токен
-  всё равно выпускается — для dev/staging).
-- Change password / email.
-- Two-factor authentication (TOTP) — опционально, self-service: authenticated
-  user starts enrollment via `POST /api/v1/auth/totp/setup`, scans `otpauth_uri`,
-  confirms with `POST /enable` and stores the returned recovery codes offline.
-  `POST /disable` requires a current TOTP or an unused recovery code.
+- Учётными записями, установкой пароля, отключением и восстановлением владеет
+  Central Auth; операции доступны в Admin Panel.
+- Task Tracker читает центральный каталог для назначения исполнителей и создаёт
+  локальный профиль при первом входе или первом назначении.
+- Локальная страница управления пользователями и локальные create/disable API
+  удалены. Self-registration, password login/reset и TOTP отключены при заданном
+  `TT_AUTH__CENTRAL_JWKS_URI`.
+- Email действующей центральной учётки не редактируется в Task Tracker.
 
 ## 2. Groups
+
+Группы ниже являются исторической целевой моделью. В центральном режиме они не
+ограничивают вошедших пользователей и экраны их назначения не показываются.
 
 | Группа | Описание |
 |--------|----------|
@@ -50,6 +47,9 @@
 
 ## 3. Global Permissions
 
+Поля разрешений сохраняются для совместимости legacy-данных. В центральном
+режиме отдельные пользовательские роли не назначаются.
+
 | Permission | Описание |
 |-----------|----------|
 | `system_admin` | Доступ к System Admin |
@@ -64,20 +64,22 @@
 
 ### 4.1 Local Auth
 
-- Argon2id для хеширования паролей.
-- JWT access token (TTL 15 минут).
-- httpOnly refresh cookie (TTL 7 дней).
+- Работает только в legacy-режиме без `TT_AUTH__CENTRAL_JWKS_URI`.
+- При включённом Central Auth локальные register/login/refresh/password/TOTP
+  маршруты fail closed и не используются как fallback.
 
 ### 4.2 OAuth2 / OIDC
 
-Реализовано (single provider, authorization code + PKCE S256):
+Платформенный вход реализован через Central Auth Authorization Code + PKCE:
 
-- Настройка через env: `TASKTRACKER_OIDC_ISSUER_URL` (пусто = SSO выключен), `TASKTRACKER_OIDC_CLIENT_ID`, `TASKTRACKER_OIDC_CLIENT_SECRET`, `TASKTRACKER_OIDC_REDIRECT_URL` (default `http://localhost:7721/api/v1/auth/oidc/callback`).
-- `GET /api/v1/auth/oidc/begin` → 302 на authorization endpoint провайдера (state + nonce + PKCE, single-use state в БД, TTL 10 минут).
-- `GET /api/v1/auth/oidc/callback?state&code` → обмен кода на id_token, проверка nonce; связывание по (provider, sub); существующий локальный email привязывается, иначе JIT-провижининг (неактивный локальный пароль `!`); выдача локальных access/refresh токенов как при обычном логине.
-- Identity-линки хранятся в `oidc_identities` (миграция 0032); states — в `oidc_state`, single-use.
-- Поддерживаются OIDC-совместимые провайдеры: rauthy (стенд), Keycloak, Google, GitHub (OIDC-приложения).
-- SAML 2.0 — опционально, не реализовано (future).
+- UI использует публичный issuer и хранит access token только в памяти;
+  центральная refresh/session cookie остаётся HttpOnly.
+- Backend проверяет подпись, issuer, audience, срок и активность сессии через
+  внутренний адрес Central Auth.
+- Локальный профиль связан с `central_sub`; совпадение email не является
+  доказательством идентичности.
+- Глобальный выход отзывает центральную браузерную сессию во всех приложениях,
+  но не отзывает долгоживущие личные API-токены.
 
 ### 4.3 LDAP / Active Directory
 

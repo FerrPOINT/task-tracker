@@ -3263,6 +3263,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdlc-cli-core"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde_json",
+ "thiserror 2.0.20",
+ "url",
+]
+
+[[package]]
 name = "sdlc-shared"
 version = "0.1.0"
 dependencies = [
@@ -4069,6 +4079,7 @@ dependencies = [
  "anyhow",
  "clap",
  "reqwest",
+ "sdlc-cli-core",
  "serde",
  "serde_json",
  "tokio",

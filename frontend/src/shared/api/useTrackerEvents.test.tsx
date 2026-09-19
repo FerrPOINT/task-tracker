@@ -3,28 +3,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { useTrackerEvents } from './useTrackerEvents'
 import { useAuthStore } from '@/shared/auth/store'
+import { connectAuthenticatedEventStream } from '@sdlc/ui/lib'
 
-let lastUrl = ''
+vi.mock('@sdlc/ui/lib', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@sdlc/ui/lib')>()),
+  connectAuthenticatedEventStream: vi.fn(() => vi.fn()),
+}))
 
-class FakeEventSource {
-  static latest: FakeEventSource | undefined
-  private listeners = new Map<string, (event: MessageEvent) => void>()
-
-  constructor(url: string) {
-    // The stream URL carries the access token; keep it for assertions.
-    lastUrl = url
-    FakeEventSource.latest = this
-  }
-
-  addEventListener(name: string, callback: (event: MessageEvent) => void) {
-    this.listeners.set(name, callback)
-  }
-
-  close() {}
-
-  emit(type: string, payload: object) {
-    this.listeners.get('tracker')?.({ data: JSON.stringify({ type, ...payload }) } as MessageEvent)
-  }
+function emit(type: string, payload: object) {
+  const options = vi.mocked(connectAuthenticatedEventStream).mock.lastCall?.[0]
+  options?.onEvent('tracker', { type, ...payload })
 }
 
 function Subscriber() {
@@ -35,13 +23,11 @@ function Subscriber() {
 describe('useTrackerEvents', () => {
   afterEach(() => {
     useAuthStore.getState().logout()
-    FakeEventSource.latest = undefined
-    lastUrl = ''
+    vi.mocked(connectAuthenticatedEventStream).mockClear()
     vi.unstubAllGlobals()
   })
 
-  it('subscribes with the access token in the stream URL', () => {
-    vi.stubGlobal('EventSource', FakeEventSource)
+  it('subscribes without exposing the access token in the stream URL', () => {
     useAuthStore.setState({ token: 'test.token+/=' })
     const client = new QueryClient()
     render(
@@ -49,11 +35,15 @@ describe('useTrackerEvents', () => {
         <Subscriber />
       </QueryClientProvider>,
     )
-    expect(lastUrl).toBe('/api/v1/events?access_token=test.token%2B%2F%3D')
+    expect(connectAuthenticatedEventStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/api/v1/events',
+        token: 'test.token+/=',
+      }),
+    )
   })
 
   it('invalidates worklogs and issue detail when a worklog SSE event arrives', () => {
-    vi.stubGlobal('EventSource', FakeEventSource)
     useAuthStore.setState({ token: 'test-token' })
     const client = new QueryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
@@ -65,7 +55,7 @@ describe('useTrackerEvents', () => {
     )
 
     act(() => {
-      FakeEventSource.latest?.emit('worklog_logged', { issue_id: 'issue-1', project_key: 'TT' })
+      emit('worklog_logged', { issue_id: 'issue-1', project_key: 'TT' })
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
@@ -79,7 +69,6 @@ describe('useTrackerEvents', () => {
   })
 
   it('invalidates issue collection caches when an issue SSE event arrives', () => {
-    vi.stubGlobal('EventSource', FakeEventSource)
     useAuthStore.setState({ token: 'test-token' })
     const client = new QueryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
@@ -91,7 +80,7 @@ describe('useTrackerEvents', () => {
     )
 
     act(() => {
-      FakeEventSource.latest?.emit('issue_moved', { issue_id: 'issue-1', project_key: 'TT' })
+      emit('issue_moved', { issue_id: 'issue-1', project_key: 'TT' })
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['projects'] })
@@ -110,7 +99,6 @@ describe('useTrackerEvents', () => {
   })
 
   it('invalidates sprint-backed project caches when a sprint SSE event arrives', () => {
-    vi.stubGlobal('EventSource', FakeEventSource)
     useAuthStore.setState({ token: 'test-token' })
     const client = new QueryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
@@ -122,7 +110,7 @@ describe('useTrackerEvents', () => {
     )
 
     act(() => {
-      FakeEventSource.latest?.emit('sprint_changed', { project_key: 'TT' })
+      emit('sprint_changed', { project_key: 'TT' })
     })
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['sprints'] })

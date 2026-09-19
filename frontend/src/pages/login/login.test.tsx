@@ -1,87 +1,46 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
-
+import { ThemeProvider } from '@sdlc/ui/lib'
 import { LoginPage } from './'
 import { useAuthStore } from '@/shared/auth/store'
-import { ThemeProvider } from '@sdlc/ui/lib'
 
-const login = vi.hoisted(() => vi.fn())
-vi.mock('@/api/auth', () => ({ login }))
+const beginSso = vi.hoisted(() => vi.fn(async () => {}))
+vi.mock('@sdlc/ui/sso', () => ({ beginSso }))
 
-function wrapper(children: React.ReactNode) {
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  })
-  return (
+function renderLogin(path = '/login') {
+  return render(
     <ThemeProvider>
-      <QueryClientProvider client={qc}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </QueryClientProvider>
-    </ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <LoginPage />
+      </MemoryRouter>
+    </ThemeProvider>,
   )
 }
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    useAuthStore.setState({
-      token: null,
-      userId: null,
-      email: null,
-      username: null,
-      displayName: null,
-    })
+    beginSso.mockClear()
+    useAuthStore.getState().logout()
   })
 
-  afterEach(() => {
-    vi.restoreAllMocks()
+  it('starts the central authorization flow without a local password form', async () => {
+    renderLogin()
+    await waitFor(() =>
+      expect(beginSso).toHaveBeenCalledWith(
+        expect.objectContaining({ clientId: 'task-tracker' }),
+        '/',
+      ),
+    )
+    expect(screen.queryByLabelText(/пароль/i)).not.toBeInTheDocument()
+    expect(screen.getByText(/второй фактор.*отключён/i)).toBeInTheDocument()
   })
 
-  it('shows a second-factor field when the server answers totp_required', async () => {
-    login.mockResolvedValueOnce({
-      access_token: '',
-      totp_required: true,
-      user_id: 'u1',
-      email: 'demo@example.com',
-    })
-
-    render(wrapper(<LoginPage />))
-    const email = screen.getByLabelText(/email/i) as HTMLInputElement
-    await userEvent.type(email, 'demo@example.com')
-    const password = screen.getByLabelText('Пароль') as HTMLInputElement
-    await userEvent.type(password, 'demo')
-
-    await userEvent.click(screen.getByRole('button', { name: /войти|Log in/i }))
-
-    const code = await screen.findByLabelText(/код|code/i)
-    expect(code).toBeInTheDocument()
-    expect(screen.queryByLabelText(/код|code/i)).toBeInTheDocument()
-  })
-
-  it('renders login form and submits', async () => {
-    login.mockResolvedValueOnce({
-      access_token: 'tok',
-      user_id: 'u1',
-      email: 'demo@example.com',
-    })
-
-    render(wrapper(<LoginPage />))
-    expect(screen.getByRole('heading', { name: /войти|log in/i })).toBeInTheDocument()
-
-    const email = screen.getByLabelText(/email/i) as HTMLInputElement
-    await userEvent.type(email, 'demo@example.com')
-    await userEvent.clear(email)
-    await userEvent.type(email, 'demo@example.com')
-    const password = screen.getByLabelText('Пароль') as HTMLInputElement
-    await userEvent.type(password, 'demo')
-    await userEvent.clear(password)
-    await userEvent.type(password, 'demo')
-
-    const submit = screen.getByRole('button', { name: /войти|Log in/i })
-    await userEvent.click(submit)
-
-    await waitFor(() => expect(login).toHaveBeenCalled())
+  it('does not auto-login after global logout but allows a new explicit login', async () => {
+    renderLogin('/login?logged_out=1')
+    expect(beginSso).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: 'Войти через SDLC' }))
+    expect(beginSso).toHaveBeenCalledTimes(1)
   })
 })

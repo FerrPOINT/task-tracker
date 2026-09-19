@@ -8,6 +8,10 @@ test.skip(
   'Requires the local QA bootstrap and running Compose fleet',
 )
 test.skip(
+  process.env.SDLC_LEGACY_QA !== '1',
+  'Legacy local-password and role-binding QA; central SSO scenarios live in sso-live, functional-live and visual-live',
+)
+test.skip(
   ({ browserName }) => browserName !== 'chromium',
   'Stateful local QA uses a single browser',
 )

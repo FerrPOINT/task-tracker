@@ -1,107 +1,124 @@
-// P1 frontend fixes live verification: sidebar context on issue page, mobile
-// tabs overflow, board single-tree render, DnD workflow gating.
-import { test, expect, type Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { expect, test } from '@playwright/test'
+import { signInAt } from './qa-login'
 
-const BASE = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:19877'
-const API = process.env.VITE_API_BASE_URL ?? 'http://localhost:3456/api/v1'
+test.skip(process.env.SDLC_LIVE_QA !== '1', 'Requires the running local SDLC fleet')
+test.skip(({ browserName }) => browserName !== 'chromium', 'Single browser live smoke')
+test.use({ trace: 'off' })
 
-let lastToken: string | undefined
+const account =
+  process.env.SDLC_LIVE_QA === '1'
+    ? (JSON.parse(
+        readFileSync(
+          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          'utf8',
+        ),
+      ) as {
+        email: string
+        password: string
+        runId: string
+      })
+    : { email: '', password: '', runId: '' }
 
-async function loginToken(page: Page): Promise<string> {
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const res = await page.request.post(`${API}/auth/login`, {
-      data: { email: 'demo@example.com', password: 'demo-password' },
-    })
-    if (res.ok()) return (await res.json()).access_token
-    await page.waitForTimeout(3000)
-  }
-  throw new Error('login kept failing (rate limit?)')
-}
-
-async function cachedToken(page: Page): Promise<string> {
-  lastToken ??= await loginToken(page)
-  return lastToken
-}
-
-async function authedGet(page: Page, url: string) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const token = await cachedToken(page)
-    const res = await page.request.get(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (res.status() !== 401) return res
-    lastToken = undefined
-  }
-  throw new Error('auth kept failing')
-}
-
-async function auth(page: Page) {
-  const token = await cachedToken(page)
-  await page.goto(`${BASE}/login`)
-  await page.evaluate(
-    (t) =>
-      localStorage.setItem(
-        'task-tracker-auth',
-        JSON.stringify({ state: { token: t }, version: 0 }),
-      ),
-    token,
-  )
-}
-
-async function firstIssue(page: Page) {
-  const issues = await authedGet(page, `${API}/search?q=test&limit=1`)
-  expect(issues.ok()).toBeTruthy()
-  return (await issues.json()).issues[0]
-}
-
-test('issue page keeps project context in sidebar (no /projects/TT 404)', async ({ page }) => {
-  await auth(page)
-  const issue = await firstIssue(page)
-  await page.goto(`${BASE}/issues/${issue.id}`)
-  await page.waitForFunction(() => document.body.innerText.length > 50, null, { timeout: 30000 })
-  await page.waitForTimeout(2000)
-  const href = await page.evaluate(() => {
-    const links = [...document.querySelectorAll('a[href*="/backlog"]')]
-    return links[0]?.getAttribute('href') ?? ''
+test('issue context and board remain usable on mobile and desktop', async ({
+  page,
+  request,
+}, testInfo) => {
+  test.setTimeout(180_000)
+  const login = await request.post('http://localhost:7701/auth/login', {
+    data: { email: account.email, password: account.password },
   })
-  expect(href).toContain(`/projects/${issue.project_key}/backlog`)
-  const bad = await page.evaluate(() =>
-    performance
-      .getEntriesByType('resource')
-      .some((r) => r.name.includes('/projects/TT/') && r.name.includes('404')),
-  )
-  expect(bad).toBe(false)
+  expect(login.ok(), await login.text()).toBeTruthy()
+  const { access_token } = (await login.json()) as { access_token: string }
+  const headers = { Authorization: `Bearer ${access_token}` }
+  const api = 'http://localhost:7721/api/v1'
+  const key = `Q${Date.now().toString(36).slice(-7).toUpperCase()}`
+  const name = `QA ${account.runId} issue layout`
+  let created = false
+
+  try {
+    const project = await request.post(`${api}/projects`, {
+      headers,
+      data: { key, name, description: 'QA mobile layout' },
+    })
+    expect(project.ok(), await project.text()).toBeTruthy()
+    created = true
+    const issue = await request.post(`${api}/issues`, {
+      headers,
+      data: {
+        project_key: key,
+        issue_type: 'Task',
+        summary: name,
+        priority: 'Medium',
+      },
+    })
+    expect(issue.ok(), await issue.text()).toBeTruthy()
+    const { id } = (await issue.json()) as { id: string }
+
+    await page.setViewportSize({ width: 375, height: 812 })
+    await signInAt(page, `http://localhost:7722/issues/${id}`, account)
+    await expect(page.getByRole('heading', { name })).toBeVisible()
+    await expect(page.locator(`a[href="/projects/${key}/backlog"]`).first()).toHaveAttribute(
+      'href',
+      `/projects/${key}/backlog`,
+    )
+    const issueOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(issueOverflow).toBeLessThanOrEqual(1)
+    await page.screenshot({ path: testInfo.outputPath('issue-mobile.png'), fullPage: true })
+
+    await page.goto(`http://localhost:7722/projects/${key}/board`)
+    const card = page.locator('article').filter({ hasText: name })
+    await expect(card).toBeVisible()
+    await expect(card).toHaveCount(1)
+    const mobileBoard = await page.evaluate(() => ({
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      height: document.documentElement.scrollHeight,
+    }))
+    expect(mobileBoard.overflow).toBeLessThanOrEqual(1)
+    expect(mobileBoard.height).toBeLessThan(32767)
+
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.reload()
+    await expect(card).toBeVisible()
+    await expect(card).toHaveCount(1)
+    const desktopOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(desktopOverflow).toBeLessThanOrEqual(1)
+
+    await page.goto('http://localhost:7722/admin')
+    await expect(
+      page.getByRole('tab', { name: /настройки инстанса|instance settings/i }),
+    ).toBeVisible()
+    await expect(page.getByRole('tab', { name: /журнал аудита|audit log/i })).toBeVisible()
+    await expect(page.getByRole('tab', { name: /пользователи|users/i })).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: /создать пользователя|create user/i }),
+    ).toHaveCount(0)
+  } finally {
+    if (created) {
+      const removed = await request.delete(`${api}/projects/${key}`, { headers })
+      expect(removed.ok(), await removed.text()).toBeTruthy()
+    }
+  }
 })
 
-test('issue detail does not overflow horizontally at 375px', async ({ page }) => {
-  await auth(page)
-  const issue = await firstIssue(page)
-  await page.setViewportSize({ width: 375, height: 812 })
-  await page.goto(`${BASE}/issues/${issue.id}`)
-  await page.waitForFunction(() => document.body.innerText.length > 50, null, { timeout: 30000 })
-  await page.waitForTimeout(1500)
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  )
-  expect(overflow).toBeLessThanOrEqual(1)
-  await page.screenshot({
-    path: '/root/.hermes/cache/images/issue-mobile-fixed.png',
-    fullPage: true,
-  })
-})
-
-test('board renders a single tree and pages stay under the pixel cap', async ({ page }) => {
-  await auth(page)
-  await page.goto(`${BASE}/projects/DEMO/board`)
-  await page.waitForFunction(
-    () => document.body.innerText.includes('Backlog') || document.body.innerText.includes('Todo'),
-    null,
-    { timeout: 30000 },
-  )
-  await page.waitForTimeout(2000)
-  const stats = await page.evaluate(() => ({
-    cards: document.querySelectorAll('a[href*="/issues/"]').length,
-    height: document.documentElement.scrollHeight,
-  }))
-  expect(stats.height).toBeLessThan(32767)
+test('local Task user and password APIs are closed in SSO mode', async ({ request }) => {
+  const api = 'http://localhost:7721/api/v1'
+  for (const [path, data] of [
+    ['auth/register', { email: 'qa-invalid@example.test', username: 'qa-invalid', password: 'x' }],
+    ['auth/login', { email: 'nobody@example.test', password: 'wrong' }],
+    ['auth/refresh', {}],
+    ['auth/password/request', { email: 'invalid' }],
+    ['auth/password/reset', { token: 'invalid', new_password: 'x' }],
+    ['admin/users', { email: 'qa-invalid@example.test', password: 'x' }],
+  ] as const) {
+    const response = await request.post(`${api}/${path}`, { data })
+    expect(response.status(), path).toBe(404)
+  }
+  const localUsers = await request.get(`${api}/admin/users`)
+  expect(localUsers.status()).toBe(404)
 })

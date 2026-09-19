@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
+import { endSso } from '@sdlc/ui/sso'
 import { listProjects, createProject, updateProject, deleteProject } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
 import { searchIssues, type SearchFilters } from '@/api/search'
-import { login, register, getCurrentUser, listUsers, logout } from '@/api/auth'
+import { login, register, getCurrentUser, listUsers } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
 import {
   updateIssue,
@@ -15,6 +16,7 @@ import {
 } from '@/api/issue'
 import { getDashboard } from '@/api/dashboard'
 import { useAuthStore } from '@/shared/auth/store'
+import { ssoConfig } from '@/shared/auth/store'
 import {
   listProjectMembers,
   addProjectMember,
@@ -75,47 +77,16 @@ import {
   type UpdateNotificationSettingsInput,
 } from '@/api/notifications'
 import {
-  createAdminUser,
   listAdminAuditLog,
   listAdminSettings,
-  listAdminUsers,
   updateAdminSetting,
-  updateAdminUserStatus,
-  type CreateAdminUserInput,
   type UpdateSystemSettingInput,
 } from '@/api/admin'
 
 const adminKeys = {
   all: ['admin'] as const,
-  users: ['admin', 'users'] as const,
   settings: ['admin', 'settings'] as const,
   auditLog: (limit?: number) => ['admin', 'audit-log', limit ?? 100] as const,
-}
-
-export function useAdminUsers() {
-  return useQuery({ queryKey: adminKeys.users, queryFn: listAdminUsers })
-}
-
-export function useCreateAdminUser() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (input: CreateAdminUserInput) => createAdminUser(input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users })
-      qc.invalidateQueries({ queryKey: adminKeys.auditLog() })
-    },
-  })
-}
-
-export function useUpdateAdminUserStatus() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: updateAdminUserStatus,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: adminKeys.users })
-      qc.invalidateQueries({ queryKey: adminKeys.auditLog() })
-    },
-  })
 }
 
 export function useAdminSettings() {
@@ -477,17 +448,12 @@ export function useCurrentUser() {
 export function useLogout() {
   const logoutStore = useAuthStore((s) => s.logout)
   const qc = useQueryClient()
-  const navigate = useNavigate()
   return useMutation({
-    mutationFn: logout,
+    mutationFn: async () => {},
     onSuccess: () => {
       logoutStore()
       qc.clear()
-      navigate('/login')
-    },
-    onError: () => {
-      logoutStore()
-      navigate('/login')
+      endSso(ssoConfig)
     },
   })
 }

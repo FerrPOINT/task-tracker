@@ -44,32 +44,18 @@ mod central_login;
 use central_login::try_central_login;
 
 impl JwtAuthService {
-    /// Finds a local user by the central identity's email; links (creates) a
-    /// shadow account on first login. Central users never have a usable local
-    /// password ("!" hash — local verify always fails).
-    async fn find_or_link_central_user(&self, email: &str) -> Result<User, AppError> {
-        let email = email.trim().to_lowercase();
-        if let Ok(existing) = self.users.get_by_email(&email).await {
-            if !existing.is_active {
-                return Err(AppError::Unauthorized);
-            }
-            return Ok(existing);
-        }
-        let username = email.split('@').next().unwrap_or("central").to_string();
-        let user = User {
-            id: UserId::new(),
-            email: email.into(),
-            username: username.clone().into(),
-            display_name: username.into(),
-            password_hash: "!".into(),
-            refresh_token_hash: None,
-            is_system_admin: false,
-            is_active: true,
-            created_at: shared::now(),
-            updated_at: shared::now(),
-        };
-        let id = self.users.save(&user).await?;
-        self.users.get_by_id(id).await
+    async fn find_or_link_central_user(
+        &self,
+        central: &sdlc_auth_core::AuthContext,
+    ) -> Result<User, AppError> {
+        let email = central.email.as_deref().ok_or(AppError::Unauthorized)?;
+        self.users
+            .find_or_create_central_user(
+                &central.user_id,
+                email,
+                email.split('@').next().unwrap_or(email),
+            )
+            .await
     }
 }
 
@@ -142,10 +128,8 @@ impl crate::context::AuthService for JwtAuthService {
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError> {
         // Central fleet auth first; local password login remains the fallback
         // during the migration window (see central_login module).
-        if let Some(pair) = try_central_login(&cmd.email, &cmd.password).await {
-            // Link the shadow user by verified email so /me and
-            // role checks keep working for central identities.
-            let user = self.find_or_link_central_user(&cmd.email).await?;
+        if let Some((pair, central)) = try_central_login(&cmd.email, &cmd.password).await {
+            let user = self.find_or_link_central_user(&central).await?;
             return Ok(AuthDto {
                 access_token: pair.access_token,
                 refresh_token: pair.refresh_token.unwrap_or_default(),

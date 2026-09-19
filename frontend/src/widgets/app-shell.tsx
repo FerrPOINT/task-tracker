@@ -113,15 +113,12 @@ export function AppShell() {
   const unreadCount = notificationList?.unread_count ?? 0
   const currentProject = projects.find((project) => project.key === projectKey)
 
-  // Admin link is only for system admins (checked via /auth/me).
   const navItems = [
     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
     { to: '/projects', icon: FolderKanban, labelKey: 'navigation.projects' },
     { to: '/search', icon: Search, labelKey: 'navigation.search' },
     { to: '/reports', icon: BarChart3, labelKey: 'navigation.reports' },
-    ...(user?.is_system_admin
-      ? [{ to: '/admin', icon: ShieldCheck, labelKey: 'navigation.admin' }]
-      : []),
+    { to: '/admin', icon: ShieldCheck, labelKey: 'navigation.admin' },
   ]
 
   const projectItems = projectKey
@@ -330,14 +327,12 @@ export function AppShell() {
                 {user?.display_name ?? user?.email ?? 'User'}
               </div>
               <div className="px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
-              {user?.is_system_admin && (
-                <DropdownMenuItem asChild>
-                  <Link to="/admin" className="gap-2 text-text-secondary">
-                    <ShieldCheck className="h-4 w-4" />
-                    <span>{t('navigation.admin')}</span>
-                  </Link>
-                </DropdownMenuItem>
-              )}
+              <DropdownMenuItem asChild>
+                <Link to="/admin" className="gap-2 text-text-secondary">
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>{t('navigation.admin')}</span>
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => logout.mutate()}
                 className="gap-2 text-text-secondary"

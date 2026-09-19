@@ -686,7 +686,8 @@ erDiagram
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username CITEXT UNIQUE NOT NULL,
-    email CITEXT UNIQUE NOT NULL,
+    email CITEXT NOT NULL,
+    central_sub TEXT,
     password_hash TEXT NOT NULL,
     display_name TEXT NOT NULL,
     avatar_url TEXT,
@@ -702,7 +703,11 @@ CREATE TABLE users (
 );
 ```
 
-Индексы: `username`, `email`, `is_active`.
+Индексы: уникальный `username`, `is_active`, уникальный `central_sub` для
+центральных профилей и уникальный `lower(email)` только для legacy-профилей с
+`central_sub IS NULL`. Благодаря частичным индексам исторический и центральный
+профили могут иметь одинаковый email; автоматическое связывание выполняется
+только по `central_sub`.
 
 ### 4.2. user_sessions
 

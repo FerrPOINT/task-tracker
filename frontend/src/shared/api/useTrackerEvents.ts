@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/auth/store'
-import { connectEventStream } from '@sdlc/ui/lib'
+import { connectAuthenticatedEventStream } from '@sdlc/ui/lib'
 
 type TrackerEvent = {
   type: string
@@ -68,9 +68,7 @@ function invalidateSprintEventQueries(qc: ReturnType<typeof useQueryClient>, pro
 
 /**
  * Subscribe to the backend SSE stream (`/api/v1/events`) and invalidate
- * the affected TanStack Query caches. Bearer auth is passed via a short-lived
- * token query param (EventSource cannot set headers); the backend accepts
- * `access_token` query auth for this endpoint.
+ * the affected TanStack Query caches. The token is sent in a header, never in the URL.
  */
 export function useTrackerEvents() {
   const qc = useQueryClient()
@@ -78,10 +76,9 @@ export function useTrackerEvents() {
 
   useEffect(() => {
     if (!token) return
-    // Transport (query-token auth, exponential backoff) comes from the
-    // shared fleet kit; this hook only maps events to cache invalidations.
-    return connectEventStream({
-      url: `/api/v1/events?access_token=${encodeURIComponent(token)}`,
+    return connectAuthenticatedEventStream({
+      url: '/api/v1/events',
+      token,
       eventTypes: ['tracker'],
       onEvent: (_type, payload) => {
         const evt = payload as TrackerEvent

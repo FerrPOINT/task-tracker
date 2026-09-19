@@ -138,134 +138,6 @@
         ]
       }
     },
-    "/api/v1/admin/users": {
-      "get": {
-        "tags": [
-          "admin"
-        ],
-        "operationId": "admin_list_users",
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUserListResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden — system admin required"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      },
-      "post": {
-        "tags": [
-          "admin"
-        ],
-        "operationId": "create_user",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AdminCreateUserRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUserResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden — system admin required"
-          },
-          "409": {
-            "description": "Conflict — email already registered"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/admin/users/{id}/status": {
-      "put": {
-        "tags": [
-          "admin"
-        ],
-        "operationId": "update_user_status",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "User id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateUserStatusRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AdminUserResponse"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden — system admin required"
-          },
-          "409": {
-            "description": "Conflict — cannot deactivate last system admin"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
     "/api/v1/attachments/{id}": {
       "delete": {
         "tags": [
@@ -959,19 +831,8 @@
         "tags": [
           "routes::events"
         ],
-        "description": "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload (type, issue_id, project_key, recipient_id). Clients refetch affected queries. Browser EventSource cannot set headers, so this endpoint accepts an access token in the Authorization header for fetch-based clients or in the `access_token` query parameter.",
+        "description": "Server-Sent Events stream (`text/event-stream`) of tracker invalidation events. Each message is a `tracker` event whose data is a JSON TrackerEventPayload. Clients send Authorization: Bearer and refetch affected queries.",
         "operationId": "events",
-        "parameters": [
-          {
-            "name": "access_token",
-            "in": "query",
-            "description": "Short-lived JWT access token fallback for browser EventSource clients that cannot set Authorization headers.",
-            "required": false,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "SSE stream (text/event-stream) of `tracker` events",
@@ -990,9 +851,6 @@
         "security": [
           {
             "bearer": []
-          },
-          {
-            "events_access_token": []
           }
         ]
       }
@@ -4615,78 +4473,6 @@
           }
         }
       },
-      "AdminCreateUserRequest": {
-        "type": "object",
-        "required": [
-          "email",
-          "username",
-          "display_name",
-          "password"
-        ],
-        "properties": {
-          "display_name": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "is_system_admin": {
-            "type": "boolean"
-          },
-          "password": {
-            "type": "string",
-            "description": "The password is hashed before storage and never returned or logged."
-          },
-          "username": {
-            "type": "string"
-          }
-        }
-      },
-      "AdminUserListResponse": {
-        "type": "object",
-        "required": [
-          "users"
-        ],
-        "properties": {
-          "users": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AdminUserResponse"
-            }
-          }
-        }
-      },
-      "AdminUserResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "email",
-          "username",
-          "display_name",
-          "is_system_admin",
-          "is_active"
-        ],
-        "properties": {
-          "display_name": {
-            "type": "string"
-          },
-          "email": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "is_active": {
-            "type": "boolean"
-          },
-          "is_system_admin": {
-            "type": "boolean"
-          },
-          "username": {
-            "type": "string"
-          }
-        }
-      },
       "AttachLabelRequest": {
         "type": "object",
         "required": [
@@ -6511,17 +6297,6 @@
           "value": {}
         }
       },
-      "UpdateUserStatusRequest": {
-        "type": "object",
-        "required": [
-          "is_active"
-        ],
-        "properties": {
-          "is_active": {
-            "type": "boolean"
-          }
-        }
-      },
       "UpdateWorklogRequest": {
         "type": "object",
         "properties": {
@@ -6892,12 +6667,6 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
-      },
-      "events_access_token": {
-        "type": "apiKey",
-        "in": "query",
-        "name": "access_token",
-        "description": "Short-lived JWT access token accepted only by the SSE events endpoint."
       }
     }
   }

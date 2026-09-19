@@ -6,34 +6,40 @@ Task Tracker — self-hosted приложение с конфиденциаль�
 
 ## 2. Authentication
 
-- Passwords hashed with **argon2id**.
-- JWT access token (15 min) + httpOnly refresh cookie (7 days, rotation).
-- Failed login lockout после 5 попыток на 15 минут.
-- MFA/TOTP — реализовано: RFC 6238 (SHA-1, 6 digits, 30-second step, +/-1 window),
-  replay protection, AES-256-GCM encryption of enrollment secrets and 8 one-time
-  recovery codes. Enrollment requires the authenticated `/auth/totp/setup` then
-  `/enable` flow; users with MFA enabled must include `totp_code` in `/auth/login`.
-- Password reset по email — реализовано: одноразовые токены (256-bit entropy,
-  base64url), в БД хранится только SHA-256 hash, TTL 30 минут, повторный запрос
-  замещает предыдущий токен, отсутствие аккаунта неотличимо от успеха (202 без
-  письма). Сброс пароля атомарно потребляет токен, обновляет argon2id hash и
-  отзывает все refresh-сессии.
-- OIDC SSO — реализовано (single provider, SYSTEM_ADMIN 4.2): authorization code + PKCE S256, server-side single-use state/nonce (TTL 10 мин), связывание по (provider, sub) с уникальным индексом, JIT-провижининг с неработоспособным локальным паролем. Ограничение: id_token принимается из прямого TLS-ответа token endpoint провайдера (валидация подписи JWKS не выполняется в текущем single-provider режиме).
+- В платформенном режиме Central Auth выполняет Authorization Code + PKCE,
+  проверяет одноразовые `state`/`nonce` и владеет браузерной сессией. Task Tracker
+  принимает только подписанный access token с ожидаемыми issuer/audience и
+  проверяет активность центральной сессии.
+- Локальный профиль связывается только по проверенному `sub`. Совпавший email
+  исторического профиля не используется для автоматического связывания.
+- При заданном `TT_AUTH__CENTRAL_JWKS_URI` локальные register/login/refresh,
+  password reset и TOTP routes не монтируются. Недоступность Central Auth даёт
+  явный `503`, а не fallback на локальный пароль.
+- Исторический password/refresh/TOTP код и зашифрованные TOTP secrets сохраняются
+  для совместимости данных, но второй фактор Task Tracker отключён. Пользователь
+  видит предупреждение о снижении защиты на странице входа.
+- В legacy-режиме без Central Auth пароли по-прежнему хешируются Argon2id, а
+  локальные access/refresh, password reset и ранее реализованный TOTP работают по
+  прежним контрактам.
 - SAML/LDAP — не реализовано (future).
 
 ## 3. Authorization
 
-- Role-based access control (RBAC) per project.
-- Issue-level security schemes (future).
-- Permission checks на service layer, повторно — на repository layer.
-- No data returned until permission verified.
+- В центральном режиме любой активный вошедший пользователь имеет доступ ко
+  всем проектам и пользовательским операциям. Исторические локальные роли и
+  memberships сохраняются, но не ограничивают людей.
+- Личные API-токены проверяются Central Auth по audience, сроку, отзыву и scope
+  `task-tracker:read` / `task-tracker:write`.
+- Runner/service/runtime credentials остаются отдельной машинной границей и не
+  получают пользовательские права автоматически.
+- Legacy-режим сохраняет прежний project RBAC.
 
 ## 4. Transport
 
 - HTTPS/TLS everywhere в production.
 - HSTS header.
 - Secure, SameSite=Lax/Strict, httpOnly cookies.
-- No sensitive data в URL query params, кроме короткоживущего `access_token` fallback только для `GET /api/v1/events`, где browser `EventSource` не позволяет задать `Authorization`.
+- Токены не передаются в URL. SSE использует fetch-stream с `Authorization`.
 
 ## 5. Input Validation
 

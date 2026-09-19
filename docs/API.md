@@ -10,7 +10,8 @@ REST API первой версии Task Tracker. Все endpoint возвращ�
 
 - Base URL: `https://{host}:3456/api/v1`
 - Content-Type: `application/json`
-- Auth: JWT access в `Authorization: Bearer <token>`, refresh в `httpOnly` cookie.
+- Auth: Central Auth access token в `Authorization: Bearer <token>`; браузерная
+  refresh/session cookie принадлежит Central Auth и остаётся `httpOnly`.
 - Версионирование: path-based `/api/v1`.
 - Пагинация: `?page=0&size=20&sort=createdAt,desc`
 - Фильтр поиска задач: `?jql=...`
@@ -39,6 +40,11 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 ### Auth
 
+При заданном `TT_AUTH__CENTRAL_JWKS_URI` браузерный вход выполняется напрямую
+через Central Auth Authorization Code + PKCE. Перечисленные ниже локальные
+password/register/refresh endpoints являются legacy-контрактом и в центральном
+режиме не монтируются; локального fallback при ошибке Central Auth нет.
+
 | Метод | Путь | Назначение |
 |---|---|---|
 | POST | `/auth/login` | Вход, выдача access и refresh-cookie |
@@ -51,7 +57,7 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| GET | `/users` |  |
+| GET | `/users` | Активные пользователи центрального каталога; локальный профиль создаётся по `sub` при необходимости |
 | GET | `/users/me` | Текущий пользователь |
 
 ### Projects (CRUD)
@@ -1211,6 +1217,11 @@ Query: `?projectId=uuid`
 
 ### PUT /admin/users/{id}/status
 
+Эти локальные маршруты удалены. Список, создание и отключение пользователей
+выполняются через Admin Panel и Central Auth. Старые клиенты получают `404`;
+локальное создание учёток после миграции недоступно.
+Это намеренное несовместимое изменение при переходе на единый каталог.
+
 ### GET /admin/audit-log
 
 Query: `?actorId=uuid&entityType=issue&from=...&to=...`
@@ -1229,7 +1240,9 @@ Server-Sent Events (SSE) — поток событий реального вре
 
 **Content-Type:** `text/event-stream`
 
-**Auth:** JWT access token в `Authorization: Bearer ...`. Browser `EventSource` не умеет задавать заголовки, поэтому для этого endpoint также принимается `?access_token=`. Query-token разрешён только для `/events`.
+**Auth:** access token в `Authorization: Bearer ...`. Query-параметр
+`?access_token=` не принимается: секрет не должен попадать в URL, историю или логи.
+Browser-клиент использует потоковый `fetch` с заголовком Authorization.
 
 **Подключение:**
 
@@ -1237,13 +1250,6 @@ Server-Sent Events (SSE) — поток событий реального вре
 GET /api/v1/events
 Accept: text/event-stream
 Authorization: Bearer <access_token>
-```
-
-Для browser-клиента:
-
-```
-GET /api/v1/events?access_token=<access_token>
-Accept: text/event-stream
 ```
 
 **Формат сообщений:**
@@ -1277,33 +1283,34 @@ data: {"type":"sprint_changed","project_key":"TT"}
 
 ### Client-Side Handling
 
-- Browser-клиент подключается к `GET /api/v1/events?access_token=<access_token>` через `EventSource`; non-browser клиенты могут использовать `Authorization: Bearer ...`.
+- Browser и non-browser клиенты используют `Authorization: Bearer ...`; browser helper `connectAuthenticatedEventStream` обрабатывает потоковый `fetch` и переподключение.
 - При получении события клиент инвалидирует соответствующие TanStack Query и рефетчит затронутые данные.
 - Keep-alive: сервер отправляет SSE ping-сообщения по умолчанию (Axum `KeepAlive::default()`).
-- При разрыве соединения клиент автоматически переподключается (браузерный `EventSource` API).
+- При разрыве соединения helper автоматически переподключается.
 - Lagged subscribers (при переполнении broadcast-канала) тихо пропускают пропущенные сообщения и рефетчат данные при следующем событии.
 
 ### Пример (JavaScript)
 
 ```javascript
-const es = new EventSource(`/api/v1/events?access_token=${encodeURIComponent(accessToken)}`);
+import { connectAuthenticatedEventStream } from '@sdlc/ui/lib';
 
-es.addEventListener('tracker', (e) => {
-  const event = JSON.parse(e.data);
-
-  if (['issue_created', 'issue_updated', 'issue_deleted', 'issue_moved'].includes(event.type)) {
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
-    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    queryClient.invalidateQueries({ queryKey: ['search'] });
-    queryClient.invalidateQueries({ queryKey: ['project', event.project_key] });
-    queryClient.invalidateQueries({ queryKey: ['backlog', event.project_key] });
-    queryClient.invalidateQueries({ queryKey: ['issue', event.issue_id] });
-  }
+const disconnect = connectAuthenticatedEventStream({
+  url: '/api/v1/events',
+  token: accessToken,
+  eventTypes: ['tracker'],
+  onEvent: (_type, event) => {
+    if (['issue_created', 'issue_updated', 'issue_deleted', 'issue_moved'].includes(event.type)) {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['search'] });
+      queryClient.invalidateQueries({ queryKey: ['project', event.project_key] });
+      queryClient.invalidateQueries({ queryKey: ['backlog', event.project_key] });
+      queryClient.invalidateQueries({ queryKey: ['issue', event.issue_id] });
+    }
+  },
 });
 
-es.onerror = () => {
-  // EventSource автоматически переподключается
-};
+// Вызвать disconnect() при закрытии страницы или компонента.
 ```
 
 ---

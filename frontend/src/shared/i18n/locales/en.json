@@ -390,7 +390,7 @@
   },
   "admin": {
     "title": "Administration",
-    "description": "Manage users, safe instance settings, and audit events.",
+    "description": "Task Tracker settings and audit events. Manage users in Admin Panel.",
     "loading": "Loading administration data...",
     "error": "Unable to load or update administration data.",
     "empty": "No records found.",
