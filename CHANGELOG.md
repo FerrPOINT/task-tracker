@@ -7,6 +7,10 @@
 ## [Unreleased]
 
 ### Added
+- Live visual QA по локализованному флоту (#69), live CI project CRUD + Workflow touch shell (#66).
+### Fixed
+- Issue detail actions touch-sized, live workflows верифицированы (#67); live Wiki space navigation (#65); патч аудита dev-зависимостей frontend (#68).
+### Added
 - Live E2E-покрытие: Workflow- и CI/CD-страницы по темам и viewport (#58, #59); SSO-тест синхронизирован с Admin UI (#60).
 - Root AGENTS.md и SECURITY.md (стандарты Base); из индекса удалён артефакт аудита review-findings.md.
 ### Fixed
