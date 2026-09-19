@@ -240,7 +240,7 @@ task-tracker/
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — deployment.
 - [docs/TESTING.md](docs/TESTING.md) — проверки.
 - [docs/ROADMAP.md](docs/ROADMAP.md) — roadmap.
-- [docs/AGENTS.md](docs/AGENTS.md) — agent instructions.
+- [AGENTS.md](AGENTS.md) — agent instructions.
 
 <a name="license"></a>
 

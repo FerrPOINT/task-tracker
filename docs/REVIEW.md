@@ -100,7 +100,7 @@
 ### Docs
 - Missing referenced docs: JQL.md, WEBSOCKET_EVENTS.md, AUTH_ADVANCED.md
 - DOMAIN_MODEL.md references removed SavedFilter/Dashboard entities
-- No root AGENTS.md (only docs/AGENTS.md)
+- No root AGENTS.md (only AGENTS.md)
 - No CHANGELOG.md (referenced by CONTRIBUTING.md)
 - No CONFIG.md
 - CORS config undocumented

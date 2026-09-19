@@ -252,6 +252,6 @@ Git hooks через `lefthook`:
 ## References
 
 - `README.md`
-- `docs/AGENTS.md`
+- `AGENTS.md`
 - `docs/DEPLOYMENT.md`
 - `docs/TESTING.md`

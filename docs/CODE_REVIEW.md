@@ -115,4 +115,4 @@
 - `docs/FRONTEND_STANDARDS.md` — frontend-соглашения.
 - `docs/SECURITY.md` — security-политики.
 - `docs/CI_CD.md` — pipeline и качество кода.
-- `docs/AGENTS.md` — правила работы для агентов.
+- `AGENTS.md` — правила работы для агентов.

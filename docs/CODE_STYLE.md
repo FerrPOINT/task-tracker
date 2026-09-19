@@ -303,5 +303,5 @@ doc-markdown = true
 ## References
 
 - `docs/ARCHITECTURE.md`
-- `docs/AGENTS.md`
+- `AGENTS.md`
 - `docs/TESTING.md`
