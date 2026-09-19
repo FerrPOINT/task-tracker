@@ -48,8 +48,8 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
               ? t(`links.type.${l.link_type}`)
               : t(`links.typeInverse.${l.link_type}`)
             return (
-              <li key={l.id} className="flex items-center justify-between gap-2 text-sm">
-                <span>
+              <li key={l.id} className="flex min-h-10 items-center justify-between gap-2 text-sm">
+                <span className="min-w-0 break-words">
                   <span className="text-muted-foreground">{label}</span>{' '}
                   <Link
                     to={`/issues/${otherId}`}
@@ -67,7 +67,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
                       onError: (error) => toast.error(error.message),
                     })
                   }
-                  className="rounded p-0.5 text-muted-foreground hover:text-destructive"
+                  className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden />
                 </button>
@@ -83,8 +83,9 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           <Input
             value={targetKey}
             onChange={(e) => setTargetKey(e.target.value)}
+            aria-label={t('links.targetKey')}
             placeholder={currentKey ? `${currentKey.split('-')[0]}-42` : 'TT-42'}
-            className="h-8 w-28 text-xs"
+            className="min-h-10 min-w-0 flex-1 text-xs sm:w-32 sm:flex-none"
             data-testid="link-target-input"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -96,7 +97,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           <select
             value={linkType}
             onChange={(e) => setLinkType(e.target.value as (typeof LINK_TYPES)[number])}
-            className="h-8 rounded-md border border-border bg-background px-2 text-xs"
+            className="min-h-10 rounded-md border border-border bg-background px-2 text-xs"
             aria-label={t('links.typeLabel')}
           >
             {LINK_TYPES.map((lt) => (
@@ -108,7 +109,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           <Button
             type="button"
             size="sm"
-            className="h-8"
+            className="min-h-10"
             onClick={() => void onAdd()}
             disabled={create.isPending || !targetKey.trim()}
             data-testid="link-submit"
@@ -126,7 +127,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           type="button"
           variant="ghost"
           size="sm"
-          className="h-7 px-2 text-xs"
+          className="min-h-10 px-2 text-xs"
           onClick={() => setAdding(true)}
         >
           <Plus className="mr-1 h-3 w-3" aria-hidden />
