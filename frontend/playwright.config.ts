@@ -16,6 +16,7 @@ export default defineConfig({
           '**/task-pages-live.spec.ts',
           '**/wiki-pages-live.spec.ts',
           '**/fleet-pages-live.spec.ts',
+          '**/cicd-pages-live.spec.ts',
           '**/pat-live.spec.ts',
           '**/admin-live.spec.ts',
           '**/frontend-p1-fixes-live.spec.ts',
