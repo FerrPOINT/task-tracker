@@ -4,6 +4,8 @@ import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 import { signInAt } from './qa-login'
 
+type AuditEvent = { action: string; entity_type: string }
+
 test.skip(process.env.SDLC_LIVE_QA !== '1', 'Requires the running local SDLC fleet')
 test.skip(({ browserName }) => browserName !== 'chromium', 'Single browser live smoke')
 test.use({ trace: 'off' })
@@ -139,4 +141,88 @@ test('Admin pages stay usable across themes and viewports', async ({ page, reque
   expect(services.filter((service) => service.ui_url)).toHaveLength(6)
   expect(services.every((service) => service.health === 'healthy')).toBeTruthy()
   expect(runtimeErrors, 'Admin console, page, network and server errors').toEqual([])
+})
+
+test('Admin audit filters and token dialog work against the live API without writes', async ({
+  page,
+}) => {
+  test.setTimeout(150_000)
+  await page.setViewportSize({ width: 375, height: 812 })
+  const auditResponse = (predicate: (url: URL) => boolean) =>
+    page.waitForResponse((response) => {
+      const url = new URL(response.url())
+      return url.pathname === '/api/v1/audit-events' && predicate(url)
+    })
+  const first = auditResponse(() => true)
+  await signInAt(page, 'http://localhost:7772/audit', qaAccount)
+  const firstPage = (await (await first).json()) as { events: AuditEvent[]; total: number }
+  expect(firstPage.total).toBeGreaterThanOrEqual(firstPage.events.length)
+  await expect(
+    page.getByText(`${firstPage.total ? 1 : 0}–${firstPage.events.length} из ${firstPage.total}`),
+  ).toBeVisible()
+
+  const mutations: string[] = []
+  page.on('request', (request) => {
+    if (request.url().startsWith('http://localhost:7771/api/v1/') && request.method() !== 'GET') {
+      mutations.push(`${request.method()} ${new URL(request.url()).pathname}`)
+    }
+  })
+
+  if (firstPage.total > 20) {
+    const second = auditResponse((url) => url.searchParams.get('offset') === '20')
+    await page.getByRole('button', { name: 'Вперёд' }).click()
+    const secondPage = (await (await second).json()) as { events: AuditEvent[]; total: number }
+    await expect(
+      page.getByText(`21–${20 + secondPage.events.length} из ${secondPage.total}`),
+    ).toBeVisible()
+  }
+
+  const users = auditResponse(
+    (url) =>
+      url.searchParams.get('entity_type') === 'central_user' && !url.searchParams.has('action'),
+  )
+  await page.getByRole('combobox', { name: 'Тип сущности' }).selectOption('central_user')
+  const userPage = (await (await users).json()) as { events: AuditEvent[]; total: number }
+  expect(userPage.events.every((event) => event.entity_type === 'central_user')).toBe(true)
+  expect(userPage.total).toBeGreaterThanOrEqual(userPage.events.length)
+
+  const created = auditResponse((url) => url.searchParams.get('action') === 'central_user.created')
+  await page.getByRole('combobox', { name: 'Действие' }).selectOption('central_user.created')
+  const createdPage = (await (await created).json()) as { events: AuditEvent[]; total: number }
+  expect(createdPage.events.every((event) => event.action === 'central_user.created')).toBe(true)
+
+  const requests: string[] = []
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/v1/audit-events') requests.push(request.url())
+  })
+  await page.getByRole('combobox', { name: 'Действие' }).selectOption('custom')
+  await page.getByRole('textbox', { name: 'Точный код действия' }).fill('branding.published')
+  await page.waitForTimeout(150)
+  expect(requests).toEqual([])
+  const exact = auditResponse((url) => url.searchParams.get('action') === 'branding.published')
+  await page.getByRole('button', { name: 'Применить' }).click()
+  const exactPage = (await (await exact).json()) as { events: AuditEvent[]; total: number }
+  expect(exactPage).toMatchObject({ events: [], total: 0 })
+  await expect(page.getByText('0–0 из 0')).toBeVisible()
+
+  await page.goto('http://localhost:7772/tokens')
+  const create = page.getByRole('button', { name: 'Создать', exact: true })
+  await create.click()
+  const dialog = page.getByRole('dialog')
+  const targets = await dialog
+    .locator('fieldset label')
+    .evaluateAll((labels) => labels.map((label) => label.getBoundingClientRect()))
+  expect(targets).toHaveLength(12)
+  expect(targets.every(({ width, height }) => width >= 40 && height >= 40)).toBe(true)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+    )
+    .toBeLessThanOrEqual(1)
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(create).toBeFocused()
+  expect(mutations).toEqual([])
 })
