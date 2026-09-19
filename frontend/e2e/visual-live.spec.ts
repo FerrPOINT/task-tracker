@@ -33,7 +33,7 @@ const apps = [
 test('real pages fit four viewports in three themes without serious accessibility errors', async ({
   page,
 }) => {
-  test.setTimeout(900_000)
+  test.setTimeout(360_000)
   mkdirSync(screenshotDir, { recursive: true })
   await signInAt(page, 'http://localhost:7772/users', account)
   const runtimeErrors: string[] = []
