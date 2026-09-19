@@ -21,6 +21,7 @@ export default defineConfig({
           '**/pat-live.spec.ts',
           '**/admin-live.spec.ts',
           '**/frontend-p1-fixes-live.spec.ts',
+          '**/shared-touch-live.spec.ts',
         ]
       : '**/*.spec.ts',
   fullyParallel: true,
