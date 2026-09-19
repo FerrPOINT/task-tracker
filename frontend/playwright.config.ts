@@ -22,6 +22,7 @@ export default defineConfig({
           '**/admin-live.spec.ts',
           '**/frontend-p1-fixes-live.spec.ts',
           '**/shared-touch-live.spec.ts',
+          '**/dashboard-localization-live.spec.ts',
         ]
       : '**/*.spec.ts',
   fullyParallel: true,
