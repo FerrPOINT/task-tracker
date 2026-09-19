@@ -24,7 +24,20 @@ const getDashboard = vi.hoisted(() =>
   ),
 )
 
-const listProjects = vi.hoisted(() => vi.fn(() => Promise.resolve([])))
+const listProjects = vi.hoisted(() =>
+  vi.fn(() =>
+    Promise.resolve([
+      {
+        id: 'p1',
+        key: 'DEMO',
+        name: 'Demo Project',
+        todo_count: 1,
+        in_progress_count: 2,
+        done_count: 3,
+      },
+    ]),
+  ),
+)
 
 vi.mock('@/api/dashboard', () => ({
   getDashboard,
@@ -51,5 +64,9 @@ describe('DashboardPage', () => {
       expect(screen.getByText(/командный дашборд|team dashboard/i)).toBeInTheDocument(),
     )
     expect(screen.getByText((content) => content.includes('Fix tests'))).toBeInTheDocument()
+    expect(screen.getByText('В работе')).toBeInTheDocument()
+    expect(screen.getByText('К выполнению: 1')).toBeInTheDocument()
+    expect(screen.getByText('В работе: 2')).toBeInTheDocument()
+    expect(screen.getByText('Готово: 3')).toBeInTheDocument()
   })
 })

@@ -4,6 +4,7 @@ import { Button } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
 import { LoadingState } from '@sdlc/ui/ui'
+import { statusLabel } from '@/shared/lib/status-label'
 
 export function DashboardPage() {
   const { t } = useTranslation()
@@ -41,7 +42,7 @@ export function DashboardPage() {
                   {item.key} {item.summary}
                 </span>
                 <span className="shrink-0 self-start rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
-                  {item.status}
+                  {statusLabel(item.status, t)}
                 </span>
               </Link>
             ))}
