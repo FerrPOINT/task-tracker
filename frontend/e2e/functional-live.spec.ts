@@ -182,6 +182,76 @@ test('Wiki user directory is read-only and links to central management', async (
   expect(desktopOverflow).toBeLessThanOrEqual(1)
 })
 
+test('CI/CD creates, edits and removes a QA project in the UI', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const headers = await centralHeaders(request)
+  const api = 'http://localhost:7711/api/v1'
+  const name = `QA ${account.runId} CI ${Date.now()}`
+  const updatedName = `${name} updated`
+  let projectId = ''
+  try {
+    await page.setViewportSize({ width: 375, height: 812 })
+    await enter(page, 'http://localhost:7712/projects')
+    await page.getByRole('button', { name: 'Создать проект' }).click()
+    const createForm = page.getByRole('form', { name: 'Создать проект' })
+    await createForm.getByLabel('Название').fill(name)
+    await createForm.getByLabel('URL репозитория').fill('https://example.test/qa.git')
+    const created = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/v1/projects') && response.request().method() === 'POST',
+    )
+    await createForm.getByRole('button', { name: 'Создать проект' }).click()
+    const createdResponse = await created
+    expect(createdResponse.ok(), await createdResponse.text()).toBeTruthy()
+    projectId = ((await createdResponse.json()) as { id: string }).id
+    await expect(createForm).toBeHidden()
+
+    await page.getByRole('searchbox', { name: 'Найти проект' }).fill(name)
+    await expect(
+      page.getByRole('link', { name: `Открыть пайплайны проекта ${name}` }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: `Действия с проектом ${name}` }).click()
+    await page.getByRole('menuitem', { name: 'Изменить' }).click()
+    const editForm = page.getByRole('form', { name: `Изменить проект ${name}` })
+    await editForm.getByLabel('Название').fill(updatedName)
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/v1/projects/${projectId}`) &&
+        response.request().method() === 'PATCH',
+    )
+    await editForm.getByRole('button', { name: 'Сохранить' }).click()
+    expect((await saved).ok()).toBeTruthy()
+    const stored = await request.get(`${api}/projects/${projectId}`, { headers })
+    expect(stored.ok()).toBeTruthy()
+    expect(((await stored.json()) as { name: string }).name).toBe(updatedName)
+
+    await page.getByRole('searchbox', { name: 'Найти проект' }).fill(updatedName)
+    await page.getByRole('button', { name: `Действия с проектом ${updatedName}` }).click()
+    await page.getByRole('menuitem', { name: 'Удалить' }).click()
+    const dialog = page.getByRole('alertdialog')
+    await expect(dialog).toContainText(updatedName)
+    const removed = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/v1/projects/${projectId}`) &&
+        response.request().method() === 'DELETE',
+    )
+    await dialog.getByRole('button', { name: 'Удалить' }).click()
+    expect((await removed).ok()).toBeTruthy()
+    await expect(dialog).toBeHidden()
+    expect((await request.get(`${api}/projects/${projectId}`, { headers })).status()).toBe(404)
+  } finally {
+    if (projectId) {
+      const existing = await request.get(`${api}/projects/${projectId}`, { headers })
+      if (existing.ok()) {
+        const current = (await existing.json()) as { name: string }
+        expect([name, updatedName]).toContain(current.name)
+        const cleanup = await request.delete(`${api}/projects/${projectId}`, { headers })
+        expect(cleanup.ok(), await cleanup.text()).toBeTruthy()
+      }
+    }
+  }
+})
+
 test('Fleet Control manages a QA agent without starting it', async ({ page, request }) => {
   const headers = await centralHeaders(request)
   const api = 'http://localhost:7741/api/v1'
@@ -221,10 +291,12 @@ test('Fleet Control manages a QA agent without starting it', async ({ page, requ
 test('Fleet user settings are read-only in central mode', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await enter(page, 'http://localhost:7742/settings?tab=users')
-  const manage = page.getByRole('link', { name: 'Manage in Admin Panel' })
+  const manage = page.getByRole('link', { name: /Admin Panel/ })
   await expect(manage).toBeVisible()
   expect(await manage.getAttribute('href')).toMatch(/:7772\/users$/)
-  await expect(page.locator('select[aria-label^="Role for"]')).toHaveCount(0)
+  await expect(
+    page.locator('select[aria-label^="Role for"], select[aria-label^="Роль для"]'),
+  ).toHaveCount(0)
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   )
