@@ -105,10 +105,13 @@ test('real pages fit four viewports in three themes without serious accessibilit
                 element.scrollHeight > element.clientHeight + 1
               return scrollsX || scrollsY
             })
-            .map((element) =>
-              `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''}.${
-                [...element.classList].slice(0, 3).join('.')
-              }`,
+            .map(
+              (element) =>
+                `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ''}.${[
+                  ...element.classList,
+                ]
+                  .slice(0, 3)
+                  .join('.')}`,
             ),
         )
         expect(nestedScrollers, `${app.key} ${theme} ${width}px nested scrollers`).toEqual([])
