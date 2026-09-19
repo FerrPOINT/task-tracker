@@ -255,7 +255,9 @@ test('managed user receives a one-use setup link and loses access when disabled'
     expect((await filtered).ok()).toBeTruthy()
     await expect(page.getByText(email, { exact: false })).toBeVisible()
     await page.getByRole('link', { name: 'Аудит' }).click()
-    await expect(page.getByText('Добавлен пользователь').first()).toBeVisible()
+    await page.getByRole('combobox', { name: 'Тип сущности' }).selectOption('central_user')
+    await page.getByRole('combobox', { name: 'Действие' }).selectOption('central_user.created')
+    await expect(page.locator('summary').getByText('Добавлен пользователь').first()).toBeVisible()
     const profileRequest = page.waitForRequest(
       (req) => req.url().includes('/api/v1/users/me') && Boolean(req.headers().authorization),
     )
