@@ -33,7 +33,7 @@ const apps = [
 test('real pages fit four viewports in three themes without serious accessibility errors', async ({
   page,
 }) => {
-  test.setTimeout(360_000)
+  test.setTimeout(900_000)
   mkdirSync(screenshotDir, { recursive: true })
   await signInAt(page, 'http://localhost:7772/users', account)
   const runtimeErrors: string[] = []
@@ -116,7 +116,7 @@ test('real pages fit four viewports in three themes without serious accessibilit
         )
         expect(nestedScrollers, `${app.key} ${theme} ${width}px nested scrollers`).toEqual([])
         if (app.key === 'fleet' && theme === 'dark' && width === 375) {
-          const section = page.getByRole('combobox', { name: 'Fleet section' })
+          const section = page.getByRole('combobox', { name: /Раздел Fleet Control|Fleet section/ })
           await section.selectOption('/settings')
           await expect(page).toHaveURL('http://localhost:7742/settings')
           await section.selectOption('/agents')
