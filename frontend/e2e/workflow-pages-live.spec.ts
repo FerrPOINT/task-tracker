@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import AxeBuilder from '@axe-core/playwright'
@@ -139,4 +140,78 @@ test('Project Workflow routes remain usable across themes and viewports', async 
   expect.soft(layoutIssues, 'Workflow document overflow and nested scrollers').toEqual([])
   expect.soft(accessibilityIssues, 'Workflow serious/critical accessibility violations').toEqual([])
   expect.soft(runtimeErrors, 'Workflow console, page, network and server errors').toEqual([])
+})
+
+test('Project Workflow creates and edits a QA workflow in the UI', async ({ page }) => {
+  test.setTimeout(150_000)
+  const name = `QA workflow ${randomUUID().slice(0, 8)}`
+  const updatedName = `${name} updated`
+  let workflowId = 0
+  const services = page.locator('summary[aria-label="Открыть список сервисов платформы"]')
+
+  try {
+    await signInAt(page, `${base}/workflows`, account, services)
+    await page.getByRole('button', { name: /Новый воркфлоу/ }).click()
+    await page.getByLabel('Название').fill(name)
+    await page.getByLabel('Описание').fill('Temporary live UI workflow fixture')
+    const created = page.waitForResponse(
+      (response) =>
+        response.url() === `${base}/api/workflows` && response.request().method() === 'POST',
+    )
+    await page.getByRole('button', { name: 'Создать воркфлоу' }).click()
+    const createResponse = await created
+    expect(createResponse.ok()).toBeTruthy()
+    await expect(page).toHaveURL(/\/phases\?workflow_id=\d+$/)
+    workflowId = Number(new URL(page.url()).searchParams.get('workflow_id'))
+    expect(workflowId).toBeGreaterThan(0)
+    await expect(page.getByRole('heading', { name: 'Фазы воркфлоу' })).toBeVisible()
+
+    await page.goto(`${base}/workflows`)
+    const workflow = page.locator('#workflowNav').getByRole('button', { name: new RegExp(name) })
+    await expect(workflow).toBeVisible()
+    await workflow.click()
+    await expect(page.locator('#workflowName')).toHaveValue(name)
+    await page.locator('#workflowName').fill(updatedName)
+    const saved = page.waitForResponse(
+      (response) =>
+        response.url() === `${base}/api/workflows/${workflowId}` &&
+        response.request().method() === 'PUT',
+    )
+    await page.getByRole('button', { name: 'Сохранить', exact: true }).click()
+    expect((await saved).ok()).toBeTruthy()
+    await expect(
+      page.locator('#workflowNav').getByRole('button', { name: new RegExp(updatedName) }),
+    ).toBeVisible()
+    await page.locator('#themeSelector').selectOption('light')
+    await page.reload()
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await expect(page.locator('#themeSelector')).toHaveValue('light')
+    await page
+      .locator('#workflowNav')
+      .getByRole('button', { name: new RegExp(updatedName) })
+      .click()
+    await expect(page.locator('#workflowName')).toHaveValue(updatedName)
+  } finally {
+    if (workflowId) {
+      const login = await page.request.post('http://localhost:7701/auth/login', {
+        data: account,
+      })
+      expect(login.ok(), 'QA cleanup login').toBeTruthy()
+      const { access_token } = (await login.json()) as { access_token: string }
+      const headers = { Authorization: `Bearer ${access_token}` }
+      const listed = await page.request.get(`${base}/api/workflows`, { headers })
+      expect(listed.ok(), 'QA cleanup catalog').toBeTruthy()
+      const { workflows } = (await listed.json()) as {
+        workflows: { id: number; name: string; description: string; namespace_count: number }[]
+      }
+      const fixture = workflows.find((item) => item.id === workflowId)
+      expect(fixture, 'Only delete the exact workflow created by this test').toMatchObject({
+        description: 'Temporary live UI workflow fixture',
+        namespace_count: 0,
+      })
+      expect(fixture?.name === name || fixture?.name === updatedName).toBeTruthy()
+      const removed = await page.request.delete(`${base}/api/workflows/${workflowId}`, { headers })
+      expect(removed.ok(), 'Delete only the workflow created by this test').toBeTruthy()
+    }
+  }
 })
