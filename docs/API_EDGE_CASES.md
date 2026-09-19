@@ -49,9 +49,9 @@
 
 | Scenario | Behavior |
 |----------|----------|
-| Client reconnects | браузерный EventSource reconect; пропущенные события добираются refetch-ом кэша |
+| Client reconnects | потоковый browser helper переподключается; пропущенные события добираются refetch-ом кэша |
 | Server restarts | клиенты переподключаются автоматически |
-| Токен в query (`?access_token=`) | принимается ТОЛЬКО для `/events` (EventSource не умеет заголовки) |
+| Токен в query (`?access_token=`) | отклоняется; токен передаётся только в заголовке Authorization |
 | Idle-соединение | periodic keepalive от сервера |
 
 ## 7. File Upload Edge Cases
