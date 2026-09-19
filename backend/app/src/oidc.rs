@@ -16,9 +16,9 @@ use sha2::{Digest, Sha256};
 
 use crate::context::AuthService;
 use crate::dto::AuthDto;
-use domain::{OidcAuthState, OidcIdentity, OidcRepository, User, UserRepository};
+use domain::{OidcAuthState, OidcIdentity, OidcRepository, UserRepository};
+use shared::AppError;
 use shared::config::AppConfig;
-use shared::{AppError, UserId};
 
 const STATE_TTL_SECONDS: i64 = 600;
 
@@ -34,6 +34,7 @@ pub struct OidcService {
 struct DiscoveryDocument {
     authorization_endpoint: String,
     token_endpoint: String,
+    jwks_uri: String,
 }
 
 impl OidcService {
@@ -115,9 +116,11 @@ impl OidcService {
             return Err(AppError::Unauthorized);
         }
         let discovery = self.discover().await?;
+        let token_endpoint =
+            std::env::var("TT_AUTH__CENTRAL_TOKEN_URL").unwrap_or(discovery.token_endpoint.clone());
         let token_response: serde_json::Value = self
             .http
-            .post(&discovery.token_endpoint)
+            .post(&token_endpoint)
             .form(&[
                 ("grant_type", "authorization_code".to_string()),
                 ("code", code.to_string()),
@@ -137,7 +140,20 @@ impl OidcService {
         let id_token = token_response["id_token"]
             .as_str()
             .ok_or(AppError::Unauthorized)?;
-        let claims = IdTokenClaims::decode_unverified(id_token)?;
+        let jwks_uri = std::env::var("TT_AUTH__CENTRAL_JWKS_URI").unwrap_or(discovery.jwks_uri);
+        let jwks = sdlc_auth_core::JwksCache::connect(jwks_uri)
+            .await
+            .map_err(|_| AppError::Unauthorized)?;
+        let key = jwks
+            .decoding_key(id_token)
+            .map_err(|_| AppError::Unauthorized)?;
+        let algorithm = jwks.algorithm_for(id_token).ok_or(AppError::Unauthorized)?;
+        let mut validation = jsonwebtoken::Validation::new(algorithm);
+        validation.set_issuer(&[self.config.auth.oidc_issuer_url.trim_end_matches('/')]);
+        validation.set_audience(&[self.config.auth.oidc_client_id.as_str()]);
+        let claims = jsonwebtoken::decode::<IdTokenClaims>(id_token, &key, &validation)
+            .map_err(|_| AppError::Unauthorized)?
+            .claims;
         if claims.nonce.as_deref() != Some(auth_state.nonce.as_str()) {
             return Err(AppError::Unauthorized);
         }
@@ -147,29 +163,15 @@ impl OidcService {
             Ok(identity) => self.users.get_by_id(identity.user_id).await?,
             Err(AppError::NotFound(_)) => {
                 let email = claims.email.clone().ok_or(AppError::Unauthorized)?;
-                let user = match self.users.get_by_email(&email).await {
-                    Ok(existing) => existing,
-                    Err(AppError::NotFound(_)) => {
-                        // JIT provisioning: unusable local password marker.
-                        let username = email.split('@').next().unwrap_or("oidc-user").to_string();
-                        let display_name = claims.name.clone().unwrap_or_else(|| username.clone());
-                        User {
-                            id: UserId::new(),
-                            email: email.clone().into(),
-                            username: username.into(),
-                            display_name: display_name.into(),
-                            password_hash: "!".into(),
-                            refresh_token_hash: None,
-                            is_system_admin: false,
-                            is_active: true,
-                            created_at: shared::now(),
-                            updated_at: shared::now(),
-                        }
-                    }
-                    Err(e) => return Err(e),
-                };
-                let saved_id = self.users.save(&user).await?;
-                let saved = self.users.get_by_id(saved_id).await?;
+                let saved = self
+                    .users
+                    .find_or_create_central_user(
+                        &subject,
+                        &email,
+                        claims.name.as_deref().unwrap_or(&email),
+                    )
+                    .await?;
+                let saved_id = saved.id;
                 self.repo
                     .link_identity(&OidcIdentity {
                         id: uuid_v4(),
@@ -209,13 +211,13 @@ impl OidcService {
     }
 }
 
-/// Minimal ID-token claim set. The token is received directly from the
-/// provider token endpoint over TLS in the same request that authenticated
-/// the client — signature validation happens by trusting the direct
-/// TLS-protected token-endpoint response (documented limitation for the
-/// single-provider local deployment; see SECURITY.md).
+/// ID-token claims are accepted only after signature, issuer, audience and
+/// expiry validation; nonce is checked against the consumed login state.
 #[derive(Debug, serde::Deserialize)]
 pub struct IdTokenClaims {
+    pub iss: String,
+    pub aud: String,
+    pub exp: i64,
     #[serde(default, rename = "sub")]
     pub subject: Option<String>,
     #[serde(default)]
@@ -224,14 +226,6 @@ pub struct IdTokenClaims {
     pub name: Option<String>,
     #[serde(default)]
     pub nonce: Option<String>,
-}
-
-impl IdTokenClaims {
-    fn decode_unverified(token: &str) -> Result<Self, AppError> {
-        let payload = token.split('.').nth(1).ok_or(AppError::Unauthorized)?;
-        let bytes = base64_decode_url(payload).ok_or(AppError::Unauthorized)?;
-        serde_json::from_slice(&bytes).map_err(|_| AppError::Unauthorized)
-    }
 }
 
 pub fn provider_key(issuer: &str) -> String {
@@ -248,6 +242,7 @@ fn base64_url(bytes: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
+#[cfg(test)]
 fn base64_decode_url(input: &str) -> Option<Vec<u8>> {
     use base64::Engine;
     base64::engine::general_purpose::URL_SAFE_NO_PAD
@@ -299,22 +294,6 @@ mod tests {
         let bytes = [1u8, 2, 3, 250, 251];
         let encoded = base64_url(&bytes);
         assert_eq!(base64_decode_url(&encoded).unwrap(), bytes);
-    }
-
-    #[test]
-    fn id_token_claims_decode_from_jwt_payload() {
-        let claims = r#"{"sub":"user-1","email":"u@example.test","nonce":"n1"}"#;
-        let payload = base64_url(claims.as_bytes());
-        let token = format!("header.{payload}.signature");
-        let parsed = IdTokenClaims::decode_unverified(&token).unwrap();
-        assert_eq!(parsed.subject.as_deref(), Some("user-1"));
-        assert_eq!(parsed.email.as_deref(), Some("u@example.test"));
-        assert_eq!(parsed.nonce.as_deref(), Some("n1"));
-    }
-
-    #[test]
-    fn id_token_claims_reject_malformed_token() {
-        assert!(IdTokenClaims::decode_unverified("not-a-jwt").is_err());
     }
 
     #[test]

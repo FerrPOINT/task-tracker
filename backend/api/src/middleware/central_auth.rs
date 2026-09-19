@@ -16,6 +16,7 @@ pub enum CentralCheck {
     FallThrough,
     /// Central token, expired.
     Expired,
+    Unavailable,
 }
 
 pub async fn check_token(token: &str) -> CentralCheck {
@@ -24,9 +25,10 @@ pub async fn check_token(token: &str) -> CentralCheck {
         BridgeOutcome::NotOurs | BridgeOutcome::NotConfigured => CentralCheck::FallThrough,
         BridgeOutcome::Expired => CentralCheck::Expired,
         BridgeOutcome::Invalid(reason) => {
-            tracing::debug!(reason, "bearer is not a valid central token; legacy path");
-            CentralCheck::FallThrough
+            tracing::debug!(reason, "central token rejected");
+            CentralCheck::Expired
         }
+        BridgeOutcome::Unavailable => CentralCheck::Unavailable,
     }
 }
 

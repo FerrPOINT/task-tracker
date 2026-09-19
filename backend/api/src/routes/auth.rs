@@ -8,6 +8,13 @@ use crate::dto::{AuthResponse, LoginRequest, RefreshRequest, RegisterRequest};
 use app::auth::UserClaims;
 use app::commands::{LoginCommand, RegisterCommand};
 
+fn require_legacy_password_auth() -> Result<(), AppError> {
+    if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
 #[utoipa::path(
     post,
     path = "/api/v1/auth/register",
@@ -23,6 +30,7 @@ pub async fn register(
     jar: CookieJar,
     Json(body): Json<RegisterRequest>,
 ) -> Result<(StatusCode, CookieJar, Json<AuthResponse>), AppError> {
+    require_legacy_password_auth()?;
     let cmd = RegisterCommand {
         email: body.email,
         username: body.username.clone(),
@@ -49,6 +57,7 @@ pub async fn login(
     jar: CookieJar,
     Json(body): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<AuthResponse>), AppError> {
+    require_legacy_password_auth()?;
     // MFA (docs/SECURITY.md): when TOTP is enabled the password alone is not
     // enough — respond with totp_required instead of tokens.
     let probe = ctx
@@ -92,6 +101,7 @@ pub async fn refresh(
     jar: CookieJar,
     body: Bytes,
 ) -> Result<(CookieJar, Json<AuthResponse>), AppError> {
+    require_legacy_password_auth()?;
     let refresh_token = match jar
         .get(&ctx.config.auth.refresh_cookie_name)
         .map(|c| c.value().to_string())
@@ -354,6 +364,7 @@ pub async fn password_reset_request(
     State(ctx): State<Arc<app::AppContext>>,
     Json(body): Json<PasswordResetRequest>,
 ) -> Result<StatusCode, AppError> {
+    require_legacy_password_auth()?;
     let email = body.email.trim().to_lowercase();
     if !email.contains('@') || email.len() < 5 {
         return Err(AppError::invalid_input("invalid email"));
@@ -377,6 +388,7 @@ pub async fn password_reset_confirm(
     State(ctx): State<Arc<app::AppContext>>,
     Json(body): Json<PasswordResetConfirm>,
 ) -> Result<StatusCode, AppError> {
+    require_legacy_password_auth()?;
     ctx.services
         .auth
         .reset_password(&body.token, &body.new_password)

@@ -12,15 +12,13 @@ cargo install --path cli
 ## Глобальные флаги
 
 ```
---api-url   Базовый URL API (env: TASKTRACKER_API_URL, default: http://localhost:3456/api/v1)
---token     JWT access token (env: TASKTRACKER_TOKEN)
+--api-url   Базовый URL API (env: TASKTRACKER_API_URL, default: http://localhost:7721/api/v1)
+--token     Личный токен Central Auth (env: TASKTRACKER_TOKEN или SDLC_API_TOKEN)
 ```
 
 ## Аутентификация
 
 ```bash
-task-tracker auth login --email user@example.com --password secret
-task-tracker auth logout
 task-tracker auth whoami
 ```
 
@@ -46,7 +44,8 @@ task-tracker issue transition PROJ-1 --to <status-uuid>
 
 ## Примечания
 
-- Токен передаётся через `--token` или переменную `TASKTRACKER_TOKEN`.
+- Личный токен создаётся в Admin Panel и передаётся через `--token`, `TASKTRACKER_TOKEN` или `SDLC_API_TOKEN`. Локального парольного входа CLI больше нет; обычный выход из браузера не отзывает личный токен.
+- HTTP-транспорт предоставляется `sdlc-cli-core` из соседнего `services-base`; удалённые URL требуют HTTPS.
 - Парсинг ключей (`project get PROJ`, `issue get PROJ-1`) происходит на стороне сервера.
 - 12 групп команд полностью реализованы: auth, project, issue, board, sprint, comment, label, search, notification, report, admin, member.
 

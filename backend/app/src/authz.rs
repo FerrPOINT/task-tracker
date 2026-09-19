@@ -41,6 +41,10 @@ impl Authz {
         project_id: ProjectId,
         user: UserId,
     ) -> Result<(), AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            self.projects.get_by_id(project_id).await?;
+            return Ok(());
+        }
         if self.is_owner(project_id, user).await? {
             return Ok(());
         }
@@ -64,6 +68,10 @@ impl Authz {
     ///
     /// Used for project deletion, member management, and settings updates.
     pub async fn require_owner(&self, project_id: ProjectId, user: UserId) -> Result<(), AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            self.projects.get_by_id(project_id).await?;
+            return Ok(());
+        }
         if self.is_owner(project_id, user).await? {
             Ok(())
         } else {
@@ -78,6 +86,19 @@ impl Authz {
     /// Used to scope cross-project queries (global search, dashboard) so they
     /// never return issues from projects the requester has no access to.
     pub async fn accessible_project_ids(&self, user: UserId) -> Result<Vec<ProjectId>, AppError> {
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            return Ok(self
+                .projects
+                .list(domain::ProjectQuery {
+                    owner_id: None,
+                    limit: 0,
+                    offset: 0,
+                })
+                .await?
+                .into_iter()
+                .map(|project| project.id)
+                .collect());
+        }
         let mut seen: std::collections::HashSet<ProjectId> = self
             .projects
             .list(domain::ProjectQuery {

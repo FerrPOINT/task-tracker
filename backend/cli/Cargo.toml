@@ -11,6 +11,7 @@ name = "task-tracker"
 path = "src/main.rs"
 
 [dependencies]
+sdlc-cli-core = { path = "../../../services-base/crates/sdlc-cli-core" }
 clap = { workspace = true, features = ["derive", "env"] }
 reqwest = { workspace = true, features = ["json", "rustls-tls"] }
 serde = { workspace = true }

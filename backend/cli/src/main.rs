@@ -1,8 +1,9 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use reqwest::Client;
+use reqwest::Method;
+use sdlc_cli_core::ApiClient;
 use serde_json::{Value, json};
-use std::process::ExitCode;
+use std::{process::ExitCode, time::Duration};
 
 // ─── Top-level CLI ───────────────────────────────────────────────────
 
@@ -15,11 +16,11 @@ struct Cli {
     #[arg(
         long,
         env = "TASKTRACKER_API_URL",
-        default_value = "http://localhost:3456/api/v1"
+        default_value = "http://localhost:7721/api/v1"
     )]
     api_url: String,
 
-    /// Bearer auth token (or set TASKTRACKER_TOKEN env)
+    /// Bearer token (or set TASKTRACKER_TOKEN / SDLC_API_TOKEN)
     #[arg(long, env = "TASKTRACKER_TOKEN")]
     token: Option<String>,
 
@@ -99,26 +100,6 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum AuthCommands {
-    /// Register a new user
-    Register {
-        #[arg(long)]
-        email: String,
-        #[arg(long)]
-        username: String,
-        #[arg(long)]
-        display_name: String,
-        #[arg(long)]
-        password: String,
-    },
-    /// Login and get access token
-    Login {
-        #[arg(long)]
-        email: String,
-        #[arg(long)]
-        password: String,
-    },
-    /// Logout (invalidates session)
-    Logout,
     /// Show current user info
     Whoami,
 }
@@ -481,25 +462,17 @@ enum MemberCommands {
 // ─── API client ─────────────────────────────────────────────────────
 
 struct Api {
-    client: Client,
-    base: String,
-    token: Option<String>,
+    client: ApiClient,
+    base_has_version: bool,
 }
 
 impl Api {
-    fn new(base: String, token: Option<String>) -> Self {
-        Self {
-            client: Client::new(),
-            base: base.trim_end_matches('/').to_string(),
-            token,
-        }
-    }
-
-    fn auth_header(&self) -> Result<String> {
-        match &self.token {
-            Some(t) => Ok(t.clone()),
-            None => bail!("not authenticated: pass --token or TASKTRACKER_TOKEN"),
-        }
+    fn new(base: String, token: Option<String>) -> Result<Self> {
+        let base_has_version = base.trim_end_matches('/').ends_with("/api/v1");
+        Ok(Self {
+            client: ApiClient::new(&base, token.as_deref(), Duration::from_secs(30))?,
+            base_has_version,
+        })
     }
 
     async fn get(&self, path: &str) -> Result<Value> {
@@ -525,36 +498,17 @@ impl Api {
     async fn request(&self, method: &str, path: &str, payload: Value) -> Result<Value> {
         // Normalize: if base already ends with /api/v1 and path starts with /api/v1,
         // strip the duplicate prefix from the path.
-        let base_trimmed = self.base.trim_end_matches('/');
-        let path = if base_trimmed.ends_with("/api/v1") && path.starts_with("/api/v1") {
+        let path = if self.base_has_version && path.starts_with("/api/v1") {
             &path["/api/v1".len()..]
         } else {
             path
         };
-        let url = format!("{base_trimmed}{path}");
-        let mut req = match method {
-            "GET" => self.client.get(&url),
-            "POST" => self.client.post(&url).json(&payload),
-            "PATCH" => self.client.patch(&url).json(&payload),
-            "PUT" => self.client.put(&url).json(&payload),
-            "DELETE" => self.client.delete(&url),
-            _ => bail!("unsupported method: {method}"),
-        };
-        if !path.ends_with("/auth/register") && !path.ends_with("/auth/login") {
-            req = req.bearer_auth(self.auth_header()?);
+        let method = Method::from_bytes(method.as_bytes())?;
+        let mut req = self.client.request(method.clone(), path)?;
+        if matches!(method, Method::POST | Method::PATCH | Method::PUT) {
+            req = req.json(&payload);
         }
-        let resp = req.send().await?;
-        let status = resp.status();
-        let text = resp.text().await.unwrap_or_default();
-        let body: Value = if text.is_empty() {
-            Value::Null
-        } else {
-            serde_json::from_str(&text).unwrap_or(Value::String(text.clone()))
-        };
-        if !status.is_success() {
-            bail!("API error {status}: {body}");
-        }
-        Ok(body)
+        Ok(self.client.json(req).await?)
     }
 }
 
@@ -656,38 +610,12 @@ fn enc(s: &str) -> String {
 }
 
 async fn run(cli: Cli) -> Result<()> {
-    let api = Api::new(cli.api_url.clone(), cli.token.clone());
+    let api = Api::new(cli.api_url.clone(), cli.token.clone())?;
     let out = cli.output.as_str();
 
     match cli.command {
         // ── Auth ──
         Commands::Auth { command } => match command {
-            AuthCommands::Register {
-                email,
-                username,
-                display_name,
-                password,
-            } => {
-                let body = api.post("/api/v1/auth/register", json!({
-                    "email": email, "username": username, "name": display_name, "password": password
-                })).await?;
-                print_output(out, &body);
-            }
-            AuthCommands::Login { email, password } => {
-                let body = api
-                    .post(
-                        "/api/v1/auth/login",
-                        json!({
-                            "email": email, "password": password
-                        }),
-                    )
-                    .await?;
-                print_output(out, &body);
-            }
-            AuthCommands::Logout => {
-                api.post("/api/v1/auth/logout", json!({})).await?;
-                println!("logged out");
-            }
             AuthCommands::Whoami => {
                 let body = api.get("/api/v1/users/me").await?;
                 print_output(out, &body);

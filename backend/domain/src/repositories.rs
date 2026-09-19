@@ -85,6 +85,14 @@ pub trait OidcRepository: Send + Sync {
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
+    async fn find_or_create_central_user(
+        &self,
+        _sub: &str,
+        _email: &str,
+        _display_name: &str,
+    ) -> Result<User, AppError> {
+        Err(AppError::Unauthorized)
+    }
     async fn get_by_id(&self, id: UserId) -> Result<User, AppError>;
     async fn get_by_email(&self, email: &str) -> Result<User, AppError>;
     async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError>;

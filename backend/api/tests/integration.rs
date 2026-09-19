@@ -2700,7 +2700,7 @@ async fn sse_requires_auth() {
 }
 
 #[tokio::test]
-async fn sse_accepts_query_token() {
+async fn sse_rejects_query_token() {
     let (url, client) = spawn_server().await;
     let token = login_token(&url, &client).await;
 
@@ -2709,15 +2709,7 @@ async fn sse_accepts_query_token() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 200);
-    assert!(
-        res.headers()
-            .get("content-type")
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .starts_with("text/event-stream")
-    );
+    assert_eq!(res.status(), 401);
 }
 
 #[tokio::test]
@@ -6527,8 +6519,13 @@ async fn worklog_create_publishes_sse_event() {
     let issue_id = create_issue_via_api(&url, &client, &token).await;
 
     // Subscribe to the SSE stream first.
-    let stream_url = format!("{url}/api/v1/events?access_token={token}");
-    let mut res = client.get(&stream_url).send().await.unwrap();
+    let stream_url = format!("{url}/api/v1/events");
+    let mut res = client
+        .get(&stream_url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(res.status(), 200);
 
     // Log work against the issue.

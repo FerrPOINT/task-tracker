@@ -10,7 +10,8 @@ REST API первой версии Task Tracker. Все endpoint возвращ�
 
 - Base URL: `https://{host}:3456/api/v1`
 - Content-Type: `application/json`
-- Auth: JWT access в `Authorization: Bearer <token>`, refresh в `httpOnly` cookie.
+- Auth: Central Auth access token в `Authorization: Bearer <token>`; браузерная
+  refresh/session cookie принадлежит Central Auth и остаётся `httpOnly`.
 - Версионирование: path-based `/api/v1`.
 - Пагинация: `?page=0&size=20&sort=createdAt,desc`
 - Фильтр поиска задач: `?jql=...`
@@ -39,6 +40,11 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 ### Auth
 
+При заданном `TT_AUTH__CENTRAL_JWKS_URI` браузерный вход выполняется напрямую
+через Central Auth Authorization Code + PKCE. Перечисленные ниже локальные
+password/register/refresh endpoints являются legacy-контрактом и в центральном
+режиме не монтируются; локального fallback при ошибке Central Auth нет.
+
 | Метод | Путь | Назначение |
 |---|---|---|
 | POST | `/auth/login` | Вход, выдача access и refresh-cookie |
@@ -51,7 +57,7 @@ pnpm generate:api   # writes src/api/generated.ts from openapi/openapi.json
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| GET | `/users` |  |
+| GET | `/users` | Активные пользователи центрального каталога; локальный профиль создаётся по `sub` при необходимости |
 | GET | `/users/me` | Текущий пользователь |
 
 ### Projects (CRUD)

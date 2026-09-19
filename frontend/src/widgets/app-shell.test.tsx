@@ -117,11 +117,11 @@ describe('AppShell notifications', () => {
     )
   })
 
-  it('includes the administration link in the account menu', async () => {
+  it('shows product settings to every signed-in user', async () => {
     const user = userEvent.setup()
     mockHooks([])
     useCurrentUser.mockReturnValue({
-      data: { email: 'admin@example.test', display_name: 'Admin', is_system_admin: true },
+      data: { email: 'member@example.test', display_name: 'Member', is_system_admin: false },
     })
 
     render(

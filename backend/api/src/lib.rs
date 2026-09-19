@@ -17,9 +17,7 @@ use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::openapi::{
     info::License,
     path::Operation,
-    security::{
-        ApiKey, ApiKeyValue, HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme,
-    },
+    security::{HttpAuthScheme, HttpBuilder, SecurityRequirement, SecurityScheme},
 };
 use utoipa::{Modify, OpenApi};
 use utoipa_swagger_ui::SwaggerUi;
@@ -165,9 +163,6 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::reports::get_burndown_report,
         routes::reports::get_cumulative_flow_report,
         routes::reports::get_control_chart_report,
-        routes::admin::list_users,
-        routes::admin::create_user,
-        routes::admin::update_user_status,
         routes::admin::list_audit_logs,
         routes::admin::list_system_settings,
         routes::admin::update_system_setting,
@@ -240,10 +235,6 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::reports::CumulativeFlowPointResponse,
         routes::reports::ControlChartResponse,
         routes::reports::ControlChartPointResponse,
-        routes::admin::AdminUserResponse,
-        routes::admin::AdminUserListResponse,
-        routes::admin::AdminCreateUserRequest,
-        routes::admin::UpdateUserStatusRequest,
         routes::admin::AuditLogResponse,
         routes::admin::AuditLogListResponse,
         routes::admin::SystemSettingResponse,
@@ -295,13 +286,6 @@ impl Modify for SecurityAddon {
                     .build(),
             ),
         );
-        components.add_security_scheme(
-            "events_access_token",
-            SecurityScheme::ApiKey(ApiKey::Query(ApiKeyValue::with_description(
-                "access_token",
-                "Short-lived JWT access token accepted only by the SSE events endpoint.",
-            ))),
-        );
 
         for (path, item) in openapi.paths.paths.iter_mut() {
             let security = match path.as_str() {
@@ -310,7 +294,6 @@ impl Modify for SecurityAddon {
                 | "/api/v1/auth/login"
                 | "/api/v1/auth/register"
                 | "/api/v1/auth/refresh" => None,
-                "/api/v1/events" => Some(events_security()),
                 _ => Some(bearer_security()),
             };
 
@@ -325,13 +308,6 @@ impl Modify for SecurityAddon {
 
 fn bearer_security() -> Vec<SecurityRequirement> {
     vec![SecurityRequirement::new("bearer", Vec::<String>::new())]
-}
-
-fn events_security() -> Vec<SecurityRequirement> {
-    vec![
-        SecurityRequirement::new("bearer", Vec::<String>::new()),
-        SecurityRequirement::new("events_access_token", Vec::<String>::new()),
-    ]
 }
 
 fn apply_security(operation: Option<&mut Operation>, security: Option<Vec<SecurityRequirement>>) {
@@ -389,13 +365,15 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route("/auth/oidc/begin", get(routes::auth::oidc_begin))
         .route("/auth/oidc/callback", get(routes::auth::oidc_callback))
         .layer(GovernorLayer::new(auth_limiter));
+    let auth_routes = if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+        Router::new()
+    } else {
+        auth_routes
+    };
 
     let auth = from_fn_with_state(ctx.clone(), middleware::auth::bearer_auth);
 
     let protected = Router::new()
-        .route("/auth/totp/setup", post(routes::auth::totp_setup))
-        .route("/auth/totp/enable", post(routes::auth::totp_enable))
-        .route("/auth/totp/disable", post(routes::auth::totp_disable))
         .route(
             "/projects",
             get(routes::projects::list_projects).post(routes::projects::create_project),
@@ -582,14 +560,6 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             "/reports/control-chart",
             get(routes::reports::get_control_chart_report),
         )
-        .route(
-            "/admin/users",
-            get(routes::admin::list_users).post(routes::admin::create_user),
-        )
-        .route(
-            "/admin/users/{id}/status",
-            put(routes::admin::update_user_status),
-        )
         .route("/admin/audit-log", get(routes::admin::list_audit_logs))
         .route(
             "/admin/system-settings",
@@ -765,10 +735,7 @@ mod tests {
             .and_then(|operation| operation.security.as_ref())
             .expect("events must be documented");
         let events = serde_json::to_value(events).expect("serialize events security");
-        assert_eq!(
-            events,
-            serde_json::json!([{ "bearer": [] }, { "events_access_token": [] }])
-        );
+        assert_eq!(events, serde_json::json!([{ "bearer": [] }]));
     }
 
     #[test]

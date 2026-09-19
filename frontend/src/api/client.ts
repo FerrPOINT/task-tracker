@@ -6,56 +6,10 @@ export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', 
 
 export const api = createClient<paths>({ baseUrl: apiBaseUrl, credentials: 'include' })
 
-let refreshPromise: Promise<boolean> | null = null
-const retryRequests = new WeakMap<Request, Request>()
-
 export async function refreshAccessToken(): Promise<boolean> {
-  if (refreshPromise) return refreshPromise
-  refreshPromise = (async () => {
-    try {
-      // The HttpOnly refresh cookie is the only refresh credential the
-      // browser holds.
-      const res = await fetch(`${apiBaseUrl}/api/v1/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      })
-      if (!res.ok) {
-        useAuthStore.getState().logout()
-        window.location.href = '/login'
-        return false
-      }
-      const data = (await res.json()) as {
-        access_token?: string
-        user_id?: string
-        email?: string
-        username?: string
-        display_name?: string
-      }
-      if (data.access_token && data.user_id && data.email) {
-        useAuthStore.getState().setAuth({
-          token: data.access_token,
-          userId: data.user_id,
-          email: data.email,
-          username: data.username,
-          displayName: data.display_name,
-        })
-      } else {
-        useAuthStore.getState().logout()
-        window.location.href = '/login'
-        return false
-      }
-      return true
-    } catch {
-      useAuthStore.getState().logout()
-      window.location.href = '/login'
-      return false
-    } finally {
-      refreshPromise = null
-    }
-  })()
-  return refreshPromise
+  useAuthStore.getState().logout()
+  window.location.assign('/login')
+  return false
 }
 
 function shouldIntercept401(req: Request): boolean {
@@ -69,26 +23,13 @@ api.use({
     if (token) {
       request.headers.set('Authorization', `Bearer ${token}`)
     }
-    if (shouldIntercept401(request)) {
-      retryRequests.set(request, request.clone())
-    }
     return request
   },
-  onResponse: async ({ request, response, options }) => {
-    if (response.status !== 401 || !shouldIntercept401(request)) {
-      return response
+  onResponse: ({ request, response }) => {
+    if (response.status === 401 && shouldIntercept401(request)) {
+      void refreshAccessToken()
     }
-    const ok = await refreshAccessToken()
-    if (!ok) return response
-    const token = useAuthStore.getState().token
-    const retryRequest = retryRequests.get(request)
-    retryRequests.delete(request)
-    if (!retryRequest) return response
-    const nextRequest = new Request(retryRequest)
-    if (token) {
-      nextRequest.headers.set('Authorization', `Bearer ${token}`)
-    }
-    return options.fetch(nextRequest)
+    return response
   },
 })
 

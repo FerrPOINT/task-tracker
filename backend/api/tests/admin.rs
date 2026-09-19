@@ -1,10 +1,7 @@
 //! Phase 8: Admin route integration tests.
 //!
-//! These tests exercise the full HTTP stack: middleware auth → service
-//! authorization → business logic → audit logging.  They use the in-memory
-//! repositories for audit logs and system settings so that side-effects can be
-//! verified, and create both an admin and a regular user to verify the
-//! authorization gate.
+//! These tests exercise auth, closed local user-management routes, product
+//! settings, and audit logging through the full HTTP stack.
 
 use std::sync::Arc;
 
@@ -146,7 +143,7 @@ async fn login(url: &str, client: &reqwest::Client, email: &str) -> String {
 async fn admin_endpoints_require_auth() {
     let (url, client, _, _) = spawn_admin_server().await;
     let res = client
-        .get(format!("{url}/api/v1/admin/users"))
+        .get(format!("{url}/api/v1/admin/system-settings"))
         .send()
         .await
         .unwrap();
@@ -154,40 +151,28 @@ async fn admin_endpoints_require_auth() {
 }
 
 #[tokio::test]
-async fn admin_users_list_requires_system_admin() {
+async fn local_admin_users_list_is_closed() {
     let (url, client, admin_token, regular_token) = spawn_admin_server().await;
 
-    // Regular user → 403
     let res = client
         .get(format!("{url}/api/v1/admin/users"))
         .bearer_auth(&regular_token)
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 403);
+    assert_eq!(res.status(), 404);
 
-    // Admin → 200
     let res = client
         .get(format!("{url}/api/v1/admin/users"))
         .bearer_auth(&admin_token)
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 200);
-    let body: serde_json::Value = res.json().await.unwrap();
-    let users = body["users"].as_array().unwrap();
-    assert_eq!(users.len(), 2);
-    // Verify the admin user has is_system_admin=true
-    let admin_entry = users
-        .iter()
-        .find(|u| u["email"] == "admin@example.com")
-        .unwrap();
-    assert_eq!(admin_entry["is_system_admin"], true);
-    assert_eq!(admin_entry["is_active"], true);
+    assert_eq!(res.status(), 404);
 }
 
 #[tokio::test]
-async fn admin_create_user_success() {
+async fn local_admin_create_user_is_closed() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
     let res = client
         .post(format!("{url}/api/v1/admin/users"))
@@ -202,19 +187,11 @@ async fn admin_create_user_success() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 201);
-    let body: serde_json::Value = res.json().await.unwrap();
-    assert_eq!(body["email"], "new@example.com");
-    assert_eq!(body["username"], "newuser");
-    assert_eq!(body["is_active"], true);
-    assert_eq!(body["is_system_admin"], false);
-    // Password must never be in the response.
-    assert!(body.get("password").is_none());
-    assert!(body.get("password_hash").is_none());
+    assert_eq!(res.status(), 404);
 }
 
 #[tokio::test]
-async fn admin_create_user_requires_admin() {
+async fn local_admin_create_user_is_closed_for_all_users() {
     let (url, client, _, regular_token) = spawn_admin_server().await;
     let res = client
         .post(format!("{url}/api/v1/admin/users"))
@@ -229,11 +206,11 @@ async fn admin_create_user_requires_admin() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 403);
+    assert_eq!(res.status(), 404);
 }
 
 #[tokio::test]
-async fn admin_create_user_duplicate_email() {
+async fn local_admin_create_user_cannot_modify_existing_email() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
     let res = client
         .post(format!("{url}/api/v1/admin/users"))
@@ -248,11 +225,11 @@ async fn admin_create_user_duplicate_email() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 409);
+    assert_eq!(res.status(), 404);
 }
 
 #[tokio::test]
-async fn admin_update_user_status_deactivates() {
+async fn local_admin_user_status_is_closed() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
     let res = client
         .put(format!(
@@ -263,13 +240,11 @@ async fn admin_update_user_status_deactivates() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 200);
-    let body: serde_json::Value = res.json().await.unwrap();
-    assert_eq!(body["is_active"], false);
+    assert_eq!(res.status(), 404);
 }
 
 #[tokio::test]
-async fn admin_update_user_status_requires_admin() {
+async fn local_admin_user_status_is_closed_for_all_users() {
     let (url, client, _, regular_token) = spawn_admin_server().await;
     let res = client
         .put(format!(
@@ -280,24 +255,12 @@ async fn admin_update_user_status_requires_admin() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 403);
+    assert_eq!(res.status(), 404);
 }
 
 #[tokio::test]
-async fn admin_update_user_status_prevents_last_admin_deactivation() {
+async fn local_admin_user_status_cannot_modify_historical_admin() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
-    // Deactivate the regular user first (should succeed).
-    let _ = client
-        .put(format!(
-            "{url}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status"
-        ))
-        .bearer_auth(&admin_token)
-        .json(&serde_json::json!({"is_active": false}))
-        .send()
-        .await
-        .unwrap();
-
-    // Now try to deactivate the only admin → should fail.
     let res = client
         .put(format!(
             "{url}/api/v1/admin/users/11111111-1111-1111-1111-111111111111/status"
@@ -307,21 +270,21 @@ async fn admin_update_user_status_prevents_last_admin_deactivation() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 409);
+    assert_eq!(res.status(), 404);
 }
 
 #[tokio::test]
-async fn admin_audit_log_list_requires_admin() {
+async fn admin_audit_log_list_allows_active_users() {
     let (url, client, admin_token, regular_token) = spawn_admin_server().await;
 
-    // Regular user → 403
+    // Human access no longer depends on the historical local role.
     let res = client
         .get(format!("{url}/api/v1/admin/audit-log"))
         .bearer_auth(&regular_token)
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 403);
+    assert_eq!(res.status(), 200);
 
     // Admin → 200
     let res = client
@@ -336,17 +299,16 @@ async fn admin_audit_log_list_requires_admin() {
 }
 
 #[tokio::test]
-async fn admin_system_settings_list_requires_admin() {
+async fn admin_system_settings_list_allows_active_users() {
     let (url, client, admin_token, regular_token) = spawn_admin_server().await;
 
-    // Regular user → 403
     let res = client
         .get(format!("{url}/api/v1/admin/system-settings"))
         .bearer_auth(&regular_token)
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 403);
+    assert_eq!(res.status(), 200);
 
     // Admin → 200
     let res = client
@@ -396,7 +358,7 @@ async fn admin_system_settings_update_rejects_unsafe_key() {
 }
 
 #[tokio::test]
-async fn admin_system_settings_update_requires_admin() {
+async fn admin_system_settings_update_allows_active_users() {
     let (url, client, _, regular_token) = spawn_admin_server().await;
     let res = client
         .put(format!("{url}/api/v1/admin/system-settings"))
@@ -408,7 +370,7 @@ async fn admin_system_settings_update_requires_admin() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), 403);
+    assert_eq!(res.status(), 200);
 }
 
 // audit log pagination must page via offset, not repeat the first page
@@ -416,14 +378,12 @@ async fn admin_system_settings_update_requires_admin() {
 async fn admin_audit_log_pages_with_offset() {
     let (url, client, admin_token, _) = spawn_admin_server().await;
 
-    // Generate audit entries by flipping the regular user's status repeatedly.
-    for _ in 0..4 {
+    // Generate audit entries through a supported product setting.
+    for value in 0..4 {
         let res = client
-            .put(format!(
-                "{url}/api/v1/admin/users/22222222-2222-2222-2222-222222222222/status"
-            ))
+            .put(format!("{url}/api/v1/admin/system-settings"))
             .bearer_auth(&admin_token)
-            .json(&serde_json::json!({"is_active": false}))
+            .json(&serde_json::json!({"key": "instance.name", "value": value}))
             .send()
             .await
             .unwrap();

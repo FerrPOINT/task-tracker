@@ -1,7 +1,7 @@
 //! Phase 8: Admin service implementation.
 //!
-//! All methods enforce system-admin authorization by checking `is_system_admin`
-//! on the requester. Mutations write an [`domain::AuditLog`] entry. System
+//! Legacy user-management methods retain their system-admin check. Product
+//! settings and audit require only an active user. Mutations write an [`domain::AuditLog`] entry. System
 //! setting keys are validated against a safe allowlist and the JSON value size
 //! is capped.
 
@@ -24,12 +24,7 @@ const MAX_SETTING_VALUE_BYTES: usize = 16_384;
 ///
 /// Never include mail credentials, JWT secrets, or database connection strings
 /// — those must be managed via environment variables / config files only.
-const SAFE_SETTING_KEYS: &[&str] = &[
-    "instance.name",
-    "instance.base_url",
-    "limits.max_users",
-    "security.allow_registration",
-];
+const SAFE_SETTING_KEYS: &[&str] = &["instance.name", "instance.base_url", "limits.max_users"];
 
 pub struct AdminServiceImpl {
     users: Arc<dyn UserRepository>,
@@ -50,11 +45,17 @@ impl AdminServiceImpl {
         }
     }
 
-    /// Verify the requester is a system admin; return the loaded user on
-    /// success. This is the single authorization gate for every admin
-    /// operation, making it middleware-safe.
-    async fn require_admin(&self, requester_id: UserId) -> Result<User, AppError> {
+    async fn require_active_user(&self, requester_id: UserId) -> Result<User, AppError> {
         let user = self.users.get_by_id(requester_id).await?;
+        if !user.is_active {
+            return Err(AppError::Forbidden);
+        }
+        Ok(user)
+    }
+
+    /// Legacy user-management service calls are not exposed by the router.
+    async fn require_admin(&self, requester_id: UserId) -> Result<User, AppError> {
+        let user = self.require_active_user(requester_id).await?;
         if !user.is_system_admin {
             return Err(AppError::Forbidden);
         }
@@ -198,7 +199,7 @@ impl AdminService for AdminServiceImpl {
         limit: u64,
         offset: u64,
     ) -> Result<Vec<AuditLogDto>, AppError> {
-        self.require_admin(requester_id).await?;
+        self.require_active_user(requester_id).await?;
         let entries = self.audit_logs.list(None, limit, offset).await?;
         Ok(entries.into_iter().map(AuditLogDto::from).collect())
     }
@@ -207,7 +208,7 @@ impl AdminService for AdminServiceImpl {
         &self,
         requester_id: UserId,
     ) -> Result<Vec<SystemSettingDto>, AppError> {
-        self.require_admin(requester_id).await?;
+        self.require_active_user(requester_id).await?;
         let settings = self.system_settings.list().await?;
         // Filter to only safe keys.
         let filtered: Vec<_> = settings
@@ -224,7 +225,7 @@ impl AdminService for AdminServiceImpl {
         key: String,
         value: serde_json::Value,
     ) -> Result<SystemSettingDto, AppError> {
-        self.require_admin(requester_id).await?;
+        self.require_active_user(requester_id).await?;
 
         // Validate the key is on the safe allowlist.
         if !SAFE_SETTING_KEYS.contains(&key.as_str()) {
@@ -448,13 +449,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_audit_logs_requires_admin() {
+    async fn list_audit_logs_allows_active_user() {
         let users = Arc::new(MemoryUserRepository::default());
         let regular = make_regular_user();
         users.save(&regular).await.unwrap();
         let (service, _, _) = make_service(users);
-        let result = service.list_audit_logs(regular.id, 100, 0).await;
-        assert!(matches!(result, Err(AppError::Forbidden)));
+        let result = service.list_audit_logs(regular.id, 100, 0).await.unwrap();
+        assert!(result.is_empty());
     }
 
     #[tokio::test]
@@ -541,7 +542,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn update_system_setting_rejects_non_admin() {
+    async fn update_system_setting_allows_active_user() {
         let users = Arc::new(MemoryUserRepository::default());
         let regular = make_regular_user();
         users.save(&regular).await.unwrap();
@@ -549,6 +550,6 @@ mod tests {
         let result = service
             .update_system_setting(regular.id, "instance.name".into(), serde_json::json!("x"))
             .await;
-        assert!(matches!(result, Err(AppError::Forbidden)));
+        assert!(result.is_ok());
     }
 }

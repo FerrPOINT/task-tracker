@@ -4,19 +4,13 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { AdminPage } from './index'
 
-const useAdminUsers = vi.hoisted(() => vi.fn())
 const useAdminSettings = vi.hoisted(() => vi.fn())
 const useAdminAuditLog = vi.hoisted(() => vi.fn())
-const useCreateAdminUser = vi.hoisted(() => vi.fn())
-const useUpdateAdminUserStatus = vi.hoisted(() => vi.fn())
 const useUpdateAdminSetting = vi.hoisted(() => vi.fn())
 
 vi.mock('@/shared/api/hooks', () => ({
-  useAdminUsers,
   useAdminSettings,
   useAdminAuditLog,
-  useCreateAdminUser,
-  useUpdateAdminUserStatus,
   useUpdateAdminSetting,
 }))
 
@@ -33,20 +27,6 @@ function renderPage() {
 describe('AdminPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useAdminUsers.mockReturnValue({
-      data: [
-        {
-          id: 'user-1',
-          email: 'admin@example.test',
-          username: 'admin',
-          display_name: 'Administrator',
-          is_system_admin: true,
-          is_active: true,
-        },
-      ],
-      isLoading: false,
-      error: null,
-    })
     useAdminSettings.mockReturnValue({
       data: [{ key: 'instance.name', value: 'Task Tracker', updated_at: '2026-08-25T10:00:00Z' }],
       isLoading: false,
@@ -67,20 +47,18 @@ describe('AdminPage', () => {
       isLoading: false,
       error: null,
     })
-    useCreateAdminUser.mockReturnValue({ mutate, isPending: false, error: null })
-    useUpdateAdminUserStatus.mockReturnValue({ mutate, isPending: false, error: null })
     useUpdateAdminSetting.mockReturnValue({ mutate, isPending: false, error: null })
   })
 
-  it('renders accessible users, settings, and audit log tabs', async () => {
+  it('renders settings and audit without local user management', async () => {
     const user = userEvent.setup()
     renderPage()
 
     expect(
       screen.getByRole('heading', { name: /администрирование|administration/i }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /пользователи|users/i })).toBeInTheDocument()
-    expect(screen.getByText('admin@example.test')).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: /пользователи|users/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /создать пользователя|create user/i })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: /настройки инстанса|instance settings/i }))
     expect(screen.getByText('instance.name')).toBeInTheDocument()
@@ -106,33 +84,4 @@ describe('AdminPage', () => {
     expect(mutate).not.toHaveBeenCalled()
   })
 
-  it('collects a password and system-admin choice when creating a user', async () => {
-    const user = userEvent.setup()
-    renderPage()
-
-    await user.click(screen.getByRole('button', { name: /создать пользователя|create user/i }))
-    fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'new@example.test' } })
-    fireEvent.change(screen.getByLabelText(/имя пользователя|username/i), {
-      target: { value: 'new-user' },
-    })
-    fireEvent.change(screen.getByLabelText(/отображаемое имя|display name/i), {
-      target: { value: 'New User' },
-    })
-    fireEvent.change(screen.getByLabelText(/пароль|password/i), {
-      target: { value: 'safe-password' },
-    })
-    fireEvent.click(screen.getByLabelText(/системный администратор|system administrator/i))
-    await user.click(screen.getByRole('button', { name: /создать пользователя|create user/i }))
-
-    expect(mutate).toHaveBeenCalledWith(
-      {
-        email: 'new@example.test',
-        username: 'new-user',
-        display_name: 'New User',
-        password: 'safe-password',
-        is_system_admin: true,
-      },
-      expect.any(Object),
-    )
-  })
 })

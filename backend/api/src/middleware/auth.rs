@@ -11,8 +11,6 @@ pub async fn bearer_auth(
     mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Bearer header is the primary auth; `?access_token=` query is accepted only
-    // for the SSE endpoint where EventSource cannot set headers.
     let token: String = req
         .headers()
         .get("authorization")
@@ -22,24 +20,15 @@ pub async fn bearer_auth(
                 .or_else(|| auth.strip_prefix("bearer "))
                 .map(str::to_string)
         })
-        .or_else(|| {
-            // EventSource cannot set headers; the SSE endpoint also accepts
-            // an `access_token` query parameter.
-            if !req.uri().path().ends_with("/events") {
-                return None;
-            }
-            req.uri().query()?.split('&').find_map(|pair| {
-                pair.strip_prefix("access_token=")
-                    .and_then(|token| urlencoding::decode(token).ok())
-                    .map(|token| token.into_owned())
-            })
-        })
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Central fleet auth-server first (ES256 via JWKS); legacy HS256 access
     // tokens remain valid during the migration window.
     match super::central_auth::check_token(&token).await {
         super::central_auth::CentralCheck::Validated(central) => {
+            if !central.allows_service("task-tracker", req.method().as_str()) {
+                return Err(StatusCode::FORBIDDEN);
+            }
             let user = find_or_link_central_user(&ctx, &central)
                 .await
                 .map_err(|_| StatusCode::UNAUTHORIZED)?;
@@ -53,7 +42,14 @@ pub async fn bearer_auth(
             return Ok(next.run(req).await);
         }
         super::central_auth::CentralCheck::Expired => return Err(StatusCode::UNAUTHORIZED),
+        super::central_auth::CentralCheck::Unavailable => {
+            return Err(StatusCode::SERVICE_UNAVAILABLE);
+        }
         super::central_auth::CentralCheck::FallThrough => {}
+    }
+
+    if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+        return Err(StatusCode::UNAUTHORIZED);
     }
 
     let claims = ctx
@@ -83,9 +79,7 @@ pub async fn bearer_auth(
     Ok(next.run(req).await)
 }
 
-/// Resolves the local user for a central identity by its verified email,
-/// creating a shadow account on first login (password_hash "!" — local
-/// password verify always fails, the central server owns credentials).
+/// Resolves a central subject independently of historical local email rows.
 async fn find_or_link_central_user(
     ctx: &Arc<app::AppContext>,
     central: &sdlc_auth_core::AuthContext,
@@ -95,27 +89,14 @@ async fn find_or_link_central_user(
     if email.is_empty() {
         return Err(shared::AppError::Unauthorized);
     }
-    if let Ok(existing) = ctx.repos.users.get_by_email(email).await {
-        if !existing.is_active {
-            return Err(shared::AppError::Unauthorized);
-        }
-        return Ok(existing);
-    }
-    let username = email.split('@').next().unwrap_or("central");
-    let user = domain::User {
-        id: shared::UserId::new(),
-        email: email.to_string().into(),
-        username: username.to_string().into(),
-        display_name: username.to_string().into(),
-        password_hash: "!".to_string().into(),
-        refresh_token_hash: None,
-        is_system_admin: false,
-        is_active: true,
-        created_at: shared::now(),
-        updated_at: shared::now(),
-    };
-    let id = ctx.repos.users.save(&user).await?;
-    ctx.repos.users.get_by_id(id).await
+    ctx.repos
+        .users
+        .find_or_create_central_user(
+            &central.user_id,
+            email,
+            email.split('@').next().unwrap_or(email),
+        )
+        .await
 }
 
 pub use app::auth::UserClaims;
