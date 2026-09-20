@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { ReportsPage } from './index'
+import { fetchIssueExport } from '@/api/export'
 
 // --- Mock hooks (NOT backend) -------------------------------------------------
 const useProjects = vi.hoisted(() => vi.fn())
@@ -26,6 +27,8 @@ vi.mock('@/shared/api/hooks', async () => {
     useSprints,
   }
 })
+
+vi.mock('@/api/export', () => ({ fetchIssueExport: vi.fn() }))
 
 // recharts renders SVG in jsdom; stub chart + container to render data as text
 vi.mock('recharts', () => ({
@@ -142,10 +145,10 @@ function makeQueryClient() {
   })
 }
 
-function renderPage() {
+function renderPage(initialEntry = '/reports') {
   return render(
     <QueryClientProvider client={makeQueryClient()}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <ReportsPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -239,9 +242,8 @@ describe('ReportsPage', () => {
     })
     renderPage()
     await selectProject(user)
-    await selectSprint(user)
-
     await user.click(screen.getByRole('tab', { name: /burndown/i }))
+    await selectSprint(user)
 
     await waitFor(() => {
       expect(screen.getByText('2026-08-01')).toBeInTheDocument()
@@ -313,9 +315,8 @@ describe('ReportsPage', () => {
     })
     renderPage()
     await selectProject(user)
-    await selectSprint(user)
-
     await user.click(screen.getByRole('tab', { name: /burndown/i }))
+    await selectSprint(user)
     expect(screen.getByText(/нет данных burndown|no burndown data/i)).toBeInTheDocument()
   })
 
@@ -339,5 +340,196 @@ describe('ReportsPage', () => {
     await user.selectOptions(select, 'proj-1')
 
     expect(useVelocityReport).toHaveBeenCalled()
+  })
+
+  it('uses the URL project and requests only the active report', async () => {
+    const user = userEvent.setup()
+    renderPage('/reports?project_key=TT')
+
+    expect(screen.getByRole('combobox', { name: /проект|project/i })).toHaveValue('proj-1')
+    expect(useVelocityReport).toHaveBeenLastCalledWith('proj-1')
+    expect(useCumulativeFlowReport).toHaveBeenLastCalledWith(undefined)
+    expect(useControlChartReport).toHaveBeenLastCalledWith(undefined)
+    expect(useSprints).toHaveBeenLastCalledWith(undefined)
+    expect(screen.queryByRole('combobox', { name: /спринт|sprint/i })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: /burndown/i }))
+    expect(useSprints).toHaveBeenLastCalledWith('TT')
+    expect(useVelocityReport).toHaveBeenLastCalledWith(undefined)
+    expect(screen.getByRole('combobox', { name: /спринт|sprint/i })).toBeInTheDocument()
+  })
+
+  it('does not request Burndown for a sprint link without an accessible project', () => {
+    renderPage('/reports?tab=burndown&sprint_id=sprint-1')
+    expect(useBurndownReport).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('rejects a sprint deep link that does not belong to the selected project', () => {
+    useBurndownReport.mockReturnValue({ data: undefined, isLoading: false })
+    renderPage('/reports?project_key=TT&tab=burndown&sprint_id=sprint-from-other-project')
+
+    expect(useBurndownReport).toHaveBeenLastCalledWith(undefined)
+    expect(screen.getByRole('combobox', { name: /спринт|sprint/i })).toHaveValue('')
+    expect(
+      screen.getByText(/спринт из ссылки недоступен|sprint in this link is unavailable/i),
+    ).toBeInTheDocument()
+  })
+
+  it('asks for a sprint before requesting Burndown data', () => {
+    useBurndownReport.mockReturnValue({ data: undefined, isLoading: false })
+    renderPage('/reports?project_key=TT&tab=burndown')
+    expect(
+      screen.getByText(
+        /выберите спринт для построения графика|select a sprint to build this chart/i,
+      ),
+    ).toBeInTheDocument()
+    expect(useBurndownReport).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('distinguishes project loading, failure and an empty project list', async () => {
+    const retry = vi.fn()
+    useProjects.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    const page = renderPage()
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить проекты|could not load projects/i,
+    )
+    expect(
+      screen.queryByText(/выберите проект для просмотра|select a project to view/i),
+    ).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+
+    useProjects.mockReturnValue({ data: [], isLoading: false, error: null, refetch: retry })
+    page.rerender(
+      <QueryClientProvider client={makeQueryClient()}>
+        <MemoryRouter>
+          <ReportsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    expect(screen.getByText(/нет доступных проектов|no projects available/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /проекты|projects/i })).toHaveAttribute(
+      'href',
+      '/projects',
+    )
+  })
+
+  it('shows report failure with retry instead of claiming that data is empty', async () => {
+    const user = userEvent.setup()
+    const retry = vi.fn()
+    useVelocityReport.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    renderPage()
+    await selectProject(user)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить отчёт|could not load report/i,
+    )
+    expect(screen.queryByText(/нет данных о скорости|no velocity data/i)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['burndown', useBurndownReport, 'sprint_id=sprint-1'],
+    ['cumulative-flow', useCumulativeFlowReport, ''],
+    ['control-chart', useControlChartReport, ''],
+  ])('shows a retryable error on the %s tab', async (tab, reportHook, extraQuery) => {
+    const user = userEvent.setup()
+    const retry = vi.fn()
+    reportHook.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    renderPage(`/reports?project_key=TT&tab=${tab}${extraQuery ? `&${extraQuery}` : ''}`)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить отчёт|could not load report/i,
+    )
+    await user.click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it('keeps previously loaded report data visible when refresh fails', async () => {
+    const user = userEvent.setup()
+    useVelocityReport.mockReturnValue({
+      data: { sprints: [{ name: 'Sprint 1', committed: 30, completed: 25 }] },
+      isLoading: false,
+      error: new Error('503'),
+      refetch: vi.fn(),
+    })
+    renderPage()
+    await selectProject(user)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /показаны ранее загруженные данные|previously loaded data/i,
+    )
+    expect(within(screen.getByTestId('chart')).getByText('Sprint 1')).toBeInTheDocument()
+  })
+
+  it('provides readable control-chart data for assistive technology', () => {
+    useControlChartReport.mockReturnValue({
+      data: { points: [{ issue_key: 'TT-42', cycle_time_days: 2.5 }] },
+      isLoading: false,
+    })
+    renderPage('/reports?project_key=TT&tab=control-chart')
+
+    const table = screen.getByRole('table', { name: /контрольная диаграмма|control chart/i })
+    expect(within(table).getByText('TT-42')).toBeInTheDocument()
+    expect(within(table).getByText('2.5')).toBeInTheDocument()
+    expect(screen.getByTestId('chart').closest('[aria-hidden]')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
+  })
+
+  it('shows sprint loading failure with retry only on Burndown', async () => {
+    const user = userEvent.setup()
+    const retry = vi.fn()
+    useSprints.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    renderPage('/reports?project_key=TT')
+
+    expect(
+      screen.queryByText(/не удалось загрузить спринты|could not load sprints/i),
+    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: /burndown/i }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить спринты|could not load sprints/i,
+    )
+    expect(screen.getByRole('combobox', { name: /спринт|sprint/i })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it('retries a failed export with the same project and format', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchIssueExport).mockRejectedValue(new Error('503'))
+    renderPage('/reports?project_key=TT')
+
+    await user.click(screen.getByRole('button', { name: 'CSV' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      /не удалось экспортировать|could not export/i,
+    )
+    await user.click(screen.getByRole('button', { name: /повторить|retry/i }))
+    await waitFor(() => expect(fetchIssueExport).toHaveBeenCalledTimes(2))
+    expect(fetchIssueExport).toHaveBeenNthCalledWith(1, 'TT', 'csv')
+    expect(fetchIssueExport).toHaveBeenNthCalledWith(2, 'TT', 'csv')
   })
 })
