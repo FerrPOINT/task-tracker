@@ -109,7 +109,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           <Button
             type="button"
             size="sm"
-            className="h-10 lg:h-8"
+            className="h-10 xl:h-8"
             onClick={() => void onAdd()}
             disabled={create.isPending || !targetKey.trim()}
             data-testid="link-submit"
@@ -127,7 +127,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
           type="button"
           variant="ghost"
           size="sm"
-          className="h-10 px-2 text-xs lg:h-8"
+          className="h-10 px-2 text-xs xl:h-8"
           onClick={() => setAdding(true)}
         >
           <Plus className="mr-1 h-3 w-3" aria-hidden />

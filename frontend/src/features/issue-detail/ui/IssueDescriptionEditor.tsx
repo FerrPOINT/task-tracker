@@ -80,7 +80,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 lg:h-9 lg:w-9"
+            className="h-10 w-10 shrink-0 opacity-100 xl:h-9 xl:w-9 xl:opacity-0 xl:group-hover:opacity-100 xl:group-focus-within:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               startEdit()
@@ -148,7 +148,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" className="h-10 lg:h-8" disabled={disabled || isSubmitting}>
+        <Button type="submit" size="sm" className="h-10 xl:h-8" disabled={disabled || isSubmitting}>
           <Check className="mr-1 h-4 w-4" />
           {isSubmitting ? t('common.saving') : t('common.save')}
         </Button>
@@ -156,7 +156,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           type="button"
           variant="secondary"
           size="sm"
-          className="h-10 lg:h-8"
+          className="h-10 xl:h-8"
           onClick={cancel}
           disabled={disabled || isSubmitting}
         >

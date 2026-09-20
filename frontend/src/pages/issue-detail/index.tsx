@@ -133,7 +133,7 @@ export function IssueDetailPage() {
             <Button
               variant="secondary"
               size="sm"
-              className="h-10 lg:h-8"
+              className="h-10 xl:h-8"
               disabled={updateIssue.isPending || currentUserId === issue.assignee_id}
               onClick={() => currentUserId && updateIssue.mutate({ assignee_id: currentUserId })}
             >
@@ -145,7 +145,7 @@ export function IssueDetailPage() {
                 <Button
                   variant="secondary"
                   size="icon"
-                  className="h-10 w-10 lg:h-9 lg:w-9"
+                  className="h-10 w-10 xl:h-9 xl:w-9"
                   aria-label={t('issue.actions')}
                 >
                   <MoreHorizontal className="h-4 w-4" />

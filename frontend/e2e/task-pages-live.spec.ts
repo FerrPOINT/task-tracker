@@ -118,7 +118,9 @@ test('Task Tracker routes remain usable across themes and viewports', async ({ p
         await expect(page.getByRole('button', { name: 'Открыть список сервисов' })).toBeVisible()
         await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible()
         await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
-        for (const [width, height] of viewports) {
+        const routeViewports =
+          route.key === 'issue-detail' ? [...viewports, [1024, 900] as const] : viewports
+        for (const [width, height] of routeViewports) {
           await page.setViewportSize({ width, height })
           const overflow = await page.evaluate(
             () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -150,6 +152,30 @@ test('Task Tracker routes remain usable across themes and viewports', async ({ p
               ),
           )
           expect(nestedScrollers, `${route.key} ${theme} ${width}px nested scrollers`).toEqual([])
+          if (route.key === 'issue-detail' && width === 1024) {
+            const smallTargets = await page
+              .locator('main button, main select, main [role="tab"]')
+              .evaluateAll((elements) =>
+                elements
+                  .map((element) => {
+                    const box = element.getBoundingClientRect()
+                    return {
+                      name: (element.getAttribute('aria-label') ?? element.textContent ?? '')
+                        .trim()
+                        .slice(0, 60),
+                      width: box.width,
+                      height: box.height,
+                    }
+                  })
+                  .filter(
+                    (target) =>
+                      target.width > 0 &&
+                      target.height > 0 &&
+                      (target.width < 40 || target.height < 40),
+                  ),
+              )
+            expect(smallTargets, `issue-detail ${theme} 1024px touch targets`).toEqual([])
+          }
           await page.screenshot({
             path: `${screenshotDir}/${route.key}-${theme}-${width}.png`,
             fullPage: true,
