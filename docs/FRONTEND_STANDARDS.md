@@ -111,7 +111,30 @@ features/
 - Ключи именуются в kebab-case: `issue.create.title`.
 - Тексты не хардкодятся в компонентах.
 
-## 13. References
+## 14. UI Shell Contract
+
+Task Tracker follows the Base [UI Shell Standard](https://github.com/FerrPOINT/services-base/blob/main/docs/platform/UI_SHELL_STANDARD.md).
+`AppLayout` owns one left sidebar, one global header and a fluid right work area;
+pages only choose their local width class and grid.
+
+- Dashboard, kanban, backlog, search and project lists use the available work
+  width. Tables and boards use `minmax(0, 1fr)` and keep horizontal scroll local.
+- Issue detail uses a fluid main column with a bounded metadata rail; the rail
+  moves below content before it creates document overflow.
+- Issue creation, settings and focused forms use a readable 640-860 px content
+  column; they do not constrain boards or tables.
+- On desktop the expanded sidebar is 248-288 px; on tablet it may become the
+  shared compact icon rail; below 768 px it is the same navigation in a drawer.
+- Global controls stay in the one-row app header. Breadcrumbs, issue actions,
+  filters and board controls stay in page-owned rows below it.
+- UI evidence for shell or content geometry covers 375, 1440 and 2560 px,
+  active navigation, header alignment, mobile drawer keyboard flow and absence
+  of document-level horizontal overflow.
+
+Product-specific task layout remains defined in `docs/UI_UX.md`; this section
+does not change the Jira-like two-column issue model.
+
+## 15. References
 
 - `docs/FRONTEND_ARCHITECTURE.md` — технический стек и структура.
 - `docs/CODE_STYLE.md` — токены дизайна.
