@@ -12,7 +12,8 @@ const account =
   process.env.SDLC_LIVE_QA === '1'
     ? (JSON.parse(
         readFileSync(
-          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          process.env.SDLC_QA_SESSION_FILE ??
+            fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
           'utf8',
         ),
       ) as {
@@ -226,7 +227,6 @@ test('managed user receives a one-use setup link and loses access when disabled'
   request,
 }) => {
   test.setTimeout(90_000)
-  const email = `qa-sso-${Date.now()}@example.test`
   const password = `Qa-${randomUUID()}-A1`
   await signInAt(page, 'http://localhost:7772/users', account)
   await expect(page).toHaveURL('http://localhost:7772/users', { timeout: 30_000 })
@@ -237,15 +237,53 @@ test('managed user receives a one-use setup link and loses access when disabled'
   expect(operator.ok()).toBeTruthy()
   const { access_token: operatorToken } = (await operator.json()) as { access_token: string }
   const operatorHeaders = { Authorization: `Bearer ${operatorToken}` }
+  const existingUsers = await request.get('http://localhost:7701/auth/users?q=qa-sso-', {
+    headers: operatorHeaders,
+  })
+  expect(existingUsers.ok()).toBeTruthy()
+  const reusable = (
+    (await existingUsers.json()) as {
+      id: string
+      email: string
+      display_name: string
+      status: string
+    }[]
+  )
+    .filter((user) => user.status === 'disabled' && user.display_name === 'QA SSO User')
+    .sort((left, right) => left.email.localeCompare(right.email))[0]
+  const email = reusable?.email ?? `qa-sso-${Date.now()}@example.test`
+  const mailboxBefore = await request.get('http://127.0.0.1:7802/api/v1/messages?limit=100')
+  expect(mailboxBefore.ok()).toBeTruthy()
+  const previousMessageIds = new Set(
+    ((await mailboxBefore.json()) as { messages: { ID: string }[] }).messages.map(
+      (message) => message.ID,
+    ),
+  )
 
   let disabled = false
   try {
-    await page.getByRole('button', { name: 'Добавить' }).first().click()
-    const dialog = page.getByRole('dialog')
-    await dialog.getByLabel('Email').fill(email)
-    await dialog.getByLabel('Имя').fill('QA SSO User')
-    await dialog.getByRole('button', { name: 'Добавить' }).click()
-    await expect(dialog).toBeHidden()
+    if (reusable) {
+      const restored = await request.post(
+        `http://localhost:7701/auth/users/${reusable.id}/status`,
+        {
+          headers: operatorHeaders,
+          data: { enabled: true },
+        },
+      )
+      expect(restored.ok()).toBeTruthy()
+      const resent = await request.post(
+        `http://localhost:7701/auth/users/${reusable.id}/password-link`,
+        { headers: operatorHeaders },
+      )
+      expect(resent.status()).toBe(204)
+    } else {
+      await page.getByRole('button', { name: 'Добавить' }).first().click()
+      const dialog = page.getByRole('dialog')
+      await dialog.getByLabel('Email').fill(email)
+      await dialog.getByLabel('Имя').fill('QA SSO User')
+      await dialog.getByRole('button', { name: 'Добавить' }).click()
+      await expect(dialog).toBeHidden()
+    }
     const filtered = page.waitForResponse((response) =>
       response.url().includes(`/api/v1/users?q=${encodeURIComponent(email)}`),
     )
@@ -254,10 +292,12 @@ test('managed user receives a one-use setup link and loses access when disabled'
     await expect(search).toHaveValue(email)
     expect((await filtered).ok()).toBeTruthy()
     await expect(page.getByText(email, { exact: false })).toBeVisible()
-    await page.getByRole('link', { name: 'Аудит' }).click()
-    await page.getByRole('combobox', { name: 'Тип сущности' }).selectOption('central_user')
-    await page.getByRole('combobox', { name: 'Действие' }).selectOption('central_user.created')
-    await expect(page.locator('summary').getByText('Добавлен пользователь').first()).toBeVisible()
+    if (!reusable) {
+      await page.getByRole('link', { name: 'Аудит' }).click()
+      await page.getByRole('combobox', { name: 'Тип сущности' }).selectOption('central_user')
+      await page.getByRole('combobox', { name: 'Действие' }).selectOption('central_user.created')
+      await expect(page.locator('summary').getByText('Добавлен пользователь').first()).toBeVisible()
+    }
     const profileRequest = page.waitForRequest(
       (req) => req.url().includes('/api/v1/users/me') && Boolean(req.headers().authorization),
     )
@@ -318,7 +358,10 @@ test('managed user receives a one-use setup link and loses access when disabled'
           messages: { ID: string; To: { Address: string }[] }[]
         }
         messageId =
-          listing.messages.find((item) => item.To.some((to) => to.Address === email))?.ID ?? ''
+          listing.messages.find(
+            (item) =>
+              !previousMessageIds.has(item.ID) && item.To.some((to) => to.Address === email),
+          )?.ID ?? ''
         return messageId
       })
       .not.toBe('')
