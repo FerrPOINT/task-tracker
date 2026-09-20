@@ -210,7 +210,7 @@ export function AppShell() {
             <span className="hidden lg:inline">{t('navigation.search')}</span>
           </Link>
         </div>
-        <div className="flex shrink-0 items-center gap-2 md:gap-3">
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
           <Button asChild size="sm" className="min-h-10 gap-1 px-2.5 text-xs">
             <Link
               to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
@@ -233,7 +233,7 @@ export function AppShell() {
               >
                 <Bell className="h-[18px] w-[18px]" />
                 {unreadCount > 0 && (
-                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4 text-white">
+                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4 text-background">
                     {unreadCount}
                   </span>
                 )}
