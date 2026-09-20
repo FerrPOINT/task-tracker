@@ -103,6 +103,7 @@
     "moreActions": "Ещё действия"
   },
   "board": {
+    "columns": "Колонки доски",
     "filters": "Фильтры",
     "members": "Участники",
     "addColumn": "Колонка",

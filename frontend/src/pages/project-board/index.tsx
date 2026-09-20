@@ -262,7 +262,12 @@ export function ProjectBoardPage() {
         ))}
       </div>
 
-      <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div
+        role="region"
+        aria-label={t('board.columns')}
+        tabIndex={0}
+        className="grid min-w-0 grid-cols-1 gap-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:auto-cols-[minmax(16rem,22rem)] md:grid-flow-col md:grid-cols-none md:overflow-x-auto md:pb-2"
+      >
         {columns.map((column) => {
           const wipLimit = column.wip_limit ?? null
           const colIssues = issuesByColumn(column.id)

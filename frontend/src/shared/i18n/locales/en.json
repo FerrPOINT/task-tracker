@@ -103,6 +103,7 @@
     "moreActions": "More actions"
   },
   "board": {
+    "columns": "Board columns",
     "filters": "Filters",
     "members": "Members",
     "addColumn": "Column",
