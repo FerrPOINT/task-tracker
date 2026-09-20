@@ -177,7 +177,7 @@ export default function SearchPage() {
     <div className="py-6">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold">{t('search.title')}</h1>
-        <Button variant="outline" asChild>
+        <Button variant="outline" asChild className="h-10">
           <Link to="/projects">{t('search.backToProjects')}</Link>
         </Button>
       </div>
