@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { Buffer } from 'node:buffer'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
@@ -264,6 +264,7 @@ test('Wiki publishes and revises a page', async ({ page, request }) => {
   const key = `QA${Date.now().toString(36).slice(-7).toUpperCase()}`
   let spaceCreated = false
   let documentId = ''
+  let documentArchived = false
   try {
     const space = await request.post(`${api}/spaces`, {
       headers,
@@ -304,8 +305,47 @@ test('Wiki publishes and revises a page', async ({ page, request }) => {
     await page.getByRole('button', { name: new RegExp(`QA ${key}`) }).click()
     await page.getByRole('link', { name: `QA ${key} revised` }).click()
     await expect(page.getByRole('heading', { name: 'Revised QA content' })).toBeVisible()
+    await page.getByRole('button', { name: 'Архивировать' }).click()
+    const archiveDialog = page.getByRole('alertdialog')
+    await expect(archiveDialog).toBeVisible()
+    const screenshotDir = fileURLToPath(
+      new URL('../../../.local/screenshots/wiki-archive-confirm/', import.meta.url),
+    )
+    mkdirSync(screenshotDir, { recursive: true })
+    for (const [width, height] of [
+      [2560, 1440],
+      [1920, 1080],
+      [375, 812],
+    ] as const) {
+      await page.setViewportSize({ width, height })
+      const bounds = await archiveDialog.boundingBox()
+      expect(bounds, `archive dialog bounds at ${width}px`).not.toBeNull()
+      expect(bounds!.x).toBeGreaterThanOrEqual(0)
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
+      expect(bounds!.y).toBeGreaterThanOrEqual(0)
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(height)
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(1)
+      await page.screenshot({
+        path: `${screenshotDir}/${width}.png`,
+        fullPage: true,
+      })
+    }
+    await archiveDialog.getByRole('button', { name: 'Подтвердить' }).click()
+    await expect(archiveDialog).toBeHidden()
+    await expect(page.getByText('Документ архивирован')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Архивировать' })).toHaveCount(0)
+    const archivedDocument = await request.get(`${api}/documents/${documentId}`, { headers })
+    expect(archivedDocument.ok(), await archivedDocument.text()).toBeTruthy()
+    expect(((await archivedDocument.json()) as { status: string }).status).toBe('archived')
+    documentArchived = true
   } finally {
-    if (documentId) await request.post(`${api}/documents/${documentId}/archive`, { headers })
+    if (documentId && !documentArchived) {
+      await request.post(`${api}/documents/${documentId}/archive`, { headers })
+    }
     if (spaceCreated) await request.post(`${api}/spaces/${key}/archive`, { headers })
   }
 })

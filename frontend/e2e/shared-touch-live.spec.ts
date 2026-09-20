@@ -81,8 +81,9 @@ test('Workflow mobile shell keeps touch targets and keyboard focus inside its dr
   mkdirSync(screenshotDir, { recursive: true })
   await page.setViewportSize({ width: 375, height: 812 })
   const base = 'http://localhost:8812/'
-  const serviceMenu = page.locator('summary[aria-label="Открыть список сервисов платформы"]')
-  await signInAt(page, base, account, serviceMenu)
+  const burger = page.getByRole('button', { name: 'Открыть навигацию' })
+  const serviceMenu = page.locator('#sidebar details.sidebar-service-menu')
+  await signInAt(page, base, account, burger)
   await page.waitForLoadState('load')
 
   const smallControls = await page
@@ -110,7 +111,6 @@ test('Workflow mobile shell keeps touch targets and keyboard focus inside its dr
   ).toBeLessThanOrEqual(1)
 
   const sidebar = page.locator('#sidebar')
-  const burger = page.getByRole('button', { name: 'Открыть навигацию' })
   await expect(sidebar).toHaveAttribute('inert')
   await burger.click()
   await expect(burger).toHaveAttribute('aria-expanded', 'true')
@@ -126,9 +126,12 @@ test('Workflow mobile shell keeps touch targets and keyboard focus inside its dr
   await expect(burger).toHaveAttribute('aria-expanded', 'false')
   await expect(burger).toBeFocused()
 
-  await serviceMenu.click()
-  await expect(page.getByRole('menu').getByRole('menuitem')).toHaveCount(6)
+  await burger.click()
+  await serviceMenu.locator('summary').click()
+  await expect(serviceMenu).toHaveAttribute('open')
+  await expect(serviceMenu.locator('a.sidebar-service-link')).toHaveCount(6)
   await page.keyboard.press('Escape')
-  await expect(serviceMenu).toBeFocused()
+  await expect(sidebar).toHaveAttribute('inert')
+  await expect(burger).toBeFocused()
   await page.screenshot({ path: `${screenshotDir}/workflow-375.png`, fullPage: true })
 })
