@@ -162,7 +162,7 @@ export function ReportsPage() {
   )
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-7xl space-y-4">
       <h1 className="text-2xl font-bold">{t('reports.title')}</h1>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -353,27 +353,47 @@ export function ReportsPage() {
               emptyMessage={t('reports.velocity.empty')}
               onRetry={() => void velocity.refetch()}
             >
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={velocity.data?.sprints ?? []} margin={{ right: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar
-                    dataKey="committed"
-                    name={t('reports.velocity.committed')}
-                    fill="#3b82f6"
-                    isAnimationActive={false}
-                  />
-                  <Bar
-                    dataKey="completed"
-                    name={t('reports.velocity.completed')}
-                    fill="#22c55e"
-                    isAnimationActive={false}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+              <div aria-hidden="true">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={velocity.data?.sprints ?? []} margin={{ right: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar
+                      dataKey="committed"
+                      name={t('reports.velocity.committed')}
+                      fill="#3b82f6"
+                      isAnimationActive={false}
+                    />
+                    <Bar
+                      dataKey="completed"
+                      name={t('reports.velocity.completed')}
+                      fill="#22c55e"
+                      isAnimationActive={false}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <table className="sr-only" aria-label={t('reports.velocity.title')}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('reports.velocity.sprint')}</th>
+                    <th scope="col">{t('reports.velocity.committed')}</th>
+                    <th scope="col">{t('reports.velocity.completed')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {velocity.data?.sprints.map((sprint, index) => (
+                    <tr key={`${sprint.name}-${index}`}>
+                      <th scope="row">{sprint.name}</th>
+                      <td>{sprint.committed}</td>
+                      <td>{sprint.completed}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </ReportPanel>
           </TabsContent>
 
@@ -396,23 +416,41 @@ export function ReportsPage() {
               )}
               onRetry={() => void burndown.refetch()}
             >
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={burndown.data?.points ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="remaining"
-                    name={t('reports.burndown.remaining')}
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <div aria-hidden="true">
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={burndown.data?.points ?? []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="remaining"
+                      name={t('reports.burndown.remaining')}
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <table className="sr-only" aria-label={t('reports.burndown.title')}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('reports.burndown.date')}</th>
+                    <th scope="col">{t('reports.burndown.remaining')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {burndown.data?.points.map((point) => (
+                    <tr key={point.date}>
+                      <th scope="row">{point.date}</th>
+                      <td>{point.remaining}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </ReportPanel>
           </TabsContent>
 
@@ -427,42 +465,64 @@ export function ReportsPage() {
               emptyMessage={t('reports.cumulativeFlow.empty')}
               onRetry={() => void cumulativeFlow.refetch()}
             >
-              <ResponsiveContainer width="100%" height={300}>
-                <AreaChart data={cumulativeFlow.data?.points ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Area
-                    type="monotone"
-                    dataKey="todo"
-                    stackId="1"
-                    name={t('reports.cumulativeFlow.todo')}
-                    fill="#94a3b8"
-                    stroke="#94a3b8"
-                    isAnimationActive={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="in_progress"
-                    stackId="1"
-                    name={t('reports.cumulativeFlow.inProgress')}
-                    fill="#3b82f6"
-                    stroke="#3b82f6"
-                    isAnimationActive={false}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="done"
-                    stackId="1"
-                    name={t('reports.cumulativeFlow.done')}
-                    fill="#22c55e"
-                    stroke="#22c55e"
-                    isAnimationActive={false}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <div aria-hidden="true">
+                <ResponsiveContainer width="100%" height={300}>
+                  <AreaChart data={cumulativeFlow.data?.points ?? []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Area
+                      type="monotone"
+                      dataKey="todo"
+                      stackId="1"
+                      name={t('reports.cumulativeFlow.todo')}
+                      fill="#94a3b8"
+                      stroke="#94a3b8"
+                      isAnimationActive={false}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="in_progress"
+                      stackId="1"
+                      name={t('reports.cumulativeFlow.inProgress')}
+                      fill="#3b82f6"
+                      stroke="#3b82f6"
+                      isAnimationActive={false}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="done"
+                      stackId="1"
+                      name={t('reports.cumulativeFlow.done')}
+                      fill="#22c55e"
+                      stroke="#22c55e"
+                      isAnimationActive={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <table className="sr-only" aria-label={t('reports.cumulativeFlow.title')}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('reports.cumulativeFlow.date')}</th>
+                    <th scope="col">{t('reports.cumulativeFlow.todo')}</th>
+                    <th scope="col">{t('reports.cumulativeFlow.inProgress')}</th>
+                    <th scope="col">{t('reports.cumulativeFlow.done')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cumulativeFlow.data?.points.map((point) => (
+                    <tr key={point.date}>
+                      <th scope="row">{point.date}</th>
+                      <td>{point.todo}</td>
+                      <td>{point.in_progress}</td>
+                      <td>{point.done}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </ReportPanel>
           </TabsContent>
 
