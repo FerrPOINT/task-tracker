@@ -33,10 +33,12 @@ const listProjects = vi.hoisted(() =>
   ),
 )
 const listUsers = vi.hoisted(() =>
-  vi.fn(() => Promise.resolve([{ id: 'u2', username: 'bob', display_name: 'Bob' }])),
-)
-const listProjectMembers = vi.hoisted(() =>
-  vi.fn(() => Promise.resolve({ members: [{ project_id: 'p1', user_id: 'u2', role: 'member' }] })),
+  vi.fn(() =>
+    Promise.resolve([
+      { id: 'u2', username: 'bob', display_name: 'Bob' },
+      { id: 'u3', username: 'carol', display_name: 'Carol' },
+    ]),
+  ),
 )
 const listIssueTypes = vi.hoisted(() =>
   vi.fn(() =>
@@ -74,11 +76,6 @@ vi.mock('@/api/auth', () => ({
   listUsers,
   logout: vi.fn(),
 }))
-vi.mock('@/api/members', () => ({
-  listProjectMembers,
-  addProjectMember: vi.fn(),
-  removeProjectMember: vi.fn(),
-}))
 vi.mock('@/api/workflow', () => ({
   listStatuses: vi.fn(),
   listTransitions: vi.fn(),
@@ -115,7 +112,6 @@ describe('IssueCreatePage', () => {
     createIssue.mockClear()
     listProjects.mockClear()
     listUsers.mockClear()
-    listProjectMembers.mockClear()
     listIssueTypes.mockClear()
     listCustomFields.mockClear()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
@@ -144,5 +140,21 @@ describe('IssueCreatePage', () => {
       summary: 'Test issue',
       custom_fields: { f1: 'custom value' },
     })
+  })
+
+  it('offers all active directory users as assignees', async () => {
+    render(wrapper(<IssueCreatePage />))
+    expect(await screen.findByRole('option', { name: 'Bob' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Carol' })).toBeInTheDocument()
+  })
+
+  it('shows a retry when the directory cannot be loaded', async () => {
+    listUsers.mockRejectedValueOnce(new Error('offline'))
+    render(wrapper(<IssueCreatePage />))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Не удалось загрузить список исполнителей',
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByRole('option', { name: 'Carol' })).toBeInTheDocument()
   })
 })

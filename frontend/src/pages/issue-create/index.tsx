@@ -9,7 +9,6 @@ import {
   useCreateIssue,
   useIssueTypes,
   useProjectCustomFields,
-  useProjectMembers,
   useProjects,
   useUsers,
 } from '@/shared/api/hooks'
@@ -47,21 +46,9 @@ export function IssueCreatePage() {
 
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
   const issueTypes = issueTypesQuery.data ?? []
-  const projectMembersQuery = useProjectMembers(project_key)
   const customFieldsQuery = useProjectCustomFields(project_key || undefined)
   const customFields = customFieldsQuery.data ?? []
-  const currentProject = useMemo(
-    () => projects.find((project) => project.key === project_key),
-    [projects, project_key],
-  )
-  const assignableUsers = useMemo(() => {
-    const allowedIds = new Set((projectMembersQuery.data?.members ?? []).map((m) => m.user_id))
-    if (currentProject?.owner_id) {
-      allowedIds.add(currentProject.owner_id)
-    }
-    const users = usersQuery.data ?? []
-    return users.filter((user) => allowedIds.has(user.id))
-  }, [currentProject?.owner_id, projectMembersQuery.data?.members, usersQuery.data])
+  const assignableUsers = usersQuery.data ?? []
 
   useEffect(() => {
     if (!project_key && projects.length > 0) {
@@ -75,10 +62,14 @@ export function IssueCreatePage() {
   }, [project_key])
 
   useEffect(() => {
-    if (assignee_id && !assignableUsers.some((user) => user.id === assignee_id)) {
+    if (
+      usersQuery.data &&
+      assignee_id &&
+      !usersQuery.data.some((user) => user.id === assignee_id)
+    ) {
       setAssigneeId('')
     }
-  }, [assignableUsers, assignee_id])
+  }, [usersQuery.data, assignee_id])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -223,7 +214,7 @@ export function IssueCreatePage() {
               className="h-10 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary"
               value={assignee_id}
               onChange={(e) => setAssigneeId(e.target.value)}
-              disabled={usersQuery.isLoading || projectMembersQuery.isLoading}
+              disabled={!usersQuery.data && (usersQuery.isLoading || usersQuery.isError)}
             >
               <option value="">{t('issueCreate.unassigned')}</option>
               {assignableUsers.map((u) => (
@@ -232,6 +223,27 @@ export function IssueCreatePage() {
                 </option>
               ))}
             </select>
+            {usersQuery.isError && (
+              <div className="flex flex-wrap items-center gap-2">
+                <p role="alert" className="text-xs text-danger">
+                  {t(
+                    usersQuery.data
+                      ? 'issue.assigneeDirectoryRefreshError'
+                      : 'issue.assigneeDirectoryError',
+                  )}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-10"
+                  disabled={usersQuery.isFetching}
+                  onClick={() => void usersQuery.refetch()}
+                >
+                  {t('common.retry')}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 

@@ -17,12 +17,6 @@ import {
 import { getDashboard } from '@/api/dashboard'
 import { useAuthStore } from '@/shared/auth/store'
 import { ssoConfig } from '@/shared/auth/store'
-import {
-  listProjectMembers,
-  addProjectMember,
-  removeProjectMember,
-  type AddProjectMemberInput,
-} from '@/api/members'
 
 import {
   closeSprint,
@@ -559,34 +553,6 @@ export function usePurgeIssue() {
       qc.invalidateQueries({ queryKey: ['trash'] })
       invalidateIssueCaches(qc, undefined, id)
       qc.removeQueries({ queryKey: ['issue', id] })
-    },
-  })
-}
-
-export function useProjectMembers(projectKey: string) {
-  return useQuery({
-    queryKey: ['project-members', projectKey],
-    queryFn: () => listProjectMembers(projectKey),
-    enabled: !!projectKey,
-  })
-}
-
-export function useAddProjectMember(projectKey: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (input: AddProjectMemberInput) => addProjectMember(projectKey, input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['project-members', projectKey] })
-    },
-  })
-}
-
-export function useRemoveProjectMember(projectKey: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (userId: string) => removeProjectMember(projectKey, userId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['project-members', projectKey] })
     },
   })
 }

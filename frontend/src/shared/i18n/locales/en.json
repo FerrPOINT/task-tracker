@@ -104,7 +104,6 @@
   },
   "board": {
     "filters": "Filters",
-    "members": "Members",
     "addColumn": "Column",
     "create": "Create",
     "wip": "WIP",
@@ -222,6 +221,8 @@
     "history": "History",
     "status": "Status",
     "assignee": "Assignee",
+    "assigneeDirectoryError": "Could not load assignees.",
+    "assigneeDirectoryRefreshError": "Could not refresh assignees.",
     "reporter": "Reporter",
     "sprint": "Sprint",
     "noSprint": "No sprint",
@@ -318,13 +319,6 @@
     "validation": {
       "required": "Comment text is required"
     }
-  },
-  "projectMembers": {
-    "title": "Project members",
-    "addUser": "Add member",
-    "selectUser": "Select user",
-    "empty": "No members yet.",
-    "remove": "Remove member {{name}}"
   },
   "issueType": {
     "task": "Task",

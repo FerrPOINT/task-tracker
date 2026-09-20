@@ -104,7 +104,6 @@
   },
   "board": {
     "filters": "Фильтры",
-    "members": "Участники",
     "addColumn": "Колонка",
     "create": "Создать",
     "wip": "WIP",
@@ -222,6 +221,8 @@
     "history": "История",
     "status": "Статус",
     "assignee": "Исполнитель",
+    "assigneeDirectoryError": "Не удалось загрузить список исполнителей.",
+    "assigneeDirectoryRefreshError": "Не удалось обновить список исполнителей.",
     "reporter": "Автор",
     "sprint": "Спринт",
     "noSprint": "Без спринта",
@@ -318,13 +319,6 @@
     "validation": {
       "required": "Введите текст комментария"
     }
-  },
-  "projectMembers": {
-    "title": "Участники проекта",
-    "addUser": "Добавить участника",
-    "selectUser": "Выберите пользователя",
-    "empty": "Пока нет участников.",
-    "remove": "Удалить участника {{name}}"
   },
   "issueType": {
     "task": "Задача",

@@ -1,16 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
+import { Button } from '@sdlc/ui/ui'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
 import { statusLabel } from '@/shared/lib/status-label'
-import {
-  useProjectMembers,
-  useProjects,
-  useStatuses,
-  useTransitions,
-  useUsers,
-} from '@/shared/api/hooks'
+import { useStatuses, useTransitions, useUsers } from '@/shared/api/hooks'
 
 const priorities = ['Lowest', 'Low', 'Medium', 'High', 'Highest']
 
@@ -36,8 +31,6 @@ export function IssueMetaEditor({
 }: IssueMetaEditorProps) {
   const { t } = useTranslation()
   const usersQuery = useUsers()
-  const projectsQuery = useProjects()
-  const projectMembersQuery = useProjectMembers(issue.project_key)
   const statusesQuery = useStatuses()
   const transitionsQuery = useTransitions()
 
@@ -56,19 +49,10 @@ export function IssueMetaEditor({
     return all.filter((s) => allowed.has(s.id))
   }, [statusesQuery.data, transitionsQuery.data, columns, issue.status_id])
 
-  const currentProject = useMemo(
-    () => (projectsQuery.data ?? []).find((project) => project.key === issue.project_key),
-    [issue.project_key, projectsQuery.data],
-  )
-
   const assigneeOptions = useMemo<
     Array<{ value: string; label: string; disabled?: boolean }>
   >(() => {
-    const allowedIds = new Set((projectMembersQuery.data?.members ?? []).map((m) => m.user_id))
-    if (currentProject?.owner_id) {
-      allowedIds.add(currentProject.owner_id)
-    }
-    const list = (usersQuery.data ?? []).filter((user) => allowedIds.has(user.id))
+    const list = usersQuery.data ?? []
     const hasCurrentAssignee =
       !!issue.assignee_id && list.some((user) => user.id === issue.assignee_id)
     return [
@@ -87,14 +71,7 @@ export function IssueMetaEditor({
           ]
         : []),
     ]
-  }, [
-    currentProject?.owner_id,
-    issue.assignee_id,
-    issue.assignee_name,
-    projectMembersQuery.data?.members,
-    t,
-    usersQuery.data,
-  ])
+  }, [issue.assignee_id, issue.assignee_name, t, usersQuery.data])
 
   const selectClass =
     'h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50'
@@ -147,7 +124,7 @@ export function IssueMetaEditor({
           id="issue-assignee"
           value={issue.assignee_id ?? ''}
           onChange={(e) => onChange({ assignee_id: e.target.value || null })}
-          disabled={disabled || usersQuery.isLoading || projectMembersQuery.isLoading}
+          disabled={disabled || (!usersQuery.data && (usersQuery.isLoading || usersQuery.isError))}
           className={selectClass}
         >
           {assigneeOptions.map((opt) => (
@@ -156,6 +133,27 @@ export function IssueMetaEditor({
             </option>
           ))}
         </select>
+        {usersQuery.isError && (
+          <div className="flex flex-wrap items-center gap-2">
+            <p role="alert" className="text-xs text-danger">
+              {t(
+                usersQuery.data
+                  ? 'issue.assigneeDirectoryRefreshError'
+                  : 'issue.assigneeDirectoryError',
+              )}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-h-10"
+              disabled={usersQuery.isFetching}
+              onClick={() => void usersQuery.refetch()}
+            >
+              {t('common.retry')}
+            </Button>
+          </div>
+        )}
       </div>
 
       {sprints && (
