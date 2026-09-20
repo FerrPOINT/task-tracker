@@ -264,6 +264,7 @@ test('Wiki publishes and revises a page', async ({ page, request }) => {
   const key = `QA${Date.now().toString(36).slice(-7).toUpperCase()}`
   let spaceCreated = false
   let documentId = ''
+  let documentArchived = false
   try {
     const space = await request.post(`${api}/spaces`, {
       headers,
@@ -304,8 +305,21 @@ test('Wiki publishes and revises a page', async ({ page, request }) => {
     await page.getByRole('button', { name: new RegExp(`QA ${key}`) }).click()
     await page.getByRole('link', { name: `QA ${key} revised` }).click()
     await expect(page.getByRole('heading', { name: 'Revised QA content' })).toBeVisible()
+    await page.getByRole('button', { name: 'Архивировать' }).click()
+    const archiveDialog = page.getByRole('alertdialog')
+    await expect(archiveDialog).toBeVisible()
+    await archiveDialog.getByRole('button', { name: 'Подтвердить' }).click()
+    await expect(archiveDialog).toBeHidden()
+    await expect(page.getByText('Документ архивирован')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Архивировать' })).toHaveCount(0)
+    const archivedDocument = await request.get(`${api}/documents/${documentId}`, { headers })
+    expect(archivedDocument.ok(), await archivedDocument.text()).toBeTruthy()
+    expect(((await archivedDocument.json()) as { status: string }).status).toBe('archived')
+    documentArchived = true
   } finally {
-    if (documentId) await request.post(`${api}/documents/${documentId}/archive`, { headers })
+    if (documentId && !documentArchived) {
+      await request.post(`${api}/documents/${documentId}/archive`, { headers })
+    }
     if (spaceCreated) await request.post(`${api}/spaces/${key}/archive`, { headers })
   }
 })
