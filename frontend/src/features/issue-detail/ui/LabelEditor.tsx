@@ -129,7 +129,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             <Button
               type="button"
               size="sm"
-              className="min-h-10"
+              className="h-10 lg:h-8"
               disabled={create.isPending || attach.isPending}
               onClick={() => void onCreate()}
             >
@@ -163,7 +163,7 @@ export function LabelEditor({ issueId, projectKey }: { issueId: string; projectK
             type="button"
             variant="ghost"
             size="sm"
-            className="min-h-10 px-2 text-xs"
+            className="h-10 px-2 text-xs lg:h-8"
             onClick={() => setCreating(true)}
             aria-label={t('labels.create')}
           >

@@ -45,6 +45,25 @@ describe('IssueDescriptionEditor', () => {
     render(wrapper(<IssueDescriptionEditor issue={issue} onSubmit={vi.fn()} />))
     expect(screen.getByText('Fix login bug')).toBeInTheDocument()
     expect(screen.getByText('Login page crashes on submit')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /show full description/i })).not.toBeInTheDocument()
+  })
+
+  it('expands a long mobile description without entering edit mode', () => {
+    const longIssue = { ...issue, description: `${'Long description '.repeat(35)}END_MARKER` }
+    render(wrapper(<IssueDescriptionEditor issue={longIssue} onSubmit={vi.fn()} />))
+
+    const expand = screen.getByRole('button', { name: /show full description/i })
+    const mobileDescription = document.getElementById(expand.getAttribute('aria-controls') ?? '')
+    expect(expand).toHaveAttribute('aria-expanded', 'false')
+    expect(mobileDescription).not.toHaveTextContent('END_MARKER')
+
+    fireEvent.click(expand)
+    expect(screen.getByRole('button', { name: /collapse description/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(mobileDescription).toHaveTextContent('END_MARKER')
+    expect(screen.queryByDisplayValue(longIssue.summary)).not.toBeInTheDocument()
   })
 
   it('enters edit mode on click', () => {

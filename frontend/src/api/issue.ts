@@ -21,10 +21,11 @@ export async function deleteIssue(id: string): Promise<void> {
 }
 
 export async function getIssue(id: string): Promise<Issue | null> {
-  const { data, error } = await api.GET('/api/v1/issues/{id}', {
+  const { data, error, response } = await api.GET('/api/v1/issues/{id}', {
     params: { path: { id } },
   })
-  if (error || !data) return null
+  if (response.status === 404) return null
+  if (error || !data) throw new Error('Failed to load issue')
   return data
 }
 
