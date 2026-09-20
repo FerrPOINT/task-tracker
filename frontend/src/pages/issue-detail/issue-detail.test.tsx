@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router'
@@ -171,6 +171,8 @@ const commentData = [
 ]
 
 describe('IssueDetailPage', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
   beforeEach(() => {
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
@@ -283,6 +285,45 @@ describe('IssueDetailPage', () => {
     expect(
       details.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  it('keeps desktop details and supplemental actions in one independent sidebar', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(min-width: 1024px)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    render(wrapper(<IssueDetailPage />))
+
+    const sidebar = screen.getByRole('complementary')
+    expect(sidebar).toHaveClass('sticky')
+    expect(within(sidebar).getByText(/^(детали|details)$/i)).toBeInTheDocument()
+    expect(within(sidebar).getByText(/^(учёт времени|time tracking)$/i)).toBeInTheDocument()
+    expect(within(sidebar).getByText(/^(участие|engagement)$/i)).toBeInTheDocument()
+    expect(within(sidebar).queryByRole('tab', { name: /активность|activity/i })).toBeNull()
+  })
+
+  it('preserves an unsaved issue draft when crossing the desktop breakpoint', async () => {
+    const listeners = new Set<() => void>()
+    const media = {
+      matches: false,
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }
+    vi.stubGlobal('matchMedia', () => media)
+    render(wrapper(<IssueDetailPage />))
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /изменить|edit/i }))
+    fireEvent.change(screen.getByDisplayValue('Test issue summary'), {
+      target: { value: 'Unsaved draft' },
+    })
+    act(() => {
+      media.matches = true
+      listeners.forEach((listener) => listener())
+    })
+
+    expect(screen.getByDisplayValue('Unsaved draft')).toBeInTheDocument()
+    expect(screen.getByRole('complementary')).toHaveClass('sticky')
   })
 
   it('describes deletion as recoverable from the trash', async () => {
