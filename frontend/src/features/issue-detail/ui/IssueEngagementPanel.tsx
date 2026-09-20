@@ -60,6 +60,7 @@ export function IssueEngagementPanel({
           type="button"
           variant={hasVoted ? 'secondary' : 'outline'}
           size="sm"
+          className="h-10 xl:h-8"
           disabled={!currentUserId || cannotAddVote || vote.isPending || unvote.isPending}
           onClick={() => (hasVoted ? unvote.mutate() : vote.mutate())}
           aria-label={hasVoted ? t('engagement.unvote') : t('engagement.vote')}
@@ -102,6 +103,7 @@ export function IssueEngagementPanel({
           type="button"
           variant={isWatching ? 'secondary' : 'outline'}
           size="sm"
+          className="h-10 xl:h-8"
           disabled={!currentUserId || watch.isPending || unwatch.isPending}
           onClick={() => (isWatching ? unwatch.mutate() : watch.mutate())}
           aria-label={isWatching ? t('engagement.unwatch') : t('engagement.watch')}

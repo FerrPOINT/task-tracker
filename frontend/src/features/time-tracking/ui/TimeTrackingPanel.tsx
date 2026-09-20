@@ -51,7 +51,7 @@ export function TimeTrackingPanel({
           </span>
         )}
       </div>
-      <Button variant="secondary" size="sm" className="min-h-10 w-full" onClick={onLogWork}>
+      <Button variant="secondary" size="sm" className="h-10 w-full xl:h-8" onClick={onLogWork}>
         {t('timeTracking.logWork')}
       </Button>
     </div>

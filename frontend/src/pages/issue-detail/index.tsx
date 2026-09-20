@@ -1,5 +1,5 @@
 import { useParams } from 'react-router'
-import { useState } from 'react'
+import { useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
@@ -51,22 +51,29 @@ export function IssueDetailPage() {
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
-  const { data: worklogsData, isLoading: worklogsLoading } = useWorklogs(id)
+  const worklogsQuery = useWorklogs(id)
   const commentsQuery = useComments(id)
   const create = useCreateWorklog(id)
   const update = useUpdateWorklog(id)
   const remove = useDeleteWorklog(id)
 
-  if (issueQuery.isLoading || worklogsLoading) {
+  if (issueQuery.isLoading) {
     return <LoadingState message={t('issue.loading')} />
   }
 
+  if (issueQuery.error && !issueQuery.data) {
+    return <ErrorState message={t('issue.loadError')} onRetry={() => void issueQuery.refetch()} />
+  }
+
   if (!issueQuery.data) {
-    return <ErrorState message={issueQuery.error?.message ?? t('issue.notFound')} />
+    return <ErrorState message={t('issue.notFound')} />
   }
 
   const issue = issueQuery.data
-  const worklogs = worklogsData ?? []
+  const worklogs = worklogsQuery.data ?? []
+  const activityLoading = commentsQuery.isLoading || worklogsQuery.isLoading
+  const activityError = commentsQuery.error || worklogsQuery.error
+  const hasActivityData = Boolean(commentsQuery.data?.length || worklogs.length)
 
   const handleLogWork = () => {
     setEditingWorklog(undefined)
@@ -111,6 +118,9 @@ export function IssueDetailPage() {
   return (
     <div className="min-w-0 bg-background">
       <div>
+        {issueQuery.error && (
+          <ErrorState message={t('issue.refreshError')} onRetry={() => void issueQuery.refetch()} />
+        )}
         <div className="mb-2 text-sm text-text-muted">
           {issue.project_name} / {issue.key}
         </div>
@@ -123,6 +133,7 @@ export function IssueDetailPage() {
             <Button
               variant="secondary"
               size="sm"
+              className="h-10 xl:h-8"
               disabled={updateIssue.isPending || currentUserId === issue.assignee_id}
               onClick={() => currentUserId && updateIssue.mutate({ assignee_id: currentUserId })}
             >
@@ -131,7 +142,12 @@ export function IssueDetailPage() {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="secondary" size="icon" aria-label={t('issue.actions')}>
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="h-10 w-10 xl:h-9 xl:w-9"
+                  aria-label={t('issue.actions')}
+                >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -151,9 +167,9 @@ export function IssueDetailPage() {
           </div>
         </div>
 
-        <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="min-w-0 space-y-6">
-            <section className="border-t border-border pt-5">
+        <IssueDetailLayout
+          description={
+            <section className="min-w-0 border-t border-border pt-5 lg:col-start-1 lg:row-start-1">
               <IssueDescriptionEditor
                 issue={issue}
                 disabled={updateIssue.isPending}
@@ -163,56 +179,8 @@ export function IssueDetailPage() {
                 }}
               />
             </section>
-
-            <Tabs defaultValue="activity">
-              <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4">
-                <TabsTrigger value="activity">{t('issue.activity')}</TabsTrigger>
-                <TabsTrigger value="comments">{t('issue.comments')}</TabsTrigger>
-                <TabsTrigger value="worklog">{t('timeTracking.worklog.title')}</TabsTrigger>
-                <TabsTrigger value="attachments">{t('attachments.title')}</TabsTrigger>
-              </TabsList>
-              <TabsContent value="activity">
-                <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
-              </TabsContent>
-              <TabsContent value="comments">
-                <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
-              </TabsContent>
-              <TabsContent value="worklog">
-                <WorklogTab
-                  worklogs={worklogs}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  currentUserId={currentUserId ?? ''}
-                />
-              </TabsContent>
-              <TabsContent value="attachments">
-                <AttachmentPanel issueId={id} />
-              </TabsContent>
-            </Tabs>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <Card>
-                <CardContent className="pt-5">
-                  <LabelEditor issueId={id} projectKey={issue.project_key} />
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
-                </CardContent>
-              </Card>
-              <Card className="md:col-span-2">
-                <CardContent className="pt-5">
-                  <LinkEditor issueId={id} currentKey={issue.key} />
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-
-          <aside className="space-y-4 lg:sticky lg:top-16 lg:self-start">
+          }
+          details={
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">{t('issue.details')}</CardTitle>
@@ -229,36 +197,122 @@ export function IssueDetailPage() {
                 />
               </CardContent>
             </Card>
+          }
+          activity={
+            <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
+              <Tabs defaultValue="activity">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+                  <TabsTrigger className="min-h-10" value="activity">
+                    {t('issue.activity')}
+                  </TabsTrigger>
+                  <TabsTrigger className="min-h-10" value="comments">
+                    {t('issue.comments')}
+                  </TabsTrigger>
+                  <TabsTrigger className="min-h-10" value="worklog">
+                    {t('timeTracking.worklog.title')}
+                  </TabsTrigger>
+                  <TabsTrigger className="min-h-10" value="attachments">
+                    {t('attachments.title')}
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="activity">
+                  {commentsQuery.error && (
+                    <ErrorState
+                      message={t('comments.loadError')}
+                      onRetry={() => void commentsQuery.refetch()}
+                    />
+                  )}
+                  {worklogsQuery.error && (
+                    <ErrorState
+                      message={t('timeTracking.worklog.loadError')}
+                      onRetry={() => void worklogsQuery.refetch()}
+                    />
+                  )}
+                  {activityLoading ? (
+                    <p className="py-4 text-sm text-text-muted">{t('issue.loadingActivity')}</p>
+                  ) : hasActivityData || !activityError ? (
+                    <ActivityFeed comments={commentsQuery.data ?? []} worklogs={worklogs} />
+                  ) : null}
+                </TabsContent>
+                <TabsContent value="comments">
+                  <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
+                </TabsContent>
+                <TabsContent value="worklog">
+                  {worklogsQuery.error ? (
+                    <ErrorState
+                      message={t('timeTracking.worklog.loadError')}
+                      onRetry={() => void worklogsQuery.refetch()}
+                    />
+                  ) : worklogsQuery.isLoading ? (
+                    <p className="py-4 text-sm text-text-muted">{t('common.loading')}</p>
+                  ) : (
+                    <WorklogTab
+                      worklogs={worklogs}
+                      onEdit={handleEdit}
+                      onDelete={handleDelete}
+                      currentUserId={currentUserId ?? ''}
+                    />
+                  )}
+                </TabsContent>
+                <TabsContent value="attachments">
+                  <AttachmentPanel issueId={id} />
+                </TabsContent>
+              </Tabs>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <TimeTrackingPanel
-                  timeSpentSeconds={issue.time_spent_seconds}
-                  originalEstimateSeconds={issue.original_estimate_seconds ?? null}
-                  remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
-                  onLogWork={handleLogWork}
-                />
-              </CardContent>
-            </Card>
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardContent className="pt-5">
+                    <LabelEditor issueId={id} projectKey={issue.project_key} />
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
+                  </CardContent>
+                </Card>
+                <Card className="md:col-span-2">
+                  <CardContent className="pt-5">
+                    <LinkEditor issueId={id} currentKey={issue.key} />
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          }
+          supplemental={
+            <>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">{t('timeTracking.title')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <TimeTrackingPanel
+                    timeSpentSeconds={issue.time_spent_seconds}
+                    originalEstimateSeconds={issue.original_estimate_seconds ?? null}
+                    remainingEstimateSeconds={issue.remaining_estimate_seconds ?? null}
+                    onLogWork={handleLogWork}
+                  />
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">{t('engagement.title')}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <IssueEngagementPanel
-                  issueId={id}
-                  projectKey={issue.project_key}
-                  currentUserId={currentUserId}
-                  reporterId={issue.reporter_id}
-                />
-              </CardContent>
-            </Card>
-          </aside>
-        </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">{t('engagement.title')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <IssueEngagementPanel
+                    issueId={id}
+                    projectKey={issue.project_key}
+                    currentUserId={currentUserId}
+                    reporterId={issue.reporter_id}
+                  />
+                </CardContent>
+              </Card>
+            </>
+          }
+        />
       </div>
 
       <LogWorkDialog
@@ -283,6 +337,59 @@ export function IssueDetailPage() {
           })
         }}
       />
+    </div>
+  )
+}
+
+const desktopLayoutQuery = '(min-width: 1024px)'
+
+function getDesktopLayout() {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(desktopLayoutQuery).matches
+  )
+}
+
+function subscribeDesktopLayout(onChange: () => void) {
+  if (typeof window.matchMedia !== 'function') return () => {}
+  const query = window.matchMedia(desktopLayoutQuery)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+function IssueDetailLayout({
+  description,
+  details,
+  activity,
+  supplemental,
+}: {
+  description: ReactNode
+  details: ReactNode
+  activity: ReactNode
+  supplemental: ReactNode
+}) {
+  const desktop = useSyncExternalStore(subscribeDesktopLayout, getDesktopLayout, () => false)
+
+  return (
+    <div
+      className={
+        desktop
+          ? 'grid min-w-0 grid-cols-[minmax(0,1fr)_320px] grid-rows-[min-content_minmax(0,1fr)] gap-6'
+          : 'grid min-w-0 gap-4'
+      }
+    >
+      {description}
+      {desktop ? (
+        <aside className="sticky top-16 col-start-2 row-start-1 row-span-2 self-start space-y-4">
+          {details}
+          {supplemental}
+        </aside>
+      ) : (
+        details
+      )}
+      {activity}
+      {!desktop && <aside className="space-y-4">{supplemental}</aside>}
     </div>
   )
 }

@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
+  ErrorState,
 } from '@sdlc/ui/ui'
 import { Textarea } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
@@ -180,13 +181,20 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const { data: comments, isLoading } = useComments(issueId)
+  const commentsQuery = useComments(issueId)
+  const { data: comments, isLoading } = commentsQuery
   const create = useCreateComment(issueId)
   const update = useUpdateComment(issueId)
   const remove = useDeleteComment(issueId)
 
   if (isLoading) {
     return <p className="text-sm text-text-muted">{t('common.loading')}</p>
+  }
+
+  if (commentsQuery.error && !comments) {
+    return (
+      <ErrorState message={t('comments.loadError')} onRetry={() => void commentsQuery.refetch()} />
+    )
   }
 
   const handleCreate = (input: CreateCommentInput) => create.mutateAsync(input)
@@ -209,6 +217,12 @@ export function CommentsPanel({ issueId, currentUserId }: CommentsPanelProps) {
 
   return (
     <div className="space-y-6">
+      {commentsQuery.error && (
+        <ErrorState
+          message={t('comments.loadError')}
+          onRetry={() => void commentsQuery.refetch()}
+        />
+      )}
       {editing ? (
         <CommentForm
           initialBody={editing.body}

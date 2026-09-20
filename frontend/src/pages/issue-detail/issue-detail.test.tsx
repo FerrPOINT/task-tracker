@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Routes, Route } from 'react-router'
 
@@ -8,6 +9,7 @@ import { ThemeProvider } from '@sdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
 
 const mockGetIssue = vi.hoisted(() => vi.fn())
+const mockUseIssue = vi.hoisted(() => vi.fn())
 const mockComments = vi.hoisted(() => vi.fn())
 const mockWorklogs = vi.hoisted(() => vi.fn())
 const mockIssueLinks = vi.hoisted(() => vi.fn())
@@ -44,11 +46,7 @@ vi.mock('@/api/issue', () => ({
 }))
 
 vi.mock('@/shared/api/hooks', () => ({
-  useIssue: () => ({
-    data: issueData,
-    isLoading: false,
-    error: null,
-  }),
+  useIssue: (...args: unknown[]) => mockUseIssue(...args),
   useBoard: () => ({
     data: {
       columns: [
@@ -173,9 +171,12 @@ const commentData = [
 ]
 
 describe('IssueDetailPage', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
   beforeEach(() => {
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
+    mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
     mockComments.mockReturnValue({
       data: commentData,
       isLoading: false,
@@ -193,15 +194,150 @@ describe('IssueDetailPage', () => {
     })
   })
 
-  it('renders loading state', () => {
-    mockGetIssue.mockReturnValue(new Promise(() => {}))
+  it('renders loading state while the issue itself loads', () => {
+    mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
+    render(wrapper(<IssueDetailPage />))
+    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+  })
+
+  it('keeps issue details available while worklogs load', () => {
     mockWorklogs.mockReturnValue({
       data: undefined,
       isLoading: true,
       error: null,
     })
     render(wrapper(<IssueDetailPage />))
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+    expect(screen.getByText('Test issue summary')).toBeInTheDocument()
+    expect(screen.getByText(/загрузка активности|loading activity/i)).toBeInTheDocument()
+  })
+
+  it('shows a retryable issue error separately from a genuine 404', async () => {
+    const retry = vi.fn()
+    mockUseIssue.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    const page = render(wrapper(<IssueDetailPage />))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить задачу|could not load issue/i,
+    )
+    expect(screen.queryByText(/задача не найдена|issue not found/i)).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+
+    mockUseIssue.mockReturnValue({ data: null, isLoading: false, error: null })
+    page.rerender(wrapper(<IssueDetailPage />))
+    expect(screen.getByText(/задача не найдена|issue not found/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /повторить|retry/i })).not.toBeInTheDocument()
+  })
+
+  it('does not disguise failed worklogs as an empty activity feed', async () => {
+    const retry = vi.fn()
+    mockWorklogs.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    render(wrapper(<IssueDetailPage />))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить журнал работ|could not load worklogs/i,
+    )
+    expect(screen.getByText('This is a comment')).toBeInTheDocument()
+    expect(screen.queryByText(/активности пока нет|no activity yet/i)).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('tab', { name: /журнал работ|worklog/i }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить журнал работ|could not load worklogs/i,
+    )
+    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it('shows a retryable comments error in the comments tab', async () => {
+    const retry = vi.fn()
+    mockComments.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('503'),
+      refetch: retry,
+    })
+    render(wrapper(<IssueDetailPage />))
+
+    await userEvent.setup().click(screen.getByRole('tab', { name: /комментарии|comments/i }))
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      /не удалось загрузить комментарии|could not load comments/i,
+    )
+    expect(screen.queryByText(/пока нет комментариев|no comments yet/i)).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: /повторить|retry/i }))
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
+  it('places editable details between the heading and activity in document order', () => {
+    render(wrapper(<IssueDetailPage />))
+    const heading = screen.getByText('Test issue summary')
+    const details = screen.getByText(/^(детали|details)$/i)
+    const activity = screen.getByRole('tab', { name: /активность|activity/i })
+    expect(heading.compareDocumentPosition(details) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(
+      details.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('keeps desktop details and supplemental actions in one independent sidebar', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(min-width: 1024px)',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }))
+    render(wrapper(<IssueDetailPage />))
+
+    const sidebar = screen.getByRole('complementary')
+    expect(sidebar).toHaveClass('sticky')
+    expect(within(sidebar).getByText(/^(детали|details)$/i)).toBeInTheDocument()
+    expect(within(sidebar).getByText(/^(учёт времени|time tracking)$/i)).toBeInTheDocument()
+    expect(within(sidebar).getByText(/^(участие|engagement)$/i)).toBeInTheDocument()
+    expect(within(sidebar).queryByRole('tab', { name: /активность|activity/i })).toBeNull()
+  })
+
+  it('preserves an unsaved issue draft when crossing the desktop breakpoint', async () => {
+    const listeners = new Set<() => void>()
+    const media = {
+      matches: false,
+      addEventListener: (_event: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_event: string, listener: () => void) => listeners.delete(listener),
+    }
+    vi.stubGlobal('matchMedia', () => media)
+    render(wrapper(<IssueDetailPage />))
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /изменить|edit/i }))
+    fireEvent.change(screen.getByDisplayValue('Test issue summary'), {
+      target: { value: 'Unsaved draft' },
+    })
+    act(() => {
+      media.matches = true
+      listeners.forEach((listener) => listener())
+    })
+
+    expect(screen.getByDisplayValue('Unsaved draft')).toBeInTheDocument()
+    expect(screen.getByRole('complementary')).toHaveClass('sticky')
+  })
+
+  it('describes deletion as recoverable from the trash', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />))
+
+    await user.click(screen.getByRole('button', { name: /действия|actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /удалить|delete/i }))
+    expect(
+      screen.getByText(/переместить задачу в корзину|move this issue to the trash/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/без возможности восстановления|permanently/i),
+    ).not.toBeInTheDocument()
   })
 
   it('renders issue details (summary, description, status)', async () => {

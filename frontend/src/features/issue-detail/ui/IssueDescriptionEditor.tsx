@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -24,7 +24,15 @@ interface IssueDescriptionEditorProps {
 export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescriptionEditorProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const descriptionId = useId()
+  const descriptionLines = issue.description?.split('\n') ?? []
+  const compactDescription = descriptionLines.slice(0, 4).join('\n').slice(0, 240).trimEnd()
+  const hasLongDescription =
+    issue.description != null &&
+    (issue.description.length > 280 || descriptionLines.length > 5) &&
+    compactDescription.length < issue.description.length
   const {
     register,
     handleSubmit,
@@ -64,13 +72,15 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
 
   if (!editing) {
     return (
-      <div className="group cursor-pointer" onClick={startEdit}>
+      <div className="group min-w-0 cursor-pointer" onClick={startEdit}>
         <div className="mb-2 flex items-start justify-between">
-          <h1 className="text-2xl font-semibold text-text-primary">{issue.summary}</h1>
+          <h1 className="min-w-0 break-words text-2xl font-semibold text-text-primary">
+            {issue.summary}
+          </h1>
           <Button
             variant="ghost"
             size="icon"
-            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+            className="h-10 w-10 shrink-0 opacity-100 xl:h-9 xl:w-9 xl:opacity-0 xl:group-hover:opacity-100 xl:group-focus-within:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               startEdit()
@@ -82,7 +92,32 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           </Button>
         </div>
         {issue.description ? (
-          renderDescription(issue.description)
+          hasLongDescription ? (
+            <>
+              <div id={descriptionId} className="lg:hidden">
+                {renderDescription(
+                  descriptionExpanded ? issue.description : `${compactDescription}…`,
+                )}
+              </div>
+              <div className="hidden lg:block">{renderDescription(issue.description)}</div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mt-1 h-10 px-0 lg:hidden"
+                aria-controls={descriptionId}
+                aria-expanded={descriptionExpanded}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  setDescriptionExpanded((value) => !value)
+                }}
+              >
+                {t(descriptionExpanded ? 'issue.showLessDescription' : 'issue.showMoreDescription')}
+              </Button>
+            </>
+          ) : (
+            renderDescription(issue.description)
+          )
         ) : (
           <p className="text-sm text-text-muted">{t('issue.noDescription')}</p>
         )}
@@ -113,7 +148,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
         </p>
       )}
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={disabled || isSubmitting}>
+        <Button type="submit" size="sm" className="h-10 xl:h-8" disabled={disabled || isSubmitting}>
           <Check className="mr-1 h-4 w-4" />
           {isSubmitting ? t('common.saving') : t('common.save')}
         </Button>
@@ -121,6 +156,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
           type="button"
           variant="secondary"
           size="sm"
+          className="h-10 xl:h-8"
           onClick={cancel}
           disabled={disabled || isSubmitting}
         >
@@ -135,7 +171,7 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
 function renderDescription(text: string) {
   const lines = text.split('\n')
   return (
-    <div className="space-y-3 text-sm text-text-secondary">
+    <div className="space-y-3 break-words text-sm text-text-secondary">
       {lines.map((line, idx) => {
         if (line.startsWith('· ')) {
           return (
