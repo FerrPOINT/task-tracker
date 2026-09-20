@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router'
-import { Download } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router'
+import { Download, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
   BarChart,
@@ -29,20 +29,78 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@sdlc/ui/ui'
 import { Card, CardHeader, CardTitle, CardContent } from '@sdlc/ui/ui'
 import { Button } from '@sdlc/ui/ui'
+import { ErrorState } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
 import { fetchIssueExport, type IssueExportFormat } from '@/api/export'
 
 type TabValue = 'velocity' | 'burndown' | 'cumulative-flow' | 'control-chart'
 
+function ReportPanel({
+  title,
+  subtitle,
+  isLoading,
+  hasData,
+  isEmpty,
+  hasError,
+  emptyMessage,
+  onRetry,
+  children,
+}: {
+  title: string
+  subtitle: string
+  isLoading: boolean
+  hasData: boolean
+  isEmpty: boolean
+  hasError: boolean
+  emptyMessage: string
+  onRetry: () => void
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <p className="text-sm text-text-muted">{subtitle}</p>
+      </CardHeader>
+      <CardContent className="min-w-0 overflow-x-clip">
+        {isLoading && !hasData ? (
+          <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
+        ) : (
+          <>
+            {hasError && (
+              <ErrorState
+                message={t(hasData ? 'reports.refreshError' : 'reports.loadError')}
+                onRetry={onRetry}
+              />
+            )}
+            {hasData ? (
+              isEmpty ? (
+                <p className="py-8 text-center text-text-muted">{emptyMessage}</p>
+              ) : (
+                children
+              )
+            ) : !hasError ? (
+              <p className="py-8 text-center text-text-muted">{emptyMessage}</p>
+            ) : null}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function ReportsPage() {
   const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { data: projects = [] } = useProjects()
+  const projectsQuery = useProjects()
+  const projects = projectsQuery.data ?? []
   const requestedProjectKey = searchParams.get('project_key') ?? ''
-  const [projectId, setProjectId] = useState('')
   const sprintId = searchParams.get('sprint_id') ?? ''
   const [exporting, setExporting] = useState<IssueExportFormat | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [failedExport, setFailedExport] = useState<IssueExportFormat | null>(null)
   const requestedTab = searchParams.get('tab')
   const tab: TabValue =
     requestedTab === 'burndown' ||
@@ -50,15 +108,12 @@ export function ReportsPage() {
     requestedTab === 'control-chart'
       ? requestedTab
       : 'velocity'
-  const projectKey = projects.find((project) => project.id === projectId)?.key
-  const { data: sprints = [] } = useSprints(projectKey)
-
-  useEffect(() => {
-    if (!projectId && requestedProjectKey) {
-      const project = projects.find((candidate) => candidate.key === requestedProjectKey)
-      if (project) setProjectId(project.id)
-    }
-  }, [projectId, projects, requestedProjectKey])
+  const selectedProject = projects.find((project) => project.key === requestedProjectKey)
+  const projectId = selectedProject?.id ?? ''
+  const projectKey = selectedProject?.key
+  const sprintsQuery = useSprints(tab === 'burndown' ? projectKey : undefined)
+  const sprints = sprintsQuery.data ?? []
+  const selectedSprintId = sprints.some((sprint) => sprint.id === sprintId) ? sprintId : ''
 
   function updateParams(values: Record<string, string | undefined>) {
     setSearchParams(
@@ -78,6 +133,7 @@ export function ReportsPage() {
     if (!projectKey) return
     setExporting(format)
     setExportError(null)
+    setFailedExport(null)
     try {
       const file = await fetchIssueExport(projectKey, format)
       const url = URL.createObjectURL(file.blob)
@@ -88,33 +144,44 @@ export function ReportsPage() {
       URL.revokeObjectURL(url)
     } catch {
       setExportError(t('reports.exportError'))
+      setFailedExport(format)
     } finally {
       setExporting(null)
     }
   }
 
-  const velocity = useVelocityReport(projectId || undefined)
-  const burndown = useBurndownReport(sprintId || undefined)
-  const cumulativeFlow = useCumulativeFlowReport(projectId || undefined)
-  const controlChart = useControlChartReport(projectId || undefined)
+  const velocity = useVelocityReport(tab === 'velocity' ? projectId || undefined : undefined)
+  const burndown = useBurndownReport(
+    tab === 'burndown' && projectId ? selectedSprintId || undefined : undefined,
+  )
+  const cumulativeFlow = useCumulativeFlowReport(
+    tab === 'cumulative-flow' ? projectId || undefined : undefined,
+  )
+  const controlChart = useControlChartReport(
+    tab === 'control-chart' ? projectId || undefined : undefined,
+  )
 
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">{t('reports.title')}</h1>
 
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="report-project">{t('reports.project')}</Label>
           <select
             id="report-project"
             aria-label={t('reports.project')}
-            className="h-9 rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary"
+            className="h-10 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary"
             value={projectId}
+            disabled={
+              (projectsQuery.isLoading || Boolean(projectsQuery.error)) && projects.length === 0
+            }
             onChange={(e) => {
               const nextId = e.target.value
-              setProjectId(nextId)
               const nextProject = projects.find((project) => project.id === nextId)
               updateParams({ project_key: nextProject?.key, sprint_id: undefined })
+              setExportError(null)
+              setFailedExport(null)
             }}
           >
             <option value="">{t('reports.selectProject')}</option>
@@ -126,29 +193,43 @@ export function ReportsPage() {
           </select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="report-sprint">Спринт</Label>
-          <select
-            id="report-sprint"
-            aria-label="Спринт"
-            disabled={!projectKey}
-            value={sprintId}
-            onChange={(e) => updateParams({ sprint_id: e.target.value || undefined })}
-            className="h-9 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:w-64"
-          >
-            <option value="">Выберите спринт</option>
-            {sprints.map((sprint) => (
-              <option key={sprint.id} value={sprint.id}>
-                {sprint.name}
+        {tab === 'burndown' && projectKey && (
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <Label htmlFor="report-sprint">{t('reports.sprint')}</Label>
+            <select
+              id="report-sprint"
+              disabled={
+                (sprintsQuery.isLoading || Boolean(sprintsQuery.error)) && sprints.length === 0
+              }
+              value={selectedSprintId}
+              onChange={(e) => updateParams({ sprint_id: e.target.value || undefined })}
+              className="h-10 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:w-64"
+            >
+              <option value="">
+                {sprintsQuery.isLoading && sprints.length === 0
+                  ? t('reports.loadingSprints')
+                  : sprints.length === 0 && !sprintsQuery.error
+                    ? t('reports.noSprints')
+                    : t('reports.selectSprint')}
               </option>
-            ))}
-          </select>
-        </div>
+              {sprints.map((sprint) => (
+                <option key={sprint.id} value={sprint.id}>
+                  {sprint.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
-        <div className="flex gap-2" aria-label={t('reports.export')}>
+        <div
+          className="flex gap-2 sm:ml-auto"
+          aria-label={t('reports.export')}
+          aria-busy={exporting !== null}
+        >
           <Button
             variant="outline"
             size="sm"
+            className="h-10"
             disabled={!projectKey || exporting !== null}
             onClick={() => void downloadExport('csv')}
           >
@@ -158,6 +239,7 @@ export function ReportsPage() {
           <Button
             variant="outline"
             size="sm"
+            className="h-10"
             disabled={!projectKey || exporting !== null}
             onClick={() => void downloadExport('json')}
           >
@@ -165,184 +247,270 @@ export function ReportsPage() {
             {exporting === 'json' ? t('reports.exporting') : t('reports.exportJson')}
           </Button>
         </div>
-        {exportError && (
-          <p role="alert" className="text-sm text-danger">
-            {exportError}
-          </p>
-        )}
       </div>
 
-      {!projectId ? (
-        <p className="py-8 text-center text-text-muted">{t('reports.noProject')}</p>
+      {projectsQuery.error && (
+        <div className="flex flex-wrap items-center gap-2" role="alert">
+          <span className="text-sm text-danger">{t('reports.projectsError')}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10"
+            onClick={() => void projectsQuery.refetch()}
+          >
+            <RotateCcw className="h-4 w-4" />
+            {t('common.retry')}
+          </Button>
+        </div>
+      )}
+      {tab === 'burndown' && sprintsQuery.error && (
+        <div className="flex flex-wrap items-center gap-2" role="alert">
+          <span className="text-sm text-danger">{t('reports.sprintsError')}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10"
+            onClick={() => void sprintsQuery.refetch()}
+          >
+            <RotateCcw className="h-4 w-4" />
+            {t('common.retry')}
+          </Button>
+        </div>
+      )}
+      {exportError && (
+        <div className="flex flex-wrap items-center gap-2" role="alert">
+          <span className="text-sm text-danger">{exportError}</span>
+          {failedExport && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-10"
+              onClick={() => void downloadExport(failedExport)}
+            >
+              <RotateCcw className="h-4 w-4" />
+              {t('common.retry')}
+            </Button>
+          )}
+        </div>
+      )}
+
+      {projectsQuery.isLoading && projects.length === 0 ? (
+        <p className="py-8 text-center text-text-muted">{t('reports.loadingProjects')}</p>
+      ) : projectsQuery.error && projects.length === 0 ? null : !projectId ? (
+        <div className="space-y-3 py-8 text-center text-text-muted">
+          <p>
+            {t(
+              projects.length === 0
+                ? 'reports.noProjects'
+                : requestedProjectKey
+                  ? 'reports.unknownProject'
+                  : 'reports.noProject',
+            )}
+          </p>
+          {projects.length === 0 && (
+            <Button asChild variant="outline" className="h-10">
+              <Link to="/projects">{t('projects.title')}</Link>
+            </Button>
+          )}
+        </div>
       ) : (
         <Tabs value={tab} onValueChange={(value) => updateParams({ tab: value })}>
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 lg:grid-cols-4">
-            <TabsTrigger value="velocity">{t('reports.tabVelocity')}</TabsTrigger>
-            <TabsTrigger value="burndown">{t('reports.tabBurndown')}</TabsTrigger>
-            <TabsTrigger value="cumulative-flow">{t('reports.tabCumulativeFlow')}</TabsTrigger>
-            <TabsTrigger value="control-chart">{t('reports.tabControlChart')}</TabsTrigger>
+            <TabsTrigger
+              className="min-h-10 whitespace-normal px-2 text-center leading-4"
+              value="velocity"
+            >
+              {t('reports.tabVelocity')}
+            </TabsTrigger>
+            <TabsTrigger
+              className="min-h-10 whitespace-normal px-2 text-center leading-4"
+              value="burndown"
+            >
+              {t('reports.tabBurndown')}
+            </TabsTrigger>
+            <TabsTrigger
+              className="min-h-10 whitespace-normal px-2 text-center leading-4"
+              value="cumulative-flow"
+            >
+              {t('reports.tabCumulativeFlow')}
+            </TabsTrigger>
+            <TabsTrigger
+              className="min-h-10 whitespace-normal px-2 text-center leading-4"
+              value="control-chart"
+            >
+              {t('reports.tabControlChart')}
+            </TabsTrigger>
           </TabsList>
 
-          {/* Velocity */}
           <TabsContent value="velocity">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('reports.velocity.title')}</CardTitle>
-                <p className="text-sm text-text-muted">{t('reports.velocity.subtitle')}</p>
-              </CardHeader>
-              <CardContent>
-                {velocity.isLoading ? (
-                  <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
-                ) : !velocity.data || velocity.data.sprints.length === 0 ? (
-                  <p className="py-8 text-center text-text-muted">{t('reports.velocity.empty')}</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={velocity.data.sprints}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar
-                        dataKey="committed"
-                        name={t('reports.velocity.committed')}
-                        fill="#3b82f6"
-                      />
-                      <Bar
-                        dataKey="completed"
-                        name={t('reports.velocity.completed')}
-                        fill="#22c55e"
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
+            <ReportPanel
+              title={t('reports.velocity.title')}
+              subtitle={t('reports.velocity.subtitle')}
+              isLoading={velocity.isLoading}
+              hasData={Boolean(velocity.data)}
+              isEmpty={velocity.data?.sprints.length === 0}
+              hasError={Boolean(velocity.error)}
+              emptyMessage={t('reports.velocity.empty')}
+              onRetry={() => void velocity.refetch()}
+            >
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={velocity.data?.sprints ?? []} margin={{ right: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar
+                    dataKey="committed"
+                    name={t('reports.velocity.committed')}
+                    fill="#3b82f6"
+                    isAnimationActive={false}
+                  />
+                  <Bar
+                    dataKey="completed"
+                    name={t('reports.velocity.completed')}
+                    fill="#22c55e"
+                    isAnimationActive={false}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </ReportPanel>
           </TabsContent>
 
-          {/* Burndown */}
           <TabsContent value="burndown">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('reports.burndown.title')}</CardTitle>
-                <p className="text-sm text-text-muted">{t('reports.burndown.subtitle')}</p>
-              </CardHeader>
-              <CardContent>
-                {!sprintId ? (
-                  <p className="py-8 text-center text-text-muted">
-                    Выберите спринт для построения графика.
-                  </p>
-                ) : burndown.isLoading ? (
-                  <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
-                ) : !burndown.data || burndown.data.points.length === 0 ? (
-                  <p className="py-8 text-center text-text-muted">{t('reports.burndown.empty')}</p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={burndown.data.points}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="remaining"
-                        name={t('reports.burndown.remaining')}
-                        stroke="#ef4444"
-                        strokeWidth={2}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
+            <ReportPanel
+              title={t('reports.burndown.title')}
+              subtitle={t('reports.burndown.subtitle')}
+              isLoading={burndown.isLoading}
+              hasData={Boolean(burndown.data)}
+              isEmpty={burndown.data?.points.length === 0}
+              hasError={Boolean(burndown.error)}
+              emptyMessage={t(
+                selectedSprintId
+                  ? 'reports.burndown.empty'
+                  : sprintsQuery.isLoading
+                    ? 'reports.loadingSprints'
+                    : sprintId && sprintsQuery.data
+                      ? 'reports.unknownSprint'
+                      : 'reports.selectSprintPrompt',
+              )}
+              onRetry={() => void burndown.refetch()}
+            >
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={burndown.data?.points ?? []}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line
+                    type="monotone"
+                    dataKey="remaining"
+                    name={t('reports.burndown.remaining')}
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </ReportPanel>
           </TabsContent>
 
-          {/* Cumulative Flow */}
           <TabsContent value="cumulative-flow">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('reports.cumulativeFlow.title')}</CardTitle>
-                <p className="text-sm text-text-muted">{t('reports.cumulativeFlow.subtitle')}</p>
-              </CardHeader>
-              <CardContent>
-                {cumulativeFlow.isLoading ? (
-                  <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
-                ) : !cumulativeFlow.data || cumulativeFlow.data.points.length === 0 ? (
-                  <p className="py-8 text-center text-text-muted">
-                    {t('reports.cumulativeFlow.empty')}
-                  </p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={cumulativeFlow.data.points}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Area
-                        type="monotone"
-                        dataKey="todo"
-                        stackId="1"
-                        name={t('reports.cumulativeFlow.todo')}
-                        fill="#94a3b8"
-                        stroke="#94a3b8"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="in_progress"
-                        stackId="1"
-                        name={t('reports.cumulativeFlow.inProgress')}
-                        fill="#3b82f6"
-                        stroke="#3b82f6"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="done"
-                        stackId="1"
-                        name={t('reports.cumulativeFlow.done')}
-                        fill="#22c55e"
-                        stroke="#22c55e"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
+            <ReportPanel
+              title={t('reports.cumulativeFlow.title')}
+              subtitle={t('reports.cumulativeFlow.subtitle')}
+              isLoading={cumulativeFlow.isLoading}
+              hasData={Boolean(cumulativeFlow.data)}
+              isEmpty={cumulativeFlow.data?.points.length === 0}
+              hasError={Boolean(cumulativeFlow.error)}
+              emptyMessage={t('reports.cumulativeFlow.empty')}
+              onRetry={() => void cumulativeFlow.refetch()}
+            >
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={cumulativeFlow.data?.points ?? []}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Area
+                    type="monotone"
+                    dataKey="todo"
+                    stackId="1"
+                    name={t('reports.cumulativeFlow.todo')}
+                    fill="#94a3b8"
+                    stroke="#94a3b8"
+                    isAnimationActive={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="in_progress"
+                    stackId="1"
+                    name={t('reports.cumulativeFlow.inProgress')}
+                    fill="#3b82f6"
+                    stroke="#3b82f6"
+                    isAnimationActive={false}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="done"
+                    stackId="1"
+                    name={t('reports.cumulativeFlow.done')}
+                    fill="#22c55e"
+                    stroke="#22c55e"
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ReportPanel>
           </TabsContent>
 
-          {/* Control Chart */}
           <TabsContent value="control-chart">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t('reports.controlChart.title')}</CardTitle>
-                <p className="text-sm text-text-muted">{t('reports.controlChart.subtitle')}</p>
-              </CardHeader>
-              <CardContent>
-                {controlChart.isLoading ? (
-                  <p className="py-8 text-center text-text-muted">{t('reports.loading')}</p>
-                ) : !controlChart.data || controlChart.data.points.length === 0 ? (
-                  <p className="py-8 text-center text-text-muted">
-                    {t('reports.controlChart.empty')}
-                  </p>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <ScatterChart>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="issue_key" name={t('reports.controlChart.issue')} />
-                      <YAxis dataKey="cycle_time_days" name={t('reports.controlChart.cycleTime')} />
-                      <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                      <Legend />
-                      <Scatter
-                        data={controlChart.data.points}
-                        fill="#8b5cf6"
-                        name={t('reports.controlChart.title')}
-                      />
-                    </ScatterChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
+            <ReportPanel
+              title={t('reports.controlChart.title')}
+              subtitle={t('reports.controlChart.subtitle')}
+              isLoading={controlChart.isLoading}
+              hasData={Boolean(controlChart.data)}
+              isEmpty={controlChart.data?.points.length === 0}
+              hasError={Boolean(controlChart.error)}
+              emptyMessage={t('reports.controlChart.empty')}
+              onRetry={() => void controlChart.refetch()}
+            >
+              <div aria-hidden="true">
+                <ResponsiveContainer width="100%" height={300}>
+                  <ScatterChart>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="issue_key" name={t('reports.controlChart.issue')} />
+                    <YAxis dataKey="cycle_time_days" name={t('reports.controlChart.cycleTime')} />
+                    <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+                    <Legend />
+                    <Scatter
+                      data={controlChart.data?.points ?? []}
+                      fill="#8b5cf6"
+                      name={t('reports.controlChart.title')}
+                      isAnimationActive={false}
+                    />
+                  </ScatterChart>
+                </ResponsiveContainer>
+              </div>
+              <table className="sr-only" aria-label={t('reports.controlChart.title')}>
+                <thead>
+                  <tr>
+                    <th scope="col">{t('reports.controlChart.issue')}</th>
+                    <th scope="col">{t('reports.controlChart.cycleTime')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {controlChart.data?.points.map((point) => (
+                    <tr key={point.issue_key}>
+                      <td>{point.issue_key}</td>
+                      <td>{point.cycle_time_days}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ReportPanel>
           </TabsContent>
         </Tabs>
       )}
