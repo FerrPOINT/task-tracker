@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router'
 import { endSso } from '@sdlc/ui/sso'
 import { listProjects, createProject, updateProject, deleteProject } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
-import { searchIssues, type SearchFilters } from '@/api/search'
+import { searchIssues, SearchRequestError, type SearchFilters } from '@/api/search'
 import { login, register, getCurrentUser, listUsers } from '@/api/auth'
 import { createIssue } from '@/api/issue-create'
 import {
@@ -351,6 +351,9 @@ export function useIssues(filters: SearchFilters = {}) {
   return useQuery({
     queryKey: ['search', filters],
     queryFn: () => searchIssues(filters),
+    retry: (failureCount, error) =>
+      !(error instanceof SearchRequestError && error.status >= 400 && error.status < 500) &&
+      failureCount < 2,
   })
 }
 
