@@ -12,27 +12,11 @@ beforeAll(() => {
 })
 
 vi.mock('@/shared/api/hooks', () => ({
-  useProjects: () => ({
-    data: [
-      {
-        id: 'p1',
-        key: 'TT',
-        name: 'Task Tracker',
-        owner_id: 'u1',
-      },
-    ],
-    isLoading: false,
-    error: null,
-  }),
-  useProjectMembers: () => ({
-    data: { members: [{ project_id: 'p1', user_id: 'u2', role: 'member' }] },
-    isLoading: false,
-    error: null,
-  }),
   useUsers: () => ({
     data: [
       { id: 'u1', username: 'alice', display_name: 'Alice' },
       { id: 'u2', username: 'bob', display_name: 'Bob' },
+      { id: 'u3', username: 'charlie', display_name: 'Charlie' },
     ],
     isLoading: false,
     error: null,
@@ -113,14 +97,19 @@ describe('IssueMetaEditor', () => {
     expect(onChange).toHaveBeenCalledWith({ priority: 'Low' })
   })
 
+  it('offers every active directory user for assignment', () => {
+    render(wrapper(<IssueMetaEditor issue={issue} columns={columns} onChange={vi.fn()} />))
+    expect(screen.getByRole('option', { name: 'Charlie' })).toBeInTheDocument()
+  })
+
   it('keeps stale assignee visible as a disabled current option', () => {
     const staleIssue = {
       ...issue,
-      assignee_id: 'u3',
-      assignee_name: 'Former Member',
+      assignee_id: 'u4',
+      assignee_name: 'Former User',
     }
     render(wrapper(<IssueMetaEditor issue={staleIssue} columns={columns} onChange={vi.fn()} />))
-    const option = screen.getByRole('option', { name: 'Former Member' }) as HTMLOptionElement
+    const option = screen.getByRole('option', { name: 'Former User' }) as HTMLOptionElement
     expect(option.disabled).toBe(true)
   })
 })

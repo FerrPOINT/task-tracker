@@ -31,10 +31,6 @@ vi.mock('@/shared/api/hooks', () => ({
   }),
   useMoveIssue: () => ({ mutate: vi.fn(), isPending: false }),
   useTransitions: () => ({ data: [], isLoading: false }),
-  useProjectMembers: () => ({ data: { members: [] }, isLoading: false, error: null }),
-  useUsers: () => ({ data: [] }),
-  useAddProjectMember: () => ({ mutate: vi.fn(), isPending: false }),
-  useRemoveProjectMember: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 function wrapper(children: React.ReactNode) {
@@ -55,5 +51,6 @@ describe('ProjectBoardPage', () => {
     const columns = await screen.findAllByText(/К выполнению/i)
     expect(columns.length).toBeGreaterThanOrEqual(1) // single responsive tree
     expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByRole('button', { name: /участники|members/i })).not.toBeInTheDocument()
   })
 })

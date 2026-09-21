@@ -11,7 +11,6 @@ import {
 } from '@sdlc/ui/ui'
 import { ErrorState, LoadingState } from '@sdlc/ui/ui'
 import { useBoard, useMoveIssue, useTransitions } from '@/shared/api/hooks'
-import { ProjectMembersPanel } from '@/features/project-members/ui/ProjectMembersPanel'
 import { UserAvatar } from '@/shared/ui/user-avatar'
 import type { components } from '@/api/generated'
 import { toast } from 'sonner'
@@ -233,7 +232,6 @@ export function ProjectBoardPage() {
               <span className="hidden sm:inline">{t('board.backlog')}</span>
             </Link>
           </Button>
-          <ProjectMembersPanel projectKey={key} />
         </div>
       </div>
 

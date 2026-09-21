@@ -92,6 +92,10 @@ password/register/refresh endpoints являются legacy-контрактом
 
 ### Project members (по UUID)
 
+В платформенном режиме Central Auth эти legacy-записи не ограничивают доступ к
+проекту и не определяют список исполнителей: назначение использует активный
+центральный каталог. Dashboard не предлагает управление локальными memberships.
+
 | Метод | Путь | Назначение |
 |---|---|---|
 | GET, POST | `/projects/{project_key}/members` | Участники проекта / добавление (upsert роли) |

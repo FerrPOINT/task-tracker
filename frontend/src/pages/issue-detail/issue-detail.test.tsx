@@ -95,7 +95,6 @@ vi.mock('@/shared/api/hooks', () => ({
     data: [{ id: 'p1', key: 'TT', name: 'Task Tracker', owner_id: 'u1' }],
     isLoading: false,
   }),
-  useProjectMembers: () => ({ data: { members: [] }, isLoading: false, error: null }),
   useUsers: () => ({ data: [], isLoading: false }),
   useStatuses: () => ({ data: [], isLoading: false }),
   useTransitions: () => ({ data: [], isLoading: false }),
