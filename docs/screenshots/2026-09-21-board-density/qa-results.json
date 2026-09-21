@@ -1,0 +1,432 @@
+[
+  {
+    "viewport": {
+      "width": 375,
+      "height": 812
+    },
+    "theme": "light",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 343,
+      "densityControlVisible": false,
+      "activeDensity": "Обычная",
+      "visibleCards": 6,
+      "averageCardHeight": 102,
+      "maxCardHeight": 102,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": false,
+      "requestedDensity": "comfortable"
+    }
+  },
+  {
+    "viewport": {
+      "width": 768,
+      "height": 900
+    },
+    "theme": "light",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 480,
+      "densityControlVisible": true,
+      "activeDensity": "Обычная",
+      "visibleCards": 24,
+      "averageCardHeight": 144,
+      "maxCardHeight": 154,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "comfortable",
+      "urlUpdated": true,
+      "toggleActivated": true
+    }
+  },
+  {
+    "viewport": {
+      "width": 768,
+      "height": 900
+    },
+    "theme": "light",
+    "density": "compact",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 480,
+      "densityControlVisible": true,
+      "activeDensity": "Компактная",
+      "visibleCards": 24,
+      "averageCardHeight": 132,
+      "maxCardHeight": 142,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "compact"
+    }
+  },
+  {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 1152,
+      "densityControlVisible": true,
+      "activeDensity": "Обычная",
+      "visibleCards": 24,
+      "averageCardHeight": 119,
+      "maxCardHeight": 134,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "comfortable",
+      "urlUpdated": true,
+      "toggleActivated": true
+    }
+  },
+  {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "light",
+    "density": "compact",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 1152,
+      "densityControlVisible": true,
+      "activeDensity": "Компактная",
+      "visibleCards": 24,
+      "averageCardHeight": 102,
+      "maxCardHeight": 102,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "compact"
+    }
+  },
+  {
+    "viewport": {
+      "width": 1920,
+      "height": 900
+    },
+    "theme": "light",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 1632,
+      "densityControlVisible": true,
+      "activeDensity": "Обычная",
+      "visibleCards": 24,
+      "averageCardHeight": 109,
+      "maxCardHeight": 114,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "comfortable",
+      "urlUpdated": true,
+      "toggleActivated": true
+    }
+  },
+  {
+    "viewport": {
+      "width": 1920,
+      "height": 900
+    },
+    "theme": "light",
+    "density": "compact",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 1632,
+      "densityControlVisible": true,
+      "activeDensity": "Компактная",
+      "visibleCards": 24,
+      "averageCardHeight": 92,
+      "maxCardHeight": 102,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "compact"
+    }
+  },
+  {
+    "viewport": {
+      "width": 2560,
+      "height": 1200
+    },
+    "theme": "light",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 2272,
+      "densityControlVisible": true,
+      "activeDensity": "Обычная",
+      "visibleCards": 24,
+      "averageCardHeight": 94,
+      "maxCardHeight": 94,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "comfortable",
+      "urlUpdated": true,
+      "toggleActivated": true
+    }
+  },
+  {
+    "viewport": {
+      "width": 2560,
+      "height": 1200
+    },
+    "theme": "light",
+    "density": "compact",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 2272,
+      "densityControlVisible": true,
+      "activeDensity": "Компактная",
+      "visibleCards": 24,
+      "averageCardHeight": 82,
+      "maxCardHeight": 82,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "compact"
+    }
+  },
+  {
+    "viewport": {
+      "width": 375,
+      "height": 812
+    },
+    "theme": "dark",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 343,
+      "densityControlVisible": false,
+      "activeDensity": "Обычная",
+      "visibleCards": 6,
+      "averageCardHeight": 102,
+      "maxCardHeight": 102,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": false,
+      "requestedDensity": "comfortable"
+    }
+  },
+  {
+    "viewport": {
+      "width": 768,
+      "height": 900
+    },
+    "theme": "dark",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 480,
+      "densityControlVisible": true,
+      "activeDensity": "Обычная",
+      "visibleCards": 24,
+      "averageCardHeight": 144,
+      "maxCardHeight": 154,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "comfortable",
+      "urlUpdated": true,
+      "toggleActivated": true
+    }
+  },
+  {
+    "viewport": {
+      "width": 768,
+      "height": 900
+    },
+    "theme": "dark",
+    "density": "compact",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 480,
+      "densityControlVisible": true,
+      "activeDensity": "Компактная",
+      "visibleCards": 24,
+      "averageCardHeight": 132,
+      "maxCardHeight": 142,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "compact"
+    }
+  },
+  {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 1152,
+      "densityControlVisible": true,
+      "activeDensity": "Обычная",
+      "visibleCards": 24,
+      "averageCardHeight": 119,
+      "maxCardHeight": 134,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "comfortable",
+      "urlUpdated": true,
+      "toggleActivated": true
+    }
+  },
+  {
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "theme": "dark",
+    "density": "compact",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 1152,
+      "densityControlVisible": true,
+      "activeDensity": "Компактная",
+      "visibleCards": 24,
+      "averageCardHeight": 102,
+      "maxCardHeight": 102,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "compact"
+    }
+  },
+  {
+    "viewport": {
+      "width": 1920,
+      "height": 900
+    },
+    "theme": "dark",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 1632,
+      "densityControlVisible": true,
+      "activeDensity": "Обычная",
+      "visibleCards": 24,
+      "averageCardHeight": 109,
+      "maxCardHeight": 114,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "comfortable",
+      "urlUpdated": true,
+      "toggleActivated": true
+    }
+  },
+  {
+    "viewport": {
+      "width": 1920,
+      "height": 900
+    },
+    "theme": "dark",
+    "density": "compact",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 1632,
+      "densityControlVisible": true,
+      "activeDensity": "Компактная",
+      "visibleCards": 24,
+      "averageCardHeight": 92,
+      "maxCardHeight": 102,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "compact"
+    }
+  },
+  {
+    "viewport": {
+      "width": 2560,
+      "height": 1200
+    },
+    "theme": "dark",
+    "density": "comfortable",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 2272,
+      "densityControlVisible": true,
+      "activeDensity": "Обычная",
+      "visibleCards": 24,
+      "averageCardHeight": 94,
+      "maxCardHeight": 94,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "comfortable",
+      "urlUpdated": true,
+      "toggleActivated": true
+    }
+  },
+  {
+    "viewport": {
+      "width": 2560,
+      "height": 1200
+    },
+    "theme": "dark",
+    "density": "compact",
+    "runtimeErrors": [],
+    "axeSeriousCritical": [],
+    "metrics": {
+      "horizontalOverflow": 0,
+      "boardWidth": 2272,
+      "densityControlVisible": true,
+      "activeDensity": "Компактная",
+      "visibleCards": 24,
+      "averageCardHeight": 82,
+      "maxCardHeight": 82,
+      "smallButtons": [],
+      "unlabeledButtons": 0,
+      "expectedDensityControlVisible": true,
+      "requestedDensity": "compact"
+    }
+  }
+]

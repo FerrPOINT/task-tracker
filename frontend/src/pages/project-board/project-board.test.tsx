@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectBoardPage } from './'
@@ -33,10 +34,10 @@ vi.mock('@/shared/api/hooks', () => ({
   useTransitions: () => ({ data: [], isLoading: false }),
 }))
 
-function wrapper(children: React.ReactNode) {
+function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board') {
   return (
     <ThemeProvider>
-      <MemoryRouter initialEntries={['/projects/TT/board']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/projects/:projectKey/board" element={children} />
         </Routes>
@@ -56,5 +57,34 @@ describe('ProjectBoardPage', () => {
     expect(columns.length).toBeGreaterThanOrEqual(1) // single responsive tree
     expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(1)
     expect(screen.queryByRole('button', { name: /участники|members/i })).not.toBeInTheDocument()
+  })
+
+  it('switches to compact density without shrinking issue actions', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<ProjectBoardPage />))
+
+    const compact = screen.getByRole('button', { name: 'Компактная' })
+    const comfortable = screen.getByRole('button', { name: 'Обычная' })
+    const issueCard = screen.getByText('Do work').closest('article')
+
+    expect(comfortable).toHaveAttribute('aria-pressed', 'true')
+    expect(issueCard).toHaveClass('p-2', 'md:p-3')
+
+    await user.click(compact)
+
+    expect(compact).toHaveAttribute('aria-pressed', 'true')
+    expect(issueCard).toHaveClass('p-2')
+    expect(issueCard).not.toHaveClass('md:p-3')
+    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toHaveClass('h-10', 'w-10')
+  })
+
+  it('restores compact density from the board URL', () => {
+    render(wrapper(<ProjectBoardPage />, '/projects/TT/board?density=compact'))
+
+    expect(screen.getByRole('button', { name: 'Компактная' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByText('Do work').closest('article')).toHaveClass('p-2')
   })
 })

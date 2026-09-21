@@ -146,6 +146,9 @@
   },
   "board": {
     "columns": "Board columns",
+    "density": "Board density",
+    "densityComfortable": "Comfortable",
+    "densityCompact": "Compact",
     "filters": "Filters",
     "addColumn": "Column",
     "create": "Create",
