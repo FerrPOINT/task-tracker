@@ -536,6 +536,13 @@
   "customFields": {
     "title": "Custom fields",
     "description": "Configure fields that appear on issues in {{projectKey}}.",
+    "types": {
+      "text": "Text",
+      "number": "Number",
+      "select": "Single select",
+      "multi-select": "Multi-select",
+      "date": "Date"
+    },
     "addTitle": "Add custom field",
     "fieldName": "Field name",
     "fieldType": "Field type",
@@ -546,6 +553,14 @@
     "configuredTitle": "Configured fields",
     "noFields": "No custom fields configured.",
     "loading": "Loading...",
+    "loadError": "Could not load fields. Please try again.",
+    "createError": "Could not add the field. Check the details and try again.",
+    "created": "Field added.",
+    "deleteField": "Delete field {{name}}",
+    "deleteTitle": "Delete field?",
+    "deleteConfirm": "Delete field “{{name}}”? Its values on issues will no longer be available. This cannot be undone.",
+    "deleteError": "Could not delete the field. Please try again.",
+    "deleted": "Field “{{name}}” deleted.",
     "selectPlaceholder": "Select...",
     "optionsRequired": "Options are required for this field type",
     "requiredMissing": "{{name}} is required"
