@@ -8,6 +8,7 @@ import {
   useDeleteProject,
   useStartSprint,
   useUpdateIssue,
+  useUpdateAdminSetting,
   useVoteIssue,
   useWatchIssue,
 } from './hooks'
@@ -16,6 +17,7 @@ import { createIssueLink, deleteIssueLink } from '@/api/link'
 import { updateIssue } from '@/api/issue'
 import { startSprint } from '@/api/sprint'
 import { voteIssue, watchIssue } from '@/api/engagement'
+import { updateAdminSetting } from '@/api/admin'
 
 const navigate = vi.hoisted(() => vi.fn())
 
@@ -68,6 +70,12 @@ vi.mock('@/api/engagement', () => ({
   unwatchIssue: vi.fn(),
 }))
 
+vi.mock('@/api/admin', () => ({
+  listAdminSettings: vi.fn(),
+  listAdminAuditLog: vi.fn(),
+  updateAdminSetting: vi.fn(),
+}))
+
 function wrapper(client: QueryClient) {
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
@@ -116,6 +124,26 @@ describe('shared api hooks', () => {
 
     expect(deleteIssueLink).toHaveBeenCalledWith('link-1')
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links'] })
+  })
+
+  it('invalidates every audit page after updating a system setting', async () => {
+    vi.mocked(updateAdminSetting).mockResolvedValue({
+      key: 'instance.name',
+      value: 'Task Tracker',
+      updated_at: '2026-08-25T10:00:00Z',
+    })
+    const client = new QueryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useUpdateAdminSetting(), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync({ key: 'instance.name', value: 'Task Tracker' })
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'settings'] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'audit-log'] })
   })
 
   it('invalidates reports when an issue mutation changes issue-derived data', async () => {

@@ -80,6 +80,7 @@ import {
 const adminKeys = {
   all: ['admin'] as const,
   settings: ['admin', 'settings'] as const,
+  auditLogs: ['admin', 'audit-log'] as const,
   auditLog: (limit?: number) => ['admin', 'audit-log', limit ?? 100] as const,
 }
 
@@ -93,7 +94,7 @@ export function useUpdateAdminSetting() {
     mutationFn: (input: UpdateSystemSettingInput) => updateAdminSetting(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: adminKeys.settings })
-      qc.invalidateQueries({ queryKey: adminKeys.auditLog() })
+      qc.invalidateQueries({ queryKey: adminKeys.auditLogs })
     },
   })
 }
@@ -102,6 +103,7 @@ export function useAdminAuditLog(limit = 100) {
   return useQuery({
     queryKey: adminKeys.auditLog(limit),
     queryFn: () => listAdminAuditLog(limit),
+    placeholderData: (previous) => previous,
   })
 }
 

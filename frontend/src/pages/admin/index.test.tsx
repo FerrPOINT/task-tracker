@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { AdminPage } from './index'
@@ -14,7 +14,9 @@ vi.mock('@/shared/api/hooks', () => ({
   useUpdateAdminSetting,
 }))
 
-const mutate = vi.fn()
+const mutateAsync = vi.fn()
+const refetchSettings = vi.fn()
+const refetchAudit = vi.fn()
 
 function renderPage() {
   return render(
@@ -31,6 +33,7 @@ describe('AdminPage', () => {
       data: [{ key: 'instance.name', value: 'Task Tracker', updated_at: '2026-08-25T10:00:00Z' }],
       isLoading: false,
       error: null,
+      refetch: refetchSettings,
     })
     useAdminAuditLog.mockReturnValue({
       data: [
@@ -46,8 +49,11 @@ describe('AdminPage', () => {
       ],
       isLoading: false,
       error: null,
+      isFetching: false,
+      refetch: refetchAudit,
     })
-    useUpdateAdminSetting.mockReturnValue({ mutate, isPending: false, error: null })
+    mutateAsync.mockResolvedValue({ key: 'instance.name', value: 'Task Tracker' })
+    useUpdateAdminSetting.mockReturnValue({ mutateAsync, isPending: false })
   })
 
   it('renders settings and audit without local user management', async () => {
@@ -83,6 +89,98 @@ describe('AdminPage', () => {
     await user.click(screen.getByRole('button', { name: /сохранить настройку|save setting/i }))
 
     expect(screen.getByRole('alert')).toHaveTextContent(/корректный json|valid json/i)
-    expect(mutate).not.toHaveBeenCalled()
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('rejects a whitespace-only setting key', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    fireEvent.change(screen.getByLabelText(/ключ настройки|setting key/i), {
+      target: { value: '   ' },
+    })
+    await user.click(screen.getByRole('button', { name: /сохранить настройку|save setting/i }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Укажите ключ настройки.')
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('prefills a setting from its row and confirms a successful save', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Изменить настройку instance.name' }))
+    expect(screen.getByLabelText(/ключ настройки|setting key/i)).toHaveValue('instance.name')
+    expect(screen.getByLabelText(/значение json|json value/i)).toHaveValue('"Task Tracker"')
+    await user.click(screen.getByRole('button', { name: /сохранить настройку|save setting/i }))
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({ key: 'instance.name', value: 'Task Tracker' }),
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Настройка instance.name сохранена.',
+    )
+  })
+
+  it('keeps the draft after save failure and allows another attempt', async () => {
+    mutateAsync.mockRejectedValueOnce(new Error('Bad request'))
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Изменить настройку instance.name' }))
+    await user.click(screen.getByRole('button', { name: /сохранить настройку|save setting/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить настройку')
+    expect(screen.getByLabelText(/значение json|json value/i)).toHaveValue('"Task Tracker"')
+
+    await user.click(screen.getByRole('button', { name: /сохранить настройку|save setting/i }))
+    expect(await screen.findByRole('status')).toHaveTextContent('сохранена')
+    expect(mutateAsync).toHaveBeenCalledTimes(2)
+  })
+
+  it('offers retry for independent settings and audit load failures', async () => {
+    useAdminSettings.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Failed'),
+      refetch: refetchSettings,
+    })
+    useAdminAuditLog.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Failed'),
+      refetch: refetchAudit,
+    })
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: /повторить/i }))
+    expect(refetchSettings).toHaveBeenCalledOnce()
+    await user.click(screen.getByRole('tab', { name: /журнал аудита|audit log/i }))
+    await user.click(screen.getByRole('button', { name: /повторить/i }))
+    expect(refetchAudit).toHaveBeenCalledOnce()
+  })
+
+  it('requests a larger audit page without changing tabs', async () => {
+    useAdminAuditLog.mockReturnValue({
+      data: Array.from({ length: 20 }, (_, index) => ({
+        id: `a${index}`,
+        action: `action.${index}`,
+        entity_type: 'issue',
+        entity_id: null,
+        actor_id: null,
+        metadata: {},
+        created_at: '2026-08-25T10:00:00Z',
+      })),
+      isLoading: false,
+      isFetching: false,
+      error: null,
+      refetch: refetchAudit,
+    })
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('tab', { name: /журнал аудита|audit log/i }))
+    await user.click(screen.getByRole('button', { name: /загрузить ещё|load more/i }))
+    expect(useAdminAuditLog).toHaveBeenLastCalledWith(40)
   })
 })
