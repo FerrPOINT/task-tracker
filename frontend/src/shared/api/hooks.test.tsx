@@ -8,7 +8,7 @@ import {
   useDeleteProject,
   useStartSprint,
   useUpdateIssue,
-  useUpdateAdminSetting,
+  useUpdateNotificationSettings,
   useVoteIssue,
   useWatchIssue,
 } from './hooks'
@@ -17,7 +17,7 @@ import { createIssueLink, deleteIssueLink } from '@/api/link'
 import { updateIssue } from '@/api/issue'
 import { startSprint } from '@/api/sprint'
 import { voteIssue, watchIssue } from '@/api/engagement'
-import { updateAdminSetting } from '@/api/admin'
+import { updateNotificationSettings } from '@/api/notifications'
 
 const navigate = vi.hoisted(() => vi.fn())
 
@@ -70,10 +70,12 @@ vi.mock('@/api/engagement', () => ({
   unwatchIssue: vi.fn(),
 }))
 
-vi.mock('@/api/admin', () => ({
-  listAdminSettings: vi.fn(),
-  listAdminAuditLog: vi.fn(),
-  updateAdminSetting: vi.fn(),
+vi.mock('@/api/notifications', () => ({
+  listNotifications: vi.fn(),
+  markNotificationRead: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
+  getNotificationSettings: vi.fn(),
+  updateNotificationSettings: vi.fn(),
 }))
 
 function wrapper(client: QueryClient) {
@@ -85,6 +87,32 @@ function wrapper(client: QueryClient) {
 describe('shared api hooks', () => {
   afterEach(() => {
     vi.clearAllMocks()
+  })
+
+  it('updates cached notification settings immediately after saving', async () => {
+    const saved = {
+      email_frequency: 'hourly',
+      disabled_event_types: ['issue_assigned'],
+      notify_own_changes: true,
+    }
+    vi.mocked(updateNotificationSettings).mockResolvedValue(saved)
+    const client = new QueryClient()
+    client.setQueryData(['notification-settings'], {
+      email_frequency: 'daily',
+      disabled_event_types: [],
+      notify_own_changes: false,
+    })
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const { result } = renderHook(() => useUpdateNotificationSettings(), {
+      wrapper: wrapper(client),
+    })
+
+    await act(async () => {
+      await result.current.mutateAsync(saved)
+    })
+
+    expect(client.getQueryData(['notification-settings'])).toEqual(saved)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['notification-settings'] })
   })
 
   it('invalidates both source and target issue link lists after creating a link', async () => {
@@ -124,26 +152,6 @@ describe('shared api hooks', () => {
 
     expect(deleteIssueLink).toHaveBeenCalledWith('link-1')
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['issue-links'] })
-  })
-
-  it('invalidates every audit page after updating a system setting', async () => {
-    vi.mocked(updateAdminSetting).mockResolvedValue({
-      key: 'instance.name',
-      value: 'Task Tracker',
-      updated_at: '2026-08-25T10:00:00Z',
-    })
-    const client = new QueryClient()
-    const invalidate = vi.spyOn(client, 'invalidateQueries')
-    const { result } = renderHook(() => useUpdateAdminSetting(), {
-      wrapper: wrapper(client),
-    })
-
-    await act(async () => {
-      await result.current.mutateAsync({ key: 'instance.name', value: 'Task Tracker' })
-    })
-
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'settings'] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['admin', 'audit-log'] })
   })
 
   it('invalidates reports when an issue mutation changes issue-derived data', async () => {

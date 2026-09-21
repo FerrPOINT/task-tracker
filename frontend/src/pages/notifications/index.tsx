@@ -1,7 +1,11 @@
 import { memo, useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import type { NotificationItem, UpdateNotificationSettingsInput } from '@/api/notifications'
+import type {
+  NotificationItem,
+  NotificationSettings,
+  UpdateNotificationSettingsInput,
+} from '@/api/notifications'
 import {
   useMarkAllNotificationsRead,
   useMarkNotificationRead,
@@ -18,17 +22,26 @@ import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
 const PAGE_SIZE = 20
 
 const NOTIFICATION_EVENTS = [
-  ['issue_assigned', 'Назначение задачи'],
-  ['issue_moved', 'Смена статуса'],
-  ['issue_updated', 'Изменение задачи'],
-  ['issue_commented', 'Новый комментарий'],
-  ['issue_comment_edited', 'Изменение комментария'],
-  ['issue_comment_deleted', 'Удаление комментария'],
-  ['issue_worklog_logged', 'Учёт времени'],
-  ['issue_attachment_added', 'Новый файл'],
-  ['issue_link_created', 'Новая связь'],
-  ['issue_link_deleted', 'Удаление связи'],
+  'issue_assigned',
+  'issue_moved',
+  'issue_updated',
+  'issue_commented',
+  'issue_comment_edited',
+  'issue_comment_deleted',
+  'issue_worklog_logged',
+  'issue_attachment_added',
+  'issue_link_created',
+  'issue_link_deleted',
 ] as const
+
+function sameSettings(left: NotificationSettings, right: UpdateNotificationSettingsInput) {
+  return (
+    left.email_frequency === right.email_frequency &&
+    left.notify_own_changes === right.notify_own_changes &&
+    left.disabled_event_types.length === right.disabled_event_types.length &&
+    left.disabled_event_types.every((event) => right.disabled_event_types.includes(event))
+  )
+}
 
 const NotificationRow = memo(function NotificationRow({
   notification,
@@ -74,7 +87,7 @@ const NotificationRow = memo(function NotificationRow({
       {notification.action_url ? (
         <Link
           to={notification.action_url}
-          className="block min-w-0 flex-1 py-1 hover:text-accent"
+          className="block min-h-11 min-w-0 flex-1 py-1.5 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
           onClick={handleClick}
         >
           {content}
@@ -87,7 +100,7 @@ const NotificationRow = memo(function NotificationRow({
           type="button"
           variant="ghost"
           size="icon"
-          className="h-10 w-10 shrink-0"
+          className="h-11 w-11 shrink-0 sm:h-10 sm:w-10"
           aria-label={`${t('notifications.markRead')}: ${notification.title}`}
           title={t('notifications.markRead')}
           disabled={pendingRead}
@@ -121,6 +134,7 @@ export function NotificationsPage() {
   const markAllNotificationsRead = useMarkAllNotificationsRead()
   const updateSettings = useUpdateNotificationSettings()
   const displayedSettings = settingsDraft ?? settings
+  const settingsDirty = !!settings && !!settingsDraft && !sameSettings(settings, settingsDraft)
   const readMutation = readAction === 'all' ? markAllNotificationsRead : markNotificationRead
   const notifications = notificationList?.notifications ?? []
   const visibleNotifications = notifications.slice(0, PAGE_SIZE)
@@ -131,24 +145,11 @@ export function NotificationsPage() {
     if (page > 0 && notificationList && notifications.length === 0) setPage(page - 1)
   }, [page, notificationList, notifications.length])
 
-  useEffect(() => {
-    if (!settings || !settingsDraft || updateSettings.isPending || updateSettings.isError) return
-    if (
-      settings.email_frequency === settingsDraft.email_frequency &&
-      settings.notify_own_changes === settingsDraft.notify_own_changes &&
-      settings.disabled_event_types.length === settingsDraft.disabled_event_types.length &&
-      settings.disabled_event_types.every((event) =>
-        settingsDraft.disabled_event_types.includes(event),
-      )
-    )
-      setSettingsDraft(null)
-  }, [settings, settingsDraft, updateSettings.isPending, updateSettings.isError])
-
   function updatePreference(input: Partial<UpdateNotificationSettingsInput>) {
     if (!displayedSettings) return
     const next = { ...displayedSettings, ...input }
-    setSettingsDraft(next)
-    updateSettings.mutate(next)
+    setSettingsDraft(settings && sameSettings(settings, next) ? null : next)
+    updateSettings.reset()
   }
 
   function toggleEvent(eventType: string, enabled: boolean) {
@@ -156,6 +157,11 @@ export function NotificationsPage() {
     if (enabled) disabled.delete(eventType)
     else disabled.add(eventType)
     updatePreference({ disabled_event_types: [...disabled] })
+  }
+
+  function saveSettings() {
+    if (!settingsDraft || !settingsDirty) return
+    updateSettings.mutate(settingsDraft, { onSuccess: () => setSettingsDraft(null) })
   }
 
   return (
@@ -168,7 +174,7 @@ export function NotificationsPage() {
         <Button
           variant="outline"
           size="sm"
-          className="min-h-10"
+          className="min-h-11 sm:min-h-10"
           onClick={() => {
             setPage(0)
             setReadAction('all')
@@ -186,7 +192,7 @@ export function NotificationsPage() {
             <Button
               variant={showUnread ? 'ghost' : 'secondary'}
               size="sm"
-              className="min-h-10"
+              className="min-h-11 sm:min-h-10"
               aria-pressed={!showUnread}
               onClick={() => {
                 setShowUnread(false)
@@ -198,7 +204,7 @@ export function NotificationsPage() {
             <Button
               variant={showUnread ? 'secondary' : 'ghost'}
               size="sm"
-              className="min-h-10"
+              className="min-h-11 sm:min-h-10"
               aria-pressed={showUnread}
               onClick={() => {
                 setShowUnread(true)
@@ -289,7 +295,7 @@ export function NotificationsPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-10 w-10"
+                    className="h-11 w-11 sm:h-10 sm:w-10"
                     aria-label={t('notifications.previousPage')}
                     title={t('notifications.previousPage')}
                     disabled={page === 0}
@@ -303,7 +309,7 @@ export function NotificationsPage() {
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-10 w-10"
+                    className="h-11 w-11 sm:h-10 sm:w-10"
                     aria-label={t('notifications.nextPage')}
                     title={t('notifications.nextPage')}
                     disabled={!hasNextPage}
@@ -321,42 +327,24 @@ export function NotificationsPage() {
           <CardHeader>
             <CardTitle>{t('notifications.preferences')}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-5">
+          <CardContent>
             {settingsLoading ? (
               <p className="text-sm text-text-muted">{t('notifications.loading')}</p>
             ) : !displayedSettings ? (
               <ErrorState message={t('common.error')} onRetry={() => void refetchSettings()} />
             ) : (
-              <>
-                <div aria-live="polite" className="min-h-5 text-xs">
-                  {updateSettings.isPending && (
-                    <span className="text-text-muted">{t('common.saving')}</span>
-                  )}
-                  {updateSettings.isSuccess && (
-                    <span className="text-success">{t('common.saved')}</span>
-                  )}
-                  {updateSettings.isError && (
-                    <span className="flex items-center gap-2 text-danger">
-                      {t('notifications.settingsSaveError')}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="min-h-10"
-                        disabled={!settingsDraft}
-                        onClick={() => {
-                          if (settingsDraft) updateSettings.mutate(settingsDraft)
-                        }}
-                      >
-                        {t('common.retry')}
-                      </Button>
-                    </span>
-                  )}
-                </div>
+              <form
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  saveSettings()
+                }}
+              >
                 <div className="space-y-2">
                   <Label htmlFor="notification-frequency">{t('notifications.frequency')}</Label>
                   <select
                     id="notification-frequency"
-                    className="flex min-h-10 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary"
+                    className="flex min-h-11 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:min-h-10"
                     value={displayedSettings.email_frequency}
                     onChange={(event) =>
                       updatePreference({
@@ -371,40 +359,75 @@ export function NotificationsPage() {
                     <option value="never">{t('notifications.frequencyNone')}</option>
                   </select>
                 </div>
-                <div className="flex min-h-10 items-center gap-2">
+                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-10">
                   <input
-                    id="notify-own-changes"
                     type="checkbox"
-                    className="mt-0.5 h-4 w-4 accent-accent"
+                    className="h-4 w-4 shrink-0 accent-accent"
                     checked={displayedSettings.notify_own_changes}
                     onChange={(event) =>
                       updatePreference({ notify_own_changes: event.target.checked })
                     }
                     disabled={updateSettings.isPending}
                   />
-                  <Label htmlFor="notify-own-changes" className="leading-5">
-                    {t('notifications.ownChanges')}
-                  </Label>
-                </div>
-                <fieldset className="space-y-2 border-t border-border pt-4">
-                  <legend className="mb-2 text-sm font-medium">События</legend>
-                  {NOTIFICATION_EVENTS.map(([eventType, label]) => (
+                  <span className="leading-5">{t('notifications.ownChanges')}</span>
+                </label>
+                <fieldset className="border-t border-border pt-3">
+                  <legend className="text-sm font-medium">{t('notifications.eventsTitle')}</legend>
+                  {NOTIFICATION_EVENTS.map((eventType) => (
                     <label
                       key={eventType}
-                      className="flex min-h-10 cursor-pointer items-center gap-2 text-sm text-text-secondary"
+                      className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-text-secondary sm:min-h-10"
                     >
                       <input
                         type="checkbox"
-                        className="h-4 w-4 accent-accent"
+                        className="h-4 w-4 shrink-0 accent-accent"
                         checked={!displayedSettings.disabled_event_types.includes(eventType)}
                         onChange={(event) => toggleEvent(eventType, event.target.checked)}
                         disabled={updateSettings.isPending}
                       />
-                      <span>{label}</span>
+                      <span>{t(`notifications.events.${eventType}`)}</span>
                     </label>
                   ))}
                 </fieldset>
-              </>
+                <div className="space-y-2 border-t border-border pt-4">
+                  {(updateSettings.isPending ||
+                    updateSettings.isSuccess ||
+                    updateSettings.isError) && (
+                    <div role="status" aria-live="polite" className="text-xs">
+                      {updateSettings.isPending && (
+                        <span className="text-text-muted">{t('common.saving')}</span>
+                      )}
+                      {updateSettings.isSuccess && (
+                        <span className="text-success">{t('common.saved')}</span>
+                      )}
+                      {updateSettings.isError && (
+                        <span className="text-danger">{t('notifications.settingsSaveError')}</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="min-h-11 sm:min-h-10"
+                      disabled={!settingsDirty || updateSettings.isPending}
+                      onClick={() => {
+                        setSettingsDraft(null)
+                        updateSettings.reset()
+                      }}
+                    >
+                      {t('common.cancel')}
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="min-h-11 sm:min-h-10"
+                      disabled={!settingsDirty || updateSettings.isPending}
+                    >
+                      {t('common.save')}
+                    </Button>
+                  </div>
+                </div>
+              </form>
             )}
           </CardContent>
         </Card>
