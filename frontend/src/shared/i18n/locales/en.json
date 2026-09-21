@@ -66,8 +66,13 @@
     "title": "Team Dashboard",
     "addWidget": "Add widget",
     "assignedToMe": "Assigned to me",
+    "viewAllAssigned": "All my issues",
+    "loadingAssigned": "Loading issues…",
+    "loadError": "Could not load assigned issues. Please try again.",
     "noAssigned": "No issues assigned to you.",
     "projects": "Projects",
+    "loadingProjects": "Loading projects…",
+    "projectsError": "Could not load projects. Please try again.",
     "noProjects": "No projects yet.",
     "recentActivity": "Recent activity"
   },
