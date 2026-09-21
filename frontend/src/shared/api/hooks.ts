@@ -30,6 +30,7 @@ import {
   type UpdateSprintRequest,
 } from '@/api/sprint'
 import { listStatuses, listTransitions, listIssueTypes } from '@/api/workflow'
+import { listProjectMembers } from '@/api/members'
 import { listAttachments, uploadAttachment, deleteAttachment } from '@/api/attachment'
 import {
   listProjectLabels,
@@ -749,6 +750,18 @@ export function useControlChartReport(projectId: string | undefined) {
     queryKey: reportKeys.controlChart(projectId ?? ''),
     queryFn: () => getControlChartReport(projectId!),
     enabled: !!projectId,
+  })
+}
+
+const projectMemberKeys = {
+  project: (projectKey: string) => ['project-members', projectKey] as const,
+}
+
+export function useProjectMembers(projectKey: string) {
+  return useQuery({
+    queryKey: projectMemberKeys.project(projectKey),
+    queryFn: () => listProjectMembers(projectKey),
+    enabled: Boolean(projectKey),
   })
 }
 

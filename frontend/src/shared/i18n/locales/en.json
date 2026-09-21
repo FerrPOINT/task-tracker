@@ -246,6 +246,16 @@
     "cancel": "Cancel",
     "me": "me",
     "noReporter": "Reporter unknown — please log in again.",
+    "loading": "Loading issue data…",
+    "saveError": "Could not create the issue. Check the details and try again.",
+    "projectsError": "Could not load projects. Please try again.",
+    "noProjects": "No projects are available for creating an issue.",
+    "projectUnavailable": "The selected project is unavailable. Choose another project.",
+    "selectProject": "Select a project",
+    "typesError": "Could not load issue types. Please try again.",
+    "noTypes": "No issue types are available.",
+    "fieldsError": "Could not load project fields. Please try again.",
+    "assigneesError": "Could not load assignees. You can create the issue without assigning it.",
     "submit": "Create"
   },
   "priority": {
