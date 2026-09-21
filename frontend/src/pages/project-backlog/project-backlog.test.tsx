@@ -161,6 +161,11 @@ describe('ProjectBacklogPage', () => {
   it('renders backlog issues', async () => {
     render(wrapper(<ProjectBacklogPage />))
     await waitFor(() => expect(screen.getByText('Backlog issue')).toBeInTheDocument())
+    const issueLink = screen.getByRole('link', { name: /TT-2 Backlog issue/i })
+    expect(issueLink).toHaveAttribute('href', '/issues/i2')
+    expect(issueLink).toHaveAttribute('title', 'Backlog issue')
+    expect(issueLink).not.toHaveClass('contents')
+    expect(screen.getByRole('button', { name: /действия с задачей TT-2/i })).toBeInTheDocument()
   })
 
   it('renders sprint list', async () => {

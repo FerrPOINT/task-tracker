@@ -1,0 +1,35 @@
+{
+  "pageOverflow": false,
+  "actionButtons": [
+    {
+      "label": "Изменить",
+      "width": 40,
+      "height": 40
+    },
+    {
+      "label": "Действия с задачей",
+      "width": 40,
+      "height": 40
+    },
+    {
+      "label": "Изменить",
+      "width": 40,
+      "height": 40
+    },
+    {
+      "label": "Действия с задачей",
+      "width": 40,
+      "height": 40
+    },
+    {
+      "label": "Действия с задачей",
+      "width": 40,
+      "height": 40
+    }
+  ],
+  "issueLink": {
+    "display": "contents",
+    "width": 0,
+    "height": 0
+  }
+}

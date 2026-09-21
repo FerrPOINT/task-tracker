@@ -138,7 +138,7 @@
     "emptySprint": "В спринте нет задач.",
     "emptyBacklog": "Бэклог пуст.",
     "edit": "Изменить спринт",
-    "issueActions": "Действия с задачей",
+    "issueActions": "Действия с задачей {{key}}",
     "removeFromSprint": "Убрать из спринта",
     "moveToSprint": "Переместить в спринт",
     "windowed": "Показаны {{from}}–{{to}} из {{total}}",

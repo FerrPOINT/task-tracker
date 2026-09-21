@@ -53,17 +53,24 @@ function PriorityBadge({ priority }: { priority: string }) {
 
 function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode }) {
   return (
-    <div className="group flex items-center gap-2 border-b border-border px-3 py-2.5 text-sm hover:bg-surface-raised sm:grid sm:grid-cols-[80px_1fr_90px_40px_40px] sm:gap-3">
-      <Link to={`/issues/${issue.id}`} className="contents">
-        <span className="shrink-0 text-text-muted sm:order-1">{issue.key}</span>
-        <span className="min-w-0 flex-1 truncate font-medium sm:order-2">{issue.summary}</span>
-      </Link>
-      <div className="ml-auto flex shrink-0 items-center gap-2 sm:order-3 sm:ml-0">
-        <PriorityBadge priority={issue.priority} />
-        <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
+    <div className="group flex min-w-0 items-center gap-2 border-b border-border px-3 py-2.5 text-sm hover:bg-surface-raised">
+      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+        <Link
+          to={`/issues/${issue.id}`}
+          title={issue.summary}
+          className="flex min-w-0 flex-1 flex-col rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:flex-row sm:items-center sm:gap-3"
+        >
+          <span className="shrink-0 text-xs text-text-muted sm:w-20">{issue.key}</span>
+          <span className="line-clamp-2 min-w-0 font-medium sm:line-clamp-1 sm:flex-1">
+            {issue.summary}
+          </span>
+        </Link>
+        <div className="flex items-center gap-2 sm:shrink-0">
+          <PriorityBadge priority={issue.priority} />
+          <UserAvatar name={issue.assignee_name} userId={issue.assignee_id} />
+        </div>
       </div>
-      <div className="sm:order-4" />
-      <div className="flex justify-end sm:order-5">{action}</div>
+      <div className="shrink-0">{action}</div>
     </div>
   )
 }
@@ -92,8 +99,8 @@ function MoveIssueAction({
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
-          aria-label={t('backlog.issueActions')}
+          className="h-10 w-10"
+          aria-label={t('backlog.issueActions', { key: issue.key })}
         >
           <MoreHorizontal className="h-4 w-4" />
         </Button>

@@ -138,7 +138,7 @@
     "emptySprint": "No issues in this sprint.",
     "emptyBacklog": "Backlog is empty.",
     "edit": "Edit sprint",
-    "issueActions": "Issue actions",
+    "issueActions": "Issue actions for {{key}}",
     "removeFromSprint": "Remove from sprint",
     "moveToSprint": "Move to sprint",
     "windowed": "Showing {{from}}–{{to}} of {{total}}",
