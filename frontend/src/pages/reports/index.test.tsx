@@ -224,6 +224,10 @@ describe('ReportsPage', () => {
     })
     expect(screen.getByTestId('chart')).toBeInTheDocument()
     expect(screen.getByTestId('legend')).toBeInTheDocument()
+    const table = screen.getByRole('table', { name: /скорость|velocity/i })
+    expect(within(table).getAllByRole('row')).toHaveLength(3)
+    expect(within(table).getByRole('row', { name: /Sprint 1 30 25/i })).toBeInTheDocument()
+    expect(screen.getByTestId('chart').closest('[aria-hidden="true"]')).toBeInTheDocument()
   })
 
   it('switches to burndown tab and renders line chart', async () => {
@@ -246,9 +250,13 @@ describe('ReportsPage', () => {
     await selectSprint(user)
 
     await waitFor(() => {
-      expect(screen.getByText('2026-08-01')).toBeInTheDocument()
-      expect(screen.getByText('2026-08-05')).toBeInTheDocument()
+      expect(within(screen.getByTestId('chart')).getByText('2026-08-01')).toBeInTheDocument()
+      expect(within(screen.getByTestId('chart')).getByText('2026-08-05')).toBeInTheDocument()
     })
+    const table = screen.getByRole('table', { name: /burndown/i })
+    expect(within(table).getByRole('row', { name: /2026-08-01 10/i })).toBeInTheDocument()
+    expect(within(table).getByRole('row', { name: /2026-08-05 5/i })).toBeInTheDocument()
+    expect(screen.getByTestId('chart').closest('[aria-hidden="true"]')).toBeInTheDocument()
   })
 
   it('switches to cumulative flow tab and renders stacked area chart', async () => {
@@ -269,9 +277,13 @@ describe('ReportsPage', () => {
     await user.click(screen.getByRole('tab', { name: /кумулятивный поток|cumulative flow/i }))
 
     await waitFor(() => {
-      expect(screen.getByText('2026-08-01')).toBeInTheDocument()
+      expect(within(screen.getByTestId('chart')).getByText('2026-08-01')).toBeInTheDocument()
     })
     expect(screen.getByTestId('chart')).toBeInTheDocument()
+    const table = screen.getByRole('table', { name: /кумулятивный поток|cumulative flow/i })
+    expect(within(table).getByRole('row', { name: /2026-08-01 5 2 1/i })).toBeInTheDocument()
+    expect(within(table).getByRole('row', { name: /2026-08-02 3 4 2/i })).toBeInTheDocument()
+    expect(screen.getByTestId('chart').closest('[aria-hidden="true"]')).toBeInTheDocument()
   })
 
   it('switches to control chart tab and renders scatter chart', async () => {

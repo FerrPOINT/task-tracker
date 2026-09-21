@@ -1,0 +1,218 @@
+[
+  {
+    "tab": "velocity",
+    "width": 375,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 343,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "velocity",
+    "width": 375,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 343,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "velocity",
+    "width": 1920,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "velocity",
+    "width": 1920,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "velocity",
+    "width": 2560,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "velocity",
+    "width": 2560,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "burndown",
+    "width": 375,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 343,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "burndown",
+    "width": 375,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 343,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "burndown",
+    "width": 1920,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "burndown",
+    "width": 1920,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "burndown",
+    "width": 2560,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "burndown",
+    "width": 2560,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "cumulative-flow",
+    "width": 375,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 343,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "cumulative-flow",
+    "width": 375,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 343,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "cumulative-flow",
+    "width": 1920,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "cumulative-flow",
+    "width": 1920,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "cumulative-flow",
+    "width": 2560,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "cumulative-flow",
+    "width": 2560,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "control-chart",
+    "width": 375,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 343,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "control-chart",
+    "width": 375,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 343,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "control-chart",
+    "width": 1920,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "control-chart",
+    "width": 1920,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "control-chart",
+    "width": 2560,
+    "theme": "light",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  },
+  {
+    "tab": "control-chart",
+    "width": 2560,
+    "theme": "dark",
+    "overflow": false,
+    "reportWidth": 1280,
+    "seriousAxe": 0,
+    "pageErrors": []
+  }
+]

@@ -416,6 +416,7 @@ Board Admin создаёт быстрые фильтры на основе JQL:
 - Sprint report
 - Cumulative flow diagram
 - Control chart (cycle/lead time)
+- Каждый график в UI имеет доступную таблицу с теми же данными и подписанными строками/столбцами.
 
 ---
 
