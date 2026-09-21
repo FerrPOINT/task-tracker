@@ -80,7 +80,20 @@
     "frequencyHourly": "Ежечасно",
     "frequencyDaily": "Ежедневно",
     "frequencyNone": "Никогда",
-    "ownChanges": "Уведомлять о моих изменениях"
+    "ownChanges": "Уведомлять о моих изменениях",
+    "eventsTitle": "События",
+    "events": {
+      "issue_assigned": "Назначение задачи",
+      "issue_moved": "Смена статуса",
+      "issue_updated": "Изменение задачи",
+      "issue_commented": "Новый комментарий",
+      "issue_comment_edited": "Изменение комментария",
+      "issue_comment_deleted": "Удаление комментария",
+      "issue_worklog_logged": "Учёт времени",
+      "issue_attachment_added": "Новый файл",
+      "issue_link_created": "Новая связь",
+      "issue_link_deleted": "Удаление связи"
+    }
   },
   "dashboard": {
     "title": "Командный дашборд",

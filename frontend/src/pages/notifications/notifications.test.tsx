@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
+import i18n from '@/shared/i18n/config'
 
 import { NotificationsPage } from './'
 
@@ -60,7 +61,7 @@ function mockHooks() {
   })
   useMarkNotificationRead.mockReturnValue({ mutate: vi.fn() })
   useMarkAllNotificationsRead.mockReturnValue({ mutate: vi.fn() })
-  useUpdateNotificationSettings.mockReturnValue({ mutate: vi.fn() })
+  useUpdateNotificationSettings.mockReturnValue({ mutate: vi.fn(), reset: vi.fn() })
 }
 
 describe('NotificationsPage', () => {
@@ -129,7 +130,7 @@ describe('NotificationsPage', () => {
     expect(screen.queryByText('Event 1')).not.toBeInTheDocument()
   })
 
-  it('sends a complete backend-compatible settings document', async () => {
+  it('saves multiple preference edits in one backend-compatible request', async () => {
     const updateSettings = vi.fn()
     mockHooks()
     useNotificationSettings.mockReturnValue({
@@ -140,30 +141,28 @@ describe('NotificationsPage', () => {
       },
       isLoading: false,
     })
-    useUpdateNotificationSettings.mockReturnValue({ mutate: updateSettings })
+    useUpdateNotificationSettings.mockReturnValue({ mutate: updateSettings, reset: vi.fn() })
 
     renderPage()
 
     fireEvent.change(screen.getByLabelText(/email frequency|частота email/i), {
       target: { value: 'hourly' },
     })
-    await waitFor(() =>
-      expect(updateSettings).toHaveBeenCalledWith({
-        email_frequency: 'hourly',
-        disabled_event_types: ['issue_updated'],
-        notify_own_changes: false,
-      }),
-    )
-
     fireEvent.click(
       screen.getByLabelText(/notify about my own changes|уведомлять о моих изменениях/i),
     )
-    await waitFor(() =>
-      expect(updateSettings).toHaveBeenLastCalledWith({
+    fireEvent.click(screen.getByLabelText('Назначение задачи'))
+    expect(updateSettings).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: /сохранить|save/i }))
+    expect(updateSettings).toHaveBeenCalledOnce()
+    expect(updateSettings).toHaveBeenCalledWith(
+      {
         email_frequency: 'hourly',
-        disabled_event_types: ['issue_updated'],
+        disabled_event_types: ['issue_updated', 'issue_assigned'],
         notify_own_changes: true,
-      }),
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
     )
   })
 
@@ -173,6 +172,7 @@ describe('NotificationsPage', () => {
     mockHooks()
     useUpdateNotificationSettings.mockImplementation(() => ({
       mutate: updateSettings,
+      reset: vi.fn(),
       isPending: false,
       isSuccess: false,
       isError: failed,
@@ -183,6 +183,7 @@ describe('NotificationsPage', () => {
       target: { value: 'hourly' },
     })
     fireEvent.click(screen.getByLabelText('Назначение задачи'))
+    fireEvent.click(screen.getByRole('button', { name: /сохранить|save/i }))
     failed = true
     page.rerender(
       <MemoryRouter>
@@ -195,12 +196,60 @@ describe('NotificationsPage', () => {
     expect(
       screen.getByText(/Could not save preferences|Не удалось сохранить настройки/i),
     ).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /retry|повторить/i }))
-    expect(updateSettings).toHaveBeenLastCalledWith({
-      email_frequency: 'hourly',
-      disabled_event_types: ['issue_assigned'],
-      notify_own_changes: false,
+    fireEvent.click(screen.getByRole('button', { name: /сохранить|save/i }))
+    expect(updateSettings).toHaveBeenCalledTimes(2)
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      {
+        email_frequency: 'hourly',
+        disabled_event_types: ['issue_assigned'],
+        notify_own_changes: false,
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    )
+  })
+
+  it('cancels an unsaved preference draft without an API request', () => {
+    const updateSettings = vi.fn()
+    mockHooks()
+    useUpdateNotificationSettings.mockReturnValue({ mutate: updateSettings, reset: vi.fn() })
+
+    renderPage()
+    fireEvent.change(screen.getByLabelText(/email frequency|частота email/i), {
+      target: { value: 'hourly' },
     })
+    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveValue('hourly')
+    fireEvent.click(screen.getByRole('button', { name: /отмена|cancel/i }))
+
+    expect(screen.getByLabelText(/email frequency|частота email/i)).toHaveValue('daily')
+    expect(screen.getByRole('button', { name: /сохранить|save/i })).toBeDisabled()
+    expect(updateSettings).not.toHaveBeenCalled()
+  })
+
+  it('translates every notification event in English', async () => {
+    mockHooks()
+    await i18n.changeLanguage('en')
+    try {
+      renderPage()
+      const events = screen.getByRole('group', { name: 'Events' })
+      expect(events).toBeInTheDocument()
+      for (const label of [
+        'Issue assigned',
+        'Status changed',
+        'Issue updated',
+        'New comment',
+        'Comment edited',
+        'Comment deleted',
+        'Time logged',
+        'Attachment added',
+        'Issue linked',
+        'Issue unlinked',
+      ]) {
+        expect(screen.getByLabelText(label)).toBeInTheDocument()
+      }
+      expect(screen.queryByText('Назначение задачи')).not.toBeInTheDocument()
+    } finally {
+      await i18n.changeLanguage('ru')
+    }
   })
 
   it('shows a failed mark-read action and allows retry without hiding the notification', () => {

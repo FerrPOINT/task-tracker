@@ -79,6 +79,10 @@
 
 Email digests use `email_frequency`: `hourly` is sent every digest cycle when unread notifications exist, `daily` is sent at most once per calendar day and stores the last successful send timestamp in `notification_user_settings.last_email_digest_at`.
 
+На странице уведомлений изменения пользовательских предпочтений остаются локальным
+черновиком до нажатия «Сохранить». Один PATCH отправляет весь документ настроек;
+«Отмена» сбрасывает черновик, а ошибка сохранения оставляет его для повтора.
+
 ## 4. Notification Scheme
 
 Notification Scheme привязывается к проекту и определяет, кто получает какие уведомления.

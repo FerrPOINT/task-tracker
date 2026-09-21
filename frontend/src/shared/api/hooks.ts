@@ -148,7 +148,10 @@ export function useUpdateNotificationSettings() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: UpdateNotificationSettingsInput) => updateNotificationSettings(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: notificationKeys.settings }),
+    onSuccess: (settings) => {
+      qc.setQueryData(notificationKeys.settings, settings)
+      return qc.invalidateQueries({ queryKey: notificationKeys.settings })
+    },
   })
 }
 

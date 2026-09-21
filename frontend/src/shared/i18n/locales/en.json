@@ -80,7 +80,20 @@
     "frequencyHourly": "Hourly digest",
     "frequencyDaily": "Daily digest",
     "frequencyNone": "Never",
-    "ownChanges": "Notify about my own changes"
+    "ownChanges": "Notify about my own changes",
+    "eventsTitle": "Events",
+    "events": {
+      "issue_assigned": "Issue assigned",
+      "issue_moved": "Status changed",
+      "issue_updated": "Issue updated",
+      "issue_commented": "New comment",
+      "issue_comment_edited": "Comment edited",
+      "issue_comment_deleted": "Comment deleted",
+      "issue_worklog_logged": "Time logged",
+      "issue_attachment_added": "Attachment added",
+      "issue_link_created": "Issue linked",
+      "issue_link_deleted": "Issue unlinked"
+    }
   },
   "dashboard": {
     "title": "Team Dashboard",
