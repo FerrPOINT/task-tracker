@@ -13,3 +13,11 @@ body {
     'Segoe UI',
     sans-serif;
 }
+
+.notification-count {
+  color: var(--color-background);
+}
+
+[data-theme='light'] .notification-count {
+  color: #fff;
+}
