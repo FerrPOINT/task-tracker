@@ -5,7 +5,6 @@ import { useState } from 'react'
 import { Button } from '@sdlc/ui/ui'
 import { ErrorState, LoadingState } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
-import { Card, CardContent } from '@sdlc/ui/ui'
 import {
   useProjects,
   useCreateProject,
@@ -40,7 +39,7 @@ function ProjectAvatar({ projectKey }: { projectKey: string }) {
   const color = colors[projectKey.charCodeAt(0) % colors.length]
   return (
     <div
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-sm font-bold sm:h-12 sm:w-12 ${color}`}
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-bold ${color}`}
     >
       {projectKey.slice(0, 2).toUpperCase()}
     </div>
@@ -49,7 +48,7 @@ function ProjectAvatar({ projectKey }: { projectKey: string }) {
 
 export function ProjectsPage() {
   const { t } = useTranslation()
-  const { data: projects, isLoading, error } = useProjects()
+  const { data: projects, isLoading, error, refetch } = useProjects()
   const [formOpen, setFormOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
@@ -60,10 +59,14 @@ export function ProjectsPage() {
   const remove = useDeleteProject()
 
   if (isLoading) return <LoadingState message={t('issue.loading')} />
-  if (error) return <ErrorState message={error.message} />
+  if (error) return <ErrorState message={error.message} onRetry={() => void refetch()} />
 
   const isFormPending = create.isPending || update.isPending
   const formError = create.error ?? update.error
+  const normalizedSearch = search.trim().toLocaleLowerCase()
+  const filteredProjects = projects?.filter((project) =>
+    `${project.name} ${project.key}`.toLocaleLowerCase().includes(normalizedSearch),
+  )
 
   return (
     <div className="space-y-4">
@@ -91,7 +94,12 @@ export function ProjectsPage() {
 
       <AlertDialog
         open={!!deletingProject}
-        onOpenChange={(open) => !open && setDeletingProject(null)}
+        onOpenChange={(open) => {
+          if (!open && !remove.isPending) {
+            setDeletingProject(null)
+            remove.reset()
+          }
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -100,12 +108,16 @@ export function ProjectsPage() {
               {t('projects.deleteDescription', { name: deletingProject?.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {remove.error && (
+            <p role="alert" className="text-sm text-danger">
+              {t('projects.deleteError')}
+            </p>
+          )}
           <div className="flex justify-end gap-2 pt-2">
-            <AlertDialogCancel onClick={() => setDeletingProject(null)}>
-              {t('common.cancel')}
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={remove.isPending}>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
+              onClick={(event) => {
+                event.preventDefault()
                 if (deletingProject) {
                   remove.mutate(deletingProject.key, {
                     onSuccess: () => setDeletingProject(null),
@@ -114,15 +126,15 @@ export function ProjectsPage() {
               }}
               disabled={remove.isPending}
             >
-              {t('common.delete')}
+              {remove.isPending ? t('common.loading') : t('common.delete')}
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-bold sm:text-2xl">{t('projects.title')}</h1>
-        <Button size="sm" className="gap-1" onClick={() => setFormOpen(true)}>
+        <Button size="sm" className="min-h-10 gap-1" onClick={() => setFormOpen(true)}>
           <Plus className="h-4 w-4" />
           <span className="hidden sm:inline">{t('projects.create')}</span>
           <span className="sm:hidden">{t('navigation.create')}</span>
@@ -145,101 +157,89 @@ export function ProjectsPage() {
 
       {projects?.length === 0 ? (
         <div className="rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
-          Проектов пока нет. Создайте первый проект, чтобы начать работу.
+          {t('projects.empty')}
+        </div>
+      ) : filteredProjects?.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
+          {t('projects.noMatches')}
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {projects
-            ?.filter((project) =>
-              search
-                ? `${project.name} ${project.key}`.toLowerCase().includes(search.toLowerCase())
-                : true,
-            )
-            .map((project) => (
-              <Card key={project.id} className="transition-colors hover:border-border-strong">
-                <CardContent className="p-4">
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <ProjectAvatar projectKey={project.key} />
-                      <div className="min-w-0">
-                        <Link
-                          to={`/projects/${project.key}/board`}
-                          className="block truncate font-semibold hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                        >
-                          {project.name}
-                        </Link>
-                        <div className="text-xs text-text-muted">
-                          {project.key} · {t('projects.lead')}:{' '}
-                          {project.owner_name || project.owner_id} ·{' '}
-                          {project.todo_count + project.in_progress_count + project.done_count}{' '}
-                          {t('projects.issues', {
-                            count:
-                              project.todo_count + project.in_progress_count + project.done_count,
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                    <DropdownMenu modal={false}>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 shrink-0"
-                          aria-label={t('projects.moreActions')}
-                        >
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setEditingProject(project)
-                            setFormOpen(true)
-                          }}
-                          className="gap-2"
-                        >
-                          <Pencil className="h-4 w-4" />
-                          {t('common.edit')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setDeletingProject(project)}
-                          className="gap-2 text-danger"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          {t('common.delete')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-center text-xs sm:text-sm">
-                    <div className="rounded bg-surface-raised py-1">
-                      <div className="text-text-muted">{t('projects.todo')}</div>
-                      <div className="font-medium">{project.todo_count}</div>
-                    </div>
-                    <div className="rounded bg-surface-raised py-1">
-                      <div className="text-text-muted">{t('projects.inProgress')}</div>
-                      <div className="font-medium">{project.in_progress_count}</div>
-                    </div>
-                    <div className="rounded bg-surface-raised py-1">
-                      <div className="text-text-muted">{t('projects.done')}</div>
-                      <div className="font-medium text-emerald-500">{project.done_count}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          {projects &&
-            projects.length > 0 &&
-            projects.filter((project) =>
-              search
-                ? `${project.name} ${project.key}`.toLowerCase().includes(search.toLowerCase())
-                : true,
-            ).length === 0 && (
-              <div className="col-span-full rounded-md border border-dashed border-border p-10 text-center text-sm text-text-muted">
-                По вашему запросу проекты не найдены.
+        <ul className="divide-y divide-border rounded-md border border-border bg-surface">
+          {filteredProjects?.map((project) => (
+            <li
+              key={project.id}
+              className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-1 px-3 py-2 hover:bg-surface-raised sm:grid-cols-[minmax(0,1fr)_16rem_2.5rem]"
+            >
+              <Link
+                to={`/projects/${project.key}/board`}
+                className="row-start-1 flex min-h-10 min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              >
+                <ProjectAvatar projectKey={project.key} />
+                <span className="min-w-0">
+                  <span
+                    className="line-clamp-2 font-semibold hover:text-accent hover:underline sm:line-clamp-1"
+                    title={project.name}
+                  >
+                    {project.name}
+                  </span>
+                  <span className="block truncate text-xs text-text-muted">
+                    {project.key} · {t('projects.lead')}: {project.owner_name || project.owner_id}
+                  </span>
+                </span>
+              </Link>
+              <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
+                <div className="min-w-0">
+                  <span className="block truncate text-text-muted">{t('projects.todo')}</span>
+                  <span className="font-medium">{project.todo_count}</span>
+                </div>
+                <div className="min-w-0">
+                  <span className="block truncate text-text-muted">{t('projects.inProgress')}</span>
+                  <span className="font-medium">{project.in_progress_count}</span>
+                </div>
+                <div className="min-w-0">
+                  <span className="block truncate text-text-muted">{t('projects.done')}</span>
+                  <span className="font-medium">{project.done_count}</span>
+                </div>
               </div>
-            )}
-        </div>
+              <div className="col-start-2 row-start-1 sm:col-start-3">
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-10 w-10"
+                      aria-label={t('projects.moreActionsFor', { name: project.name })}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setEditingProject(project)
+                        setFormOpen(true)
+                      }}
+                      className="gap-2"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      {t('common.edit')}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => {
+                        remove.reset()
+                        setDeletingProject(project)
+                      }}
+                      className="gap-2 text-danger"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {t('common.delete')}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )

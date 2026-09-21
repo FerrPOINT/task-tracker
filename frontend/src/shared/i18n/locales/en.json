@@ -87,7 +87,8 @@
     "done": "Done",
     "lead": "Lead",
     "createProject": "Create project",
-    "deleteDescription": "The project and all its issues will be permanently deleted.",
+    "deleteDescription": "The project “{{name}}” and all its issues will be permanently deleted.",
+    "deleteError": "Could not delete the project. Please try again.",
     "deleteTitle": "Delete project?",
     "description": "Description",
     "descriptionPlaceholder": "Short project description",
@@ -100,7 +101,10 @@
     "gridView": "Grid view",
     "listView": "List view",
     "favorite": "Add to favorites",
-    "moreActions": "More actions"
+    "moreActions": "More actions",
+    "moreActionsFor": "Actions for project {{name}}",
+    "empty": "No projects yet. Create a project to get started.",
+    "noMatches": "No projects match your search."
   },
   "board": {
     "filters": "Filters",
