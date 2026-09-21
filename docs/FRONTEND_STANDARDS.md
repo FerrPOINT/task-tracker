@@ -114,17 +114,20 @@ features/
 ## 14. UI Shell Contract
 
 Task Tracker follows the Base [UI Shell Standard](https://github.com/FerrPOINT/services-base/blob/main/docs/platform/UI_SHELL_STANDARD.md).
-`AppLayout` owns one left sidebar, one global header and a fluid right work area;
-pages only choose their local width class and grid.
+`AppLayout` owns the shared 264 px/72 px left sidebar, 60 px global header and
+full-width right work area. Routes use only the common content modes: `wide`
+for board/list/table views, `reading/form` with a 760 px inner form column, or
+`detail-with-aside` with a 320 px metadata rail. They do not define
+product-local shell geometry or content-width classes.
 
-- Dashboard, kanban, backlog, search and project lists use the available work
-  width. Tables and boards use `minmax(0, 1fr)` and keep horizontal scroll local.
-- Issue detail uses a fluid main column with a bounded metadata rail; the rail
-  moves below content before it creates document overflow.
-- Issue creation, settings and focused forms use a readable 640-860 px content
-  column; they do not constrain boards or tables.
-- On desktop the expanded sidebar is 248-288 px; on tablet it may become the
-  shared compact icon rail; below 768 px it is the same navigation in a drawer.
+- Dashboard, kanban, backlog, search and project lists use `wide`. Tables and
+  boards use `minmax(0, 1fr)` and keep horizontal scroll local.
+- Issue detail uses `detail-with-aside`; the 320 px rail moves below content
+  before it creates document overflow.
+- Issue creation, settings and focused forms use `reading/form`: a 760 px inner
+  column that does not constrain boards or tables.
+- On desktop the 264 px sidebar becomes the shared 72 px compact rail; below
+  768 px it is the same navigation in a drawer.
 - Global controls stay in the one-row app header. Breadcrumbs, issue actions,
   filters and board controls stay in page-owned rows below it.
 - UI evidence for shell or content geometry covers 375, 1440 and 2560 px,
