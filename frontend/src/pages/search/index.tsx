@@ -412,11 +412,11 @@ export default function SearchPage() {
       ) : visibleIssues.length === 0 ? (
         <div className="py-12 text-center text-text-muted">{t('search.noResults')}</div>
       ) : (
-        <div className="space-y-2">
+        <ul className="divide-y divide-border rounded-md border border-border bg-surface">
           {visibleIssues.map((issue: Issue) => (
             <SearchResultRow key={issue.id} issue={issue} />
           ))}
-        </div>
+        </ul>
       )}
       {!isLoading && !error && (page > 1 || hasNext) && (
         <nav
@@ -453,27 +453,26 @@ function SearchResultRow({ issue }: { issue: Issue }) {
   const normalizedStatus = issue.status.toLowerCase().replaceAll(' ', '_')
   const normalizedPriority = issue.priority.toLowerCase()
   return (
-    <Card className="transition-colors hover:bg-surface-raised">
-      <CardContent className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="shrink-0 rounded border px-2 py-0.5 text-xs font-medium">
-            {issue.key}
-          </span>
-          <Link
-            to={`/issues/${issue.id}`}
-            className="inline-flex min-h-10 min-w-0 items-center truncate font-medium hover:text-accent hover:underline"
-          >
-            {issue.summary}
-          </Link>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
-          <span className="rounded bg-surface-raised px-2 py-0.5 text-xs">
-            {t(`status.${normalizedStatus}`, issue.status)}
-          </span>
-          <span>{t(`priority.${normalizedPriority}`, issue.priority)}</span>
-          <span className="truncate">{issue.assignee_name ?? t('issue.unassigned')}</span>
-        </div>
-      </CardContent>
-    </Card>
+    <li className="flex flex-col gap-1 px-3 py-2 hover:bg-surface-raised sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+      <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-3">
+        <span className="mt-2 shrink-0 rounded border px-2 py-0.5 text-xs font-medium sm:mt-0">
+          {issue.key}
+        </span>
+        <Link
+          to={`/issues/${issue.id}`}
+          title={issue.summary}
+          className="line-clamp-2 min-h-10 min-w-0 rounded-sm py-2 font-medium hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:line-clamp-1"
+        >
+          {issue.summary}
+        </Link>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted sm:max-w-[45%] sm:flex-nowrap">
+        <span className="shrink-0 rounded bg-surface-raised px-2 py-0.5 text-xs">
+          {t(`status.${normalizedStatus}`, issue.status)}
+        </span>
+        <span className="shrink-0">{t(`priority.${normalizedPriority}`, issue.priority)}</span>
+        <span className="min-w-0 truncate">{issue.assignee_name ?? t('issue.unassigned')}</span>
+      </div>
+    </li>
   )
 }

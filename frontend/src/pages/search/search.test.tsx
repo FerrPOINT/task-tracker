@@ -62,6 +62,15 @@ describe('SearchPage', () => {
     renderPage()
     expect(screen.getByText(/поиск задач|search issues/i)).toBeInTheDocument()
     expect(screen.getByText('TT-1')).toBeInTheDocument()
+    expect(screen.getByRole('list').querySelectorAll('li')).toHaveLength(1)
+    expect(screen.getByRole('link', { name: 'Issue 1' })).toHaveAttribute('href', '/issues/i1')
+  })
+
+  it('keeps the full issue title in the link and tooltip', () => {
+    const longTitle = 'Plan cross-team integration and verify every dependent workflow'
+    mockHooks([{ ...issue(1), summary: longTitle }])
+    renderPage()
+    expect(screen.getByRole('link', { name: longTitle })).toHaveAttribute('title', longTitle)
   })
 
   it('debounces the simple query used by the API and updates the URL', () => {
