@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@sdlc/ui/ui'
 import { ConfirmDialog, ErrorState } from '@sdlc/ui/ui'
 import { useTrash, useRestoreIssue, usePurgeIssue } from '@/shared/api/hooks'
@@ -20,11 +21,19 @@ export function ProjectTrashPage() {
   } = useTrash(projectKey, trashOffset, TRASH_PAGE_SIZE)
   const restoreMutation = useRestoreIssue()
   const purgeMutation = usePurgeIssue()
-  const [purgeConfirmId, setPurgeConfirmId] = useState<string | null>(null)
+  const [purgeConfirmIssue, setPurgeConfirmIssue] = useState<{ id: string; key: string } | null>(
+    null,
+  )
 
   useEffect(() => {
     setTrashOffset(0)
   }, [projectKey])
+
+  useEffect(() => {
+    if (!isLoading && !error && trashedIssues.length === 0 && trashOffset > 0) {
+      setTrashOffset(Math.max(0, trashOffset - TRASH_PAGE_SIZE))
+    }
+  }, [error, isLoading, trashedIssues.length, trashOffset])
 
   if (!projectKey) {
     return <div className="text-text-muted">{t('trash.noProject')}</div>
@@ -38,8 +47,8 @@ export function ProjectTrashPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" asChild aria-label={t('trash.title')}>
-          <Link to={`/projects/${projectKey}/board`}>
+        <Button variant="ghost" size="icon" asChild>
+          <Link to={`/projects/${projectKey}/board`} aria-label={t('trash.backToBoard')}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -89,9 +98,15 @@ export function ProjectTrashPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="min-h-9 gap-1 px-2 text-xs"
+                  className="min-h-11 gap-1 px-2 text-center text-xs leading-tight whitespace-normal sm:min-h-10"
+                  aria-label={t('trash.restoreIssue', { key: issue.key })}
                   disabled={restoreMutation.isPending}
-                  onClick={() => restoreMutation.mutate(issue.id)}
+                  onClick={() =>
+                    restoreMutation.mutate(issue.id, {
+                      onSuccess: () => toast.success(t('trash.restored', { key: issue.key })),
+                      onError: () => toast.error(t('trash.restoreError', { key: issue.key })),
+                    })
+                  }
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   {t('trash.restore', 'Restore')}
@@ -99,9 +114,13 @@ export function ProjectTrashPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="min-h-9 gap-1 px-2 text-xs text-danger hover:text-danger"
+                  className="min-h-11 gap-1 px-2 text-center text-xs leading-tight whitespace-normal text-danger hover:text-danger sm:min-h-10"
+                  aria-label={t('trash.purgeIssue', { key: issue.key })}
                   disabled={purgeMutation.isPending}
-                  onClick={() => setPurgeConfirmId(issue.id)}
+                  onClick={() => {
+                    purgeMutation.reset()
+                    setPurgeConfirmIssue({ id: issue.id, key: issue.key })
+                  }}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   {t('trash.purge', 'Delete forever')}
@@ -139,18 +158,26 @@ export function ProjectTrashPage() {
       )}
 
       <ConfirmDialog
-        open={purgeConfirmId !== null}
-        onOpenChange={(open) => !open && setPurgeConfirmId(null)}
+        open={purgeConfirmIssue !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPurgeConfirmIssue(null)
+            purgeMutation.reset()
+          }
+        }}
         isPending={purgeMutation.isPending}
-        error={purgeMutation.error?.message}
+        error={purgeMutation.error ? t('trash.purgeError') : null}
         title={t('trash.purge', 'Delete forever')}
-        description={t(
-          'trash.purgeConfirm',
-          'Permanently delete this issue? This action cannot be undone.',
-        )}
+        description={t('trash.purgeConfirm', { key: purgeConfirmIssue?.key })}
         onConfirm={() => {
-          if (purgeConfirmId) {
-            purgeMutation.mutate(purgeConfirmId, { onSuccess: () => setPurgeConfirmId(null) })
+          if (purgeConfirmIssue) {
+            const { id, key } = purgeConfirmIssue
+            purgeMutation.mutate(id, {
+              onSuccess: () => {
+                setPurgeConfirmIssue(null)
+                toast.success(t('trash.purged', { key }))
+              },
+            })
           }
         }}
       />

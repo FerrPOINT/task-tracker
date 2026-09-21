@@ -549,11 +549,18 @@
   },
   "trash": {
     "title": "Trash",
+    "backToBoard": "Back to project board",
     "noProject": "No project selected.",
     "loading": "Loading…",
     "noIssues": "Trash is empty.",
     "restore": "Restore",
+    "restoreIssue": "Restore {{key}}",
+    "restored": "{{key}} was restored.",
+    "restoreError": "Could not restore {{key}}. Please try again.",
     "purge": "Delete permanently",
+    "purgeIssue": "Delete {{key}} permanently",
+    "purged": "{{key}} was permanently deleted.",
+    "purgeError": "Could not permanently delete the issue. Please try again.",
     "key": "Key",
     "summary": "Summary",
     "type": "Type",
@@ -563,7 +570,7 @@
     "prevPage": "Previous",
     "nextPage": "Next",
     "pageInfo": "{{from}}–{{to}}",
-    "purgeConfirm": "Permanently delete this issue? This action cannot be undone."
+    "purgeConfirm": "Permanently delete {{key}}? This action cannot be undone."
   },
   "status": {
     "todo": "To Do",
