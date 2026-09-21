@@ -305,6 +305,7 @@ test('Wiki publishes and revises a page', async ({ page, request }) => {
     await page.getByRole('button', { name: new RegExp(`QA ${key}`) }).click()
     await page.getByRole('link', { name: `QA ${key} revised` }).click()
     await expect(page.getByRole('heading', { name: 'Revised QA content' })).toBeVisible()
+    await page.getByRole('button', { name: 'Правка' }).click()
     await page.getByRole('button', { name: 'Архивировать' }).click()
     const archiveDialog = page.getByRole('alertdialog')
     await expect(archiveDialog).toBeVisible()
@@ -353,8 +354,8 @@ test('Wiki publishes and revises a page', async ({ page, request }) => {
 test('Wiki user directory is read-only and links to central management', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await enter(page, 'http://localhost:7732/users')
-  await expect(page.getByRole('heading', { name: 'Пользователи' })).toBeVisible()
-  const manage = page.getByRole('link', { name: 'Управление пользователями' })
+  await expect(page.getByRole('heading', { name: 'Профили Wiki' })).toBeVisible()
+  const manage = page.getByRole('link', { name: 'Учётные записи' })
   await expect(manage).toBeVisible()
   expect(await manage.getAttribute('href')).toMatch(/:7772\/users$/)
   await expect(page.getByRole('textbox', { name: 'Поиск пользователей' })).toBeVisible()
