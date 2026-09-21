@@ -29,7 +29,17 @@
     "haveAccount": "Already have an account",
     "passwordMismatch": "Passwords do not match",
     "displayName": "Display name",
-    "totpCode": "Two-factor code"
+    "totpCode": "Two-factor code",
+    "sso": {
+      "title": "Sign in to Task Tracker",
+      "signIn": "Sign in with SDLC",
+      "redirecting": "Redirecting to Central Auth...",
+      "unavailable": "Could not open Central Auth. Try again.",
+      "retry": "Try signing in again",
+      "completing": "Finishing sign-in...",
+      "callbackError": "Could not finish signing in. Try again.",
+      "securityNotice": "Sign-in is shared across SDLC apps. Previously configured Task Tracker two-factor authentication is disabled, reducing sign-in protection."
+    }
   },
   "notifications": {
     "title": "Notifications",

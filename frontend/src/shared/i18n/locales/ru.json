@@ -29,7 +29,17 @@
     "haveAccount": "Уже есть аккаунт",
     "passwordMismatch": "Пароли не совпадают",
     "displayName": "Отображаемое имя",
-    "totpCode": "Код двухфакторной аутентификации"
+    "totpCode": "Код двухфакторной аутентификации",
+    "sso": {
+      "title": "Вход в Task Tracker",
+      "signIn": "Войти через SDLC",
+      "redirecting": "Переходим в Central Auth...",
+      "unavailable": "Не удалось открыть Central Auth. Повторите попытку.",
+      "retry": "Повторить вход",
+      "completing": "Завершаем вход...",
+      "callbackError": "Не удалось завершить вход. Повторите попытку.",
+      "securityNotice": "Вход общий для приложений SDLC. Ранее настроенный второй фактор Task Tracker отключён; защита входа снижена."
+    }
   },
   "notifications": {
     "title": "Уведомления",
