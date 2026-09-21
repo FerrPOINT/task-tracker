@@ -454,11 +454,17 @@
       "value": "Value",
       "updated": "Updated",
       "jsonValue": "JSON value",
+      "loadError": "Could not load settings. Please try again.",
       "save": "Save setting",
-      "invalidJson": "Enter valid JSON."
+      "edit": "Edit setting {{key}}",
+      "requiredKey": "Enter a setting key.",
+      "invalidJson": "Enter valid JSON.",
+      "saveError": "Could not save the setting. Check the key and value, then try again.",
+      "saved": "Setting {{key}} saved."
     },
     "audit": {
       "title": "Audit log",
+      "loadError": "Could not load the audit log. Please try again.",
       "action": "Action",
       "entity": "Entity",
       "actor": "Actor",
