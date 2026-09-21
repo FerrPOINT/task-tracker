@@ -48,6 +48,7 @@ function wrapper(children: React.ReactNode) {
 describe('ProjectBoardPage', () => {
   it('renders board columns and issue card', async () => {
     render(wrapper(<ProjectBoardPage />))
+    expect(screen.getByRole('region', { name: 'Колонки доски' })).toHaveAttribute('tabindex', '0')
     const columns = await screen.findAllByText(/К выполнению/i)
     expect(columns.length).toBeGreaterThanOrEqual(1) // single responsive tree
     expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(1)

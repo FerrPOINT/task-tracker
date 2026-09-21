@@ -103,6 +103,7 @@
     "moreActions": "Ещё действия"
   },
   "board": {
+    "columns": "Колонки доски",
     "filters": "Фильтры",
     "addColumn": "Колонка",
     "create": "Создать",
