@@ -146,6 +146,9 @@
   },
   "board": {
     "columns": "Колонки доски",
+    "density": "Плотность доски",
+    "densityComfortable": "Обычная",
+    "densityCompact": "Компактная",
     "filters": "Фильтры",
     "addColumn": "Колонка",
     "create": "Создать",

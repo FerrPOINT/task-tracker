@@ -50,6 +50,7 @@ function PriorityBadge({ priority }: { priority: string }) {
 function IssueCard({
   issue,
   columnId,
+  compact,
   onDragStart,
   destinations,
   onMove,
@@ -57,6 +58,7 @@ function IssueCard({
 }: {
   issue: Issue
   columnId: string
+  compact: boolean
   onDragStart: (issueId: string, columnId: string) => void
   destinations: Array<{ id: string; name: string }>
   onMove: (issueId: string, statusId: string) => void
@@ -73,7 +75,9 @@ function IssueCard({
     <article
       draggable
       onDragStart={handleDragStart}
-      className="cursor-grab rounded-md border border-border bg-surface-raised p-3 hover:border-border-strong active:cursor-grabbing"
+      className={`cursor-grab rounded-md border border-border bg-surface-raised hover:border-border-strong active:cursor-grabbing ${
+        compact ? 'p-2' : 'p-2 md:p-3'
+      }`}
     >
       <div className="flex items-start gap-2">
         <Link
@@ -81,7 +85,11 @@ function IssueCard({
           className="min-w-0 flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
         >
           <div className="text-xs text-text-muted">{issue.key}</div>
-          <div className="my-1 break-words text-sm font-medium">{issue.summary}</div>
+          <div
+            className={`${compact ? 'my-0.5' : 'my-0.5 md:my-1'} break-words text-sm font-medium`}
+          >
+            {issue.summary}
+          </div>
         </Link>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -143,6 +151,7 @@ export function ProjectBoardPage() {
   if (error || !board) return <ErrorState message={error?.message ?? t('issue.notFound')} />
 
   const { columns, issues, sprint } = board
+  const density = searchParams.get('density') === 'compact' ? 'compact' : 'comfortable'
   const requestedColumn = searchParams.get('status')
   const activeColumnId = columns.some((column) => column.id === requestedColumn)
     ? requestedColumn!
@@ -205,6 +214,13 @@ export function ProjectBoardPage() {
     )
   }
 
+  function setDensity(nextDensity: 'comfortable' | 'compact') {
+    const next = new URLSearchParams(searchParams)
+    if (nextDensity === 'compact') next.set('density', 'compact')
+    else next.delete('density')
+    setSearchParams(next, { replace: true })
+  }
+
   return (
     <div className="min-w-0">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -220,6 +236,27 @@ export function ProjectBoardPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <div
+            className="hidden grid-cols-2 rounded-md border border-border bg-surface p-1 md:inline-grid"
+            role="group"
+            aria-label={t('board.density')}
+          >
+            {(['comfortable', 'compact'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={density === option}
+                onClick={() => setDensity(option)}
+                className={`min-h-10 rounded px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+                  density === option
+                    ? 'bg-surface-raised text-text-primary shadow-sm'
+                    : 'text-text-muted hover:text-text-secondary'
+                }`}
+              >
+                {t(`board.density${option === 'compact' ? 'Compact' : 'Comfortable'}`)}
+              </button>
+            ))}
+          </div>
           <Button
             variant="outline"
             size="sm"
@@ -264,7 +301,9 @@ export function ProjectBoardPage() {
         role="region"
         aria-label={t('board.columns')}
         tabIndex={0}
-        className="grid min-w-0 grid-cols-1 gap-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:grid-cols-2 xl:grid-cols-4"
+        className={`grid min-w-0 grid-cols-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:grid-cols-2 xl:grid-cols-4 ${
+          density === 'compact' ? 'gap-2' : 'gap-2 md:gap-4'
+        }`}
       >
         {columns.map((column) => {
           const wipLimit = column.wip_limit ?? null
@@ -281,7 +320,11 @@ export function ProjectBoardPage() {
                 isDropTarget ? 'border-accent ring-1 ring-accent' : 'border-border'
               }`}
             >
-              <div className="flex items-center justify-between border-b border-border p-3">
+              <div
+                className={`flex items-center justify-between border-b border-border ${
+                  density === 'compact' ? 'p-2' : 'p-2 md:p-3'
+                }`}
+              >
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">
                     {statusLabel(column.name, t)}
@@ -293,12 +336,17 @@ export function ProjectBoardPage() {
                 </div>
               </div>
 
-              <div className="min-h-24 flex-1 space-y-2 p-2">
+              <div
+                className={`min-h-24 flex-1 ${
+                  density === 'compact' ? 'space-y-1 p-1.5' : 'space-y-1 p-1.5 md:space-y-2 md:p-2'
+                }`}
+              >
                 {colIssues.map((issue) => (
                   <IssueCard
                     key={issue.id}
                     issue={issue}
                     columnId={column.id}
+                    compact={density === 'compact'}
                     onDragStart={handleDragStart}
                     destinations={columns.filter((candidate) =>
                       transitionAllowed(issue.status_id, candidate.id),
@@ -317,7 +365,7 @@ export function ProjectBoardPage() {
               <Link
                 to="/issues/create"
                 state={{ project_key: key }}
-                className="m-2 flex min-h-10 items-center justify-center rounded-md border border-dashed border-border-strong px-2 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary"
+                className={`${density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'} flex min-h-10 items-center justify-center rounded-md border border-dashed border-border-strong px-2 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary`}
               >
                 + {t('board.create')}
               </Link>

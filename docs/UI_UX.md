@@ -323,6 +323,8 @@ Time tracking
 - Quick filters над доской.
 - Empty column state: dashed placeholder.
 - Column context menu: rename, WIP limit, delete.
+- На tablet/desktop доступен переключатель обычной и компактной плотности;
+  compact-режим уменьшает отступы, но сохраняет metadata и touch targets.
 - **Состояния**: loading — skeleton колонки; empty board — CTA добавить первую колонку; WIP limit превышен — бейдж колонки с `warning` цветом.
 - **Адаптив**: <768px — горизонтальный swipe между колонками; планшет — горизонтальный scroll.
 
