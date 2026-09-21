@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { ThemeProvider } from '@sdlc/ui/lib'
@@ -54,6 +54,113 @@ function mockHooks(notifications: Notification[] | undefined, unreadCount?: numb
 }
 
 describe('AppShell notifications', () => {
+  beforeEach(() => {
+    window.localStorage.removeItem('tt-sidebar-collapsed')
+  })
+
+  it('keeps global navigation available on desktop outside a project', () => {
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const navigation = screen.getByRole('navigation', { name: 'Основная навигация' })
+    expect(within(navigation).getByRole('link', { name: 'Дашборд' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Отчёты' })).toHaveAttribute(
+      'href',
+      '/reports',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Администрирование' })).toHaveAttribute(
+      'href',
+      '/admin',
+    )
+  })
+
+  it('highlights only the current project destination', () => {
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/XP/board']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const navigation = screen.getByRole('navigation', { name: 'Навигация проекта' })
+    expect(within(navigation).getByRole('link', { name: 'Доска' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Бэклог' })).not.toHaveAttribute(
+      'aria-current',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Корзина' })).not.toHaveAttribute(
+      'aria-current',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Настройки проекта' })).not.toHaveAttribute(
+      'aria-current',
+    )
+  })
+
+  it('retains project navigation and selects project reports for filtered reports', () => {
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/reports?project_key=XP']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const projectNavigation = screen.getByRole('navigation', { name: 'Навигация проекта' })
+    expect(within(projectNavigation).getByRole('link', { name: 'Отчёты проекта' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(
+      within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('link', {
+        name: 'Отчёты',
+      }),
+    ).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('link', { name: 'Создать' })).toHaveAttribute(
+      'href',
+      '/issues/create?project_key=XP',
+    )
+  })
+
+  it('closes the mobile navigation dialog with Escape and after choosing a link', async () => {
+    const user = userEvent.setup()
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/XP/board']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
+    let dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('link', { name: 'Доска' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+
+    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
+    dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('link', { name: 'Бэклог' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
   it('does not resolve an issue context on the create issue route', () => {
     mockHooks([])
 
@@ -190,11 +297,13 @@ describe('AppShell notifications', () => {
     await user.click(trigger)
 
     expect(await screen.findByText('Issue updated')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /отметить прочитанным|mark as read/i }))
+    await user.click(screen.getByRole('menuitem', { name: /отметить прочитанным: Issue updated/i }))
     expect(markRead).toHaveBeenCalledWith('notification-1')
 
-    await user.click(screen.getByRole('button', { name: /прочитать все|mark all as read/i }))
+    await user.click(trigger)
+    await user.click(screen.getByRole('menuitem', { name: /прочитать все|mark all as read/i }))
     await waitFor(() => expect(markAll).toHaveBeenCalledTimes(1))
+    await user.click(trigger)
     const viewAllLink = screen.getByRole('menuitem', {
       name: /все уведомления|view all notifications/i,
     })
