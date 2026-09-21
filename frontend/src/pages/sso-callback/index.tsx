@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
+import { useTranslation } from 'react-i18next'
 import { completeSso } from '@sdlc/ui/sso'
 import { Button } from '@sdlc/ui/ui'
 import { apiBaseUrl } from '@/api/client'
@@ -19,8 +20,9 @@ function completion() {
 }
 
 export function SsoCallbackPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
-  const [error, setError] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
   useEffect(() => {
     let active = true
     void completion()
@@ -28,7 +30,7 @@ export function SsoCallbackPage() {
         const response = await fetch(`${apiBaseUrl}/api/v1/users/me`, {
           headers: { Authorization: `Bearer ${session.accessToken}` },
         })
-        if (!response.ok) throw new Error('Не удалось открыть профиль Task Tracker.')
+        if (!response.ok) throw new Error('profile request failed')
         const user = (await response.json()) as {
           id: string
           email: string
@@ -45,8 +47,8 @@ export function SsoCallbackPage() {
         })
         navigate(session.returnTo, { replace: true })
       })
-      .catch((caught) => {
-        if (active) setError(caught instanceof Error ? caught.message : 'Не удалось завершить вход')
+      .catch(() => {
+        if (active) setFailed(true)
       })
     return () => {
       active = false
@@ -54,13 +56,17 @@ export function SsoCallbackPage() {
   }, [navigate])
   return (
     <main className="grid min-h-screen place-items-center bg-background p-4">
-      {error ? (
+      {failed ? (
         <div className="space-y-4 text-center">
-          <p role="alert">{error}</p>
-          <Button onClick={() => navigate('/login', { replace: true })}>Повторить вход</Button>
+          <p role="alert" className="text-sm text-danger">
+            {t('auth.sso.callbackError')}
+          </p>
+          <Button className="min-h-11" onClick={() => navigate('/login', { replace: true })}>
+            {t('auth.sso.retry')}
+          </Button>
         </div>
       ) : (
-        <p role="status">Завершаем вход...</p>
+        <p role="status">{t('auth.sso.completing')}</p>
       )}
     </main>
   )
