@@ -7,12 +7,17 @@ import { MemoryRouter, Routes, Route } from 'react-router'
 import { IssueDetailPage } from './'
 import { ThemeProvider } from '@sdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
+import { toast } from 'sonner'
 
 const mockGetIssue = vi.hoisted(() => vi.fn())
 const mockUseIssue = vi.hoisted(() => vi.fn())
 const mockComments = vi.hoisted(() => vi.fn())
 const mockWorklogs = vi.hoisted(() => vi.fn())
 const mockIssueLinks = vi.hoisted(() => vi.fn())
+const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
+const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
+
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 
 const issueData = {
   id: 'i1',
@@ -88,8 +93,8 @@ vi.mock('@/shared/api/hooks', () => ({
     isLoading: false,
     error: null,
   }),
-  useUpdateIssue: () => ({ mutate: vi.fn(), isPending: false }),
-  useDeleteIssue: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateIssue: (...args: unknown[]) => mockUseUpdateIssue(...args),
+  useDeleteIssue: (...args: unknown[]) => mockUseDeleteIssue(...args),
   useCurrentUser: () => ({ data: undefined, isLoading: false }),
   useProjects: () => ({
     data: [{ id: 'p1', key: 'TT', name: 'Task Tracker', owner_id: 'u1' }],
@@ -177,6 +182,13 @@ describe('IssueDetailPage', () => {
     vi.clearAllMocks()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
     mockUseIssue.mockReturnValue({ data: issueData, isLoading: false, error: null })
+    mockUseUpdateIssue.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mockUseDeleteIssue.mockReturnValue({
+      mutate: vi.fn(),
+      reset: vi.fn(),
+      isPending: false,
+      error: null,
+    })
     mockComments.mockReturnValue({
       data: commentData,
       isLoading: false,
@@ -285,6 +297,88 @@ describe('IssueDetailPage', () => {
     expect(
       details.compareDocumentPosition(activity) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+  })
+
+  it('links the issue back to its project board', () => {
+    render(wrapper(<IssueDetailPage />))
+    expect(screen.getByRole('link', { name: 'Task Tracker' })).toHaveAttribute(
+      'href',
+      '/projects/TT/board',
+    )
+  })
+
+  it('reports clipboard success only after the key is copied', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    const navigatorWithClipboard = Object.create(navigator)
+    Object.defineProperty(navigatorWithClipboard, 'clipboard', { value: { writeText } })
+    vi.stubGlobal('navigator', navigatorWithClipboard)
+    render(wrapper(<IssueDetailPage />))
+
+    await user.click(screen.getByRole('button', { name: /действия|actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /скопировать ключ|copy key/i }))
+    expect(writeText).toHaveBeenCalledWith('TT-1')
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Ключ скопирован.'))
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it('reports a failed clipboard write without claiming success', async () => {
+    const user = userEvent.setup()
+    const writeText = vi.fn().mockRejectedValue(new Error('Permission denied'))
+    const navigatorWithClipboard = Object.create(navigator)
+    Object.defineProperty(navigatorWithClipboard, 'clipboard', { value: { writeText } })
+    vi.stubGlobal('navigator', navigatorWithClipboard)
+    render(wrapper(<IssueDetailPage />))
+
+    await user.click(screen.getByRole('button', { name: /действия|actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /скопировать ключ|copy key/i }))
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith('Не удалось скопировать ключ. Повторите попытку.'),
+    )
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('reports an assignment failure', async () => {
+    const mutate = vi.fn()
+    mockUseUpdateIssue.mockReturnValue({ mutate, isPending: false })
+    render(wrapper(<IssueDetailPage />))
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: /назначить на себя|assign to me/i }))
+    expect(mutate).toHaveBeenCalledWith(
+      { assignee_id: 'u1' },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    )
+    mutate.mock.calls[0]?.[1].onError(new Error('Failed to update issue'))
+    expect(toast.error).toHaveBeenCalledWith(
+      'Не удалось назначить задачу на вас. Повторите попытку.',
+    )
+  })
+
+  it('resets deletion errors when opening and closing confirmation', async () => {
+    const reset = vi.fn()
+    mockUseDeleteIssue.mockReturnValue({
+      mutate: vi.fn(),
+      reset,
+      isPending: false,
+      error: new Error('Failed to delete issue'),
+    })
+    render(wrapper(<IssueDetailPage />))
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: /действия|actions/i }))
+    await user.click(screen.getByRole('menuitem', { name: /удалить|delete/i }))
+    expect(reset).toHaveBeenCalledOnce()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Не удалось переместить задачу в корзину. Повторите попытку.',
+    )
+    await user.click(screen.getByRole('button', { name: /отмена|cancel/i }))
+    expect(reset).toHaveBeenCalledTimes(2)
+    await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+      expect(document.body.style.pointerEvents).not.toBe('none')
+    })
   })
 
   it('keeps desktop details and supplemental actions in one independent sidebar', () => {

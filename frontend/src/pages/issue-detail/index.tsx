@@ -1,4 +1,4 @@
-import { useParams } from 'react-router'
+import { Link, useParams } from 'react-router'
 import { useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
@@ -110,9 +110,13 @@ export function IssueDetailPage() {
 
   const handleDelete = (worklogId: string) => remove.mutateAsync(worklogId)
 
-  const copyKey = () => {
-    navigator.clipboard.writeText(issue.key)
-    toast.success(t('issue.copyKey'))
+  const copyKey = async () => {
+    try {
+      await navigator.clipboard.writeText(issue.key)
+      toast.success(t('issue.keyCopied'))
+    } catch {
+      toast.error(t('issue.copyFailed'))
+    }
   }
 
   return (
@@ -122,7 +126,13 @@ export function IssueDetailPage() {
           <ErrorState message={t('issue.refreshError')} onRetry={() => void issueQuery.refetch()} />
         )}
         <div className="mb-2 text-sm text-text-muted">
-          {issue.project_name} / {issue.key}
+          <Link
+            to={`/projects/${issue.project_key}/board`}
+            className="inline-flex min-h-6 items-center rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          >
+            {issue.project_name}
+          </Link>{' '}
+          / {issue.key}
         </div>
 
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -134,13 +144,21 @@ export function IssueDetailPage() {
               variant="secondary"
               size="sm"
               className="h-10 xl:h-8"
-              disabled={updateIssue.isPending || currentUserId === issue.assignee_id}
-              onClick={() => currentUserId && updateIssue.mutate({ assignee_id: currentUserId })}
+              disabled={
+                updateIssue.isPending || !currentUserId || currentUserId === issue.assignee_id
+              }
+              onClick={() =>
+                currentUserId &&
+                updateIssue.mutate(
+                  { assignee_id: currentUserId },
+                  { onError: () => toast.error(t('issue.assignError')) },
+                )
+              }
             >
               <UserPlus className="h-4 w-4" />
               {t('issue.assignToMe')}
             </Button>
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="secondary"
@@ -152,12 +170,15 @@ export function IssueDetailPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={copyKey} className="gap-2">
+                <DropdownMenuItem onClick={() => void copyKey()} className="gap-2">
                   <Copy className="h-4 w-4" />
                   {t('issue.copyKey')}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => setDeleteConfirmOpen(true)}
+                  onClick={() => {
+                    deleteIssueMutation.reset()
+                    setDeleteConfirmOpen(true)
+                  }}
                   className="gap-2 text-danger"
                 >
                   {t('issue.delete')}
@@ -325,17 +346,15 @@ export function IssueDetailPage() {
       />
       <ConfirmDialog
         open={deleteConfirmOpen}
-        onOpenChange={setDeleteConfirmOpen}
+        onOpenChange={(open) => {
+          setDeleteConfirmOpen(open)
+          if (!open) deleteIssueMutation.reset()
+        }}
         isPending={deleteIssueMutation.isPending}
-        error={deleteIssueMutation.error?.message}
+        error={deleteIssueMutation.error ? t('issue.deleteError') : null}
         title={t('issue.delete')}
         description={t('issue.deleteConfirm')}
-        onConfirm={() => {
-          deleteIssueMutation.mutate(id, {
-            onSuccess: () => setDeleteConfirmOpen(false),
-            onError: (error) => toast.error(error.message),
-          })
-        }}
+        onConfirm={() => deleteIssueMutation.mutate(id)}
       />
     </div>
   )
