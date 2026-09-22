@@ -81,7 +81,8 @@ test('Workflow mobile shell keeps touch targets and keyboard focus inside its dr
   mkdirSync(screenshotDir, { recursive: true })
   await page.setViewportSize({ width: 375, height: 812 })
   const base = 'http://localhost:8812/'
-  const burger = page.getByRole('button', { name: 'Открыть навигацию' })
+  const burger = page.locator('#burgerBtn')
+  const drawerClose = page.locator('#sidebar .sidebar-close')
   const serviceMenu = page.locator('#sidebar details.sidebar-service-menu')
   await signInAt(page, base, account, burger)
   await page.waitForLoadState('load')
@@ -115,7 +116,7 @@ test('Workflow mobile shell keeps touch targets and keyboard focus inside its dr
   await burger.click()
   await expect(burger).toHaveAttribute('aria-expanded', 'true')
   await expect(sidebar).not.toHaveAttribute('inert')
-  await expect(page.getByRole('button', { name: 'Закрыть навигацию' })).toBeFocused()
+  await expect(drawerClose).toBeFocused()
   await page.keyboard.press('Shift+Tab')
   await page.keyboard.press('Shift+Tab')
   expect(

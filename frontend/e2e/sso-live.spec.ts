@@ -26,7 +26,7 @@ test('Admin Panel uses the central browser session and global logout', async ({ 
   await signInAt(page, 'http://localhost:7772/users', account)
 
   await expect(page).toHaveURL('http://localhost:7772/users', { timeout: 30_000 })
-  await expect(page.getByRole('navigation').getByText(account.email, { exact: true })).toBeVisible()
+  await expect(page.getByRole('banner').getByText(account.email, { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Выйти' }).click()
   await expect(page).toHaveURL(/localhost:7701\/oidc\/logout/)
   await page.getByRole('button', { name: /выйти|подтвердить/i }).click()

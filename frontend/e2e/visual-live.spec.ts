@@ -30,25 +30,25 @@ const apps = [
   { key: 'workflow', url: 'http://localhost:8812/workflows' },
 ] as const
 
-test('real pages fit four viewports in three themes without serious accessibility errors', async ({
-  page,
-}) => {
-  test.setTimeout(360_000)
-  mkdirSync(screenshotDir, { recursive: true })
-  await signInAt(page, 'http://localhost:7772/users', account)
-  const runtimeErrors: string[] = []
-  page.on('pageerror', (error) => runtimeErrors.push(`page: ${error.message}`))
-  page.on('console', (message) => {
-    if (message.type() === 'error') runtimeErrors.push(`console: ${message.text()}`)
-  })
-  page.on('requestfailed', (request) => {
-    const reason = request.failure()?.errorText ?? 'unknown'
-    if (!reason.includes('ERR_ABORTED')) {
-      runtimeErrors.push(`request: ${request.method()} ${request.url()} (${reason})`)
-    }
-  })
+for (const app of apps) {
+  test(`${app.key} fits four viewports in three themes without serious accessibility errors`, async ({
+    page,
+  }) => {
+    test.setTimeout(180_000)
+    mkdirSync(screenshotDir, { recursive: true })
+    await signInAt(page, 'http://localhost:7772/users', account)
+    const runtimeErrors: string[] = []
+    page.on('pageerror', (error) => runtimeErrors.push(`page: ${error.message}`))
+    page.on('console', (message) => {
+      if (message.type() === 'error') runtimeErrors.push(`console: ${message.text()}`)
+    })
+    page.on('requestfailed', (request) => {
+      const reason = request.failure()?.errorText ?? 'unknown'
+      if (!reason.includes('ERR_ABORTED')) {
+        runtimeErrors.push(`request: ${request.method()} ${request.url()} (${reason})`)
+      }
+    })
 
-  for (const app of apps) {
     await page.goto(app.url)
     if (app.key === 'workflow') {
       await expect(page.locator('details.service-menu summary')).toBeVisible({ timeout: 30_000 })
@@ -82,6 +82,7 @@ test('real pages fit four viewports in three themes without serious accessibilit
       ]) {
         await page.setViewportSize({ width, height })
         await expect(pageContent).toBeVisible({ timeout: 10_000 })
+        await page.waitForTimeout(1_000)
         await expect
           .poll(
             () =>
@@ -116,10 +117,20 @@ test('real pages fit four viewports in three themes without serious accessibilit
         )
         expect(nestedScrollers, `${app.key} ${theme} ${width}px nested scrollers`).toEqual([])
         if (app.key === 'fleet' && theme === 'dark' && width === 375) {
-          const section = page.getByRole('combobox', { name: /Раздел Fleet Control|Fleet section/ })
-          await section.selectOption('/settings')
+          const navigation = page.getByRole('button', {
+            name: /Открыть навигацию|Open navigation/,
+          })
+          await navigation.click()
+          await page
+            .getByRole('dialog')
+            .getByRole('link', { name: /Настройки|Settings/, exact: true })
+            .click()
           await expect(page).toHaveURL('http://localhost:7742/settings')
-          await section.selectOption('/agents')
+          await navigation.click()
+          await page
+            .getByRole('dialog')
+            .getByRole('link', { name: /Агенты|Agents/, exact: true })
+            .click()
           await expect(page).toHaveURL(app.url)
         }
         await page.screenshot({
@@ -141,6 +152,6 @@ test('real pages fit four viewports in three themes without serious accessibilit
         ).toEqual([])
       }
     }
-  }
-  expect(runtimeErrors, 'Console, page and network errors').toEqual([])
-})
+    expect(runtimeErrors, 'Console, page and network errors').toEqual([])
+  })
+}
