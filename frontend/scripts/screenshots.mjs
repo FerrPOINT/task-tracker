@@ -51,8 +51,6 @@ async function dialog() {
   console.log('saved log-work-dialog-open.png')
 }
 
-await capture({ width: 375, height: 667 }, 'issue-detail-mobile')
 await capture({ width: 1920, height: 1080 }, 'issue-detail-fhd')
-await capture({ width: 2560, height: 1440 }, 'issue-detail-2k')
 await themedScreenshots()
 await dialog()

@@ -1,11 +1,11 @@
 # Task Tracker README Evidence Plan
 
-> **Status 2026-09-18:** active Base README migration wave. Scope is documentation, reviewed existing visual evidence and a small structural CI gate; no tracker API, schema or workflow behavior changes.
+> **Status 2026-09-18:** historical record of the initial README migration. The active Base contract is desktop-only; mobile proof and auth-screen evidence stay in product UI QA, not the root README.
 
 ## Evidence Decision
 
 - Use the existing `10-reports.png`: it is a synthetic `Demo Project` report with no credentials, personal data, URLs, actual IDs or timestamps.
-- Use `m-board-viewport.png`, a `375x812` crop of the existing `15-board-mobile.png`, as mobile proof: issue keys and summaries are seeded E2E fixtures, with no PII or deployment details. The README explicitly calls out the intentionally compact card stack at mobile width.
+- Do not place narrow-viewport captures in the root README or manifest; responsive behavior remains product UI QA.
 - Do not place `01-login.png` in the root README: it advertises the MVP/demo "any login/password" behavior. Do not use dashboard or issue-detail images because they carry more fixture and workflow context than the root entry point needs.
 
 ## Execution
