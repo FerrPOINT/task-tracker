@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
 
 import { ProjectBacklogPage } from './'
 import { ThemeProvider } from '@sdlc/ui/lib'
@@ -44,12 +44,34 @@ vi.mock('@/features/sprints/ui/SprintFormDialog', () => ({
   SprintFormDialog: () => null,
 }))
 
-function wrapper(children: React.ReactNode) {
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+    </>
+  )
+}
+
+function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/backlog') {
   return (
     <ThemeProvider>
-      <MemoryRouter initialEntries={['/projects/TT/backlog']}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/projects/:projectKey/backlog" element={children} />
+          <Route
+            path="/projects/:projectKey/backlog"
+            element={
+              <>
+                {children}
+                <LocationProbe />
+              </>
+            }
+          />
         </Routes>
       </MemoryRouter>
     </ThemeProvider>
@@ -251,5 +273,52 @@ describe('ProjectBacklogPage', () => {
     await waitFor(() => expect(screen.getByText('Активного спринта нет')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /начать спринт/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /завершить спринт/i })).not.toBeInTheDocument()
+  })
+
+  it('loads the requested page from the URL', async () => {
+    render(wrapper(<ProjectBacklogPage />, '/projects/TT/backlog?offset=100&view=all'))
+
+    await waitFor(() => expect(mockBacklog).toHaveBeenCalledWith('TT', 100, 100))
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/projects/TT/backlog?offset=100&view=all',
+    )
+  })
+
+  it('keeps pagination in browser history and preserves unrelated query parameters', async () => {
+    mockBacklog.mockImplementation((_key: string, offset: number) => ({
+      data: {
+        ...backlogData,
+        backlog_offset: offset,
+        backlog_limit: 100,
+        backlog_total: 201,
+      },
+      isLoading: false,
+      error: null,
+    }))
+
+    render(wrapper(<ProjectBacklogPage />, '/projects/TT/backlog?view=all'))
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Вперёд' }))
+    await waitFor(() => expect(mockBacklog).toHaveBeenLastCalledWith('TT', 100, 100))
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/projects/TT/backlog?view=all&offset=100',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back in history' }))
+    await waitFor(() => expect(mockBacklog).toHaveBeenLastCalledWith('TT', 0, 100))
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/projects/TT/backlog?view=all',
+    )
+  })
+
+  it('removes an invalid offset while preserving other query parameters', async () => {
+    render(wrapper(<ProjectBacklogPage />, '/projects/TT/backlog?offset=-20&view=all'))
+
+    await waitFor(() => expect(mockBacklog).toHaveBeenCalledWith('TT', 0, 100))
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/projects/TT/backlog?view=all',
+      ),
+    )
   })
 })
