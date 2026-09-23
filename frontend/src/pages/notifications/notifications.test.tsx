@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import i18n from '@/shared/i18n/config'
 
 import { NotificationsPage } from './'
@@ -19,10 +19,25 @@ vi.mock('@/shared/api/hooks', () => ({
   useUpdateNotificationSettings,
 }))
 
-function renderPage() {
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+    </>
+  )
+}
+
+function renderPage(url = '/notifications') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
       <NotificationsPage />
+      <LocationProbe />
     </MemoryRouter>,
   )
 }
@@ -123,11 +138,95 @@ describe('NotificationsPage', () => {
     expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 20 })
     expect(screen.getByText('Event 21')).toBeInTheDocument()
     expect(screen.queryByText('Event 1')).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?page=2',
+    )
 
     fireEvent.click(screen.getByRole('button', { name: /unread|непрочитанные/i }))
     expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: false, limit: 21, offset: 0 })
     expect(screen.getByText('Event 2')).toBeInTheDocument()
     expect(screen.queryByText('Event 1')).not.toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?filter=unread',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back in history' }))
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 20 })
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?page=2',
+    )
+  })
+
+  it('opens a filtered page directly and preserves unrelated parameters', () => {
+    mockHooks()
+
+    renderPage('/notifications?filter=unread&page=2&source=qa')
+
+    expect(useNotifications).toHaveBeenLastCalledWith({
+      includeRead: false,
+      limit: 21,
+      offset: 20,
+    })
+    expect(screen.getByRole('button', { name: /unread|непрочитанные/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/notifications?filter=unread&page=2&source=qa',
+    )
+  })
+
+  it('canonicalizes invalid list parameters without losing unrelated parameters', async () => {
+    mockHooks()
+
+    renderPage('/notifications?filter=unknown&page=-3&source=qa')
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/notifications?source=qa',
+      ),
+    )
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 0 })
+  })
+
+  it('returns an empty out-of-range page to the first page without a navigation loop', async () => {
+    mockHooks()
+    useNotifications.mockImplementation(({ offset }: { offset: number }) => ({
+      data: {
+        notifications:
+          offset === 0
+            ? [
+                {
+                  id: 'notification-1',
+                  title: 'Issue updated',
+                  body: null,
+                  is_read: false,
+                  action_url: null,
+                  created_at: '2026-08-24T10:00:00Z',
+                },
+              ]
+            : [],
+        unread_count: 1,
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    }))
+    useNotifications.mockClear()
+
+    renderPage('/notifications?page=999&source=qa')
+
+    expect(useNotifications).toHaveBeenCalledWith({ includeRead: true, limit: 21, offset: 19960 })
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/notifications?source=qa',
+      ),
+    )
+    expect(useNotifications).toHaveBeenLastCalledWith({ includeRead: true, limit: 21, offset: 0 })
+    const offsetTransitions = useNotifications.mock.calls
+      .map(([options]) => options.offset)
+      .filter((offset, index, offsets) => index === 0 || offset !== offsets[index - 1])
+    expect(offsetTransitions).toEqual([19960, 0])
   })
 
   it('saves multiple preference edits in one backend-compatible request', async () => {
