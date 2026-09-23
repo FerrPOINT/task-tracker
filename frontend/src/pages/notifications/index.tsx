@@ -1,5 +1,5 @@
-import { memo, useEffect, useState } from 'react'
-import { Link } from 'react-router'
+import { memo, useCallback, useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type {
   NotificationItem,
@@ -115,8 +115,13 @@ const NotificationRow = memo(function NotificationRow({
 
 export function NotificationsPage() {
   const { t } = useTranslation()
-  const [showUnread, setShowUnread] = useState(false)
-  const [page, setPage] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filterParam = searchParams.get('filter')
+  const pageParam = searchParams.get('page')
+  const parsedPage = Number(pageParam)
+  const hasValidPage = pageParam !== null && Number.isSafeInteger(parsedPage) && parsedPage > 0
+  const showUnread = filterParam === 'unread'
+  const page = hasValidPage ? parsedPage - 1 : 0
   const [settingsDraft, setSettingsDraft] = useState<UpdateNotificationSettingsInput | null>(null)
   const [readAction, setReadAction] = useState<'one' | 'all' | null>(null)
   const {
@@ -141,9 +146,46 @@ export function NotificationsPage() {
   const hasNextPage = notifications.length > PAGE_SIZE
   const unreadCount = notificationList?.unread_count ?? 0
 
+  const updateListParams = useCallback(
+    (nextUnread: boolean, nextPage: number, replace = false) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          if (nextUnread) next.set('filter', 'unread')
+          else next.delete('filter')
+          if (nextPage > 0) next.set('page', String(nextPage + 1))
+          else next.delete('page')
+          return next
+        },
+        { replace },
+      )
+    },
+    [setSearchParams],
+  )
+
   useEffect(() => {
-    if (page > 0 && notificationList && notifications.length === 0) setPage(page - 1)
-  }, [page, notificationList, notifications.length])
+    const canonicalFilter = showUnread ? 'unread' : null
+    const canonicalPage = hasValidPage && parsedPage > 1 ? String(parsedPage) : null
+    if (filterParam === canonicalFilter && pageParam === canonicalPage) return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (canonicalFilter) next.set('filter', canonicalFilter)
+        else next.delete('filter')
+        if (canonicalPage) next.set('page', canonicalPage)
+        else next.delete('page')
+        return next
+      },
+      { replace: true },
+    )
+  }, [filterParam, hasValidPage, pageParam, parsedPage, setSearchParams, showUnread])
+
+  useEffect(() => {
+    if (page > 0 && notificationList && notifications.length === 0) {
+      updateListParams(showUnread, 0, true)
+    }
+  }, [notificationList, notifications.length, page, showUnread, updateListParams])
 
   function updatePreference(input: Partial<UpdateNotificationSettingsInput>) {
     if (!displayedSettings) return
@@ -176,7 +218,7 @@ export function NotificationsPage() {
           size="sm"
           className="min-h-11 sm:min-h-10"
           onClick={() => {
-            setPage(0)
+            updateListParams(showUnread, 0, true)
             setReadAction('all')
             markAllNotificationsRead.mutate()
           }}
@@ -194,10 +236,7 @@ export function NotificationsPage() {
               size="sm"
               className="min-h-11 sm:min-h-10"
               aria-pressed={!showUnread}
-              onClick={() => {
-                setShowUnread(false)
-                setPage(0)
-              }}
+              onClick={() => updateListParams(false, 0)}
             >
               {t('notifications.all')}
             </Button>
@@ -206,10 +245,7 @@ export function NotificationsPage() {
               size="sm"
               className="min-h-11 sm:min-h-10"
               aria-pressed={showUnread}
-              onClick={() => {
-                setShowUnread(true)
-                setPage(0)
-              }}
+              onClick={() => updateListParams(true, 0)}
             >
               {t('notifications.unread', { count: unreadCount })}
             </Button>
@@ -299,7 +335,7 @@ export function NotificationsPage() {
                     aria-label={t('notifications.previousPage')}
                     title={t('notifications.previousPage')}
                     disabled={page === 0}
-                    onClick={() => setPage(page - 1)}
+                    onClick={() => updateListParams(showUnread, page - 1)}
                   >
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
@@ -313,7 +349,7 @@ export function NotificationsPage() {
                     aria-label={t('notifications.nextPage')}
                     title={t('notifications.nextPage')}
                     disabled={!hasNextPage}
-                    onClick={() => setPage(page + 1)}
+                    onClick={() => updateListParams(showUnread, page + 1)}
                   >
                     <ChevronRight className="h-4 w-4" />
                   </Button>
