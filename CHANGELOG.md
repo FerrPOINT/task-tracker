@@ -18,6 +18,9 @@
 ### Fixed
 - Фильтр и страница уведомлений сохраняются в URL и восстанавливаются после
   reload, Back/Forward и прямого открытия без потери соседних параметров.
+- Пагинация backlog хранит `offset` в URL, сохраняет остальные query-параметры
+  и восстанавливает страницу после reload, Back и Forward; локальные действия и
+  ссылки задач получили устойчивые цели не меньше 40 px.
 - Issue detail actions touch-sized, live workflows верифицированы (#67); live Wiki space navigation (#65); патч аудита dev-зависимостей frontend (#68).
 ### Added
 - Live E2E-покрытие: Workflow- и CI/CD-страницы по темам и viewport (#58, #59); SSO-тест синхронизирован с Admin UI (#60).

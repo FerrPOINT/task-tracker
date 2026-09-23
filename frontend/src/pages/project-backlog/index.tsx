@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { useEffect, useState } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { Plus, MoreHorizontal, Play, CheckCircle2, Pencil, ArrowRightLeft, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
@@ -58,7 +58,7 @@ function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode })
         <Link
           to={`/issues/${issue.id}`}
           title={issue.summary}
-          className="flex min-w-0 flex-1 flex-col rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:flex-row sm:items-center sm:gap-3"
+          className="flex min-h-10 min-w-0 flex-1 flex-col justify-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:flex-row sm:items-center sm:gap-3"
         >
           <span className="shrink-0 text-xs text-text-muted sm:w-20">{issue.key}</span>
           <span className="line-clamp-2 min-w-0 font-medium sm:line-clamp-1 sm:flex-1">
@@ -180,11 +180,20 @@ function Section<T extends Issue>({
 
 const BACKLOG_PAGE_SIZE = 100
 
+function parseBacklogOffset(value: string | null) {
+  if (value === null) return 0
+
+  const offset = Number(value)
+  return Number.isSafeInteger(offset) && offset >= 0 ? offset : 0
+}
+
 export function ProjectBacklogPage() {
   const { t } = useTranslation()
   const { projectKey } = useParams<{ projectKey?: string }>()
   const key = projectKey ?? ''
-  const [backlogOffset, setBacklogOffset] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const offsetParam = searchParams.get('offset')
+  const backlogOffset = parseBacklogOffset(offsetParam)
   const {
     data: backlog,
     isLoading: backlogLoading,
@@ -198,6 +207,20 @@ export function ProjectBacklogPage() {
   const updateSprint = useUpdateSprint(key, editingSprint?.id ?? '')
   const startSprint = useStartSprint(key)
   const closeSprint = useCloseSprint(key)
+
+  useEffect(() => {
+    if (offsetParam === null || offsetParam === String(backlogOffset)) return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (backlogOffset > 0) next.set('offset', String(backlogOffset))
+        else next.delete('offset')
+        return next
+      },
+      { replace: true },
+    )
+  }, [backlogOffset, offsetParam, setSearchParams])
 
   const isLoading = backlogLoading || sprintsLoading
   const error = backlogError
@@ -244,6 +267,13 @@ export function ProjectBacklogPage() {
     }
   }
 
+  function updateBacklogOffset(nextOffset: number) {
+    const next = new URLSearchParams(searchParams)
+    if (nextOffset > 0) next.set('offset', String(nextOffset))
+    else next.delete('offset')
+    setSearchParams(next)
+  }
+
   const createIssuePath = `/issues/create?project_key=${encodeURIComponent(key)}`
 
   return (
@@ -265,15 +295,14 @@ export function ProjectBacklogPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" className="gap-1" onClick={openCreate}>
+          <Button size="sm" className="min-h-10 gap-1 sm:min-h-10" onClick={openCreate}>
             <Plus className="h-4 w-4" />
             {t('backlog.createSprint')}
           </Button>
-          <Button variant="outline" size="sm" className="gap-1" asChild>
+          <Button variant="outline" size="sm" className="min-h-10 gap-1 sm:min-h-10" asChild>
             <Link to={createIssuePath} state={{ project_key: key }}>
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t('backlog.createIssue')}</span>
-              <span className="sm:hidden">{t('backlog.createIssue')}</span>
+              <span>{t('backlog.createIssue')}</span>
             </Link>
           </Button>
         </div>
@@ -294,7 +323,7 @@ export function ProjectBacklogPage() {
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                className="h-7 px-2.5 text-xs"
+                className="min-h-10 px-2.5 text-xs sm:min-h-10"
                 onClick={() => startSprint.mutate(activeSprint.id)}
                 disabled={activeFromList?.state === 'active'}
               >
@@ -304,7 +333,7 @@ export function ProjectBacklogPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 px-2.5 text-xs"
+                className="min-h-10 px-2.5 text-xs sm:min-h-10"
                 onClick={() => closeSprint.mutate(activeSprint.id)}
                 disabled={activeFromList?.state !== 'active'}
               >
@@ -316,7 +345,7 @@ export function ProjectBacklogPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    className="min-h-10 min-w-10 sm:min-h-10 sm:min-w-10"
                     aria-label={t('common.edit')}
                   >
                     <MoreHorizontal className="h-4 w-4" />
@@ -359,7 +388,7 @@ export function ProjectBacklogPage() {
             <div className="flex items-center gap-2">
               <Button
                 size="sm"
-                className="h-7 px-2.5 text-xs"
+                className="min-h-10 px-2.5 text-xs sm:min-h-10"
                 onClick={() => startSprint.mutate(sprint.id)}
               >
                 <Play className="mr-1 h-3 w-3" />
@@ -370,7 +399,7 @@ export function ProjectBacklogPage() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7"
+                    className="min-h-10 min-w-10 sm:min-h-10 sm:min-w-10"
                     aria-label={t('common.edit')}
                   >
                     <MoreHorizontal className="h-4 w-4" />
@@ -408,7 +437,12 @@ export function ProjectBacklogPage() {
       <Section
         title={t('backlog.backlogSection', { count: backlog_issues.length })}
         action={
-          <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs" asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-10 px-2.5 text-xs sm:min-h-10"
+            asChild
+          >
             <Link to={createIssuePath} state={{ project_key: key }}>
               <Plus className="h-4 w-4" />
               {t('navigation.create')}
@@ -438,8 +472,9 @@ export function ProjectBacklogPage() {
           <Button
             variant="outline"
             size="sm"
+            className="min-h-10 sm:min-h-10"
             disabled={!hasPrev || backlogLoading}
-            onClick={() => setBacklogOffset(Math.max(0, currentOffset - pageSize))}
+            onClick={() => updateBacklogOffset(Math.max(0, currentOffset - pageSize))}
           >
             {t('backlog.prevPage')}
           </Button>
@@ -453,8 +488,9 @@ export function ProjectBacklogPage() {
           <Button
             variant="outline"
             size="sm"
+            className="min-h-10 sm:min-h-10"
             disabled={!hasNext || backlogLoading}
-            onClick={() => setBacklogOffset(currentOffset + pageSize)}
+            onClick={() => updateBacklogOffset(currentOffset + pageSize)}
           >
             {t('backlog.nextPage')}
           </Button>
