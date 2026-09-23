@@ -1,7 +1,7 @@
-import { useParams, Link } from 'react-router'
+import { useParams, Link, useSearchParams } from 'react-router'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@sdlc/ui/ui'
 import { ConfirmDialog, ErrorState } from '@sdlc/ui/ui'
@@ -12,7 +12,16 @@ const TRASH_PAGE_SIZE = 50
 export function ProjectTrashPage() {
   const { projectKey } = useParams<{ projectKey: string }>()
   const { t } = useTranslation()
-  const [trashOffset, setTrashOffset] = useState(0)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const pageParam = searchParams.get('page')
+  const parsedPage = Number(pageParam)
+  const hasValidPage =
+    pageParam !== null &&
+    Number.isSafeInteger(parsedPage) &&
+    parsedPage > 0 &&
+    Number.isSafeInteger((parsedPage - 1) * TRASH_PAGE_SIZE)
+  const page = hasValidPage ? parsedPage : 1
+  const trashOffset = (page - 1) * TRASH_PAGE_SIZE
   const {
     data: trashedIssues = [],
     isLoading,
@@ -25,15 +34,41 @@ export function ProjectTrashPage() {
     null,
   )
 
+  const updatePage = useCallback(
+    (nextPage: number, replace = false) => {
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          if (nextPage > 1) next.set('page', String(nextPage))
+          else next.delete('page')
+          return next
+        },
+        { replace },
+      )
+    },
+    [setSearchParams],
+  )
+
   useEffect(() => {
-    setTrashOffset(0)
-  }, [projectKey])
+    const canonicalPage = hasValidPage && parsedPage > 1 ? String(parsedPage) : null
+    if (pageParam === canonicalPage) return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (canonicalPage) next.set('page', canonicalPage)
+        else next.delete('page')
+        return next
+      },
+      { replace: true },
+    )
+  }, [hasValidPage, pageParam, parsedPage, setSearchParams])
 
   useEffect(() => {
     if (!isLoading && !error && trashedIssues.length === 0 && trashOffset > 0) {
-      setTrashOffset(Math.max(0, trashOffset - TRASH_PAGE_SIZE))
+      updatePage(1, true)
     }
-  }, [error, isLoading, trashedIssues.length, trashOffset])
+  }, [error, isLoading, trashedIssues.length, trashOffset, updatePage])
 
   if (!projectKey) {
     return <div className="text-text-muted">{t('trash.noProject')}</div>
@@ -47,7 +82,7 @@ export function ProjectTrashPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" asChild>
+        <Button variant="ghost" size="icon" className="h-11 w-11 sm:h-10 sm:w-10" asChild>
           <Link to={`/projects/${projectKey}/board`} aria-label={t('trash.backToBoard')}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
@@ -72,7 +107,7 @@ export function ProjectTrashPage() {
 
       {trashedIssues.length > 0 && (
         <div className="overflow-hidden rounded-md border border-border bg-surface text-sm">
-          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] gap-3 border-b border-border bg-surface-raised px-4 py-2 text-text-secondary sm:grid">
+          <div className="hidden grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] gap-3 border-b border-border bg-surface-raised px-4 py-2 text-text-secondary lg:grid">
             <span>{t('trash.key')}</span>
             <span>{t('trash.summary')}</span>
             <span>{t('trash.type')}</span>
@@ -82,19 +117,19 @@ export function ProjectTrashPage() {
           {trashedIssues.map((issue) => (
             <article
               key={issue.id}
-              className="grid gap-2 border-b border-border p-3 last:border-0 hover:bg-surface-raised sm:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] sm:items-center sm:gap-3 sm:px-4"
+              className="grid gap-2 border-b border-border p-3 last:border-0 lg:grid-cols-[7rem_minmax(0,1fr)_8rem_8rem_auto] lg:items-center lg:gap-3 lg:px-4"
             >
               <div className="font-mono text-xs text-text-secondary">{issue.key}</div>
-              <div className="min-w-0 break-words font-medium sm:font-normal">{issue.summary}</div>
-              <div className="text-xs text-text-secondary sm:text-sm">
+              <div className="min-w-0 break-words font-medium lg:font-normal">{issue.summary}</div>
+              <div className="text-xs text-text-secondary lg:text-sm">
                 {t(`issueType.${issue.issue_type.toLowerCase()}`, {
                   defaultValue: issue.issue_type,
                 })}
               </div>
-              <div className="text-xs text-text-secondary sm:text-sm">
+              <div className="text-xs text-text-secondary lg:text-sm">
                 {t(`priority.${issue.priority.toLowerCase()}`, { defaultValue: issue.priority })}
               </div>
-              <div className="mt-1 grid grid-cols-2 gap-2 sm:mt-0 sm:flex sm:justify-end">
+              <div className="mt-1 grid grid-cols-2 gap-2 lg:mt-0 lg:flex lg:justify-end">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -136,8 +171,9 @@ export function ProjectTrashPage() {
           <Button
             variant="outline"
             size="sm"
+            className="min-h-11 sm:min-h-10"
             disabled={!hasPrev || isLoading}
-            onClick={() => setTrashOffset(Math.max(0, trashOffset - TRASH_PAGE_SIZE))}
+            onClick={() => updatePage(page - 1)}
           >
             {t('trash.prevPage')}
           </Button>
@@ -149,8 +185,9 @@ export function ProjectTrashPage() {
           <Button
             variant="outline"
             size="sm"
+            className="min-h-11 sm:min-h-10"
             disabled={!hasNext || isLoading}
-            onClick={() => setTrashOffset(trashOffset + TRASH_PAGE_SIZE)}
+            onClick={() => updatePage(page + 1)}
           >
             {t('trash.nextPage')}
           </Button>
