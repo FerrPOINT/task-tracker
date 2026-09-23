@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
 
 import { IssueCreatePage } from './'
 import { ThemeProvider } from '@sdlc/ui/lib'
@@ -21,6 +21,18 @@ const listProjects = vi.hoisted(() =>
         id: 'p1',
         key: 'TT',
         name: 'Task Tracker',
+        description: '',
+        owner_id: 'u1',
+        owner_name: 'Alice',
+        created_at: '2026-08-01T00:00:00Z',
+        todo_count: 0,
+        in_progress_count: 0,
+        done_count: 0,
+      },
+      {
+        id: 'p2',
+        key: 'OPS',
+        name: 'Operations',
         description: '',
         owner_id: 'u1',
         owner_name: 'Alice',
@@ -92,6 +104,20 @@ vi.mock('@/api/custom-fields', () => ({
   setIssueCustomFieldValue: vi.fn(),
 }))
 
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+    </>
+  )
+}
+
 function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -101,7 +127,15 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={[initialEntry]}>
           <Routes>
-            <Route path="/issues/create" element={children} />
+            <Route
+              path="/issues/create"
+              element={
+                <>
+                  {children}
+                  <LocationProbe />
+                </>
+              }
+            />
             <Route path="/projects/:key/backlog" element={<div>Backlog</div>} />
           </Routes>
         </MemoryRouter>
@@ -217,5 +251,33 @@ describe('IssueCreatePage', () => {
     expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft issue')
     expect(screen.getByLabelText(/Required text/)).toHaveValue('ready')
     expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled()
+  })
+
+  it('stores project changes in URL history and preserves unrelated parameters', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT&source=board'))
+
+    await screen.findByRole('option', { name: /Operations/ })
+    await user.selectOptions(screen.getByLabelText(/Проект/), 'OPS')
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/create?project_key=OPS&source=board',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back in history' }))
+    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toHaveValue('TT'))
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/create?project_key=TT&source=board',
+    )
+  })
+
+  it('writes the fallback project to the URL without losing other parameters', async () => {
+    render(wrapper(<IssueCreatePage />, '/issues/create?source=navigation'))
+
+    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toHaveValue('TT'))
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/issues/create?source=navigation&project_key=TT',
+      ),
+    )
   })
 })

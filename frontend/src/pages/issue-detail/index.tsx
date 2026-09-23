@@ -1,5 +1,5 @@
-import { Link, useParams } from 'react-router'
-import { useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Link, useParams, useSearchParams } from 'react-router'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
@@ -38,9 +38,20 @@ import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
 import { useBoard, useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
 
+const issueTabs = ['activity', 'comments', 'worklog', 'attachments'] as const
+type IssueTab = (typeof issueTabs)[number]
+
+function parseIssueTab(value: string | null): IssueTab {
+  return issueTabs.find((tab) => tab === value) ?? 'activity'
+}
+
 export function IssueDetailPage() {
   const { id = '' } = useParams()
   const { t } = useTranslation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const activeTab = parseIssueTab(tabParam)
+  const latestTab = useRef(activeTab)
   const currentUserId = useAuthStore((s) => s.userId)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingWorklog, setEditingWorklog] = useState<Worklog | undefined>(undefined)
@@ -56,6 +67,24 @@ export function IssueDetailPage() {
   const create = useCreateWorklog(id)
   const update = useUpdateWorklog(id)
   const remove = useDeleteWorklog(id)
+
+  useEffect(() => {
+    latestTab.current = activeTab
+  }, [activeTab])
+
+  useEffect(() => {
+    const isCanonical = tabParam === null || (activeTab !== 'activity' && tabParam === activeTab)
+    if (isCanonical) return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('tab')
+        return next
+      },
+      { replace: true },
+    )
+  }, [activeTab, setSearchParams, tabParam])
 
   if (issueQuery.isLoading) {
     return <LoadingState message={t('issue.loading')} />
@@ -117,6 +146,16 @@ export function IssueDetailPage() {
     } catch {
       toast.error(t('issue.copyFailed'))
     }
+  }
+
+  const updateActiveTab = (value: string) => {
+    const nextTab = parseIssueTab(value)
+    if (nextTab === latestTab.current) return
+    latestTab.current = nextTab
+    const next = new URLSearchParams(searchParams)
+    if (nextTab === 'activity') next.delete('tab')
+    else next.set('tab', nextTab)
+    setSearchParams(next)
   }
 
   return (
@@ -221,7 +260,7 @@ export function IssueDetailPage() {
           }
           activity={
             <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
-              <Tabs defaultValue="activity">
+              <Tabs value={activeTab} onValueChange={updateActiveTab}>
                 <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
                   <TabsTrigger className="min-h-10" value="activity">
                     {t('issue.activity')}
