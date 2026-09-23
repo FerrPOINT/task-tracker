@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
 
 import { IssueDetailPage } from './'
 import { ThemeProvider } from '@sdlc/ui/lib'
@@ -145,16 +145,38 @@ vi.mock('@/api/attachment', () => ({
   downloadAttachment: vi.fn(),
 }))
 
-function wrapper(children: React.ReactNode) {
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+    </>
+  )
+}
+
+function wrapper(children: React.ReactNode, initialEntry = '/issues/i1') {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return (
     <ThemeProvider>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/issues/i1']}>
+        <MemoryRouter initialEntries={[initialEntry]}>
           <Routes>
-            <Route path="/issues/:id" element={children} />
+            <Route
+              path="/issues/:id"
+              element={
+                <>
+                  {children}
+                  <LocationProbe />
+                </>
+              }
+            />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>
@@ -473,5 +495,53 @@ describe('IssueDetailPage', () => {
     expect(summary.textContent).toContain('2h')
     expect(summary.textContent).toContain('30m')
     expect(summary.textContent).not.toContain('15m')
+  })
+
+  it('stores the active tab in URL history and preserves unrelated parameters', async () => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />, '/issues/i1?view=full'))
+
+    await user.click(screen.getByRole('tab', { name: /вложения|attachments/i }))
+    expect(screen.getByRole('tab', { name: /вложения|attachments/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/i1?view=full&tab=attachments',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back in history' }))
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /активность|activity/i })).toHaveAttribute(
+        'data-state',
+        'active',
+      ),
+    )
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/i1?view=full',
+    )
+  })
+
+  it('opens a valid tab directly from the URL', () => {
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=comments&view=full'))
+
+    expect(screen.getByRole('tab', { name: /комментарии|comments/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
+  })
+
+  it('removes an invalid tab from the URL', async () => {
+    render(wrapper(<IssueDetailPage />, '/issues/i1?tab=unknown&view=full'))
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/issues/i1?view=full',
+      ),
+    )
+    expect(screen.getByRole('tab', { name: /активность|activity/i })).toHaveAttribute(
+      'data-state',
+      'active',
+    )
   })
 })
