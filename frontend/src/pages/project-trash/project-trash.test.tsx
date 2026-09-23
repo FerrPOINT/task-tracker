@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route } from 'react-router'
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 
 import { ProjectTrashPage } from './'
@@ -21,12 +21,34 @@ vi.mock('@/shared/api/hooks', () => ({
   usePurgeIssue: () => mockPurgeState(),
 }))
 
-function wrapper(children: React.ReactNode) {
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+    </>
+  )
+}
+
+function wrapper(children: React.ReactNode, url = '/projects/TT/trash') {
   return (
     <ThemeProvider>
-      <MemoryRouter initialEntries={['/projects/TT/trash']}>
+      <MemoryRouter initialEntries={[url]}>
         <Routes>
-          <Route path="/projects/:projectKey/trash" element={children} />
+          <Route
+            path="/projects/:projectKey/trash"
+            element={
+              <>
+                {children}
+                <LocationProbe />
+              </>
+            }
+          />
         </Routes>
       </MemoryRouter>
     </ThemeProvider>
@@ -177,19 +199,64 @@ describe('ProjectTrashPage', () => {
     await waitFor(() => expect(mockTrash).toHaveBeenCalledWith('TT', 50, 50))
     expect(screen.getByText('Deleted task 51')).toBeInTheDocument()
     expect(screen.getByText('51–51')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/projects/TT/trash?page=2',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back in history' }))
+    await waitFor(() => expect(mockTrash).toHaveBeenLastCalledWith('TT', 0, 50))
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/projects/TT/trash',
+    )
   })
 
-  it('returns to the previous page when the last page becomes empty', async () => {
+  it('opens a later page directly and preserves unrelated parameters', async () => {
+    mockTrash.mockImplementation((_projectKey, offset = 0) => ({
+      data: offset === 50 ? [trashIssue(51)] : [],
+      isLoading: false,
+      error: null,
+    }))
+
+    render(wrapper(<ProjectTrashPage />, '/projects/TT/trash?source=qa&page=2'))
+
+    await waitFor(() => expect(mockTrash).toHaveBeenLastCalledWith('TT', 50, 50))
+    expect(screen.getByText('Deleted task 51')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/projects/TT/trash?source=qa&page=2',
+    )
+  })
+
+  it('canonicalizes invalid page parameters without losing unrelated parameters', async () => {
+    render(wrapper(<ProjectTrashPage />, '/projects/TT/trash?page=-3&source=qa'))
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/projects/TT/trash?source=qa',
+      ),
+    )
+    expect(mockTrash).toHaveBeenLastCalledWith('TT', 0, 50)
+  })
+
+  it('returns an empty out-of-range page directly to the first page', async () => {
     mockTrash.mockImplementation((_projectKey, offset = 0) => ({
       data: offset === 0 ? Array.from({ length: 50 }, (_, index) => trashIssue(index + 1)) : [],
       isLoading: false,
       error: null,
     }))
-    const user = userEvent.setup()
-    render(wrapper(<ProjectTrashPage />))
+    mockTrash.mockClear()
 
-    await user.click(screen.getByRole('button', { name: /вперёд|next/i }))
-    await waitFor(() => expect(mockTrash).toHaveBeenCalledWith('TT', 50, 50))
+    render(wrapper(<ProjectTrashPage />, '/projects/TT/trash?page=999&source=qa'))
+
+    expect(mockTrash).toHaveBeenCalledWith('TT', 49900, 50)
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+        '/projects/TT/trash?source=qa',
+      ),
+    )
     await waitFor(() => expect(screen.getByText('1–50')).toBeInTheDocument())
+    const offsetTransitions = mockTrash.mock.calls
+      .map(([, offset]) => offset)
+      .filter((offset, index, offsets) => index === 0 || offset !== offsets[index - 1])
+    expect(offsetTransitions).toEqual([49900, 0])
   })
 })
