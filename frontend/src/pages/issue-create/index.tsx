@@ -23,20 +23,13 @@ export function IssueCreatePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { mutate, isPending, error } = useCreateIssue()
   const userId = useAuthStore((s) => s.userId)
   const projectsQuery = useProjects()
   const usersQuery = useUsers()
   const issueTypesQuery = useIssueTypes()
 
-  // Prefer ?project_key=..., then router state (board "+ Создать"), else first project.
-  const [project_key, setProjectKey] = useState(
-    () =>
-      searchParams.get('project_key') ??
-      (location.state as { project_key?: string } | null)?.project_key ??
-      '',
-  )
   const [type, setType] = useState('Task')
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
@@ -46,6 +39,10 @@ export function IssueCreatePage() {
   const [validationError, setValidationError] = useState<string | null>(null)
 
   const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
+  // Prefer ?project_key=..., then router state (board "+ Создать"), else first project.
+  const queryProjectKey = searchParams.get('project_key') ?? ''
+  const stateProjectKey = (location.state as { project_key?: string } | null)?.project_key ?? ''
+  const project_key = queryProjectKey || stateProjectKey || (projects[0]?.key ?? '')
   const issueTypes = useMemo(
     () => (issueTypesQuery.data ?? []).filter((issueType) => !issueType.is_subtask),
     [issueTypesQuery.data],
@@ -84,10 +81,17 @@ export function IssueCreatePage() {
   }, [currentProject?.owner_id, projectMembersQuery.data?.members, usersQuery.data])
 
   useEffect(() => {
-    if (!project_key && projects.length > 0) {
-      setProjectKey(projects[0]!.key)
-    }
-  }, [projects, project_key])
+    if (!project_key || queryProjectKey === project_key) return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.set('project_key', project_key)
+        return next
+      },
+      { replace: true },
+    )
+  }, [project_key, queryProjectKey, setSearchParams])
 
   useEffect(() => {
     setCustomFieldValues({})
@@ -134,6 +138,14 @@ export function IssueCreatePage() {
         onSuccess: () => navigate(`/projects/${selectedProjectKey}/backlog`),
       },
     )
+  }
+
+  function updateProjectKey(nextProjectKey: string) {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      next.set('project_key', nextProjectKey)
+      return next
+    })
   }
 
   return (
@@ -191,7 +203,7 @@ export function IssueCreatePage() {
               id="issue-project"
               className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
               value={selectedProjectKey}
-              onChange={(e) => setProjectKey(e.target.value)}
+              onChange={(e) => updateProjectKey(e.target.value)}
               disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
               required
             >
