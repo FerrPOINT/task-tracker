@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { useSearchParams } from 'react-router'
 import { useAdminAuditLog, useAdminSettings, useUpdateAdminSetting } from '@/shared/api/hooks'
 import { Button } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
@@ -53,7 +54,10 @@ function QueryState({
 
 export function AdminPage() {
   const { t } = useTranslation()
-  const [tab, setTab] = useState<TabValue>('settings')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const tab: TabValue = tabParam === 'audit' ? 'audit' : 'settings'
+  const pendingTab = useRef<TabValue | null>(null)
   const [settingKey, setSettingKey] = useState('')
   const [settingValue, setSettingValue] = useState('null')
   const [settingError, setSettingError] = useState<string | null>(null)
@@ -64,6 +68,36 @@ export function AdminPage() {
   const settings = useAdminSettings()
   const auditLog = useAdminAuditLog(auditLimit)
   const updateSetting = useUpdateAdminSetting()
+
+  useEffect(() => {
+    if (tabParam === null || tabParam === 'audit') return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('tab')
+        return next
+      },
+      { replace: true },
+    )
+  }, [setSearchParams, tabParam])
+
+  useEffect(() => {
+    pendingTab.current = null
+  }, [tab])
+
+  function changeTab(value: string) {
+    const nextTab: TabValue = value === 'audit' ? 'audit' : 'settings'
+    if (nextTab === tab || pendingTab.current === nextTab) return
+
+    pendingTab.current = nextTab
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current)
+      if (nextTab === 'audit') next.set('tab', 'audit')
+      else next.delete('tab')
+      return next
+    })
+  }
 
   async function submitSetting(event: React.FormEvent) {
     event.preventDefault()
@@ -106,17 +140,17 @@ export function AdminPage() {
         <p className="mt-1 text-sm text-text-muted">{t('admin.description')}</p>
       </div>
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as TabValue)}>
+      <Tabs value={tab} onValueChange={changeTab}>
         <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:inline-flex sm:w-auto">
           <TabsTrigger
             value="settings"
-            className="min-h-11 px-2 text-xs sm:min-h-8 sm:px-3 sm:text-sm"
+            className="min-h-11 px-2 text-xs sm:min-h-10 sm:px-3 sm:text-sm"
           >
             {t('admin.tabs.settings')}
           </TabsTrigger>
           <TabsTrigger
             value="audit"
-            className="min-h-11 px-2 text-xs sm:min-h-8 sm:px-3 sm:text-sm"
+            className="min-h-11 px-2 text-xs sm:min-h-10 sm:px-3 sm:text-sm"
           >
             {t('admin.tabs.audit')}
           </TabsTrigger>
@@ -177,7 +211,7 @@ export function AdminPage() {
                   <Label htmlFor="setting-key">{t('admin.settings.key')}</Label>
                   <Input
                     id="setting-key"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 sm:min-h-10"
                     value={settingKey}
                     onChange={(event) => {
                       setSettingKey(event.target.value)
@@ -228,7 +262,7 @@ export function AdminPage() {
                 )}
                 <Button
                   type="submit"
-                  className="min-h-11 sm:min-h-9"
+                  className="min-h-11 sm:min-h-10"
                   disabled={updateSetting.isPending}
                 >
                   {updateSetting.isPending ? t('common.loading') : t('admin.settings.save')}
@@ -293,7 +327,7 @@ export function AdminPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="min-h-11 sm:min-h-9"
+                    className="min-h-11 sm:min-h-10"
                     onClick={() => setAuditLimit((prev) => Math.min(prev + 20, 1000))}
                     disabled={auditLog.isFetching}
                   >

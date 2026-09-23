@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { AdminPage } from './index'
 
 const useAdminSettings = vi.hoisted(() => vi.fn())
@@ -18,10 +18,25 @@ const mutateAsync = vi.fn()
 const refetchSettings = vi.fn()
 const refetchAudit = vi.fn()
 
-function renderPage() {
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <span data-testid="current-location">{`${location.pathname}${location.search}`}</span>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+    </>
+  )
+}
+
+function renderPage(initialEntry = '/admin') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <AdminPage />
+      <LocationProbe />
     </MemoryRouter>,
   )
 }
@@ -74,6 +89,66 @@ describe('AdminPage', () => {
     await user.click(screen.getByRole('tab', { name: /журнал аудита|audit log/i }))
     expect(screen.getByText('user.created')).toBeInTheDocument()
     expect(screen.getByText(/new@example\.test/)).toBeInTheDocument()
+  })
+
+  it('restores the audit tab from a direct URL', () => {
+    renderPage('/admin?source=qa&tab=audit')
+
+    expect(screen.getByRole('tab', { name: /журнал аудита|audit log/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/admin?source=qa&tab=audit')
+  })
+
+  it('stores tab changes in browser history while preserving other parameters', async () => {
+    const user = userEvent.setup()
+    renderPage('/admin?source=qa')
+
+    await user.click(screen.getByRole('tab', { name: /журнал аудита|audit log/i }))
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/admin?source=qa&tab=audit')
+
+    await user.click(screen.getByRole('tab', { name: /настройки инстанса|instance settings/i }))
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/admin?source=qa')
+
+    await user.click(screen.getByRole('button', { name: 'Back in history' }))
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /журнал аудита|audit log/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    )
+    expect(screen.getByTestId('current-location')).toHaveTextContent('/admin?source=qa&tab=audit')
+  })
+
+  it.each(['/admin?source=qa&tab=settings', '/admin?source=qa&tab=unknown'])(
+    'canonicalizes the default or invalid tab in %s',
+    async (initialEntry) => {
+      renderPage(initialEntry)
+
+      await waitFor(() =>
+        expect(screen.getByTestId('current-location')).toHaveTextContent('/admin?source=qa'),
+      )
+      expect(
+        screen.getByRole('tab', { name: /настройки инстанса|instance settings/i }),
+      ).toHaveAttribute('aria-selected', 'true')
+    },
+  )
+
+  it('keeps primary targets at 44 px on mobile and 40 px on larger screens', () => {
+    renderPage()
+
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab).toHaveClass('min-h-11', 'sm:min-h-10')
+    }
+    expect(screen.getByLabelText(/ключ настройки|setting key/i)).toHaveClass(
+      'min-h-11',
+      'sm:min-h-10',
+    )
+    expect(screen.getByRole('button', { name: /сохранить настройку|save setting/i })).toHaveClass(
+      'min-h-11',
+      'sm:min-h-10',
+    )
   })
 
   it('shows JSON validation feedback without submitting an invalid setting', async () => {
@@ -180,7 +255,9 @@ describe('AdminPage', () => {
     renderPage()
 
     await user.click(screen.getByRole('tab', { name: /журнал аудита|audit log/i }))
-    await user.click(screen.getByRole('button', { name: /загрузить ещё|load more/i }))
+    const loadMore = screen.getByRole('button', { name: /загрузить ещё|load more/i })
+    expect(loadMore).toHaveClass('min-h-11', 'sm:min-h-10')
+    await user.click(loadMore)
     expect(useAdminAuditLog).toHaveBeenLastCalledWith(40)
   })
 })
