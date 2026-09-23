@@ -1,0 +1,2760 @@
+{
+  "generatedAt": "2026-09-23T09:12:27.089Z",
+  "candidateUrl": "http://localhost:7722",
+  "project": {
+    "key": "DEMO",
+    "label": "Demo Project"
+  },
+  "flow": {
+    "initialUrl": "http://localhost:7722/reports?source=qa&project_key=DEMO",
+    "urlAfterBurndown": "http://localhost:7722/reports?source=qa&project_key=DEMO&tab=burndown",
+    "burndownAfterReload": "true",
+    "urlAfterControlChart": "http://localhost:7722/reports?source=qa&project_key=DEMO&tab=control-chart",
+    "urlAfterBack": "http://localhost:7722/reports?source=qa&project_key=DEMO&tab=burndown",
+    "burndownAfterBack": "true",
+    "urlAfterForward": "http://localhost:7722/reports?source=qa&project_key=DEMO&tab=control-chart",
+    "controlAfterForward": "true",
+    "velocityCanonicalUrl": "http://localhost:7722/reports?source=qa&project_key=DEMO",
+    "invalidTabCanonicalUrl": "http://localhost:7722/reports?source=qa&project_key=DEMO",
+    "velocityAfterInvalid": "true"
+  },
+  "runtimeErrors": [],
+  "states": [
+    {
+      "tab": "velocity",
+      "viewport": 375,
+      "theme": "light",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 375,
+      "theme": "gray",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 375,
+      "theme": "dark",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 768,
+      "theme": "light",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 768,
+      "theme": "gray",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 768,
+      "theme": "dark",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 1280,
+      "theme": "light",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 1280,
+      "theme": "gray",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 1280,
+      "theme": "dark",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 1920,
+      "theme": "light",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 1920,
+      "theme": "gray",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 1920,
+      "theme": "dark",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 2560,
+      "theme": "light",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 2560,
+      "theme": "gray",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "velocity",
+      "viewport": 2560,
+      "theme": "dark",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 375,
+      "theme": "light",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 375,
+      "theme": "gray",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 375,
+      "theme": "dark",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 768,
+      "theme": "light",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 768,
+      "theme": "gray",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 768,
+      "theme": "dark",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 1280,
+      "theme": "light",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 1280,
+      "theme": "gray",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 1280,
+      "theme": "dark",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 1920,
+      "theme": "light",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 1920,
+      "theme": "gray",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 1920,
+      "theme": "dark",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 2560,
+      "theme": "light",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 2560,
+      "theme": "gray",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "burndown",
+      "viewport": 2560,
+      "theme": "dark",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 375,
+      "theme": "light",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [
+        {
+          "tag": "table",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<table aria-label=\"Кумулятивный поток\"><thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead><tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th"
+        },
+        {
+          "tag": "thead",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr>"
+        },
+        {
+          "tag": "th",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<th scope=\"col\">К выполнению</th>"
+        },
+        {
+          "tag": "th",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<th scope=\"col\">В работе</th>"
+        },
+        {
+          "tag": "th",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<th scope=\"col\">Готово</th>"
+        },
+        {
+          "tag": "tbody",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.592763+00"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.592763+00:00</th><td>1</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 375,
+      "theme": "gray",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [
+        {
+          "tag": "table",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<table aria-label=\"Кумулятивный поток\"><thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead><tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th"
+        },
+        {
+          "tag": "thead",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr>"
+        },
+        {
+          "tag": "th",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<th scope=\"col\">К выполнению</th>"
+        },
+        {
+          "tag": "th",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<th scope=\"col\">В работе</th>"
+        },
+        {
+          "tag": "th",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<th scope=\"col\">Готово</th>"
+        },
+        {
+          "tag": "tbody",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.592763+00"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.592763+00:00</th><td>1</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 375,
+      "theme": "dark",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [
+        {
+          "tag": "table",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<table aria-label=\"Кумулятивный поток\"><thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead><tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th"
+        },
+        {
+          "tag": "thead",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr>"
+        },
+        {
+          "tag": "th",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<th scope=\"col\">К выполнению</th>"
+        },
+        {
+          "tag": "th",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<th scope=\"col\">В работе</th>"
+        },
+        {
+          "tag": "th",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<th scope=\"col\">Готово</th>"
+        },
+        {
+          "tag": "tbody",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.592763+00"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 32,
+          "right": 542.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.592763+00:00</th><td>1</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 303.84375,
+          "right": 422.59375,
+          "width": 118.75,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 422.59375,
+          "right": 490.640625,
+          "width": 68.046875,
+          "html": "<td>1</td>"
+        },
+        {
+          "tag": "td",
+          "left": 490.640625,
+          "right": 542.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 768,
+      "theme": "light",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [
+        {
+          "tag": "table",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<table aria-label=\"Кумулятивный поток\"><thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead><tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th"
+        },
+        {
+          "tag": "thead",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr>"
+        },
+        {
+          "tag": "th",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<th scope=\"col\">Готово</th>"
+        },
+        {
+          "tag": "tbody",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.592763+00"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.592763+00:00</th><td>1</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 768,
+      "theme": "gray",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [
+        {
+          "tag": "table",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<table aria-label=\"Кумулятивный поток\"><thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead><tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th"
+        },
+        {
+          "tag": "thead",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr>"
+        },
+        {
+          "tag": "th",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<th scope=\"col\">Готово</th>"
+        },
+        {
+          "tag": "tbody",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.592763+00"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.592763+00:00</th><td>1</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 768,
+      "theme": "dark",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [
+        {
+          "tag": "table",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<table aria-label=\"Кумулятивный поток\"><thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead><tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th"
+        },
+        {
+          "tag": "thead",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<thead><tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr></thead>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"col\">Дата</th><th scope=\"col\">К выполнению</th><th scope=\"col\">В работе</th><th scope=\"col\">Готово</th></tr>"
+        },
+        {
+          "tag": "th",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<th scope=\"col\">Готово</th>"
+        },
+        {
+          "tag": "tbody",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tbody><tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr><tr><th scope=\"row\">2026-09-17T14:51:38.592763+00"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:37:58.017353+00:00</th><td>1</td><td>0</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.314999+00:00</th><td>0</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        },
+        {
+          "tag": "tr",
+          "left": 280,
+          "right": 790.953125,
+          "width": 510.953125,
+          "html": "<tr><th scope=\"row\">2026-09-17T14:51:38.592763+00:00</th><td>1</td><td>1</td><td>0</td></tr>"
+        },
+        {
+          "tag": "td",
+          "left": 738.640625,
+          "right": 790.953125,
+          "width": 52.3125,
+          "html": "<td>0</td>"
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 1280,
+      "theme": "light",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 1280,
+      "theme": "gray",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 1280,
+      "theme": "dark",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 1920,
+      "theme": "light",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 1920,
+      "theme": "gray",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 1920,
+      "theme": "dark",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 2560,
+      "theme": "light",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 2560,
+      "theme": "gray",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "cumulative-flow",
+      "viewport": 2560,
+      "theme": "dark",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 375,
+      "theme": "light",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 375,
+      "theme": "gray",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 375,
+      "theme": "dark",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Burndown",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 768,
+      "theme": "light",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 768,
+      "theme": "gray",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 768,
+      "theme": "dark",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 234,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 234,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 1280,
+      "theme": "light",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 1280,
+      "theme": "gray",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 1280,
+      "theme": "dark",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 243,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 243,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 1920,
+      "theme": "light",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 1920,
+      "theme": "gray",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 1920,
+      "theme": "dark",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 2560,
+      "theme": "light",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 2560,
+      "theme": "gray",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    },
+    {
+      "tab": "control-chart",
+      "viewport": 2560,
+      "theme": "dark",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Скорость",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Burndown",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Кумулятивный поток",
+          "width": 315,
+          "height": 40
+        },
+        {
+          "name": "Контрольная диаграмма",
+          "width": 315,
+          "height": 40
+        }
+      ],
+      "overflowElements": [],
+      "seriousAxe": []
+    }
+  ]
+}

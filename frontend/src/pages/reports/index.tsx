@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { Download, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -34,6 +34,12 @@ import { Label } from '@sdlc/ui/ui'
 import { fetchIssueExport, type IssueExportFormat } from '@/api/export'
 
 type TabValue = 'velocity' | 'burndown' | 'cumulative-flow' | 'control-chart'
+
+const reportTabs: TabValue[] = ['velocity', 'burndown', 'cumulative-flow', 'control-chart']
+
+function isReportTab(value: string | null): value is TabValue {
+  return value !== null && reportTabs.includes(value as TabValue)
+}
 
 function ReportPanel({
   title,
@@ -102,12 +108,8 @@ export function ReportsPage() {
   const [exportError, setExportError] = useState<string | null>(null)
   const [failedExport, setFailedExport] = useState<IssueExportFormat | null>(null)
   const requestedTab = searchParams.get('tab')
-  const tab: TabValue =
-    requestedTab === 'burndown' ||
-    requestedTab === 'cumulative-flow' ||
-    requestedTab === 'control-chart'
-      ? requestedTab
-      : 'velocity'
+  const tab: TabValue = isReportTab(requestedTab) ? requestedTab : 'velocity'
+  const pendingTab = useRef<TabValue | null>(null)
   const selectedProject = projects.find((project) => project.key === requestedProjectKey)
   const projectId = selectedProject?.id ?? ''
   const projectKey = selectedProject?.key
@@ -115,18 +117,40 @@ export function ReportsPage() {
   const sprints = sprintsQuery.data ?? []
   const selectedSprintId = sprints.some((sprint) => sprint.id === sprintId) ? sprintId : ''
 
-  function updateParams(values: Record<string, string | undefined>) {
+  useEffect(() => {
+    if (requestedTab === null || (isReportTab(requestedTab) && requestedTab !== 'velocity')) return
+
     setSearchParams(
       (previous) => {
         const next = new URLSearchParams(previous)
-        for (const [key, value] of Object.entries(values)) {
-          if (value) next.set(key, value)
-          else next.delete(key)
-        }
+        next.delete('tab')
         return next
       },
       { replace: true },
     )
+  }, [requestedTab, setSearchParams])
+
+  useEffect(() => {
+    pendingTab.current = null
+  }, [tab])
+
+  function updateParams(values: Record<string, string | undefined>) {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      for (const [key, value] of Object.entries(values)) {
+        if (value) next.set(key, value)
+        else next.delete(key)
+      }
+      return next
+    })
+  }
+
+  function changeTab(value: string) {
+    const nextTab = isReportTab(value) ? value : 'velocity'
+    if (nextTab === tab || pendingTab.current === nextTab) return
+
+    pendingTab.current = nextTab
+    updateParams({ tab: nextTab === 'velocity' ? undefined : nextTab })
   }
 
   async function downloadExport(format: IssueExportFormat) {
@@ -171,7 +195,7 @@ export function ReportsPage() {
           <select
             id="report-project"
             aria-label={t('reports.project')}
-            className="h-10 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary"
+            className="min-h-11 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:min-h-10"
             value={projectId}
             disabled={
               (projectsQuery.isLoading || Boolean(projectsQuery.error)) && projects.length === 0
@@ -203,7 +227,7 @@ export function ReportsPage() {
               }
               value={selectedSprintId}
               onChange={(e) => updateParams({ sprint_id: e.target.value || undefined })}
-              className="h-10 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:w-64"
+              className="min-h-11 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:min-h-10 sm:w-64"
             >
               <option value="">
                 {sprintsQuery.isLoading && sprints.length === 0
@@ -229,7 +253,7 @@ export function ReportsPage() {
           <Button
             variant="outline"
             size="sm"
-            className="h-10"
+            className="min-h-11 sm:min-h-10"
             disabled={!projectKey || exporting !== null}
             onClick={() => void downloadExport('csv')}
           >
@@ -239,7 +263,7 @@ export function ReportsPage() {
           <Button
             variant="outline"
             size="sm"
-            className="h-10"
+            className="min-h-11 sm:min-h-10"
             disabled={!projectKey || exporting !== null}
             onClick={() => void downloadExport('json')}
           >
@@ -255,7 +279,7 @@ export function ReportsPage() {
           <Button
             variant="outline"
             size="sm"
-            className="h-10"
+            className="min-h-11 sm:min-h-10"
             onClick={() => void projectsQuery.refetch()}
           >
             <RotateCcw className="h-4 w-4" />
@@ -269,7 +293,7 @@ export function ReportsPage() {
           <Button
             variant="outline"
             size="sm"
-            className="h-10"
+            className="min-h-11 sm:min-h-10"
             onClick={() => void sprintsQuery.refetch()}
           >
             <RotateCcw className="h-4 w-4" />
@@ -284,7 +308,7 @@ export function ReportsPage() {
             <Button
               variant="outline"
               size="sm"
-              className="h-10"
+              className="min-h-11 sm:min-h-10"
               onClick={() => void downloadExport(failedExport)}
             >
               <RotateCcw className="h-4 w-4" />
@@ -308,34 +332,34 @@ export function ReportsPage() {
             )}
           </p>
           {projects.length === 0 && (
-            <Button asChild variant="outline" className="h-10">
+            <Button asChild variant="outline" className="min-h-11 sm:min-h-10">
               <Link to="/projects">{t('projects.title')}</Link>
             </Button>
           )}
         </div>
       ) : (
-        <Tabs value={tab} onValueChange={(value) => updateParams({ tab: value })}>
+        <Tabs value={tab} onValueChange={changeTab}>
           <TabsList className="grid h-auto w-full grid-cols-2 gap-1 lg:grid-cols-4">
             <TabsTrigger
-              className="min-h-10 whitespace-normal px-2 text-center leading-4"
+              className="min-h-11 whitespace-normal px-2 text-center leading-4 sm:min-h-10"
               value="velocity"
             >
               {t('reports.tabVelocity')}
             </TabsTrigger>
             <TabsTrigger
-              className="min-h-10 whitespace-normal px-2 text-center leading-4"
+              className="min-h-11 whitespace-normal px-2 text-center leading-4 sm:min-h-10"
               value="burndown"
             >
               {t('reports.tabBurndown')}
             </TabsTrigger>
             <TabsTrigger
-              className="min-h-10 whitespace-normal px-2 text-center leading-4"
+              className="min-h-11 whitespace-normal px-2 text-center leading-4 sm:min-h-10"
               value="cumulative-flow"
             >
               {t('reports.tabCumulativeFlow')}
             </TabsTrigger>
             <TabsTrigger
-              className="min-h-10 whitespace-normal px-2 text-center leading-4"
+              className="min-h-11 whitespace-normal px-2 text-center leading-4 sm:min-h-10"
               value="control-chart"
             >
               {t('reports.tabControlChart')}
@@ -376,24 +400,26 @@ export function ReportsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-              <table className="sr-only" aria-label={t('reports.velocity.title')}>
-                <thead>
-                  <tr>
-                    <th scope="col">{t('reports.velocity.sprint')}</th>
-                    <th scope="col">{t('reports.velocity.committed')}</th>
-                    <th scope="col">{t('reports.velocity.completed')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {velocity.data?.sprints.map((sprint, index) => (
-                    <tr key={`${sprint.name}-${index}`}>
-                      <th scope="row">{sprint.name}</th>
-                      <td>{sprint.committed}</td>
-                      <td>{sprint.completed}</td>
+              <div className="sr-only">
+                <table aria-label={t('reports.velocity.title')}>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('reports.velocity.sprint')}</th>
+                      <th scope="col">{t('reports.velocity.committed')}</th>
+                      <th scope="col">{t('reports.velocity.completed')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {velocity.data?.sprints.map((sprint, index) => (
+                      <tr key={`${sprint.name}-${index}`}>
+                        <th scope="row">{sprint.name}</th>
+                        <td>{sprint.committed}</td>
+                        <td>{sprint.completed}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </ReportPanel>
           </TabsContent>
 
@@ -435,22 +461,24 @@ export function ReportsPage() {
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-              <table className="sr-only" aria-label={t('reports.burndown.title')}>
-                <thead>
-                  <tr>
-                    <th scope="col">{t('reports.burndown.date')}</th>
-                    <th scope="col">{t('reports.burndown.remaining')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {burndown.data?.points.map((point) => (
-                    <tr key={point.date}>
-                      <th scope="row">{point.date}</th>
-                      <td>{point.remaining}</td>
+              <div className="sr-only">
+                <table aria-label={t('reports.burndown.title')}>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('reports.burndown.date')}</th>
+                      <th scope="col">{t('reports.burndown.remaining')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {burndown.data?.points.map((point) => (
+                      <tr key={point.date}>
+                        <th scope="row">{point.date}</th>
+                        <td>{point.remaining}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </ReportPanel>
           </TabsContent>
 
@@ -503,26 +531,28 @@ export function ReportsPage() {
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
-              <table className="sr-only" aria-label={t('reports.cumulativeFlow.title')}>
-                <thead>
-                  <tr>
-                    <th scope="col">{t('reports.cumulativeFlow.date')}</th>
-                    <th scope="col">{t('reports.cumulativeFlow.todo')}</th>
-                    <th scope="col">{t('reports.cumulativeFlow.inProgress')}</th>
-                    <th scope="col">{t('reports.cumulativeFlow.done')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cumulativeFlow.data?.points.map((point) => (
-                    <tr key={point.date}>
-                      <th scope="row">{point.date}</th>
-                      <td>{point.todo}</td>
-                      <td>{point.in_progress}</td>
-                      <td>{point.done}</td>
+              <div className="sr-only">
+                <table aria-label={t('reports.cumulativeFlow.title')}>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('reports.cumulativeFlow.date')}</th>
+                      <th scope="col">{t('reports.cumulativeFlow.todo')}</th>
+                      <th scope="col">{t('reports.cumulativeFlow.inProgress')}</th>
+                      <th scope="col">{t('reports.cumulativeFlow.done')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {cumulativeFlow.data?.points.map((point) => (
+                      <tr key={point.date}>
+                        <th scope="row">{point.date}</th>
+                        <td>{point.todo}</td>
+                        <td>{point.in_progress}</td>
+                        <td>{point.done}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </ReportPanel>
           </TabsContent>
 
@@ -554,22 +584,24 @@ export function ReportsPage() {
                   </ScatterChart>
                 </ResponsiveContainer>
               </div>
-              <table className="sr-only" aria-label={t('reports.controlChart.title')}>
-                <thead>
-                  <tr>
-                    <th scope="col">{t('reports.controlChart.issue')}</th>
-                    <th scope="col">{t('reports.controlChart.cycleTime')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {controlChart.data?.points.map((point) => (
-                    <tr key={point.issue_key}>
-                      <td>{point.issue_key}</td>
-                      <td>{point.cycle_time_days}</td>
+              <div className="sr-only">
+                <table aria-label={t('reports.controlChart.title')}>
+                  <thead>
+                    <tr>
+                      <th scope="col">{t('reports.controlChart.issue')}</th>
+                      <th scope="col">{t('reports.controlChart.cycleTime')}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {controlChart.data?.points.map((point) => (
+                      <tr key={point.issue_key}>
+                        <td>{point.issue_key}</td>
+                        <td>{point.cycle_time_days}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </ReportPanel>
           </TabsContent>
         </Tabs>

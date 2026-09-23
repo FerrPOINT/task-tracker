@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 import { ReportsPage } from './index'
@@ -145,11 +145,29 @@ function makeQueryClient() {
   })
 }
 
+function LocationProbe() {
+  const location = useLocation()
+  const navigate = useNavigate()
+
+  return (
+    <>
+      <output aria-label="current location">{`${location.pathname}${location.search}`}</output>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back in history
+      </button>
+      <button type="button" onClick={() => navigate(1)}>
+        Forward in history
+      </button>
+    </>
+  )
+}
+
 function renderPage(initialEntry = '/reports') {
   return render(
     <QueryClientProvider client={makeQueryClient()}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <ReportsPage />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -283,6 +301,8 @@ describe('ReportsPage', () => {
     const table = screen.getByRole('table', { name: /кумулятивный поток|cumulative flow/i })
     expect(within(table).getByRole('row', { name: /2026-08-01 5 2 1/i })).toBeInTheDocument()
     expect(within(table).getByRole('row', { name: /2026-08-02 3 4 2/i })).toBeInTheDocument()
+    expect(table.parentElement).toHaveClass('sr-only')
+    expect(table).not.toHaveClass('sr-only')
     expect(screen.getByTestId('chart').closest('[aria-hidden="true"]')).toBeInTheDocument()
   })
 
@@ -369,6 +389,83 @@ describe('ReportsPage', () => {
     expect(useSprints).toHaveBeenLastCalledWith('TT')
     expect(useVelocityReport).toHaveBeenLastCalledWith(undefined)
     expect(screen.getByRole('combobox', { name: /спринт|sprint/i })).toBeInTheDocument()
+  })
+
+  it('stores report choices in history and restores them with Back and Forward', async () => {
+    const user = userEvent.setup()
+    renderPage('/reports?source=qa&project_key=TT')
+
+    await user.click(screen.getByRole('tab', { name: /burndown/i }))
+    expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
+      '/reports?source=qa&project_key=TT&tab=burndown',
+    )
+
+    await user.click(screen.getByRole('tab', { name: /контрольная диаграмма|control chart/i }))
+    expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
+      '/reports?source=qa&project_key=TT&tab=control-chart',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back in history' }))
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: /burndown/i })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      ),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Forward in history' }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('tab', { name: /контрольная диаграмма|control chart/i }),
+      ).toHaveAttribute('aria-selected', 'true'),
+    )
+  })
+
+  it.each([
+    '/reports?source=qa&project_key=TT&tab=velocity',
+    '/reports?source=qa&project_key=TT&tab=unknown',
+  ])('canonicalizes the default or invalid tab in %s', async (initialEntry) => {
+    renderPage(initialEntry)
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
+        '/reports?source=qa&project_key=TT',
+      ),
+    )
+    expect(screen.getByRole('tab', { name: /скорость|velocity/i })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  })
+
+  it('preserves unrelated parameters and restores project selection from history', async () => {
+    const user = userEvent.setup()
+    renderPage('/reports?source=qa')
+
+    await user.selectOptions(screen.getByRole('combobox', { name: /проект|project/i }), 'proj-1')
+    expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
+      '/reports?source=qa&project_key=TT',
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Back in history' }))
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: /проект|project/i })).toHaveValue(''),
+    )
+    expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
+      '/reports?source=qa',
+    )
+  })
+
+  it('keeps primary report controls at 44 px on mobile and 40 px on larger screens', () => {
+    renderPage('/reports?project_key=TT')
+
+    expect(screen.getByRole('combobox', { name: /проект|project/i })).toHaveClass(
+      'min-h-11',
+      'sm:min-h-10',
+    )
+    for (const tab of screen.getAllByRole('tab')) {
+      expect(tab).toHaveClass('min-h-11', 'sm:min-h-10')
+    }
   })
 
   it('does not request Burndown for a sprint link without an accessible project', () => {
