@@ -1,0 +1,740 @@
+{
+  "generatedAt": "2026-09-23T07:53:53.245Z",
+  "candidateUrl": "http://localhost:7722",
+  "flow": {
+    "initialUrl": "http://localhost:7722/admin?source=qa",
+    "urlAfterAudit": "http://localhost:7722/admin?source=qa&tab=audit",
+    "auditAfterReload": "true",
+    "urlAfterSettings": "http://localhost:7722/admin?source=qa",
+    "urlAfterBack": "http://localhost:7722/admin?source=qa&tab=audit",
+    "auditAfterBack": "true",
+    "urlAfterForward": "http://localhost:7722/admin?source=qa",
+    "settingsAfterForward": "true",
+    "auditFromDirectUrl": "true",
+    "invalidTabCanonicalUrl": "http://localhost:7722/admin?source=qa",
+    "settingsAfterInvalid": "true"
+  },
+  "runtimeErrors": [],
+  "states": [
+    {
+      "tab": "settings",
+      "viewport": 375,
+      "theme": "light",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 375,
+      "theme": "gray",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 375,
+      "theme": "dark",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 768,
+      "theme": "light",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 768,
+      "theme": "gray",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 768,
+      "theme": "dark",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 1280,
+      "theme": "light",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 1280,
+      "theme": "gray",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 1280,
+      "theme": "dark",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 1920,
+      "theme": "light",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 1920,
+      "theme": "gray",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 1920,
+      "theme": "dark",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 2560,
+      "theme": "light",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 2560,
+      "theme": "gray",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "settings",
+      "viewport": 2560,
+      "theme": "dark",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 375,
+      "theme": "light",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 375,
+      "theme": "gray",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 375,
+      "theme": "dark",
+      "documentWidth": 375,
+      "viewportWidth": 375,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 165.5,
+          "height": 44
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 165.5,
+          "height": 44
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 768,
+      "theme": "light",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 768,
+      "theme": "gray",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 768,
+      "theme": "dark",
+      "documentWidth": 768,
+      "viewportWidth": 768,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 1280,
+      "theme": "light",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 1280,
+      "theme": "gray",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 1280,
+      "theme": "dark",
+      "documentWidth": 1280,
+      "viewportWidth": 1280,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 1920,
+      "theme": "light",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 1920,
+      "theme": "gray",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 1920,
+      "theme": "dark",
+      "documentWidth": 1920,
+      "viewportWidth": 1920,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 2560,
+      "theme": "light",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 2560,
+      "theme": "gray",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    },
+    {
+      "tab": "audit",
+      "viewport": 2560,
+      "theme": "dark",
+      "documentWidth": 2560,
+      "viewportWidth": 2560,
+      "horizontalOverflow": false,
+      "smallTargets": [],
+      "unnamedControls": [],
+      "nestedScrollers": [],
+      "tabTargets": [
+        {
+          "name": "Настройки инстанса",
+          "width": 157.890625,
+          "height": 40
+        },
+        {
+          "name": "Журнал аудита",
+          "width": 123.109375,
+          "height": 40
+        }
+      ],
+      "seriousAxe": []
+    }
+  ]
+}
