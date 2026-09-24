@@ -20,7 +20,10 @@ const account = (
   process.env.SDLC_LIVE_QA === '1'
     ? JSON.parse(
         readFileSync(
-          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          process.env.SDLC_QA_SESSION_FILE ??
+            fileURLToPath(
+              new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
+            ),
           'utf8',
         ),
       )
@@ -49,7 +52,7 @@ const apps = [
   { key: 'task-tracker', label: 'Task Tracker', port: 7722, login: true },
   { key: 'wiki', label: 'Wiki', port: 7732, login: true },
   { key: 'fleet-control', label: 'Fleet Control', port: 7742, login: true },
-  { key: 'project-workflow', label: 'Project Workflow', port: 8812, login: false },
+  { key: 'project-workflow', label: 'Project Workflow', port: 7752, login: false },
 ] as const
 
 test.describe('live platform switcher', () => {
@@ -742,7 +745,7 @@ test.describe('live platform switcher', () => {
 
   test('Project Workflow creates and displays a QA flow', async ({ page, request }) => {
     page.setDefaultTimeout(10_000)
-    const api = 'http://127.0.0.1:8812/api'
+    const api = 'http://127.0.0.1:7752/api'
     let workflowId = 0
     try {
       const created = await request.post(`${api}/workflows`, {
@@ -758,7 +761,7 @@ test.describe('live platform switcher', () => {
       expect(phase.ok(), `${phase.status()} ${await phase.text()}`).toBeTruthy()
       expect((await phase.json()).ok).toBe(true)
 
-      await page.goto('http://localhost:8812/workflows')
+      await page.goto('http://localhost:7752/workflows')
       await expect(page.getByRole('button', { name: `QA ${account.runId} workflow` })).toBeVisible()
       await page.getByRole('button', { name: `QA ${account.runId} workflow` }).click()
       await expect(page.locator('#workflowName')).toHaveValue(`QA ${account.runId} workflow`)

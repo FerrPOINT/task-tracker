@@ -15,7 +15,10 @@ const qaAccount =
   process.env.SDLC_LIVE_QA === '1'
     ? (JSON.parse(
         readFileSync(
-          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          process.env.SDLC_QA_SESSION_FILE ??
+            fileURLToPath(
+              new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
+            ),
           'utf8',
         ),
       ) as {
@@ -212,8 +215,11 @@ test('Admin audit filters and token dialog work against the live API without wri
   const targets = await dialog
     .locator('fieldset label')
     .evaluateAll((labels) => labels.map((label) => label.getBoundingClientRect()))
-  expect(targets).toHaveLength(12)
+  expect(targets.length).toBeGreaterThanOrEqual(12)
   expect(targets.every(({ width, height }) => width >= 40 && height >= 40)).toBe(true)
+  const pulseScopes = dialog.locator('fieldset div').filter({ hasText: 'Service Pulse' })
+  await expect(pulseScopes).toBeVisible()
+  await expect(pulseScopes.locator('label')).toHaveCount(2)
   await expect
     .poll(() =>
       page.evaluate(

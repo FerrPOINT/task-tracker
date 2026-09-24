@@ -11,7 +11,10 @@ const account =
   process.env.SDLC_LIVE_QA === '1'
     ? (JSON.parse(
         readFileSync(
-          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          process.env.SDLC_QA_SESSION_FILE ??
+            fileURLToPath(
+              new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
+            ),
           'utf8',
         ),
       ) as {
@@ -49,7 +52,7 @@ test('personal token reads six product APIs and cannot outlive revocation', asyn
     'http://localhost:7721/api/v1/users',
     'http://localhost:7731/api/v1/users/me',
     'http://localhost:7741/api/v1/users/me',
-    'http://localhost:8812/api/workflows',
+    'http://localhost:7752/api/workflows',
   ]
   try {
     for (const url of endpoints) {

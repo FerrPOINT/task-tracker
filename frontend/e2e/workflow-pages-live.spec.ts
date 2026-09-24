@@ -13,7 +13,10 @@ const account =
   process.env.SDLC_LIVE_QA === '1'
     ? (JSON.parse(
         readFileSync(
-          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          process.env.SDLC_QA_SESSION_FILE ??
+            fileURLToPath(
+              new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
+            ),
           'utf8',
         ),
       ) as { email: string; password: string })
@@ -21,7 +24,7 @@ const account =
 const screenshotDir = fileURLToPath(
   new URL('../../../.local/screenshots/workflow-pages/', import.meta.url),
 )
-const base = 'http://localhost:8812'
+const base = 'http://localhost:7752'
 const routes = [
   'dashboard',
   'phases',
