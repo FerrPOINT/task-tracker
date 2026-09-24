@@ -11,7 +11,10 @@ const account =
   process.env.SDLC_LIVE_QA === '1'
     ? (JSON.parse(
         readFileSync(
-          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          process.env.SDLC_QA_SESSION_FILE ??
+            fileURLToPath(
+              new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
+            ),
           'utf8',
         ),
       ) as {

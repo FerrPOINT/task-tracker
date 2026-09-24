@@ -10,7 +10,10 @@ const account =
   process.env.SDLC_LIVE_QA === '1'
     ? (JSON.parse(
         readFileSync(
-          fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+          process.env.SDLC_QA_SESSION_FILE ??
+            fileURLToPath(
+              new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
+            ),
           'utf8',
         ),
       ) as { email: string; password: string })
@@ -80,7 +83,7 @@ test('Workflow mobile shell keeps touch targets and keyboard focus inside its dr
   test.setTimeout(90_000)
   mkdirSync(screenshotDir, { recursive: true })
   await page.setViewportSize({ width: 375, height: 812 })
-  const base = 'http://localhost:8812/'
+  const base = 'http://localhost:7752/'
   const burger = page.locator('#burgerBtn')
   const drawerClose = page.locator('#sidebar .sidebar-close')
   const serviceMenu = page.locator('#sidebar details.sidebar-service-menu')

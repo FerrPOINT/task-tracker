@@ -13,7 +13,9 @@ const account =
     ? (JSON.parse(
         readFileSync(
           process.env.SDLC_QA_SESSION_FILE ??
-            fileURLToPath(new URL('../../../.local/qa-session.json', import.meta.url)),
+            fileURLToPath(
+              new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
+            ),
           'utf8',
         ),
       ) as {
@@ -142,12 +144,12 @@ test('switches from Admin Panel to Project Workflow without another password pro
 
   await page.getByRole('button', { name: 'Открыть список сервисов' }).click()
   await page.getByRole('menuitem', { name: /Project Workflow/ }).click()
-  await expect(page).toHaveURL(/localhost:8812\//, { timeout: 30_000 })
+  await expect(page).toHaveURL(/localhost:7752\//, { timeout: 30_000 })
   await expect(page.locator('details.service-menu summary')).toBeVisible({ timeout: 30_000 })
   await page.reload()
   await expect(page.locator('details.service-menu summary')).toBeVisible()
 
-  const anonymous = await request.get('http://localhost:8812/api/workflows')
+  const anonymous = await request.get('http://localhost:7752/api/workflows')
   expect(anonymous.status()).toBe(401)
 })
 
@@ -164,7 +166,7 @@ test('all six switchers expose only UI services and navigate with one session', 
     { name: 'Task Tracker', port: 7722 },
     { name: 'Wiki', port: 7732 },
     { name: 'Fleet Control', port: 7742 },
-    { name: 'Project Workflow', port: 8812 },
+    { name: 'Project Workflow', port: 7752 },
   ]
   for (let index = 0; index < services.length; index++) {
     const current = services[index]
