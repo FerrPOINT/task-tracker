@@ -82,7 +82,11 @@ test('Project Workflow routes remain usable across themes and viewports', async 
     for (const route of routes) {
       const path = route === 'dashboard' ? '/' : `/${route}`
       await page.goto(`${base}${path}`)
-      await expect(page).toHaveURL(`${base}${path}`)
+      if (route === 'namespaces') {
+        await expect(page).toHaveURL(new RegExp(`^${base}${path}(?:\\?namespace_id=\\d+)?$`))
+      } else {
+        await expect(page).toHaveURL(`${base}${path}`)
+      }
       await expect(services).toBeVisible()
       await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
