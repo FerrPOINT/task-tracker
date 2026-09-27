@@ -24,7 +24,7 @@ import {
   Check,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button, PlatformMark } from '@sdlc/ui/ui'
+import { Button, PageFrame, PlatformMark } from '@sdlc/ui/ui'
 import { ThemeToggle } from '@sdlc/ui/ui'
 import { ServiceSwitcher } from '@sdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
@@ -130,7 +130,13 @@ export function AppShell() {
   const notifications = notificationList?.notifications ?? []
   const unreadCount = notificationList?.unread_count ?? 0
   const currentProject = projects.find((project) => project.key === projectKey)
-  const isWideWorkspace = location.pathname.endsWith('/board') || location.pathname === '/reports'
+  const pageLayout =
+    location.pathname === '/issues/create' ||
+    location.pathname.endsWith('/settings/custom-fields')
+      ? 'reading'
+      : /^\/issues\/[^/]+$/.test(location.pathname)
+        ? 'detail-with-aside'
+        : 'wide'
 
   const navItems = [
     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
@@ -175,7 +181,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-text-primary">
-      <header className="sticky top-0 z-50 flex h-14 items-center justify-between border-b border-border bg-surface px-2 sm:px-3 md:h-12 md:px-4">
+      <header className="sticky top-0 z-50 flex h-[var(--shell-header-height)] items-center justify-between border-b border-border bg-surface px-2 sm:px-3 md:px-4">
         <div className="flex min-w-0 items-center gap-1 sm:gap-3 md:gap-4">
           <DialogPrimitive.Root open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <DialogPrimitive.Trigger asChild>
@@ -444,9 +450,9 @@ export function AppShell() {
         </div>
       </header>
 
-      <div className="flex min-h-[calc(100vh-3.5rem)] md:min-h-[calc(100vh-3rem)]">
+      <div className="flex min-h-[calc(100dvh-var(--shell-header-height))]">
         <aside
-          className={`hidden shrink-0 flex-col gap-2 border-r border-border bg-surface p-3 md:flex ${sidebarCollapsed ? 'w-16' : 'w-60'}`}
+          className={`hidden shrink-0 flex-col gap-2 border-r border-border bg-surface p-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)]' : 'w-[var(--shell-sidebar-expanded)]'}`}
         >
           <div
             className={`flex min-h-9 items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}
@@ -513,10 +519,10 @@ export function AppShell() {
           )}
         </aside>
 
-        <main className="min-w-0 flex-1 p-4 md:p-6">
-          <div className={`mx-auto w-full ${isWideWorkspace ? 'max-w-none' : 'max-w-7xl'}`}>
+        <main className="shell-main flex-1">
+          <PageFrame mode={pageLayout}>
             <Outlet />
-          </div>
+          </PageFrame>
         </main>
       </div>
     </div>

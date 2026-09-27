@@ -186,7 +186,7 @@ export function ReportsPage() {
   )
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-4">
+    <div className="w-full space-y-4">
       <h1 className="text-2xl font-bold">{t('reports.title')}</h1>
 
       <div className="flex flex-wrap items-end gap-3">
