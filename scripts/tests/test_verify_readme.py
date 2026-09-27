@@ -32,9 +32,14 @@ class VerifyReadmeTests(unittest.TestCase):
             '<a name="safety"></a>\n'
             '<a name="quality"></a>\n'
             '<a name="license"></a>\n'
-            '![reports](docs/screenshots/10-reports.png)\n'
+            '![wide desktop](docs/screenshots/1920x1080/wide.png)\n'
+            '![reading desktop](docs/screenshots/1920x1080/reading.png)\n'
+            '![detail desktop](docs/screenshots/1920x1080/detail-with-aside.png)\n'
+            '![wide mobile](docs/screenshots/375x812/wide.png)\n'
+            '![reading mobile](docs/screenshots/375x812/reading.png)\n'
+            '![detail mobile](docs/screenshots/375x812/detail-with-aside.png)\n'
         )
-        for name in ["10-reports.png"]:
+        for name in validator.REQUIRED_PROOF:
             asset = root / "docs/screenshots" / name
             asset.parent.mkdir(parents=True, exist_ok=True)
             asset.write_bytes(b"png")
@@ -47,7 +52,10 @@ class VerifyReadmeTests(unittest.TestCase):
 
         findings = validator.validate(root)
 
-        self.assertIn("RMD004: README.md: missing proof asset: 10-reports.png", findings)
+        self.assertIn(
+            "RMD004: README.md: missing proof asset: 1920x1080/wide.png",
+            findings,
+        )
 
 
 if __name__ == "__main__":

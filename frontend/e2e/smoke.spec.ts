@@ -1,4 +1,6 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
+import { mkdirSync } from 'node:fs'
+import nodePath from 'node:path'
 import { test, expect, type Page, type Route } from '@playwright/test'
 
 const mockUser = {
@@ -355,6 +357,7 @@ test.describe('smoke', () => {
     for (const viewport of [
       { width: 375, height: 812 },
       { width: 1440, height: 900 },
+      { width: 1920, height: 1080 },
       { width: 2560, height: 1440 },
     ]) {
       await page.setViewportSize(viewport)
@@ -397,10 +400,30 @@ test.describe('smoke', () => {
         } else {
           expect(Math.abs(geometry.layoutWidth - geometry.availableWidth)).toBeLessThanOrEqual(1)
         }
+        await page.waitForTimeout(1000)
+        const testOutputPath = testInfo.outputPath(`shell-${viewport.width}-${mode}.png`)
         await page.screenshot({
-          path: testInfo.outputPath(`shell-${viewport.width}-${mode}.png`),
+          path: testOutputPath,
           fullPage: true,
         })
+        if (
+          process.env.UPDATE_README_SCREENSHOTS === '1' &&
+          (viewport.width === 375 || viewport.width === 1920)
+        ) {
+          const viewportDir = `${viewport.width}x${viewport.height}`
+          const readmeOutputDir = nodePath.resolve(
+            process.cwd(),
+            '..',
+            'docs',
+            'screenshots',
+            viewportDir,
+          )
+          mkdirSync(readmeOutputDir, { recursive: true })
+          await page.screenshot({
+            path: nodePath.join(readmeOutputDir, `${mode}.png`),
+            fullPage: true,
+          })
+        }
       }
     }
   })

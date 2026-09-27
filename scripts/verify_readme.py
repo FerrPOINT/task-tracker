@@ -18,7 +18,12 @@ REQUIRED_ANCHORS = {
     "license",
 }
 REQUIRED_PROOF = {
-    "10-reports.png",
+    "1920x1080/detail-with-aside.png",
+    "1920x1080/reading.png",
+    "1920x1080/wide.png",
+    "375x812/detail-with-aside.png",
+    "375x812/reading.png",
+    "375x812/wide.png",
 }
 MD_IMAGE_RE = re.compile(r"!\[[^]]*\]\(([^)]+)\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", re.IGNORECASE)

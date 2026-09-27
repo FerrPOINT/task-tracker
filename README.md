@@ -113,47 +113,16 @@ FRONTEND_PORT=19877
 
 ## Визуальные доказательства
 
-Скриншоты — реальные поверхности продукта с детерминированными seeded-данными. Формат: desktop full-page.
+Скриншоты сняты Playwright на детерминированных данных. Одинаковая система рабочей
+области проверяется в трёх режимах: широкий список, читаемая форма и detail со
+вторичной колонкой. Для каждого режима сохранены desktop `1920x1080` и mobile
+`375x812`; тест также проверяет отсутствие горизонтального переполнения.
 
-### Дашборд
-
-![Дашборд](docs/screenshots/02-dashboard.png)
-
-### Проекты
-
-![Проекты](docs/screenshots/03-projects.png)
-
-### Канбан-доска
-
-![Канбан-доска](docs/screenshots/04-board.png)
-
-### Бэклог
-
-![Бэклог](docs/screenshots/05-backlog.png)
-
-### Поиск
-
-![Поиск](docs/screenshots/08-search.png)
-
-### Уведомления
-
-![Уведомления](docs/screenshots/09-notifications.png)
-
-### Отчёты
-
-![Отчёты](docs/screenshots/10-reports.png)
-
-### Администрирование
-
-![Администрирование](docs/screenshots/11-admin.png)
-
-### Кастомные поля
-
-![Кастомные поля](docs/screenshots/07-custom-fields.png)
-
-### Корзина
-
-![Корзина](docs/screenshots/06-trash.png)
+| Режим | Desktop | Mobile |
+|---|---|---|
+| Wide: проекты | ![Проекты, desktop](docs/screenshots/1920x1080/wide.png) | ![Проекты, mobile](docs/screenshots/375x812/wide.png) |
+| Reading: создание задачи | ![Создание задачи, desktop](docs/screenshots/1920x1080/reading.png) | ![Создание задачи, mobile](docs/screenshots/375x812/reading.png) |
+| Detail with aside: задача | ![Карточка задачи, desktop](docs/screenshots/1920x1080/detail-with-aside.png) | ![Карточка задачи, mobile](docs/screenshots/375x812/detail-with-aside.png) |
 
 <a name="cli"></a>
 
