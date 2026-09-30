@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import {
+  useLogout,
   useCreateIssueLink,
   useDeleteIssueLink,
   useDeleteProject,
@@ -12,6 +13,7 @@ import {
   useVoteIssue,
   useWatchIssue,
 } from './hooks'
+import { useAuthStore } from '@/shared/auth/store'
 import { deleteProject } from '@/api/project'
 import { createIssueLink, deleteIssueLink } from '@/api/link'
 import { updateIssue } from '@/api/issue'
@@ -20,6 +22,8 @@ import { voteIssue, watchIssue } from '@/api/engagement'
 import { updateNotificationSettings } from '@/api/notifications'
 
 const navigate = vi.hoisted(() => vi.fn())
+const sso = vi.hoisted(() => ({ endSso: vi.fn() }))
+vi.mock('@sdlc/ui/sso', () => ({ endSso: sso.endSso }))
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router')
@@ -87,6 +91,22 @@ function wrapper(client: QueryClient) {
 describe('shared api hooks', () => {
   afterEach(() => {
     vi.clearAllMocks()
+    useAuthStore.setState({ token: null })
+  })
+
+  it('starts central logout without clearing auth state before navigation', async () => {
+    useAuthStore.setState({ token: 'test-token' })
+    const client = new QueryClient()
+    client.setQueryData(['existing'], { value: true })
+    const { result } = renderHook(() => useLogout(), { wrapper: wrapper(client) })
+
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+
+    expect(sso.endSso).toHaveBeenCalledOnce()
+    expect(useAuthStore.getState().token).toBe('test-token')
+    expect(client.getQueryData(['existing'])).toEqual({ value: true })
   })
 
   it('updates cached notification settings immediately after saving', async () => {
