@@ -6,7 +6,7 @@ import { signInAt } from './qa-login'
 
 test.skip(process.env.SDLC_LIVE_QA !== '1', 'Requires the running local SDLC fleet')
 test.skip(({ browserName }) => browserName !== 'chromium', 'Single browser live smoke')
-test.use({ trace: 'off' })
+test.use({ trace: 'off', actionTimeout: 30_000, navigationTimeout: 30_000 })
 
 const account =
   process.env.SDLC_LIVE_QA === '1'
@@ -221,6 +221,117 @@ test('service switcher opens by touch at mobile width', async ({ browser }) => {
     await expect(page.getByRole('menu').getByRole('menuitem')).toHaveCount(6)
   } finally {
     await context.close()
+  }
+})
+
+test('logout from each UI revokes the shared browser session but preserves personal tokens', async ({
+  browser,
+  request,
+}) => {
+  test.setTimeout(600_000)
+  const login = await request.post('http://localhost:7701/auth/login', { data: account })
+  expect(login.ok()).toBeTruthy()
+  const { access_token: operatorToken } = (await login.json()) as { access_token: string }
+  const operator = { Authorization: `Bearer ${operatorToken}` }
+  const issued = await request.post('http://localhost:7701/auth/tokens', {
+    headers: operator,
+    data: {
+      label: `qa-logout-${randomUUID()}`,
+      scopes: ['admin-panel:read'],
+      expires_in_days: 1,
+    },
+  })
+  expect(issued.status()).toBe(201)
+  const personal = (await issued.json()) as { id: string; secret: string }
+  const apps = [
+    { client: 'admin-panel', url: 'http://localhost:7772/users' },
+    { client: 'ci-cd', url: 'http://localhost:7712/projects' },
+    { client: 'task-tracker', url: 'http://localhost:7722/projects' },
+    { client: 'wiki', url: 'http://localhost:7732/spaces' },
+    { client: 'fleet-control', url: 'http://localhost:7742/agents' },
+    { client: 'project-workflow', url: 'http://localhost:7752/workflows' },
+  ]
+  try {
+    for (const app of apps) {
+      await test.step(`global logout from ${app.client}`, async () => {
+        const context = await browser.newContext()
+        try {
+          const page = await context.newPage()
+          const bearerRequest = page.waitForRequest(
+            (req) =>
+              /^http:\/\/localhost:777[12]\/api\//.test(req.url()) &&
+              Boolean(req.headers().authorization),
+            { timeout: 30_000 },
+          )
+          await signInAt(page, 'http://localhost:7772/users', account)
+          const bearer = (await bearerRequest).headers().authorization
+          expect(bearer).toMatch(/^Bearer /)
+          await page.goto(app.url)
+          const accountMenu = app.client === 'task-tracker' || app.client === 'wiki'
+          if (accountMenu) await page.getByRole('button', { name: 'Аккаунт', exact: true }).click()
+          const logout =
+            app.client === 'project-workflow'
+              ? page.getByRole('link', { name: 'Выйти', exact: true })
+              : page.getByRole(accountMenu ? 'menuitem' : 'button', { name: 'Выйти', exact: true })
+          await expect(logout).toBeVisible({ timeout: 30_000 })
+          const sibling = await context.newPage()
+          await sibling.goto('http://localhost:7722/projects')
+          await expect(
+            sibling.getByRole('button', { name: 'Открыть список сервисов' }),
+          ).toBeVisible()
+
+          await logout.click()
+          await expect(page).toHaveURL(
+            new RegExp(`localhost:7701/oidc/logout\\?client_id=${app.client}`),
+          )
+          await page.getByRole('button', { name: /выйти|подтвердить/i }).click()
+          if (app.client === 'project-workflow') {
+            await expect(page).toHaveURL(/localhost:7701\/oidc\/authorize/)
+            await expect(page.getByRole('heading', { name: 'Вход в SDLC' })).toBeVisible()
+            await page.reload()
+            await expect(page.getByLabel('Пароль')).toBeVisible()
+          } else {
+            await expect(page).toHaveURL(/\/login\?logged_out=1$/)
+            await page.reload()
+            expect(page.url()).not.toContain('/oidc/authorize')
+          }
+          await sibling.reload()
+          await expect(sibling.getByRole('heading', { name: 'Вход в SDLC' })).toBeVisible({
+            timeout: 30_000,
+          })
+          for (const url of [
+            'http://localhost:7771/api/v1/auth/me',
+            'http://localhost:7711/api/v1/projects',
+            'http://localhost:7721/api/v1/projects',
+            'http://localhost:7731/api/v1/spaces',
+            'http://localhost:7741/api/v1/users/me',
+            'http://localhost:7752/api/workflows',
+          ]) {
+            expect(
+              (await request.get(url, { headers: { Authorization: bearer } })).status(),
+              `${app.client}: ${new URL(url).port}`,
+            ).toBe(401)
+          }
+          expect(
+            (
+              await request.get('http://localhost:7771/api/v1/auth/me', {
+                headers: { Authorization: `Bearer ${personal.secret}` },
+              })
+            ).status(),
+          ).toBe(200)
+        } finally {
+          await context.close()
+        }
+      })
+    }
+  } finally {
+    expect(
+      (
+        await request.delete(`http://localhost:7701/auth/tokens/${personal.id}`, {
+          headers: operator,
+        })
+      ).status(),
+    ).toBe(204)
   }
 })
 
