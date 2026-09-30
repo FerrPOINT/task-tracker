@@ -1,8 +1,10 @@
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { randomUUID } from 'node:crypto'
-import { expect, test } from '@playwright/test'
+import { expect as baseExpect, test } from '@playwright/test'
 import { signInAt } from './qa-login'
+
+const expect = baseExpect.configure({ timeout: 30_000 })
 
 test.skip(process.env.SDLC_LIVE_QA !== '1', 'Requires the running local SDLC fleet')
 test.skip(({ browserName }) => browserName !== 'chromium', 'Single browser live smoke')
@@ -224,6 +226,70 @@ test('service switcher opens by touch at mobile width', async ({ browser }) => {
   }
 })
 
+test('Workflow service menu is unobstructed beside the desktop sidebar', async ({ page }) => {
+  await signInAt(page, 'http://localhost:7772/users', account)
+  await page.goto('http://localhost:7752/phases')
+  const trigger = page.locator('details.service-menu summary')
+  const screenshots = fileURLToPath(new URL('../../../.local/screenshots/', import.meta.url))
+  mkdirSync(screenshots, { recursive: true })
+  for (const width of [1090, 1920, 2560]) {
+    await page.setViewportSize({ width, height: 800 })
+    await trigger.click()
+    const menu = page.locator('.service-menu-popover')
+    await expect(menu.getByRole('menuitem')).toHaveCount(6)
+    const bounds = await menu.boundingBox()
+    expect(bounds).not.toBeNull()
+    expect(bounds!.x).toBeGreaterThanOrEqual(0)
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
+    const obstructed = await menu.getByRole('menuitem').evaluateAll((items) =>
+      items
+        .filter((item) => {
+          const box = item.getBoundingClientRect()
+          return (
+            document.elementFromPoint(box.x + 12, box.y + box.height / 2)?.closest('a') !== item
+          )
+        })
+        .map((item) => item.textContent?.trim()),
+    )
+    expect(obstructed, `Workflow menu ${width}px`).toEqual([])
+    await page.screenshot({
+      path: `${screenshots}/workflow-service-menu-${width}.png`,
+      fullPage: true,
+      animations: 'disabled',
+    })
+    await page.keyboard.press('Escape')
+    await expect(page.locator('details.service-menu')).not.toHaveAttribute('open')
+    await expect(trigger).toBeFocused()
+  }
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.locator('#burgerBtn').click()
+  const mobileMenu = page.locator('#sidebar details.sidebar-service-menu')
+  await mobileMenu.locator('summary').click()
+  const mobileLinks = mobileMenu.locator('a.sidebar-service-link')
+  await expect(mobileLinks).toHaveCount(6)
+  for (let index = 0; index < 6; index++) {
+    const link = mobileLinks.nth(index)
+    await link.scrollIntoViewIfNeeded()
+    expect(
+      await link.evaluate((item) => {
+        const box = item.getBoundingClientRect()
+        return document.elementFromPoint(box.x + 12, box.y + box.height / 2)?.closest('a') === item
+      }),
+    ).toBe(true)
+  }
+  await page.screenshot({
+    path: `${screenshots}/workflow-service-menu-375.png`,
+    fullPage: true,
+    animations: 'disabled',
+  })
+  await page.keyboard.press('Escape')
+  await page.setViewportSize({ width: 1920, height: 800 })
+  await trigger.click()
+  await page.getByRole('menuitem', { name: /Admin Panel/ }).click({ position: { x: 12, y: 20 } })
+  await expect(page.getByRole('button', { name: 'Открыть список сервисов' })).toBeVisible()
+  await expect(page).toHaveURL(/localhost:7772\//)
+})
+
 test('logout from each UI revokes the shared browser session but preserves personal tokens', async ({
   browser,
   request,
@@ -257,14 +323,17 @@ test('logout from each UI revokes the shared browser session but preserves perso
         const context = await browser.newContext()
         try {
           const page = await context.newPage()
-          const bearerRequest = page.waitForRequest(
-            (req) =>
+          let bearer = ''
+          page.on('request', (req) => {
+            if (
               /^http:\/\/localhost:777[12]\/api\//.test(req.url()) &&
-              Boolean(req.headers().authorization),
-            { timeout: 30_000 },
-          )
+              req.headers().authorization
+            ) {
+              bearer = req.headers().authorization
+            }
+          })
           await signInAt(page, 'http://localhost:7772/users', account)
-          const bearer = (await bearerRequest).headers().authorization
+          await expect.poll(() => Boolean(bearer)).toBe(true)
           expect(bearer).toMatch(/^Bearer /)
           await page.goto(app.url)
           const accountMenu = app.client === 'task-tracker' || app.client === 'wiki'
@@ -275,7 +344,12 @@ test('logout from each UI revokes the shared browser session but preserves perso
               : page.getByRole(accountMenu ? 'menuitem' : 'button', { name: 'Выйти', exact: true })
           await expect(logout).toBeVisible({ timeout: 30_000 })
           const sibling = await context.newPage()
+          const siblingReady = sibling.waitForResponse(
+            (response) =>
+              new URL(response.url()).pathname === '/api/v1/projects' && response.status() === 200,
+          )
           await sibling.goto('http://localhost:7722/projects')
+          await siblingReady
           await expect(
             sibling.getByRole('button', { name: 'Открыть список сервисов' }),
           ).toBeVisible()
@@ -292,13 +366,16 @@ test('logout from each UI revokes the shared browser session but preserves perso
             await expect(page.getByLabel('Пароль')).toBeVisible()
           } else {
             await expect(page).toHaveURL(/\/login\?logged_out=1$/)
+            await page.waitForLoadState('domcontentloaded')
             await page.reload()
             expect(page.url()).not.toContain('/oidc/authorize')
           }
-          await sibling.reload()
+          await sibling.goto('http://localhost:7722/projects')
           await expect(sibling.getByRole('heading', { name: 'Вход в SDLC' })).toBeVisible({
             timeout: 30_000,
           })
+          await sibling.reload()
+          await expect(sibling.getByRole('heading', { name: 'Вход в SDLC' })).toBeVisible()
           for (const url of [
             'http://localhost:7771/api/v1/auth/me',
             'http://localhost:7711/api/v1/projects',
