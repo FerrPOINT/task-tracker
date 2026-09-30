@@ -113,16 +113,22 @@ FRONTEND_PORT=19877
 
 ## Визуальные доказательства
 
-Скриншоты сняты Playwright на детерминированных данных. Одинаковая система рабочей
-области проверяется в трёх режимах: широкий список, читаемая форма и detail со
-вторичной колонкой. Для каждого режима сохранены desktop `1920x1080` и mobile
-`375x812`; тест также проверяет отсутствие горизонтального переполнения.
+Скриншоты сняты Playwright на детерминированных данных при `1920x1080` в
+default theme. Responsive QA, включая mobile и отсутствие горизонтального
+переполнения, ведётся отдельно; маршруты, viewport и PNG-размеры перечислены в
+[screenshot manifest](docs/screenshots/manifest.md).
 
-| Режим | Desktop | Mobile |
-|---|---|---|
-| Wide: проекты | ![Проекты, desktop](docs/screenshots/1920x1080/wide.png) | ![Проекты, mobile](docs/screenshots/375x812/wide.png) |
-| Reading: создание задачи | ![Создание задачи, desktop](docs/screenshots/1920x1080/reading.png) | ![Создание задачи, mobile](docs/screenshots/375x812/reading.png) |
-| Detail with aside: задача | ![Карточка задачи, desktop](docs/screenshots/1920x1080/detail-with-aside.png) | ![Карточка задачи, mobile](docs/screenshots/375x812/detail-with-aside.png) |
+### Проекты (`wide`)
+
+![Проекты](docs/screenshots/1920x1080/wide.png)
+
+### Создание задачи (`reading/form`)
+
+![Создание задачи](docs/screenshots/1920x1080/reading.png)
+
+### Карточка задачи (`detail-with-aside`)
+
+![Карточка задачи](docs/screenshots/1920x1080/detail-with-aside.png)
 
 <a name="cli"></a>
 

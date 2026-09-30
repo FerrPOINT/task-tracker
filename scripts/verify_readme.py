@@ -21,10 +21,8 @@ REQUIRED_PROOF = {
     "1920x1080/detail-with-aside.png",
     "1920x1080/reading.png",
     "1920x1080/wide.png",
-    "375x812/detail-with-aside.png",
-    "375x812/reading.png",
-    "375x812/wide.png",
 }
+REQUIRED_LAYOUT_LABELS = ("wide", "reading/form", "detail-with-aside")
 MD_IMAGE_RE = re.compile(r"!\[[^]]*\]\(([^)]+)\)")
 HTML_IMAGE_RE = re.compile(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", re.IGNORECASE)
 ANCHOR_RE = re.compile(r"<a\b[^>]*\bname=[\"']([^\"']+)[\"']", re.IGNORECASE)
@@ -49,6 +47,11 @@ def validate(root: Path) -> list[str]:
     proof = set(re.findall(r"docs/screenshots/([^\"')]+\.png)", text))
     for name in sorted(REQUIRED_PROOF - proof):
         findings.append(f"RMD004: README.md: missing proof asset: {name}")
+    for layout in REQUIRED_LAYOUT_LABELS:
+        if not re.search(rf"^### .+\(`{re.escape(layout)}`\)$", text, re.MULTILINE):
+            findings.append(f"RMD008: README.md: missing desktop layout example: {layout}")
+    if any(re.search(r"(?:^|/)(?:\d+x\d+|mobile)(?:/|[-_.])", image, re.IGNORECASE) and "1920x1080" not in image for image in proof):
+        findings.append("RMD007: README.md: mobile screenshot included in README gallery")
 
     for image in MD_IMAGE_RE.findall(text) + HTML_IMAGE_RE.findall(text):
         image = unquote(image)
