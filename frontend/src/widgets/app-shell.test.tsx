@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import { ThemeProvider } from '@sdlc/ui/lib'
 
 import { AppShell } from './app-shell'
@@ -196,6 +196,27 @@ describe('AppShell notifications', () => {
     expect(screen.getByRole('link', { name: /доска|board/i })).toHaveAttribute(
       'href',
       '/projects/XP/board',
+    )
+  })
+
+  it('uses the shared readable mode for issue creation', () => {
+    mockHooks([])
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/issues/create']}>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="*" element={<div>Create issue content</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByText('Create issue content').parentElement).toHaveAttribute(
+      'data-page-layout',
+      'reading',
     )
   })
 

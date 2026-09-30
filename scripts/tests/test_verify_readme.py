@@ -32,9 +32,11 @@ class VerifyReadmeTests(unittest.TestCase):
             '<a name="safety"></a>\n'
             '<a name="quality"></a>\n'
             '<a name="license"></a>\n'
-            '![reports](docs/screenshots/10-reports.png)\n'
+            '### Projects (`wide`)\n![wide desktop](docs/screenshots/1920x1080/wide.png)\n'
+            '### Create (`reading/form`)\n![reading desktop](docs/screenshots/1920x1080/reading.png)\n'
+            '### Issue (`detail-with-aside`)\n![detail desktop](docs/screenshots/1920x1080/detail-with-aside.png)\n'
         )
-        for name in ["10-reports.png"]:
+        for name in validator.REQUIRED_PROOF:
             asset = root / "docs/screenshots" / name
             asset.parent.mkdir(parents=True, exist_ok=True)
             asset.write_bytes(b"png")
@@ -47,7 +49,16 @@ class VerifyReadmeTests(unittest.TestCase):
 
         findings = validator.validate(root)
 
-        self.assertIn("RMD004: README.md: missing proof asset: 10-reports.png", findings)
+        self.assertIn(
+            "RMD004: README.md: missing proof asset: 1920x1080/wide.png",
+            findings,
+        )
+
+    def test_rejects_mobile_screenshot_in_readme(self) -> None:
+        validator = load_validator()
+        root = self.make_repo("![Mobile](docs/screenshots/375x812/wide.png)\n")
+
+        self.assertIn("RMD007", "\n".join(validator.validate(root)))
 
 
 if __name__ == "__main__":

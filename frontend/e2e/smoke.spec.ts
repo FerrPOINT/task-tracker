@@ -1,4 +1,7 @@
-import { test, expect, Route } from '@playwright/test'
+import { generateKeyPairSync, sign } from 'node:crypto'
+import { mkdirSync } from 'node:fs'
+import nodePath from 'node:path'
+import { test, expect, type Page, type Route } from '@playwright/test'
 
 const mockUser = {
   id: '00000000-0000-0000-0000-000000000001',
@@ -15,12 +18,62 @@ function routeJson(route: Route, body: unknown, status = 200) {
   })
 }
 
+async function installSsoMocks(page: Page) {
+  const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' })
+  const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'qa', alg: 'ES256', use: 'sig' }
+  let issuer = 'http://localhost:7701'
+  let nonce = ''
+
+  await page.route('**/oidc/authorize**', async (route) => {
+    const url = new URL(route.request().url())
+    issuer = url.origin
+    nonce = url.searchParams.get('nonce') ?? ''
+    const callback = new URL(url.searchParams.get('redirect_uri') ?? '/')
+    callback.searchParams.set('code', 'qa-code')
+    callback.searchParams.set('state', url.searchParams.get('state') ?? '')
+    await route.fulfill({
+      status: 302,
+      headers: { location: callback.toString() },
+      body: '',
+    })
+  })
+  await page.route('**/oidc/token', async (route) => {
+    const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid: 'qa' })).toString(
+      'base64url',
+    )
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: issuer,
+        aud: 'task-tracker',
+        sub: mockUser.id,
+        email: 'demo@example.com',
+        nonce,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    ).toString('base64url')
+    const content = `${header}.${payload}`
+    const signature = sign('sha256', Buffer.from(content), {
+      key: privateKey,
+      dsaEncoding: 'ieee-p1363',
+    }).toString('base64url')
+    return routeJson(route, {
+      access_token: 'demo-token',
+      id_token: `${content}.${signature}`,
+      expires_in: 3600,
+    })
+  })
+  await page.route('**/oidc/jwks', (route) => routeJson(route, { keys: [jwk] }))
+}
+
 test.describe('smoke', () => {
   test('login then navigate through dashboard, projects, board and create issue', async ({
     page,
     baseURL,
   }, testInfo) => {
-    const appBaseURL = baseURL ?? 'http://127.0.0.1:4173'
+    test.setTimeout(120_000)
+    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    await installSsoMocks(page)
     await page.route('**/api/v1/auth/login', (route) =>
       routeJson(route, {
         access_token: 'demo-token',
@@ -67,8 +120,24 @@ test.describe('smoke', () => {
       ]),
     )
     await page.route('**/api/v1/transitions', (route) => routeJson(route, []))
-    await page.route('**/api/v1/users', (route) => routeJson(route, []))
-    await page.route('**/api/v1/issue-types', (route) => routeJson(route, []))
+    await page.route('**/api/v1/users', (route) =>
+      routeJson(route, {
+        users: [{ id: mockUser.id, username: 'demo', display_name: 'Demo User' }],
+      }),
+    )
+    await page.route('**/api/v1/issue-types**', (route) =>
+      routeJson(route, [
+        {
+          id: 'task',
+          name: 'Task',
+          description: 'Standard task',
+          icon: 'check-square',
+          color: '#6b78e5',
+          hierarchy_level: 0,
+          is_subtask: false,
+        },
+      ]),
+    )
     await page.route('**/api/v1/projects', (route) =>
       routeJson(route, {
         projects: [
@@ -85,7 +154,17 @@ test.describe('smoke', () => {
         ],
       }),
     )
-    await page.route('**/api/v1/projects/*/members', (route) => routeJson(route, { members: [] }))
+    await page.route('**/api/v1/projects/**/members**', (route) =>
+      routeJson(route, {
+        members: [
+          {
+            project_id: '00000000-0000-0000-0000-000000000010',
+            user_id: mockUser.id,
+            role: 'owner',
+          },
+        ],
+      }),
+    )
     await page.route('**/api/v1/projects/*/board', (route) =>
       routeJson(route, {
         columns: [
@@ -245,12 +324,8 @@ test.describe('smoke', () => {
       routeJson(route, { notifications: [], unread_count: 0 }),
     )
 
-    await page.goto(`${appBaseURL}/login`)
-    await page.getByRole('textbox').nth(0).fill('demo@example.com')
-    await page.getByRole('textbox').nth(1).fill('demo')
-    await page.getByRole('button', { name: /sign in|войти/i }).click()
-
-    await expect(page).toHaveURL(`${appBaseURL}/`, { timeout: 10000 })
+    await page.goto(`${appBaseURL}/`)
+    await expect(page).toHaveURL(`${appBaseURL}/`, { timeout: 15_000 })
     await expect(
       page.getByRole('heading', { name: /dashboard|team dashboard|мои задачи|командный дашборд/i }),
     ).toBeVisible()
@@ -278,6 +353,78 @@ test.describe('smoke', () => {
       page.getByRole('button', { name: /stop watching|перестать следить/i }),
     ).toBeVisible()
     await expect(page.getByText(/1 total|всего 1/i)).toBeVisible()
-    await page.screenshot({ path: testInfo.outputPath('smoke-board.png') })
+
+    for (const viewport of [
+      { width: 375, height: 812 },
+      { width: 1440, height: 900 },
+      { width: 1920, height: 1080 },
+      { width: 2560, height: 1440 },
+    ]) {
+      await page.setViewportSize(viewport)
+
+      for (const [path, mode] of [
+        ['/projects', 'wide'],
+        [`/issues/create?project_key=${mockUser.key}`, 'reading'],
+        [`/issues/${mockUser.issueId}`, 'detail-with-aside'],
+      ] as const) {
+        await page.goto(`${appBaseURL}${path}`)
+        if (mode === 'wide') await expect(page.getByText(mockUser.name).first()).toBeVisible()
+        if (mode === 'reading') {
+          await expect(
+            page.getByRole('heading', { name: /create issue|создать задачу/i }),
+          ).toBeVisible()
+        }
+        if (mode === 'detail-with-aside') {
+          await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+        }
+
+        const layout = page.locator('[data-page-layout]')
+        await expect(layout).toHaveAttribute('data-page-layout', mode)
+        const geometry = await layout.evaluate((element) => {
+          const frame = element.parentElement
+          const frameStyle = frame ? getComputedStyle(frame) : null
+          return {
+            documentFits:
+              document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+            layoutWidth: element.getBoundingClientRect().width,
+            availableWidth:
+              (frame?.getBoundingClientRect().width ?? 0) -
+              Number.parseFloat(frameStyle?.paddingLeft ?? '0') -
+              Number.parseFloat(frameStyle?.paddingRight ?? '0'),
+          }
+        })
+
+        expect(geometry.documentFits).toBe(true)
+        if (mode === 'reading') {
+          expect(geometry.layoutWidth).toBeLessThanOrEqual(761)
+        } else {
+          expect(Math.abs(geometry.layoutWidth - geometry.availableWidth)).toBeLessThanOrEqual(1)
+        }
+        await page.waitForTimeout(1000)
+        const testOutputPath = testInfo.outputPath(`shell-${viewport.width}-${mode}.png`)
+        await page.screenshot({
+          path: testOutputPath,
+          fullPage: true,
+        })
+        if (
+          process.env.UPDATE_README_SCREENSHOTS === '1' &&
+          (viewport.width === 375 || viewport.width === 1920)
+        ) {
+          const viewportDir = `${viewport.width}x${viewport.height}`
+          const readmeOutputDir = nodePath.resolve(
+            process.cwd(),
+            '..',
+            'docs',
+            'screenshots',
+            viewportDir,
+          )
+          mkdirSync(readmeOutputDir, { recursive: true })
+          await page.screenshot({
+            path: nodePath.join(readmeOutputDir, `${mode}.png`),
+            fullPage: true,
+          })
+        }
+      }
+    }
   })
 })

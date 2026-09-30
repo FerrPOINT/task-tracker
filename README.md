@@ -113,47 +113,22 @@ FRONTEND_PORT=19877
 
 ## Визуальные доказательства
 
-Скриншоты — реальные поверхности продукта с детерминированными seeded-данными. Формат: desktop full-page.
+Скриншоты сняты Playwright на детерминированных данных при `1920x1080` в
+default theme. Responsive QA, включая mobile и отсутствие горизонтального
+переполнения, ведётся отдельно; маршруты, viewport и PNG-размеры перечислены в
+[screenshot manifest](docs/screenshots/manifest.md).
 
-### Дашборд
+### Проекты (`wide`)
 
-![Дашборд](docs/screenshots/02-dashboard.png)
+![Проекты](docs/screenshots/1920x1080/wide.png)
 
-### Проекты
+### Создание задачи (`reading/form`)
 
-![Проекты](docs/screenshots/03-projects.png)
+![Создание задачи](docs/screenshots/1920x1080/reading.png)
 
-### Канбан-доска
+### Карточка задачи (`detail-with-aside`)
 
-![Канбан-доска](docs/screenshots/04-board.png)
-
-### Бэклог
-
-![Бэклог](docs/screenshots/05-backlog.png)
-
-### Поиск
-
-![Поиск](docs/screenshots/08-search.png)
-
-### Уведомления
-
-![Уведомления](docs/screenshots/09-notifications.png)
-
-### Отчёты
-
-![Отчёты](docs/screenshots/10-reports.png)
-
-### Администрирование
-
-![Администрирование](docs/screenshots/11-admin.png)
-
-### Кастомные поля
-
-![Кастомные поля](docs/screenshots/07-custom-fields.png)
-
-### Корзина
-
-![Корзина](docs/screenshots/06-trash.png)
+![Карточка задачи](docs/screenshots/1920x1080/detail-with-aside.png)
 
 <a name="cli"></a>
 
