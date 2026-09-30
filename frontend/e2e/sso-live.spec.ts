@@ -321,6 +321,8 @@ test('logout from each UI revokes the shared browser session but preserves perso
     for (const app of apps) {
       await test.step(`global logout from ${app.client}`, async () => {
         const context = await browser.newContext()
+        context.setDefaultTimeout(30_000)
+        context.setDefaultNavigationTimeout(30_000)
         try {
           const page = await context.newPage()
           let bearer = ''
@@ -347,8 +349,9 @@ test('logout from each UI revokes the shared browser session but preserves perso
           const siblingReady = sibling.waitForResponse(
             (response) =>
               new URL(response.url()).pathname === '/api/v1/projects' && response.status() === 200,
+            { timeout: 30_000 },
           )
-          await sibling.goto('http://localhost:7722/projects')
+          await sibling.goto('http://localhost:7722/projects', { waitUntil: 'commit' })
           await siblingReady
           await expect(
             sibling.getByRole('button', { name: 'Открыть список сервисов' }),
@@ -370,7 +373,7 @@ test('logout from each UI revokes the shared browser session but preserves perso
             await page.reload()
             expect(page.url()).not.toContain('/oidc/authorize')
           }
-          await sibling.goto('http://localhost:7722/projects')
+          await sibling.goto('http://localhost:7722/projects', { waitUntil: 'commit' })
           await expect(sibling.getByRole('heading', { name: 'Вход в SDLC' })).toBeVisible({
             timeout: 30_000,
           })

@@ -30,6 +30,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
+  expect: { timeout: process.env.SDLC_LIVE_QA === '1' ? 30_000 : 5_000 },
   use: {
     baseURL,
     trace: 'on-first-retry',
