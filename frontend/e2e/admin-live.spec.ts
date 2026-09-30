@@ -166,7 +166,10 @@ test('Admin audit filters and token dialog work against the live API without wri
 
   const mutations: string[] = []
   page.on('request', (request) => {
-    if (request.url().startsWith('http://localhost:7771/api/v1/') && request.method() !== 'GET') {
+    if (
+      /^http:\/\/localhost:777[12]\/api\/v1\//.test(request.url()) &&
+      request.method() !== 'GET'
+    ) {
       mutations.push(`${request.method()} ${new URL(request.url()).pathname}`)
     }
   })
@@ -199,10 +202,11 @@ test('Admin audit filters and token dialog work against the live API without wri
     if (new URL(request.url()).pathname === '/api/v1/audit-events') requests.push(request.url())
   })
   await page.getByRole('combobox', { name: 'Действие' }).selectOption('custom')
-  await page.getByRole('textbox', { name: 'Точный код действия' }).fill('branding.published')
+  const unmatchedAction = `qa.unmatched.${Date.now()}`
+  await page.getByRole('textbox', { name: 'Точный код действия' }).fill(unmatchedAction)
   await page.waitForTimeout(150)
   expect(requests).toEqual([])
-  const exact = auditResponse((url) => url.searchParams.get('action') === 'branding.published')
+  const exact = auditResponse((url) => url.searchParams.get('action') === unmatchedAction)
   await page.getByRole('button', { name: 'Применить' }).click()
   const exactPage = (await (await exact).json()) as { events: AuditEvent[]; total: number }
   expect(exactPage).toMatchObject({ events: [], total: 0 })
@@ -217,9 +221,16 @@ test('Admin audit filters and token dialog work against the live API without wri
     .evaluateAll((labels) => labels.map((label) => label.getBoundingClientRect()))
   expect(targets.length).toBeGreaterThanOrEqual(12)
   expect(targets.every(({ width, height }) => width >= 40 && height >= 40)).toBe(true)
-  const pulseScopes = dialog.locator('fieldset div').filter({ hasText: 'Service Pulse' })
-  await expect(pulseScopes).toBeVisible()
-  await expect(pulseScopes.locator('label')).toHaveCount(2)
+  await expect(dialog.locator('fieldset > div > span')).toHaveText([
+    'Admin Panel',
+    'CI/CD',
+    'Task Tracker',
+    'Wiki',
+    'Fleet Control',
+    'Project Workflow',
+  ])
+  await expect(dialog.locator('fieldset label')).toHaveCount(12)
+  await expect(dialog.getByText('Service Pulse', { exact: true })).toHaveCount(0)
   await expect
     .poll(() =>
       page.evaluate(

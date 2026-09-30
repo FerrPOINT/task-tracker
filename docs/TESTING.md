@@ -86,6 +86,30 @@ cd frontend
 pnpm exec playwright test --project=chromium
 ```
 
+### Live platform gate
+
+`SDLC_LIVE_QA=1` выбирает no-mock сценарии шести приложений, SSO, личных
+токенов и реальных операций. Нужны запущенная платформа и результат
+`services-base/deploy/bootstrap-qa.ps1`, включая опубликованный начальный
+брендинг. `SDLC_QA_SESSION_FILE` указывает на приватный `qa-session.json`;
+пароли и токены не передаются в аргументах и не включаются в trace.
+
+```bash
+SDLC_LIVE_QA=1 PLAYWRIGHT_BASE_URL=http://localhost:7722 \
+  pnpm exec playwright test --project=chromium --workers=1
+```
+
+Для полного изолированного gate дополнительно задайте
+`SDLC_ISOLATED_QA_PROJECT=sdlc-clean-install-qa` либо имя отдельного
+`sdlc-platform-smoke-*` проекта. Linux QA-контейнеру требуется Docker socket.
+Проверка отказа Auth сверяет Compose labels, останавливает только его Auth,
+проверяет 503 всех шести API и обязательно запускает Auth снова, затем
+проверяет восстановление сессии и отзыв PAT. `sdlc-demo` запрещён; без явного
+изолированного проекта destructive-сценарий пропускается и не считается
+доказательством проверки отказа Auth. Остальные live-проверки не останавливают
+стенд. Full-page изображения live-набора сохраняются в `.local/screenshots`
+workspace, не в исходники или Git.
+
 ### Screenshot набор
 
 Скриншоты сохраняются в `/root/.hermes/cache/images/react-<page>-<viewport>.png`.
