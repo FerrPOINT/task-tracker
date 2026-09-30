@@ -449,13 +449,9 @@ export function useCurrentUser() {
 }
 
 export function useLogout() {
-  const logoutStore = useAuthStore((s) => s.logout)
-  const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {},
     onSuccess: () => {
-      logoutStore()
-      qc.clear()
       endSso(ssoConfig)
     },
   })
