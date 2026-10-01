@@ -44,6 +44,7 @@ impl EventBus {
 
 #[derive(Clone)]
 pub struct AppContext {
+    pub sdlc: Option<crate::sdlc::SdlcService>,
     pub config: Arc<AppConfig>,
     pub services: Services,
     pub repos: Arc<domain::Repositories>,
@@ -194,6 +195,7 @@ impl AppContext {
             authz.clone(),
         ));
         Self {
+            sdlc: None,
             config,
             events: events.clone(),
             authz: authz.clone(),

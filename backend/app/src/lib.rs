@@ -4,6 +4,7 @@ pub mod commands;
 pub mod context;
 pub mod dto;
 pub mod oidc;
+pub mod sdlc;
 pub mod services;
 pub mod totp;
 

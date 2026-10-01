@@ -78,3 +78,12 @@
 - `docs/WORKFLOW.md`
 - `docs/EVENTS.md`
 - `docs/SECURITY.md`
+## Durable SDLC Events
+
+`GET /api/v1/issues/{id}/sdlc/events?after=N` is an authorized task-scoped
+PostgreSQL outbox read, at most 100 ascending records. Stable `event_id` is the
+Fleet inbox deduplication key; `sequence` is the durable cursor. Business change,
+command result and event commit together. This is separate from the legacy
+ephemeral Tracker SSE invalidation bus. Fleet must persist consumption and
+Workflow resume delivery; a saved answer event does not mean a run started.
+Payload and retry semantics: [contract](CHAT_CLARIFICATION_CONTRACT.md).

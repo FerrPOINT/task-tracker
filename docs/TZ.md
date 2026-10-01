@@ -1,5 +1,15 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+## SDLC Clarification: Implemented Backend Scope
+
+Opt-in Draft -> assigned PM questions -> owner answers -> new full requirements
+revision -> trusted readiness evidence -> exact owner confirmation -> Backlog.
+Backend contract and prerequisites: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
+Strict project membership and central task-owner identity apply to this slice,
+independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL
+verification is distinct from Fleet/Workflow integration and real PM acceptance;
+no production frontend or live autonomous flow is claimed by this implementation.
+
 > **Актуальный платформенный auth-контракт.** При настроенном Central Auth
 > локальные регистрация, парольный вход, password reset, TOTP и управление
 > пользователями отключены. Учётки создаются в Admin Panel, профили связываются

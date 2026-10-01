@@ -185,3 +185,13 @@ Content-Security-Policy: ...
 - `docs/ARCHITECTURE.md`
 - `docs/DEPLOYMENT.md`
 - `docs/API.md`
+## SDLC Clarification Authorization
+
+SDLC uses a dedicated central-only middleware, live session/PAT checks and
+service scopes. PostgreSQL rechecks active central subject and explicit project
+owner/member rows under locks on every read/write/replay. Legacy global admin
+and TT_AUTH project bypass confer no SDLC access. Answer/confirm require the
+exact persisted owner and a human session; PM writes require current assignment,
+execution, concrete agent/version and exact scope. A separate configured verifier
+attests readiness; owner/PM boolean claims cannot pass checks. See the
+[contract](CHAT_CLARIFICATION_CONTRACT.md) for provisioning and fail-closed errors.

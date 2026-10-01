@@ -170,3 +170,12 @@ DB-backed регрессия: `backend/infra/tests/fk_regression.rs` (docker-с�
 
 - [ARCHITECTURE](ARCHITECTURE.md)
 - [LOCAL_SETUP](LOCAL_SETUP.md)
+## SDLC Migration 000034
+
+The additive SDLC clarification migration is registered after central-subject
+migration 000033. It adds its own tables, indexed task outbox and issue gate;
+legacy tasks are unbound and unaffected by the trigger. Down migration refuses
+to discard business history. Disable new provisioning to stop rollout and keep
+history/configured instance ID unchanged. Use a backup and restore process for
+an operational rollback; do not manually drop SDLC tables or rewrite subjects.
+Details: [data model](DATA_MODEL.md), [contract](CHAT_CLARIFICATION_CONTRACT.md).

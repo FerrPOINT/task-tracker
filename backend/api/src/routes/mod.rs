@@ -21,6 +21,7 @@ pub mod labels;
 pub mod links;
 pub mod notifications;
 pub mod reports;
+pub mod sdlc;
 pub mod users;
 pub mod watchers_votes;
 pub mod workflow;

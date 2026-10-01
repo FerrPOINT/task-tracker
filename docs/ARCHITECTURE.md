@@ -1,5 +1,21 @@
 # Архитектура Task Tracker
 
+## SDLC Clarification Slice
+
+`api/routes/sdlc -> app::sdlc::SdlcService -> domain::sdlc::SdlcRepository ->
+infra::sdlc::PostgresSdlcRepository` is wired through `AppContext.sdlc` only
+when a stable instance ID is configured. Its separate Central Auth route layer
+never uses local JWT fallback or legacy project bypass. Repository authorization
+resolves active users by central subject and locks project/member authorization
+rows together with issue/task state. Global admin roles confer no SDLC access.
+Requirements hash covers the full typed document with canonical JSON. Questions
+invalidate readiness until PM publishes a new revision; independent verifier
+evidence plus exact owner-session consent atomically move the issue to Backlog.
+The issue gate is also enforced at PostgreSQL so legacy mutations cannot bypass
+it. Durable pull outbox separates Tracker persistence from Workflow resume.
+Fleet gateway, inbox/projection, Workflow fencing and the real verifier remain
+external integration responsibilities. See [contract](CHAT_CLARIFICATION_CONTRACT.md).
+
 ## 1. Контекст
 
 Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.

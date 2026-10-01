@@ -1,5 +1,22 @@
 # Дата-модель Task Tracker
 
+## SDLC: Additive Migration 000034
+
+`m20261001_0000034_sdlc_clarification` adds stable instance identity,
+immutable task/project/root/central-owner binding and a lockable JSONB aggregate
+in `sdlc_tasks`. Append-only relational history: `sdlc_agent_bindings`,
+`sdlc_assignments`, `sdlc_requests`, `sdlc_question_versions`, `sdlc_options`,
+`sdlc_requirements`, `sdlc_answers`, `sdlc_evidence`, `sdlc_confirmations`.
+`sdlc_idempotency` stores canonical command hashes/results per task/subject/key;
+`sdlc_outbox` stores stable event UUIDs and task-scoped ordered replay cursors.
+Foreign keys retain history; requirements and question/assignment versions have
+safe integer constraints. Mutable aggregate state and append-only rows commit
+in the same transaction. Project/root and outbox cursor columns are indexed.
+An issue trigger gates status/sprint updates until exact current revision consent.
+The migration is additive and does not rewrite legacy issue/user identity.
+Business-data rollback is deliberately refused; disable new assignments and
+preserve history instead. DTOs and operations: [contract](CHAT_CLARIFICATION_CONTRACT.md).
+
 ## 0. Фактическая схема реализованных таблиц (миграции 000001–000029)
 
 Раздел 4 описывает целевую полную модель (фазы 5+). Ниже — таблицы, реально существующие в текущих миграциях (`backend/migration/src/`), полученные из живой БД. При расхождении приоритет у миграций.

@@ -80,6 +80,21 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::sdlc::context,
+        routes::sdlc::bind,
+        routes::sdlc::assign,
+        routes::sdlc::questions,
+        routes::sdlc::publish_question,
+        routes::sdlc::answer,
+        routes::sdlc::cancel,
+        routes::sdlc::revisions,
+        routes::sdlc::current_revision,
+        routes::sdlc::publish_revision,
+        routes::sdlc::revision,
+        routes::sdlc::diff,
+        routes::sdlc::confirm,
+        routes::sdlc::evidence,
+        routes::sdlc::events,
         routes::health::catalog_health,
         routes::health::health,
         routes::auth::register,
@@ -605,7 +620,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route_layer(auth);
 
-    let api = public.merge(auth_routes).merge(protected);
+    let api = public
+        .merge(auth_routes)
+        .merge(protected)
+        .merge(routes::sdlc::router());
 
     // The SSE stream is a long-lived connection, not a request/response the
     // burst limiter was designed for: each reconnect burns a permit from the
@@ -689,6 +707,21 @@ pub async fn serve(ctx: Arc<app::AppContext>) {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn sdlc_revision_schema_matches_flat_strict_wire_document() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let revision = &schema["components"]["schemas"]["RequirementsRevision"];
+        assert!(revision.get("allOf").is_none());
+        assert!(revision["properties"]["goal"].is_object());
+        assert!(revision["properties"]["checklist"].is_object());
+        assert!(revision["properties"]["revision"].is_object());
+        assert_eq!(revision["additionalProperties"], false);
+        assert_eq!(
+            revision["properties"]["revision"]["maximum"].as_f64(),
+            Some(9007199254740991f64)
+        );
+    }
 
     #[test]
     fn openapi_security_matches_runtime_protection() {

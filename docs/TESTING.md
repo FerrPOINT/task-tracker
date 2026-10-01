@@ -1,5 +1,28 @@
 # Стратегия тестирования Task Tracker
 
+## Tracker SDLC Verification
+
+`cargo test -p app --lib sdlc::tests` checks answer modes/custom text, stable
+option validation, stale fences, machine/human separation, canonical payload
+hashes, JavaScript integer bounds and exact revision readiness.
+
+With an isolated disposable PostgreSQL database:
+
+```bash
+TT_SDLC_TEST_DATABASE_URL=postgres://user:password@host/tasktracker_sdlc_test \
+  cargo test -p server --test sdlc -- --ignored --nocapture
+```
+
+The test migrates and truncates only that explicit database. It uses a generated
+test ES256 issuer/live-session endpoint and PAT introspection fixture, and real
+Tracker HTTP plus PostgreSQL. It covers strict membership despite configured
+Central Auth bypass, wrong audience/expiry/local credentials, machine scopes,
+cross-project root rejection, owner-only writes, concurrency, outbox rollback,
+exact confirmation, immutable instance and service restart readback.
+It is Tracker integration evidence, not a real Central Auth/Fleet/Workflow/PM
+deployment acceptance. Exact performed gates and limitations are recorded in
+[CHAT_CLARIFICATION_VERIFICATION.md](CHAT_CLARIFICATION_VERIFICATION.md).
+
 ## 1. Принципы
 
 - Каждый тест проверяет значимый путь и конкретное поведение.

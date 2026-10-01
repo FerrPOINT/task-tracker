@@ -1,5 +1,14 @@
 # API v1 Specification — Task Tracker
 
+## SDLC Clarification API
+
+Opt-in endpoints under `/api/v1/issues/{id}/sdlc`, exact Fleet DTOs, machine
+grants, provisioning and delivery contract: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
+SDLC requires Central Auth and strict project membership independently of the
+legacy Tracker central-auth project bypass. Answer/confirm are owner-session
+commands. Questions/revisions are assigned PM commands. Rust types live in
+`backend/domain/src/sdlc.rs`; all routes are included in generated OpenAPI.
+
 ## Overview
 
 REST API первой версии Task Tracker. Все endpoint возвращают JSON и используют единую модель пагинации, ошибок и webhook-событий. Real-time обновления через SSE описаны в разделе [Real-time (SSE)](#real-time-sse).
