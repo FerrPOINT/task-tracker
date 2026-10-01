@@ -2,6 +2,12 @@
 
 ## Tracker SDLC Verification
 
+The disposable `drafts` HTTP/PostgreSQL test also covers the strict project-access
+route: sorted/deduplicated owner/member scope, read-scoped PAT, verified central
+identity, global-admin/local-ID/email bypass denial, immediate membership/account
+revocation, dependency failure, and the pending 0034 membership index. It uses
+the real route middleware and repository, with an isolated Central Auth fixture.
+
 Human creation requires a newly created, separate disposable PostgreSQL database
 with no recorded migrations. The test refuses an already migrated database;
 do not point it at accepted/shared state or reset any runtime volume.

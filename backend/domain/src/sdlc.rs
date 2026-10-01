@@ -487,6 +487,7 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn project_access_scope(&self, actor: &Principal) -> Result<ProjectAccess, AppError>;
     async fn create_draft(
         &self,
         project: Uuid,
@@ -512,6 +513,14 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         after: i64,
     ) -> Result<Vec<OutboxEvent>, AppError>;
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectAccess {
+    pub contract_version: u32,
+    pub tracker_instance_id: String,
+    pub project_ids: Vec<Uuid>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]

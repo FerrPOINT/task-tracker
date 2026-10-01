@@ -25,6 +25,13 @@ issue MAX-suffix allocation; only PostgreSQL unique violations on `issues_key_ke
 restart the entire transaction (five attempts). No independent number sequence
 or ordinary non-idempotent issue POST is used for the Fleet creation saga.
 
+Read-only project scope uses the same strict route layer but one indexed SQL
+snapshot instead of per-project authorization requests. The repository resolves
+the active central-subject identity and unions explicit ownership/membership,
+returning sorted unique IDs for the configured Tracker instance. The membership
+index is part of pending 000034. No cache is used; this read scope does not replace
+transactional authorization rechecks on SDLC write routes.
+
 ## 1. Контекст
 
 Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.

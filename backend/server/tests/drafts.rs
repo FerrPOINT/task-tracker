@@ -49,6 +49,7 @@ async fn introspect(
     let scopes = match headers.get("authorization").and_then(|h| h.to_str().ok()) {
         Some("Bearer sdlc_pat_owner") => vec!["task-tracker:read", "task-tracker:write"],
         Some("Bearer sdlc_pat_read") => vec!["task-tracker:read"],
+        Some("Bearer sdlc_pat_other") => vec!["fleet-control:read"],
         _ => return Err(StatusCode::UNAUTHORIZED),
     };
     Ok(Json(
@@ -110,6 +111,14 @@ async fn post(client: &Client, url: &str, token: &str, body: &Value) -> (u16, Va
 
 async fn expect(client: &Client, url: &str, token: &str, body: &Value, status: u16) -> Value {
     let (actual, result) = post(client, url, token, body).await;
+    assert_eq!(actual, status, "{result}");
+    result
+}
+
+async fn project_scope(client: &Client, url: &str, token: &str, status: u16) -> Value {
+    let response = client.get(url).bearer_auth(token).send().await.unwrap();
+    let actual = response.status().as_u16();
+    let result: Value = response.json().await.unwrap();
     assert_eq!(actual, status, "{result}");
     result
 }
@@ -249,6 +258,71 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         .unwrap();
     let (base, stop, handle) = start(config.clone()).await;
     let url = format!("{base}/api/v1/projects/{project}/sdlc/drafts");
+    let access_url = format!("{base}/api/v1/sdlc/project-access");
+    let mut projects = vec![project, other_project];
+    projects.sort_unstable();
+    let expected_scope = json!({"contract_version":1,"tracker_instance_id":"tracker-draft-test","project_ids":projects});
+    assert_eq!(
+        project_scope(&client, &access_url, &owner, 200).await,
+        expected_scope
+    );
+    assert_eq!(
+        project_scope(&client, &access_url, "sdlc_pat_read", 200).await,
+        expected_scope
+    );
+    sql(
+        &db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
+        vec![project.into(), operator_id.into()],
+    )
+    .await;
+    assert_eq!(
+        project_scope(&client, &access_url, &operator, 200).await,
+        expected_scope
+    );
+    assert_eq!(
+        project_scope(&client, &access_url, &foreign, 200).await["project_ids"],
+        json!([])
+    );
+    for (token, status) in [
+        ("local-token".to_string(), 401),
+        ("sdlc_pat_other".to_string(), 403),
+        (bearer(&secret, &issuer, &owner_sub, false), 403),
+        (bearer(&secret, &issuer, &owner_id.to_string(), true), 403),
+        (
+            bearer(&secret, &issuer, &Uuid::new_v4().to_string(), true),
+            403,
+        ),
+        (bearer(&secret, &issuer, &disabled_sub, true), 403),
+        (
+            bearer(&secret, &format!("{issuer}/wrong"), &owner_sub, true),
+            401,
+        ),
+    ] {
+        project_scope(&client, &access_url, &token, status).await;
+    }
+    assert_eq!(client.get(&access_url).send().await.unwrap().status(), 401);
+    assert_eq!(
+        client
+            .get(&access_url)
+            .header("Cookie", format!("access_token={owner}"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    let membership_index = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT indexdef FROM pg_indexes WHERE indexname='sdlc_project_members_user_idx'",
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<String>("", "indexdef")
+        .unwrap();
+    assert!(membership_index.contains("(user_id, project_id)"));
     let before = count(&db, "issues").await;
     for (token, status) in [
         ("local-token".to_string(), 401),
@@ -534,6 +608,10 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     );
     tx.commit().await.unwrap();
     assert_eq!(waiting.await.unwrap().0, 403);
+    assert_eq!(
+        project_scope(&client, &access_url, &owner, 200).await["project_ids"],
+        json!([other_project])
+    );
     expect(&client, &url, &owner, &command("creation"), 403).await;
     expect(
         &client,
@@ -565,6 +643,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         vec![owner_id.into()],
     )
     .await;
+    project_scope(&client, &access_url, &owner, 403).await;
     expect(&client, &url, &owner, &command("creation"), 403).await;
     sql(
         &db,
@@ -657,6 +736,13 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     assert_eq!(count(&db, "issues").await, issues_before);
     assert_eq!(count(&db, "sdlc_outbox").await, events_before);
     unavailable.store(true, Ordering::SeqCst);
+    project_scope(
+        &client,
+        &format!("{base}/api/v1/sdlc/project-access"),
+        &owner,
+        503,
+    )
+    .await;
     expect(&client, &url, &owner, &command("creation"), 503).await;
     stop.send(()).unwrap();
     handle.await.unwrap();

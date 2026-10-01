@@ -2,6 +2,11 @@
 
 ## SDLC: Additive Migration 000034
 
+Pending 000034 also adds `sdlc_project_members_user_idx(user_id,project_id)`.
+The project-access endpoint combines that membership index, the existing
+`projects.owner_id` index and central-subject identity index in one SQL snapshot.
+No scope cache or additional authorization table is introduced.
+
 `m20261001_0000034_sdlc_clarification` adds stable instance identity,
 immutable task/project/root/central-owner binding and a lockable JSONB aggregate
 in `sdlc_tasks`. Append-only relational history: `sdlc_agent_bindings`,

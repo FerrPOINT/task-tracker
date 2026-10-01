@@ -2,6 +2,18 @@
 
 ## SDLC Clarification API
 
+`GET /api/v1/sdlc/project-access` returns
+`{contract_version:1,tracker_instance_id,project_ids:[UUID]}` with unique IDs sorted
+by UUID. Verified Central Auth service read access and an active local shadow
+identity matched by central subject are required. Only explicit project ownership
+or membership grants access; global admin, public access and the legacy central
+bypass do not. The indexed query uses one database snapshot and has no cache, so
+membership revocation changes the next response. Missing/inactive identity is 403,
+unverified credentials 401, unavailable Central Auth or unconfigured SDLC 503;
+other database errors retain the existing server-error contract. An authorized
+identity with no projects receives an empty list. Query/body fields cannot expand
+this scope.
+
 Opt-in endpoints under `/api/v1/issues/{id}/sdlc`, exact Fleet DTOs, machine
 grants, provisioning and delivery contract: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
 SDLC requires Central Auth and strict project membership independently of the

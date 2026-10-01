@@ -4856,6 +4856,40 @@
         ]
       }
     },
+    "/api/v1/sdlc/project-access": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "project_access",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified Central Auth bearer required"
+          },
+          "403": {
+            "description": "Service read access and active central-subject identity required"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/search": {
       "get": {
         "tags": [
@@ -6935,6 +6969,32 @@
           "version": {
             "type": "integer",
             "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectAccess": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_ids"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "project_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "tracker_instance_id": {
+            "type": "string"
           }
         },
         "additionalProperties": false

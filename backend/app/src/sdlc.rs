@@ -19,6 +19,9 @@ pub struct SdlcService {
 }
 
 impl SdlcService {
+    pub async fn project_access(&self, actor: &Principal) -> Result<ProjectAccess, AppError> {
+        self.repository.project_access_scope(actor).await
+    }
     pub async fn create_draft(
         &self,
         project: Uuid,

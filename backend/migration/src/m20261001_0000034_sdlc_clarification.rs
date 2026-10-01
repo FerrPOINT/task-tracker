@@ -4,6 +4,7 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 pub const UP_SQL: &str = r#"
+CREATE INDEX sdlc_project_members_user_idx ON project_members(user_id,project_id);
 CREATE TABLE sdlc_instance (
     singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
     instance_id text NOT NULL UNIQUE CHECK (length(instance_id) BETWEEN 1 AND 128)

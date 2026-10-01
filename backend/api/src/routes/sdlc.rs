@@ -46,6 +46,7 @@ fn service(ctx: &app::AppContext) -> Result<&app::sdlc::SdlcService, AppError> {
 
 pub fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
+        .route("/sdlc/project-access", get(project_access))
         .route("/projects/{project_id}/sdlc/drafts", post(create_draft))
         .route("/issues/{id}/sdlc/context", get(context))
         .route("/issues/{id}/sdlc/binding", post(bind))
@@ -78,6 +79,20 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route_layer(middleware::from_fn(
             crate::middleware::sdlc_auth::strict_central_auth,
         ))
+}
+
+#[utoipa::path(
+    get, path="/api/v1/sdlc/project-access", tag="sdlc",
+    responses((status=200, body=ProjectAccess), (status=401, description="Verified Central Auth bearer required"),
+        (status=403, description="Service read access and active central-subject identity required"),
+        (status=503, description="SDLC or Central Auth unavailable")),
+    security(("bearer"=[]))
+)]
+pub async fn project_access(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+) -> Result<Json<ProjectAccess>, AppError> {
+    Ok(Json(service(&ctx)?.project_access(&actor).await?))
 }
 
 #[utoipa::path(

@@ -143,3 +143,48 @@ were removed. The compilation target/test log is retained, not a running service
 The 18 legacy ignored infra DB tests and two Docker server smoke tests remain
 unrun; the two ignored SDLC suites were run separately as described above.
 No live Central Auth/Fleet/Workflow/PM or UI acceptance is claimed. No push/PR.
+
+## Project Access Follow-Up (1 October 2026)
+
+Baseline: `24f0f1e`, preserved on `feat/pm-clarification`. Scope is Tracker
+project access only. `GET /api/v1/sdlc/project-access` uses verified Central
+service-read authentication and one indexed SQL snapshot of active local
+central-subject identity plus explicit ownership/membership. No admin, public,
+email or local-ID bypass, per-project external requests or scope cache is used.
+Only pending migration 000034 is extended with the membership index.
+
+Final completed release gates:
+
+- PASS: Rust 1.88 `cargo fmt --all --check`,
+  `cargo check --workspace --all-targets --locked`, and strict
+  `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`.
+- PASS: installed stable Rust 1.98 strict Clippy with the same flags.
+  No warning suppression or baseline warning exemption was added.
+- PASS: Rust 1.88 `cargo test --workspace --locked -- --test-threads=4`:
+  506 passed, 22 ignored, zero failed. Four threads match the Draft sidecar
+  baseline; no incomplete serial attempt counts as a completed gate.
+- PASS: the unchanged project-access implementation and Draft creation were
+  exercised through real Tracker TCP HTTP on a fresh PostgreSQL 17.11 database
+  in the preceding handoff: `server --test drafts --ignored`, one compound test,
+  18.43 seconds. The full migration chain and membership index were applied.
+  Authorization/scopes, owner/member deduplication, active identity, revocation,
+  auth outage, Draft concurrency/rollback/restart were covered. Synthetic
+  Central Auth fixtures were used; this is not deployed multi-service acceptance.
+- PASS: generated OpenAPI drift, generated TypeScript client, `pnpm openapi:check`,
+  `pnpm openapi:compat`, `pnpm typecheck`, `pnpm lint`, `pnpm format:check`,
+  `pnpm build`, and frontend 45 files / 253 tests with four workers.
+  The generated client remains Git-ignored by repository policy.
+- PASS: README structural validation, four documentation/CI script tests,
+  credential-pattern scan and final diff whitespace checks.
+
+The default suite leaves 18 legacy infra database tests, two server Docker
+smokes and two SDLC HTTP suites ignored. The Draft HTTP suite has the separate
+PG17 evidence above; the other ignored suites were not rerun in this follow-up.
+The central-subject migration test reports a pass without its dedicated database
+environment and is not new PostgreSQL evidence. Coverage and live browser/PM
+acceptance were not run. No Fleet/Base/Workflow files, shared runtime, images,
+containers, secrets or accepted databases were modified by this follow-up.
+Own disposable PG16/PG17 databases and roles from the preceding scope QA were
+cleaned; no container was stopped. Base PR #126 is a dependency for live PM
+delegation; dispatch/sagaAuth and real verifier/Workflow acceptance remain
+external work. Publishing a Draft PR does not complete the full integration plan.

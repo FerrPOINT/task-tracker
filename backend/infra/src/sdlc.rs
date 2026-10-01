@@ -275,6 +275,33 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn project_access_scope(&self, actor: &Principal) -> Result<ProjectAccess, AppError> {
+        // One snapshot: identity is never inferred from email, role, public access or service grants.
+        let row = self.db.query_one(statement(
+            "WITH active AS MATERIALIZED (
+                SELECT id FROM users WHERE central_sub=$1 AND is_active=true
+             ), allowed AS (
+                SELECT p.id FROM active u JOIN projects p ON p.owner_id=u.id
+                UNION
+                SELECT m.project_id FROM active u JOIN project_members m ON m.user_id=u.id
+             )
+             SELECT EXISTS(SELECT 1 FROM active) AS authorized,
+                COALESCE((SELECT jsonb_agg(id ORDER BY id) FROM allowed),'[]'::jsonb) AS project_ids",
+            vec![actor.subject.clone().into()],
+        )).await.map_err(map_db)?.ok_or_else(|| AppError::internal("project access result missing"))?;
+        if !row.try_get::<bool>("", "authorized").map_err(map_db)? {
+            return Err(AppError::Forbidden);
+        }
+        Ok(ProjectAccess {
+            contract_version: 1,
+            tracker_instance_id: self.config.instance_id.clone(),
+            project_ids: serde_json::from_value(
+                row.try_get::<Json>("", "project_ids").map_err(map_db)?,
+            )
+            .map_err(AppError::internal)?,
+        })
+    }
+
     async fn create_draft(
         &self,
         project: Uuid,

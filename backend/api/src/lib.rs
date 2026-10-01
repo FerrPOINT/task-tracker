@@ -80,6 +80,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::sdlc::project_access,
         routes::sdlc::create_draft,
         routes::sdlc::context,
         routes::sdlc::bind,
@@ -708,6 +709,25 @@ pub async fn serve(ctx: Arc<app::AppContext>) {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn project_access_schema_is_strict_and_read_authenticated() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let route = &schema["paths"]["/api/v1/sdlc/project-access"]["get"];
+        assert_eq!(route["security"], serde_json::json!([{ "bearer": [] }]));
+        assert_eq!(
+            route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ProjectAccess"
+        );
+        let response = &schema["components"]["schemas"]["ProjectAccess"];
+        assert_eq!(response["additionalProperties"], false);
+        assert_eq!(response["properties"].as_object().unwrap().len(), 3);
+        assert_eq!(response["required"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            response["properties"]["project_ids"]["items"]["format"],
+            "uuid"
+        );
+    }
 
     #[test]
     fn draft_creation_schema_matches_strict_typed_wire() {

@@ -6,6 +6,15 @@ with Fleet/Workflow and a real PM has not been performed. Rust DTOs and generate
 
 ## Human Draft creation: Fleet saga source
 
+Fleet directory authorization uses `GET /api/v1/sdlc/project-access` with the
+current caller's bearer. Response:
+`{contract_version:1,tracker_instance_id,project_ids:[UUID]}`. Project IDs are
+unique and sorted, derived in one indexed SQL snapshot from the active local
+central-subject identity and explicit ownership/membership. No global admin,
+public-project or legacy Central Auth bypass applies. Service read access is
+required; no cache may retain revoked membership. Missing/inactive local identity
+is 403; verified identities with no projects return an empty array.
+
 `POST /api/v1/projects/{project_id}/sdlc/drafts` accepts only:
 
 ```typescript

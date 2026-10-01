@@ -16,6 +16,12 @@ claims are not accepted. Creation is atomic and restart-safe, including a lost
 HTTP response. Fleet continues the assignment/runtime saga separately; Tracker
 does not dispatch PM execution during creation.
 
+Fleet directory consumers can read an uncached, versioned project-access scope.
+Only a verified Central Auth caller with service read access and an active local
+central-subject identity is accepted. Explicit project ownership or membership
+defines the sorted unique project IDs; admin, public and legacy Central bypasses
+do not expand this scope. Revocation affects the next request.
+
 > **Актуальный платформенный auth-контракт.** При настроенном Central Auth
 > локальные регистрация, парольный вход, password reset, TOTP и управление
 > пользователями отключены. Учётки создаются в Admin Panel, профили связываются
