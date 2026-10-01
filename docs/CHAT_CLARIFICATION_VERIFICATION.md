@@ -3,6 +3,9 @@
 Date: 1 October 2026. Scope: Tracker backend/tests/docs only. No sibling repo
 or production UI edits. No push, merge, deployment or real PM acceptance.
 
+The original clarification report below records its earlier snapshot. The
+Human Draft Sidecar section records the final creation-sidecar verification.
+
 ## Baselines And Environment
 
 - Tracker start: `569c1b9249aed1d552a5d3444c92f73dde94691d`.
@@ -85,3 +88,58 @@ Versions/modes/stale fences: `domain/sdlc.rs`, `app/sdlc.rs`, app unit tests.
 Full content/hash/exact consent/evidence: revision DTOs and command application.
 Durability/idempotency/outbox/legacy gate: migration 000034, PostgreSQL repository
 and server HTTP integration test. Exact Fleet DTOs: [contract](CHAT_CLARIFICATION_CONTRACT.md).
+
+## Human Draft Sidecar (1 October 2026)
+
+Baseline: `0cffd7d8c5fe5d9b12776c226635780beb583a4f`, branch
+`feat/pm-clarification`. Scope is Tracker only; no Base/Fleet/Workflow writes.
+Pending migration 000034 was extended, with no second migration file and no
+shared/accepted database migration or reset. Wire is locked in the contract:
+`POST /api/v1/projects/{project_id}/sdlc/drafts`, strict human request and
+seven-field `CreatedDraft`, 201 new / 200 replay / 409 changed payload.
+
+Final source gates (after outbox/schema/operation-ID changes):
+
+- PASS: Rust 1.88 `cargo fmt --all -- --check`.
+- PASS: Rust 1.88 `cargo check --workspace --all-targets --locked`.
+- PASS: Rust 1.88 and installed stable 1.98 strict
+  `cargo clippy --workspace --all-targets --locked -- -D warnings`.
+  Only the six approved baseline `collapsible_if` conditions were flattened;
+  behavior and tests were retained, no lint suppression.
+- PASS: Rust 1.88 `cargo test --workspace --locked -- --test-threads=4`:
+  505 passed, 22 ignored, zero failed. Includes creation boundary validation,
+  strict typed OpenAPI checks and global operation-ID uniqueness assertion.
+- PASS: clean PostgreSQL 16, actual TCP HTTP `server --test drafts --ignored`.
+  The final fresh database applied the full migration chain. Twelve concurrent
+  identical commands yield one issue/binding/ledger/event and exact replay;
+  concurrent changed payload conflicts. Forced ordinary-number unique conflict
+  retries allocation; deleted numbers are not reused. Last-write outbox failure
+  rolls back every business row. Membership removal fences a waiting replay;
+  disabled/local/email-only/admin-nonmember/PAT identities and spoofed fields
+  are rejected. Reporter drift/deletion invalidates replay. Creation ledger is
+  append-only and rejects missing/null/unknown result fields. Lost response and
+  Tracker shutdown/restart recover the original result without extra rows.
+  No PM assignment, agent binding or runtime run is created.
+- PASS: separate PostgreSQL HTTP `server --test sdlc --ignored` regression;
+  separate actual PostgreSQL `migration --test central_subject` with its env set.
+- PASS: generated OpenAPI plus `pnpm generate:api`, `pnpm openapi:check`,
+  `pnpm typecheck`, and final frontend 45 files / 253 tests. The former `events`
+  collision was fixed only by naming the SDLC outbox operation `sdlc_events`;
+  route/wire and ordinary SSE remain unchanged. Generated TS stays Git-ignored.
+- PASS: curl without bearer on the actual Draft route returns 401; positive
+  browser creation/replay is exercised by the real HTTP integration suite.
+- PASS: README validation, four script tests, final `git diff --check`.
+  Three generated tracked `.pyc` files were restored byte-for-byte to baseline
+  after verifying their Python sources were unchanged; none are task changes.
+
+WSL bridge timeouts were transient; no WSL/Docker/shared service restart or prune
+was performed. Test builds used `/tmp/tracker-pm-draft-target`. PostgreSQL used
+only a Tracker-owned disposable cluster `/tmp/tracker-pm-draft-pg-1001`, port
+55444, and explicitly named disposable databases. No runtime snapshots, keys,
+secrets, backups, volumes or pinned images were changed. Docker was not used.
+Cleanup completed: the temporary HTTP server and own cluster were stopped;
+only the verified own data/socket directories and their disposable databases
+were removed. The compilation target/test log is retained, not a running service.
+The 18 legacy ignored infra DB tests and two Docker server smoke tests remain
+unrun; the two ignored SDLC suites were run separately as described above.
+No live Central Auth/Fleet/Workflow/PM or UI acceptance is claimed. No push/PR.

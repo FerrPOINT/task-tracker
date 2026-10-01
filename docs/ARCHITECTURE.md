@@ -16,6 +16,15 @@ it. Durable pull outbox separates Tracker persistence from Workflow resume.
 Fleet gateway, inbox/projection, Workflow fencing and the real verifier remain
 external integration responsibilities. See [contract](CHAT_CLARIFICATION_CONTRACT.md).
 
+Human Draft creation uses a project/central-subject/key advisory transaction
+lock with canonical JSON namespace encoding. It authorizes after the lock,
+rechecks immutable ownership on replay, and commits issue/binding/ledger/outbox
+atomically. Hash collisions can only serialize unrelated requests; exact ledger
+keys/payload hashes still determine identity. Number allocation matches ordinary
+issue MAX-suffix allocation; only PostgreSQL unique violations on `issues_key_key`
+restart the entire transaction (five attempts). No independent number sequence
+or ordinary non-idempotent issue POST is used for the Fleet creation saga.
+
 ## 1. Контекст
 
 Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.

@@ -25,6 +25,32 @@ CREATE TABLE sdlc_tasks (
 );
 CREATE INDEX sdlc_tasks_project ON sdlc_tasks(project_id);
 CREATE INDEX sdlc_tasks_root ON sdlc_tasks(root_task_id);
+ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_tasks_creation_owner
+    UNIQUE(task_id, project_id, owner_subject);
+CREATE TABLE sdlc_draft_creations (
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+    actor_subject text NOT NULL CHECK (length(actor_subject) > 0),
+    idempotency_key text NOT NULL CHECK (octet_length(idempotency_key) BETWEEN 1 AND 128),
+    payload_hash text NOT NULL CHECK (payload_hash ~ '^[0-9a-f]{64}$'),
+    task_id uuid NOT NULL,
+    result jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY(project_id, actor_subject, idempotency_key),
+    FOREIGN KEY(task_id, project_id, actor_subject)
+        REFERENCES sdlc_tasks(task_id, project_id, owner_subject) ON DELETE RESTRICT,
+    CHECK (jsonb_typeof(result) = 'object'
+        AND result ?& ARRAY['tracker_instance_id','project_id','task_id','root_task_id','task_key','owner_subject','stage']
+        AND result - ARRAY['tracker_instance_id','project_id','task_id','root_task_id','task_key','owner_subject','stage'] = '{}'::jsonb),
+    CHECK ((jsonb_typeof(result->'tracker_instance_id') = 'string'
+        AND length(result->>'tracker_instance_id') > 0) IS TRUE),
+    CHECK ((jsonb_typeof(result->'task_key') = 'string'
+        AND length(result->>'task_key') > 0) IS TRUE),
+    CHECK ((result->>'task_id' = task_id::text) IS TRUE),
+    CHECK ((result->>'root_task_id' = task_id::text) IS TRUE),
+    CHECK ((result->>'project_id' = project_id::text) IS TRUE),
+    CHECK ((result->>'owner_subject' = actor_subject) IS TRUE),
+    CHECK ((result->>'stage' = 'Draft') IS TRUE)
+);
 CREATE TABLE sdlc_agent_bindings (
     tracker_instance_id text NOT NULL REFERENCES sdlc_instance(instance_id),
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
@@ -149,7 +175,8 @@ END $$;
 DO $$ DECLARE name text; BEGIN
     FOREACH name IN ARRAY ARRAY['sdlc_instance', 'sdlc_agent_bindings', 'sdlc_assignments',
         'sdlc_requests', 'sdlc_question_versions', 'sdlc_options', 'sdlc_requirements',
-        'sdlc_answers', 'sdlc_evidence', 'sdlc_confirmations', 'sdlc_idempotency', 'sdlc_outbox']
+        'sdlc_answers', 'sdlc_evidence', 'sdlc_confirmations', 'sdlc_idempotency', 'sdlc_outbox',
+        'sdlc_draft_creations']
     LOOP
         EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()', name);
     END LOOP;

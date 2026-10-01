@@ -19,6 +19,14 @@ pub struct SdlcService {
 }
 
 impl SdlcService {
+    pub async fn create_draft(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: CreateDraftCommand,
+    ) -> Result<(CreatedDraft, bool), AppError> {
+        self.repository.create_draft(project, actor, command).await
+    }
     pub async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
         Ok(self.repository.read(task, actor).await?.context(actor))
     }
@@ -69,6 +77,22 @@ pub fn validate_key(key: &str) -> Result<(), AppError> {
         return Err(AppError::validation(
             "idempotency_key must be 1..128 non-whitespace characters",
         ));
+    }
+    Ok(())
+}
+
+pub fn validate_draft(actor: &Principal, command: &CreateDraftCommand) -> Result<(), AppError> {
+    if !actor.human_session || actor.subject.is_empty() {
+        return Err(AppError::Forbidden);
+    }
+    validate_key(&command.idempotency_key)?;
+    if command.title.trim().is_empty()
+        || command.title.chars().count() > 500
+        || command.title.chars().any(char::is_control)
+        || command.description.chars().count() > 100_000
+        || command.description.contains('\0')
+    {
+        return Err(AppError::validation("invalid draft title or description"));
     }
     Ok(())
 }

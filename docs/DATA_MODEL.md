@@ -9,6 +9,13 @@ in `sdlc_tasks`. Append-only relational history: `sdlc_agent_bindings`,
 `sdlc_requirements`, `sdlc_answers`, `sdlc_evidence`, `sdlc_confirmations`.
 `sdlc_idempotency` stores canonical command hashes/results per task/subject/key;
 `sdlc_outbox` stores stable event UUIDs and task-scoped ordered replay cursors.
+`sdlc_draft_creations` is a separate append-only creation ledger keyed by
+project/central-subject/idempotency-key before a task ID is known. It stores the
+canonical payload hash and exact typed creation result. A composite FK binds
+task/project/subject to the immutable aggregate owner. Issue, initial status
+history, aggregate, ledger and creation outbox event share one transaction.
+This table extends pending 000034; it is not a new follow-up migration and is
+only validated on fresh disposable databases, never by resetting shared data.
 Foreign keys retain history; requirements and question/assignment versions have
 safe integer constraints. Mutable aggregate state and append-only rows commit
 in the same transaction. Project/root and outbox cursor columns are indexed.

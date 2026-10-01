@@ -80,6 +80,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::sdlc::create_draft,
         routes::sdlc::context,
         routes::sdlc::bind,
         routes::sdlc::assign,
@@ -709,6 +710,58 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    fn draft_creation_schema_matches_strict_typed_wire() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let operation = &schema["paths"]["/api/v1/projects/{project_id}/sdlc/drafts"]["post"];
+        assert_eq!(operation["security"], serde_json::json!([{ "bearer": [] }]));
+        for status in ["200", "201"] {
+            assert_eq!(
+                operation["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+                "#/components/schemas/CreatedDraft"
+            );
+        }
+        for (name, fields) in [
+            (
+                "CreateDraftCommand",
+                vec!["title", "description", "idempotency_key"],
+            ),
+            (
+                "CreatedDraft",
+                vec![
+                    "tracker_instance_id",
+                    "project_id",
+                    "task_id",
+                    "root_task_id",
+                    "task_key",
+                    "owner_subject",
+                    "stage",
+                ],
+            ),
+        ] {
+            let object = &schema["components"]["schemas"][name];
+            assert_eq!(object["additionalProperties"], false);
+            assert_eq!(
+                object["properties"].as_object().unwrap().len(),
+                fields.len()
+            );
+            assert_eq!(object["required"].as_array().unwrap().len(), fields.len());
+            for field in fields {
+                assert!(object["properties"][field].is_object());
+                assert!(
+                    object["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!(field))
+                );
+            }
+        }
+        assert_eq!(
+            schema["components"]["schemas"]["DraftStage"]["enum"],
+            serde_json::json!(["Draft"])
+        );
+    }
+
+    #[test]
     fn sdlc_revision_schema_matches_flat_strict_wire_document() {
         let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
         let revision = &schema["components"]["schemas"]["RequirementsRevision"];
@@ -726,6 +779,7 @@ mod tests {
     #[test]
     fn openapi_security_matches_runtime_protection() {
         let document = ApiDoc::openapi();
+        let mut operation_ids = std::collections::HashSet::new();
         for (path, item) in document.paths.paths.iter() {
             let is_public = matches!(
                 path.as_str(),
@@ -746,6 +800,12 @@ mod tests {
             .into_iter()
             .flatten()
             {
+                if let Some(operation_id) = &operation.operation_id {
+                    assert!(
+                        operation_ids.insert(operation_id),
+                        "duplicate OpenAPI operation ID: {operation_id}"
+                    );
+                }
                 if is_public {
                     assert!(
                         operation.security.is_none(),

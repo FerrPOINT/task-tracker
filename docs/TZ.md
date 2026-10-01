@@ -10,6 +10,12 @@ independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL
 verification is distinct from Fleet/Workflow integration and real PM acceptance;
 no production frontend or live autonomous flow is claimed by this implementation.
 
+Human browser sessions can create a bound root Draft through the project-scoped
+idempotent endpoint. The verified central human owns it; identity/status/agent
+claims are not accepted. Creation is atomic and restart-safe, including a lost
+HTTP response. Fleet continues the assignment/runtime saga separately; Tracker
+does not dispatch PM execution during creation.
+
 > **Актуальный платформенный auth-контракт.** При настроенном Central Auth
 > локальные регистрация, парольный вход, password reset, TOTP и управление
 > пользователями отключены. Учётки создаются в Admin Panel, профили связываются

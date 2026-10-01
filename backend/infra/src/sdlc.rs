@@ -60,6 +60,43 @@ impl PostgresSdlcRepository {
         Ok(Self { db, config })
     }
 
+    async fn project_access(
+        &self,
+        tx: &DatabaseTransaction,
+        project: Uuid,
+        actor: &Principal,
+    ) -> Result<(Uuid, String), AppError> {
+        let user = tx
+            .query_one(statement(
+                "SELECT id FROM users WHERE central_sub=$1 AND is_active=true FOR SHARE",
+                vec![actor.subject.clone().into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or(AppError::Forbidden)?;
+        let user_id: Uuid = user.try_get("", "id").map_err(map_db)?;
+        let row = tx
+            .query_one(statement(
+                "SELECT owner_id,key FROM projects WHERE id=$1 FOR SHARE",
+                vec![project.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::not_found("project", project))?;
+        if row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user_id {
+            // Current Tracker project policy grants write to explicit members.
+            // Central/global-admin hints never substitute for this row.
+            tx.query_one(statement(
+                "SELECT user_id FROM project_members WHERE project_id=$1 AND user_id=$2 FOR SHARE",
+                vec![project.into(), user_id.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or(AppError::Forbidden)?;
+        }
+        Ok((user_id, row.try_get("", "key").map_err(map_db)?))
+    }
+
     async fn issue_access(
         &self,
         tx: &DatabaseTransaction,
@@ -72,36 +109,7 @@ impl PostgresSdlcRepository {
             vec![task.into()])).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("issue", task))?;
         let project: Uuid = row.try_get("", "project_id").map_err(map_db)?;
         // Lock authorization rows so membership/account revocation cannot race the commit.
-        let user = tx
-            .query_one(statement(
-                "SELECT id FROM users WHERE central_sub=$1 AND is_active=true FOR SHARE",
-                vec![actor.subject.clone().into()],
-            ))
-            .await
-            .map_err(map_db)?
-            .ok_or(AppError::Forbidden)?;
-        let user_id: Uuid = user.try_get("", "id").map_err(map_db)?;
-        let project_row = tx
-            .query_one(statement(
-                "SELECT owner_id FROM projects WHERE id=$1 FOR SHARE",
-                vec![project.into()],
-            ))
-            .await
-            .map_err(map_db)?
-            .ok_or(AppError::Forbidden)?;
-        if project_row
-            .try_get::<Uuid>("", "owner_id")
-            .map_err(map_db)?
-            != user_id
-        {
-            tx.query_one(statement(
-                "SELECT user_id FROM project_members WHERE project_id=$1 AND user_id=$2 FOR SHARE",
-                vec![project.into(), user_id.into()],
-            ))
-            .await
-            .map_err(map_db)?
-            .ok_or(AppError::Forbidden)?;
-        }
+        self.project_access(tx, project, actor).await?;
         let owner: Option<String> = row.try_get("", "owner_subject").map_err(map_db)?;
         Ok((project, owner.unwrap_or_default()))
     }
@@ -267,6 +275,158 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn create_draft(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: CreateDraftCommand,
+    ) -> Result<(CreatedDraft, bool), AppError> {
+        app::sdlc::validate_draft(actor, &command)?;
+        let hash =
+            app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":command}))?;
+        let lock = json!([
+            "sdlc.draft.create:v1",
+            project,
+            actor.subject,
+            command.idempotency_key
+        ])
+        .to_string();
+        // Same numeric suffix allocation and bounded key-conflict retries as ordinary issues.
+        for _ in 0..5 {
+            let tx = self.db.begin().await.map_err(map_db)?;
+            exec(
+                &tx,
+                "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+                vec![lock.clone().into()],
+            )
+            .await?;
+            let (user, project_key) = self.project_access(&tx, project, actor).await?;
+            let replay = tx
+                .query_one(statement(
+                    "SELECT task_id,payload_hash,result FROM sdlc_draft_creations
+                 WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
+                    vec![
+                        project.into(),
+                        actor.subject.clone().into(),
+                        command.idempotency_key.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(map_db)?;
+            if let Some(row) = replay {
+                if row.try_get::<String>("", "payload_hash").map_err(map_db)? != hash {
+                    return Err(AppError::conflict(
+                        "idempotency key reused with changed payload",
+                    ));
+                }
+                let task: Uuid = row.try_get("", "task_id").map_err(map_db)?;
+                let result: CreatedDraft =
+                    serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
+                        .map_err(AppError::internal)?;
+                let issue = tx.query_one(statement(
+                    "SELECT project_id,reporter_id,key FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
+                    vec![task.into()],
+                )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("issue", task))?;
+                let state = self.load(&tx, task, actor).await?;
+                if issue.try_get::<Uuid>("", "project_id").map_err(map_db)? != project
+                    || issue.try_get::<Uuid>("", "reporter_id").map_err(map_db)? != user
+                    || issue.try_get::<String>("", "key").map_err(map_db)? != result.task_key
+                    || state.owner_subject != actor.subject
+                    || state.root_task_id != task
+                    || state.task_id != task
+                    || state.project_id != project
+                    || result.task_id != task
+                    || result.root_task_id != task
+                    || result.project_id != project
+                    || result.owner_subject != actor.subject
+                    || result.tracker_instance_id != self.config.instance_id
+                {
+                    return Err(AppError::conflict(
+                        "draft creation ownership/binding mismatch",
+                    ));
+                }
+                tx.commit().await.map_err(map_db)?;
+                return Ok((result, true));
+            }
+            let row = tx.query_one(statement(
+                "SELECT MAX((substring(key FROM '-([0-9]+)$'))::bigint) AS max_num FROM issues WHERE project_id=$1",
+                vec![project.into()],
+            )).await.map_err(map_db)?.ok_or_else(|| AppError::internal("issue number missing"))?;
+            let number = row
+                .try_get::<Option<i64>>("", "max_num")
+                .map_err(map_db)?
+                .unwrap_or(0)
+                .checked_add(1)
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| AppError::validation("issue number overflow"))?;
+            let task = Uuid::now_v7();
+            let key = format!("{project_key}-{number}");
+            let inserted = tx.execute(statement(
+                "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,
+                 priority,labels,position,time_spent_seconds)
+                 VALUES($1,$2,$3,'task',(SELECT id FROM statuses WHERE name='SDLC Draft' ORDER BY id LIMIT 1),
+                 $4,$5,$6,'medium','[]',0,0)",
+                vec![task.into(), project.into(), key.clone().into(), command.title.clone().into(),
+                    command.description.clone().into(), user.into()],
+            )).await;
+            if let Err(error) = inserted {
+                let key_conflict = matches!(error.sql_err(),
+                    Some(sea_orm::SqlErr::UniqueConstraintViolation(message))
+                        if message.contains("\"issues_key_key\""));
+                tx.rollback().await.map_err(map_db)?;
+                if key_conflict {
+                    continue;
+                }
+                return Err(map_db(error));
+            }
+            let state = TaskState {
+                tracker_instance_id: self.config.instance_id.clone(),
+                project_id: project,
+                task_id: task,
+                root_task_id: task,
+                owner_subject: actor.subject.clone(),
+                stage: Stage::Draft,
+                confirmation_revision: None,
+                assignment: None,
+                questions: vec![],
+                revisions: vec![],
+                confirmations: vec![],
+                evidence: vec![],
+            };
+            exec(&tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id)
+                SELECT $1,id,NULL,status_id,$2 FROM issues WHERE id=$3",
+                vec![Uuid::now_v7().into(), user.into(), task.into()]).await?;
+            exec(&tx, "INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state)
+                VALUES($1,$2,$3,$1,$4,$5)",
+                vec![task.into(), self.config.instance_id.clone().into(), project.into(),
+                    actor.subject.clone().into(), json_value(&state)?]).await?;
+            let result = CreatedDraft {
+                tracker_instance_id: self.config.instance_id.clone(),
+                project_id: project,
+                task_id: task,
+                root_task_id: task,
+                task_key: key,
+                owner_subject: actor.subject.clone(),
+                stage: DraftStage::Draft,
+            };
+            exec(&tx, "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result)
+                VALUES($1,$2,$3,$4,$5,$6)",
+                vec![project.into(), actor.subject.clone().into(), command.idempotency_key.clone().into(),
+                    hash.clone().into(), task.into(), json_value(&result)?]).await?;
+            exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'task.created',$3)",
+                vec![Uuid::now_v7().into(), task.into(),
+                    json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+                        "project_id":project,"task_id":task,"root_task_id":task,
+                        "owner_subject":actor.subject,"stage":"Draft",
+                        "requirement_revision":null,"result":result}).into()]).await?;
+            tx.commit().await.map_err(map_db)?;
+            return Ok((result, false));
+        }
+        Err(AppError::conflict(
+            "could not allocate a unique issue key, try again",
+        ))
+    }
+
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;

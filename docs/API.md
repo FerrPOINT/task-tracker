@@ -9,6 +9,13 @@ legacy Tracker central-auth project bypass. Answer/confirm are owner-session
 commands. Questions/revisions are assigned PM commands. Rust types live in
 `backend/domain/src/sdlc.rs`; all routes are included in generated OpenAPI.
 
+Human saga source: `POST /api/v1/projects/{project_id}/sdlc/drafts` takes only
+`{title,description,idempotency_key}` and returns typed `CreatedDraft` (201 new,
+200 exact replay, changed payload 409). Browser Central Auth, explicit project
+write access and exact central owner apply even on replay. Issue, private binding,
+creation ledger and outbox commit together; no PM/run is started. Exact wire and
+limits are in the contract above. Ordinary issue POST is not a saga substitute.
+
 ## Overview
 
 REST API первой версии Task Tracker. Все endpoint возвращают JSON и используют единую модель пагинации, ошибок и webhook-событий. Real-time обновления через SSE описаны в разделе [Real-time (SSE)](#real-time-sse).

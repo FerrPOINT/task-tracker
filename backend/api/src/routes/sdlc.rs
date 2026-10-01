@@ -46,6 +46,7 @@ fn service(ctx: &app::AppContext) -> Result<&app::sdlc::SdlcService, AppError> {
 
 pub fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
+        .route("/projects/{project_id}/sdlc/drafts", post(create_draft))
         .route("/issues/{id}/sdlc/context", get(context))
         .route("/issues/{id}/sdlc/binding", post(bind))
         .route("/issues/{id}/sdlc/assignment", post(assign))
@@ -77,6 +78,39 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route_layer(middleware::from_fn(
             crate::middleware::sdlc_auth::strict_central_auth,
         ))
+}
+
+#[utoipa::path(
+    post, path="/api/v1/projects/{project_id}/sdlc/drafts",
+    params(("project_id"=Uuid, Path)), request_body=CreateDraftCommand,
+    responses(
+        (status=201, description="Bound Draft created", body=CreatedDraft),
+        (status=200, description="Exact durable creation replay", body=CreatedDraft),
+        (status=401, description="Valid Central Auth bearer required"),
+        (status=403, description="Human session and explicit project write access required"),
+        (status=404, description="Project or original task no longer exists"),
+        (status=409, description="Idempotency payload or ownership binding conflict"),
+        (status=422, description="Invalid or unknown command fields"),
+        (status=503, description="SDLC or Central Auth unavailable")
+    ), security(("bearer"=[]))
+)]
+pub async fn create_draft(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(project): Path<Uuid>,
+    Json(command): Json<CreateDraftCommand>,
+) -> Result<(axum::http::StatusCode, Json<CreatedDraft>), AppError> {
+    let (draft, replayed) = service(&ctx)?
+        .create_draft(project, &actor, command)
+        .await?;
+    Ok((
+        if replayed {
+            axum::http::StatusCode::OK
+        } else {
+            axum::http::StatusCode::CREATED
+        },
+        Json(draft),
+    ))
 }
 
 #[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/context", params(("id"=Uuid, Path)), responses((status=200,body=SdlcContext)), security(("bearer"=[])))]
@@ -301,7 +335,7 @@ pub async fn evidence(
     ))
 }
 
-#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/events", params(("id"=Uuid, Path), EventsQuery), responses((status=200,body=OutboxResponse)), security(("bearer"=[])))]
+#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/events", operation_id="sdlc_events", params(("id"=Uuid, Path), EventsQuery), responses((status=200,body=OutboxResponse)), security(("bearer"=[])))]
 pub async fn events(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,

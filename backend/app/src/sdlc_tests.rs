@@ -9,6 +9,33 @@ fn actor(subject: &str, human: bool, scopes: Vec<String>) -> Principal {
     }
 }
 
+#[test]
+fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
+    let human = actor("central-human", true, vec![]);
+    let mut command = CreateDraftCommand {
+        title: "\u{43f}".repeat(500),
+        description: "x".repeat(100_000),
+        idempotency_key: "\u{43a}".repeat(64),
+    };
+    assert!(validate_draft(&human, &command).is_ok());
+    assert_eq!(command.title.chars().count(), 500);
+    command.title.push('x');
+    assert!(validate_draft(&human, &command).is_err());
+    command.title = " Exact title ".into();
+    command.description.push('x');
+    assert!(validate_draft(&human, &command).is_err());
+    command.description.clear();
+    command.idempotency_key.push('x');
+    assert!(validate_draft(&human, &command).is_err());
+    command.idempotency_key = "exact-key".into();
+    assert!(validate_draft(&human, &command).is_ok());
+    assert_eq!(command.title, " Exact title ");
+    assert!(validate_draft(&actor("central-human", false, vec![]), &command).is_err());
+    assert!(validate_draft(&actor("", true, vec![]), &command).is_err());
+    command.description = "nul\0".into();
+    assert!(validate_draft(&human, &command).is_err());
+}
+
 fn fixture() -> (
     TaskState,
     SdlcConfig,

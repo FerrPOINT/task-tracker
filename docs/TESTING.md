@@ -2,6 +2,23 @@
 
 ## Tracker SDLC Verification
 
+Human creation requires a newly created, separate disposable PostgreSQL database
+with no recorded migrations. The test refuses an already migrated database;
+do not point it at accepted/shared state or reset any runtime volume.
+
+```bash
+TT_SDLC_DRAFT_TEST_DATABASE_URL=postgres://user:password@host/own_clean_draft_test \
+  cargo test -p server --test drafts --locked -- --ignored --nocapture
+```
+
+This applies the final full migration chain, then tests the actual TCP HTTP route:
+strict browser/central-subject/project ownership, no admin/email/local-ID bypass,
+strict DTOs, transactional outbox-failure rollback, exact concurrent replay and
+changed-payload conflict, forced ordinary-number collision retry, deleted-number
+non-reuse, authorization revocation fencing, immutable ledger, lost response and
+Tracker shutdown/restart readback. It creates no PM assignment/run. OpenAPI tests
+assert all seven typed response fields, strict request fields and Draft-only enum.
+
 `cargo test -p app --lib sdlc::tests` checks answer modes/custom text, stable
 option validation, stale fences, machine/human separation, canonical payload
 hashes, JavaScript integer bounds and exact revision readiness.

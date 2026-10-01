@@ -236,6 +236,34 @@ pub struct BindCommand {
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
+pub struct CreateDraftCommand {
+    #[schema(min_length = 1, max_length = 500)]
+    pub title: String,
+    #[schema(max_length = 100000)]
+    pub description: String,
+    #[schema(min_length = 1, max_length = 128)]
+    pub idempotency_key: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+pub enum DraftStage {
+    Draft,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct CreatedDraft {
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub task_id: Uuid,
+    pub root_task_id: Uuid,
+    pub task_key: String,
+    pub owner_subject: String,
+    pub stage: DraftStage,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
 pub struct EvidenceCommand {
     pub fence: MachineFence,
     #[serde(deserialize_with = "safe_version")]
@@ -459,6 +487,12 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn create_draft(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: CreateDraftCommand,
+    ) -> Result<(CreatedDraft, bool), AppError>;
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError>;
     async fn bind(
         &self,

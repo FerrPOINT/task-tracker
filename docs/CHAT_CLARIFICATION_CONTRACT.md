@@ -4,6 +4,69 @@ Implementation contract for the approved PM clarification slice. Runtime accepta
 with Fleet/Workflow and a real PM has not been performed. Rust DTOs and generated
 `openapi/openapi.json` are the schema source of truth.
 
+## Human Draft creation: Fleet saga source
+
+`POST /api/v1/projects/{project_id}/sdlc/drafts` accepts only:
+
+```typescript
+type CreateDraftCommand = {
+  title: string;
+  description: string;
+  idempotency_key: string;
+};
+type CreatedDraft = {
+  tracker_instance_id: string;
+  project_id: string; // UUID
+  task_id: string; // UUID
+  root_task_id: string; // equals task_id for this slice
+  task_key: string; // display key, never cross-service identity
+  owner_subject: string; // exact verified Central Auth subject
+  stage: 'Draft';
+};
+```
+
+All fields are required; unknown request/typed-response fields are rejected.
+Title must be nonblank, at most 500 Unicode characters, without control
+characters. Description may be empty and supports newlines; limit 100000
+characters, no NUL. Idempotency key is 1..128 UTF-8 bytes, no whitespace/control.
+String content is preserved exactly; JSON object member order is insignificant.
+Clients must not submit user/owner/reporter/agent/status/project/root claims.
+
+Forward the original browser Central Auth session bearer, never a Fleet PAT or
+local JWT. The existing shared `allows_service("task-tracker", POST)` policy
+must pass (browser sessions follow shared service policy; no invented browser
+scope claim). Active local identity must already be linked by exact `central_sub`
+and have explicit project owner/member write access. Email, local UUID, global
+admin and the legacy central/public-project bypass confer no access. Operator
+creation owns its own Draft, never another human's. Cookies alone are not bearer
+credentials. Missing/invalid auth is 401; nonhuman or denied access is 403;
+missing project/original issue is 404; unavailable Auth/SDLC is 503; invalid
+command is 422. Instance requires stable `TASKTRACKER_SDLC__INSTANCE_ID` matching
+Fleet's `FLEET_CONTROL_TRACKER__INSTANCE_ID`; auth uses `TT_AUTH__CENTRAL_*`.
+Neither orchestrator nor verifier configuration is required just to create.
+
+201 creates issue + private Draft aggregate/binding + initial status history +
+immutable creation result + `task.created` outbox event in one transaction.
+No assignment, agent binding, PM dispatch or Workflow run is created here.
+Idempotency namespace is `(project_id, central_subject, idempotency_key)`.
+Concurrent identical payloads and retries after lost response/restart return
+200 with the identical original seven-field result. Different payload is 409.
+Replay rechecks live project access, active identity, original issue and exact
+ownership/binding; it never repairs missing ownership or creates a replacement.
+The historical result remains `Draft` after later stage progression; read
+`GET /api/v1/issues/{task_id}/sdlc/context` for current state before dispatch.
+
+Fleet must persist and reuse its creation key/payload until the outcome is
+known, validate instance/project/root/owner on the typed result, then continue
+its own assignment/runtime saga. Ordinary `POST /api/v1/issues` followed by
+binding has no creation idempotency and must not be the saga source. Numbering
+uses ordinary Tracker's maximum suffix (including deleted issues), uniqueness
+constraint and bounded conflict retry, not an independent counter.
+
+This extends the still-pending migration 000034, not a second migration.
+Validate on a fresh database; do not reset, reapply or mutate an accepted shared
+database that has already recorded an earlier version of 000034.
+
 ## Fleet gateway
 
 All paths below use the existing issue UUID under `/api/v1/issues/{id}/sdlc`.
@@ -248,8 +311,9 @@ sessions follow shared service policy; non-session reads always need
 
 ## Persistence, delivery and errors
 
-Idempotency is scoped by task + central subject + key, across all SDLC command
-routes. Keys are 1..128 characters without whitespace/control characters.
+Task-command idempotency is scoped by task + central subject + key; project-scoped
+creation uses its separate namespace above. Keys are 1..128 UTF-8 bytes without
+whitespace/control characters.
 Payload hashing includes the operation and path question/revision identity,
 uses canonical sorted-key compact JSON, and treats selected option IDs as a
 set. Changed payload with the same key returns 409; identical replay returns

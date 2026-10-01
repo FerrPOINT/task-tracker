@@ -1652,7 +1652,7 @@
         "tags": [
           "routes::sdlc"
         ],
-        "operationId": "events",
+        "operationId": "sdlc_events",
         "parameters": [
           {
             "name": "id",
@@ -3338,6 +3338,80 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/drafts": {
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "create_draft",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDraftCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exact durable creation replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedDraft"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Bound Draft created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Valid Central Auth bearer required"
+          },
+          "403": {
+            "description": "Human session and explicit project write access required"
+          },
+          "404": {
+            "description": "Project or original task no longer exists"
+          },
+          "409": {
+            "description": "Idempotency payload or ownership binding conflict"
+          },
+          "422": {
+            "description": "Invalid or unknown command fields"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
           }
         },
         "security": [
@@ -5846,6 +5920,31 @@
           }
         }
       },
+      "CreateDraftCommand": {
+        "type": "object",
+        "required": [
+          "title",
+          "description",
+          "idempotency_key"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateIssueRequest": {
         "type": "object",
         "required": [
@@ -6004,6 +6103,45 @@
           }
         }
       },
+      "CreatedDraft": {
+        "type": "object",
+        "required": [
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "task_key",
+          "owner_subject",
+          "stage"
+        ],
+        "properties": {
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DraftStage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_key": {
+            "type": "string"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "CumulativeFlowPointResponse": {
         "type": "object",
         "required": [
@@ -6155,6 +6293,12 @@
             "type": "string"
           }
         }
+      },
+      "DraftStage": {
+        "type": "string",
+        "enum": [
+          "Draft"
+        ]
       },
       "Evidence": {
         "type": "object",
