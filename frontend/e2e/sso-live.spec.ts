@@ -30,8 +30,9 @@ test('Admin Panel uses the central browser session and global logout', async ({ 
   await signInAt(page, 'http://localhost:7772/users', account)
 
   await expect(page).toHaveURL('http://localhost:7772/users', { timeout: 30_000 })
-  await expect(page.getByRole('banner').getByText(account.email, { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Выйти' }).click()
+  await page.getByRole('button', { name: 'Аккаунт', exact: true }).click()
+  await expect(page.getByRole('menu').getByText(account.email, { exact: true })).toBeVisible()
+  await page.getByRole('menuitem', { name: 'Выйти', exact: true }).click()
   await expect(page).toHaveURL(/localhost:7701\/oidc\/logout/)
   await page.getByRole('button', { name: /выйти|подтвердить/i }).click()
   await expect(page).toHaveURL(/localhost:7772\/login/)
@@ -49,7 +50,8 @@ test('switches from Admin Panel to Task Tracker with one central login', async (
   await expect(page.getByRole('button', { name: 'Открыть список сервисов' })).toBeVisible()
 
   await page.goto('http://localhost:7772/users')
-  await page.getByRole('button', { name: 'Выйти' }).click()
+  await page.getByRole('button', { name: 'Аккаунт', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Выйти', exact: true }).click()
   await page.getByRole('button', { name: /выйти|подтвердить/i }).click()
   await expect(page).toHaveURL(/localhost:7772\/login/)
   await page.goto('http://localhost:7722/')
@@ -597,7 +599,8 @@ test('managed user receives a one-use setup link and loses access when disabled'
     expect(replay.status()).toBe(401)
 
     await page.goto('http://localhost:7772/users')
-    await page.getByRole('button', { name: 'Выйти' }).click()
+    await page.getByRole('button', { name: 'Аккаунт', exact: true }).click()
+    await page.getByRole('menuitem', { name: 'Выйти', exact: true }).click()
     await page.getByRole('button', { name: /выйти|подтвердить/i }).click()
     await signInAt(page, 'http://localhost:7732/', { email, password })
     await expect(page.getByRole('button', { name: 'Открыть список сервисов' })).toBeVisible({
