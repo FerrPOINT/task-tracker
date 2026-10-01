@@ -137,3 +137,5 @@ cd backend
 cargo test -p task-tracker-cli
 cargo test -p app issue_identifier_resolves_key_uuid_and_restore_with_access_check
 ```
+
+Справка показывает имена token env variables, скрывая их значения даже при установленной переменной.

@@ -452,3 +452,17 @@ async fn effective_transport_token_is_redacted() {
         );
     }
 }
+
+#[test]
+fn help_hides_token_environment_value() {
+    let output = Command::new(env!("CARGO_BIN_EXE_task-tracker"))
+        .args(["--help"])
+        .env("TASKTRACKER_TOKEN", "help-only-fixture-token")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("TASKTRACKER_TOKEN"));
+    assert!(!stdout.contains("help-only-fixture-token"));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("help-only-fixture-token"));
+}

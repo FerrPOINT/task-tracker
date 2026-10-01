@@ -18,7 +18,7 @@ cargo build --locked --release --workspace
 ```
 
 - Workspace: 508 passed, 0 failed, 21 ignored. Один из ignored repository tests дополнительно запущен на PostgreSQL и прошёл; оставшиеся ignored persistence tests целиком не запускались.
-- После ревью и исправления redaction CLI повторно проверен: 3 unit, 7 subprocess/HTTP workflows и 1 real API lifecycle, все прошли. Дополнительная регрессия проверяет пробелы в явном token и fallback общего token при пустом явном значении; HTTP credentials и JSON-диагностика сверяются отдельно.
+- После ревью и исправления redaction CLI повторно проверен: 3 unit, 8 subprocess/HTTP workflows и 1 real API lifecycle, все прошли. Дополнительная регрессия проверяет пробелы в явном token и fallback общего token при пустом явном значении; HTTP credentials и JSON-диагностика сверяются отдельно.
 - Application test проверяет UUID/key, access denial, отсутствующие/некорректные ключи и отдельное разрешение удалённой задачи для восстановления.
 - Real API: create/get UUID/get key, list/statuses/types/transitions, stdin комментария, update/unassign, worklog CRUD, link, attachment upload/list/download, transition/delete/trash/restore.
 - HTTP fixtures: фильтры и страницы, разрешение ключа перед дочерним запросом, custom field JSON values, files/stdin, JSON stdout/204, error stderr/status/code/request ID, credential redaction и download no-clobber.
@@ -41,3 +41,5 @@ UI, Docker images и runtime окружения продуктов не изме
 - CI запускает restore regression в `tasktracker_infra_test` на `postgres:17.6-alpine` с явным `TT_TEST_DATABASE_URL`. Fixture сама выбирает именно эту БД и очищает её таблицы. Остальные 20 ignored persistence tests не заявлены как проверенные.
 - Timeout backend job увеличен до 45 минут: полный последовательный workspace suite с cold build почти исчерпывает прежние 30 минут. Ни одна проверка не отключена и команды gates сохранены.
 - Собственные временные Docker/PostgreSQL ресурсы очищаются после проверок; постоянные Compose-стенды и runtime snapshots не используются и не изменяются.
+
+Проверка исходной справки CLI выявила вывод значения token env variable в `--help`. В итоговой ветке `hide_env_values` скрывает значение, сохраняя имя переменной; subprocess regression выполняется с заданным fixture token и проверяет stdout/stderr. После этого изменения повторены CLI tests, Clippy и release build CLI; API/backend fixtures не меняются.

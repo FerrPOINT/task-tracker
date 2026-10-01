@@ -24,7 +24,7 @@ struct Cli {
     api_url: String,
 
     /// Bearer token (or set TASKTRACKER_TOKEN / SDLC_API_TOKEN)
-    #[arg(long, env = "TASKTRACKER_TOKEN")]
+    #[arg(long, env = "TASKTRACKER_TOKEN", hide_env_values = true)]
     token: Option<String>,
 
     /// Output format: json | table | compact
