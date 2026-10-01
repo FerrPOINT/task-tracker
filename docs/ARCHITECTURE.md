@@ -270,3 +270,7 @@ Git hooks через `lefthook`:
 - `AGENTS.md`
 - `docs/DEPLOYMENT.md`
 - `docs/TESTING.md`
+
+## Общая база
+
+Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).

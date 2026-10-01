@@ -44,8 +44,8 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ..
+      dockerfile: task-tracker/backend/Dockerfile
     restart: unless-stopped
     environment:
       # config crate format: TASKTRACKER_ + SECTION__KEY (separator "__", prefix_separator "_")
@@ -88,8 +88,8 @@ services:
 
   frontend:
     build:
-      context: .
-      dockerfile: frontend/Dockerfile
+      context: ..
+      dockerfile: task-tracker/frontend/Dockerfile
     restart: unless-stopped
     environment:
       NODE_ENV: production

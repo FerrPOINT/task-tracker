@@ -1386,3 +1386,7 @@ Soft-delete задачи — перемещение в корзину. Зада�
 - `docs/WORKFLOW.md` — workflow engine.
 - `docs/NOTIFICATIONS.md` — события и шаблоны уведомлений.
 - `docs/PAGINATION.md` — пагинация, bulk operations, rate limiting headers.
+
+## Общая база
+
+Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).

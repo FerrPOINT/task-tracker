@@ -2,16 +2,18 @@ use std::sync::Arc;
 
 use server::run;
 use shared::AppConfig;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer().json())
-        .init();
+    sdlc_telemetry::init_tracing_with_options(
+        "task-tracker",
+        sdlc_telemetry::TracingOptions {
+            json: true,
+            target: true,
+            current_span: true,
+            default_filter: "info",
+        },
+    );
 
     let config = Arc::new(AppConfig::from_env().expect("failed to load config"));
     let (ready_tx, _ready_rx) = tokio::sync::oneshot::channel();
