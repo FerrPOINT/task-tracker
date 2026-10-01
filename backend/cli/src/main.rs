@@ -525,10 +525,14 @@ struct Api {
 impl Api {
     fn new(base: String, token: Option<String>) -> Result<Self> {
         let base_has_version = base.trim_end_matches('/').ends_with("/api/v1");
+        // The shared transport trims explicit tokens and can fall back from an
+        // empty token. Redact both original and effective credential forms.
         let secrets = token
             .clone()
-            .or_else(|| std::env::var("SDLC_API_TOKEN").ok())
             .into_iter()
+            .chain(std::env::var("SDLC_API_TOKEN").ok())
+            .flat_map(|value| [value.trim().to_owned(), value])
+            .filter(|value| !value.is_empty())
             .collect();
         Ok(Self {
             secrets,

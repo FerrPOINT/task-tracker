@@ -406,3 +406,49 @@ async fn parsing_errors_are_json_and_do_not_echo_credentials() {
     assert!(!String::from_utf8_lossy(&output.stderr).contains("sensitive-value"));
     assert!(server.requests().is_empty());
 }
+
+#[tokio::test]
+async fn effective_transport_token_is_redacted() {
+    for (token, expected) in [
+        (" fixture-token ", "fixture-token"),
+        (" ", "shared-fixture-token"),
+    ] {
+        let server = Server::start(vec![(
+            403,
+            json!({"error": {"code": "DENIED", "message": expected}}),
+        )])
+        .await;
+        let url = server.url.clone();
+        let output = tokio::task::spawn_blocking(move || {
+            Command::new(env!("CARGO_BIN_EXE_task-tracker"))
+                .args([
+                    "--api-url",
+                    &url,
+                    "--token",
+                    token,
+                    "--error-format",
+                    "json",
+                    "issue",
+                    "get",
+                    "TT-1",
+                ])
+                .env("SDLC_API_TOKEN", "shared-fixture-token")
+                .env_remove("CICD_PROFILE")
+                .env_remove("CICD_API_TOKEN")
+                .env_remove("TASKTRACKER_TOKEN")
+                .output()
+                .unwrap()
+        })
+        .await
+        .unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+        assert_eq!(error["error"]["status"], 403);
+        assert_eq!(error["error"]["message"], "[REDACTED]");
+        assert_eq!(
+            server.requests()[0].authorization.as_deref(),
+            Some(format!("Bearer {expected}").as_str())
+        );
+    }
+}
