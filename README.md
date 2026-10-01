@@ -122,6 +122,10 @@ default theme. Responsive QA, включая mobile и отсутствие го
 [responsive evidence](docs/assets/screens/2026-10-01-platform-header/README.md).
 Она не заменяет каноническую галерею выше или финальный платформенный release gate.
 
+Глобальный logout-тест в `frontend/e2e/sso-live.spec.ts` проверяет выход из всех
+шести UI, включая меню аккаунта и серверную ссылку Workflow; отзыв браузерной
+сессии не должен отзывать личный API-токен.
+
 ### Проекты (`wide`)
 
 ![Проекты](docs/screenshots/1920x1080/wide.png)
