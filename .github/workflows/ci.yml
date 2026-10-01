@@ -27,7 +27,20 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_USER: tasktracker
+          POSTGRES_DB: tasktracker_infra_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tasktracker -d tasktracker_infra_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: task-tracker/backend
@@ -52,6 +65,10 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace -- --test-threads=1
+      - name: Deleted issue key restore (isolated PostgreSQL)
+        env:
+          TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
+        run: cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
       - name: OpenAPI drift gate
         run: |
           mkdir -p ../openapi
