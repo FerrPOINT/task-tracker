@@ -6,9 +6,13 @@ import { ThemeProvider } from '@sdlc/ui/lib'
 import { LoginPage } from './'
 import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
+import { SsoLogoutPendingError } from '@sdlc/ui/sso'
 
-const beginSso = vi.hoisted(() => vi.fn(async () => {}))
-vi.mock('@sdlc/ui/sso', () => ({ beginSso }))
+const beginSso = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<void>>())
+vi.mock('@sdlc/ui/sso', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@sdlc/ui/sso')>()),
+  beginSso,
+}))
 
 function renderLogin(path = '/login') {
   return render(
@@ -22,7 +26,7 @@ function renderLogin(path = '/login') {
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    beginSso.mockClear()
+    beginSso.mockReset().mockImplementation(() => new Promise<void>(() => {}))
     useAuthStore.getState().logout()
   })
 
@@ -49,6 +53,11 @@ describe('LoginPage', () => {
     expect(beginSso).not.toHaveBeenCalled()
     await userEvent.click(screen.getByRole('button', { name: 'Войти через SDLC' }))
     expect(beginSso).toHaveBeenCalledTimes(1)
+    expect(beginSso).toHaveBeenCalledWith(
+      expect.objectContaining({ clientId: 'task-tracker' }),
+      '/',
+      { interactive: true },
+    )
     expect(screen.getByRole('button', { name: 'Войти через SDLC' })).toBeDisabled()
   })
 
@@ -71,5 +80,33 @@ describe('LoginPage', () => {
     expect(screen.getByRole('heading', { name: 'Sign in to Task Tracker' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in with SDLC' })).toBeEnabled()
     expect(screen.getByText(/two-factor authentication is disabled/i)).toBeInTheDocument()
+  })
+
+  it.each([new SsoLogoutPendingError(), new DOMException('Cancelled', 'AbortError')])(
+    'allows explicit retry after interrupted automatic navigation: %s',
+    async (error) => {
+      beginSso.mockRejectedValueOnce(error)
+      renderLogin()
+      const button = screen.getByRole('button', { name: 'Войти через SDLC' })
+      await waitFor(() => expect(button).toBeEnabled())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+      await userEvent.click(button)
+      expect(beginSso).toHaveBeenLastCalledWith(
+        expect.objectContaining({ clientId: 'task-tracker' }),
+        '/',
+        { interactive: true },
+      )
+      expect(button).toBeDisabled()
+    },
+  )
+
+  it('releases the button when the legacy navigation promise completes', async () => {
+    beginSso.mockResolvedValueOnce(undefined)
+    renderLogin()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Войти через SDLC' })).toBeEnabled(),
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
