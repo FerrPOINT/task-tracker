@@ -1,0 +1,510 @@
+{
+  "mock_api": false,
+  "retries": 0,
+  "cases": [
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 320
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 375
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 767
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 768
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 1023
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 1024
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 1279
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 1280
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 1920
+    },
+    {
+      "route": "dashboard",
+      "theme": "dark",
+      "width": 2560
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 320
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 375
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 767
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 768
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 1023
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 1024
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 1279
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 1280
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 1920
+    },
+    {
+      "route": "board",
+      "theme": "dark",
+      "width": 2560
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 320
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 375
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 767
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 768
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 1023
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 1024
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 1279
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 1280
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 1920
+    },
+    {
+      "route": "create",
+      "theme": "dark",
+      "width": 2560
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 320
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 375
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 767
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 768
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 1023
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 1024
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 1279
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 1280
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 1440
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 1920
+    },
+    {
+      "route": "dashboard",
+      "theme": "gray",
+      "width": 2560
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 320
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 375
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 767
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 768
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 1023
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 1024
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 1279
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 1280
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 1440
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 1920
+    },
+    {
+      "route": "board",
+      "theme": "gray",
+      "width": 2560
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 320
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 375
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 767
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 768
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 1023
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 1024
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 1279
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 1280
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 1440
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 1920
+    },
+    {
+      "route": "create",
+      "theme": "gray",
+      "width": 2560
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 320
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 375
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 767
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 768
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 1023
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 1024
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 1279
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 1280
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 1920
+    },
+    {
+      "route": "dashboard",
+      "theme": "light",
+      "width": 2560
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 320
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 375
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 767
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 768
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 1023
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 1024
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 1279
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 1280
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 1920
+    },
+    {
+      "route": "board",
+      "theme": "light",
+      "width": 2560
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 320
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 375
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 767
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 768
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 1023
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 1024
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 1279
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 1280
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 1920
+    },
+    {
+      "route": "create",
+      "theme": "light",
+      "width": 2560
+    }
+  ],
+  "runtime_errors": [],
+  "interactions": [
+    "desktop project picker/create",
+    "mobile contextual create",
+    "service keyboard/touch/outside/focus",
+    "notification navigation",
+    "profile",
+    "central logout/re-entry"
+  ]
+}

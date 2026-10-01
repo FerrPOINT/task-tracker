@@ -118,6 +118,10 @@ default theme. Responsive QA, включая mobile и отсутствие го
 переполнения, ведётся отдельно; маршруты, viewport и PNG-размеры перечислены в
 [screenshot manifest](docs/screenshots/manifest.md).
 
+Отдельная приёмка общего Header на production-образе с настоящим SSO/API:
+[responsive evidence](docs/assets/screens/2026-10-01-platform-header/README.md).
+Она не заменяет каноническую галерею выше или финальный платформенный release gate.
+
 ### Проекты (`wide`)
 
 ![Проекты](docs/screenshots/1920x1080/wide.png)

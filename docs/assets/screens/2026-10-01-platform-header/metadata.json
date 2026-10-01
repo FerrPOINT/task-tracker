@@ -1,0 +1,42 @@
+{
+  "captured_at": "2026-10-01T03:25:49.843Z",
+  "compose_project": "sdlc-clean-install-qa",
+  "base_ref": "f7726b150b1d04c3ba2f96dc4900e544d8b22432",
+  "source_parent": "b3c2a84b615ae072d6b77c8a6d1b09ce5f8fe6aa",
+  "runtime_image": "sha256:2979c49d2c02711c7c140d2e1e327757911c7064fde7e9d0a8c0bb58bd183072",
+  "config_hash": "e7ccc4841fa99a7cc906683babfebb70b2c251cd76904f3b3936e71ea3b9bf2a",
+  "production_assets": {
+    "index-DTMTLv86.js": "6ac5a781fb80d4e2e23ded41f73e622f1e166f7201672e5f146faa7733f25b26",
+    "index-3ga7kLwQ.css": "532c32e71f741f08338db3c04bdfc33415de91f657a35675bd57f3e6e7106696"
+  },
+  "source_sha256": {
+    "frontend/src/widgets/app-shell.tsx": "3cb7992c99f39100eda22b661ededc272df908d615031d4073477a306a6ece1e",
+    "frontend/pnpm-lock.yaml": "64b704283d36be13273fece12249cac34e79852b211d684b00f33056b223cd55",
+    "frontend/src/index.css": "8c72ddf8501bae20aba24164c381560fe4d03c528b788eeea3ca226f8f57e643",
+    "frontend/e2e/task-header-live.spec.ts": "57def901c18e9580a33ea3f567cd59c271588d6d69d1b3e4ccc78b19c692a885"
+  },
+  "installed_ui_header_sha256": "1558b4073dd66ec28adee7007c3bacd52d98f9698b28abb9e19a63a8932e0054",
+  "screenshots_sha256": {
+    "board-dark-375.png": "c82e9f91db580f04a919af14fd005b1b8e4b53d8165f00f16fc5219fbab77505",
+    "board-gray-1920.png": "0db95303d27b9df5b4c20a731ec8558aa5376986c7e18a26a7548fbf8be7c9d2",
+    "board-light-2560.png": "a0ebe71f2be593475d5d91223b5af576c4c7b820626bb65e8fe23cc458765912",
+    "services-light-375.png": "345ad13f0a588661293c2d549d626eb7dfc00771cd4a939660d79337261c0863"
+  },
+  "chromium": "153.0.8010.12",
+  "playwright": "1.63.0",
+  "axe": "4.13.0",
+  "live_gate": {
+    "passed": 2,
+    "failed": 0,
+    "retries": 0,
+    "skipped": 0,
+    "mock_api": false,
+    "header_combinations": 99,
+    "route_combinations": 147
+  },
+  "limitations": [
+    "Windows checkout fingerprints include original line endings.",
+    "Source parent and file fingerprints are not OCI revision attestation.",
+    "Working sdlc-demo rollout and full cross-app release gate remain open."
+  ]
+}
