@@ -26,7 +26,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { Button, PageFrame, PlatformMark } from '@sdlc/ui/ui'
 import { ThemeToggle } from '@sdlc/ui/ui'
-import { ServiceSwitcher } from '@sdlc/ui/ui'
+import { PlatformHeader } from '@sdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
   useCurrentUser,
@@ -131,8 +131,7 @@ export function AppShell() {
   const unreadCount = notificationList?.unread_count ?? 0
   const currentProject = projects.find((project) => project.key === projectKey)
   const pageLayout =
-    location.pathname === '/issues/create' ||
-    location.pathname.endsWith('/settings/custom-fields')
+    location.pathname === '/issues/create' || location.pathname.endsWith('/settings/custom-fields')
       ? 'reading'
       : /^\/issues\/[^/]+$/.test(location.pathname)
         ? 'detail-with-aside'
@@ -181,61 +180,56 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-text-primary">
-      <header className="sticky top-0 z-50 flex h-[var(--shell-header-height)] items-center justify-between border-b border-border bg-surface px-2 sm:px-3 md:px-4">
-        <div className="flex min-w-0 items-center gap-1 sm:gap-3 md:gap-4">
-          <DialogPrimitive.Root open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-            <DialogPrimitive.Trigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 md:hidden"
-                aria-label={t('navigation.openMenu')}
-              >
-                <Menu className="h-[18px] w-[18px]" aria-hidden="true" />
-              </Button>
-            </DialogPrimitive.Trigger>
-            <DialogPrimitive.Portal>
-              <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/50 md:hidden" />
-              <DialogPrimitive.Content
-                aria-describedby={undefined}
-                className="fixed inset-y-0 left-0 z-[61] h-dvh w-[calc(100vw-2rem)] max-w-72 overflow-y-auto border-r border-border bg-surface p-3 shadow-lg focus:outline-none md:hidden"
-              >
-                <div className="mb-3 flex min-h-11 items-center justify-between gap-2 border-b border-border pb-2">
-                  <DialogPrimitive.Title className="text-sm font-semibold">
-                    {t('app.name')}
-                  </DialogPrimitive.Title>
-                  <DialogPrimitive.Close asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-11 w-11"
-                      aria-label={t('navigation.closeMenu')}
-                    >
-                      <X className="h-4 w-4" aria-hidden="true" />
-                    </Button>
-                  </DialogPrimitive.Close>
-                </div>
-                <nav aria-label={t('navigation.mainNav')}>
-                  {navItems.map((item) => (
-                    <SidebarLink
-                      key={item.to}
-                      to={item.to}
-                      icon={item.icon}
-                      label={t(item.labelKey)}
-                      active={isActive(item.to)}
+      <PlatformHeader
+        currentServiceKey="task-tracker"
+        leading={
+          <>
+            <DialogPrimitive.Root open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <DialogPrimitive.Trigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-11 w-11 md:hidden"
+                  aria-label={t('navigation.openMenu')}
+                >
+                  <Menu className="h-[18px] w-[18px]" aria-hidden="true" />
+                </Button>
+              </DialogPrimitive.Trigger>
+              <DialogPrimitive.Portal>
+                <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/50 md:hidden" />
+                <DialogPrimitive.Content
+                  aria-describedby={undefined}
+                  className="fixed inset-y-0 left-0 z-[61] h-dvh w-[calc(100vw-2rem)] max-w-72 overflow-y-auto border-r border-border bg-surface p-3 shadow-lg focus:outline-none md:hidden"
+                >
+                  <div className="mb-3 flex min-h-11 items-center justify-between gap-2 border-b border-border pb-2">
+                    <DialogPrimitive.Title className="text-sm font-semibold">
+                      {t('app.name')}
+                    </DialogPrimitive.Title>
+                    <DialogPrimitive.Close asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11"
+                        aria-label={t('navigation.closeMenu')}
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </DialogPrimitive.Close>
+                  </div>
+                  <Button asChild className="mb-3 min-h-11 w-full gap-2">
+                    <Link
+                      to={
+                        projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'
+                      }
                       onClick={closeMobileMenu}
-                    />
-                  ))}
-                </nav>
-                {projectKey && (
-                  <nav
-                    aria-label={t('navigation.projectNav')}
-                    className="mt-4 border-t border-border pt-3"
-                  >
-                    <div className="mb-1 truncate px-3 text-xs font-medium uppercase text-text-muted">
-                      {currentProject?.name ?? projectKey}
-                    </div>
-                    {projectItems.map((item) => (
+                      aria-label={t('navigation.create')}
+                    >
+                      <Plus className="h-4 w-4" aria-hidden="true" />
+                      {t('navigation.create')}
+                    </Link>
+                  </Button>
+                  <nav aria-label={t('navigation.mainNav')}>
+                    {navItems.map((item) => (
                       <SidebarLink
                         key={item.to}
                         to={item.to}
@@ -246,23 +240,46 @@ export function AppShell() {
                       />
                     ))}
                   </nav>
-                )}
-              </DialogPrimitive.Content>
-            </DialogPrimitive.Portal>
-          </DialogPrimitive.Root>
-          <Link
-            to="/"
-            className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus min-[360px]:flex"
-            aria-label={t('app.name')}
-          >
-            <PlatformMark size="sm" withName={false} />
-            <span className="hidden sm:inline">{t('app.name')}</span>
-          </Link>
+                  {projectKey && (
+                    <nav
+                      aria-label={t('navigation.projectNav')}
+                      className="mt-4 border-t border-border pt-3"
+                    >
+                      <div className="mb-1 truncate px-3 text-xs font-medium uppercase text-text-muted">
+                        {currentProject?.name ?? projectKey}
+                      </div>
+                      {projectItems.map((item) => (
+                        <SidebarLink
+                          key={item.to}
+                          to={item.to}
+                          icon={item.icon}
+                          label={t(item.labelKey)}
+                          active={isActive(item.to)}
+                          onClick={closeMobileMenu}
+                        />
+                      ))}
+                    </nav>
+                  )}
+                </DialogPrimitive.Content>
+              </DialogPrimitive.Portal>
+            </DialogPrimitive.Root>
+            <Link
+              to="/"
+              className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus min-[360px]:flex"
+              aria-label={t('app.name')}
+            >
+              <PlatformMark size="sm" withName={false} />
+            </Link>
+          </>
+        }
+        context={
           <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex lg:max-w-52"
+                aria-label={t('navigation.projects')}
+                title={currentProject?.name ?? t('navigation.projects')}
+                className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
               >
                 <span className="truncate">{currentProject?.name ?? t('navigation.projects')}</span>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0" />
@@ -288,167 +305,160 @@ export function AppShell() {
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Link
-            to="/search"
-            aria-label={t('navigation.search')}
-            className="hidden min-h-10 items-center gap-2 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary sm:flex"
-          >
-            <Search className="h-4 w-4" />
-            <span className="hidden lg:inline">{t('navigation.search')}</span>
-          </Link>
-        </div>
-        <div className="flex shrink-0 items-center gap-0.5 sm:gap-2 md:gap-3">
-          <Button
-            asChild
-            size="sm"
-            className="min-h-11 min-w-11 gap-1 px-2.5 text-xs md:min-h-10 md:min-w-0"
-          >
-            <Link
-              to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
-              aria-label={t('navigation.create')}
+        }
+        actions={
+          <>
+            <Button
+              asChild
+              size="sm"
+              className="hidden min-h-10 min-w-10 gap-1 px-2.5 text-xs md:inline-flex"
             >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              <span className="hidden lg:inline">{t('navigation.create')}</span>
-            </Link>
-          </Button>
-          <div className="[&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-10 md:[&_button]:min-w-10">
-            <ServiceSwitcher currentKey="task-tracker" />
-          </div>
-          <div className="[&_button]:min-h-11 [&_button]:min-w-11 md:[&_button]:min-h-10 md:[&_button]:min-w-10">
-            <ThemeToggle />
-          </div>
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="relative h-11 w-11 md:h-10 md:w-10"
-                aria-label={t('notifications.open')}
-                data-testid="notification-trigger"
+              <Link
+                to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
+                aria-label={t('navigation.create')}
               >
-                <Bell className="h-[18px] w-[18px]" />
-                {unreadCount > 0 && (
-                  <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
-                    {unreadCount}
-                  </span>
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
-              <DropdownMenuPrimitive.Group className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                <DropdownMenuPrimitive.Label className="text-sm font-semibold">
-                  {t('notifications.title')}
-                </DropdownMenuPrimitive.Label>
-                <DropdownMenuItem
-                  className="min-h-11 px-2 text-xs"
-                  onSelect={() => markAllNotificationsRead.mutate()}
-                  disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span className="hidden xl:inline">{t('navigation.create')}</span>
+              </Link>
+            </Button>
+            <ThemeToggle />
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-11 w-11 md:h-10 md:w-10"
+                  aria-label={t('notifications.open')}
+                  data-testid="notification-trigger"
                 >
-                  {t('notifications.markAllRead')}
-                </DropdownMenuItem>
-              </DropdownMenuPrimitive.Group>
-              <DropdownMenuPrimitive.Group className="max-h-96 overflow-y-auto p-1">
-                {notifications.slice(0, 10).map((notification) => {
-                  const content = (
-                    <div className="min-w-0">
-                      <div className="line-clamp-2 break-words font-medium">
-                        {notification.title}
-                      </div>
-                      {notification.body && (
-                        <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
-                          {notification.body}
+                  <Bell className="h-[18px] w-[18px]" />
+                  {unreadCount > 0 && (
+                    <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
+                      {unreadCount}
+                    </span>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
+                <DropdownMenuPrimitive.Group className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                  <DropdownMenuPrimitive.Label className="text-sm font-semibold">
+                    {t('notifications.title')}
+                  </DropdownMenuPrimitive.Label>
+                  <DropdownMenuItem
+                    className="min-h-11 px-2 text-xs"
+                    onSelect={() => markAllNotificationsRead.mutate()}
+                    disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
+                  >
+                    {t('notifications.markAllRead')}
+                  </DropdownMenuItem>
+                </DropdownMenuPrimitive.Group>
+                <DropdownMenuPrimitive.Group className="max-h-96 overflow-y-auto p-1">
+                  {notifications.slice(0, 10).map((notification) => {
+                    const content = (
+                      <div className="min-w-0">
+                        <div className="line-clamp-2 break-words font-medium">
+                          {notification.title}
                         </div>
-                      )}
-                    </div>
-                  )
-                  return (
-                    <DropdownMenuPrimitive.Group
-                      key={notification.id}
-                      className="flex items-start gap-1"
-                    >
-                      {notification.action_url ? (
-                        <DropdownMenuItem
-                          asChild
-                          className="min-h-11 min-w-0 flex-1 items-start p-2"
-                        >
-                          <Link
-                            to={notification.action_url}
-                            onClick={() => {
+                        {notification.body && (
+                          <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+                            {notification.body}
+                          </div>
+                        )}
+                      </div>
+                    )
+                    return (
+                      <DropdownMenuPrimitive.Group
+                        key={notification.id}
+                        className="flex items-start gap-1"
+                      >
+                        {notification.action_url ? (
+                          <DropdownMenuItem
+                            asChild
+                            className="min-h-11 min-w-0 flex-1 items-start p-2"
+                          >
+                            <Link
+                              to={notification.action_url}
+                              onClick={() => {
+                                if (!notification.is_read)
+                                  markNotificationRead.mutate(notification.id)
+                              }}
+                            >
+                              {content}
+                            </Link>
+                          </DropdownMenuItem>
+                        ) : (
+                          <DropdownMenuItem
+                            className="min-h-11 min-w-0 flex-1 items-start p-2"
+                            onSelect={() => {
                               if (!notification.is_read)
                                 markNotificationRead.mutate(notification.id)
                             }}
                           >
                             {content}
-                          </Link>
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem
-                          className="min-h-11 min-w-0 flex-1 items-start p-2"
-                          onSelect={() => {
-                            if (!notification.is_read) markNotificationRead.mutate(notification.id)
-                          }}
-                        >
-                          {content}
-                        </DropdownMenuItem>
-                      )}
-                      {!notification.is_read && (
-                        <DropdownMenuItem
-                          className="min-h-11 w-11 shrink-0 justify-center p-0"
-                          aria-label={`${t('notifications.markRead')}: ${notification.title}`}
-                          title={t('notifications.markRead')}
-                          onSelect={() => markNotificationRead.mutate(notification.id)}
-                        >
-                          <Check className="h-4 w-4" aria-hidden="true" />
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuPrimitive.Group>
-                  )
-                })}
-                {notifications.length === 0 && (
-                  <DropdownMenuPrimitive.Label className="px-3 py-6 text-center text-sm text-text-muted">
-                    {t('notifications.empty')}
-                  </DropdownMenuPrimitive.Label>
+                          </DropdownMenuItem>
+                        )}
+                        {!notification.is_read && (
+                          <DropdownMenuItem
+                            className="min-h-11 w-11 shrink-0 justify-center p-0"
+                            aria-label={`${t('notifications.markRead')}: ${notification.title}`}
+                            title={t('notifications.markRead')}
+                            onSelect={() => markNotificationRead.mutate(notification.id)}
+                          >
+                            <Check className="h-4 w-4" aria-hidden="true" />
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuPrimitive.Group>
+                    )
+                  })}
+                  {notifications.length === 0 && (
+                    <DropdownMenuPrimitive.Label className="px-3 py-6 text-center text-sm text-text-muted">
+                      {t('notifications.empty')}
+                    </DropdownMenuPrimitive.Label>
+                  )}
+                </DropdownMenuPrimitive.Group>
+                <DropdownMenuPrimitive.Separator className="h-px bg-border" />
+                <DropdownMenuItem asChild className="m-1 justify-center text-accent">
+                  <Link to="/notifications">{t('notifications.viewAll')}</Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-11 w-11 md:h-10 md:w-10"
+                  aria-label={t('navigation.account')}
+                >
+                  <User className="h-[18px] w-[18px]" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <div className="break-words px-2 py-1.5 text-sm font-medium text-text-primary">
+                  {user?.display_name ?? user?.email ?? t('navigation.user')}
+                </div>
+                {user?.display_name && user.display_name !== user.email && (
+                  <div className="break-words px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
                 )}
-              </DropdownMenuPrimitive.Group>
-              <DropdownMenuPrimitive.Separator className="h-px bg-border" />
-              <DropdownMenuItem asChild className="m-1 justify-center text-accent">
-                <Link to="/notifications">{t('notifications.viewAll')}</Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 md:h-10 md:w-10"
-                aria-label={t('navigation.account')}
-              >
-                <User className="h-[18px] w-[18px]" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <div className="px-2 py-1.5 text-sm font-medium text-text-primary">
-                {user?.display_name ?? user?.email ?? t('navigation.user')}
-              </div>
-              <div className="px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
-              <DropdownMenuItem asChild>
-                <Link to="/admin" className="gap-2 text-text-secondary">
-                  <ShieldCheck className="h-4 w-4" />
-                  <span>{t('navigation.admin')}</span>
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => logout.mutate()}
-                className="gap-2 text-text-secondary"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>{t('navigation.logout')}</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
+                <DropdownMenuItem asChild>
+                  <Link to="/admin" className="gap-2 text-text-secondary">
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>{t('navigation.admin')}</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => logout.mutate()}
+                  disabled={logout.isPending}
+                  className="gap-2 text-text-secondary"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>{t('navigation.logout')}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        }
+      />
 
       <div className="flex min-h-[calc(100dvh-var(--shell-header-height))]">
         <aside

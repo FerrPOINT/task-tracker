@@ -14,6 +14,7 @@ export default defineConfig({
           '**/functional-live.spec.ts',
           '**/visual-live.spec.ts',
           '**/task-pages-live.spec.ts',
+          '**/task-header-live.spec.ts',
           '**/wiki-pages-live.spec.ts',
           '**/fleet-pages-live.spec.ts',
           '**/cicd-pages-live.spec.ts',

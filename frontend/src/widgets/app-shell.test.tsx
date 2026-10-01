@@ -58,6 +58,91 @@ describe('AppShell notifications', () => {
     window.localStorage.removeItem('tt-sidebar-collapsed')
   })
 
+  it('uses the common header slot order and one service switcher without duplicate search', () => {
+    mockHooks([])
+    const { container } = render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    const header = screen.getByRole('banner')
+    expect(container.querySelectorAll('[data-platform-header]')).toHaveLength(1)
+    expect(
+      [...header.querySelectorAll('[data-platform-header-slot]')].map((slot) =>
+        slot.getAttribute('data-platform-header-slot'),
+      ),
+    ).toEqual(['leading', 'services', 'context', 'actions'])
+    expect(within(header).getAllByRole('button', { name: /Открыть список сервисов/ })).toHaveLength(
+      1,
+    )
+    expect(within(header).queryByRole('link', { name: 'Поиск' })).not.toBeInTheDocument()
+    expect(
+      within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('link', {
+        name: 'Поиск',
+      }),
+    ).toHaveAttribute('href', '/search')
+  })
+
+  it('keeps contextual task creation reachable in the mobile drawer and closes it on navigation', async () => {
+    mockHooks([])
+    const user = userEvent.setup()
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/XP/board']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Открыть меню' })
+    await user.click(trigger)
+    const dialog = await screen.findByRole('dialog')
+    const create = within(dialog).getByRole('link', { name: 'Создать' })
+    expect(create).toHaveAttribute('href', '/issues/create?project_key=XP')
+    await user.click(create)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('keeps a named project picker and preserves the full long project name', () => {
+    mockHooks([])
+    const name = 'Очень длинное название проекта без потери выбранного контекста'
+    useProjects.mockReturnValue({ data: [{ key: 'XP', name }] })
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/XP/board']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    const picker = within(screen.getByRole('banner')).getByRole('button', { name: 'Проекты' })
+    expect(picker).toHaveAttribute('title', name)
+    expect(picker).toHaveTextContent(name)
+  })
+
+  it('does not duplicate email in the account menu and blocks repeated pending logout', async () => {
+    mockHooks([])
+    const mutate = vi.fn()
+    useCurrentUser.mockReturnValue({ data: { email: 'user@example.test', display_name: null } })
+    useLogout.mockReturnValue({ mutate, isPending: true })
+    const user = userEvent.setup()
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    await user.click(screen.getByRole('button', { name: 'Аккаунт' }))
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getAllByText('user@example.test')).toHaveLength(1)
+    const logout = within(menu).getByRole('menuitem', { name: 'Выйти' })
+    expect(logout).toHaveAttribute('aria-disabled', 'true')
+    await user.click(logout)
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
   it('keeps global navigation available on desktop outside a project', () => {
     mockHooks([])
     render(
