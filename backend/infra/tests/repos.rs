@@ -130,6 +130,54 @@ async fn user_repo_crud() {
 }
 
 #[tokio::test]
+#[ignore = "requires isolated PostgreSQL test database"]
+async fn deleted_issue_key_can_be_resolved_for_restore_only() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let issue = Issue::create(
+        &project,
+        1,
+        IssueType::Task,
+        status,
+        "Restore fixture",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&issue).await.unwrap();
+    assert_eq!(
+        repos
+            .issues
+            .get_by_key_include_deleted(&issue.key)
+            .await
+            .unwrap()
+            .id,
+        issue.id
+    );
+    repos.issues.delete(issue.id).await.unwrap();
+    assert!(repos.issues.get_by_key(&issue.key).await.is_err());
+    assert_eq!(
+        repos
+            .issues
+            .get_by_key_include_deleted(&issue.key)
+            .await
+            .unwrap()
+            .id,
+        issue.id
+    );
+    repos.issues.restore(issue.id).await.unwrap();
+    assert_eq!(
+        repos.issues.get_by_key(&issue.key).await.unwrap().id,
+        issue.id
+    );
+}
+
+#[tokio::test]
 #[ignore = "requires docker test stack"]
 async fn project_repo_queries() {
     let repos = setup().await;

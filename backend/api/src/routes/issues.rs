@@ -84,7 +84,7 @@ pub async fn create_issue(
 #[utoipa::path(
     patch,
     path = "/api/v1/issues/{id}",
-    params(("id" = String, Path, description = "Issue id")),
+    params(("id" = String, Path, description = "Issue UUID or key (PROJ-1)")),
     request_body = UpdateIssueRequest,
     responses((status = 200, body = IssueResponse)),
     security(("bearer" = []))
@@ -98,11 +98,6 @@ pub async fn update_issue(
     let actor_id = shared::UserId::from_uuid(
         uuid::Uuid::parse_str(&claims.sub).map_err(|_| AppError::invalid_input("invalid token"))?,
     );
-    let issue_id = id
-        .parse()
-        .ok()
-        .map(shared::IssueId::from_uuid)
-        .ok_or(AppError::invalid_input("id"))?;
     let cmd = UpdateIssueCommand {
         summary: req.summary,
         description: req.description,
@@ -141,6 +136,7 @@ pub async fn update_issue(
             .map(|value| value.map(shared::ProjectVersionId::from_uuid)),
         actor_id,
     };
+    let issue_id = ctx.services.issue.resolve_identifier(&id, actor_id).await?;
     let i = ctx.services.issue.update(issue_id, cmd, actor_id).await?;
     Ok(Json(map_issue(i)))
 }
@@ -161,7 +157,7 @@ fn parse_optional_uuid(
 #[utoipa::path(
     get,
     path = "/api/v1/issues/{id}",
-    params(("id" = String, Path, description = "Issue id")),
+    params(("id" = String, Path, description = "Issue UUID or key (PROJ-1)")),
     responses((status = 200, body = IssueResponse)),
     security(("bearer" = []))
 )]
@@ -170,11 +166,17 @@ pub async fn get_issue(
     Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<Json<IssueResponse>, AppError> {
-    let issue_id = id
-        .parse()
-        .ok()
-        .map(shared::IssueId::from_uuid)
-        .ok_or(AppError::invalid_input("id"))?;
+    let issue_id = ctx
+        .services
+        .issue
+        .resolve_identifier(
+            &id,
+            claims
+                .sub
+                .parse::<UserId>()
+                .map_err(|_| AppError::invalid_input("invalid user id"))?,
+        )
+        .await?;
     let requester = claims
         .sub
         .parse::<UserId>()
@@ -263,9 +265,17 @@ pub async fn delete_issue(
     Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, shared::AppError> {
-    let issue_id = id
-        .parse::<IssueId>()
-        .map_err(|_| shared::AppError::invalid_input("id"))?;
+    let issue_id = ctx
+        .services
+        .issue
+        .resolve_identifier(
+            &id,
+            claims
+                .sub
+                .parse::<UserId>()
+                .map_err(|_| AppError::invalid_input("invalid user id"))?,
+        )
+        .await?;
     let actor_id = claims
         .sub
         .parse::<UserId>()
@@ -277,7 +287,7 @@ pub async fn delete_issue(
 #[utoipa::path(
     post,
     path = "/api/v1/issues/{id}/restore",
-    params(("id" = String, Path, description = "Issue id")),
+    params(("id" = String, Path, description = "Issue UUID or key (PROJ-1)")),
     responses((status = 200, body = IssueResponse), (status = 404)),
     security(("bearer" = []))
 )]
@@ -286,9 +296,17 @@ pub async fn restore_issue(
     Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
 ) -> Result<Json<IssueResponse>, AppError> {
-    let issue_id = id
-        .parse::<IssueId>()
-        .map_err(|_| shared::AppError::invalid_input("id"))?;
+    let issue_id = ctx
+        .services
+        .issue
+        .resolve_restore_identifier(
+            &id,
+            claims
+                .sub
+                .parse::<UserId>()
+                .map_err(|_| AppError::invalid_input("invalid user id"))?,
+        )
+        .await?;
     let actor_id = claims
         .sub
         .parse::<UserId>()

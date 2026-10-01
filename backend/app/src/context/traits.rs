@@ -141,6 +141,26 @@ pub trait ProjectService: Send + Sync {
 
 #[async_trait]
 pub trait IssueService: Send + Sync {
+    async fn resolve_restore_identifier(
+        &self,
+        identifier: &str,
+        _requester: UserId,
+    ) -> Result<IssueId, AppError> {
+        identifier
+            .parse()
+            .map_err(|_| AppError::invalid_input("invalid issue identifier"))
+    }
+    async fn resolve_identifier(
+        &self,
+        identifier: &str,
+        requester: UserId,
+    ) -> Result<IssueId, AppError> {
+        let id = identifier
+            .parse::<IssueId>()
+            .map_err(|_| AppError::invalid_input("invalid issue identifier"))?;
+        self.get_by_id(id, requester).await?;
+        Ok(id)
+    }
     async fn create(
         &self,
         cmd: CreateIssueCommand,
