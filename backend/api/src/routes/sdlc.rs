@@ -49,6 +49,7 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route("/sdlc/project-access", get(project_access))
         .route("/projects/{project_id}/sdlc/drafts", post(create_draft))
         .route("/issues/{id}/sdlc/context", get(context))
+        .route("/issues/{id}/sdlc/pm-draft-input", get(pm_draft_input))
         .route("/issues/{id}/sdlc/binding", post(bind))
         .route("/issues/{id}/sdlc/assignment", post(assign))
         .route(
@@ -135,6 +136,26 @@ pub async fn context(
     Path(id): Path<Uuid>,
 ) -> Result<Json<SdlcContext>, AppError> {
     Ok(Json(service(&ctx)?.context(id, &actor).await?))
+}
+
+#[utoipa::path(
+    get, path="/api/v1/issues/{id}/sdlc/pm-draft-input", tag="sdlc",
+    params(("id"=Uuid, Path)),
+    responses(
+        (status=200, body=PmDraftInputResponse),
+        (status=401, description="Verified Central Auth bearer required"),
+        (status=403, description="Service read access and active explicit project access required"),
+        (status=404, description="Issue or SDLC binding not found"),
+        (status=409, description="Original immutable creation input unavailable or inconsistent"),
+        (status=503, description="SDLC or Central Auth unavailable")
+    ), security(("bearer"=[]))
+)]
+pub async fn pm_draft_input(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<PmDraftInputResponse>, AppError> {
+    Ok(Json(service(&ctx)?.pm_draft_input(id, &actor).await?))
 }
 
 #[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/binding", params(("id"=Uuid, Path)), request_body=BindCommand, responses((status=200,body=SdlcContext)), security(("bearer"=[])))]

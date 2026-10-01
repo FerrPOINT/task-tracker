@@ -1,7 +1,10 @@
 # Tracker Clarification Verification
 
-Date: 1 October 2026. Scope: Tracker backend/tests/docs only. No sibling repo
-or production UI edits. No push, merge, deployment or real PM acceptance.
+Historical baseline date: 1 October 2026. Later sections record completed
+sidecar/follow-up checks, including the 2 October input snapshot release.
+Scope is Tracker only; no sibling repo or production UI edits, merge, deployment
+or real PM acceptance. Earlier baseline warnings/skips are historical, not the
+current follow-up gate status.
 
 The original clarification report below records its earlier snapshot. The
 Human Draft Sidecar section records the final creation-sidecar verification.
@@ -188,3 +191,56 @@ Own disposable PG16/PG17 databases and roles from the preceding scope QA were
 cleaned; no container was stopped. Base PR #126 is a dependency for live PM
 delegation; dispatch/sagaAuth and real verifier/Workflow acceptance remain
 external work. Publishing a Draft PR does not complete the full integration plan.
+
+## Immutable Input Snapshot Follow-Up (2 October 2026)
+
+Baseline: `7c98010`, preserving Draft creation `24f0f1e`. Scope is original
+creation input storage/readback only, on the same Draft PR #114. No new migration
+file: four all-null-or-complete snapshot columns and unique task/snapshot indexes
+extend pending 000034. No accepted/shared migration was reapplied or reset.
+
+Implemented: `GET /api/v1/issues/{id}/sdlc/pm-draft-input` returns strict
+`PmDraftInputResponse`/`PmDraftInput`, exactly the agreed binding plus snapshot
+ref, original title/description and separate canonical exact UTF-8 SHA-256.
+It reuses context resource ACL/locks, rechecks hash/binding, and fails closed
+without historical input. CreatedDraft, task.created, machine assignment/scopes
+and owner-only business confirmation remain unchanged.
+
+Completed focused and release gates:
+
+- PASS: Rust 1.88 fmt/check and strict all-targets/all-features Clippy, locked;
+  stable Rust 1.98 strict Clippy with the same flags. No lint suppression.
+- PASS: exact UTF-8/CRLF/Unicode-composition hash vectors, checked independently
+  against Node SHA-256. JSON escaping/order is canonical; string content is exact.
+- PASS: final clean PostgreSQL 17.11 real TCP HTTP Draft/input compound suite,
+  6.08 seconds, with fresh full migrations and synthetic Central Auth fixture.
+  Covers twelve concurrent creates/readbacks, replay/restart, actual HTTP issue
+  edit, original snapshot/hash stability, partial/immutable ledger checks,
+  historical absent/all-null inputs, context ACL parity, project/account
+  revocation, foreign project, valid local HS256 rejection, service-read PAT,
+  operator read without owner confirmation, and Auth outage. Curl without bearer
+  on the new route returns 401. No PM/run is created.
+- PASS: separate PG17 HTTP clarification/owner-confirmation regression suite,
+  8.54 seconds. Only own disposable databases/roles were created and removed;
+  the existing validation container was neither stopped nor changed.
+- PASS: regenerated OpenAPI and byte-for-byte drift; existing CreatedDraft,
+  CreateDraftCommand, AssignCommand, PmAssignment and SdlcContext schemas are
+  unchanged. Generated TypeScript client and OpenAPI check/compatibility pass.
+- PASS: frontend 45 files / 253 tests, four workers; typecheck/lint/semantic/
+  format/build. Generated client stays Git-ignored. README and four script tests,
+  credential-pattern scan and diff whitespace checks pass.
+- PASS: Rust 1.88 locked whole-workspace tests with four threads:
+  508 passed, 22 ignored, zero failed, including strict input OpenAPI/hash tests.
+
+Default ignored legacy PG/Docker tests and the dedicated central-subject
+migration test were not separately rerun; no coverage, UI/browser or live
+Central/Fleet/Workflow/PM acceptance is claimed. Both ignored SDLC HTTP suites
+have the separate PG17 evidence above. No runtime/image/volume/config changes.
+
+Remaining: Owner CAS, persisted execution ordinal, trusted project mapping,
+Workflow authoritative namespace ownership/admission and metadata_v1 byte-bound
+outbox are not implemented by this follow-up. Current outbox LIMIT 100 is not a
+byte bound. The exact existing machine scope remains
+`task-tracker:sdlc:pm:<task>:<assignment>:<execution>:<agent>:<version>`.
+No fabricated queue/workspace/decomposition/run receipts or weakened Delivery
+contract are introduced. The full integration plan remains incomplete.

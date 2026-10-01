@@ -33,6 +33,13 @@ impl SdlcService {
     pub async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
         Ok(self.repository.read(task, actor).await?.context(actor))
     }
+    pub async fn pm_draft_input(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<PmDraftInputResponse, AppError> {
+        self.repository.pm_draft_input(task, actor).await
+    }
     pub async fn execute<T: serde::de::DeserializeOwned>(
         &self,
         task: Uuid,
@@ -72,6 +79,10 @@ pub fn command_hash(command: &SdlcCommand) -> Result<String, AppError> {
         command.selected_option_ids.sort();
     }
     canonical_hash(&canonical)
+}
+
+pub fn pm_draft_input_hash(title: &str, description: &str) -> Result<String, AppError> {
+    canonical_hash(&serde_json::json!({"description": description, "title": title}))
 }
 
 pub fn validate_key(key: &str) -> Result<(), AppError> {

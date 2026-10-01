@@ -16,6 +16,13 @@ claims are not accepted. Creation is atomic and restart-safe, including a lost
 HTTP response. Fleet continues the assignment/runtime saga separately; Tracker
 does not dispatch PM execution during creation.
 
+Original Draft inputs are immutable and available through the strict project-
+authorized `pm-draft-input` readback. Snapshot ref/title/description/content hash
+are persisted in the creation transaction and survive edits/replay/restart.
+No historical snapshot is inferred from mutable issue text. This input endpoint
+does not implement owner assignment CAS, ordinal allocation, Workflow mapping,
+PM admission or bounded metadata outbox delivery.
+
 Fleet directory consumers can read an uncached, versioned project-access scope.
 Only a verified Central Auth caller with service read access and an active local
 central-subject identity is accepted. Explicit project ownership or membership

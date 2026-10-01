@@ -76,6 +76,68 @@ This extends the still-pending migration 000034, not a second migration.
 Validate on a fresh database; do not reset, reapply or mutate an accepted shared
 database that has already recorded an earlier version of 000034.
 
+## Immutable PM Draft creation input: implemented readback
+
+`GET /api/v1/issues/{id}/sdlc/pm-draft-input` returns `PmDraftInputResponse`:
+
+```typescript
+type PmDraftInputResponse = {
+  contract_version: 1;
+  tracker_instance_id: string;
+  project_id: string; // UUID
+  task_id: string; // UUID
+  root_task_id: string; // UUID
+  owner_subject: string;
+  input: {
+    snapshot_ref: string; // server-generated non-nil UUID
+    title: string;
+    description: string;
+    sha256: string; // lowercase SHA-256 hex
+  };
+};
+```
+
+All fields are required and both objects reject unknown fields. All references
+and binding identity are server-derived. The original title/description and
+snapshot UUID are stored atomically in the append-only creation ledger, not
+reconstructed from mutable issue fields. Hash bytes are UTF-8 compact JSON with
+sorted keys, exactly `{"description":<JSON string>,"title":<JSON string>}`.
+Non-ASCII characters are retained as UTF-8; JSON-required string escaping is
+applied. There is no whitespace, Unicode or CRLF normalization, idempotency key,
+snapshot UUID, operation name or other metadata in this content hash. This is
+separate from the creation command replay hash and requirements document hash.
+Title/description retain creation limits. Issue edits do not change the snapshot.
+Concurrent creation, exact replay and server restart retain the same snapshot.
+The existing seven-field `CreatedDraft` and `task.created` payload are unchanged.
+
+Read authorization is exactly the existing `/context` resource policy: verified
+Central Auth bearer, shared service read policy, active local central-subject
+identity and explicit current project ownership/membership. This is not an
+owner-only read; authorized members/operators and service-read PATs can read,
+but gain no business confirmation rights. Local tokens, cookies-only requests,
+disabled identities, foreign projects and admin/public bypasses are rejected.
+Membership/account authorization rows and issue/aggregate use existing locks;
+readback never bypasses revoked access or caches authorization. Missing/deleted
+issue or binding is 404; unavailable Auth/SDLC is 503. Missing creation ledger,
+historical all-null snapshot or inconsistent snapshot is 409, never a fallback
+to current issue text or a fabricated original snapshot. Pending 000034 permits
+only all-null or complete snapshot columns; complete refs are unique and non-nil.
+
+Verification scope is Tracker HTTP/PostgreSQL and Rust/OpenAPI contract tests:
+concurrent creation/readback, replay/restart, issue edit, exact UTF-8/CRLF and
+Unicode composition vectors, append-only/partial-snapshot constraints, legacy
+missing inputs, context ACL parity and unchanged operator confirmation denial.
+It does not attest live PM integration or Workflow admission.
+
+Remaining: owner-issued assignment CAS, ordinal-per-execution, trusted project
+mapping and Workflow authoritative namespace ownership/admission are not yet
+implemented here. Replacement needs a new execution/ordinal; resume retains its
+identity. Provenance/catalog/machine/hash values must come from trusted server
+readback, never a browser trust blob. General Delivery contracts stay strict.
+Metadata outbox `metadata_v1` is still a proposal: the existing LIMIT 100 is not
+a byte bound and full results can exceed Fleet's 1 MiB gateway/inbox limits.
+Do not claim this endpoint fixes polling or substitutes refs for readable inputs.
+
 ## Fleet gateway
 
 All paths below use the existing issue UUID under `/api/v1/issues/{id}/sdlc`.

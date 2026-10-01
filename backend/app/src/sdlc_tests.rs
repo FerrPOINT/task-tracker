@@ -421,3 +421,42 @@ fn canonical_answer_selection_is_a_set_but_question_binding_is_part_of_hash() {
     }
     assert_ne!(hash, command_hash(&command).unwrap());
 }
+
+#[test]
+fn pm_draft_input_hash_matches_exact_utf8_vectors_without_normalization_or_key() {
+    for (title, description, expected) in [
+        (
+            "Title",
+            "",
+            "9e109d116c12f9cee785295ff2193aae78def94c769785cd4e182abf474dc1af",
+        ),
+        (
+            "  \u{0417}\u{0430}\u{0434}\u{0430}\u{0447}\u{0430} \u{1f680}  ",
+            "first\r\nsecond\ne\u{0301} \u{00e9}\t\"\\",
+            "32b3c95cffc2114b62b969de058f4e3839c3e6b82d7ab09c061e35b0ed0d0b35",
+        ),
+        (
+            "Title",
+            "first\nsecond",
+            "85e49640e5eb71089824f52c45338b91c206c299cfe9d147ebc6a2517868cd3e",
+        ),
+    ] {
+        assert_eq!(pm_draft_input_hash(title, description).unwrap(), expected);
+    }
+    for (a, b) in [
+        ("e\u{0301}", "\u{00e9}"),
+        ("a\r\nb", "a\nb"),
+        (" text ", "text"),
+    ] {
+        assert_ne!(
+            pm_draft_input_hash("Title", a).unwrap(),
+            pm_draft_input_hash("Title", b).unwrap()
+        );
+    }
+    let hash = pm_draft_input_hash("Title", "").unwrap();
+    assert_ne!(
+        hash,
+        canonical_hash(&json!({"description":"","title":"Title","idempotency_key":"first"}))
+            .unwrap()
+    );
+}

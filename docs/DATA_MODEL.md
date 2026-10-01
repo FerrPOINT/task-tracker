@@ -19,6 +19,14 @@ project/central-subject/idempotency-key before a task ID is known. It stores the
 canonical payload hash and exact typed creation result. A composite FK binds
 task/project/subject to the immutable aggregate owner. Issue, initial status
 history, aggregate, ledger and creation outbox event share one transaction.
+The same ledger stores immutable `input_snapshot_ref` (unique non-nil UUID),
+`input_title`, `input_description` and `input_sha256`. `task_id` is unique for
+indexed original-input readback. A CHECK permits either all-null historical
+inputs or a complete bounded snapshot with lowercase SHA-256; new creations
+always write all four values. The hash covers only canonical exact UTF-8
+title/description, not the replay key. Existing append-only triggers protect the
+snapshot. Missing historical data stays unavailable; no mutable-issue backfill
+or new provenance/mapping/ordinal tables are introduced by this follow-up.
 This table extends pending 000034; it is not a new follow-up migration and is
 only validated on fresh disposable databases, never by resetting shared data.
 Foreign keys retain history; requirements and question/assignment versions have

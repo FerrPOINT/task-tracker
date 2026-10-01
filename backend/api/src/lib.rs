@@ -83,6 +83,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::project_access,
         routes::sdlc::create_draft,
         routes::sdlc::context,
+        routes::sdlc::pm_draft_input,
         routes::sdlc::bind,
         routes::sdlc::assign,
         routes::sdlc::questions,
@@ -778,6 +779,35 @@ mod tests {
         assert_eq!(
             schema["components"]["schemas"]["DraftStage"]["enum"],
             serde_json::json!(["Draft"])
+        );
+    }
+
+    #[test]
+    fn pm_draft_input_schema_is_strict_authenticated_and_separate_from_created_draft() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let route = &schema["paths"]["/api/v1/issues/{id}/sdlc/pm-draft-input"]["get"];
+        assert_eq!(route["security"], serde_json::json!([{"bearer": []}]));
+        assert_eq!(
+            route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/PmDraftInputResponse"
+        );
+        for (name, fields) in [
+            ("PmDraftInputResponse", 7),
+            ("PmDraftInput", 4),
+            ("CreatedDraft", 7),
+        ] {
+            let object = &schema["components"]["schemas"][name];
+            assert_eq!(object["additionalProperties"], false);
+            assert_eq!(object["properties"].as_object().unwrap().len(), fields);
+            assert_eq!(object["required"].as_array().unwrap().len(), fields);
+        }
+        let input = &schema["components"]["schemas"]["PmDraftInput"]["properties"];
+        assert_eq!(input["snapshot_ref"]["format"], "uuid");
+        assert_eq!(input["sha256"]["pattern"], "^[0-9a-f]{64}$");
+        assert_eq!(
+            schema["components"]["schemas"]["PmDraftInputResponse"]["properties"]["contract_version"]
+                ["maximum"].as_f64(),
+            Some(1.0)
         );
     }
 

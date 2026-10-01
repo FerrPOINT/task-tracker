@@ -5,7 +5,7 @@
 3. `cargo run -p api --bin gen-openapi > ../openapi/openapi.json` writes `openapi/openapi.json` without starting a server.
 4. `pnpm generate:api` consumes `openapi/openapi.json` and writes `frontend/src/api/generated.ts`.
 5. Frontend uses `openapi-fetch` with the generated types (`paths`, `components`).
-6. `pnpm build` regenerates the client automatically before `tsc` and `vite build`.
+6. Run `pnpm generate:api` and `pnpm openapi:check` before typecheck/build after a schema change; dependency postinstall also regenerates the client.
 
 ## Commands
 
@@ -29,5 +29,6 @@ docker compose up -d postgres redis backend
 ## Notes
 
 - Rust controller interfaces are handwritten; they are the source of truth, not generated.
-- The generated `frontend/src/api/generated.ts` is committed to keep builds hermetic but should be regenerated whenever backend schemas change.
+- The generated `frontend/src/api/generated.ts` is Git-ignored by repository policy and must be regenerated whenever backend schemas change.
+- PM Draft input source DTOs are `PmDraftInputResponse` and `PmDraftInput` in `backend/domain/src/sdlc.rs`. The generated `GET /api/v1/issues/{id}/sdlc/pm-draft-input` operation and schemas in `openapi/openapi.json` are the input for Fleet's future DTO generation; the seven-field `CreatedDraft` stays unchanged.
 - Add `VITE_API_BASE_URL=http://127.0.0.1:3456/api/v1` to `frontend/.env` for local dev.

@@ -25,6 +25,15 @@ issue MAX-suffix allocation; only PostgreSQL unique violations on `issues_key_ke
 restart the entire transaction (five attempts). No independent number sequence
 or ordinary non-idempotent issue POST is used for the Fleet creation saga.
 
+Creation also freezes the exact original title/description and server snapshot
+UUID in its append-only ledger, with a separate canonical UTF-8 content hash.
+PM draft input readback follows service -> repository and reuses the same
+`load`/authorization/lock order as context before selecting the indexed ledger.
+It verifies snapshot hash/binding and never reconstructs missing input from
+mutable issue fields. Existing CreatedDraft and owner confirmation wire remain
+unchanged. Owner CAS, execution ordinal, Workflow project mapping/admission and
+bounded metadata outbox remain separate integration work.
+
 Read-only project scope uses the same strict route layer but one indexed SQL
 snapshot instead of per-project authorization requests. The repository resolves
 the active central-subject identity and unions explicit ownership/membership,

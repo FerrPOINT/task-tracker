@@ -28,6 +28,18 @@ write access and exact central owner apply even on replay. Issue, private bindin
 creation ledger and outbox commit together; no PM/run is started. Exact wire and
 limits are in the contract above. Ordinary issue POST is not a saga substitute.
 
+`GET /api/v1/issues/{id}/sdlc/pm-draft-input` returns
+`{contract_version:1,tracker_instance_id,project_id,task_id,root_task_id,owner_subject,
+input:{snapshot_ref,title,description,sha256}}`. It reads the immutable original
+creation ledger, with exactly the current context resource ACL, not owner-only
+read access. Content hash is SHA-256 of canonical exact UTF-8 title/description
+JSON, without idempotency key or normalization. Missing historical input is 409;
+mutable issue text is never backfilled. All refs are server-derived; CreatedDraft
+wire and business confirmation permissions are unchanged. Source DTOs are
+`PmDraftInputResponse`/`PmDraftInput` in `backend/domain/src/sdlc.rs`; the schema is
+generated in `openapi/openapi.json`. This is input readback, not PM admission,
+assignment CAS, dispatch, delivery or a byte-bound events fix.
+
 ## Overview
 
 REST API первой версии Task Tracker. Все endpoint возвращают JSON и используют единую модель пагинации, ошибок и webhook-событий. Real-time обновления через SSE описаны в разделе [Real-time (SSE)](#real-time-sse).

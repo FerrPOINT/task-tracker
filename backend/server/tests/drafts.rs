@@ -6,7 +6,7 @@ use axum::{
     routing::get,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use domain::sdlc::CreatedDraft;
+use domain::sdlc::{CreatedDraft, PmDraftInputResponse};
 use p256::{
     SecretKey,
     elliptic_curve::sec1::ToEncodedPoint,
@@ -115,7 +115,7 @@ async fn expect(client: &Client, url: &str, token: &str, body: &Value, status: u
     result
 }
 
-async fn project_scope(client: &Client, url: &str, token: &str, status: u16) -> Value {
+async fn get_json(client: &Client, url: &str, token: &str, status: u16) -> Value {
     let response = client.get(url).bearer_auth(token).send().await.unwrap();
     let actual = response.status().as_u16();
     let result: Value = response.json().await.unwrap();
@@ -252,6 +252,17 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     let owner = bearer(&secret, &issuer, &owner_sub, true);
     let operator = bearer(&secret, &issuer, &operator_sub, true);
     let foreign = bearer(&secret, &issuer, &foreign_sub, true);
+    let local = jsonwebtoken::encode(
+        &jsonwebtoken::Header::default(),
+        &app::auth::UserClaims {
+            sub: owner_id.to_string(),
+            exp: (shared::now().timestamp() + 3600) as usize,
+            typ: Some("access".into()),
+            jti: None,
+        },
+        &jsonwebtoken::EncodingKey::from_secret(config.auth.jwt_secret.as_bytes()),
+    )
+    .unwrap();
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
@@ -263,11 +274,11 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     projects.sort_unstable();
     let expected_scope = json!({"contract_version":1,"tracker_instance_id":"tracker-draft-test","project_ids":projects});
     assert_eq!(
-        project_scope(&client, &access_url, &owner, 200).await,
+        get_json(&client, &access_url, &owner, 200).await,
         expected_scope
     );
     assert_eq!(
-        project_scope(&client, &access_url, "sdlc_pat_read", 200).await,
+        get_json(&client, &access_url, "sdlc_pat_read", 200).await,
         expected_scope
     );
     sql(
@@ -277,11 +288,11 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     )
     .await;
     assert_eq!(
-        project_scope(&client, &access_url, &operator, 200).await,
+        get_json(&client, &access_url, &operator, 200).await,
         expected_scope
     );
     assert_eq!(
-        project_scope(&client, &access_url, &foreign, 200).await["project_ids"],
+        get_json(&client, &access_url, &foreign, 200).await["project_ids"],
         json!([])
     );
     for (token, status) in [
@@ -299,7 +310,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
             401,
         ),
     ] {
-        project_scope(&client, &access_url, &token, status).await;
+        get_json(&client, &access_url, &token, status).await;
     }
     assert_eq!(client.get(&access_url).send().await.unwrap().status(), 401);
     assert_eq!(
@@ -507,6 +518,138 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     assert_eq!(context["owner_subject"], owner_sub);
     assert_eq!(context["stage"], "Draft");
     assert!(context["assignment"].is_null());
+    let input_url = format!("{base}/api/v1/issues/{}/sdlc/pm-draft-input", draft.task_id);
+    let snapshot = get_json(&client, &input_url, &owner, 200).await;
+    let curl = tokio::process::Command::new("curl")
+        .args([
+            "--silent",
+            "--show-error",
+            "--write-out",
+            "\n%{http_code}",
+            &input_url,
+        ])
+        .output()
+        .await
+        .unwrap();
+    assert!(curl.status.success());
+    assert_eq!(
+        String::from_utf8(curl.stdout).unwrap().lines().last(),
+        Some("401")
+    );
+    let typed: PmDraftInputResponse = serde_json::from_value(snapshot.clone()).unwrap();
+    assert_eq!(snapshot.as_object().unwrap().len(), 7);
+    assert_eq!(snapshot["input"].as_object().unwrap().len(), 4);
+    assert_eq!(typed.contract_version, 1);
+    assert_eq!(typed.tracker_instance_id, draft.tracker_instance_id);
+    assert_eq!(typed.project_id, draft.project_id);
+    assert_eq!(typed.task_id, draft.task_id);
+    assert_eq!(typed.root_task_id, draft.root_task_id);
+    assert_eq!(typed.owner_subject, draft.owner_subject);
+    assert!(!typed.input.snapshot_ref.is_nil());
+    assert_eq!(typed.input.title, command("creation")["title"]);
+    assert_eq!(typed.input.description, command("creation")["description"]);
+    assert_eq!(
+        typed.input.sha256,
+        app::sdlc::pm_draft_input_hash(&typed.input.title, &typed.input.description).unwrap()
+    );
+    for field in ["unexpected", "input"] {
+        let mut unknown = snapshot.clone();
+        if field == "input" {
+            unknown[field]["unexpected"] = json!(true);
+        } else {
+            unknown[field] = json!(true);
+        }
+        assert!(serde_json::from_value::<PmDraftInputResponse>(unknown).is_err());
+    }
+    let mut reads = vec![];
+    for _ in 0..12 {
+        let client = client.clone();
+        let url = input_url.clone();
+        let owner = owner.clone();
+        reads.push(tokio::spawn(async move {
+            get_json(&client, &url, &owner, 200).await
+        }));
+    }
+    for read in reads {
+        assert_eq!(read.await.unwrap(), snapshot);
+    }
+    // Read ACL is exactly context ACL, not owner-only and not a new operator consent path.
+    assert_eq!(
+        get_json(&client, &input_url, &operator, 200).await,
+        snapshot
+    );
+    assert_eq!(
+        get_json(&client, &input_url, "sdlc_pat_read", 200).await,
+        snapshot
+    );
+    expect(
+        &client,
+        &format!(
+            "{base}/api/v1/issues/{}/sdlc/requirements/1/confirm",
+            draft.task_id
+        ),
+        &operator,
+        &json!({"content_hash":"not-consent","idempotency_key":"operator-not-owner"}),
+        403,
+    )
+    .await;
+    for (token, status) in [
+        (foreign.clone(), 403),
+        (bearer(&secret, &issuer, &disabled_sub, true), 403),
+        (bearer(&secret, &issuer, &owner_id.to_string(), true), 403),
+        ("local-token".into(), 401),
+        (local, 401),
+        ("sdlc_pat_other".into(), 403),
+        (bearer(&secret, &issuer, &owner_sub, false), 403),
+    ] {
+        get_json(&client, &input_url, &token, status).await;
+        get_json(&client, &context_url, &token, status).await;
+    }
+    assert_eq!(
+        client
+            .get(&input_url)
+            .header("Cookie", format!("access_token={owner}"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    let edit = client
+        .patch(format!("{base}/api/v1/issues/{}", draft.task_id))
+        .bearer_auth(&owner)
+        .json(&json!({"summary":"Edited display title","description":"Edited mutable issue"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(edit.status(), 200, "{}", edit.text().await.unwrap());
+    assert_eq!(get_json(&client, &input_url, &owner, 200).await, snapshot);
+    assert_eq!(
+        expect(&client, &url, &owner, &command("creation"), 200).await,
+        result
+    );
+    let unicode = json!({"title":"  \u{0417}\u{0430}\u{0434}\u{0430}\u{0447}\u{0430} \u{1f680}  ",
+        "description":"first\r\nsecond\ne\u{0301} \u{00e9}\t\"\\","idempotency_key":"unicode-snapshot"});
+    let unicode_draft = expect(&client, &url, &owner, &unicode, 201).await;
+    let unicode_input = get_json(
+        &client,
+        &format!(
+            "{base}/api/v1/issues/{}/sdlc/pm-draft-input",
+            unicode_draft["task_id"].as_str().unwrap()
+        ),
+        &owner,
+        200,
+    )
+    .await;
+    assert_eq!(unicode_input["input"]["title"], unicode["title"]);
+    assert_eq!(
+        unicode_input["input"]["description"],
+        unicode["description"]
+    );
+    assert_eq!(
+        unicode_input["input"]["sha256"],
+        "32b3c95cffc2114b62b969de058f4e3839c3e6b82d7ab09c061e35b0ed0d0b35"
+    );
     // JSON member order is irrelevant; string whitespace/content remains exact.
     let reordered = json!({"idempotency_key":"creation", "description":command("creation")["description"], "title":command("creation")["title"]});
     assert_eq!(expect(&client, &url, &owner, &reordered, 200).await, result);
@@ -531,6 +674,35 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     let other = expect(&client, &other_url, &owner, &command("creation"), 201).await;
     assert_ne!(other["task_id"], result["task_id"]);
     assert_eq!(other["task_key"], "OTHER-1");
+    let other_input_url = format!(
+        "{base}/api/v1/issues/{}/sdlc/pm-draft-input",
+        other["task_id"].as_str().unwrap()
+    );
+    get_json(&client, &other_input_url, &owner, 200).await;
+    sql(
+        &db,
+        "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
+        vec![other_project.into(), owner_id.into()],
+    )
+    .await;
+    get_json(&client, &other_input_url, &owner, 403).await;
+    get_json(
+        &client,
+        &format!(
+            "{base}/api/v1/issues/{}/sdlc/context",
+            other["task_id"].as_str().unwrap()
+        ),
+        &owner,
+        403,
+    )
+    .await;
+    assert_eq!(get_json(&client, &input_url, &owner, 200).await, snapshot);
+    sql(
+        &db,
+        "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
+        vec![other_project.into(), owner_id.into()],
+    )
+    .await;
     // Ordinary issue creators share MAX(suffix) and the unique key, even while drafts are created.
     let ordinary = json!({"project_key":"DRAFT","issue_type":"task","summary":"Ordinary task","description":"ordinary","priority":"medium"});
     let ordinary_url = format!("{base}/api/v1/issues");
@@ -542,6 +714,29 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     assert_eq!(ordinary.0, 201, "{}", ordinary.1);
     assert_eq!(another.0, 201, "{}", another.1);
     assert_ne!(ordinary.1["key"], another.1["task_key"]);
+    // Legacy binding has no original creation snapshot; mutable issue text is not provenance.
+    let legacy_id = Uuid::parse_str(ordinary.1["id"].as_str().unwrap()).unwrap();
+    expect(
+        &client,
+        &format!("{base}/api/v1/issues/{legacy_id}/sdlc/binding"),
+        &owner,
+        &json!({"root_task_id":legacy_id,"idempotency_key":"legacy-binding"}),
+        200,
+    )
+    .await;
+    let legacy_input_url = format!("{base}/api/v1/issues/{legacy_id}/sdlc/pm-draft-input");
+    get_json(&client, &legacy_input_url, &owner, 409).await;
+    let legacy_result = json!({"tracker_instance_id":"tracker-draft-test","project_id":project,
+        "task_id":legacy_id,"root_task_id":legacy_id,"owner_subject":owner_sub,
+        "task_key":ordinary.1["key"],"stage":"Draft"});
+    assert!(db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result,input_snapshot_ref)
+         VALUES($1,$2,'partial-snapshot',$3,$4,$5,$6)",
+        [project.into(),owner_sub.clone().into(),"a".repeat(64).into(),legacy_id.into(),legacy_result.clone().into(),Uuid::now_v7().into()])).await.is_err());
+    sql(&db, "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result)
+        VALUES($1,$2,'historical-no-snapshot',$3,$4,$5)",
+        vec![project.into(),owner_sub.clone().into(),"a".repeat(64).into(),legacy_id.into(),legacy_result.into()]).await;
+    get_json(&client, &legacy_input_url, &owner, 409).await;
     // Reserve an unseen ordinary issue number. The draft insert must wait for its
     // unique key, then retry allocation after the competing transaction commits.
     let tx = db.begin().await.unwrap();
@@ -609,10 +804,11 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     tx.commit().await.unwrap();
     assert_eq!(waiting.await.unwrap().0, 403);
     assert_eq!(
-        project_scope(&client, &access_url, &owner, 200).await["project_ids"],
+        get_json(&client, &access_url, &owner, 200).await["project_ids"],
         json!([other_project])
     );
     expect(&client, &url, &owner, &command("creation"), 403).await;
+    get_json(&client, &input_url, &owner, 403).await;
     expect(
         &client,
         &url,
@@ -643,7 +839,8 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         vec![owner_id.into()],
     )
     .await;
-    project_scope(&client, &access_url, &owner, 403).await;
+    get_json(&client, &access_url, &owner, 403).await;
+    get_json(&client, &input_url, &owner, 403).await;
     expect(&client, &url, &owner, &command("creation"), 403).await;
     sql(
         &db,
@@ -671,6 +868,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     )
     .await;
     expect(&client, &url, &owner, &command("creation"), 404).await;
+    get_json(&client, &input_url, &owner, 404).await;
     sql(
         &db,
         "UPDATE issues SET deleted_at=NULL WHERE id=$1",
@@ -679,6 +877,11 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     .await;
     assert!(
         db.execute_unprepared("UPDATE sdlc_draft_creations SET result='{}'")
+            .await
+            .is_err()
+    );
+    assert!(
+        db.execute_unprepared("UPDATE sdlc_draft_creations SET input_title='rewritten'")
             .await
             .is_err()
     );
@@ -724,6 +927,16 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     let (base, stop, handle) = start(config).await;
     let url = format!("{base}/api/v1/projects/{project}/sdlc/drafts");
     assert_eq!(
+        get_json(
+            &client,
+            &format!("{base}/api/v1/issues/{}/sdlc/pm-draft-input", draft.task_id),
+            &owner,
+            200
+        )
+        .await,
+        snapshot
+    );
+    assert_eq!(
         expect(&client, &url, &owner, &command("creation"), 200).await,
         result
     );
@@ -736,7 +949,14 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     assert_eq!(count(&db, "issues").await, issues_before);
     assert_eq!(count(&db, "sdlc_outbox").await, events_before);
     unavailable.store(true, Ordering::SeqCst);
-    project_scope(
+    get_json(
+        &client,
+        &format!("{base}/api/v1/issues/{}/sdlc/pm-draft-input", draft.task_id),
+        &owner,
+        503,
+    )
+    .await;
+    get_json(
         &client,
         &format!("{base}/api/v1/sdlc/project-access"),
         &owner,

@@ -35,8 +35,21 @@ CREATE TABLE sdlc_draft_creations (
     payload_hash text NOT NULL CHECK (payload_hash ~ '^[0-9a-f]{64}$'),
     task_id uuid NOT NULL,
     result jsonb NOT NULL,
+    input_snapshot_ref uuid UNIQUE,
+    input_title text,
+    input_description text,
+    input_sha256 text,
     created_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY(project_id, actor_subject, idempotency_key),
+    UNIQUE(task_id),
+    CHECK ((input_snapshot_ref IS NULL AND input_title IS NULL
+        AND input_description IS NULL AND input_sha256 IS NULL)
+        OR (input_snapshot_ref IS NOT NULL AND input_title IS NOT NULL
+        AND input_description IS NOT NULL AND input_sha256 IS NOT NULL
+        AND input_snapshot_ref != '00000000-0000-0000-0000-000000000000'::uuid
+        AND char_length(input_title) BETWEEN 1 AND 500
+        AND char_length(input_description) <= 100000
+        AND input_sha256 ~ '^[0-9a-f]{64}$')),
     FOREIGN KEY(task_id, project_id, actor_subject)
         REFERENCES sdlc_tasks(task_id, project_id, owner_subject) ON DELETE RESTRICT,
     CHECK (jsonb_typeof(result) = 'object'

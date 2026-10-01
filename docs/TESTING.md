@@ -25,6 +25,14 @@ non-reuse, authorization revocation fencing, immutable ledger, lost response and
 Tracker shutdown/restart readback. It creates no PM assignment/run. OpenAPI tests
 assert all seven typed response fields, strict request fields and Draft-only enum.
 
+The same suite exercises immutable `pm-draft-input` snapshots: one durable UUID
+and exact hash after concurrent creation/readback, replay and restart, no change
+after an actual HTTP issue edit, UTF-8/CRLF composition vectors, identical context
+ACL and no operator business confirmation. Missing ledger/all-null historical
+input returns 409; partial snapshots and append-only mutations are rejected.
+Foreign project, disabled identity, valid local HS256 token and absent/insufficient
+service credentials fail closed. Inputs are not inferred from mutable issues.
+
 `cargo test -p app --lib sdlc::tests` checks answer modes/custom text, stable
 option validation, stale fences, machine/human separation, canonical payload
 hashes, JavaScript integer bounds and exact revision readiness.

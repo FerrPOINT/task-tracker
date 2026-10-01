@@ -436,10 +436,13 @@ impl SdlcRepository for PostgresSdlcRepository {
                 owner_subject: actor.subject.clone(),
                 stage: DraftStage::Draft,
             };
-            exec(&tx, "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result)
-                VALUES($1,$2,$3,$4,$5,$6)",
+            let input_hash = app::sdlc::pm_draft_input_hash(&command.title, &command.description)?;
+            exec(&tx, "INSERT INTO sdlc_draft_creations(project_id,actor_subject,idempotency_key,payload_hash,task_id,result,
+                input_snapshot_ref,input_title,input_description,input_sha256)
+                VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
                 vec![project.into(), actor.subject.clone().into(), command.idempotency_key.clone().into(),
-                    hash.clone().into(), task.into(), json_value(&result)?]).await?;
+                    hash.clone().into(), task.into(), json_value(&result)?, Uuid::now_v7().into(),
+                    command.title.clone().into(), command.description.clone().into(), input_hash.into()]).await?;
             exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'task.created',$3)",
                 vec![Uuid::now_v7().into(), task.into(),
                     json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
@@ -459,6 +462,57 @@ impl SdlcRepository for PostgresSdlcRepository {
         let state = self.load(&tx, task, actor).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(state)
+    }
+    async fn pm_draft_input(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<PmDraftInputResponse, AppError> {
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load(&tx, task, actor).await?;
+        let unavailable = || AppError::conflict("original draft input snapshot unavailable");
+        let row = tx.query_one(statement(
+            "SELECT input_snapshot_ref,input_title,input_description,input_sha256 FROM sdlc_draft_creations
+             WHERE task_id=$1 AND project_id=$2 AND actor_subject=$3",
+            vec![task.into(), state.project_id.into(), state.owner_subject.clone().into()],
+        )).await.map_err(map_db)?.ok_or_else(unavailable)?;
+        let input = PmDraftInput {
+            snapshot_ref: row
+                .try_get::<Option<Uuid>>("", "input_snapshot_ref")
+                .map_err(map_db)?
+                .ok_or_else(unavailable)?,
+            title: row
+                .try_get::<Option<String>>("", "input_title")
+                .map_err(map_db)?
+                .ok_or_else(unavailable)?,
+            description: row
+                .try_get::<Option<String>>("", "input_description")
+                .map_err(map_db)?
+                .ok_or_else(unavailable)?,
+            sha256: row
+                .try_get::<Option<String>>("", "input_sha256")
+                .map_err(map_db)?
+                .ok_or_else(unavailable)?,
+        };
+        if state.root_task_id != task
+            || input.snapshot_ref.is_nil()
+            || app::sdlc::pm_draft_input_hash(&input.title, &input.description)? != input.sha256
+        {
+            return Err(AppError::conflict(
+                "original draft input snapshot inconsistent",
+            ));
+        }
+        let response = PmDraftInputResponse {
+            contract_version: 1,
+            tracker_instance_id: state.tracker_instance_id,
+            project_id: state.project_id,
+            task_id: task,
+            root_task_id: state.root_task_id,
+            owner_subject: state.owner_subject,
+            input,
+        };
+        tx.commit().await.map_err(map_db)?;
+        Ok(response)
     }
     async fn bind(
         &self,

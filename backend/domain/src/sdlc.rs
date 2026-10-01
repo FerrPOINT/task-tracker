@@ -262,6 +262,31 @@ pub struct CreatedDraft {
     pub stage: DraftStage,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PmDraftInput {
+    pub snapshot_ref: Uuid,
+    #[schema(min_length = 1, max_length = 500)]
+    pub title: String,
+    #[schema(max_length = 100000)]
+    pub description: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub sha256: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PmDraftInputResponse {
+    #[schema(minimum = 1, maximum = 1)]
+    pub contract_version: u8,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub task_id: Uuid,
+    pub root_task_id: Uuid,
+    pub owner_subject: String,
+    pub input: PmDraftInput,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EvidenceCommand {
@@ -495,6 +520,11 @@ pub trait SdlcRepository: Send + Sync {
         command: CreateDraftCommand,
     ) -> Result<(CreatedDraft, bool), AppError>;
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError>;
+    async fn pm_draft_input(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<PmDraftInputResponse, AppError>;
     async fn bind(
         &self,
         task: Uuid,
