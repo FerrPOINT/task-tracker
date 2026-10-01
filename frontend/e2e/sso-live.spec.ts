@@ -338,8 +338,14 @@ test('logout from each UI revokes the shared browser session but preserves perso
           await expect.poll(() => Boolean(bearer)).toBe(true)
           expect(bearer).toMatch(/^Bearer /)
           await page.goto(app.url)
-          const accountMenu = app.client === 'task-tracker' || app.client === 'wiki'
-          if (accountMenu) await page.getByRole('button', { name: 'Аккаунт', exact: true }).click()
+          await expect(
+            app.client === 'project-workflow'
+              ? page.getByRole('link', { name: 'Выйти', exact: true })
+              : page.getByRole('button', { name: /Открыть список сервисов/ }),
+          ).toBeVisible()
+          const accountTrigger = page.getByRole('button', { name: 'Аккаунт', exact: true })
+          const accountMenu = await accountTrigger.isVisible()
+          if (accountMenu) await accountTrigger.click()
           const logout =
             app.client === 'project-workflow'
               ? page.getByRole('link', { name: 'Выйти', exact: true })
@@ -373,7 +379,18 @@ test('logout from each UI revokes the shared browser session but preserves perso
             await page.reload()
             expect(page.url()).not.toContain('/oidc/authorize')
           }
-          await sibling.goto('http://localhost:7722/projects', { waitUntil: 'commit' })
+          try {
+            await sibling.goto('http://localhost:7722/projects', { waitUntil: 'commit' })
+          } catch (error) {
+            // Revocation can redirect the sibling while the protected navigation is committing.
+            if (
+              !(error instanceof Error) ||
+              !/interrupted by another navigation to "http:\/\/localhost:(7722\/login|7701\/oidc\/authorize)|^page\.goto: net::ERR_ABORTED at http:\/\/localhost:7722\/projects/.test(
+                error.message,
+              )
+            )
+              throw error
+          }
           await expect(sibling.getByRole('heading', { name: 'Вход в SDLC' })).toBeVisible({
             timeout: 30_000,
           })
