@@ -77,3 +77,9 @@
 - `docs/ARCHITECTURE.md`
 - `docs/CODE_STYLE.md`
 - `docs/TESTING.md`
+
+## Base и воспроизводимость
+
+См. [BASE_INTEGRATION](docs/BASE_INTEGRATION.md). Обязательны pinned Base SHA,
+locked/frozen зависимости и проверка актуальных checkout до сборки.
+Rust build toolchain 1.88.0, Node 22.20.0, pnpm 10.28.1; MSRV отдельно.

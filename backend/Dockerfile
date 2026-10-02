@@ -1,27 +1,37 @@
-FROM rust:1.88-slim-bookworm AS builder
+# Umbrella build for the SDLC fleet root compose (context = /opt/dev/sdlc).
+# Stages the sibling services-base checkout so the sdlc-auth-core path
+# dependency (../../../services-base/...) resolves.
+FROM rust:1.88.0-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev unzip curl unzip && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY backend/Cargo.toml backend/Cargo.lock* ./
-COPY backend/shared ./shared
-COPY backend/domain ./domain
-COPY backend/infra ./infra
-COPY backend/migration ./migration
-COPY backend/app ./app
-COPY backend/api ./api
-COPY backend/server ./server
-COPY backend/cli ./cli
+# api/Cargo.toml: sdlc-auth-core = { path = "../../../services-base/..." }
+# /app/api/../../../services-base == /services-base
+COPY services-base/Cargo.toml /services-base/Cargo.toml
+COPY services-base/crates/sdlc-telemetry /services-base/crates/sdlc-telemetry
+COPY services-base/crates/sdlc-auth-core /services-base/crates/sdlc-auth-core
+COPY services-base/crates/sdlc-cli-core /services-base/crates/sdlc-cli-core
+COPY services-base/crates/sdlc-shared /services-base/crates/sdlc-shared
+COPY task-tracker/backend/Cargo.toml task-tracker/backend/Cargo.lock* ./
+COPY task-tracker/backend/shared ./shared
+COPY task-tracker/backend/domain ./domain
+COPY task-tracker/backend/infra ./infra
+COPY task-tracker/backend/migration ./migration
+COPY task-tracker/backend/app ./app
+COPY task-tracker/backend/api ./api
+COPY task-tracker/backend/server ./server
+COPY task-tracker/backend/cli ./cli
 
-RUN cargo build --release --bin server
+RUN cargo build --locked --release --bin server
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates libssl3 wget && rm -rf /var/lib/apt/lists/*
-# Run as an unprivileged user; uploads volume is chowned at startup below.
 RUN groupadd -r tasktracker && useradd -r -g tasktracker -d /app -s /usr/sbin/nologin tasktracker
 WORKDIR /app
 COPY --from=builder /app/target/release/server /usr/local/bin/task-tracker-server
 RUN mkdir -p /var/lib/tasktracker/uploads && chown -R tasktracker:tasktracker /var/lib/tasktracker
 USER tasktracker
+ENV TASKTRACKER_UPLOADS_DIR=/var/lib/tasktracker/uploads
 EXPOSE 3456
 CMD ["task-tracker-server"]

@@ -72,14 +72,7 @@ impl Default for MetricsConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DatabaseConfig {
-    pub url: String,
-    pub max_connections: u32,
-    pub min_connections: u32,
-    pub connect_timeout_seconds: u64,
-    pub idle_timeout_seconds: u64,
-}
+pub use sdlc_shared::DatabaseConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -294,18 +287,6 @@ fn is_valid_mail_address(addr: &str) -> bool {
     }
     let (local, domain) = addr.split_once('@').unwrap();
     !local.is_empty() && domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
-}
-
-impl Default for DatabaseConfig {
-    fn default() -> Self {
-        Self {
-            url: String::new(),
-            max_connections: 20,
-            min_connections: 5,
-            connect_timeout_seconds: 10,
-            idle_timeout_seconds: 600,
-        }
-    }
 }
 
 impl Default for ServerConfig {
