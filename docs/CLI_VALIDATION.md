@@ -4,7 +4,7 @@
 
 ## Среда и обязательные gates
 
-Ubuntu WSL, rustc 1.88.0 (6b00bc388 2025-06-23), Node 22.23.3 / pnpm 10.28.1, Python 3.12.3. Чистый опубликованный Services Base `main`: `69bd8ef0fe424c2018bcdc509ddd25f7fce02a7e`. Политика зависимости от `main` сохраняется; Base и исходные dirty checkout не изменены этой задачей. Product lockfile обновлён под изменившиеся зависимости опубликованного Base без обновления registry versions. 
+Ubuntu WSL, rustc 1.88.0 (6b00bc388 2025-06-23), Node 22.23.3 / pnpm 10.28.1, Python 3.12.3. Чистый опубликованный Services Base `main`: `69bd8ef0fe424c2018bcdc509ddd25f7fce02a7e`. Политика зависимости от `main` сохраняется; Base и исходные dirty checkout не изменены этой задачей. Product lockfile обновлён под изменившиеся зависимости опубликованного Base без обновления registry versions.
 
 Backend: fmt, workspace/all-target Clippy с `-D warnings`, workspace tests, OpenAPI drift и release workspace — успешно. Workspace: **511 passed, 21 ignored**, 0 failed. CI/CD дополнительно проверен штатным параллельным workspace invocation; Task Tracker и Wiki — последовательным invocation их workflows.
 
