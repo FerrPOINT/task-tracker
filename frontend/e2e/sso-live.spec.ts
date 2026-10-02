@@ -265,9 +265,12 @@ test('Workflow service menu is unobstructed beside the desktop sidebar', async (
   }
   await page.setViewportSize({ width: 375, height: 812 })
   await page.locator('#burgerBtn').click()
-  const mobileMenu = page.locator('#sidebar details.sidebar-service-menu')
+  const mobileMenu = page
+    .getByRole('dialog')
+    .locator('details')
+    .filter({ has: page.locator('summary').filter({ hasText: 'Сервисы' }) })
   await mobileMenu.locator('summary').click()
-  const mobileLinks = mobileMenu.locator('a.sidebar-service-link')
+  const mobileLinks = mobileMenu.locator('a[href]')
   await expect(mobileLinks).toHaveCount(6)
   for (let index = 0; index < 6; index++) {
     const link = mobileLinks.nth(index)
@@ -340,12 +343,14 @@ test('logout from each UI revokes the shared browser session but preserves perso
           await expect.poll(() => Boolean(bearer)).toBe(true)
           expect(bearer).toMatch(/^Bearer /)
           await page.goto(app.url)
+          const accountTrigger = page.getByLabel('Аккаунт', { exact: true })
           await expect(
             app.client === 'project-workflow'
-              ? page.getByRole('link', { name: 'Выйти', exact: true })
+              ? accountTrigger
+                  .or(page.getByRole('link', { name: 'Выйти', exact: true }))
+                  .filter({ visible: true })
               : page.getByRole('button', { name: /Открыть список сервисов/ }),
           ).toBeVisible()
-          const accountTrigger = page.getByRole('button', { name: 'Аккаунт', exact: true })
           const accountMenu = await accountTrigger.isVisible()
           if (accountMenu) await accountTrigger.click()
           const logout =
