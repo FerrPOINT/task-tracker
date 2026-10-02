@@ -812,6 +812,83 @@ mod tests {
     }
 
     #[test]
+    fn metadata_outbox_schema_pins_projection_and_strict_resource_variants() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let schemas = &schema["components"]["schemas"];
+        let route = &schema["paths"]["/api/v1/issues/{id}/sdlc/events"]["get"];
+        assert_eq!(route["operationId"], "sdlc_events");
+        assert_eq!(route["security"], serde_json::json!([{"bearer": []}]));
+        assert_eq!(
+            schemas["MetadataProjection"]["enum"],
+            serde_json::json!(["metadata_v1"])
+        );
+        assert_eq!(schemas["MetadataPage"]["additionalProperties"], false);
+        assert_eq!(
+            schemas["MetadataPage"]["required"]
+                .as_array()
+                .unwrap()
+                .len(),
+            6
+        );
+        assert_eq!(
+            schemas["MetadataError"]["required"]
+                .as_array()
+                .unwrap()
+                .len(),
+            8
+        );
+        assert_eq!(
+            schemas["MetadataPage"]["properties"]["next_after"]["type"],
+            "string"
+        );
+        assert_eq!(
+            schemas["OutboxEvent"]["properties"]["sequence"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            schemas["OutboxResponse"]["required"],
+            serde_json::json!(["events"])
+        );
+        let variants = schemas["MetadataEvent"]["oneOf"].as_array().unwrap();
+        assert_eq!(variants.len(), 9);
+        for variant in variants {
+            assert_eq!(variant["additionalProperties"], false);
+            assert_eq!(variant["required"].as_array().unwrap().len(), 7);
+            assert_eq!(variant["properties"]["sequence"]["type"], "string");
+            assert_eq!(variant["properties"]["created_at"]["format"], "date-time");
+            let payload = &variant["properties"]["payload"];
+            assert_eq!(payload["additionalProperties"], false);
+            assert_eq!(payload["required"].as_array().unwrap().len(), 7);
+            let kind = variant["properties"]["event_type"]["enum"][0]
+                .as_str()
+                .unwrap();
+            assert!(kind.contains('.'), "wire event name: {kind}");
+            if kind == "clarification.published" || kind == "clarification.cancelled" {
+                let state = &payload["properties"]["resource"]["properties"]["state"];
+                let state = if let Some(reference) = state["$ref"].as_str() {
+                    &schemas[reference.strip_prefix("#/components/schemas/").unwrap()]
+                } else {
+                    state
+                };
+                assert_eq!(
+                    state["enum"],
+                    serde_json::json!([if kind == "clarification.published" {
+                        "open"
+                    } else {
+                        "cancelled"
+                    }])
+                );
+            }
+        }
+        for (name, object) in schemas.as_object().unwrap() {
+            if name.starts_with("MetadataPayload_") {
+                assert_eq!(object["additionalProperties"], false, "{name}");
+                assert_eq!(object["required"].as_array().unwrap().len(), 7, "{name}");
+            }
+        }
+    }
+
+    #[test]
     fn sdlc_revision_schema_matches_flat_strict_wire_document() {
         let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
         let revision = &schema["components"]["schemas"]["RequirementsRevision"];

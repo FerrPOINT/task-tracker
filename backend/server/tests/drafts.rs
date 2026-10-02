@@ -24,6 +24,9 @@ use std::sync::{
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+#[path = "support/metadata.rs"]
+mod metadata;
+
 #[derive(Clone)]
 struct AuthStub {
     jwks: Value,
@@ -548,6 +551,27 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     assert!(!typed.input.snapshot_ref.is_nil());
     assert_eq!(typed.input.title, command("creation")["title"]);
     assert_eq!(typed.input.description, command("creation")["description"]);
+    let metadata_url = format!(
+        "{base}/api/v1/issues/{}/sdlc/events?projection=metadata_v1",
+        draft.task_id
+    );
+    let (created_metadata, metadata_page) =
+        metadata::get(&client, &metadata_url, &owner, 200).await;
+    let legacy_events = get_json(
+        &client,
+        &format!("{base}/api/v1/issues/{}/sdlc/events", draft.task_id),
+        &owner,
+        200,
+    )
+    .await;
+    metadata::verify(&metadata_page, &legacy_events);
+    assert_eq!(metadata_page["events"][0]["event_type"], "task.created");
+    assert_eq!(
+        metadata_page["events"][0]["payload"]["resource"]["input"],
+        json!({"snapshot_ref":typed.input.snapshot_ref,"sha256":typed.input.sha256})
+    );
+    assert!(!String::from_utf8_lossy(&created_metadata).contains("description"));
+    metadata::save("tracker-metadata-created.http.json", &created_metadata);
     assert_eq!(
         typed.input.sha256,
         app::sdlc::pm_draft_input_hash(&typed.input.title, &typed.input.description).unwrap()
@@ -623,6 +647,10 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         .await
         .unwrap();
     assert_eq!(edit.status(), 200, "{}", edit.text().await.unwrap());
+    assert_eq!(
+        metadata::get(&client, &metadata_url, &owner, 200).await.0,
+        created_metadata
+    );
     assert_eq!(get_json(&client, &input_url, &owner, 200).await, snapshot);
     assert_eq!(
         expect(&client, &url, &owner, &command("creation"), 200).await,
@@ -925,6 +953,20 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     stop.send(()).unwrap();
     handle.await.unwrap();
     let (base, stop, handle) = start(config).await;
+    assert_eq!(
+        metadata::get(
+            &client,
+            &format!(
+                "{base}/api/v1/issues/{}/sdlc/events?projection=metadata_v1",
+                draft.task_id
+            ),
+            &owner,
+            200
+        )
+        .await
+        .0,
+        created_metadata
+    );
     let url = format!("{base}/api/v1/projects/{project}/sdlc/drafts");
     assert_eq!(
         get_json(

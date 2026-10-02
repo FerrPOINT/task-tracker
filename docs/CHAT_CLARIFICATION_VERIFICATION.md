@@ -244,3 +244,64 @@ byte bound. The exact existing machine scope remains
 `task-tracker:sdlc:pm:<task>:<assignment>:<execution>:<agent>:<version>`.
 No fabricated queue/workspace/decomposition/run receipts or weakened Delivery
 contract are introduced. The full integration plan remains incomplete.
+
+## Byte-Bounded Metadata Follow-Up (2 October 2026)
+
+Baseline: `addcb081`, on the same Draft PR #114. The opt-in `metadata_v1`
+projection is implemented for all nine persisted event types. The legacy
+default query/wire, existing content hashes, version and machine scopes remain
+unchanged. No schema migration, dependency or shared runtime change is needed.
+Strict DTOs are in `backend/domain/src/sdlc_metadata.rs`, projection/canonical
+hash and exact serialized byte selection in `backend/app/src/sdlc_metadata.rs`,
+immutable reference reads in `backend/infra/src/sdlc.rs`, and HTTP opt-in handling
+in `backend/api/src/routes/sdlc.rs`. OpenAPI and the exact wire description in
+`docs/CHAT_CLARIFICATION_CONTRACT.md` are synchronized.
+
+Completed gates and contract evidence:
+
+- PASS: Rust 1.88 locked workspace/all-targets check, strict
+  all-targets/all-features Clippy, and final fmt check.
+- PASS: Rust 1.88 `cargo test --workspace --locked -- --test-threads=1`:
+  515 passed, zero failed, 22 ignored, including all five metadata unit tests,
+  strict OpenAPI variants and opt-in-only canonical query validation.
+- PASS: final PostgreSQL 17 real TCP HTTP suites on two fresh disposable
+  databases with the full migration chain and synthetic Central Auth:
+  `drafts --ignored` (11.44 seconds) and `sdlc --ignored` (27.13 seconds).
+  All nine event types are checked against real legacy persisted resources;
+  no raw result, question, answer, requirements document or aggregate is exposed.
+  The valid requirements source exceeds 1 MiB. Metadata exercises Unicode,
+  escaping, exact B-1/B/B+1 byte thresholds, 121 additional events with global
+  sequence gaps, count/byte prefix pagination, empty/max-i64 cursors, first and
+  middle oversized/corrupt blockers, static bounded 422/409 errors, nil/partial/
+  conflicting references, and the hard-cap unrepresentable event.
+- PASS: byte-identical replay after restart, real mutable issue edits and PM
+  reassignment/new requirements/new question version. Original creation snapshot
+  and historical answer fence remain unchanged. Existing ACL, membership/account
+  revocation, foreign/local-token denial, and auth outage fail closed.
+- PASS: actual captured synthetic HTTP bodies `tracker-metadata-created.http.json`
+  (802 bytes, one event) and `tracker-metadata-all8.http.json` (17688 bytes,
+  twenty events) cover all nine types together. Independent Node canonical SHA-256
+  verifies all 21 event digests and UTC timestamps with nine fractional digits
+  and `Z`. Fleet independently decoded these exact bytes and verified all nine
+  types, Unicode/escaping/gaps and preserved resource refs/digests. Captures are
+  handoff artifacts, not fixtures from a deployed environment; regeneration is
+  documented under `TT_SDLC_METADATA_GOLDEN_DIR` in `docs/TESTING.md`.
+- PASS: generated OpenAPI byte-for-byte drift; all pre-existing component schemas
+  remain unchanged. Generated TypeScript client, OpenAPI check/compatibility,
+  frontend typecheck/lint/semantic/format/build and 45 files / 253 tests pass.
+- PASS: four documentation/CI script tests, README structural validation,
+  credential-pattern scan and final whitespace checks.
+
+Both targeted ignored PG HTTP suites have separate real database evidence above.
+The other ignored legacy infra/Docker suites, dedicated central-subject migration
+database test, coverage, UI/browser and live Central/Fleet/Workflow/PM acceptance
+were not run. This does not claim full cross-service acceptance. Own temporary
+PG container/databases were removed; synthetic wire captures remain for handoff.
+Existing runtime groups, pinned images, secrets and protected volumes were not
+modified. Pending 000034 is unchanged by this projection follow-up.
+
+Metadata byte-bound outbox is no longer remaining work. Owner CAS, execution
+ordinal, trusted project mapping, Workflow namespace ownership/admission and live
+dispatch/verifier acceptance remain external. Fleet must explicitly pin projection
+and contract version before its first cursor, and keep metadata digests separate
+from legacy receipt hashes. No legacy receipts may be reinterpreted.

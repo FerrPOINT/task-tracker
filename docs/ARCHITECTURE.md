@@ -31,8 +31,11 @@ PM draft input readback follows service -> repository and reuses the same
 `load`/authorization/lock order as context before selecting the indexed ledger.
 It verifies snapshot hash/binding and never reconstructs missing input from
 mutable issue fields. Existing CreatedDraft and owner confirmation wire remain
-unchanged. Owner CAS, execution ordinal, Workflow project mapping/admission and
-bounded metadata outbox remain separate integration work.
+unchanged. Owner CAS, execution ordinal and Workflow project mapping/admission
+remain separate integration work. Opt-in metadata outbox
+projects immutable events and historical references without emitting content.
+Its serialized whole envelope is byte-bounded; legacy outbox remains unchanged.
+Fleet must pin the projection before consumption and persist its own inbox/cursor.
 
 Read-only project scope uses the same strict route layer but one indexed SQL
 snapshot instead of per-project authorization requests. The repository resolves

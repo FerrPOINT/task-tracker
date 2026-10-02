@@ -5,6 +5,7 @@ pub mod context;
 pub mod dto;
 pub mod oidc;
 pub mod sdlc;
+pub mod sdlc_metadata;
 pub mod services;
 pub mod totp;
 

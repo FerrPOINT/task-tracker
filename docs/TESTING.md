@@ -56,6 +56,18 @@ deployment acceptance. Exact performed gates and limitations are recorded in
 
 ## 1. Принципы
 
+Metadata_v1 is covered by `app::sdlc_metadata::tests` (canonical Value/UTC hash,
+exact serialized UTF-8/escape thresholds, string i64 cursors, prefix boundaries,
+oversized/corrupt blockers), API query/OpenAPI contract tests, and the same two
+isolated HTTP/PG suites above. They cover all nine types, actual large content,
+historical answer fence after edits/reassignment/restart, immutable creation
+snapshot after HTTP issue edit/restart, >100 events with global sequence gaps,
+count/byte paging, blocked rows and unchanged legacy/default/ACL behavior.
+`TT_SDLC_METADATA_GOLDEN_DIR` optionally saves exact synthetic HTTP response bytes
+as `tracker-metadata-all8.http.json` and `tracker-metadata-created.http.json` for
+Fleet cross-repository parser/hash contract checks. These are generated artifacts,
+not real customer input. They do not claim live Fleet/Workflow runtime acceptance.
+
 - Каждый тест проверяет значимый путь и конкретное поведение.
 - Backend: реальные интеграционные тесты с PostgreSQL через Docker; unit-тесты для domain/services.
 - Frontend: unit-тесты на Vitest; E2E на Playwright.

@@ -32,6 +32,12 @@ only validated on fresh disposable databases, never by resetting shared data.
 Foreign keys retain history; requirements and question/assignment versions have
 safe integer constraints. Mutable aggregate state and append-only rows commit
 in the same transaction. Project/root and outbox cursor columns are indexed.
+Metadata_v1 introduces no migration or new stored identifiers. It derives common
+metadata from immutable outbox payloads, snapshot refs from the creation ledger,
+and answer fences from the exact append-only question version. Existing content
+hashes retain their meaning; canonical metadata digest is a separate projection
+hash. Event IDs and global bigint sequences remain unchanged; opt-in cursors are
+decimal strings on the wire. Fleet projection/version pinning is external.
 An issue trigger gates status/sprint updates until exact current revision consent.
 The migration is additive and does not rewrite legacy issue/user identity.
 Business-data rollback is deliberately refused; disable new assignments and

@@ -1664,12 +1664,58 @@
             }
           },
           {
-            "name": "after",
-            "in": "query",
-            "required": false,
+            "name": "projection",
+            "in": "path",
+            "required": true,
             "schema": {
-              "type": "integer",
-              "format": "int64"
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/MetadataProjection"
+                }
+              ]
+            }
+          },
+          {
+            "name": "after",
+            "in": "path",
+            "description": "Canonical nonnegative decimal i64 for metadata_v1; legacy i64 otherwise.",
+            "required": true,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "maximum": 100,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "max_bytes",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "maximum": 1048576,
+              "minimum": 1024
             }
           }
         ],
@@ -1679,7 +1725,27 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OutboxResponse"
+                  "$ref": "#/components/schemas/EventsSuccess"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Metadata budget too small; invalid query uses the standard validation envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataError"
                 }
               }
             }
@@ -6385,6 +6451,16 @@
           "Draft"
         ]
       },
+      "EventsSuccess": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/OutboxResponse"
+          },
+          {
+            "$ref": "#/components/schemas/MetadataPage"
+          }
+        ]
+      },
       "Evidence": {
         "type": "object",
         "required": [
@@ -6779,6 +6855,1134 @@
           }
         },
         "additionalProperties": false
+      },
+      "MetadataError": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "projection",
+          "code",
+          "after",
+          "blocked_sequence",
+          "event_id",
+          "required_bytes",
+          "max_bytes"
+        ],
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "blocked_sequence": {
+            "type": "string"
+          },
+          "code": {
+            "$ref": "#/components/schemas/MetadataErrorCode"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "projection": {
+            "$ref": "#/components/schemas/MetadataProjection"
+          },
+          "required_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "MetadataErrorCode": {
+        "type": "string",
+        "enum": [
+          "metadata_budget_too_small",
+          "metadata_event_unrepresentable",
+          "metadata_source_invalid"
+        ]
+      },
+      "MetadataEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "task.created"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "input"
+                    ],
+                    "properties": {
+                      "input": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "$ref": "#/components/schemas/MetadataInputRef"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "task.bound"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "pm.assigned"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "assignment_id",
+                      "execution_id",
+                      "agent_id",
+                      "assignment_version"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "assignment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "assignment_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "execution_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "clarification.published"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "question_id",
+                      "question_version",
+                      "request_id",
+                      "checkpoint_id",
+                      "requirement_revision",
+                      "state",
+                      "fence"
+                    ],
+                    "properties": {
+                      "checkpoint_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "question_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "question_version": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "request_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "open"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "clarification.cancelled"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "question_id",
+                      "question_version",
+                      "request_id",
+                      "checkpoint_id",
+                      "requirement_revision",
+                      "state",
+                      "fence"
+                    ],
+                    "properties": {
+                      "checkpoint_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "question_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "question_version": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "request_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "cancelled"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "clarification.answered"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "answer_id",
+                      "question_id",
+                      "question_version",
+                      "request_id",
+                      "checkpoint_id",
+                      "requirement_revision",
+                      "fence"
+                    ],
+                    "properties": {
+                      "answer_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "checkpoint_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "question_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "question_version": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "request_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "requirements.published"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "requirement_revision",
+                      "content_hash"
+                    ],
+                    "properties": {
+                      "content_hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "requirements.evidence_recorded"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "requirement_revision",
+                      "content_hash",
+                      "check_id_sha256"
+                    ],
+                    "properties": {
+                      "check_id_sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "content_hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "requirements.confirmed"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "confirmation_id",
+                      "requirement_revision",
+                      "content_hash"
+                    ],
+                    "properties": {
+                      "confirmation_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "content_hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "MetadataInputRef": {
+        "type": "object",
+        "required": [
+          "snapshot_ref",
+          "sha256"
+        ],
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "snapshot_ref": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MetadataPage": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "projection",
+          "after",
+          "next_after",
+          "has_more",
+          "events"
+        ],
+        "properties": {
+          "after": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetadataEvent"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_after": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$"
+          },
+          "projection": {
+            "$ref": "#/components/schemas/MetadataProjection"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MetadataProjection": {
+        "type": "string",
+        "enum": [
+          "metadata_v1"
+        ]
       },
       "MoveIssueRequest": {
         "type": "object",

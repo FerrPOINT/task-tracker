@@ -26,6 +26,9 @@ use std::{
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+#[path = "support/metadata.rs"]
+mod metadata;
+
 #[derive(Clone)]
 struct AuthStub {
     jwks: Value,
@@ -207,8 +210,24 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         machine_subject: "pm".into(),
     };
     let fence = json!({"assignment_id":assignment.assignment_id,"execution_id":assignment.execution_id,"agent_id":assignment.agent_id,"assignment_version":1});
+    let replacement = PmAssignment {
+        version: 2,
+        assignment_id: Uuid::new_v4(),
+        execution_id: Uuid::new_v4(),
+        agent_id: Uuid::new_v4(),
+        machine_subject: "pm".into(),
+    };
     let mut tokens = HashMap::new();
     for (token, subject, scopes) in [
+        (
+            "sdlc_pat_replacement",
+            "pm",
+            vec![
+                "task-tracker:read".to_string(),
+                "task-tracker:write".to_string(),
+                replacement.scope(task),
+            ],
+        ),
         (
             "sdlc_pat_pm",
             "pm",
@@ -278,7 +297,10 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     unsafe {
         std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{issuer}/jwks"));
         std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &issuer);
-        std::env::set_var("TASKTRACKER_SDLC__INSTANCE_ID", "tracker-integration");
+        std::env::set_var(
+            "TASKTRACKER_SDLC__INSTANCE_ID",
+            "tracker-integration-\u{416}\u{1f680}\"\\\r\n",
+        );
         std::env::set_var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT", "fleet");
         std::env::set_var("TASKTRACKER_SDLC__VERIFIER_SUBJECT", "verifier");
     }
@@ -316,7 +338,10 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let context = post(&client, &format!("{url}/binding"), &owner, &bind, 200).await;
     assert_eq!(context["contract_version"], 1);
     assert_eq!(context["owner_subject"], "owner");
-    assert_eq!(context["tracker_instance_id"], "tracker-integration");
+    assert_eq!(
+        context["tracker_instance_id"],
+        "tracker-integration-\u{416}\u{1f680}\"\\\r\n"
+    );
     assert_eq!(
         context["permissions"],
         json!({"can_answer":false,"can_confirm":false})
@@ -375,7 +400,8 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         json!({"revisions":[]})
     );
     post(&client,&format!("{url}/assignment"),"sdlc_pat_fleet",&json!({"assignment":assignment,"expected_assignment_version":null,"idempotency_key":"assign"}),200).await;
-    let document = json!({"goal":"Approved goal","scope":["Scope"],"exclusions":[],"scenarios":["Scenario"],"acceptance_criteria":["Acceptance"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["review"],"prerequisites":["contract"]});
+    // A valid result larger than Fleet's 1 MiB cap must remain pollable as metadata.
+    let document = json!({"goal":"Approved goal","scope":vec!["private-result-\u{416}\u{1f680}\"\\\n".repeat(2500);20],"exclusions":[],"scenarios":["Scenario"],"acceptance_criteria":["Acceptance"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["review"],"prerequisites":["contract"]});
     let publish = json!({"fence":fence,"expected_requirement_revision":null,"document":document,"idempotency_key":"rev-1"});
     post(
         &client,
@@ -656,6 +682,119 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         4
     );
     assert_eq!(count(&db, "sdlc_confirmations").await, 1);
+    let metadata_url = format!("{url}/events?projection=metadata_v1");
+    let (metadata_bytes, metadata_page) = metadata::get(&client, &metadata_url, &owner, 200).await;
+    metadata::verify(&metadata_page, &events);
+    assert_eq!(
+        metadata_page["events"].as_array().unwrap().len(),
+        events["events"].as_array().unwrap().len()
+    );
+    assert!(serde_json::to_vec(&events).unwrap().len() > 1_048_576);
+    assert!(metadata_bytes.len() < 262_144);
+    assert!(!String::from_utf8_lossy(&metadata_bytes).contains("private-result"));
+    let types: std::collections::HashSet<_> = metadata_page["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["event_type"].as_str().unwrap())
+        .collect();
+    assert_eq!(types.len(), 8);
+    metadata::save("tracker-metadata-all8.http.json", &metadata_bytes);
+    assert_eq!(
+        metadata::get(
+            &client,
+            &format!("{url}/events?limit=bad&limit=bad&max_bytes=0"),
+            &owner,
+            200
+        )
+        .await
+        .1,
+        events
+    );
+    for suffix in [
+        "after=01",
+        "after=%2B1",
+        "after=-1",
+        "after=9223372036854775808",
+        "limit=0",
+        "limit=101",
+        "max_bytes=1023",
+        "max_bytes=1048577",
+        "limit=bad",
+    ] {
+        metadata::get(&client, &format!("{metadata_url}&{suffix}"), &owner, 422).await;
+    }
+    metadata::get(
+        &client,
+        &format!("{url}/events?projection=metadata_v2"),
+        &owner,
+        422,
+    )
+    .await;
+    metadata::get(&client, &metadata_url, &foreign, 403).await;
+    metadata::get(&client, &metadata_url, "local-token", 401).await;
+    metadata::get(&client, &metadata_url, "sdlc_pat_pm", 200).await;
+    metadata::get(&client, &metadata_url, "sdlc_pat_fleet", 403).await;
+    metadata::get(&client, &metadata_url, &operator, 200).await;
+    let previous = metadata_page["events"][0]["sequence"].as_str().unwrap();
+    let (one, _) = metadata::get(
+        &client,
+        &format!("{metadata_url}&after={previous}&limit=1"),
+        &owner,
+        200,
+    )
+    .await;
+    // HTTP checks measure the actual emitted bytes, including the envelope.
+    let one_bound = one.len().max(1024);
+    let (same, _) = metadata::get(
+        &client,
+        &format!("{metadata_url}&after={previous}&limit=1&max_bytes={one_bound}"),
+        &owner,
+        200,
+    )
+    .await;
+    assert_eq!(one, same);
+    let (prefix_bytes, prefix) = metadata::get(
+        &client,
+        &format!("{metadata_url}&max_bytes=1024"),
+        &owner,
+        200,
+    )
+    .await;
+    assert!(prefix_bytes.len() <= 1024);
+    assert_eq!(prefix["events"].as_array().unwrap().len(), 1);
+    assert_eq!(prefix["has_more"], true);
+    let mut after = "0".to_string();
+    for event in metadata_page["events"].as_array().unwrap() {
+        let (bytes, _) = metadata::get(
+            &client,
+            &format!("{metadata_url}&after={after}&limit=1"),
+            &owner,
+            200,
+        )
+        .await;
+        if bytes.len() > 1024 {
+            let budget = bytes.len();
+            for bound in [budget - 1, budget, budget + 1] {
+                let (actual, value) = metadata::get(
+                    &client,
+                    &format!("{metadata_url}&after={after}&limit=1&max_bytes={bound}"),
+                    &owner,
+                    if bound < budget { 422 } else { 200 },
+                )
+                .await;
+                assert!(actual.len() <= bound);
+                if bound < budget {
+                    assert_eq!(value["code"], "metadata_budget_too_small");
+                    assert_eq!(value["after"], after);
+                } else {
+                    assert_eq!(actual, bytes);
+                }
+            }
+            break;
+        }
+        after = event["sequence"].as_str().unwrap().to_string();
+    }
     assert!(
         db.execute_unprepared("UPDATE sdlc_requirements SET content_hash=repeat('a',64)")
             .await
@@ -667,6 +806,20 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             .is_err()
     );
     sql(&db, "DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='operator')", vec![project.into()]).await;
+    metadata::get(&client, &metadata_url, &operator, 403).await;
+    sql(
+        &db,
+        "UPDATE users SET is_active=false WHERE central_sub='pm'",
+        vec![],
+    )
+    .await;
+    metadata::get(&client, &metadata_url, "sdlc_pat_pm", 403).await;
+    sql(
+        &db,
+        "UPDATE users SET is_active=true WHERE central_sub='pm'",
+        vec![],
+    )
+    .await;
     assert_eq!(
         client
             .get(format!("{url}/context"))
@@ -691,6 +844,13 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     handle.await.unwrap();
     let (restarted, stop, handle) = start_tracker(config).await;
     let restart_url = format!("{restarted}/api/v1/issues/{task}/sdlc");
+    let restart_metadata_url = format!("{restart_url}/events?projection=metadata_v1");
+    assert_eq!(
+        metadata::get(&client, &restart_metadata_url, &owner, 200)
+            .await
+            .0,
+        metadata_bytes
+    );
     assert_eq!(
         confirmation,
         post(
@@ -725,7 +885,48 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             .await
             .unwrap()
     );
+    // Replacement changes current assignment; old answer fences and hashes stay frozen.
+    post(&client, &format!("{restart_url}/assignment"), "sdlc_pat_fleet",
+        &json!({"assignment":replacement,"expected_assignment_version":1,"idempotency_key":"replacement"}), 200).await;
+    let replacement_fence = json!({"assignment_id":replacement.assignment_id,
+        "execution_id":replacement.execution_id,"agent_id":replacement.agent_id,"assignment_version":2});
+    let mut new_revision = publish.clone();
+    new_revision["fence"] = replacement_fence.clone();
+    new_revision["expected_requirement_revision"] = json!(2);
+    new_revision["document"]["scope"] = json!(["changed later scope"]);
+    new_revision["idempotency_key"] = json!("revision-after-replacement");
+    post(
+        &client,
+        &format!("{restart_url}/requirements"),
+        "sdlc_pat_replacement",
+        &new_revision,
+        200,
+    )
+    .await;
+    let mut changed_question = question.clone();
+    changed_question["fence"] = replacement_fence;
+    changed_question["requirement_revision"] = json!(3);
+    changed_question["expected_question_version"] = json!(1);
+    changed_question["text"] = json!("later changed question");
+    changed_question["idempotency_key"] = json!("question-after-replacement");
+    post(
+        &client,
+        &format!("{restart_url}/clarifications"),
+        "sdlc_pat_replacement",
+        &changed_question,
+        200,
+    )
+    .await;
+    let changed = metadata::get(&client, &restart_metadata_url, &owner, 200)
+        .await
+        .1;
+    assert_eq!(
+        &changed["events"].as_array().unwrap()[..metadata_page["events"].as_array().unwrap().len()],
+        metadata_page["events"].as_array().unwrap()
+    );
+    metadata_pagination_and_blockers(&client, &restart_metadata_url, &owner, &db, task).await;
     unavailable.store(true, Ordering::SeqCst);
+    metadata::get(&client, &restart_metadata_url, &owner, 503).await;
     assert_eq!(
         client
             .get(format!("{restart_url}/context"))
@@ -739,4 +940,220 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     stop.send(()).unwrap();
     handle.await.unwrap();
     auth_handle.abort();
+}
+
+async fn append_event(db: &DatabaseConnection, task: Uuid, kind: &str, payload: Value) -> i64 {
+    db.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,$3,$4) RETURNING sequence",
+        vec![Uuid::new_v4().into(), task.into(), kind.into(), payload.into()]))
+        .await.unwrap().unwrap().try_get("", "sequence").unwrap()
+}
+
+async fn metadata_pagination_and_blockers(
+    client: &Client,
+    url: &str,
+    owner: &str,
+    db: &DatabaseConnection,
+    task: Uuid,
+) {
+    let row = db.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "SELECT payload FROM sdlc_outbox WHERE task_id=$1 AND event_type='pm.assigned' ORDER BY sequence LIMIT 1",
+        vec![task.into()])).await.unwrap().unwrap();
+    let valid_payload: Value = row.try_get("", "payload").unwrap();
+    sql(db, "INSERT INTO sdlc_outbox(sequence,event_id,task_id,event_type,payload) OVERRIDING SYSTEM VALUE
+        SELECT nextval(pg_get_serial_sequence('sdlc_outbox','sequence')) + 0*nextval(pg_get_serial_sequence('sdlc_outbox','sequence')),
+        gen_random_uuid(),$1,'pm.assigned',$2 FROM generate_series(1,121)",
+        vec![task.into(), valid_payload.clone().into()]).await;
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT sequence,event_id FROM sdlc_outbox WHERE task_id=$1 ORDER BY sequence",
+            vec![task.into()],
+        ))
+        .await
+        .unwrap();
+    let expected: Vec<_> = rows
+        .iter()
+        .map(|r| {
+            (
+                r.try_get::<i64>("", "sequence").unwrap().to_string(),
+                r.try_get::<Uuid>("", "event_id").unwrap().to_string(),
+            )
+        })
+        .collect();
+    assert!(expected.len() > 100);
+    assert!(
+        expected
+            .windows(2)
+            .any(|pair| pair[1].0.parse::<i64>().unwrap() > pair[0].0.parse::<i64>().unwrap() + 1)
+    );
+    let first = metadata::get(client, url, owner, 200).await.1;
+    assert_eq!(first["events"].as_array().unwrap().len(), 100);
+    assert_eq!(first["has_more"], true);
+    let second = metadata::get(
+        client,
+        &format!("{url}&after={}", first["next_after"].as_str().unwrap()),
+        owner,
+        200,
+    )
+    .await
+    .1;
+    assert_eq!(
+        second["events"].as_array().unwrap().len(),
+        expected.len() - 100
+    );
+    assert_eq!(second["has_more"], false);
+    let mut received = vec![];
+    let mut after = "0".to_string();
+    loop {
+        let (bytes, page) = metadata::get(
+            client,
+            &format!("{url}&after={after}&limit=7&max_bytes=4096"),
+            owner,
+            200,
+        )
+        .await;
+        assert!(bytes.len() <= 4096);
+        for event in page["events"].as_array().unwrap() {
+            received.push((
+                event["sequence"].as_str().unwrap().to_string(),
+                event["event_id"].as_str().unwrap().to_string(),
+            ));
+        }
+        assert_ne!(after, page["next_after"].as_str().unwrap());
+        after = page["next_after"].as_str().unwrap().to_string();
+        if page["has_more"] == false {
+            break;
+        }
+    }
+    assert_eq!(received, expected);
+    let empty = metadata::get(client, &format!("{url}&after={after}"), owner, 200)
+        .await
+        .1;
+    assert_eq!(empty["next_after"], after);
+    assert_eq!(empty["has_more"], false);
+    assert_eq!(
+        metadata::get(
+            client,
+            &format!("{url}&after=9223372036854775807"),
+            owner,
+            200
+        )
+        .await
+        .1["next_after"],
+        "9223372036854775807"
+    );
+
+    let good = append_event(db, task, "pm.assigned", valid_payload.clone()).await;
+    let bad = append_event(
+        db,
+        task,
+        "unsupported-private-result",
+        valid_payload.clone(),
+    )
+    .await;
+    append_event(db, task, "pm.assigned", valid_payload.clone()).await;
+    let prefix = metadata::get(client, &format!("{url}&after={after}"), owner, 200)
+        .await
+        .1;
+    assert_eq!(prefix["next_after"], good.to_string());
+    assert_eq!(prefix["has_more"], true);
+    assert_eq!(prefix["events"].as_array().unwrap().len(), 1);
+    let (bytes, blocked) = metadata::get(client, &format!("{url}&after={good}"), owner, 409).await;
+    assert!(bytes.len() < 1024);
+    assert_eq!(blocked["blocked_sequence"], bad.to_string());
+    assert_eq!(blocked["after"], good.to_string());
+    assert_eq!(blocked["code"], "metadata_source_invalid");
+    assert!(!String::from_utf8_lossy(&bytes).contains("private-result"));
+    let mut cursor = bad;
+    for mutation in 0..5 {
+        let mut payload = valid_payload.clone();
+        match mutation {
+            0 => payload["result"]["execution_id"] = json!(Uuid::nil()),
+            1 => {
+                payload["result"]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("assignment_id");
+            }
+            2 => payload["root_task_id"] = json!(Uuid::new_v4()),
+            3 => payload["result"]["version"] = json!(9007199254740992i64),
+            _ => payload["contract_version"] = json!(2),
+        }
+        // Each corrupt row is followed by a valid row, proving it is not silently filtered.
+        let sequence = append_event(db, task, "pm.assigned", payload).await;
+        let following = append_event(db, task, "pm.assigned", valid_payload.clone()).await;
+        let start = sequence - 1;
+        let blocked = metadata::get(client, &format!("{url}&after={start}"), owner, 409)
+            .await
+            .1;
+        assert_eq!(blocked["after"], start.to_string());
+        assert_eq!(blocked["blocked_sequence"], sequence.to_string());
+        assert_eq!(blocked["code"], "metadata_source_invalid");
+        cursor = following;
+    }
+    assert!(cursor > bad);
+    let mut conflicting = db.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "SELECT payload FROM sdlc_outbox WHERE task_id=$1 AND event_type='requirements.evidence_recorded' ORDER BY sequence LIMIT 1",
+        vec![task.into()])).await.unwrap().unwrap().try_get::<Value>("", "payload").unwrap();
+    conflicting["result"]["content_hash"] = json!("0".repeat(64));
+    let invalid_hash = append_event(db, task, "requirements.evidence_recorded", conflicting).await;
+    assert_eq!(
+        metadata::get(
+            client,
+            &format!("{url}&after={}", invalid_hash - 1),
+            owner,
+            409
+        )
+        .await
+        .1["code"],
+        "metadata_source_invalid"
+    );
+
+    // PostgreSQL accepts this compressed synthetic identity; JSON escaping exceeds the hard cap.
+    let huge_owner = "\u{1}".repeat(190_000);
+    let huge_user = Uuid::new_v4();
+    let huge_task = Uuid::new_v4();
+    let project = Uuid::parse_str(valid_payload["project_id"].as_str().unwrap()).unwrap();
+    sql(
+        db,
+        "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
+        VALUES($1,'metadata-size@example.test','metadata-size','metadata-size','!',$2,true)",
+        vec![huge_user.into(), huge_owner.clone().into()],
+    )
+    .await;
+    sql(db, "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,reporter_id,priority,labels,position,time_spent_seconds)
+        SELECT $1,project_id,'SDLC-999999','task',status_id,'metadata-size',$2,'medium','[]',0,0 FROM issues WHERE id=$3",
+        vec![huge_task.into(), huge_user.into(), task.into()]).await;
+    let state = TaskState {
+        tracker_instance_id: valid_payload["tracker_instance_id"]
+            .as_str()
+            .unwrap()
+            .into(),
+        project_id: project,
+        task_id: huge_task,
+        root_task_id: huge_task,
+        owner_subject: huge_owner,
+        stage: Stage::Draft,
+        confirmation_revision: None,
+        assignment: None,
+        questions: vec![],
+        revisions: vec![],
+        confirmations: vec![],
+        evidence: vec![],
+    };
+    sql(db, "INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state)
+        VALUES($1,$2,$3,$1,$4,$5)", vec![huge_task.into(), state.tracker_instance_id.clone().into(),
+        project.into(), state.owner_subject.clone().into(), serde_json::to_value(&state).unwrap().into()]).await;
+    let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+        "project_id":project,"task_id":huge_task,"root_task_id":huge_task,"owner_subject":state.owner_subject,
+        "stage":"Draft","requirement_revision":null,"result":state});
+    append_event(db, huge_task, "task.bound", payload).await;
+    let huge_url = url.replace(&task.to_string(), &huge_task.to_string());
+    let (bytes, impossible) =
+        metadata::get(client, &format!("{huge_url}&max_bytes=1048576"), owner, 409).await;
+    assert!(bytes.len() <= 1024);
+    assert_eq!(impossible["code"], "metadata_event_unrepresentable");
+    assert_eq!(impossible["after"], "0");
+    assert!(impossible["required_bytes"].as_u64().unwrap() > 1_048_576);
 }

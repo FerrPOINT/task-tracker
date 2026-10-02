@@ -38,7 +38,18 @@ mutable issue text is never backfilled. All refs are server-derived; CreatedDraf
 wire and business confirmation permissions are unchanged. Source DTOs are
 `PmDraftInputResponse`/`PmDraftInput` in `backend/domain/src/sdlc.rs`; the schema is
 generated in `openapi/openapi.json`. This is input readback, not PM admission,
-assignment CAS, dispatch, delivery or a byte-bound events fix.
+assignment CAS, dispatch or runtime delivery.
+
+`GET /api/v1/issues/{id}/sdlc/events?projection=metadata_v1&limit=100&max_bytes=262144`
+returns strict metadata references, canonical metadata digest, decimal-string
+after/next_after cursors and has_more. Defaults/limits and all nine resource
+variants are in the clarification contract. The entire serialized response is
+bounded (1024..1048576 bytes), preserving a contiguous task-event prefix and
+blocking rather than skipping unsupported/corrupt/oversized events. Typed static
+errors distinguish 422 metadata_budget_too_small from 409
+metadata_event_unrepresentable/metadata_source_invalid. Legacy default wire,
+query behavior, scopes and original content hashes remain unchanged. DTOs live
+in `backend/domain/src/sdlc_metadata.rs`; OpenAPI includes both success variants.
 
 ## Overview
 

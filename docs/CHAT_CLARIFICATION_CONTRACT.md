@@ -134,9 +134,9 @@ mapping and Workflow authoritative namespace ownership/admission are not yet
 implemented here. Replacement needs a new execution/ordinal; resume retains its
 identity. Provenance/catalog/machine/hash values must come from trusted server
 readback, never a browser trust blob. General Delivery contracts stay strict.
-Metadata outbox `metadata_v1` is still a proposal: the existing LIMIT 100 is not
-a byte bound and full results can exceed Fleet's 1 MiB gateway/inbox limits.
-Do not claim this endpoint fixes polling or substitutes refs for readable inputs.
+The opt-in `metadata_v1` outbox below bounds serialized responses. Legacy LIMIT
+100 remains unchanged and full results can exceed Fleet's 1 MiB limits. Metadata
+does not replace readable inputs or attest Workflow admission/runtime delivery.
 
 ## Fleet gateway
 
@@ -415,3 +415,86 @@ owner or machine identity denied; 404 missing issue/binding/question/revision;
 409 stale fence/version/hash, reused key with changed payload, not-ready gate;
 422 invalid DTO/answer or unsafe versions; 503 Central Auth/storage configuration
 unavailable. Unexpected database/transaction errors return 500, never acceptance.
+
+## Byte-bounded metadata outbox
+
+`GET /api/v1/issues/{id}/sdlc/events?projection=metadata_v1&after=0&limit=100&max_bytes=262144`
+uses the same strict Central/service/project read authorization as legacy events.
+Without projection the existing query parsing, LIMIT 100, response and payload
+remain unchanged, including ignoring limit/max_bytes. Explicit unknown projection
+or invalid metadata query returns 422 with a static standard validation error.
+Opt-in after is canonical decimal i64 (0..9223372036854775807); limit is 1..100
+(default 100); max_bytes is 1024..1048576 (default 262144). Decimal query values
+reject signs, leading zeroes, whitespace, fractions and overflow.
+
+Success is the strict object `{contract_version:1,projection:"metadata_v1",
+after:string,next_after:string,has_more:boolean,events:MetadataEvent[]}`. Every
+event has exactly `{sequence:string,event_id:UUID,task_id:UUID,event_type,
+created_at:UTCDateTime,metadata_sha256:SHA256,payload}`. Sequence is a positive
+canonical decimal i64 string, not a JavaScript number. Timestamp comes from the
+persisted event and is normalized to UTC with nine fractional digits and Z.
+Payload has exactly `{tracker_instance_id,project_id,root_task_id,owner_subject,
+stage,current_requirement_revision:Version|null,resource}`. Version is an integer
+in 1..9007199254740991; SHA256 is 64 lowercase hexadecimal characters. All fields
+are required, including nullable fields; all objects reject unknown fields.
+
+| event_type | exact resource |
+|---|---|
+| task.created | `{input:null\|{snapshot_ref:UUID,sha256:SHA256}}` |
+| task.bound | `{}` |
+| pm.assigned | `{assignment_id:UUID,execution_id:UUID,agent_id:UUID,assignment_version:Version}` |
+| clarification.published | `{question_id:UUID,question_version:Version,request_id:UUID,checkpoint_id:UUID,requirement_revision:Version,state:"open",fence:Fence}` |
+| clarification.cancelled | Same references, `state:"cancelled"` |
+| clarification.answered | `{answer_id:UUID,question_id:UUID,question_version:Version,request_id:UUID,checkpoint_id:UUID,requirement_revision:Version,fence:Fence}` |
+| requirements.published | `{requirement_revision:Version,content_hash:SHA256}` |
+| requirements.evidence_recorded | `{requirement_revision:Version,content_hash:SHA256,check_id_sha256:SHA256}` |
+| requirements.confirmed | `{confirmation_id:UUID,requirement_revision:Version,content_hash:SHA256}` |
+
+Fence has the same four fields as pm.assigned. No result, aggregate, document,
+answer text, options, evidence reference or raw check_id is emitted. Requirements
+have a task/revision identity, no revision UUID. Evidence result/outbox has no
+durable evidence-row UUID, so event_id identifies the recorded occurrence.
+check_id_sha256 hashes the canonical JSON string, not raw UTF-8 check_id bytes.
+Metadata/context values come from the immutable event payload; only immutable
+binding is checked against the authorized task. Answer request/checkpoint/fence
+come from the exact append-only question version, never current assignment.
+Creation input refs come from the immutable creation ledger; absent historical
+input is null, partial/nil/hash/binding conflicts fail closed. Original content
+hashes remain unchanged and separate from metadata digest.
+
+metadata_sha256 hashes `{contract_version:1,projection:"metadata_v1",event:<event
+without metadata_sha256>}` using the existing canonical sorted-key compact UTF-8
+JSON Value algorithm. JSON-required escapes apply; there is no Unicode, CRLF or
+whitespace normalization and no JSONB-format-dependent hashing. Pagination does
+not affect the event digest; replay, restart and later task edits retain it.
+
+The task lock fences writers while selecting the first limit+1 rows ordered by
+sequence. Return only the contiguous task-event prefix that fits the serialized
+whole success envelope, including escaping, multibyte strings, cursors, hash and
+has_more. Global sequence gaps from other tasks/rollback are normal. The bytes
+measured are the bytes returned, without a second HTTP JSON serialization.
+has_more includes any extra/unreturned row, including a blocked row. next_after
+is the last returned sequence; empty tails preserve after. Never filter/skip an
+unknown, malformed, conflicting or oversized row. A valid preceding prefix may
+be returned with has_more=true before exposing the blocker on the next request.
+
+If the first event cannot fit, a bounded strict error has exactly
+`{contract_version:1,projection:"metadata_v1",code,after:string,
+blocked_sequence:string,event_id:UUID,required_bytes:number|null,max_bytes:number}`.
+422 metadata_budget_too_small means the whole singleton envelope can fit the
+hard cap; required_bytes reports its serialized length. 409
+metadata_event_unrepresentable means it exceeds the hard cap; 409
+metadata_source_invalid means missing/invalid references or unsupported source
+(required_bytes:null). Static codes reveal no result/text. Projection errors are
+serialized once, below 1024 bytes, and never advance cursor. Dependency/database
+and authorization errors retain their existing standard envelopes/statuses.
+
+Fleet must atomically pin instance/task/projection/contract_version before its
+first cursor, including an empty first page. Legacy receipts are not rehashed or
+reinterpreted; switching existing consumption requires an explicit migration.
+Store/verify canonical metadata digest separately from legacy payload hashes;
+conflicting replay/version fails closed. Inbox insertion and cursor persistence
+share a transaction. Fleet also bounds its complete inbox request after wrapping
+against its own 1 MiB limit; 256 KiB default leaves headroom. Blocking errors need
+durable diagnosis/backoff, not skipping or tight retry loops. These Fleet duties
+and Workflow resume are external integration work, not implemented in Tracker.

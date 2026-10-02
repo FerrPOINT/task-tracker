@@ -1,10 +1,12 @@
 use axum::{
     Extension, Json, Router,
-    extract::{Path, Query, State},
+    extract::{OriginalUri, Path, Query, State},
     middleware,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use domain::sdlc::*;
+use domain::sdlc_metadata::*;
 use serde::{Deserialize, Serialize};
 use shared::AppError;
 use std::sync::Arc;
@@ -36,6 +38,56 @@ pub struct EventsQuery {
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct OutboxResponse {
     pub events: Vec<OutboxEvent>,
+}
+
+#[derive(Deserialize)]
+struct ProjectionQuery {
+    projection: Option<String>,
+}
+
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct MetadataEventsQuery {
+    #[param(value_type = Option<MetadataProjection>)]
+    pub projection: Option<String>,
+    /// Canonical nonnegative decimal i64 for metadata_v1; legacy i64 otherwise.
+    pub after: Option<String>,
+    #[param(value_type = Option<u16>, minimum = 1, maximum = 100)]
+    pub limit: Option<String>,
+    #[param(value_type = Option<u32>, minimum = 1024, maximum = 1048576)]
+    pub max_bytes: Option<String>,
+}
+
+#[derive(Serialize, utoipa::ToSchema)]
+#[serde(untagged)]
+pub enum EventsSuccess {
+    Legacy(OutboxResponse),
+    Metadata(MetadataPage),
+}
+
+fn decimal(value: &str) -> Result<i64, AppError> {
+    if value.is_empty()
+        || (value.len() > 1 && value.starts_with('0'))
+        || !value.bytes().all(|b| b.is_ascii_digit())
+    {
+        return Err(AppError::validation("invalid metadata query"));
+    }
+    value
+        .parse::<i64>()
+        .map_err(|_| AppError::validation("invalid metadata query"))
+}
+
+impl MetadataEventsQuery {
+    fn bounds(&self) -> Result<(i64, u16, usize), AppError> {
+        let after = decimal(self.after.as_deref().unwrap_or("0"))?;
+        let limit = decimal(self.limit.as_deref().unwrap_or("100"))?;
+        let max_bytes = decimal(self.max_bytes.as_deref().unwrap_or("262144"))?;
+        if !(1..=100).contains(&limit)
+            || !(METADATA_MIN_BYTES as i64..=METADATA_MAX_BYTES as i64).contains(&max_bytes)
+        {
+            return Err(AppError::validation("invalid metadata query"));
+        }
+        Ok((after, limit as u16, max_bytes as usize))
+    }
 }
 
 fn service(ctx: &app::AppContext) -> Result<&app::sdlc::SdlcService, AppError> {
@@ -371,17 +423,81 @@ pub async fn evidence(
     ))
 }
 
-#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/events", operation_id="sdlc_events", params(("id"=Uuid, Path), EventsQuery), responses((status=200,body=OutboxResponse)), security(("bearer"=[])))]
+#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/events", operation_id="sdlc_events", params(("id"=Uuid, Path), MetadataEventsQuery), responses((status=200,body=EventsSuccess), (status=409,body=MetadataError), (status=422,body=MetadataError,description="Metadata budget too small; invalid query uses the standard validation envelope")), security(("bearer"=[])))]
 pub async fn events(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,
     Path(id): Path<Uuid>,
-    Query(query): Query<EventsQuery>,
-) -> Result<Json<OutboxResponse>, AppError> {
+    OriginalUri(uri): OriginalUri,
+) -> Result<Response, AppError> {
+    let projection = match Query::<ProjectionQuery>::try_from_uri(&uri) {
+        Ok(Query(query)) => query.projection,
+        Err(error) => return Ok(error.into_response()),
+    };
+    if let Some(projection) = projection {
+        if projection != "metadata_v1" {
+            return Err(AppError::validation("unsupported metadata projection"));
+        }
+        let Query(query) = Query::<MetadataEventsQuery>::try_from_uri(&uri)
+            .map_err(|_| AppError::validation("invalid metadata query"))?;
+        let (after, limit, max_bytes) = query.bounds()?;
+        let wire = service(&ctx)?
+            .metadata_outbox(id, &actor, after, limit, max_bytes)
+            .await?;
+        let status = axum::http::StatusCode::from_u16(wire.status).map_err(AppError::internal)?;
+        return Ok((
+            status,
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            wire.bytes,
+        )
+            .into_response());
+    }
+    let Query(query) = match Query::<EventsQuery>::try_from_uri(&uri) {
+        Ok(query) => query,
+        Err(error) => return Ok(error.into_response()),
+    };
     Ok(Json(OutboxResponse {
         events: service(&ctx)?
             .repository
             .outbox(id, &actor, query.after)
             .await?,
-    }))
+    })
+    .into_response())
+}
+
+#[cfg(test)]
+mod metadata_query_tests {
+    use super::*;
+
+    #[test]
+    fn metadata_bounds_are_canonical_and_legacy_query_keeps_its_semantics() {
+        for after in ["-1", "+1", "01", "", "9223372036854775808", "1.0", " 1"] {
+            assert!(decimal(after).is_err());
+        }
+        assert_eq!(decimal("9223372036854775807").unwrap(), i64::MAX);
+        for (name, value) in [
+            ("limit", "0"),
+            ("limit", "101"),
+            ("max_bytes", "1023"),
+            ("max_bytes", "1048577"),
+            ("limit", "01"),
+        ] {
+            let uri = format!("/events?projection=metadata_v1&{name}={value}")
+                .parse()
+                .unwrap();
+            assert!(
+                Query::<MetadataEventsQuery>::try_from_uri(&uri)
+                    .unwrap()
+                    .0
+                    .bounds()
+                    .is_err()
+            );
+        }
+        let uri = "/events?after=01&limit=bad&limit=also-bad&max_bytes=0"
+            .parse()
+            .unwrap();
+        assert_eq!(Query::<EventsQuery>::try_from_uri(&uri).unwrap().0.after, 1);
+        let uri = "/events?after=abc".parse().unwrap();
+        assert!(Query::<EventsQuery>::try_from_uri(&uri).is_err());
+    }
 }

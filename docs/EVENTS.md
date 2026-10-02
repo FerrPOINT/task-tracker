@@ -87,3 +87,14 @@ command result and event commit together. This is separate from the legacy
 ephemeral Tracker SSE invalidation bus. Fleet must persist consumption and
 Workflow resume delivery; a saved answer event does not mean a run started.
 Payload and retry semantics: [contract](CHAT_CLARIFICATION_CONTRACT.md).
+
+Opt in with `projection=metadata_v1&limit=100&max_bytes=262144` for typed references
+without content or full results. The whole serialized JSON page is byte-bounded
+(1024..1048576), not just its payloads. Canonical decimal-string cursors and stable
+metadata SHA-256 accompany the contiguous prefix; an oversized/corrupt/unsupported
+first event blocks with a bounded typed error. No row is silently skipped.
+Persisted event context, immutable input snapshots and exact historical question
+fences keep replay stable across edits/reassignment/restart. Legacy wire and
+content hashes remain unchanged. Fleet must pin projection/version before its
+first cursor, keep metadata digest separate from legacy receipts, and persist
+inbox/cursor together; this API does not claim Workflow resumed.

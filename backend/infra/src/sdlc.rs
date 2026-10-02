@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use domain::sdlc::*;
+use domain::sdlc_metadata::{MetadataCandidate, MetadataErrorCode};
 use sea_orm::{
     ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
     QueryResult, Statement, TransactionTrait, Value,
@@ -270,6 +271,103 @@ impl PostgresSdlcRepository {
             SdlcCommand::Cancel { .. } => "clarification.cancelled",
         };
         Ok(event)
+    }
+
+    async fn metadata_references(
+        tx: &DatabaseTransaction,
+        event: &OutboxEvent,
+        state: &TaskState,
+    ) -> Result<Option<app::sdlc_metadata::MetadataReferences>, AppError> {
+        let payload = &event.payload;
+        if payload["tracker_instance_id"] != state.tracker_instance_id
+            || payload["project_id"] != state.project_id.to_string()
+            || payload["root_task_id"] != state.root_task_id.to_string()
+            || payload["owner_subject"] != state.owner_subject
+        {
+            return Ok(None);
+        }
+        let mut refs = app::sdlc_metadata::MetadataReferences {
+            input: None,
+            question: None,
+            requirement_hash: None,
+        };
+        if event.event_type == "task.created" {
+            let row = tx.query_one(statement(
+                "SELECT project_id,actor_subject,input_snapshot_ref,input_title,input_description,input_sha256 FROM sdlc_draft_creations WHERE task_id=$1",
+                vec![event.task_id.into()],
+            )).await.map_err(map_db)?;
+            if let Some(row) = row {
+                if row.try_get::<Uuid>("", "project_id").map_err(map_db)? != state.project_id
+                    || row.try_get::<String>("", "actor_subject").map_err(map_db)?
+                        != state.owner_subject
+                {
+                    return Ok(None);
+                }
+                let snapshot_ref: Option<Uuid> =
+                    row.try_get("", "input_snapshot_ref").map_err(map_db)?;
+                let title: Option<String> = row.try_get("", "input_title").map_err(map_db)?;
+                let description: Option<String> =
+                    row.try_get("", "input_description").map_err(map_db)?;
+                let sha256: Option<String> = row.try_get("", "input_sha256").map_err(map_db)?;
+                match (snapshot_ref, title, description, sha256) {
+                    (None, None, None, None) => {}
+                    (Some(snapshot_ref), Some(title), Some(description), Some(sha256)) => {
+                        refs.input = Some(PmDraftInput {
+                            snapshot_ref,
+                            title,
+                            description,
+                            sha256,
+                        });
+                    }
+                    _ => return Ok(None),
+                }
+            }
+        }
+        let result = &payload["result"];
+        if event.event_type == "clarification.answered" {
+            let Some(id) = result["question_id"]
+                .as_str()
+                .and_then(|s| Uuid::parse_str(s).ok())
+            else {
+                return Ok(None);
+            };
+            let Some(version) = result["question_version"].as_i64() else {
+                return Ok(None);
+            };
+            let row = tx.query_one(statement(
+                "SELECT payload FROM sdlc_question_versions WHERE task_id=$1 AND question_id=$2 AND version=$3",
+                vec![event.task_id.into(), id.into(), version.into()],
+            )).await.map_err(map_db)?;
+            let Some(row) = row else {
+                return Ok(None);
+            };
+            let value: Json = row.try_get("", "payload").map_err(map_db)?;
+            let Ok(question) = serde_json::from_value(value) else {
+                return Ok(None);
+            };
+            refs.question = Some(question);
+        }
+        let number = match event.event_type.as_str() {
+            "requirements.published" | "requirements.confirmed" => result["revision"].as_i64(),
+            "clarification.published"
+            | "clarification.cancelled"
+            | "clarification.answered"
+            | "requirements.evidence_recorded" => result["requirement_revision"].as_i64(),
+            _ => None,
+        };
+        if let Some(number) = number {
+            let row = tx
+                .query_one(statement(
+                    "SELECT content_hash FROM sdlc_requirements WHERE task_id=$1 AND revision=$2",
+                    vec![event.task_id.into(), number.into()],
+                ))
+                .await
+                .map_err(map_db)?;
+            if let Some(row) = row {
+                refs.requirement_hash = Some(row.try_get("", "content_hash").map_err(map_db)?);
+            }
+        }
+        Ok(Some(refs))
     }
 }
 
@@ -642,5 +740,43 @@ impl SdlcRepository for PostgresSdlcRepository {
             .collect::<Result<Vec<_>, AppError>>()?;
         tx.commit().await.map_err(map_db)?;
         Ok(events)
+    }
+
+    async fn metadata_outbox(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        after: i64,
+        limit: u16,
+    ) -> Result<Vec<MetadataCandidate>, AppError> {
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load(&tx, task, actor).await?;
+        // The same task lock fences writers; the extra row is never omitted from has_more.
+        let rows = tx.query_all(statement(
+            "SELECT sequence,event_id,task_id,event_type,payload,created_at FROM sdlc_outbox WHERE task_id=$1 AND sequence>$2 ORDER BY sequence LIMIT $3",
+            vec![task.into(), after.into(), i64::from(limit + 1).into()],
+        )).await.map_err(map_db)?;
+        let mut candidates = Vec::with_capacity(rows.len());
+        for row in rows {
+            let event = OutboxEvent {
+                sequence: row.try_get("", "sequence").map_err(map_db)?,
+                event_id: row.try_get("", "event_id").map_err(map_db)?,
+                task_id: row.try_get("", "task_id").map_err(map_db)?,
+                event_type: row.try_get("", "event_type").map_err(map_db)?,
+                payload: row.try_get("", "payload").map_err(map_db)?,
+                created_at: row.try_get("", "created_at").map_err(map_db)?,
+            };
+            let projected = match Self::metadata_references(&tx, &event, &state).await? {
+                Some(refs) => app::sdlc_metadata::project(&event, refs),
+                None => Err(MetadataErrorCode::MetadataSourceInvalid),
+            };
+            candidates.push(MetadataCandidate {
+                sequence: event.sequence,
+                event_id: event.event_id,
+                event: projected,
+            });
+        }
+        tx.commit().await.map_err(map_db)?;
+        Ok(candidates)
     }
 }

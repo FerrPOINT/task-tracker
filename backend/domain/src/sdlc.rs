@@ -543,6 +543,13 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         after: i64,
     ) -> Result<Vec<OutboxEvent>, AppError>;
+    async fn metadata_outbox(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        after: i64,
+        limit: u16,
+    ) -> Result<Vec<crate::sdlc_metadata::MetadataCandidate>, AppError>;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
