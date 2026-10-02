@@ -263,3 +263,7 @@ Lefthook (`lefthook.yml`):
 - `justfile`
 - `lefthook.yml`
 - `backend/scripts/run-e2e-tests.sh`
+
+## Общая база
+
+Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).

@@ -18,8 +18,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "openapi:check": "node node_modules/@sdlc/ui/scripts/sdlc-openapi-check.mjs --spec ../openapi/openapi.json --schema src/api/generated.ts",
-    "openapi:compat": "node scripts/openapi-compat-sso.mjs",
-    "postinstall": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts"
+    "openapi:compat": "node scripts/base-openapi-compat.mjs",
+    "postinstall": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts",
+    "theme:check": "node ../../services-base/frontend/scripts/sdlc-effective-theme-check.mjs"
   },
   "dependencies": {
     "@dicebear/core": "^9.4.3",
@@ -89,5 +90,6 @@
       "nanoid": "3.3.18",
       "browserslist": "4.28.7"
     }
-  }
+  },
+  "packageManager": "pnpm@10.28.1"
 }

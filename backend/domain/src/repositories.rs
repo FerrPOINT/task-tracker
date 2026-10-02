@@ -151,6 +151,9 @@ pub trait IssueRepository: Send + Sync {
     /// and permanent-delete operations that need to act on trashed issues.
     async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError>;
     async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError>;
+    async fn get_by_key_include_deleted(&self, key: &IssueKey) -> Result<Issue, AppError> {
+        self.get_by_key(key).await
+    }
     /// Atomically re-validate WIP and persist the status change together
     /// with its history entry. Implementations MUST count the target column
     /// and update the issue inside the same transaction (or critical

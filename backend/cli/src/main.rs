@@ -1,9 +1,12 @@
+mod commands;
+mod support;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use reqwest::Method;
 use sdlc_cli_core::ApiClient;
 use serde_json::{Value, json};
 use std::{process::ExitCode, time::Duration};
+use support::ErrorFormat;
 
 // ─── Top-level CLI ───────────────────────────────────────────────────
 
@@ -21,19 +24,23 @@ struct Cli {
     api_url: String,
 
     /// Bearer token (or set TASKTRACKER_TOKEN / SDLC_API_TOKEN)
-    #[arg(long, env = "TASKTRACKER_TOKEN")]
+    #[arg(long, env = "TASKTRACKER_TOKEN", hide_env_values = true)]
     token: Option<String>,
 
     /// Output format: json | table | compact
-    #[arg(long, env = "TASKTRACKER_OUTPUT", default_value = "json")]
+    #[arg(long, env = "TASKTRACKER_OUTPUT", default_value = "json", value_parser = ["json", "table", "compact"])]
     output: String,
 
+    #[arg(long, value_enum, default_value = "text")]
+    error_format: ErrorFormat,
     #[command(subcommand)]
     command: Commands,
 }
 
 #[derive(Subcommand)]
 enum Commands {
+    #[command(flatten)]
+    Work(commands::WorkCommand),
     /// Authentication
     Auth {
         #[command(subcommand)]
@@ -149,13 +156,17 @@ enum IssueCommands {
         priority: String,
         #[arg(long)]
         description: Option<String>,
+        #[arg(long, conflicts_with = "description")]
+        from_file: Option<String>,
         #[arg(long)]
         assignee_id: Option<String>,
         #[arg(long)]
         status_id: Option<String>,
     },
     /// Get issue details
-    Get { key: String },
+    Get {
+        key: String,
+    },
     /// Update issue
     Update {
         key: String,
@@ -163,25 +174,36 @@ enum IssueCommands {
         summary: Option<String>,
         #[arg(long)]
         description: Option<String>,
+        #[arg(long, conflicts_with = "description")]
+        from_file: Option<String>,
         #[arg(long)]
         priority: Option<String>,
         #[arg(long)]
         status_id: Option<String>,
         #[arg(long)]
         assignee_id: Option<String>,
+        #[arg(long, conflicts_with = "assignee_id")]
+        unassign: bool,
     },
     /// Delete issue (soft-delete)
-    Delete { key: String },
+    Delete {
+        key: String,
+    },
     /// Transition issue status
     Transition {
         key: String,
         #[arg(long)]
         to: String,
     },
+    Restore {
+        key: String,
+    },
     /// List issues for a project
     List {
         #[arg(long)]
         project_key: String,
+        #[command(flatten)]
+        filters: commands::Filters,
     },
 }
 
@@ -198,6 +220,8 @@ enum BoardCommands {
     Backlog {
         #[arg(long)]
         project_key: String,
+        #[command(flatten)]
+        page: commands::Page,
     },
     /// Move issue to a different column
     Move {
@@ -271,20 +295,36 @@ enum SprintCommands {
 #[derive(Subcommand)]
 enum CommentCommands {
     /// List comments for an issue
-    List { issue_id: String },
+    List {
+        issue_id: String,
+        #[command(flatten)]
+        page: commands::Page,
+    },
     /// Add a comment
     Add {
         #[arg(long)]
         issue_id: String,
+        #[arg(
+            long,
+            required_unless_present = "from_file",
+            conflicts_with = "from_file"
+        )]
+        body: Option<String>,
         #[arg(long)]
-        body: String,
+        from_file: Option<String>,
     },
     /// Update a comment
     Update {
         #[arg(long)]
         comment_id: String,
+        #[arg(
+            long,
+            required_unless_present = "from_file",
+            conflicts_with = "from_file"
+        )]
+        body: Option<String>,
         #[arg(long)]
-        body: String,
+        from_file: Option<String>,
     },
     /// Delete a comment
     Delete { comment_id: String },
@@ -337,11 +377,21 @@ enum SearchCommands {
         priority: Option<String>,
         #[arg(long)]
         assignee_id: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        sort_by: Option<String>,
+        #[arg(long)]
+        sort_order: Option<String>,
+        #[command(flatten)]
+        page: commands::Page,
     },
     /// Execute a JQL query
     Jql {
         /// JQL expression, e.g. 'project = "TT" AND status = "Open"'
         query: String,
+        #[command(flatten)]
+        page: commands::Page,
     },
 }
 
@@ -350,7 +400,12 @@ enum SearchCommands {
 #[derive(Subcommand)]
 enum NotificationCommands {
     /// List unread notifications
-    List,
+    List {
+        #[command(flatten)]
+        page: commands::Page,
+        #[arg(long)]
+        include_read: bool,
+    },
     /// Mark a notification as read
     Read { id: String },
     /// Mark all notifications as read
@@ -464,12 +519,23 @@ enum MemberCommands {
 struct Api {
     client: ApiClient,
     base_has_version: bool,
+    secrets: Vec<String>,
 }
 
 impl Api {
     fn new(base: String, token: Option<String>) -> Result<Self> {
         let base_has_version = base.trim_end_matches('/').ends_with("/api/v1");
+        // The shared transport trims explicit tokens and can fall back from an
+        // empty token. Redact both original and effective credential forms.
+        let secrets = token
+            .clone()
+            .into_iter()
+            .chain(std::env::var("SDLC_API_TOKEN").ok())
+            .flat_map(|value| [value.trim().to_owned(), value])
+            .filter(|value| !value.is_empty())
+            .collect();
         Ok(Self {
+            secrets,
             client: ApiClient::new(&base, token.as_deref(), Duration::from_secs(30))?,
             base_has_version,
         })
@@ -508,11 +574,19 @@ impl Api {
         if matches!(method, Method::POST | Method::PATCH | Method::PUT) {
             req = req.json(&payload);
         }
-        Ok(self.client.json(req).await?)
+        support::json_response(req, &self.secrets).await
     }
 }
 
 // ─── Output helpers ──────────────────────────────────────────────────
+
+fn print_success(output: &str, message: &str) {
+    if output == "json" {
+        print_output(output, &json!({"status":"ok"}));
+    } else {
+        println!("{message}");
+    }
+}
 
 fn print_output(output: &str, value: &Value) {
     match output {
@@ -597,9 +671,25 @@ fn print_table(value: &Value) {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => return support::parse_error(error),
+    };
+    let error_format = cli.error_format;
+    let mut secrets = cli
+        .token
+        .clone()
+        .or_else(|| std::env::var("SDLC_API_TOKEN").ok())
+        .into_iter()
+        .collect::<Vec<_>>();
+    if let Commands::Admin {
+        command: AdminCommands::CreateUser { password, .. },
+    } = &cli.command
+    {
+        secrets.push(password.clone());
+    }
     if let Err(e) = run(cli).await {
-        eprintln!("error: {e:#}");
+        support::report(&e, error_format, &secrets);
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
@@ -610,10 +700,20 @@ fn enc(s: &str) -> String {
 }
 
 async fn run(cli: Cli) -> Result<()> {
-    let api = Api::new(cli.api_url.clone(), cli.token.clone())?;
+    let mut api = Api::new(cli.api_url.clone(), cli.token.clone())?;
+    if let Commands::Admin {
+        command: AdminCommands::CreateUser { password, .. },
+    } = &cli.command
+    {
+        api.secrets.push(password.clone());
+    }
     let out = cli.output.as_str();
 
     match cli.command {
+        Commands::Work(command) => {
+            let value = commands::execute(&api, command).await?;
+            print_output(out, &value);
+        }
         // ── Auth ──
         Commands::Auth { command } => match command {
             AuthCommands::Whoami => {
@@ -667,7 +767,7 @@ async fn run(cli: Cli) -> Result<()> {
             ProjectCommands::Delete { key } => {
                 api.delete(&format!("/api/v1/projects/{}", enc(&key)))
                     .await?;
-                println!("project {key} deleted");
+                print_success(out, &format!("project {key} deleted"));
             }
         },
 
@@ -679,6 +779,7 @@ async fn run(cli: Cli) -> Result<()> {
                 issue_type,
                 priority,
                 description,
+                from_file,
                 assignee_id,
                 status_id,
             } => {
@@ -688,7 +789,7 @@ async fn run(cli: Cli) -> Result<()> {
                     "issue_type": issue_type,
                     "priority": priority,
                 });
-                if let Some(d) = description {
+                if let Some(d) = support::text_input(description, from_file)? {
                     payload["description"] = Value::String(d);
                 }
                 if let Some(a) = assignee_id {
@@ -708,15 +809,17 @@ async fn run(cli: Cli) -> Result<()> {
                 key,
                 summary,
                 description,
+                from_file,
                 priority,
                 status_id,
                 assignee_id,
+                unassign,
             } => {
                 let mut payload = json!({});
                 if let Some(s) = summary {
                     payload["summary"] = Value::String(s);
                 }
-                if let Some(d) = description {
+                if let Some(d) = support::text_input(description, from_file)? {
                     payload["description"] = Value::String(d);
                 }
                 if let Some(p) = priority {
@@ -728,6 +831,9 @@ async fn run(cli: Cli) -> Result<()> {
                 if let Some(a) = assignee_id {
                     payload["assignee_id"] = Value::String(a);
                 }
+                if unassign {
+                    payload["assignee_id"] = Value::Null;
+                }
                 let body = api
                     .patch(&format!("/api/v1/issues/{}", enc(&key)), payload)
                     .await?;
@@ -735,7 +841,7 @@ async fn run(cli: Cli) -> Result<()> {
             }
             IssueCommands::Delete { key } => {
                 api.delete(&format!("/api/v1/issues/{}", enc(&key))).await?;
-                println!("issue {key} deleted");
+                print_success(out, &format!("issue {key} deleted"));
             }
             IssueCommands::Transition { key, to } => {
                 let body = api
@@ -748,9 +854,24 @@ async fn run(cli: Cli) -> Result<()> {
                     .await?;
                 print_output(out, &body);
             }
-            IssueCommands::List { project_key } => {
+            IssueCommands::Restore { key } => {
                 let body = api
-                    .get(&format!("/api/v1/issues?project_key={}", enc(&project_key)))
+                    .post(
+                        &format!("/api/v1/issues/{}/restore", enc(&key)),
+                        Value::Null,
+                    )
+                    .await?;
+                print_output(out, &body);
+            }
+            IssueCommands::List {
+                project_key,
+                filters,
+            } => {
+                let body = api
+                    .get(&commands::query(
+                        &format!("/api/v1/issues?project_key={}", enc(&project_key)),
+                        filters.pairs(),
+                    ))
                     .await?;
                 print_output(out, &body);
             }
@@ -764,9 +885,12 @@ async fn run(cli: Cli) -> Result<()> {
                     .await?;
                 print_output(out, &body);
             }
-            BoardCommands::Backlog { project_key } => {
+            BoardCommands::Backlog { project_key, page } => {
                 let body = api
-                    .get(&format!("/api/v1/projects/{}/backlog", enc(&project_key)))
+                    .get(&commands::query(
+                        &format!("/api/v1/projects/{}/backlog", enc(&project_key)),
+                        page.pairs(),
+                    ))
                     .await?;
                 print_output(out, &body);
             }
@@ -775,6 +899,7 @@ async fn run(cli: Cli) -> Result<()> {
                 issue_id,
                 status_id,
             } => {
+                let issue_id = commands::issue_id(&api, &issue_id).await?;
                 let body = api
                     .post(
                         &format!("/api/v1/projects/{}/board/move", enc(&project_key)),
@@ -853,6 +978,7 @@ async fn run(cli: Cli) -> Result<()> {
                 sprint_id,
                 issue_id,
             } => {
+                let issue_id = commands::issue_id(&api, &issue_id).await?;
                 let body = api
                     .post(
                         &format!(
@@ -872,6 +998,7 @@ async fn run(cli: Cli) -> Result<()> {
                 sprint_id,
                 issue_id,
             } => {
+                let issue_id = commands::issue_id(&api, &issue_id).await?;
                 let body = api
                     .post(
                         &format!(
@@ -890,13 +1017,24 @@ async fn run(cli: Cli) -> Result<()> {
 
         // ── Comment ──
         Commands::Comment { command } => match command {
-            CommentCommands::List { issue_id } => {
+            CommentCommands::List { issue_id, page } => {
+                let issue_id = commands::issue_id(&api, &issue_id).await?;
                 let body = api
-                    .get(&format!("/api/v1/issues/{}/comments", enc(&issue_id)))
+                    .get(&commands::query(
+                        &format!("/api/v1/issues/{}/comments", enc(&issue_id)),
+                        page.pairs(),
+                    ))
                     .await?;
                 print_output(out, &body);
             }
-            CommentCommands::Add { issue_id, body } => {
+            CommentCommands::Add {
+                issue_id,
+                body,
+                from_file,
+            } => {
+                let issue_id = commands::issue_id(&api, &issue_id).await?;
+                let body =
+                    support::text_input(body, from_file)?.context("Комментарий обязателен")?;
                 let resp = api
                     .post(
                         &format!("/api/v1/issues/{}/comments", enc(&issue_id)),
@@ -907,7 +1045,13 @@ async fn run(cli: Cli) -> Result<()> {
                     .await?;
                 print_output(out, &resp);
             }
-            CommentCommands::Update { comment_id, body } => {
+            CommentCommands::Update {
+                comment_id,
+                body,
+                from_file,
+            } => {
+                let body =
+                    support::text_input(body, from_file)?.context("Комментарий обязателен")?;
                 let resp = api
                     .patch(
                         &format!("/api/v1/comments/{}", enc(&comment_id)),
@@ -921,7 +1065,7 @@ async fn run(cli: Cli) -> Result<()> {
             CommentCommands::Delete { comment_id } => {
                 api.delete(&format!("/api/v1/comments/{}", enc(&comment_id)))
                     .await?;
-                println!("comment {comment_id} deleted");
+                print_success(out, &format!("comment {comment_id} deleted"));
             }
         },
 
@@ -953,9 +1097,10 @@ async fn run(cli: Cli) -> Result<()> {
             LabelCommands::Delete { label_id } => {
                 api.delete(&format!("/api/v1/labels/{}", enc(&label_id)))
                     .await?;
-                println!("label {label_id} deleted");
+                print_success(out, &format!("label {label_id} deleted"));
             }
             LabelCommands::Attach { issue_id, label_id } => {
+                let issue_id = commands::issue_id(&api, &issue_id).await?;
                 let body = api
                     .post(
                         &format!("/api/v1/issues/{}/labels", enc(&issue_id)),
@@ -967,13 +1112,14 @@ async fn run(cli: Cli) -> Result<()> {
                 print_output(out, &body);
             }
             LabelCommands::Detach { issue_id, label_id } => {
+                let issue_id = commands::issue_id(&api, &issue_id).await?;
                 api.delete(&format!(
                     "/api/v1/issues/{}/labels/{}",
                     enc(&issue_id),
                     enc(&label_id)
                 ))
                 .await?;
-                println!("label detached");
+                print_success(out, "label detached");
             }
         },
 
@@ -984,6 +1130,10 @@ async fn run(cli: Cli) -> Result<()> {
                 project_key,
                 priority,
                 assignee_id,
+                status,
+                sort_by,
+                sort_order,
+                page,
             } => {
                 let mut params = vec![format!("q={}", enc(&q))];
                 if let Some(pk) = project_key {
@@ -995,14 +1145,26 @@ async fn run(cli: Cli) -> Result<()> {
                 if let Some(a) = assignee_id {
                     params.push(format!("assignee_id={}", enc(&a)));
                 }
+                let mut extras = page.pairs();
+                extras.extend([
+                    ("status", status),
+                    ("sort_by", sort_by),
+                    ("sort_order", sort_order),
+                ]);
                 let body = api
-                    .get(&format!("/api/v1/search?{}", params.join("&")))
+                    .get(&commands::query(
+                        &format!("/api/v1/search?{}", params.join("&")),
+                        extras,
+                    ))
                     .await?;
                 print_output(out, &body);
             }
-            SearchCommands::Jql { query } => {
+            SearchCommands::Jql { query, page } => {
                 let body = api
-                    .get(&format!("/api/v1/search?jql={}", enc(&query)))
+                    .get(&commands::query(
+                        &format!("/api/v1/search?jql={}", enc(&query)),
+                        page.pairs(),
+                    ))
                     .await?;
                 print_output(out, &body);
             }
@@ -1010,8 +1172,16 @@ async fn run(cli: Cli) -> Result<()> {
 
         // ── Notifications ──
         Commands::Notification { command } => match command {
-            NotificationCommands::List => {
-                let body = api.get("/api/v1/notifications").await?;
+            NotificationCommands::List { page, include_read } => {
+                let body = api
+                    .get(&commands::query(
+                        "/api/v1/notifications",
+                        page.pairs()
+                            .into_iter()
+                            .chain([("include_read", Some(include_read.to_string()))])
+                            .collect(),
+                    ))
+                    .await?;
                 print_output(out, &body);
             }
             NotificationCommands::Read { id } => {
@@ -1020,12 +1190,12 @@ async fn run(cli: Cli) -> Result<()> {
                     json!({}),
                 )
                 .await?;
-                println!("notification {id} marked as read");
+                print_success(out, &format!("notification {id} marked as read"));
             }
             NotificationCommands::ReadAll => {
                 api.post("/api/v1/notifications/read-all", json!({}))
                     .await?;
-                println!("all notifications marked as read");
+                print_success(out, "all notifications marked as read");
             }
             NotificationCommands::Settings => {
                 let body = api.get("/api/v1/notification-settings").await?;
@@ -1191,7 +1361,7 @@ async fn run(cli: Cli) -> Result<()> {
                     enc(&user_id)
                 ))
                 .await?;
-                println!("member removed");
+                print_success(out, "member removed");
             }
         },
     }

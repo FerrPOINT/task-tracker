@@ -7,7 +7,7 @@ license-file.workspace = true
 publish = false
 
 [dependencies]
-shared = { path = "../shared" }
+shared = { path = "../shared", default-features = false }
 async-trait = "0.1"
 serde.workspace = true
 chrono.workspace = true

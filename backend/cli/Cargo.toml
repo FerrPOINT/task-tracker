@@ -11,6 +11,8 @@ name = "task-tracker"
 path = "src/main.rs"
 
 [dependencies]
+mime_guess = "2"
+tempfile = "3"
 sdlc-cli-core = { path = "../../../services-base/crates/sdlc-cli-core" }
 clap = { workspace = true, features = ["derive", "env"] }
 reqwest = { workspace = true, features = ["json", "rustls-tls"] }
@@ -19,3 +21,12 @@ serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 anyhow = { workspace = true }
 urlencoding = "2"
+
+[dev-dependencies]
+axum.workspace = true
+
+api = { path = "../api" }
+app = { path = "../app" }
+domain = { path = "../domain" }
+shared = { path = "../shared" }
+uuid.workspace = true

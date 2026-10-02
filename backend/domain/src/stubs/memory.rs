@@ -300,6 +300,15 @@ impl IssueRepository for MemoryIssueRepository {
             .ok_or_else(|| AppError::not_found("issue", id))
     }
 
+    async fn get_by_key_include_deleted(&self, key: &shared::IssueKey) -> Result<Issue, AppError> {
+        self.issues
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|i| &i.key == key)
+            .cloned()
+            .ok_or_else(|| AppError::not_found("issue", key))
+    }
     async fn get_by_key(&self, key: &shared::IssueKey) -> Result<Issue, AppError> {
         let issues = self.issues.lock().unwrap();
         issues

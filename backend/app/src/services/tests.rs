@@ -7387,3 +7387,72 @@ mod backlog_proptests {
         }
     }
 }
+
+#[tokio::test]
+async fn issue_identifier_resolves_key_uuid_and_restore_with_access_check() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let id = create_demo_issue(&ctx, &user, "CLI resolver").await;
+    let issue = ctx.services.issue.get_by_id(id, user.id).await.unwrap();
+    assert_eq!(
+        ctx.services
+            .issue
+            .resolve_identifier(&issue.key, user.id)
+            .await
+            .unwrap(),
+        id
+    );
+    assert_eq!(
+        ctx.services
+            .issue
+            .resolve_identifier(&id.to_string(), user.id)
+            .await
+            .unwrap(),
+        id
+    );
+    assert!(
+        ctx.services
+            .issue
+            .resolve_identifier(&issue.key, UserId::new())
+            .await
+            .is_err()
+    );
+    assert!(
+        ctx.services
+            .issue
+            .resolve_identifier("bad", user.id)
+            .await
+            .is_err()
+    );
+    ctx.services.issue.delete(id, user.id).await.unwrap();
+    assert!(
+        ctx.services
+            .issue
+            .resolve_identifier(&issue.key, user.id)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        ctx.services
+            .issue
+            .resolve_restore_identifier(&issue.key, user.id)
+            .await
+            .unwrap(),
+        id
+    );
+    assert!(
+        ctx.services
+            .issue
+            .resolve_restore_identifier(&issue.key, UserId::new())
+            .await
+            .is_err()
+    );
+    ctx.services.issue.restore(id, user.id).await.unwrap();
+    assert_eq!(
+        ctx.services
+            .issue
+            .resolve_identifier(&issue.key, user.id)
+            .await
+            .unwrap(),
+        id
+    );
+}

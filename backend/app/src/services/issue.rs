@@ -451,6 +451,40 @@ impl crate::context::IssueService for IssueServiceImpl {
         .map(|mut issues| issues.remove(0))
     }
 
+    async fn resolve_restore_identifier(
+        &self,
+        identifier: &str,
+        requester: UserId,
+    ) -> Result<IssueId, AppError> {
+        if let Ok(id) = identifier.parse::<IssueId>() {
+            return Ok(id);
+        }
+        let key = shared::IssueKey::parse(identifier)
+            .map_err(|_| AppError::invalid_input("invalid issue key"))?;
+        let issue = self.issues.get_by_key_include_deleted(&key).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
+        Ok(issue.id)
+    }
+    async fn resolve_identifier(
+        &self,
+        identifier: &str,
+        requester: UserId,
+    ) -> Result<IssueId, AppError> {
+        if let Ok(id) = identifier.parse::<IssueId>() {
+            self.get_by_id(id, requester).await?;
+            return Ok(id);
+        }
+        let key = shared::IssueKey::parse(identifier)
+            .map_err(|_| AppError::invalid_input("invalid issue key"))?;
+        let issue = self.issues.get_by_key(&key).await?;
+        self.authz
+            .require_project_access(issue.project_id, requester)
+            .await?;
+        Ok(issue.id)
+    }
+
     async fn get_by_id(&self, id: IssueId, requester: UserId) -> Result<IssueDto, AppError> {
         let issue = self.issues.get_by_id(id).await?;
         self.authz

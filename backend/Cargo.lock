@@ -143,6 +143,7 @@ dependencies = [
  "reqwest",
  "sdlc-auth-core",
  "sdlc-shared",
+ "sdlc-telemetry",
  "serde",
  "serde_json",
  "shared",
@@ -3383,12 +3384,23 @@ name = "sdlc-shared"
 version = "0.1.0"
 dependencies = [
  "axum",
- "config",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tower-http 0.7.1",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "sdlc-telemetry"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -3714,6 +3726,7 @@ dependencies = [
  "jsonwebtoken",
  "p256",
  "reqwest",
+ "sdlc-telemetry",
  "sea-orm",
  "serde_json",
  "serial_test",
@@ -3770,17 +3783,14 @@ dependencies = [
 name = "shared"
 version = "0.2.0"
 dependencies = [
- "axum",
  "chrono",
  "config",
- "http",
  "proptest",
  "sdlc-shared",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
- "utoipa",
  "uuid",
 ]
 
@@ -4200,13 +4210,21 @@ name = "task-tracker-cli"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "api",
+ "app",
+ "axum",
  "clap",
+ "domain",
+ "mime_guess",
  "reqwest",
  "sdlc-cli-core",
  "serde",
  "serde_json",
+ "shared",
+ "tempfile",
  "tokio",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]
