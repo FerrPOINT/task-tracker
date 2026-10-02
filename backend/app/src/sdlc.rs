@@ -51,6 +51,17 @@ impl SdlcService {
     pub async fn project_access(&self, actor: &Principal) -> Result<ProjectAccess, AppError> {
         self.repository.project_access_scope(actor).await
     }
+    pub async fn project_directory(
+        &self,
+        actor: &Principal,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> Result<ProjectDirectory, AppError> {
+        if !(1..=100).contains(&limit) || after.is_some_and(|id| id.is_nil()) {
+            return Err(AppError::validation("invalid project directory query"));
+        }
+        self.repository.project_directory(actor, after, limit).await
+    }
     pub async fn create_draft(
         &self,
         project: Uuid,
@@ -104,6 +115,63 @@ impl SdlcService {
         serde_json::from_value(self.repository.execute(task, actor, command).await?)
             .map_err(AppError::internal)
     }
+}
+
+pub const PM_GRANT_PREFIX: &str = "task-tracker:sdlc:pm:";
+
+pub fn has_pm_grant(scopes: &HashSet<String>) -> bool {
+    scopes
+        .iter()
+        .any(|scope| scope.starts_with(PM_GRANT_PREFIX))
+}
+
+pub fn canonical_pm_uuid(value: &str) -> Option<Uuid> {
+    let id = Uuid::parse_str(value).ok()?;
+    (!id.is_nil() && id.to_string() == value).then_some(id)
+}
+
+pub fn canonical_pm_version(value: &str) -> bool {
+    value.parse::<i64>().is_ok_and(|version| {
+        (1..=MAX_SAFE_VERSION).contains(&version) && version.to_string() == value
+    })
+}
+
+/// A PM credential carries one exact capability, never a union of task grants.
+pub fn pm_grant_task(actor: &Principal) -> Result<Option<Uuid>, AppError> {
+    let mut grants = actor
+        .scopes
+        .iter()
+        .filter_map(|scope| scope.strip_prefix(PM_GRANT_PREFIX));
+    let Some(grant) = grants.next() else {
+        return Ok(None);
+    };
+    if actor.human_session || grants.next().is_some() {
+        return Err(AppError::Forbidden);
+    }
+    let parts: Vec<_> = grant.split(':').collect();
+    if parts.len() != 5
+        || parts[..4]
+            .iter()
+            .any(|part| canonical_pm_uuid(part).is_none())
+        || !canonical_pm_version(parts[4])
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(canonical_pm_uuid(parts[0]))
+}
+
+pub fn authorize_pm_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
+    let Some(task) = pm_grant_task(actor)? else {
+        return Ok(());
+    };
+    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    if task != state.task_id
+        || actor.subject != assignment.machine_subject
+        || !actor.scopes.contains(&assignment.scope(task))
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
 }
 
 pub fn canonical_hash<T: Serialize>(value: &T) -> Result<String, AppError> {

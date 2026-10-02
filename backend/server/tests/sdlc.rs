@@ -28,6 +28,8 @@ use uuid::Uuid;
 
 #[path = "support/metadata.rs"]
 mod metadata;
+#[path = "support/pm_credential_boundary.rs"]
+mod pm_credential_boundary;
 
 #[derive(Clone)]
 struct AuthStub {
@@ -272,6 +274,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             json!({"sub":subject,"email":format!("{subject}@example.test"),"scopes":scopes}),
         );
     }
+    pm_credential_boundary::tokens(&mut tokens, &assignment, &replacement, task);
     let secret = SecretKey::from_slice(&[7u8; 32]).unwrap();
     let point = secret.public_key().to_encoded_point(false);
     let unavailable = Arc::new(AtomicBool::new(false));
@@ -400,6 +403,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         json!({"revisions":[]})
     );
     post(&client,&format!("{url}/assignment"),"sdlc_pat_fleet",&json!({"assignment":assignment,"expected_assignment_version":null,"idempotency_key":"assign"}),200).await;
+    pm_credential_boundary::initial(&db, &client, &base, task, foreign_task, project, &owner).await;
     // A valid result larger than Fleet's 1 MiB cap must remain pollable as metadata.
     let document = json!({"goal":"Approved goal","scope":vec!["private-result-\u{416}\u{1f680}\"\\\n".repeat(2500);20],"exclusions":[],"scenarios":["Scenario"],"acceptance_criteria":["Acceptance"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["review"],"prerequisites":["contract"]});
     let publish = json!({"fence":fence,"expected_requirement_revision":null,"document":document,"idempotency_key":"rev-1"});
@@ -845,6 +849,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let (restarted, stop, handle) = start_tracker(config).await;
     let restart_url = format!("{restarted}/api/v1/issues/{task}/sdlc");
     let restart_metadata_url = format!("{restart_url}/events?projection=metadata_v1");
+    pm_credential_boundary::current(&client, &restarted, task, false).await;
     assert_eq!(
         metadata::get(&client, &restart_metadata_url, &owner, 200)
             .await
@@ -888,6 +893,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     // Replacement changes current assignment; old answer fences and hashes stay frozen.
     post(&client, &format!("{restart_url}/assignment"), "sdlc_pat_fleet",
         &json!({"assignment":replacement,"expected_assignment_version":1,"idempotency_key":"replacement"}), 200).await;
+    pm_credential_boundary::current(&client, &restarted, task, true).await;
     let replacement_fence = json!({"assignment_id":replacement.assignment_id,
         "execution_id":replacement.execution_id,"agent_id":replacement.agent_id,"assignment_version":2});
     let mut new_revision = publish.clone();
@@ -926,6 +932,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     );
     metadata_pagination_and_blockers(&client, &restart_metadata_url, &owner, &db, task).await;
     unavailable.store(true, Ordering::SeqCst);
+    pm_credential_boundary::unavailable(&client, &restarted, task).await;
     metadata::get(&client, &restart_metadata_url, &owner, 503).await;
     assert_eq!(
         client

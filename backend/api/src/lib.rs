@@ -81,6 +81,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
     modifiers(&SecurityAddon),
     paths(
         routes::sdlc::project_access,
+        routes::sdlc::project_directory,
         routes::sdlc::create_draft,
         routes::sdlc::draft_creation_operation,
         routes::sdlc::context,
@@ -734,6 +735,64 @@ mod tests {
         assert_eq!(
             response["properties"]["project_ids"]["items"]["format"],
             "uuid"
+        );
+    }
+
+    #[test]
+    fn project_directory_schema_is_strict_required_nullable_and_read_authenticated() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let route = &schema["paths"]["/api/v1/sdlc/project-directory"]["get"];
+        assert_eq!(route["security"], serde_json::json!([{ "bearer": [] }]));
+        assert_eq!(
+            route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ProjectDirectory"
+        );
+        for status in ["400", "401", "403", "409", "422", "503"] {
+            assert!(route["responses"][status].is_object());
+        }
+        let params = route["parameters"].as_array().unwrap();
+        assert_eq!(params.len(), 2);
+        let after = params.iter().find(|p| p["name"] == "after").unwrap();
+        assert_eq!(after["schema"]["format"], "uuid");
+        assert_eq!(after["required"], false);
+        let limit = params.iter().find(|p| p["name"] == "limit").unwrap();
+        assert_eq!(limit["required"], false);
+        assert_eq!(limit["schema"]["minimum"], 1);
+        assert_eq!(limit["schema"]["maximum"], 100);
+        assert_eq!(limit["schema"]["default"], 50);
+        for (name, fields) in [
+            (
+                "ProjectDirectory",
+                vec![
+                    "contract_version",
+                    "tracker_instance_id",
+                    "projects",
+                    "next_cursor",
+                ],
+            ),
+            ("ProjectDirectoryEntry", vec!["id", "key", "name"]),
+        ] {
+            let response = &schema["components"]["schemas"][name];
+            assert_eq!(response["additionalProperties"], false);
+            assert_eq!(
+                response["properties"].as_object().unwrap().len(),
+                fields.len()
+            );
+            let required = response["required"].as_array().unwrap();
+            assert_eq!(required.len(), fields.len());
+            for field in fields {
+                assert!(required.contains(&serde_json::json!(field)));
+            }
+        }
+        let response = &schema["components"]["schemas"]["ProjectDirectory"];
+        assert_eq!(response["properties"]["contract_version"]["minimum"], 1);
+        assert_eq!(response["properties"]["contract_version"]["maximum"], 1);
+        assert_eq!(response["properties"]["next_cursor"]["format"], "uuid");
+        assert!(
+            response["properties"]["next_cursor"]["type"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("null"))
         );
     }
 

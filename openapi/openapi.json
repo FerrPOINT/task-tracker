@@ -5408,6 +5408,79 @@
         ]
       }
     },
+    "/api/v1/sdlc/project-directory": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "project_directory",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Exclusive canonical nonnil UUID cursor; not an authority or existence claim.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDirectory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed, duplicate or unknown query fields"
+          },
+          "401": {
+            "description": "Verified Central Auth bearer required"
+          },
+          "403": {
+            "description": "Service read access and active central-subject identity required"
+          },
+          "409": {
+            "description": "Project directory source invalid"
+          },
+          "422": {
+            "description": "Invalid cursor or limit"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/search": {
       "get": {
         "tags": [
@@ -9170,6 +9243,61 @@
             }
           },
           "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectDirectory": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "projects",
+          "next_cursor"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectDirectoryEntry"
+            }
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectDirectoryEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
             "type": "string"
           }
         },

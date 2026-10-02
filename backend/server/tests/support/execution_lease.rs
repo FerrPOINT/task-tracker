@@ -59,6 +59,7 @@ pub async fn verify(
     assert_eq!(empty["dispatch_allowed"], false);
     let unknown = json!({"expected_owner_version":1,"fence":fence,"lease_id":Uuid::new_v4(),"expected_lease_version":1,"idempotency_key":"unknown"});
     expect(f.client, &format!("{url}/heartbeat"), &token, &unknown, 409).await;
+    assignment_ledger_denials(f, task, &url, &token, &claim, &unknown).await;
     for denied in [f.owner, f.operator, &no_grant, &foreign] {
         get_json(f.client, &url, denied, 403).await;
         expect(f.client, &url, denied, &claim, 403).await;
@@ -154,6 +155,7 @@ pub async fn verify(
     expect(f.client, &url, &token, &another, 409).await;
     let heartbeat = json!({"expected_owner_version":1,"fence":fence,"lease_id":first["lease"]["lease_id"],"expected_lease_version":1,"idempotency_key":"heartbeat-1"});
     let hb_url = format!("{url}/heartbeat");
+    assignment_ledger_denials(f, task, &url, &token, &claim, &heartbeat).await;
     let response = f
         .client
         .post(&hb_url)
@@ -489,6 +491,109 @@ pub async fn verify(
     );
     stop.send(()).unwrap();
     handle.await.unwrap();
+}
+
+async fn lease_snapshot(f: &Fixture<'_>, task: Uuid) -> Value {
+    f.db.query_one(statement(
+        "SELECT jsonb_build_object(
+            'task',(SELECT to_jsonb(t) FROM sdlc_tasks t WHERE task_id=$1),
+            'issue',(SELECT to_jsonb(i) FROM issues i WHERE id=$1),
+            'leases',(SELECT jsonb_agg(to_jsonb(l) ORDER BY l.execution_id) FROM sdlc_pm_execution_leases l JOIN sdlc_pm_executions e USING(execution_id) WHERE e.task_id=$1),
+            'operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY o.lease_version) FROM sdlc_pm_lease_operations o JOIN sdlc_pm_executions e USING(execution_id) WHERE e.task_id=$1),
+            'outbox',(SELECT count(*) FROM sdlc_outbox),
+            'users',(SELECT count(*) FROM users)) AS snapshot",
+        vec![task.into()],
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "snapshot")
+    .unwrap()
+}
+
+async fn assignment_ledger_denials(
+    f: &Fixture<'_>,
+    task: Uuid,
+    url: &str,
+    token: &str,
+    claim: &Value,
+    heartbeat: &Value,
+) {
+    let original: Value =
+        f.db.query_one(statement(
+            "SELECT payload FROM sdlc_assignments WHERE task_id=$1 AND version=1",
+            vec![task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "payload")
+        .unwrap();
+    for newer in [false, true] {
+        // Only the disposable fixture permits simulating corrupt retained assignment history.
+        sql(
+            f.db,
+            "ALTER TABLE sdlc_assignments DISABLE TRIGGER sdlc_history_immutable",
+            vec![],
+        )
+        .await;
+        if newer {
+            let mut replacement = original.clone();
+            replacement["version"] = json!(2);
+            sql(
+                f.db,
+                "INSERT INTO sdlc_assignments(task_id,version,payload) VALUES($1,2,$2)",
+                vec![task.into(), replacement.into()],
+            )
+            .await;
+        } else {
+            sql(f.db, "UPDATE sdlc_assignments SET payload=payload || '{\"unexpected\":true}'::jsonb WHERE task_id=$1 AND version=1", vec![task.into()]).await;
+        }
+        sql(
+            f.db,
+            "ALTER TABLE sdlc_assignments ENABLE TRIGGER sdlc_history_immutable",
+            vec![],
+        )
+        .await;
+        let before = lease_snapshot(f, task).await;
+        for route in [url.to_owned(), format!("{url}?idempotency_key=lease-claim")] {
+            get_json(f.client, &route, token, 409).await;
+        }
+        expect(f.client, url, token, claim, 409).await;
+        expect(f.client, &format!("{url}/heartbeat"), token, heartbeat, 409).await;
+        assert_eq!(lease_snapshot(f, task).await, before);
+        sql(
+            f.db,
+            "ALTER TABLE sdlc_assignments DISABLE TRIGGER sdlc_history_immutable",
+            vec![],
+        )
+        .await;
+        if newer {
+            sql(
+                f.db,
+                "DELETE FROM sdlc_assignments WHERE task_id=$1 AND version=2",
+                vec![task.into()],
+            )
+            .await;
+        } else {
+            sql(
+                f.db,
+                "UPDATE sdlc_assignments SET payload=$2 WHERE task_id=$1 AND version=1",
+                vec![task.into(), original.clone().into()],
+            )
+            .await;
+        }
+        sql(
+            f.db,
+            "ALTER TABLE sdlc_assignments ENABLE TRIGGER sdlc_history_immutable",
+            vec![],
+        )
+        .await;
+    }
+    get_json(f.client, url, token, 200).await;
+    println!(
+        "LEASE_ASSIGNMENT_BOUNDARY corrupt/latest ledger rejects plain GET, operation GET, claim and heartbeat without side effects"
+    );
 }
 
 fn statement(sql: &str, values: Vec<sea_orm::Value>) -> Statement {

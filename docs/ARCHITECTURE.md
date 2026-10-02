@@ -16,6 +16,17 @@ it. Durable pull outbox separates Tracker persistence from Workflow resume.
 Fleet gateway, inbox/projection, Workflow fencing and the real verifier remain
 external integration responsibilities. See [contract](CHAT_CLARIFICATION_CONTRACT.md).
 
+PM assignment grants have a separate request boundary before handlers. The legacy
+router rejects them before linking a Central identity or converting it to local
+UserClaims. The strict router preserves the Principal, accepts one canonical
+task grant, and enumerates allowed GET/POST resources for that task using the
+original full URI. Owner answers/confirmation, global selectors, verifier and
+assignment/binding operations are not PM capabilities. Allowed reads reuse the
+issue/project/aggregate lock order, then verify the current assignment subject,
+exact grant and latest append-only assignment payload/version. The request path
+alone is not authority. Generic human/service PAT policy is unchanged; this is
+not global retirement of the ordinary central-mode bypass.
+
 Human Draft creation uses a project/central-subject/key advisory transaction
 lock with canonical JSON namespace encoding. It authorizes after the lock,
 rechecks immutable ownership on replay, and commits issue/binding/ledger/outbox
@@ -57,6 +68,13 @@ the active central-subject identity and unions explicit ownership/membership,
 returning sorted unique IDs for the configured Tracker instance. The membership
 index is part of pending 000034. No cache is used; this read scope does not replace
 transactional authorization rechecks on SDLC write routes.
+The additive `project-directory` route follows the same controller/service/repo
+path and strict auth. Its one statement combines active subject, deduplicated
+owner/member IDs and UUID keyset limit+1 read. Only project ID/key/name are
+projected; the bounded page emits the last returned ID iff lookahead exists,
+otherwise required null. No counts, separate ACL read, retained page snapshot or
+scope cache is introduced. Every continuation rechecks access; selector results
+do not replace write/admission checks. Rust DTOs/route annotations own the schema.
 
 ## 1. Контекст
 

@@ -26,6 +26,8 @@ use uuid::Uuid;
 
 #[path = "support/metadata.rs"]
 mod metadata;
+#[path = "support/project_directory.rs"]
+mod project_directory;
 #[path = "support/reservation.rs"]
 mod reservation;
 
@@ -275,6 +277,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     let (base, stop, handle) = start(config.clone()).await;
     let url = format!("{base}/api/v1/projects/{project}/sdlc/drafts");
     let access_url = format!("{base}/api/v1/sdlc/project-access");
+    let directory_url = format!("{base}/api/v1/sdlc/project-directory");
     let mut projects = vec![project, other_project];
     projects.sort_unstable();
     let expected_scope = json!({"contract_version":1,"tracker_instance_id":"tracker-draft-test","project_ids":projects});
@@ -316,6 +319,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         ),
     ] {
         get_json(&client, &access_url, &token, status).await;
+        get_json(&client, &directory_url, &token, status).await;
     }
     assert_eq!(client.get(&access_url).send().await.unwrap().status(), 401);
     assert_eq!(
@@ -339,6 +343,33 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         .try_get::<String>("", "indexdef")
         .unwrap();
     assert!(membership_index.contains("(user_id, project_id)"));
+    assert_eq!(
+        client.get(&directory_url).send().await.unwrap().status(),
+        401
+    );
+    assert_eq!(
+        client
+            .get(&directory_url)
+            .header("Cookie", format!("access_token={owner}"))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        401
+    );
+    get_json(&client, &directory_url, &local, 401).await;
+    project_directory::verify(project_directory::Fixture {
+        db: &db,
+        client: &client,
+        base: &base,
+        owner: &owner,
+        operator: &operator,
+        foreign: &foreign,
+        owner_id,
+        operator_id,
+        unavailable: &unavailable,
+    })
+    .await;
     let before = count(&db, "issues").await;
     for (token, status) in [
         ("local-token".to_string(), 401),

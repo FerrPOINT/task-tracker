@@ -37,6 +37,42 @@ pub struct EventsQuery {
     #[serde(default)]
     pub after: i64,
 }
+
+#[derive(Deserialize, utoipa::IntoParams)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectDirectoryQuery {
+    /// Exclusive canonical nonnil UUID cursor; not an authority or existence claim.
+    #[param(value_type = Option<Uuid>)]
+    pub after: Option<String>,
+    #[param(value_type = Option<u16>, minimum = 1, maximum = 100, default = 50)]
+    pub limit: Option<String>,
+}
+
+impl ProjectDirectoryQuery {
+    fn bounds(&self) -> Result<(Option<Uuid>, u16), AppError> {
+        let invalid = || AppError::validation("invalid project directory query");
+        let after = self
+            .after
+            .as_deref()
+            .map(|raw| {
+                let id = Uuid::parse_str(raw).map_err(|_| invalid())?;
+                if id.is_nil() || id.to_string() != raw {
+                    return Err(invalid());
+                }
+                Ok(id)
+            })
+            .transpose()?;
+        let raw = self.limit.as_deref().unwrap_or("50");
+        if raw.is_empty() || !raw.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(invalid());
+        }
+        let limit = raw.parse::<u16>().map_err(|_| invalid())?;
+        if !(1..=100).contains(&limit) {
+            return Err(invalid());
+        }
+        Ok((after, limit))
+    }
+}
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct OutboxResponse {
     pub events: Vec<OutboxEvent>,
@@ -101,6 +137,7 @@ fn service(ctx: &app::AppContext) -> Result<&app::sdlc::SdlcService, AppError> {
 pub fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
         .route("/sdlc/project-access", get(project_access))
+        .route("/sdlc/project-directory", get(project_directory))
         .route("/projects/{project_id}/sdlc/drafts", post(create_draft))
         .route(
             "/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}",
@@ -164,6 +201,31 @@ pub async fn project_access(
     Extension(actor): Extension<Principal>,
 ) -> Result<Json<ProjectAccess>, AppError> {
     Ok(Json(service(&ctx)?.project_access(&actor).await?))
+}
+
+#[utoipa::path(
+    get, path="/api/v1/sdlc/project-directory", tag="sdlc",
+    params(ProjectDirectoryQuery),
+    responses((status=200, body=ProjectDirectory),
+        (status=400, description="Malformed, duplicate or unknown query fields"),
+        (status=401, description="Verified Central Auth bearer required"),
+        (status=403, description="Service read access and active central-subject identity required"),
+        (status=409, description="Project directory source invalid"),
+        (status=422, description="Invalid cursor or limit"),
+        (status=503, description="SDLC or Central Auth unavailable")),
+    security(("bearer"=[]))
+)]
+pub async fn project_directory(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Query(query): Query<ProjectDirectoryQuery>,
+) -> Result<Json<ProjectDirectory>, AppError> {
+    let (after, limit) = query.bounds()?;
+    Ok(Json(
+        service(&ctx)?
+            .project_directory(&actor, after, limit)
+            .await?,
+    ))
 }
 
 #[utoipa::path(
@@ -635,5 +697,52 @@ mod metadata_query_tests {
         assert_eq!(Query::<EventsQuery>::try_from_uri(&uri).unwrap().0.after, 1);
         let uri = "/events?after=abc".parse().unwrap();
         assert!(Query::<EventsQuery>::try_from_uri(&uri).is_err());
+    }
+}
+
+#[cfg(test)]
+mod project_directory_query_tests {
+    use super::*;
+
+    fn parse(raw: &str) -> Result<(Option<Uuid>, u16), ()> {
+        let uri = format!("/sdlc/project-directory{raw}").parse().unwrap();
+        Query::<ProjectDirectoryQuery>::try_from_uri(&uri)
+            .map_err(|_| ())?
+            .0
+            .bounds()
+            .map_err(|_| ())
+    }
+
+    #[test]
+    fn directory_query_is_strict_bounded_and_canonical() {
+        assert_eq!(parse("").unwrap(), (None, 50));
+        let id = Uuid::parse_str("11111111-abcd-4111-8111-111111111111").unwrap();
+        for limit in [1, 50, 100] {
+            assert_eq!(
+                parse(&format!("?after={id}&limit={limit}")).unwrap(),
+                (Some(id), limit)
+            );
+        }
+        for raw in [
+            "?after=",
+            "?after=invalid",
+            "?after=00000000-0000-0000-0000-000000000000",
+            "?after=11111111-ABCD-4111-8111-111111111111",
+            "?after=11111111abcd41118111111111111111",
+            "?limit=0",
+            "?limit=101",
+            "?limit=65536",
+            "?limit=-1",
+            "?limit=%2B1",
+            "?limit=1.0",
+            "?limit=",
+            "?limit=+1",
+            "?limit=1&limit=2",
+            "?after=invalid&after=invalid",
+            "?unknown=1",
+            "?project_id=11111111-abcd-4111-8111-111111111111",
+        ] {
+            assert!(parse(raw).is_err(), "accepted {raw}");
+        }
     }
 }

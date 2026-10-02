@@ -141,6 +141,31 @@ impl PostgresSdlcRepository {
         Ok(state)
     }
 
+    async fn load_read(
+        &self,
+        tx: &DatabaseTransaction,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<TaskState, AppError> {
+        let state = self.load(tx, task, actor).await?;
+        app::sdlc::authorize_pm_read(&state, actor)?;
+        if app::sdlc::has_pm_grant(&actor.scopes) {
+            let row = tx.query_one(statement(
+                "SELECT version,payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version DESC LIMIT 1",
+                vec![task.into()],
+            )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("current PM assignment unavailable"))?;
+            let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+            if state.task_id != task
+                || row.try_get::<i64>("", "version").map_err(map_db)? != assignment.version
+                || row.try_get::<Json>("", "payload").map_err(map_db)?
+                    != serde_json::to_value(assignment).map_err(AppError::internal)?
+            {
+                return Err(AppError::conflict("current PM assignment inconsistent"));
+            }
+        }
+        Ok(state)
+    }
+
     async fn replay(
         tx: &DatabaseTransaction,
         task: Uuid,
@@ -722,6 +747,41 @@ impl SdlcRepository for PostgresSdlcRepository {
         })
     }
 
+    async fn project_directory(
+        &self,
+        actor: &Principal,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> Result<ProjectDirectory, AppError> {
+        if !(1..=100).contains(&limit) || after.is_some_and(|id| id.is_nil()) {
+            return Err(AppError::validation("invalid project directory query"));
+        }
+        // Identity, explicit ACL and keyset page share one statement snapshot, including empty pages.
+        let row = self.db.query_one(statement(
+            "WITH active AS MATERIALIZED (
+                SELECT id FROM users WHERE central_sub=$1 AND is_active=true
+             ), allowed AS (
+                SELECT p.id FROM active u JOIN projects p ON p.owner_id=u.id
+                UNION
+                SELECT m.project_id FROM active u JOIN project_members m ON m.user_id=u.id
+             ), page AS (
+                SELECT p.id,p.key,p.name FROM projects p JOIN allowed a ON a.id=p.id
+                WHERE ($2::uuid IS NULL OR p.id>$2::uuid)
+                ORDER BY p.id LIMIT $3
+             )
+             SELECT EXISTS(SELECT 1 FROM active) AS authorized,
+                COALESCE((SELECT jsonb_agg(jsonb_build_object('id',id,'key',key,'name',name) ORDER BY id)
+                    FROM page),'[]'::jsonb) AS projects",
+            vec![actor.subject.clone().into(), after.into(), (i64::from(limit) + 1).into()],
+        )).await.map_err(map_db)?.ok_or_else(|| AppError::internal("project directory result missing"))?;
+        if !row.try_get::<bool>("", "authorized").map_err(map_db)? {
+            return Err(AppError::Forbidden);
+        }
+        let projects = serde_json::from_value(row.try_get::<Json>("", "projects").map_err(map_db)?)
+            .map_err(|_| AppError::conflict("project directory source invalid"))?;
+        ProjectDirectory::from_prefix(self.config.instance_id.clone(), projects, after, limit)
+    }
+
     async fn create_draft(
         &self,
         project: Uuid,
@@ -954,7 +1014,7 @@ impl SdlcRepository for PostgresSdlcRepository {
 
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = self.load_read(&tx, task, actor).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(state)
     }
@@ -964,7 +1024,7 @@ impl SdlcRepository for PostgresSdlcRepository {
         actor: &Principal,
     ) -> Result<PmDraftInputResponse, AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = self.load_read(&tx, task, actor).await?;
         let input = Self::original_input(&tx, &state).await?;
         let response = PmDraftInputResponse {
             contract_version: 1,
@@ -1094,7 +1154,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             return Err(AppError::validation("cursor must be nonnegative"));
         }
         let tx = self.db.begin().await.map_err(map_db)?;
-        self.load(&tx, task, actor).await?;
+        self.load_read(&tx, task, actor).await?;
         let rows = tx.query_all(statement("SELECT sequence,event_id,task_id,event_type,payload,created_at FROM sdlc_outbox WHERE task_id=$1 AND sequence>$2 ORDER BY sequence LIMIT 100", vec![task.into(), after.into()])).await.map_err(map_db)?;
         let events = rows
             .into_iter()
@@ -1121,7 +1181,7 @@ impl SdlcRepository for PostgresSdlcRepository {
         limit: u16,
     ) -> Result<Vec<MetadataCandidate>, AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = self.load_read(&tx, task, actor).await?;
         // The same task lock fences writers; the extra row is never omitted from has_more.
         let rows = tx.query_all(statement(
             "SELECT sequence,event_id,task_id,event_type,payload,created_at FROM sdlc_outbox WHERE task_id=$1 AND sequence>$2 ORDER BY sequence LIMIT $3",

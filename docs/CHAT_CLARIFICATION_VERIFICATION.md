@@ -1,5 +1,56 @@
 # Tracker Clarification Verification
 
+## Project Directory And PM Credential Boundary (2026-10-02, Component Verified)
+
+The local branch is reconciled with accepted main `307e049` at merge `588e7a0`.
+Base is pinned to `9408802dfa978cba2f67162a49adca6f65851b01`, with an independent
+clean read-only checkout. The project directory implementation adds strict
+UUID-keyset pages of active central-subject owner/member project ID/key/name.
+It does not grant admission. The security change denies PM
+assignment-scoped credentials on legacy routes before linking/conversion, limits
+their SDLC requests to a canonical single task grant and rechecks the current
+assignment plus persisted ledger for reads and shared lease authority. Generic service PAT/human policy is
+unchanged; this is not retirement of all legacy central-auth bypasses.
+
+The final fresh `project-directory-qa-20261002-f2e98a8e` run passed Rust 1.88 locked
+all-targets check, strict Clippy, formatting and serial workspace tests: 542
+reported passed, zero failed, 23 ignored. This is not a PostgreSQL count; the
+central-subject migration test returns early without its dedicated URL.
+Three explicit PostgreSQL 17.6 suites passed separately: deleted-key restore,
+Draft/directory/reservation/lease and clarification/credential/metadata.
+Rust OpenAPI generation and independent replay matched the committed source;
+both exports have SHA-256 `361672c7cbc04d7aaf9116480715c293fc8841671d2e6a026d618abc93c9722f`.
+
+Opaque-PAT tests exercise actual TCP middleware/repositories, legacy/global/owner/
+verifier denial, permitted bound reads, replacement, malformed/ambiguous grants,
+ACL revocation and Auth outage without linking or outbox side effects. An
+independent review found lease authority bypassing the latest assignment ledger.
+The shared helper now uses `load_read`; actual SQL regressions reject corrupt or
+newer ledger rows on plain/operation GET, claim and heartbeat before and after
+claim, with unchanged task/issue/lease/receipt/outbox/user snapshots. The synthetic
+Central issuer is not real Base child-token or runtime-handoff acceptance.
+
+Pinned/frozen frontend passed 257 tests in 45 files, typecheck, lint/format/build,
+OpenAPI check/compatibility and deterministic client generation. Source comparison
+matched all 170 tracked frontend/OpenAPI files in its isolated consumer, excluding
+omitted env files. Six documentation/CI tests, README and 80 local links across
+89 Markdown documents passed; no new production UI was added to Tracker.
+
+Direct directory curl TCP probes passed 200/422/401/403. Permanent human/PAT and
+unauthenticated/wrong-scope curl assertions were then added to the fixture and
+executed successfully in the final clean Draft suite (`PROJECT_DIRECTORY_CURL`).
+The final run includes these test-source changes, all workspace and three PG
+gates, and repeated source-matching OpenAPI export; the earlier `61fe855c` pass
+is not substituted for this final evidence.
+
+The disk/daemon failure is superseded by the passing boundary runs. Old owned
+containers were confirmed absent after recovery; final-run cleanup completed and
+no `pm-project-directory-` containers remain. No shared
+runtime, volume, snapshot, secret or pinned image was modified or broadly pruned.
+The published `c09af5a` CI remains historical until the follow-up's own exact-head
+CI passes. Full PM admission/tools/resume/verifier/live Backlog gaps remain;
+the whole slice is incomplete and Draft, not production accepted.
+
 ## Ownership Lease Follow-Up, 2026-10-02
 
 The lease implementation was integrated with accepted Tracker main `fd3337b`

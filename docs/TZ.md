@@ -10,6 +10,13 @@ independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL
 verification is distinct from Fleet/Workflow integration and real PM acceptance;
 no production frontend or live autonomous flow is claimed by this implementation.
 
+Assignment-scoped PM PATs do not inherit generic legacy user authority. The
+legacy API refuses them before profile linking; SDLC permits only canonical
+bound-task PM methods/resources and checks fresh current assignment/ledger
+authority, including lease readback and mutations. Owner consent and verifier
+evidence cannot be authored by the PM. Generic PAT/human legacy policy is not
+retired by this bounded change; runtime handoff remains a separate acceptance.
+
 Human browser sessions can create a bound root Draft through the project-scoped
 idempotent endpoint. The verified central human owns it; identity/status/agent
 claims are not accepted. Creation is atomic and restart-safe, including a lost
@@ -44,6 +51,11 @@ Only a verified Central Auth caller with service read access and an active local
 central-subject identity is accepted. Explicit project ownership or membership
 defines the sorted unique project IDs; admin, public and legacy Central bypasses
 do not expand this scope. Revocation affects the next request.
+The strict `project-directory` selector additionally returns only UUID/key/name
+in bounded UUID-keyset pages (default 50, max 100), with an explicit nullable
+continuation cursor. Active identity and explicit owner/member ACL share one
+SQL snapshot with the page; continuation/replay rechecks fresh access. Selection
+does not authorize creation/reservation/admission, and adds no migration/scope.
 
 > **Актуальный платформенный auth-контракт.** При настроенном Central Auth
 > локальные регистрация, парольный вход, password reset, TOTP и управление

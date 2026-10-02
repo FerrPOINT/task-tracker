@@ -543,6 +543,12 @@ pub trait SdlcRepository: Send + Sync {
         key: Option<&str>,
     ) -> Result<crate::sdlc_pm_draft::PmDraftReadback, AppError>;
     async fn project_access_scope(&self, actor: &Principal) -> Result<ProjectAccess, AppError>;
+    async fn project_directory(
+        &self,
+        actor: &Principal,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> Result<ProjectDirectory, AppError>;
     async fn create_draft(
         &self,
         project: Uuid,
@@ -597,6 +603,64 @@ pub struct ProjectAccess {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectDirectoryEntry {
+    pub id: Uuid,
+    pub key: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectDirectory {
+    #[schema(minimum = 1, maximum = 1)]
+    pub contract_version: u32,
+    pub tracker_instance_id: String,
+    pub projects: Vec<ProjectDirectoryEntry>,
+    #[serde(deserialize_with = "directory_cursor")]
+    #[schema(required = true, nullable = true)]
+    pub next_cursor: Option<Uuid>,
+}
+
+fn directory_cursor<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Uuid>, D::Error> {
+    Option::<Uuid>::deserialize(deserializer)
+}
+
+impl ProjectDirectory {
+    pub fn from_prefix(
+        tracker_instance_id: String,
+        mut projects: Vec<ProjectDirectoryEntry>,
+        after: Option<Uuid>,
+        limit: u16,
+    ) -> Result<Self, AppError> {
+        if !(1..=100).contains(&limit) || after.is_some_and(|id| id.is_nil()) {
+            return Err(AppError::validation("invalid project directory query"));
+        }
+        // Check the lookahead too: a corrupt source row must not become an unseen cursor gap.
+        if projects.len() > usize::from(limit) + 1
+            || projects.iter().any(|p| p.id.is_nil())
+            || projects.windows(2).any(|pair| pair[0].id >= pair[1].id)
+            || projects
+                .first()
+                .is_some_and(|p| after.is_some_and(|id| p.id <= id))
+        {
+            return Err(AppError::conflict("project directory source invalid"));
+        }
+        let more = projects.len() > usize::from(limit);
+        projects.truncate(usize::from(limit));
+        let next_cursor = more.then(|| projects.last().expect("positive page limit").id);
+        Ok(Self {
+            contract_version: 1,
+            tracker_instance_id,
+            projects,
+            next_cursor,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct OutboxEvent {
     pub sequence: i64,
     pub event_id: Uuid,
@@ -604,4 +668,96 @@ pub struct OutboxEvent {
     pub event_type: String,
     pub payload: serde_json::Value,
     pub created_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod project_directory_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn entry(n: u128) -> ProjectDirectoryEntry {
+        ProjectDirectoryEntry {
+            id: Uuid::from_u128(n),
+            key: format!("P{n}"),
+            name: format!("Project {n}"),
+        }
+    }
+
+    #[test]
+    fn directory_prefix_uses_lookahead_and_required_null_without_other_metadata() {
+        for (rows, limit, expected_len, cursor) in [
+            (0, 1, 0, None),
+            (1, 1, 1, None),
+            (2, 1, 1, Some(1)),
+            (2, 2, 2, None),
+            (3, 2, 2, Some(2)),
+            (100, 100, 100, None),
+            (101, 100, 100, Some(100)),
+        ] {
+            let page = ProjectDirectory::from_prefix(
+                "tracker".into(),
+                (1..=rows).map(entry).collect(),
+                None,
+                limit,
+            )
+            .unwrap();
+            assert_eq!(page.projects.len(), expected_len);
+            assert_eq!(page.next_cursor, cursor.map(Uuid::from_u128));
+            let wire = serde_json::to_value(&page).unwrap();
+            assert_eq!(wire.as_object().unwrap().len(), 4);
+            assert!(wire.get("next_cursor").is_some());
+            for project in wire["projects"].as_array().unwrap() {
+                assert_eq!(project.as_object().unwrap().len(), 3);
+            }
+            serde_json::from_value::<ProjectDirectory>(wire.clone()).unwrap();
+            let mut missing = wire;
+            missing.as_object_mut().unwrap().remove("next_cursor");
+            assert!(serde_json::from_value::<ProjectDirectory>(missing).is_err());
+        }
+        let mut wire = serde_json::to_value(
+            ProjectDirectory::from_prefix("tracker".into(), vec![entry(1)], None, 1).unwrap(),
+        )
+        .unwrap();
+        wire["count"] = json!(1);
+        assert!(serde_json::from_value::<ProjectDirectory>(wire).is_err());
+        let mut wire = serde_json::to_value(entry(1)).unwrap();
+        wire["description"] = json!("not exposed");
+        assert!(serde_json::from_value::<ProjectDirectoryEntry>(wire).is_err());
+    }
+
+    #[test]
+    fn directory_rejects_invalid_bounds_and_corrupt_or_noncontiguous_prefix() {
+        for limit in [0, 101, u16::MAX] {
+            assert!(ProjectDirectory::from_prefix("tracker".into(), vec![], None, limit).is_err());
+        }
+        assert!(
+            ProjectDirectory::from_prefix("tracker".into(), vec![], Some(Uuid::nil()), 1).is_err()
+        );
+        for rows in [
+            vec![entry(0)],
+            vec![entry(1), entry(1)],
+            vec![entry(2), entry(1)],
+            vec![entry(1), entry(2), entry(3)],
+        ] {
+            assert!(ProjectDirectory::from_prefix("tracker".into(), rows, None, 1).is_err());
+        }
+        assert!(
+            ProjectDirectory::from_prefix(
+                "tracker".into(),
+                vec![entry(1)],
+                Some(Uuid::from_u128(1)),
+                1
+            )
+            .is_err()
+        );
+        assert!(
+            ProjectDirectory::from_prefix(
+                "tracker".into(),
+                vec![entry(2)],
+                Some(Uuid::from_u128(1)),
+                1
+            )
+            .is_ok()
+        );
+    }
 }

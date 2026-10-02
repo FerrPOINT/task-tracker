@@ -14,12 +14,49 @@ other database errors retain the existing server-error contract. An authorized
 identity with no projects receives an empty list. Query/body fields cannot expand
 this scope.
 
+`GET /api/v1/sdlc/project-directory` is the strict Fleet project selector source:
+
+```typescript
+type ProjectDirectory = {
+  contract_version: 1;
+  tracker_instance_id: string;
+  projects: { id: string; key: string; name: string }[];
+  next_cursor: string | null;
+};
+```
+
+All fields, including null `next_cursor`, are required. IDs/cursors are canonical
+lowercase hyphenated nonnil UUIDs; no descriptions, counts, roles or other project
+metadata are returned. Query accepts only optional `after` (exclusive UUID) and
+`limit` (integer 1..100, default 50). Unknown/duplicate query fields are 400;
+invalid cursor/bounds are 422. Ordering is ascending project UUID. The repository
+reads limit+1 authorized rows in the same SQL snapshot as active central-subject
+and explicit owner/member checks, deduplicates owner+member overlap, and truncates
+to limit. `next_cursor` is the last returned ID only when a lookahead row exists;
+otherwise it is null, including on empty pages. A cursor is not a project lookup
+or authorization receipt. Every page/retry rechecks ACL; pages do not share a
+retained snapshot. Revocation can remove entries on continuation/replay. Existing
+project-access wire and ordinary legacy project listing are unchanged. The same
+401/403/503 policy above applies; corrupt projected source is a safe 409, never a
+skipped row. Selection does not authorize Draft creation, reservation or admission.
+
 Opt-in endpoints under `/api/v1/issues/{id}/sdlc`, exact Fleet DTOs, machine
 grants, provisioning and delivery contract: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
 SDLC requires Central Auth and strict project membership independently of the
 legacy Tracker central-auth project bypass. Answer/confirm are owner-session
 commands. Questions/revisions are assigned PM commands. Rust types live in
 `backend/domain/src/sdlc.rs`; all routes are included in generated OpenAPI.
+
+An assignment-scoped PM PAT cannot use the ordinary legacy API, global SDLC
+project-access/directory, owner answers/confirmation, verifier evidence or
+assignment/binding operations, even if it also has service read/write scopes.
+These requests are 403. Its single canonical grant permits only bound-task
+context/input, questions, requirements/revisions/diff, events and lease reads,
+question/revision publication, question cancellation and lease claim/heartbeat.
+Current assignment subject/grant and explicit project access are rechecked in
+the repository; corrupt current assignment ledger yields 409, not historical
+access. Authentication failure remains 401 and Central outage 503. No new API
+token format, scope, public path or migration is introduced by confinement.
 
 Human saga source: `POST /api/v1/projects/{project_id}/sdlc/drafts` takes only
 `{title,description,idempotency_key}` and returns typed `CreatedDraft` (201 new,

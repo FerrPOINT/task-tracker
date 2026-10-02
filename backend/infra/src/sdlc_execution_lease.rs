@@ -12,7 +12,7 @@ impl PostgresSdlcRepository {
         if actor.human_session {
             return Err(AppError::Forbidden);
         }
-        let state = self.load(tx, task, actor).await?;
+        let state = self.load_read(tx, task, actor).await?;
         let assignment = state
             .assignment
             .as_ref()

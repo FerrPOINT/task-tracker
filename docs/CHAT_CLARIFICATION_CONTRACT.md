@@ -15,6 +15,34 @@ public-project or legacy Central Auth bypass applies. Service read access is
 required; no cache may retain revoked membership. Missing/inactive local identity
 is 403; verified identities with no projects return an empty array.
 
+The bounded selector source is `GET /api/v1/sdlc/project-directory`, with the
+same verified Principal/service-read/active-central-subject/explicit owner-member
+boundary. Exact v1 wire (all fields required, no additional fields):
+
+```typescript
+type ProjectDirectory = {
+  contract_version: 1;
+  tracker_instance_id: string;
+  projects: { id: string; key: string; name: string }[];
+  next_cursor: string | null;
+};
+```
+
+Project IDs and cursor are canonical nonnil UUIDs. Query has only `after?: UUID`
+and `limit?: integer` (1..100, default 50); unknown or duplicate fields are 400,
+noncanonical/nil/invalid cursor and invalid bounds 422. UUID keyset order is
+ascending, `after` exclusive; one SQL statement snapshot verifies local identity
+and owner/member ACL and reads limit+1 authorized projects. Owner/member overlap
+is deduplicated before paging. Return at most limit entries, with `next_cursor`
+equal to the last returned ID iff a lookahead row exists; otherwise explicit
+null. No total/count, description or other metadata is exposed. Invalid source
+projection fails closed with safe 409. No cursor existence lookup or authority
+claim is made. Fleet forwards the caller's verified bearer and checks the instance
+on every page; retries/continuations recheck fresh ACL, not a retained snapshot
+or cached receipt. A directory result does not replace creation/reservation
+authorization or prove admission. Existing project-access and legacy wire stay
+unchanged. No migration, new scope, native bundle or runtime proof is involved.
+
 `POST /api/v1/projects/{project_id}/sdlc/drafts` accepts only:
 
 ```typescript
@@ -205,6 +233,16 @@ The full clarification/dispatch/recovery/resume/verifier/owner-confirmation and
 general Delivery plan is preserved; this reservation slice does not complete it.
 
 ## PM execution ownership lease (not admission)
+
+PM credential request policy denies assignment-scoped tokens on legacy
+APIs and global SDLC resources. Exactly one canonical PM grant may address only
+its task's allowed context/input/questions/requirements/revisions/diff/events and
+lease resources. Publication/cancellation and lease commands retain their exact
+assignment/fence checks. Reads additionally require current assignment subject,
+scope and ledger equality. Owner/verifier/assignment operations remain forbidden.
+This follow-up passed Rust and actual TCP/PostgreSQL component gates, including
+latest-ledger rejection for lease read/claim/heartbeat. Synthetic Central issuance
+does not establish real Base delegation, admission or runtime-handoff acceptance.
 
 The lease producer applies only to a persisted current `pm_draft_reserved`
 execution. It is an ownership TTL, not runtime heartbeat/readiness, authority for

@@ -6,6 +6,10 @@ Pending 000034 also adds `sdlc_project_members_user_idx(user_id,project_id)`.
 The project-access endpoint combines that membership index, the existing
 `projects.owner_id` index and central-subject identity index in one SQL snapshot.
 No scope cache or additional authorization table is introduced.
+The strict bounded project-directory uses the same existing identity/ownership/
+membership indexes and `projects` UUID primary key. Keyset paging projects only
+`id,key,name` with a limit+1 lookahead in that authorization snapshot. It adds
+no migration, stored cursor, directory cache, counts or metadata columns.
 
 `m20261001_0000034_sdlc_clarification` adds stable instance identity,
 immutable task/project/root/central-owner binding and a lockable JSONB aggregate
@@ -32,6 +36,12 @@ only validated on fresh disposable databases, never by resetting shared data.
 Foreign keys retain history; requirements and question/assignment versions have
 safe integer constraints. Mutable aggregate state and append-only rows commit
 in the same transaction. Project/root and outbox cursor columns are indexed.
+
+PM credential confinement adds no table or migration. Under the existing issue
+and aggregate locks, task-scoped reads compare the aggregate's current assignment
+with the latest `sdlc_assignments` row by indexed task/version and exact typed
+payload. A valid old grant or historical receipt cannot authorize an inconsistent
+current assignment. Request policy is not stored as a second ownership model.
 
 Initial PM reservation extends the same pending 000034 with append-only
 `sdlc_pm_executions`: non-nil unique execution/assignment UUIDs, unique positive

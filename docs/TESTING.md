@@ -10,11 +10,50 @@ ACL, expiry/restart and a heartbeat actually blocked on an issue row until after
 expiry; it must return 409 without advancing the renewal cursor or history.
 Lease ownership is not PM admission or genuine live Hermes acceptance.
 
+The lease suite also corrupts retained assignment payloads and inserts a newer
+ledger version only in its disposable fixture. Plain/operation lease GET, claim
+and heartbeat must all return 409, both before and after a claim, without changing
+task/issue/lease/receipt/outbox/user state. Restoring the fixture permits readback
+again. This regression guards the shared current-assignment check, not lease TTL
+or admission; production append-only triggers remain enabled.
+
+`support/pm_credential_boundary.rs` is executed inside the explicit ignored
+`sdlc` TCP/PostgreSQL suite. Its opaque-PAT Central fixture reproduces the child
+shape (parent subject/email, no browser session, service read/write plus PM grant).
+Direct legacy own/foreign issue reads/mutations and global, owner, verifier and
+assignment paths must be denied before shadow linking or side effects. Bound
+reads/publication recheck assignment replacement, subject, ACL revocation and
+Auth outage; malformed, ambiguous or human-session PM grants fail closed.
+Generic PAT/human behavior has separate unchanged-policy assertions. This is
+receiving-service evidence, not real Base delegation, runtime handoff or live PM
+acceptance; the verification ledger records actual runs separately.
+
 The disposable `drafts` HTTP/PostgreSQL test also covers the strict project-access
 route: sorted/deduplicated owner/member scope, read-scoped PAT, verified central
 identity, global-admin/local-ID/email bypass denial, immediate membership/account
 revocation, dependency failure, and the pending 0034 membership index. It uses
 the real route middleware and repository, with an isolated Central Auth fixture.
+
+`support/project_directory.rs` extends the same actual TCP/PostgreSQL harness
+with the strict directory wire, mandatory null cursor, canonical IDs, UTF-8/escape
+names, no extra/private metadata, read-scoped PAT and excluded admin nonmembers.
+105 authorized projects exercise default 50, limits 1/7/100, UUID multipage
+ordering, owner/member deduplication, bounded lookahead and empty/final pages.
+Cursor replay rechecks membership/account revocation and Auth outage. Query tests
+cover nil/noncanonical UUIDs, invalid bounds, duplicates and unknown fields.
+The same fixture invokes `curl` over TCP: human/read-scoped PAT responses must
+match the exact 200 page; unauthenticated 401 and wrong-scope 403 responses must
+not disclose directory IDs or fields. This requires `curl` in the test runner.
+Support-fixture rows are removed before the existing creation tests continue.
+These tests require the explicit ignored-suite command below; adding coverage
+does not establish an actual local PG run or live Fleet acceptance.
+
+Focused Rust checks: `cargo test --locked -p domain project_directory` and
+`cargo test --locked -p api project_directory`. API schema tests assert bearer
+security, two query parameters/bounds/default and exact required response fields
+(including nullable cursor). Export with the existing Rust `gen-openapi` binary,
+then `pnpm generate:api` and OpenAPI drift/consumer checks; do not hand-author a
+second schema or run these database tests against accepted/shared state.
 
 Human creation requires a newly created, separate disposable PostgreSQL database
 with no recorded migrations. The test refuses an already migrated database;
