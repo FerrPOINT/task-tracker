@@ -4087,13 +4087,21 @@ name = "task-tracker-cli"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "api",
+ "app",
+ "axum",
  "clap",
+ "domain",
+ "mime_guess",
  "reqwest",
  "sdlc-cli-core",
  "serde",
  "serde_json",
+ "shared",
+ "tempfile",
  "tokio",
  "urlencoding",
+ "uuid",
 ]
 
 [[package]]

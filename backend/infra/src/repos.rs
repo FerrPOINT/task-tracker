@@ -773,6 +773,15 @@ impl IssueRepository for IssueRepo {
             .ok_or_else(|| AppError::not_found("issue", id))
     }
 
+    async fn get_by_key_include_deleted(&self, key: &IssueKey) -> Result<Issue, AppError> {
+        issue::Entity::find()
+            .filter(issue::Column::Key.eq(key.to_string()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+            .map(map_issue)
+            .ok_or_else(|| AppError::not_found("issue", key))
+    }
     async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError> {
         let model = issue::Entity::find()
             .filter(issue::Column::Key.eq(key.to_string()))

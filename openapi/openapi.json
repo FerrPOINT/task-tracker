@@ -1191,7 +1191,7 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Issue id",
+            "description": "Issue UUID or key (PROJ-1)",
             "required": true,
             "schema": {
               "type": "string"
@@ -1254,7 +1254,7 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Issue id",
+            "description": "Issue UUID or key (PROJ-1)",
             "required": true,
             "schema": {
               "type": "string"
@@ -1300,7 +1300,7 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Issue id",
+            "description": "Issue UUID or key (PROJ-1)",
             "required": true,
             "schema": {
               "type": "string"
@@ -1339,7 +1339,7 @@
           {
             "name": "id",
             "in": "path",
-            "description": "Issue ID",
+            "description": "Issue UUID or key (PROJ-1)",
             "required": true,
             "schema": {
               "type": "string"

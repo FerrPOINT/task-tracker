@@ -7,14 +7,14 @@ use std::sync::Arc;
 use crate::dto::{IssueResponse, TransitionIssueRequest};
 use app::auth::UserClaims;
 use app::context::AppContext;
-use shared::{AppError, IssueId, StatusId};
+use shared::{AppError, StatusId};
 use std::str::FromStr;
 
 #[utoipa::path(
     post,
     path = "/api/v1/issues/{id}/transition",
     tag = "issues",
-    params(("id" = String, Path, description = "Issue ID")),
+    params(("id" = String, Path, description = "Issue UUID or key (PROJ-1)")),
     request_body = TransitionIssueRequest,
     responses(
         (status = 200, description = "Issue transitioned", body = IssueResponse),
@@ -30,15 +30,13 @@ pub async fn transition_issue(
     Path(id): Path<String>,
     Json(body): Json<TransitionIssueRequest>,
 ) -> Result<Json<crate::dto::IssueResponse>, AppError> {
-    let issue_id = id
-        .parse::<IssueId>()
-        .map_err(|_| AppError::invalid_input("invalid issue id"))?;
     let target_status_id = body
         .target_status_id
         .parse::<StatusId>()
         .map_err(|_| AppError::invalid_input("invalid status id"))?;
     let actor_id = shared::UserId::from_str(&claims.sub)
         .map_err(|_| shared::AppError::invalid_input("invalid token"))?;
+    let issue_id = ctx.services.issue.resolve_identifier(&id, actor_id).await?;
     let cmd = app::commands::TransitionIssueCommand {
         issue_id,
         target_status_id,
