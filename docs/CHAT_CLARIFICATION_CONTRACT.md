@@ -138,6 +138,72 @@ The opt-in `metadata_v1` outbox below bounds serialized responses. Legacy LIMIT
 100 remains unchanged and full results can exceed Fleet's 1 MiB limits. Metadata
 does not replace readable inputs or attest Workflow admission/runtime delivery.
 
+## Initial PM Draft reservation (bounded implementation contract)
+
+Creation acceptance readback is additive:
+`GET /api/v1/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}`.
+The exact UTF-8 key is encoded as one path segment (`/` becomes `%2F`). Human
+session plus fresh explicit project ACL is required; lookup is exclusively in
+the authenticated author's project/key namespace, not operator impersonation.
+200 returns the existing unchanged seven-field `CreatedDraft`, never raw content
+or a new DTO/version. No retained operation is 404; retained operation with
+missing/inconsistent entity, original binding or input is 409. This read never
+creates, repairs or makes history current. Use it before POST replay on unknown
+acceptance, then `pm-draft-input` for original source. Changed POST payload is
+still 409; no legacy create/default behavior is changed.
+
+`POST /api/v1/issues/{id}/sdlc/pm-draft-assignment` accepts exactly
+`{expected_owner_version,expected_assignment_version,requested_agent_id,idempotency_key}`.
+All fields are required, including explicit null for initial assignment version.
+The agent UUID is only a canonical non-nil selector. Tracker has no configured
+Fleet client and does not verify agent existence, role, configuration, chat,
+workspace or runtime. In the response, `assignment.agent_id` retains exactly this
+selector, not a concrete-agent verification receipt. No Fleet proof is fabricated.
+
+Only a verified human owner session with current explicit project access may
+reserve. Operator/PAT/orchestrator impersonation is forbidden. This initial start
+permission is separate from exact requirements confirmation and never moves the
+task to Backlog. Initial reservation requires a bound root Draft, verified complete
+original input, owner version zero and no prior assignment/execution history.
+
+Tracker allocates assignment/execution UUIDs, assignment version and positive
+signed-64-bit ordinal in one transaction with snapshot linkage, owner-version CAS,
+idempotency and the existing `pm.assigned` outbox event. The result is strict
+`PmDraftReservation`: contract_version=1, variant=pm_draft_reserved, binding
+{tracker_instance_id,project_id,task_id,root_task_id,owner_subject}, owner_cas
+{expected_version,version}, existing five-field assignment, execution
+{ordinal:<canonical decimal string>,key:SDLC-<ordinal>}, input {snapshot_ref,sha256},
+assignment_operation_key=pm-draft:<assignment UUID>, admission_state=reserved,
+dispatch_allowed=false. Machine subject comes from configured orchestrator
+identity, never from the selector/browser; actual Base parent/child subject and
+credential policy must be verified before later admission. This is not dispatch,
+capability, workspace/lease, concrete-agent, Workflow or live acceptance evidence.
+
+201 creates and 200 replays the same durable result; changed key payload/stale CAS
+is 409. Owner versions use safe JSON integers; ordinal is an i64 decimal string.
+Ordinal is Tracker-owned, never reset/reused; transaction rollback can leave gaps.
+`SDLC-n` must always be qualified by Tracker instance across services.
+`GET /api/v1/issues/{id}/sdlc/pm-draft-assignment[?idempotency_key=...]` returns
+{contract_version,binding,owner_version,current,operation}; current is nullable
+reservation, operation is null or {idempotency_key,request_sha256,result}. Reads
+recheck context ACL; operation lookup uses the authenticated subject's namespace.
+Historical result is not current authority and replay never restores current state.
+
+New reserved enrollment blocks legacy assignment writes and every PM business
+mutation until independently verified admission is implemented. Exact historical
+legacy replay remains read-only. Existing non-enrolled flow/wire is unchanged.
+No new metadata event type is emitted and pm.assigned remains the old assignment
+DTO. Full admission must later verify actual Fleet agent/config/chat/business
+workspace, owner lease/provenance, trusted project/Workflow namespace mapping,
+native catalog/build manifest, scoped credential handoff and first-step gate.
+Replacement remains fail-closed: trusted terminal readback plus durable Fleet and
+Workflow quiescence/freeze acknowledgements under matching owner CAS are required;
+task done, Workflow PASS, EOF or lease expiry do not suffice. Resume retains its
+execution/ordinal. Required workspace proof is never substituted by null; genuinely
+inapplicable Delivery/Tech/CI fields need explicit typed absence in the PM variant.
+The full clarification/dispatch/recovery/resume/verifier/owner-confirmation and
+general Delivery plan is preserved; this reservation slice does not complete it.
+
 ## Fleet gateway
 
 All paths below use the existing issue UUID under `/api/v1/issues/{id}/sdlc`.

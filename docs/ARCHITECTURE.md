@@ -31,8 +31,15 @@ PM draft input readback follows service -> repository and reuses the same
 `load`/authorization/lock order as context before selecting the indexed ledger.
 It verifies snapshot hash/binding and never reconstructs missing input from
 mutable issue fields. Existing CreatedDraft and owner confirmation wire remain
-unchanged. Owner CAS, execution ordinal and Workflow project mapping/admission
-remain separate integration work. Opt-in metadata outbox
+unchanged. Workflow project mapping/admission remain separate integration work.
+Initial owner-CAS reservation now allocates Tracker-owned assignment/execution
+UUIDs and a durable SDLC ordinal in one transaction, but explicitly cannot
+dispatch. Selector identity is not actual Fleet verification. Reserved enrollment
+blocks all PM business writes and legacy allocator bypass; exact historical
+replay is read-only. The creation-operation GET shares creation's advisory lock,
+fresh ACL and exact author namespace, validates retained entity/binding/input and
+returns only the original CreatedDraft. See the bounded contract for full future
+admission, replacement quiescence and resume responsibilities. Opt-in metadata outbox
 projects immutable events and historical references without emitting content.
 Its serialized whole envelope is byte-bounded; legacy outbox remains unchanged.
 Fleet must pin the projection before consumption and persist its own inbox/cursor.

@@ -1,4 +1,5 @@
 use domain::sdlc::*;
+use domain::sdlc_pm_draft::{PmDraftReadback, PmDraftReservation, ReservePmDraft};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -32,6 +33,32 @@ impl SdlcService {
     }
     pub async fn context(&self, task: Uuid, actor: &Principal) -> Result<SdlcContext, AppError> {
         Ok(self.repository.read(task, actor).await?.context(actor))
+    }
+    pub async fn draft_creation_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<CreatedDraft, AppError> {
+        self.repository
+            .draft_creation_operation(project, actor, key)
+            .await
+    }
+    pub async fn reserve_pm_draft(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: ReservePmDraft,
+    ) -> Result<(PmDraftReservation, bool), AppError> {
+        self.repository.reserve_pm_draft(task, actor, command).await
+    }
+    pub async fn pm_draft_assignment(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: Option<&str>,
+    ) -> Result<PmDraftReadback, AppError> {
+        self.repository.pm_draft_assignment(task, actor, key).await
     }
     pub async fn pm_draft_input(
         &self,

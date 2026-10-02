@@ -26,12 +26,26 @@ inputs or a complete bounded snapshot with lowercase SHA-256; new creations
 always write all four values. The hash covers only canonical exact UTF-8
 title/description, not the replay key. Existing append-only triggers protect the
 snapshot. Missing historical data stays unavailable; no mutable-issue backfill
-or new provenance/mapping/ordinal tables are introduced by this follow-up.
+or new provenance/mapping tables are introduced by input readback.
 This table extends pending 000034; it is not a new follow-up migration and is
 only validated on fresh disposable databases, never by resetting shared data.
 Foreign keys retain history; requirements and question/assignment versions have
 safe integer constraints. Mutable aggregate state and append-only rows commit
 in the same transaction. Project/root and outbox cursor columns are indexed.
+
+Initial PM reservation extends the same pending 000034 with append-only
+`sdlc_pm_executions`: non-nil unique execution/assignment UUIDs, unique positive
+bigint identity ordinal, task/assignment-version, owner CAS, snapshot/hash FK to
+the original creation ledger, stable assignment operation key and typed result.
+`sdlc_tasks.pm_owner_version/pm_execution_id/pm_admission_state` provide lockable
+current authority; initial reservation CAS is 0 -> 1 and state is reserved only.
+Assignment, execution, aggregate CAS, idempotency and old `pm.assigned` outbox
+commit in one transaction. Sequence gaps on rollback are expected; ordinals are
+not reused. History replay is never a current-pointer write. A DB trigger blocks
+reserved aggregate/control changes; application history lookup also denies PM
+business writes and legacy assignment if the current pointer is unavailable.
+The creation-operation GET uses the existing indexed project/author/key ledger,
+with no new table, DTO, migration or content in the response.
 Metadata_v1 introduces no migration or new stored identifiers. It derives common
 metadata from immutable outbox payloads, snapshot refs from the creation ledger,
 and answer fences from the exact append-only question version. Existing content

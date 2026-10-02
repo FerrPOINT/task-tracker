@@ -78,6 +78,61 @@ CREATE TABLE sdlc_assignments (
     payload jsonb NOT NULL,
     PRIMARY KEY(task_id, version)
 );
+ALTER TABLE sdlc_draft_creations ADD CONSTRAINT sdlc_draft_input_identity
+    UNIQUE(task_id,input_snapshot_ref,input_sha256);
+CREATE TABLE sdlc_pm_executions (
+    execution_id uuid PRIMARY KEY CHECK (execution_id != '00000000-0000-0000-0000-000000000000'::uuid),
+    ordinal bigint GENERATED ALWAYS AS IDENTITY UNIQUE CHECK (ordinal > 0),
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
+    assignment_id uuid NOT NULL UNIQUE CHECK (assignment_id != '00000000-0000-0000-0000-000000000000'::uuid),
+    assignment_version bigint NOT NULL CHECK (assignment_version BETWEEN 1 AND 9007199254740991),
+    expected_owner_version bigint NOT NULL CHECK (expected_owner_version >= 0),
+    owner_version bigint NOT NULL CHECK (owner_version BETWEEN 1 AND 9007199254740991 AND owner_version=expected_owner_version+1),
+    input_snapshot_ref uuid NOT NULL,
+    input_sha256 text NOT NULL CHECK (input_sha256 ~ '^[0-9a-f]{64}$'),
+    assignment_operation_key text NOT NULL UNIQUE,
+    result jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(task_id,execution_id), UNIQUE(task_id,owner_version), UNIQUE(task_id,assignment_version),
+    FOREIGN KEY(task_id,assignment_version) REFERENCES sdlc_assignments(task_id,version),
+    FOREIGN KEY(task_id,input_snapshot_ref,input_sha256)
+        REFERENCES sdlc_draft_creations(task_id,input_snapshot_ref,input_sha256),
+    CHECK ((result->'assignment'->>'execution_id'=execution_id::text
+        AND result->'assignment'->>'assignment_id'=assignment_id::text
+        AND (result->'assignment'->>'version')::bigint=assignment_version
+        AND result->'execution'->>'ordinal'=ordinal::text
+        AND result->'execution'->>'key'='SDLC-'||ordinal::text
+        AND result->'binding'->>'task_id'=task_id::text
+        AND (result->'owner_cas'->>'expected_version')::bigint=expected_owner_version
+        AND (result->'owner_cas'->>'version')::bigint=owner_version
+        AND result->'input'->>'snapshot_ref'=input_snapshot_ref::text
+        AND result->'input'->>'sha256'=input_sha256
+        AND result->>'assignment_operation_key'=assignment_operation_key
+        AND result->>'admission_state'='reserved'
+        AND result->'dispatch_allowed'='false'::jsonb) IS TRUE)
+);
+ALTER TABLE sdlc_tasks ADD COLUMN pm_owner_version bigint NOT NULL DEFAULT 0,
+    ADD COLUMN pm_execution_id uuid,
+    ADD COLUMN pm_admission_state text,
+    ADD CONSTRAINT sdlc_pm_current_execution FOREIGN KEY(task_id,pm_execution_id)
+        REFERENCES sdlc_pm_executions(task_id,execution_id),
+    ADD CONSTRAINT sdlc_pm_control CHECK (
+        (pm_owner_version=0 AND pm_execution_id IS NULL AND pm_admission_state IS NULL)
+        OR (pm_owner_version=1 AND pm_execution_id IS NOT NULL AND pm_admission_state='reserved'
+            AND (state->'assignment'->>'execution_id'=pm_execution_id::text) IS TRUE)
+    );
+CREATE FUNCTION sdlc_pm_reservation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.pm_execution_id IS NOT NULL AND
+        (NEW.state IS DISTINCT FROM OLD.state OR NEW.pm_owner_version IS DISTINCT FROM OLD.pm_owner_version
+         OR NEW.pm_execution_id IS DISTINCT FROM OLD.pm_execution_id
+         OR NEW.pm_admission_state IS DISTINCT FROM OLD.pm_admission_state) THEN
+        RAISE EXCEPTION 'SDLC reserved PM requires verified admission' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_pm_reservation_gate BEFORE UPDATE ON sdlc_tasks
+FOR EACH ROW EXECUTE FUNCTION sdlc_pm_reservation_gate();
 CREATE TABLE sdlc_requests (
     request_id uuid PRIMARY KEY,
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
@@ -190,7 +245,7 @@ DO $$ DECLARE name text; BEGIN
     FOREACH name IN ARRAY ARRAY['sdlc_instance', 'sdlc_agent_bindings', 'sdlc_assignments',
         'sdlc_requests', 'sdlc_question_versions', 'sdlc_options', 'sdlc_requirements',
         'sdlc_answers', 'sdlc_evidence', 'sdlc_confirmations', 'sdlc_idempotency', 'sdlc_outbox',
-        'sdlc_draft_creations']
+        'sdlc_draft_creations', 'sdlc_pm_executions']
     LOOP
         EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()', name);
     END LOOP;

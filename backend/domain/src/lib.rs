@@ -5,6 +5,7 @@ pub mod jql;
 pub mod repositories;
 pub mod sdlc;
 pub mod sdlc_metadata;
+pub mod sdlc_pm_draft;
 pub mod stubs;
 pub mod value_objects;
 

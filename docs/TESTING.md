@@ -22,8 +22,20 @@ strict browser/central-subject/project ownership, no admin/email/local-ID bypass
 strict DTOs, transactional outbox-failure rollback, exact concurrent replay and
 changed-payload conflict, forced ordinary-number collision retry, deleted-number
 non-reuse, authorization revocation fencing, immutable ledger, lost response and
-Tracker shutdown/restart readback. It creates no PM assignment/run. OpenAPI tests
+Tracker shutdown/restart readback. Creation itself creates no PM assignment/run. OpenAPI tests
 assert all seven typed response fields, strict request fields and Draft-only enum.
+
+The same suite also tests creation-operation GET before replay after a lost body,
+UTF-8/slash path keys, unchanged seven-field result, restart/no duplicate, exact
+author scope, operator/PAT impersonation denial, retained source-invalid 409 and
+fresh revocation/auth-outage fencing. `support/reservation.rs` exercises initial
+PM reservation over real TCP/PG: duplicate and different-key races, stale owner
+CAS, immutable input checks, transaction/outbox rollback with ordinal gaps,
+restart/lost response, current vs historical replay and DB/application gates
+against legacy assignment and PM business writes. Selector-only/no-dispatch
+semantics are asserted; no live Fleet/Workflow/native runtime is used.
+This owned PG/HTTP suite requires `curl` on PATH for supplementary smoke checks
+of both GET readbacks and exact reservation POST replay with synthetic credentials.
 
 The same suite exercises immutable `pm-draft-input` snapshots: one durable UUID
 and exact hash after concurrent creation/readback, replay and restart, no change

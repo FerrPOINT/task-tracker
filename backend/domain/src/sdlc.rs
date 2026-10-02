@@ -512,6 +512,18 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn reserve_pm_draft(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_pm_draft::ReservePmDraft,
+    ) -> Result<(crate::sdlc_pm_draft::PmDraftReservation, bool), AppError>;
+    async fn pm_draft_assignment(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: Option<&str>,
+    ) -> Result<crate::sdlc_pm_draft::PmDraftReadback, AppError>;
     async fn project_access_scope(&self, actor: &Principal) -> Result<ProjectAccess, AppError>;
     async fn create_draft(
         &self,
@@ -519,6 +531,12 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         command: CreateDraftCommand,
     ) -> Result<(CreatedDraft, bool), AppError>;
+    async fn draft_creation_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<CreatedDraft, AppError>;
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError>;
     async fn pm_draft_input(
         &self,

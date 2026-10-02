@@ -7,6 +7,7 @@ use axum::{
 };
 use domain::sdlc::*;
 use domain::sdlc_metadata::*;
+use domain::sdlc_pm_draft::*;
 use serde::{Deserialize, Serialize};
 use shared::AppError;
 use std::sync::Arc;
@@ -100,8 +101,16 @@ pub fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
         .route("/sdlc/project-access", get(project_access))
         .route("/projects/{project_id}/sdlc/drafts", post(create_draft))
+        .route(
+            "/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}",
+            get(draft_creation_operation),
+        )
         .route("/issues/{id}/sdlc/context", get(context))
         .route("/issues/{id}/sdlc/pm-draft-input", get(pm_draft_input))
+        .route(
+            "/issues/{id}/sdlc/pm-draft-assignment",
+            get(pm_draft_assignment).post(reserve_pm_draft),
+        )
         .route("/issues/{id}/sdlc/binding", post(bind))
         .route("/issues/{id}/sdlc/assignment", post(assign))
         .route(
@@ -181,6 +190,24 @@ pub async fn create_draft(
     ))
 }
 
+#[utoipa::path(get, path="/api/v1/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}", tag="sdlc",
+    params(("project_id"=Uuid, Path), ("idempotency_key"=String, Path, description="Exact creation key, UTF-8 percent-encoded as one path segment")),
+    responses((status=200,body=CreatedDraft),(status=401),(status=403,description="Human session and fresh explicit project access required"),
+        (status=404,description="Project or exact author-scoped creation operation absent"),
+        (status=409,description="Retained operation entity, binding or original input inconsistent or missing"),
+        (status=422,description="Invalid creation key"),(status=503)),security(("bearer"=[])))]
+pub async fn draft_creation_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((project, key)): Path<(Uuid, String)>,
+) -> Result<Json<CreatedDraft>, AppError> {
+    Ok(Json(
+        service(&ctx)?
+            .draft_creation_operation(project, &actor, &key)
+            .await?,
+    ))
+}
+
 #[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/context", params(("id"=Uuid, Path)), responses((status=200,body=SdlcContext)), security(("bearer"=[])))]
 pub async fn context(
     State(ctx): State<Arc<app::AppContext>>,
@@ -208,6 +235,46 @@ pub async fn pm_draft_input(
     Path(id): Path<Uuid>,
 ) -> Result<Json<PmDraftInputResponse>, AppError> {
     Ok(Json(service(&ctx)?.pm_draft_input(id, &actor).await?))
+}
+
+#[derive(Deserialize, utoipa::IntoParams)]
+pub struct PmDraftReadbackQuery {
+    pub idempotency_key: Option<String>,
+}
+
+#[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/pm-draft-assignment", params(("id"=Uuid, Path)), request_body=ReservePmDraft,
+    responses((status=201,body=PmDraftReservation),(status=200,body=PmDraftReservation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn reserve_pm_draft(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Json(command): Json<ReservePmDraft>,
+) -> Result<Response, AppError> {
+    let (result, replayed) = service(&ctx)?.reserve_pm_draft(id, &actor, command).await?;
+    Ok((
+        if replayed {
+            axum::http::StatusCode::OK
+        } else {
+            axum::http::StatusCode::CREATED
+        },
+        Json(result),
+    )
+        .into_response())
+}
+
+#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/pm-draft-assignment", params(("id"=Uuid, Path), PmDraftReadbackQuery),
+    responses((status=200,body=PmDraftReadback),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn pm_draft_assignment(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<PmDraftReadbackQuery>,
+) -> Result<Json<PmDraftReadback>, AppError> {
+    Ok(Json(
+        service(&ctx)?
+            .pm_draft_assignment(id, &actor, query.idempotency_key.as_deref())
+            .await?,
+    ))
 }
 
 #[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/binding", params(("id"=Uuid, Path)), request_body=BindCommand, responses((status=200,body=SdlcContext)), security(("bearer"=[])))]

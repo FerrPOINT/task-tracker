@@ -305,3 +305,66 @@ ordinal, trusted project mapping, Workflow namespace ownership/admission and liv
 dispatch/verifier acceptance remain external. Fleet must explicitly pin projection
 and contract version before its first cursor, and keep metadata digests separate
 from legacy receipt hashes. No legacy receipts may be reinterpreted.
+
+## Initial PM Draft Reservation And Creation Readback, 2026-10-02
+
+Baseline: `038e76c5`, same Draft PR #114 -> main. The bounded reservation is
+Tracker-issued and reserved only: one transaction allocates assignment/execution
+UUID/version/positive i64 SDLC ordinal, original snapshot linkage, owner-version
+CAS, idempotency and the existing pm.assigned event. The requested agent is only
+a canonical selector; no Fleet client/proof or dispatch/admission is fabricated.
+Only pending 000034 was extended; no second migration was added/applied.
+
+The additive creation-operation GET supports the exact requested URL, including
+slash/UTF-8 keys encoded as one path segment. It reads the human caller's exact
+project/author/key namespace under fresh ACL and the creation transaction fence,
+returns the unchanged seven-field CreatedDraft, and validates original entity,
+binding and immutable input. Absent command is 404; retained source-invalid is
+409, without title/description. Changed POST payload remains 409.
+
+Completed focused evidence:
+
+- PASS: PostgreSQL 17, fresh disposable full-chain migration + actual Tracker TCP
+  HTTP `drafts --ignored`, final suite 3.01 seconds. Unknown creation body -> GET
+  before POST replay -> restart/exact result/no duplicate; UTF-8/slash path key;
+  strict seven fields; wrong author/operator/PAT/machine denial; invalid key;
+  retained soft-deleted entity, changed reporter, corrupt/all-null input;
+  membership/account revocation and auth outage.
+- PASS: actual curl smoke of creation-operation GET, reservation POST replay and
+  current/historical reservation GET, compared to the same typed HTTP results.
+- PASS: same real HTTP suite exercises twelve duplicate reservations (one new,
+  all replays identical), eight different-key competitors (one winner), changed
+  payload/stale CAS, invalid selector/DTO/integer bounds, snapshot integrity,
+  forced outbox failure/complete rollback with ordinal gap, lost response and
+  restart. DB append-only/current-control fences and application history guards
+  deny legacy assignment and PM revision/question/cancel/answer/evidence/confirmation
+  writes. Detached-pointer historical read/replay does not make history current.
+  Existing non-enrolled legacy assignment succeeds, then initial reserve is
+  rejected without allocating a second execution/ordinal.
+- PASS: separate fresh PostgreSQL/HTTP `sdlc --ignored`, 12.62 seconds: existing
+  non-enrolled legacy assignment/clarification/confirmation remains functional;
+  all nine metadata types, byte/count thresholds, source corruption, original
+  snapshot/historical fence, restart, ACL and content-disclosure regressions pass.
+- PASS: Rust 1.88 strict all-targets/all-features Clippy and fmt. DTO unit tests
+  and OpenAPI contract tests cover required fields, selector-vs-verification,
+  safe CAS integers, dispatch-false-only schema and unchanged CreatedDraft reuse.
+- PASS: final serial `cargo test --workspace --locked -- --test-threads=1`,
+  519 passed / zero failed / 22 ignored. The two ignored PG HTTP suites have
+  separate executed database evidence above; other ignored suites remain skipped.
+- PASS: all 135 previous OpenAPI component schemas unchanged; generated client
+  check/compatibility, frontend typecheck/lint/semantic/format/build, 45 files /
+  253 tests, four docs/CI script tests and README structural gate.
+
+The only owned temporary QA container/databases were removed after verification;
+no separate server remains. Existing Docker groups, pinned images, secrets and
+protected volumes were not changed. Other ignored legacy PG/Docker suites,
+coverage, browser and real Central/Fleet/Workflow/native-PM acceptance are not
+claimed. No UI, Base, Fleet or Workflow sources were edited.
+
+Remaining full plan is preserved: actual Fleet agent/config/chat/workspace and
+owner lease/provenance verification; trusted project/Workflow namespace mapping;
+native catalog/build manifest, scoped credentials and first-step gate; structured
+tools/clarification, dispatch/recovery/resume, independent verifier and exact
+owner confirmation -> Backlog. Replacement still needs matching owner-CAS and
+durable Fleet/Workflow freeze/quiescence plus trusted terminal readback. Existing
+general Delivery constraints are unchanged; no ready/merge/live claim is made.

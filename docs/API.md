@@ -28,6 +28,30 @@ write access and exact central owner apply even on replay. Issue, private bindin
 creation ledger and outbox commit together; no PM/run is started. Exact wire and
 limits are in the contract above. Ordinary issue POST is not a saga substitute.
 
+`GET /api/v1/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}`
+reads unknown creation acceptance before POST replay. Percent-encode the exact
+UTF-8 key as one path segment (including `/` as `%2F`). Only a human session
+with fresh project access can read its own project/author/key namespace. 200 is
+the existing unchanged seven-field `CreatedDraft`, without title/description;
+404 means no such command (or project). A retained command with missing/invalid
+original entity, binding or input is 409, never false absence. Current task stage
+does not rewrite the original creation result. Changed POST payload remains 409.
+
+`POST /api/v1/issues/{id}/sdlc/pm-draft-assignment` accepts strict
+`{expected_owner_version,expected_assignment_version,requested_agent_id,idempotency_key}`.
+Initial values are `0,null`; selector is a canonical non-nil UUID, not Fleet
+verification. Exact owner session/project ACL is required. 201/200 return strict
+`PmDraftReservation`: version 1, variant `pm_draft_reserved`, immutable binding,
+owner_cas, unchanged five-field assignment, execution `{ordinal,key}` (positive
+i64 decimal string, `SDLC-<ordinal>`), input `{snapshot_ref,sha256}`,
+`assignment_operation_key`, `admission_state:reserved`, `dispatch_allowed:false`.
+`GET` on that path optionally accepts `idempotency_key` and returns
+`{contract_version,binding,owner_version,current,operation}` with nullable current
+reservation and separate author-scoped historical operation. Historical replay
+never installs current authority. All reserved PM writes/legacy assignments are
+blocked until later verified admission. Source DTOs: `backend/domain/src/sdlc_pm_draft.rs`.
+No admission, actual Fleet agent/config/chat/workspace or dispatch is claimed.
+
 `GET /api/v1/issues/{id}/sdlc/pm-draft-input` returns
 `{contract_version:1,tracker_instance_id,project_id,task_id,root_task_id,owner_subject,
 input:{snapshot_ref,title,description,sha256}}`. It reads the immutable original

@@ -26,6 +26,8 @@ use uuid::Uuid;
 
 #[path = "support/metadata.rs"]
 mod metadata;
+#[path = "support/reservation.rs"]
+mod reservation;
 
 #[derive(Clone)]
 struct AuthStub {
@@ -452,6 +454,28 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     assert_eq!(draft.task_id, draft.root_task_id);
     assert_eq!(draft.owner_subject, owner_sub);
     assert_eq!(draft.task_key, "DRAFT-1");
+    let creation_readback =
+        format!("{base}/api/v1/projects/{project}/sdlc/drafts/operations/creation");
+    assert_eq!(
+        get_json(&client, &creation_readback, &owner, 200).await,
+        result
+    );
+    get_json(&client, &creation_readback, &foreign, 403).await;
+    get_json(&client, &creation_readback, &operator, 404).await;
+    get_json(
+        &client,
+        &format!("{base}/api/v1/projects/{other_project}/sdlc/drafts/operations/creation"),
+        &owner,
+        404,
+    )
+    .await;
+    get_json(
+        &client,
+        &format!("{base}/api/v1/projects/{project}/sdlc/drafts/operations/invalid%20key"),
+        &owner,
+        422,
+    )
+    .await;
     let mut unknown = result.clone();
     unknown["unexpected"] = json!(true);
     assert!(serde_json::from_value::<CreatedDraft>(unknown).is_err());
@@ -883,6 +907,13 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     )
     .await;
     expect(&client, &url, &owner, &command("creation"), 409).await;
+    get_json(
+        &client,
+        &format!("{base}/api/v1/projects/{project}/sdlc/drafts/operations/creation"),
+        &owner,
+        409,
+    )
+    .await;
     sql(
         &db,
         "UPDATE issues SET reporter_id=$2 WHERE id=$1",
@@ -897,6 +928,13 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     .await;
     expect(&client, &url, &owner, &command("creation"), 404).await;
     get_json(&client, &input_url, &owner, 404).await;
+    get_json(
+        &client,
+        &format!("{base}/api/v1/projects/{project}/sdlc/drafts/operations/creation"),
+        &owner,
+        409,
+    )
+    .await;
     sql(
         &db,
         "UPDATE issues SET deleted_at=NULL WHERE id=$1",
@@ -952,7 +990,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     let events_before = count(&db, "sdlc_outbox").await;
     stop.send(()).unwrap();
     handle.await.unwrap();
-    let (base, stop, handle) = start(config).await;
+    let (base, stop, handle) = start(config.clone()).await;
     assert_eq!(
         metadata::get(
             &client,
@@ -1008,5 +1046,21 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     expect(&client, &url, &owner, &command("creation"), 503).await;
     stop.send(()).unwrap();
     handle.await.unwrap();
+    unavailable.store(false, Ordering::SeqCst);
+    reservation::verify(
+        config,
+        reservation::Fixture {
+            db: &db,
+            client: &client,
+            secret: &secret,
+            issuer: &issuer,
+            owner: &owner,
+            operator: &operator,
+            owner_id,
+            project,
+            unavailable,
+        },
+    )
+    .await;
     auth_handle.abort();
 }

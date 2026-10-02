@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use domain::sdlc::*;
 use domain::sdlc_metadata::{MetadataCandidate, MetadataErrorCode};
+use domain::sdlc_pm_draft::*;
 use sea_orm::{
     ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, DatabaseTransaction,
     QueryResult, Statement, TransactionTrait, Value,
@@ -154,6 +155,94 @@ impl PostgresSdlcRepository {
             return Ok(Some(row.try_get("", "result").map_err(map_db)?));
         }
         Ok(None)
+    }
+
+    async fn original_input(
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+    ) -> Result<PmDraftInput, AppError> {
+        let unavailable = || AppError::conflict("original draft input snapshot unavailable");
+        let row = tx.query_one(statement(
+            "SELECT input_snapshot_ref,input_title,input_description,input_sha256 FROM sdlc_draft_creations
+             WHERE task_id=$1 AND project_id=$2 AND actor_subject=$3",
+            vec![state.task_id.into(),state.project_id.into(),state.owner_subject.clone().into()],
+        )).await.map_err(map_db)?.ok_or_else(unavailable)?;
+        let input = PmDraftInput {
+            snapshot_ref: row
+                .try_get::<Option<Uuid>>("", "input_snapshot_ref")
+                .map_err(map_db)?
+                .ok_or_else(unavailable)?,
+            title: row
+                .try_get::<Option<String>>("", "input_title")
+                .map_err(map_db)?
+                .ok_or_else(unavailable)?,
+            description: row
+                .try_get::<Option<String>>("", "input_description")
+                .map_err(map_db)?
+                .ok_or_else(unavailable)?,
+            sha256: row
+                .try_get::<Option<String>>("", "input_sha256")
+                .map_err(map_db)?
+                .ok_or_else(unavailable)?,
+        };
+        if state.root_task_id != state.task_id
+            || input.snapshot_ref.is_nil()
+            || app::sdlc::pm_draft_input_hash(&input.title, &input.description)? != input.sha256
+        {
+            return Err(AppError::conflict(
+                "original draft input snapshot inconsistent",
+            ));
+        }
+        Ok(input)
+    }
+
+    fn draft_binding(state: &TaskState) -> PmDraftBinding {
+        PmDraftBinding {
+            tracker_instance_id: state.tracker_instance_id.clone(),
+            project_id: state.project_id,
+            task_id: state.task_id,
+            root_task_id: state.root_task_id,
+            owner_subject: state.owner_subject.clone(),
+        }
+    }
+
+    async fn reservation(
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+        id: Uuid,
+    ) -> Result<PmDraftReservation, AppError> {
+        let row = tx
+            .query_one(statement(
+                "SELECT result FROM sdlc_pm_executions WHERE task_id=$1 AND execution_id=$2",
+                vec![state.task_id.into(), id.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::conflict("PM reservation history absent"))?;
+        let result: PmDraftReservation =
+            serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
+                .map_err(|_| AppError::conflict("PM reservation history invalid"))?;
+        let input = Self::original_input(tx, state).await?;
+        if result.binding != Self::draft_binding(state)
+            || result.assignment.execution_id != id
+            || result.input.snapshot_ref != input.snapshot_ref
+            || result.input.sha256 != input.sha256
+        {
+            return Err(AppError::conflict("PM reservation binding/input mismatch"));
+        }
+        Ok(result)
+    }
+
+    async fn enrolled(tx: &DatabaseTransaction, task: Uuid) -> Result<bool, AppError> {
+        let row = tx
+            .query_one(statement(
+                "SELECT EXISTS(SELECT 1 FROM sdlc_pm_executions WHERE task_id=$1) AS enrolled",
+                vec![task.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::internal("PM enrollment result absent"))?;
+        row.try_get("", "enrolled").map_err(map_db)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -373,6 +462,212 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn reserve_pm_draft(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: ReservePmDraft,
+    ) -> Result<(PmDraftReservation, bool), AppError> {
+        app::sdlc::validate_key(&command.idempotency_key)?;
+        if command.requested_agent_id.is_nil()
+            || !(0..=MAX_SAFE_VERSION).contains(&command.expected_owner_version)
+        {
+            return Err(AppError::validation("invalid PM reservation command"));
+        }
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let mut state = self.load(&tx, task, actor).await?;
+        if !state.owner(actor) {
+            return Err(AppError::Forbidden);
+        }
+        let input = Self::original_input(&tx, &state).await?;
+        let hash =
+            app::sdlc::canonical_hash(&json!({"operation":"reserve_pm_draft","payload":command}))?;
+        if let Some(saved) = Self::replay(&tx, task, actor, &command.idempotency_key, &hash).await?
+        {
+            let result: PmDraftReservation = serde_json::from_value(saved.clone())
+                .map_err(|_| AppError::conflict("PM reservation replay invalid"))?;
+            let original = Self::reservation(&tx, &state, result.assignment.execution_id).await?;
+            if serde_json::to_value(&original).map_err(AppError::internal)? != saved {
+                return Err(AppError::conflict("PM reservation replay/history mismatch"));
+            }
+            tx.commit().await.map_err(map_db)?;
+            return Ok((original, true));
+        }
+        let row = tx
+            .query_one(statement(
+                "SELECT pm_owner_version FROM sdlc_tasks WHERE task_id=$1",
+                vec![task.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::conflict("PM owner cursor absent"))?;
+        let version: i64 = row.try_get("", "pm_owner_version").map_err(map_db)?;
+        let prior = tx
+            .query_one(statement(
+                "SELECT EXISTS(SELECT 1 FROM sdlc_assignments WHERE task_id=$1) AS prior",
+                vec![task.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::internal("PM assignment history result absent"))?;
+        if version != command.expected_owner_version
+            || version != 0
+            || command.expected_assignment_version.is_some()
+            || state.assignment.is_some()
+            || prior.try_get::<bool>("", "prior").map_err(map_db)?
+            || Self::enrolled(&tx, task).await?
+            || !matches!(state.stage, Stage::Draft)
+            || state.current_revision().is_some()
+            || !state.questions.is_empty()
+        {
+            return Err(AppError::conflict(
+                "initial PM reservation requires unassigned Draft and current owner CAS",
+            ));
+        }
+        if self.config.orchestrator_subject.trim().is_empty() {
+            return Err(AppError::Unavailable(
+                "PM machine identity is not configured".into(),
+            ));
+        }
+        if self.config.orchestrator_subject == state.owner_subject
+            || self.config.orchestrator_subject == self.config.verifier_subject
+        {
+            return Err(AppError::conflict(
+                "PM machine identity conflicts with owner/verifier",
+            ));
+        }
+        let assignment = PmAssignment {
+            assignment_id: Uuid::now_v7(),
+            execution_id: Uuid::now_v7(),
+            agent_id: command.requested_agent_id,
+            version: 1,
+            machine_subject: self.config.orchestrator_subject.clone(),
+        };
+        let ordinal_row = tx
+            .query_one(statement(
+                "SELECT nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal')) AS ordinal",
+                vec![],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::internal("PM ordinal absent"))?;
+        let ordinal: i64 = ordinal_row.try_get("", "ordinal").map_err(map_db)?;
+        let result = PmDraftReservation {
+            contract_version: 1,
+            variant: PmDraftVariant::Reserved,
+            binding: Self::draft_binding(&state),
+            owner_cas: OwnerCas {
+                expected_version: version,
+                version: version + 1,
+            },
+            assignment: assignment.clone(),
+            execution: PmDraftExecution {
+                ordinal: ordinal.to_string(),
+                key: format!("SDLC-{ordinal}"),
+            },
+            input: domain::sdlc_metadata::MetadataInputRef {
+                snapshot_ref: input.snapshot_ref,
+                sha256: input.sha256,
+            },
+            assignment_operation_key: format!("pm-draft:{}", assignment.assignment_id),
+            admission_state: PmDraftAdmissionState::Reserved,
+            dispatch_allowed: false,
+        };
+        exec(
+            &tx,
+            "INSERT INTO sdlc_assignments(task_id,version,payload) VALUES($1,$2,$3)",
+            vec![
+                task.into(),
+                assignment.version.into(),
+                json_value(&assignment)?,
+            ],
+        )
+        .await?;
+        exec(&tx, "INSERT INTO sdlc_pm_executions(execution_id,ordinal,task_id,assignment_id,assignment_version,
+            expected_owner_version,owner_version,input_snapshot_ref,input_sha256,assignment_operation_key,result)
+            OVERRIDING SYSTEM VALUE VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)",
+            vec![assignment.execution_id.into(),ordinal.into(),task.into(),assignment.assignment_id.into(),assignment.version.into(),
+                version.into(),result.owner_cas.version.into(),result.input.snapshot_ref.into(),result.input.sha256.clone().into(),
+                result.assignment_operation_key.clone().into(),json_value(&result)?]).await?;
+        state.assignment = Some(assignment.clone());
+        exec(&tx, "UPDATE sdlc_tasks SET state=$2,pm_owner_version=$3,pm_execution_id=$4,pm_admission_state='reserved' WHERE task_id=$1 AND pm_owner_version=$5",
+            vec![task.into(),json_value(&state)?,result.owner_cas.version.into(),assignment.execution_id.into(),version.into()]).await?;
+        exec(&tx, "INSERT INTO sdlc_idempotency(task_id,actor_subject,idempotency_key,payload_hash,result) VALUES($1,$2,$3,$4,$5)",
+            vec![task.into(),actor.subject.clone().into(),command.idempotency_key.into(),hash.into(),json_value(&result)?]).await?;
+        exec(&tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'pm.assigned',$3)",
+            vec![Uuid::now_v7().into(),task.into(),json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+                "project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,
+                "stage":state.stage,"requirement_revision":state.current_revision(),"result":assignment}).into()]).await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok((result, false))
+    }
+
+    async fn pm_draft_assignment(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: Option<&str>,
+    ) -> Result<PmDraftReadback, AppError> {
+        if let Some(key) = key {
+            app::sdlc::validate_key(key)?;
+        }
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load(&tx, task, actor).await?;
+        let row = tx
+            .query_one(statement(
+                "SELECT pm_owner_version,pm_execution_id FROM sdlc_tasks WHERE task_id=$1",
+                vec![task.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(|| AppError::conflict("PM owner cursor absent"))?;
+        let owner_version: i64 = row.try_get("", "pm_owner_version").map_err(map_db)?;
+        let id: Option<Uuid> = row.try_get("", "pm_execution_id").map_err(map_db)?;
+        let current = match id {
+            Some(id) => {
+                let result = Self::reservation(&tx, &state, id).await?;
+                if state.assignment.as_ref() != Some(&result.assignment)
+                    || result.owner_cas.version != owner_version
+                {
+                    return Err(AppError::conflict("PM current reservation mismatch"));
+                }
+                Some(result)
+            }
+            None => None,
+        };
+        let operation = if let Some(key) = key {
+            let row = tx.query_one(statement("SELECT payload_hash,result FROM sdlc_idempotency WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
+                vec![task.into(),actor.subject.clone().into(),key.into()])).await.map_err(map_db)?;
+            if let Some(row) = row {
+                let value: Json = row.try_get("", "result").map_err(map_db)?;
+                let result: PmDraftReservation = serde_json::from_value(value.clone())
+                    .map_err(|_| AppError::conflict("not a PM reservation operation"))?;
+                let original =
+                    Self::reservation(&tx, &state, result.assignment.execution_id).await?;
+                if serde_json::to_value(&original).map_err(AppError::internal)? != value {
+                    return Err(AppError::conflict("PM operation/history mismatch"));
+                }
+                Some(PmDraftOperation {
+                    idempotency_key: key.into(),
+                    request_sha256: row.try_get("", "payload_hash").map_err(map_db)?,
+                    result: original,
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        tx.commit().await.map_err(map_db)?;
+        Ok(PmDraftReadback {
+            contract_version: 1,
+            binding: Self::draft_binding(&state),
+            owner_version,
+            current,
+            operation,
+        })
+    }
+
     async fn project_access_scope(&self, actor: &Principal) -> Result<ProjectAccess, AppError> {
         // One snapshot: identity is never inferred from email, role, public access or service grants.
         let row = self.db.query_one(statement(
@@ -555,6 +850,81 @@ impl SdlcRepository for PostgresSdlcRepository {
         ))
     }
 
+    async fn draft_creation_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<CreatedDraft, AppError> {
+        if !actor.human_session || actor.subject.is_empty() {
+            return Err(AppError::Forbidden);
+        }
+        app::sdlc::validate_key(key)?;
+        let tx = self.db.begin().await.map_err(map_db)?;
+        // Fence readback against the same creation transaction, including lost responses.
+        let lock = json!(["sdlc.draft.create:v1", project, actor.subject, key]).to_string();
+        exec(
+            &tx,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+            vec![lock.into()],
+        )
+        .await?;
+        let (user, _) = self.project_access(&tx, project, actor).await?;
+        let row = tx.query_one(statement(
+            "SELECT task_id,payload_hash,result FROM sdlc_draft_creations WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
+            vec![project.into(), actor.subject.clone().into(), key.into()],
+        )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("draft creation operation", key))?;
+        let inconsistent =
+            || AppError::conflict("retained draft creation inconsistent or unavailable");
+        let task: Uuid = row.try_get("", "task_id").map_err(map_db)?;
+        let result: CreatedDraft =
+            serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
+                .map_err(|_| inconsistent())?;
+        let issue = tx.query_one(statement(
+            "SELECT project_id,reporter_id,key FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
+            vec![task.into()],
+        )).await.map_err(map_db)?.ok_or_else(inconsistent)?;
+        let binding = tx
+            .query_one(statement(
+                "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
+                vec![task.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(inconsistent)?;
+        let state = state_from(binding).map_err(|_| inconsistent())?;
+        if task.is_nil()
+            || issue.try_get::<Uuid>("", "project_id").map_err(map_db)? != project
+            || issue.try_get::<Uuid>("", "reporter_id").map_err(map_db)? != user
+            || issue.try_get::<String>("", "key").map_err(map_db)? != result.task_key
+            || state.tracker_instance_id != self.config.instance_id
+            || state.task_id != task
+            || state.root_task_id != task
+            || state.project_id != project
+            || state.owner_subject != actor.subject
+            || result.tracker_instance_id != self.config.instance_id
+            || result.task_id != task
+            || result.root_task_id != task
+            || result.project_id != project
+            || result.owner_subject != actor.subject
+        {
+            return Err(inconsistent());
+        }
+        let input = Self::original_input(&tx, &state).await?;
+        let original = CreateDraftCommand {
+            title: input.title,
+            description: input.description,
+            idempotency_key: key.into(),
+        };
+        let hash =
+            app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":original}))?;
+        if row.try_get::<String>("", "payload_hash").map_err(map_db)? != hash {
+            return Err(inconsistent());
+        }
+        tx.commit().await.map_err(map_db)?;
+        Ok(result)
+    }
+
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
@@ -568,38 +938,7 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Result<PmDraftInputResponse, AppError> {
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
-        let unavailable = || AppError::conflict("original draft input snapshot unavailable");
-        let row = tx.query_one(statement(
-            "SELECT input_snapshot_ref,input_title,input_description,input_sha256 FROM sdlc_draft_creations
-             WHERE task_id=$1 AND project_id=$2 AND actor_subject=$3",
-            vec![task.into(), state.project_id.into(), state.owner_subject.clone().into()],
-        )).await.map_err(map_db)?.ok_or_else(unavailable)?;
-        let input = PmDraftInput {
-            snapshot_ref: row
-                .try_get::<Option<Uuid>>("", "input_snapshot_ref")
-                .map_err(map_db)?
-                .ok_or_else(unavailable)?,
-            title: row
-                .try_get::<Option<String>>("", "input_title")
-                .map_err(map_db)?
-                .ok_or_else(unavailable)?,
-            description: row
-                .try_get::<Option<String>>("", "input_description")
-                .map_err(map_db)?
-                .ok_or_else(unavailable)?,
-            sha256: row
-                .try_get::<Option<String>>("", "input_sha256")
-                .map_err(map_db)?
-                .ok_or_else(unavailable)?,
-        };
-        if state.root_task_id != task
-            || input.snapshot_ref.is_nil()
-            || app::sdlc::pm_draft_input_hash(&input.title, &input.description)? != input.sha256
-        {
-            return Err(AppError::conflict(
-                "original draft input snapshot inconsistent",
-            ));
-        }
+        let input = Self::original_input(&tx, &state).await?;
         let response = PmDraftInputResponse {
             contract_version: 1,
             tracker_instance_id: state.tracker_instance_id,
@@ -696,6 +1035,11 @@ impl SdlcRepository for PostgresSdlcRepository {
         if let Some(result) = Self::replay(&tx, task, actor, command.key(), &hash).await? {
             tx.commit().await.map_err(map_db)?;
             return Ok(result);
+        }
+        if Self::enrolled(&tx, task).await? {
+            return Err(AppError::conflict(
+                "reserved PM execution requires verified admission",
+            ));
         }
         let result = app::sdlc::apply(&mut state, actor, &self.config, &command)?;
         let event = Self::persist_result(&tx, task, &command, &result, &state).await?;

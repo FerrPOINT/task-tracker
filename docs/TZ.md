@@ -20,8 +20,16 @@ Original Draft inputs are immutable and available through the strict project-
 authorized `pm-draft-input` readback. Snapshot ref/title/description/content hash
 are persisted in the creation transaction and survive edits/replay/restart.
 No historical snapshot is inferred from mutable issue text. This input endpoint
-does not implement owner assignment CAS, ordinal allocation, Workflow mapping,
-PM admission or runtime delivery. The separate opt-in metadata_v1 outbox bounds
+does not imply PM admission or runtime delivery. Initial owner reservation now
+provides atomic Tracker assignment/execution UUID/version/ordinal and owner CAS,
+but dispatch_allowed is always false. Requested agent UUID is only a canonical
+selector. Future admission must verify actual Fleet agent/config/chat/workspace,
+Workflow mapping and all full-plan prerequisites. Reserved enrollment blocks PM
+business writes and legacy assignment. Creation-operation GET provides original
+seven-field readback for unknown acceptance before POST replay, scoped to exact
+human author/project/key with fresh ACL and 409 for retained corrupt/missing
+source; content is read separately from pm-draft-input.
+The separate opt-in metadata_v1 outbox bounds
 serialized whole responses; legacy full-result events remain unchanged. Fleet
 projection pinning/inbox and Workflow resume remain external integration work.
 

@@ -82,8 +82,11 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
     paths(
         routes::sdlc::project_access,
         routes::sdlc::create_draft,
+        routes::sdlc::draft_creation_operation,
         routes::sdlc::context,
         routes::sdlc::pm_draft_input,
+        routes::sdlc::pm_draft_assignment,
+        routes::sdlc::reserve_pm_draft,
         routes::sdlc::bind,
         routes::sdlc::assign,
         routes::sdlc::questions,
@@ -733,6 +736,16 @@ mod tests {
     #[test]
     fn draft_creation_schema_matches_strict_typed_wire() {
         let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let readback = &schema["paths"]["/api/v1/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}"]
+            ["get"];
+        assert_eq!(readback["security"], serde_json::json!([{"bearer": []}]));
+        assert_eq!(
+            readback["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/CreatedDraft"
+        );
+        for status in ["401", "403", "404", "409", "422", "503"] {
+            assert!(readback["responses"][status].is_object());
+        }
         let operation = &schema["paths"]["/api/v1/projects/{project_id}/sdlc/drafts"]["post"];
         assert_eq!(operation["security"], serde_json::json!([{ "bearer": [] }]));
         for status in ["200", "201"] {
@@ -885,6 +898,42 @@ mod tests {
                 assert_eq!(object["additionalProperties"], false, "{name}");
                 assert_eq!(object["required"].as_array().unwrap().len(), 7, "{name}");
             }
+        }
+    }
+
+    #[test]
+    fn pm_draft_reservation_is_strict_and_never_dispatch_capability() {
+        let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        for (name, count) in [
+            ("ReservePmDraft", 4),
+            ("PmDraftReservation", 10),
+            ("PmDraftReadback", 5),
+            ("PmDraftBinding", 5),
+        ] {
+            let schema = &doc["components"]["schemas"][name];
+            assert_eq!(schema["additionalProperties"], false, "{name}");
+            assert_eq!(
+                schema["required"].as_array().unwrap().len(),
+                count,
+                "{name}"
+            );
+        }
+        let reserved = &doc["components"]["schemas"]["PmDraftReservation"];
+        assert_eq!(
+            reserved["properties"]["dispatch_allowed"]["enum"],
+            serde_json::json!([false])
+        );
+        assert_eq!(
+            doc["components"]["schemas"]["PmAssignment"]["required"]
+                .as_array()
+                .unwrap()
+                .len(),
+            5
+        );
+        let path = &doc["paths"]["/api/v1/issues/{id}/sdlc/pm-draft-assignment"];
+        assert!(path["get"]["responses"]["200"].is_object());
+        for status in ["200", "201", "401", "403", "404", "409", "422", "503"] {
+            assert!(path["post"]["responses"][status].is_object());
         }
     }
 

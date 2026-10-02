@@ -1804,6 +1804,143 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/pm-draft-assignment": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "pm_draft_assignment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "reserve_pm_draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReservePmDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftReservation"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftReservation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/pm-draft-input": {
       "get": {
         "tags": [
@@ -3529,6 +3666,69 @@
           },
           "503": {
             "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "draft_creation_operation",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "description": "Exact creation key, UTF-8 percent-encoded as one path segment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": "Human session and fresh explicit project access required"
+          },
+          "404": {
+            "description": "Project or exact author-scoped creation operation absent"
+          },
+          "409": {
+            "description": "Retained operation entity, binding or original input inconsistent or missing"
+          },
+          "422": {
+            "description": "Invalid creation key"
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -8155,6 +8355,28 @@
           }
         }
       },
+      "OwnerCas": {
+        "type": "object",
+        "required": [
+          "expected_version",
+          "version"
+        ],
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "PasswordResetConfirm": {
         "type": "object",
         "required": [
@@ -8224,6 +8446,61 @@
           "version": {
             "type": "integer",
             "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftAdmissionState": {
+        "type": "string",
+        "enum": [
+          "reserved"
+        ]
+      },
+      "PmDraftBinding": {
+        "type": "object",
+        "required": [
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject"
+        ],
+        "properties": {
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftExecution": {
+        "type": "object",
+        "required": [
+          "ordinal",
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^SDLC-[1-9][0-9]{0,18}$"
+          },
+          "ordinal": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$"
           }
         },
         "additionalProperties": false
@@ -8298,6 +8575,134 @@
           }
         },
         "additionalProperties": false
+      },
+      "PmDraftOperation": {
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "request_sha256",
+          "result"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/PmDraftReservation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftReadback": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "binding",
+          "owner_version",
+          "current",
+          "operation"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/PmDraftBinding"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PmDraftReservation"
+              }
+            ]
+          },
+          "operation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PmDraftOperation"
+              }
+            ]
+          },
+          "owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftReservation": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "variant",
+          "binding",
+          "owner_cas",
+          "assignment",
+          "execution",
+          "input",
+          "assignment_operation_key",
+          "admission_state",
+          "dispatch_allowed"
+        ],
+        "properties": {
+          "admission_state": {
+            "$ref": "#/components/schemas/PmDraftAdmissionState"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/PmAssignment"
+          },
+          "assignment_operation_key": {
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/PmDraftBinding"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "execution": {
+            "$ref": "#/components/schemas/PmDraftExecution"
+          },
+          "input": {
+            "$ref": "#/components/schemas/MetadataInputRef"
+          },
+          "owner_cas": {
+            "$ref": "#/components/schemas/OwnerCas"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/PmDraftVariant"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftVariant": {
+        "type": "string",
+        "enum": [
+          "pm_draft_reserved"
+        ]
       },
       "ProjectAccess": {
         "type": "object",
@@ -8913,6 +9318,40 @@
             "items": {
               "type": "string"
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservePmDraft": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "expected_assignment_version",
+          "requested_agent_id",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_assignment_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "requested_agent_id": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "additionalProperties": false
