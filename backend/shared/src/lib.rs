@@ -1,7 +1,9 @@
+#[cfg(feature = "runtime")]
 pub mod config;
 pub mod events;
 pub mod id;
 
+#[cfg(feature = "runtime")]
 pub use config::*;
 pub use events::*;
 pub use id::*;
@@ -12,7 +14,7 @@ pub use sdlc_shared::{AppError, AppResult, ErrorBody, ErrorEnvelope, EventEnvelo
 
 use chrono::{DateTime, FixedOffset, Utc};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "runtime"))]
 #[path = "lib_tests.rs"]
 mod tests;
 

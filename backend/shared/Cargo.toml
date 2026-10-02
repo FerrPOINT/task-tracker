@@ -6,19 +6,20 @@ rust-version.workspace = true
 license-file.workspace = true
 publish = false
 
+[features]
+default = ["runtime"]
+runtime = ["sdlc-shared/http", "dep:config"]
+
 [dependencies]
 # Fleet shared primitives: sibling services-base checkout.
-sdlc-shared = { path = "../../../services-base/crates/sdlc-shared" }
+sdlc-shared = { path = "../../../services-base/crates/sdlc-shared", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-utoipa.workspace = true
-config.workspace = true
-axum.workspace = true
-http.workspace = true
+config = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true

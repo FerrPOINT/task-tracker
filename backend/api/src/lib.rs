@@ -667,6 +667,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .layer(prometheus_layer)
         .layer(cors)
+        .layer(axum::middleware::from_fn(sdlc_telemetry::request_id_mw))
 }
 
 pub async fn bind(ctx: Arc<app::AppContext>) -> Result<tokio::net::TcpListener, std::io::Error> {

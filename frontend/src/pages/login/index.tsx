@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { beginSso } from '@sdlc/ui/sso'
+import { beginSso, isSsoNavigationInterruption } from '@sdlc/ui/sso'
 import { Button, PlatformMark, ThemeToggle } from '@sdlc/ui/ui'
 import { ssoConfig, useAuthStore } from '@/shared/auth/store'
 
@@ -17,10 +17,19 @@ export function LoginPage() {
     loggedOut ? 'ready' : 'redirecting',
   )
 
-  const startLogin = useCallback(() => {
-    setLoginState('redirecting')
-    void beginSso(ssoConfig, returnTo).catch(() => setLoginState('error'))
-  }, [returnTo])
+  const startLogin = useCallback(
+    (interactive = false) => {
+      setLoginState('redirecting')
+      const navigation = interactive
+        ? beginSso(ssoConfig, returnTo, { interactive: true })
+        : beginSso(ssoConfig, returnTo)
+      void navigation.then(
+        () => setLoginState('ready'),
+        (error: unknown) => setLoginState(isSsoNavigationInterruption(error) ? 'ready' : 'error'),
+      )
+    },
+    [returnTo],
+  )
 
   useEffect(() => {
     if (token || loggedOut) return
@@ -49,7 +58,7 @@ export function LoginPage() {
         <Button
           className="min-h-11 w-full"
           disabled={loginState === 'redirecting'}
-          onClick={startLogin}
+          onClick={() => startLogin(true)}
         >
           {t(loginState === 'error' ? 'auth.sso.retry' : 'auth.sso.signIn')}
         </Button>

@@ -15,6 +15,7 @@ name = "server"
 path = "src/lib.rs"
 
 [dependencies]
+sdlc-telemetry = { path = "../../../services-base/crates/sdlc-telemetry" }
 shared = { path = "../shared" }
 domain = { path = "../domain" }
 app = { path = "../app" }

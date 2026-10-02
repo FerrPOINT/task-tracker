@@ -1,17 +1,27 @@
-FROM node:22-slim AS builder
+# Umbrella build for the SDLC fleet root compose (context = /opt/dev/sdlc).
+# Stages the sibling services-base frontend so the `@sdlc/ui` file dependency
+# (../../services-base/frontend) resolves.
+FROM node:22.20.0-bookworm-slim AS builder
 
 RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 
 WORKDIR /app
-COPY openapi/openapi.json ../openapi/openapi.json
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY task-tracker/frontend/package.json task-tracker/frontend/pnpm-lock.yaml task-tracker/frontend/pnpm-workspace.yaml ./
+COPY services-base/frontend /services-base/frontend
+COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
 RUN pnpm install --frozen-lockfile
 
-COPY frontend/ ./
+COPY task-tracker/frontend/ ./
+ARG VITE_PLATFORM_BRANDING_URL=""
+ENV VITE_PLATFORM_BRANDING_URL=${VITE_PLATFORM_BRANDING_URL}
+ARG VITE_PLATFORM_SERVICES_URL=""
+ENV VITE_PLATFORM_SERVICES_URL=${VITE_PLATFORM_SERVICES_URL}
+ARG VITE_AUTH_ISSUER="http://localhost:7701"
+ENV VITE_AUTH_ISSUER=${VITE_AUTH_ISSUER}
 RUN pnpm build
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+COPY task-tracker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

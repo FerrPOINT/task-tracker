@@ -24,7 +24,7 @@ class CiContractChecksTest(unittest.TestCase):
             "cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1",
             backend,
         )
-        self.assertIn("cargo test --workspace -- --test-threads=1", backend)
+        self.assertIn("cargo test --locked --workspace -- --test-threads=1", backend)
 
     def test_frontend_job_checks_openapi_backward_compatibility(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")

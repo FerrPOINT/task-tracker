@@ -143,6 +143,7 @@ dependencies = [
  "reqwest",
  "sdlc-auth-core",
  "sdlc-shared",
+ "sdlc-telemetry",
  "serde",
  "serde_json",
  "shared",
@@ -3286,6 +3287,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "sdlc-telemetry"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "tokio",
+ "tower",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "sea-bae"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3590,6 +3603,7 @@ dependencies = [
  "domain",
  "infra",
  "reqwest",
+ "sdlc-telemetry",
  "sea-orm",
  "serde_json",
  "serial_test",
@@ -3646,17 +3660,14 @@ dependencies = [
 name = "shared"
 version = "0.2.0"
 dependencies = [
- "axum",
  "chrono",
  "config",
- "http",
  "proptest",
  "sdlc-shared",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
- "utoipa",
  "uuid",
 ]
 
