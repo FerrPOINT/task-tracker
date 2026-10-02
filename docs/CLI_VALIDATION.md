@@ -29,6 +29,16 @@ Docs validators и существующие CI-contract tests проходят. 
 
 ## Границы подтверждения
 
-Проверки используют только fixture данные и собственные временные ресурсы. Постоянные Compose-группы, runtime images, volumes и production deployment не менялись. Windows native linking недоступен (`link.exe`); Rust gates выполнены в WSL. Новых endpoint, миграций или изменений Services Base нет. Слияние PR в main и deploy не выполняются.
+Проверки используют только fixture данные и собственные временные ресурсы. Постоянные Compose-группы, runtime images, volumes и production deployment не менялись. Windows native linking недоступен (`link.exe`); Rust gates выполнены в WSL. Новых endpoint, миграций или изменений Services Base нет. Эти проверки были выполнены до merge; статус main и живая приёмка приведены ниже. Deploy не выполнялся.
 
 Описание команд, configuration, input/output/errors и ограничения: [CLI.md](CLI.md).
+
+## После merge и приёмка sdlc1 — 2026-10-02
+
+Merge commit: `fd3337b200d1ec3ec6626900a9c96e2046cbed19`. [Post-merge CI](https://github.com/FerrPOINT/task-tracker/actions/runs/37000149231): docs/backend/frontend/minimum-rust — 4/4 success на этом точном SHA; содержимое merge tree совпало с reviewed head. CLI release binary собран отдельно с закреплённым Base; checksum и установка: [CLI_INSTALL.md](CLI_INSTALL.md).
+
+На собственном проекте выполнены create/stdin, update/unassign, statuses/types/transitions, фильтры и две страницы, search, комментарии, compact confirmation, связи, upload/download/no-clobber/delete, чтение custom fields, worklogs, переход, delete/trash/restore и JSON confirmation. UUID работает, но чтение и восстановление по ключу задачи возвращают HTTP 400 VALIDATION_ERROR на текущем backend. Остальные операции после проверки этого отказа выполнялись через UUID; это не подтверждает приёмку ключей. Read-only PAT получает 403; невалидный token — 401; неверный limit — 400. Custom field set не выполнялся: fixture не создаёт определения полей, а новый проект их не содержит. Временный проект удалён через CLI.
+
+Проверка выполнялась с временными Central Auth PAT, ограниченными тремя продуктами; read/write и read-only tokens отозваны после прогона. Значения tokens/credentials не сохранялись в логах или артефактах. Исходные dirty checkout, постоянные Compose-группы, runtime images/pins и volumes не изменялись. Fixtures использовали реальные API и PostgreSQL работающего sdlc1, но только собственные project/repository/space и файлы. Ошибки исправленного smoke (имя флага search, when: manual, начальный deployment status и вывод terminal wait) отделены от воспроизведённых отказов runtime.
+
+**Статус:** CLI main/CI проверен; полная совместимость с текущим sdlc1 не принята. Требуется отдельная сверка/обновление backend до согласованных main-кандидатов и повтор блокирующих операций. Публичный release не объявляется готовым.
