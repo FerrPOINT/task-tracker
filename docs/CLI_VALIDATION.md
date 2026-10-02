@@ -1,45 +1,34 @@
 # Проверка CLI Task Tracker
 
-Проверено 2026-10-01 в отдельном task checkout `feat/cli-workflows`.
+Проверено 2026-10-02 в изолированном task checkout `feat/cli-workflows`.
 
-## Пройденные проверки
+## Среда и обязательные gates
 
-Среда: Ubuntu WSL, Rust 1.88.0, Node 22.23.3, pnpm 10.28.1, Python 3.12.3. Чистая опубликованная копия Services Base `main`: `c008bec701086d4f9201180ea5451f64e88ab519`. Политика зависимости от `main` сохранена. Source snapshot сверён с task checkout; исходные dirty checkout не используются для зависимости Base. Repository regression выполнен на PostgreSQL 16 и Docker `postgres:17.6-alpine` (PostgreSQL 17.6), в отдельных временных БД.
+Ubuntu WSL, rustc 1.88.0 (6b00bc388 2025-06-23), Node 22.23.3 / pnpm 10.28.1, Python 3.12.3. Чистый опубликованный Services Base `main`: `69bd8ef0fe424c2018bcdc509ddd25f7fce02a7e`. Политика зависимости от `main` сохраняется; Base и исходные dirty checkout не изменены этой задачей. Product lockfile обновлён под изменившиеся зависимости опубликованного Base без обновления registry versions. 
 
-Из `backend`:
+Backend: fmt, workspace/all-target Clippy с `-D warnings`, workspace tests, OpenAPI drift и release workspace — успешно. Workspace: **511 passed, 21 ignored**, 0 failed. CI/CD дополнительно проверен штатным параллельным workspace invocation; Task Tracker и Wiki — последовательным invocation их workflows.
 
 ```bash
+cd backend
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace -- --test-threads=1
-TT_TEST_DATABASE_URL=postgres://... cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
-cargo run --locked --quiet -p api --bin gen-openapi
 cargo build --locked --release --workspace
+TT_TEST_DATABASE_URL=postgres://.../tasktracker_infra_test cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
 ```
 
-- Workspace: 508 passed, 0 failed, 21 ignored. Один из ignored repository tests дополнительно запущен на PostgreSQL и прошёл; оставшиеся ignored persistence tests целиком не запускались.
-- После ревью и исправления redaction CLI повторно проверен: 3 unit, 8 subprocess/HTTP workflows и 1 real API lifecycle, все прошли. Дополнительная регрессия проверяет пробелы в явном token и fallback общего token при пустом явном значении; HTTP credentials и JSON-диагностика сверяются отдельно.
-- Application test проверяет UUID/key, access denial, отсутствующие/некорректные ключи и отдельное разрешение удалённой задачи для восстановления.
-- Real API: create/get UUID/get key, list/statuses/types/transitions, stdin комментария, update/unassign, worklog CRUD, link, attachment upload/list/download, transition/delete/trash/restore.
-- HTTP fixtures: фильтры и страницы, разрешение ключа перед дочерним запросом, custom field JSON values, files/stdin, JSON stdout/204, error stderr/status/code/request ID, credential redaction и download no-clobber.
-- Полный API suite сохраняет validation 400 даже при недоступном repository; входные поля update/transition валидируются до разрешения задачи.
-- OpenAPI сгенерирован из handlers: изменены только четыре описания идентификатора, схемы DTO и operation IDs сохранены.
+Docs validators и существующие CI-contract tests проходят. Frontend: install с `--no-frozen-lockfile`, OpenAPI check/compat с `origin/main`, tests, lint и build — успешно. Task Tracker дополнительно typecheck; Task Tracker/Wiki — предусмотренный format check. Frontend tests: Task Tracker 253, CI/CD 191, Wiki 182.
+
+## Регрессии и проверенные сценарии
+
+- Новый subprocess regression проверяет восемь операций в table/compact/JSON, HTTP 200 с пустым body и 204, а также access denial без ложного success: 72 сценария. До исправления терялось прежнее текстовое подтверждение; после него тексты восстановлены, JSON остаётся `{"status":"ok"}`.
+- Real API CLI lifecycle: UUID/key, statuses/transitions, stdin, update/unassign, links, custom fields/worklogs, attachments, delete/trash/restore; production handlers/services с memory repositories.
+- Дополнительно выполнен ignored PostgreSQL test `deleted_issue_key_can_be_resolved_for_restore_only` на `postgres:17.6-alpine`, БД строго `tasktracker_infra_test`. Остальные ignored persistence tests не заявляются как выполненные.
+
+Существующие проверки file/stdin, pages, JSON/204, access/validation/conflict, transport timeout, credential redaction и download no-clobber сохраняются и проходят. Новые regressions воспроизвели замечания на исходной ветке, затем прошли после исправлений.
 
 ## Границы подтверждения
 
-CLI real API и основные API/application tests используют production handlers/services с изолированными memory repositories и attachment storage. Отдельный SeaORM/PostgreSQL regression проверяет чтение удалённого ключа в реальном хранилище. Это не полная приёмка всех persistence сценариев PostgreSQL.
+Проверки используют только fixture данные и собственные временные ресурсы. Постоянные Compose-группы, runtime images, volumes и production deployment не менялись. Windows native linking недоступен (`link.exe`); Rust gates выполнены в WSL. Новых endpoint, миграций или изменений Services Base нет. Merge и deploy не выполняются.
 
-UI, Docker images и runtime окружения продуктов не изменялись. Windows native linking недоступен (`link.exe`), полные gates выполнены в WSL. Команды, примеры, конфигурация, ввод/вывод/ошибки и исключённые операции — в [CLI.md](CLI.md), изменение API — в [API.md](API.md).
-
-Ветка подготовлена для отдельного PR в `main`; merge и deploy не входят в пакет. Исходные незакоммиченные работы сохранены в исходных checkout.
-
-## Дополнительные gates перед PR
-
-- Docs/CI contract regression: 5 tests и README structural validator, Python 3.12.3; YAML workflow разобран parser-ом.
-- Frontend: `pnpm install --no-frozen-lockfile`, `pnpm openapi:check`, `pnpm openapi:compat --base-ref origin/main`, `pnpm typecheck`, `pnpm test -- --run`, `pnpm lint`, `pnpm format:check`, `pnpm build` — успешно. 45 test files / 253 tests.
-- OpenAPI drift: generated handler spec совпадает с committed spec после rebase.
-- CI запускает restore regression в `tasktracker_infra_test` на `postgres:17.6-alpine` с явным `TT_TEST_DATABASE_URL`. Fixture сама выбирает именно эту БД и очищает её таблицы. Остальные 20 ignored persistence tests не заявлены как проверенные.
-- Timeout backend job увеличен до 45 минут: полный последовательный workspace suite с cold build почти исчерпывает прежние 30 минут. Ни одна проверка не отключена и команды gates сохранены.
-- Собственные временные Docker/PostgreSQL ресурсы очищаются после проверок; постоянные Compose-стенды и runtime snapshots не используются и не изменяются.
-
-Проверка исходной справки CLI выявила вывод значения token env variable в `--help`. В итоговой ветке `hide_env_values` скрывает значение, сохраняя имя переменной; subprocess regression выполняется с заданным fixture token и проверяет stdout/stderr. После этого изменения повторены CLI tests, Clippy и release build CLI; API/backend fixtures не меняются.
+Описание команд, configuration, input/output/errors и ограничения: [CLI.md](CLI.md).

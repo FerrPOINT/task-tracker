@@ -13,6 +13,126 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+
+#[tokio::test]
+async fn empty_mutation_success_preserves_human_messages_and_json() {
+    type Case<'a> = (&'a [&'a str], &'a str, &'a str, &'a str);
+    let cases: Vec<Case<'_>> = vec![
+        (
+            &["project", "delete", "CLI"],
+            "project CLI deleted\n",
+            "DELETE",
+            "/api/v1/projects/CLI",
+        ),
+        (
+            &["issue", "delete", "CLI-1"],
+            "issue CLI-1 deleted\n",
+            "DELETE",
+            "/api/v1/issues/CLI-1",
+        ),
+        (
+            &["comment", "delete", "comment"],
+            "comment comment deleted\n",
+            "DELETE",
+            "/api/v1/comments/comment",
+        ),
+        (
+            &["label", "delete", "label"],
+            "label label deleted\n",
+            "DELETE",
+            "/api/v1/labels/label",
+        ),
+        (
+            &[
+                "label",
+                "detach",
+                "--issue-id",
+                "CLI-1",
+                "--label-id",
+                "label",
+            ],
+            "label detached\n",
+            "DELETE",
+            "/api/v1/issues/issue-id/labels/label",
+        ),
+        (
+            &["notification", "read", "notification"],
+            "notification notification marked as read\n",
+            "PATCH",
+            "/api/v1/notifications/notification/read",
+        ),
+        (
+            &["notification", "read-all"],
+            "all notifications marked as read\n",
+            "POST",
+            "/api/v1/notifications/read-all",
+        ),
+        (
+            &[
+                "member",
+                "remove",
+                "--project-key",
+                "CLI",
+                "--user-id",
+                "user",
+            ],
+            "member removed\n",
+            "DELETE",
+            "/api/v1/projects/CLI/members/user",
+        ),
+    ];
+    for (args, message, method, path) in cases {
+        for format in ["table", "compact", "json"] {
+            for status in [200, 204] {
+                let mut responses = vec![];
+                if args[0] == "label" && args[1] == "detach" {
+                    responses.push((200, br#"{"id":"issue-id"}"#.to_vec()));
+                }
+                responses.push((status, vec![]));
+                let server = Server::bytes(responses, Duration::ZERO).await;
+                let mut cli = vec!["--output", format];
+                cli.extend_from_slice(args);
+                let output = server.run(&cli, None).await;
+                assert_eq!(
+                    output.status.code(),
+                    Some(0),
+                    "{args:?}: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                assert!(output.stderr.is_empty());
+                if format == "json" {
+                    assert_eq!(
+                        serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+                        json!({"status":"ok"})
+                    );
+                } else {
+                    assert_eq!(
+                        String::from_utf8(output.stdout).unwrap(),
+                        message,
+                        "{args:?} {format}"
+                    );
+                }
+                let requests = server.requests();
+                let last = requests.last().unwrap();
+                assert_eq!((&last.method[..], &last.path[..]), (method, path));
+            }
+            let server = Server::start(vec![(
+                403,
+                json!({"error":{"code":"FORBIDDEN","message":"denied"}}),
+            )])
+            .await;
+            let mut cli = vec!["--output", format, "--error-format", "json"];
+            cli.extend_from_slice(args);
+            let output = server.run(&cli, None).await;
+            assert!(!output.status.success());
+            assert!(output.stdout.is_empty());
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["status"],
+                403
+            );
+        }
+    }
+}
 #[derive(Debug, Clone)]
 struct Recorded {
     method: String,

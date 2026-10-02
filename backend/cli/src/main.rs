@@ -580,6 +580,14 @@ impl Api {
 
 // ─── Output helpers ──────────────────────────────────────────────────
 
+fn print_success(output: &str, message: &str) {
+    if output == "json" {
+        print_output(output, &json!({"status":"ok"}));
+    } else {
+        println!("{message}");
+    }
+}
+
 fn print_output(output: &str, value: &Value) {
     match output {
         "compact" => print_compact(value),
@@ -759,7 +767,7 @@ async fn run(cli: Cli) -> Result<()> {
             ProjectCommands::Delete { key } => {
                 api.delete(&format!("/api/v1/projects/{}", enc(&key)))
                     .await?;
-                print_output(out, &json!({"status":"ok"}));
+                print_success(out, &format!("project {key} deleted"));
             }
         },
 
@@ -833,7 +841,7 @@ async fn run(cli: Cli) -> Result<()> {
             }
             IssueCommands::Delete { key } => {
                 api.delete(&format!("/api/v1/issues/{}", enc(&key))).await?;
-                print_output(out, &json!({"status":"ok"}));
+                print_success(out, &format!("issue {key} deleted"));
             }
             IssueCommands::Transition { key, to } => {
                 let body = api
@@ -1057,7 +1065,7 @@ async fn run(cli: Cli) -> Result<()> {
             CommentCommands::Delete { comment_id } => {
                 api.delete(&format!("/api/v1/comments/{}", enc(&comment_id)))
                     .await?;
-                print_output(out, &json!({"status":"ok"}));
+                print_success(out, &format!("comment {comment_id} deleted"));
             }
         },
 
@@ -1089,7 +1097,7 @@ async fn run(cli: Cli) -> Result<()> {
             LabelCommands::Delete { label_id } => {
                 api.delete(&format!("/api/v1/labels/{}", enc(&label_id)))
                     .await?;
-                print_output(out, &json!({"status":"ok"}));
+                print_success(out, &format!("label {label_id} deleted"));
             }
             LabelCommands::Attach { issue_id, label_id } => {
                 let issue_id = commands::issue_id(&api, &issue_id).await?;
@@ -1111,7 +1119,7 @@ async fn run(cli: Cli) -> Result<()> {
                     enc(&label_id)
                 ))
                 .await?;
-                print_output(out, &json!({"status":"ok"}));
+                print_success(out, "label detached");
             }
         },
 
@@ -1182,12 +1190,12 @@ async fn run(cli: Cli) -> Result<()> {
                     json!({}),
                 )
                 .await?;
-                print_output(out, &json!({"status":"ok"}));
+                print_success(out, &format!("notification {id} marked as read"));
             }
             NotificationCommands::ReadAll => {
                 api.post("/api/v1/notifications/read-all", json!({}))
                     .await?;
-                print_output(out, &json!({"status":"ok"}));
+                print_success(out, "all notifications marked as read");
             }
             NotificationCommands::Settings => {
                 let body = api.get("/api/v1/notification-settings").await?;
@@ -1353,7 +1361,7 @@ async fn run(cli: Cli) -> Result<()> {
                     enc(&user_id)
                 ))
                 .await?;
-                print_output(out, &json!({"status":"ok"}));
+                print_success(out, "member removed");
             }
         },
     }

@@ -139,3 +139,5 @@ cargo test -p app issue_identifier_resolves_key_uuid_and_restore_with_access_che
 ```
 
 Справка показывает имена token env variables, скрывая их значения даже при установленной переменной.
+
+Подтверждения project/issue/comment/label delete, label detach, notification read/read-all и member remove сохраняют прежний текст в `table` и `compact`. В `json` успешный пустой ответ выводится только как `{"status":"ok"}`. При ошибке API подтверждение успеха отсутствует.

@@ -3277,7 +3277,6 @@ name = "sdlc-shared"
 version = "0.1.0"
 dependencies = [
  "axum",
- "config",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
