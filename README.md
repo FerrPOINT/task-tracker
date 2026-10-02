@@ -220,6 +220,8 @@ task-tracker/
 - [docs/TZ.md](docs/TZ.md) — техническое задание.
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — модель данных.
 - [docs/API.md](docs/API.md) — API notes.
+- [docs/CHAT_CLARIFICATION_CONTRACT.md](docs/CHAT_CLARIFICATION_CONTRACT.md) — SDLC Fleet DTOs, scoped paginated project directory, machine grants, PM reservation and ownership lease (not runtime admission).
+- [docs/CHAT_CLARIFICATION_VERIFICATION.md](docs/CHAT_CLARIFICATION_VERIFICATION.md) — Tracker verification and integration gaps.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — deployment.
 - [docs/TESTING.md](docs/TESTING.md) — проверки.
 - [docs/ROADMAP.md](docs/ROADMAP.md) — roadmap.

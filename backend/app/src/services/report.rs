@@ -29,10 +29,9 @@ pub(crate) fn status_at(
     if let Some(first_after) = history
         .filter(|entry| entry.changed_at > timestamp)
         .min_by_key(|entry| entry.changed_at)
+        && let Some(from_status_id) = first_after.from_status_id
     {
-        if let Some(from_status_id) = first_after.from_status_id {
-            return Some(from_status_id);
-        }
+        return Some(from_status_id);
     }
 
     Some(issue.status_id)

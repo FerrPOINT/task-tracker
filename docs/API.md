@@ -1,5 +1,130 @@
 # API v1 Specification — Task Tracker
 
+## SDLC Clarification API
+
+`GET /api/v1/sdlc/project-access` returns
+`{contract_version:1,tracker_instance_id,project_ids:[UUID]}` with unique IDs sorted
+by UUID. Verified Central Auth service read access and an active local shadow
+identity matched by central subject are required. Only explicit project ownership
+or membership grants access; global admin, public access and the legacy central
+bypass do not. The indexed query uses one database snapshot and has no cache, so
+membership revocation changes the next response. Missing/inactive identity is 403,
+unverified credentials 401, unavailable Central Auth or unconfigured SDLC 503;
+other database errors retain the existing server-error contract. An authorized
+identity with no projects receives an empty list. Query/body fields cannot expand
+this scope.
+
+`GET /api/v1/sdlc/project-directory` is the strict Fleet project selector source:
+
+```typescript
+type ProjectDirectory = {
+  contract_version: 1;
+  tracker_instance_id: string;
+  projects: { id: string; key: string; name: string }[];
+  next_cursor: string | null;
+};
+```
+
+All fields, including null `next_cursor`, are required. IDs/cursors are canonical
+lowercase hyphenated nonnil UUIDs; no descriptions, counts, roles or other project
+metadata are returned. Query accepts only optional `after` (exclusive UUID) and
+`limit` (integer 1..100, default 50). Unknown/duplicate query fields are 400;
+invalid cursor/bounds are 422. Ordering is ascending project UUID. The repository
+reads limit+1 authorized rows in the same SQL snapshot as active central-subject
+and explicit owner/member checks, deduplicates owner+member overlap, and truncates
+to limit. `next_cursor` is the last returned ID only when a lookahead row exists;
+otherwise it is null, including on empty pages. A cursor is not a project lookup
+or authorization receipt. Every page/retry rechecks ACL; pages do not share a
+retained snapshot. Revocation can remove entries on continuation/replay. Existing
+project-access wire and ordinary legacy project listing are unchanged. The same
+401/403/503 policy above applies; corrupt projected source is a safe 409, never a
+skipped row. Selection does not authorize Draft creation, reservation or admission.
+
+Opt-in endpoints under `/api/v1/issues/{id}/sdlc`, exact Fleet DTOs, machine
+grants, provisioning and delivery contract: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
+SDLC requires Central Auth and strict project membership independently of the
+legacy Tracker central-auth project bypass. Answer/confirm are owner-session
+commands. Questions/revisions are assigned PM commands. Rust types live in
+`backend/domain/src/sdlc.rs`; all routes are included in generated OpenAPI.
+
+An assignment-scoped PM PAT cannot use the ordinary legacy API, global SDLC
+project-access/directory, owner answers/confirmation, verifier evidence or
+assignment/binding operations, even if it also has service read/write scopes.
+These requests are 403. Its single canonical grant permits only bound-task
+context/input, questions, requirements/revisions/diff, events and lease reads,
+question/revision publication, question cancellation and lease claim/heartbeat.
+Current assignment subject/grant and explicit project access are rechecked in
+the repository; corrupt current assignment ledger yields 409, not historical
+access. Authentication failure remains 401 and Central outage 503. No new API
+token format, scope, public path or migration is introduced by confinement.
+
+Human saga source: `POST /api/v1/projects/{project_id}/sdlc/drafts` takes only
+`{title,description,idempotency_key}` and returns typed `CreatedDraft` (201 new,
+200 exact replay, changed payload 409). Browser Central Auth, explicit project
+write access and exact central owner apply even on replay. Issue, private binding,
+creation ledger and outbox commit together; no PM/run is started. Exact wire and
+limits are in the contract above. Ordinary issue POST is not a saga substitute.
+
+`GET /api/v1/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}`
+reads unknown creation acceptance before POST replay. Percent-encode the exact
+UTF-8 key as one path segment (including `/` as `%2F`). Only a human session
+with fresh project access can read its own project/author/key namespace. 200 is
+the existing unchanged seven-field `CreatedDraft`, without title/description;
+404 means no such command (or project). A retained command with missing/invalid
+original entity, binding or input is 409, never false absence. Current task stage
+does not rewrite the original creation result. Changed POST payload remains 409.
+
+`POST /api/v1/issues/{id}/sdlc/pm-draft-assignment` accepts strict
+`{expected_owner_version,expected_assignment_version,requested_agent_id,idempotency_key}`.
+Initial values are `0,null`; selector is a canonical non-nil UUID, not Fleet
+verification. Exact owner session/project ACL is required. 201/200 return strict
+`PmDraftReservation`: version 1, variant `pm_draft_reserved`, immutable binding,
+owner_cas, unchanged five-field assignment, execution `{ordinal,key}` (positive
+i64 decimal string, `SDLC-<ordinal>`), input `{snapshot_ref,sha256}`,
+`assignment_operation_key`, `admission_state:reserved`, `dispatch_allowed:false`.
+`GET` on that path optionally accepts `idempotency_key` and returns
+`{contract_version,binding,owner_version,current,operation}` with nullable current
+reservation and separate author-scoped historical operation. Historical replay
+never installs current authority. All reserved PM writes/legacy assignments are
+blocked until later verified admission. Source DTOs: `backend/domain/src/sdlc_pm_draft.rs`.
+No admission, actual Fleet agent/config/chat/workspace or dispatch is claimed.
+
+Machine-only `POST/GET /api/v1/issues/{id}/sdlc/pm-draft-execution-lease`
+and `POST .../heartbeat` implement a separate persisted ownership lease.
+Claim uses `{expected_owner_version,fence,idempotency_key}`; heartbeat adds
+`lease_id,expected_lease_version`. TTL is 30s, suggested renewal interval 10s;
+PostgreSQL clock after locks and lease-version CAS determine validity. Exact
+idempotent replay never renews twice. GET distinguishes live/expired current from
+historical operation receipt; expiry is retained, not absence or automatic
+reacquire. Same existing exact PM grant and fresh machine/project authorization
+apply to every read/replay/renewal. No new scope, admission or run-side effect
+authority is introduced; reservation/owner cursor/business gate stay unchanged.
+Strict DTOs: `backend/domain/src/sdlc_execution_lease.rs`; complete wire and
+generation/recovery restrictions are in the clarification contract above.
+
+`GET /api/v1/issues/{id}/sdlc/pm-draft-input` returns
+`{contract_version:1,tracker_instance_id,project_id,task_id,root_task_id,owner_subject,
+input:{snapshot_ref,title,description,sha256}}`. It reads the immutable original
+creation ledger, with exactly the current context resource ACL, not owner-only
+read access. Content hash is SHA-256 of canonical exact UTF-8 title/description
+JSON, without idempotency key or normalization. Missing historical input is 409;
+mutable issue text is never backfilled. All refs are server-derived; CreatedDraft
+wire and business confirmation permissions are unchanged. Source DTOs are
+`PmDraftInputResponse`/`PmDraftInput` in `backend/domain/src/sdlc.rs`; the schema is
+generated in `openapi/openapi.json`. This is input readback, not PM admission,
+assignment CAS, dispatch or runtime delivery.
+
+`GET /api/v1/issues/{id}/sdlc/events?projection=metadata_v1&limit=100&max_bytes=262144`
+returns strict metadata references, canonical metadata digest, decimal-string
+after/next_after cursors and has_more. Defaults/limits and all nine resource
+variants are in the clarification contract. The entire serialized response is
+bounded (1024..1048576 bytes), preserving a contiguous task-event prefix and
+blocking rather than skipping unsupported/corrupt/oversized events. Typed static
+errors distinguish 422 metadata_budget_too_small from 409
+metadata_event_unrepresentable/metadata_source_invalid. Legacy default wire,
+query behavior, scopes and original content hashes remain unchanged. DTOs live
+in `backend/domain/src/sdlc_metadata.rs`; OpenAPI includes both success variants.
+
 ## Overview
 
 REST API первой версии Task Tracker. Все endpoint возвращают JSON и используют единую модель пагинации, ошибок и webhook-событий. Real-time обновления через SSE описаны в разделе [Real-time (SSE)](#real-time-sse).

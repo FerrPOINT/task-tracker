@@ -80,6 +80,31 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::sdlc::project_access,
+        routes::sdlc::project_directory,
+        routes::sdlc::create_draft,
+        routes::sdlc::draft_creation_operation,
+        routes::sdlc::context,
+        routes::sdlc::pm_draft_input,
+        routes::sdlc::pm_draft_assignment,
+        routes::sdlc::reserve_pm_draft,
+        routes::sdlc::claim_execution_lease,
+        routes::sdlc::heartbeat_execution_lease,
+        routes::sdlc::execution_lease,
+        routes::sdlc::bind,
+        routes::sdlc::assign,
+        routes::sdlc::questions,
+        routes::sdlc::publish_question,
+        routes::sdlc::answer,
+        routes::sdlc::cancel,
+        routes::sdlc::revisions,
+        routes::sdlc::current_revision,
+        routes::sdlc::publish_revision,
+        routes::sdlc::revision,
+        routes::sdlc::diff,
+        routes::sdlc::confirm,
+        routes::sdlc::evidence,
+        routes::sdlc::events,
         routes::health::catalog_health,
         routes::health::health,
         routes::auth::register,
@@ -605,7 +630,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route_layer(auth);
 
-    let api = public.merge(auth_routes).merge(protected);
+    let api = public
+        .merge(auth_routes)
+        .merge(protected)
+        .merge(routes::sdlc::router());
 
     // The SSE stream is a long-lived connection, not a request/response the
     // burst limiter was designed for: each reconnect burns a permit from the
@@ -692,8 +720,349 @@ mod tests {
     use std::time::Duration;
 
     #[test]
+    fn project_access_schema_is_strict_and_read_authenticated() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let route = &schema["paths"]["/api/v1/sdlc/project-access"]["get"];
+        assert_eq!(route["security"], serde_json::json!([{ "bearer": [] }]));
+        assert_eq!(
+            route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ProjectAccess"
+        );
+        let response = &schema["components"]["schemas"]["ProjectAccess"];
+        assert_eq!(response["additionalProperties"], false);
+        assert_eq!(response["properties"].as_object().unwrap().len(), 3);
+        assert_eq!(response["required"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            response["properties"]["project_ids"]["items"]["format"],
+            "uuid"
+        );
+    }
+
+    #[test]
+    fn project_directory_schema_is_strict_required_nullable_and_read_authenticated() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let route = &schema["paths"]["/api/v1/sdlc/project-directory"]["get"];
+        assert_eq!(route["security"], serde_json::json!([{ "bearer": [] }]));
+        assert_eq!(
+            route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/ProjectDirectory"
+        );
+        for status in ["400", "401", "403", "409", "422", "503"] {
+            assert!(route["responses"][status].is_object());
+        }
+        let params = route["parameters"].as_array().unwrap();
+        assert_eq!(params.len(), 2);
+        let after = params.iter().find(|p| p["name"] == "after").unwrap();
+        assert_eq!(after["schema"]["format"], "uuid");
+        assert_eq!(after["required"], false);
+        let limit = params.iter().find(|p| p["name"] == "limit").unwrap();
+        assert_eq!(limit["required"], false);
+        assert_eq!(limit["schema"]["minimum"], 1);
+        assert_eq!(limit["schema"]["maximum"], 100);
+        assert_eq!(limit["schema"]["default"], 50);
+        for (name, fields) in [
+            (
+                "ProjectDirectory",
+                vec![
+                    "contract_version",
+                    "tracker_instance_id",
+                    "projects",
+                    "next_cursor",
+                ],
+            ),
+            ("ProjectDirectoryEntry", vec!["id", "key", "name"]),
+        ] {
+            let response = &schema["components"]["schemas"][name];
+            assert_eq!(response["additionalProperties"], false);
+            assert_eq!(
+                response["properties"].as_object().unwrap().len(),
+                fields.len()
+            );
+            let required = response["required"].as_array().unwrap();
+            assert_eq!(required.len(), fields.len());
+            for field in fields {
+                assert!(required.contains(&serde_json::json!(field)));
+            }
+        }
+        let response = &schema["components"]["schemas"]["ProjectDirectory"];
+        assert_eq!(response["properties"]["contract_version"]["minimum"], 1);
+        assert_eq!(response["properties"]["contract_version"]["maximum"], 1);
+        assert_eq!(response["properties"]["next_cursor"]["format"], "uuid");
+        assert!(
+            response["properties"]["next_cursor"]["type"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("null"))
+        );
+    }
+
+    #[test]
+    fn draft_creation_schema_matches_strict_typed_wire() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let readback = &schema["paths"]["/api/v1/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}"]
+            ["get"];
+        assert_eq!(readback["security"], serde_json::json!([{"bearer": []}]));
+        assert_eq!(
+            readback["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/CreatedDraft"
+        );
+        for status in ["401", "403", "404", "409", "422", "503"] {
+            assert!(readback["responses"][status].is_object());
+        }
+        let operation = &schema["paths"]["/api/v1/projects/{project_id}/sdlc/drafts"]["post"];
+        assert_eq!(operation["security"], serde_json::json!([{ "bearer": [] }]));
+        for status in ["200", "201"] {
+            assert_eq!(
+                operation["responses"][status]["content"]["application/json"]["schema"]["$ref"],
+                "#/components/schemas/CreatedDraft"
+            );
+        }
+        for (name, fields) in [
+            (
+                "CreateDraftCommand",
+                vec!["title", "description", "idempotency_key"],
+            ),
+            (
+                "CreatedDraft",
+                vec![
+                    "tracker_instance_id",
+                    "project_id",
+                    "task_id",
+                    "root_task_id",
+                    "task_key",
+                    "owner_subject",
+                    "stage",
+                ],
+            ),
+        ] {
+            let object = &schema["components"]["schemas"][name];
+            assert_eq!(object["additionalProperties"], false);
+            assert_eq!(
+                object["properties"].as_object().unwrap().len(),
+                fields.len()
+            );
+            assert_eq!(object["required"].as_array().unwrap().len(), fields.len());
+            for field in fields {
+                assert!(object["properties"][field].is_object());
+                assert!(
+                    object["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!(field))
+                );
+            }
+        }
+        assert_eq!(
+            schema["components"]["schemas"]["DraftStage"]["enum"],
+            serde_json::json!(["Draft"])
+        );
+    }
+
+    #[test]
+    fn pm_draft_input_schema_is_strict_authenticated_and_separate_from_created_draft() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let route = &schema["paths"]["/api/v1/issues/{id}/sdlc/pm-draft-input"]["get"];
+        assert_eq!(route["security"], serde_json::json!([{"bearer": []}]));
+        assert_eq!(
+            route["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/PmDraftInputResponse"
+        );
+        for (name, fields) in [
+            ("PmDraftInputResponse", 7),
+            ("PmDraftInput", 4),
+            ("CreatedDraft", 7),
+        ] {
+            let object = &schema["components"]["schemas"][name];
+            assert_eq!(object["additionalProperties"], false);
+            assert_eq!(object["properties"].as_object().unwrap().len(), fields);
+            assert_eq!(object["required"].as_array().unwrap().len(), fields);
+        }
+        let input = &schema["components"]["schemas"]["PmDraftInput"]["properties"];
+        assert_eq!(input["snapshot_ref"]["format"], "uuid");
+        assert_eq!(input["sha256"]["pattern"], "^[0-9a-f]{64}$");
+        assert_eq!(
+            schema["components"]["schemas"]["PmDraftInputResponse"]["properties"]["contract_version"]
+                ["maximum"].as_f64(),
+            Some(1.0)
+        );
+    }
+
+    #[test]
+    fn metadata_outbox_schema_pins_projection_and_strict_resource_variants() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let schemas = &schema["components"]["schemas"];
+        let route = &schema["paths"]["/api/v1/issues/{id}/sdlc/events"]["get"];
+        assert_eq!(route["operationId"], "sdlc_events");
+        assert_eq!(route["security"], serde_json::json!([{"bearer": []}]));
+        assert_eq!(
+            schemas["MetadataProjection"]["enum"],
+            serde_json::json!(["metadata_v1"])
+        );
+        assert_eq!(schemas["MetadataPage"]["additionalProperties"], false);
+        assert_eq!(
+            schemas["MetadataPage"]["required"]
+                .as_array()
+                .unwrap()
+                .len(),
+            6
+        );
+        assert_eq!(
+            schemas["MetadataError"]["required"]
+                .as_array()
+                .unwrap()
+                .len(),
+            8
+        );
+        assert_eq!(
+            schemas["MetadataPage"]["properties"]["next_after"]["type"],
+            "string"
+        );
+        assert_eq!(
+            schemas["OutboxEvent"]["properties"]["sequence"]["type"],
+            "integer"
+        );
+        assert_eq!(
+            schemas["OutboxResponse"]["required"],
+            serde_json::json!(["events"])
+        );
+        let variants = schemas["MetadataEvent"]["oneOf"].as_array().unwrap();
+        assert_eq!(variants.len(), 9);
+        for variant in variants {
+            assert_eq!(variant["additionalProperties"], false);
+            assert_eq!(variant["required"].as_array().unwrap().len(), 7);
+            assert_eq!(variant["properties"]["sequence"]["type"], "string");
+            assert_eq!(variant["properties"]["created_at"]["format"], "date-time");
+            let payload = &variant["properties"]["payload"];
+            assert_eq!(payload["additionalProperties"], false);
+            assert_eq!(payload["required"].as_array().unwrap().len(), 7);
+            let kind = variant["properties"]["event_type"]["enum"][0]
+                .as_str()
+                .unwrap();
+            assert!(kind.contains('.'), "wire event name: {kind}");
+            if kind == "clarification.published" || kind == "clarification.cancelled" {
+                let state = &payload["properties"]["resource"]["properties"]["state"];
+                let state = if let Some(reference) = state["$ref"].as_str() {
+                    &schemas[reference.strip_prefix("#/components/schemas/").unwrap()]
+                } else {
+                    state
+                };
+                assert_eq!(
+                    state["enum"],
+                    serde_json::json!([if kind == "clarification.published" {
+                        "open"
+                    } else {
+                        "cancelled"
+                    }])
+                );
+            }
+        }
+        for (name, object) in schemas.as_object().unwrap() {
+            if name.starts_with("MetadataPayload_") {
+                assert_eq!(object["additionalProperties"], false, "{name}");
+                assert_eq!(object["required"].as_array().unwrap().len(), 7, "{name}");
+            }
+        }
+    }
+
+    #[test]
+    fn pm_draft_reservation_is_strict_and_never_dispatch_capability() {
+        let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        for (name, count) in [
+            ("ReservePmDraft", 4),
+            ("PmDraftReservation", 10),
+            ("PmDraftReadback", 5),
+            ("PmDraftBinding", 5),
+        ] {
+            let schema = &doc["components"]["schemas"][name];
+            assert_eq!(schema["additionalProperties"], false, "{name}");
+            assert_eq!(
+                schema["required"].as_array().unwrap().len(),
+                count,
+                "{name}"
+            );
+        }
+        let reserved = &doc["components"]["schemas"]["PmDraftReservation"];
+        assert_eq!(
+            reserved["properties"]["dispatch_allowed"]["enum"],
+            serde_json::json!([false])
+        );
+        assert_eq!(
+            doc["components"]["schemas"]["PmAssignment"]["required"]
+                .as_array()
+                .unwrap()
+                .len(),
+            5
+        );
+        let path = &doc["paths"]["/api/v1/issues/{id}/sdlc/pm-draft-assignment"];
+        assert!(path["get"]["responses"]["200"].is_object());
+        for status in ["200", "201", "401", "403", "404", "409", "422", "503"] {
+            assert!(path["post"]["responses"][status].is_object());
+        }
+    }
+
+    #[test]
+    fn sdlc_revision_schema_matches_flat_strict_wire_document() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let revision = &schema["components"]["schemas"]["RequirementsRevision"];
+        assert!(revision.get("allOf").is_none());
+        assert!(revision["properties"]["goal"].is_object());
+        assert!(revision["properties"]["checklist"].is_object());
+        assert!(revision["properties"]["revision"].is_object());
+        assert_eq!(revision["additionalProperties"], false);
+        assert_eq!(
+            revision["properties"]["revision"]["maximum"].as_f64(),
+            Some(9007199254740991f64)
+        );
+    }
+
+    #[test]
+    fn ownership_lease_schema_is_strict_separate_and_never_dispatch_authority() {
+        let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        for (name, fields) in [
+            ("ClaimExecutionLease", 3),
+            ("HeartbeatExecutionLease", 5),
+            ("ExecutionLeaseReceipt", 8),
+            ("ExecutionLeaseReadback", 9),
+            ("ExecutionLease", 6),
+            ("ExecutionLeaseOperation", 3),
+        ] {
+            let schema = &doc["components"]["schemas"][name];
+            assert_eq!(schema["additionalProperties"], false, "{name}");
+            assert_eq!(
+                schema["properties"].as_object().unwrap().len(),
+                fields,
+                "{name}"
+            );
+            assert_eq!(
+                schema["required"].as_array().unwrap().len(),
+                fields,
+                "{name}"
+            );
+        }
+        for name in ["ExecutionLeaseReceipt", "ExecutionLeaseReadback"] {
+            assert_eq!(
+                doc["components"]["schemas"][name]["properties"]["dispatch_allowed"]["enum"],
+                serde_json::json!([false])
+            );
+        }
+        let path = "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease";
+        for (route, method) in [
+            (path.to_string(), "get"),
+            (path.to_string(), "post"),
+            (format!("{path}/heartbeat"), "post"),
+        ] {
+            let operation = &doc["paths"][route][method];
+            assert!(!operation["security"].as_array().unwrap().is_empty());
+            for status in ["200", "401", "403", "404", "409", "422", "503"] {
+                assert!(operation["responses"][status].is_object());
+            }
+        }
+    }
+
+    #[test]
     fn openapi_security_matches_runtime_protection() {
         let document = ApiDoc::openapi();
+        let mut operation_ids = std::collections::HashSet::new();
         for (path, item) in document.paths.paths.iter() {
             let is_public = matches!(
                 path.as_str(),
@@ -714,6 +1083,12 @@ mod tests {
             .into_iter()
             .flatten()
             {
+                if let Some(operation_id) = &operation.operation_id {
+                    assert!(
+                        operation_ids.insert(operation_id),
+                        "duplicate OpenAPI operation ID: {operation_id}"
+                    );
+                }
                 if is_public {
                     assert!(
                         operation.security.is_none(),

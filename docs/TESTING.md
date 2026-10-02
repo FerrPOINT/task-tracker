@@ -1,6 +1,131 @@
 # Стратегия тестирования Task Tracker
 
+## Tracker SDLC Verification
+
+CI explicitly runs the ignored `drafts` and `sdlc` HTTP suites against separate
+clean PostgreSQL 17.6 databases in an ephemeral Actions service. The ordinary
+workspace test command alone is not evidence for these suites. Ownership lease
+coverage includes duplicate claims/renewals, unknown acceptance readback, fresh
+ACL, expiry/restart and a heartbeat actually blocked on an issue row until after
+expiry; it must return 409 without advancing the renewal cursor or history.
+Lease ownership is not PM admission or genuine live Hermes acceptance.
+
+The lease suite also corrupts retained assignment payloads and inserts a newer
+ledger version only in its disposable fixture. Plain/operation lease GET, claim
+and heartbeat must all return 409, both before and after a claim, without changing
+task/issue/lease/receipt/outbox/user state. Restoring the fixture permits readback
+again. This regression guards the shared current-assignment check, not lease TTL
+or admission; production append-only triggers remain enabled.
+
+`support/pm_credential_boundary.rs` is executed inside the explicit ignored
+`sdlc` TCP/PostgreSQL suite. Its opaque-PAT Central fixture reproduces the child
+shape (parent subject/email, no browser session, service read/write plus PM grant).
+Direct legacy own/foreign issue reads/mutations and global, owner, verifier and
+assignment paths must be denied before shadow linking or side effects. Bound
+reads/publication recheck assignment replacement, subject, ACL revocation and
+Auth outage; malformed, ambiguous or human-session PM grants fail closed.
+Generic PAT/human behavior has separate unchanged-policy assertions. This is
+receiving-service evidence, not real Base delegation, runtime handoff or live PM
+acceptance; the verification ledger records actual runs separately.
+
+The disposable `drafts` HTTP/PostgreSQL test also covers the strict project-access
+route: sorted/deduplicated owner/member scope, read-scoped PAT, verified central
+identity, global-admin/local-ID/email bypass denial, immediate membership/account
+revocation, dependency failure, and the pending 0034 membership index. It uses
+the real route middleware and repository, with an isolated Central Auth fixture.
+
+`support/project_directory.rs` extends the same actual TCP/PostgreSQL harness
+with the strict directory wire, mandatory null cursor, canonical IDs, UTF-8/escape
+names, no extra/private metadata, read-scoped PAT and excluded admin nonmembers.
+105 authorized projects exercise default 50, limits 1/7/100, UUID multipage
+ordering, owner/member deduplication, bounded lookahead and empty/final pages.
+Cursor replay rechecks membership/account revocation and Auth outage. Query tests
+cover nil/noncanonical UUIDs, invalid bounds, duplicates and unknown fields.
+The same fixture invokes `curl` over TCP: human/read-scoped PAT responses must
+match the exact 200 page; unauthenticated 401 and wrong-scope 403 responses must
+not disclose directory IDs or fields. This requires `curl` in the test runner.
+Support-fixture rows are removed before the existing creation tests continue.
+These tests require the explicit ignored-suite command below; adding coverage
+does not establish an actual local PG run or live Fleet acceptance.
+
+Focused Rust checks: `cargo test --locked -p domain project_directory` and
+`cargo test --locked -p api project_directory`. API schema tests assert bearer
+security, two query parameters/bounds/default and exact required response fields
+(including nullable cursor). Export with the existing Rust `gen-openapi` binary,
+then `pnpm generate:api` and OpenAPI drift/consumer checks; do not hand-author a
+second schema or run these database tests against accepted/shared state.
+
+Human creation requires a newly created, separate disposable PostgreSQL database
+with no recorded migrations. The test refuses an already migrated database;
+do not point it at accepted/shared state or reset any runtime volume.
+
+```bash
+TT_SDLC_DRAFT_TEST_DATABASE_URL=postgres://user:password@host/own_clean_draft_test \
+  cargo test -p server --test drafts --locked -- --ignored --nocapture
+```
+
+This applies the final full migration chain, then tests the actual TCP HTTP route:
+strict browser/central-subject/project ownership, no admin/email/local-ID bypass,
+strict DTOs, transactional outbox-failure rollback, exact concurrent replay and
+changed-payload conflict, forced ordinary-number collision retry, deleted-number
+non-reuse, authorization revocation fencing, immutable ledger, lost response and
+Tracker shutdown/restart readback. Creation itself creates no PM assignment/run. OpenAPI tests
+assert all seven typed response fields, strict request fields and Draft-only enum.
+
+The same suite also tests creation-operation GET before replay after a lost body,
+UTF-8/slash path keys, unchanged seven-field result, restart/no duplicate, exact
+author scope, operator/PAT impersonation denial, retained source-invalid 409 and
+fresh revocation/auth-outage fencing. `support/reservation.rs` exercises initial
+PM reservation over real TCP/PG: duplicate and different-key races, stale owner
+CAS, immutable input checks, transaction/outbox rollback with ordinal gaps,
+restart/lost response, current vs historical replay and DB/application gates
+against legacy assignment and PM business writes. Selector-only/no-dispatch
+semantics are asserted; no live Fleet/Workflow/native runtime is used.
+This owned PG/HTTP suite requires `curl` on PATH for supplementary smoke checks
+of both GET readbacks and exact reservation POST replay with synthetic credentials.
+
+The same suite exercises immutable `pm-draft-input` snapshots: one durable UUID
+and exact hash after concurrent creation/readback, replay and restart, no change
+after an actual HTTP issue edit, UTF-8/CRLF composition vectors, identical context
+ACL and no operator business confirmation. Missing ledger/all-null historical
+input returns 409; partial snapshots and append-only mutations are rejected.
+Foreign project, disabled identity, valid local HS256 token and absent/insufficient
+service credentials fail closed. Inputs are not inferred from mutable issues.
+
+`cargo test -p app --lib sdlc::tests` checks answer modes/custom text, stable
+option validation, stale fences, machine/human separation, canonical payload
+hashes, JavaScript integer bounds and exact revision readiness.
+
+With an isolated disposable PostgreSQL database:
+
+```bash
+TT_SDLC_TEST_DATABASE_URL=postgres://user:password@host/tasktracker_sdlc_test \
+  cargo test -p server --test sdlc -- --ignored --nocapture
+```
+
+The test migrates and truncates only that explicit database. It uses a generated
+test ES256 issuer/live-session endpoint and PAT introspection fixture, and real
+Tracker HTTP plus PostgreSQL. It covers strict membership despite configured
+Central Auth bypass, wrong audience/expiry/local credentials, machine scopes,
+cross-project root rejection, owner-only writes, concurrency, outbox rollback,
+exact confirmation, immutable instance and service restart readback.
+It is Tracker integration evidence, not a real Central Auth/Fleet/Workflow/PM
+deployment acceptance. Exact performed gates and limitations are recorded in
+[CHAT_CLARIFICATION_VERIFICATION.md](CHAT_CLARIFICATION_VERIFICATION.md).
+
 ## 1. Принципы
+
+Metadata_v1 is covered by `app::sdlc_metadata::tests` (canonical Value/UTC hash,
+exact serialized UTF-8/escape thresholds, string i64 cursors, prefix boundaries,
+oversized/corrupt blockers), API query/OpenAPI contract tests, and the same two
+isolated HTTP/PG suites above. They cover all nine types, actual large content,
+historical answer fence after edits/reassignment/restart, immutable creation
+snapshot after HTTP issue edit/restart, >100 events with global sequence gaps,
+count/byte paging, blocked rows and unchanged legacy/default/ACL behavior.
+`TT_SDLC_METADATA_GOLDEN_DIR` optionally saves exact synthetic HTTP response bytes
+as `tracker-metadata-all8.http.json` and `tracker-metadata-created.http.json` for
+Fleet cross-repository parser/hash contract checks. These are generated artifacts,
+not real customer input. They do not claim live Fleet/Workflow runtime acceptance.
 
 - Каждый тест проверяет значимый путь и конкретное поведение.
 - Backend: реальные интеграционные тесты с PostgreSQL через Docker; unit-тесты для domain/services.

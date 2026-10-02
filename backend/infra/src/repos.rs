@@ -730,7 +730,7 @@ impl IssueRepository for IssueRepo {
             .filter(issue::Column::DeletedAt.is_null())
             .exec(&txn)
             .await
-            .map_err(AppError::database)?;
+            .map_err(crate::sdlc::map_db)?;
         if updated.rows_affected == 0 {
             return Err(AppError::conflict("issue status changed concurrently"));
         }
@@ -941,7 +941,10 @@ impl IssueRepository for IssueRepo {
             .is_some();
         let active = issue_active_model(issue);
         if exists {
-            active.update(&*self.db).await.map_err(AppError::database)?;
+            active
+                .update(&*self.db)
+                .await
+                .map_err(crate::sdlc::map_db)?;
         } else {
             active.insert(&*self.db).await.map_err(AppError::database)?;
         }

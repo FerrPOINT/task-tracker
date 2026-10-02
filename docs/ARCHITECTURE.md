@@ -1,5 +1,81 @@
 # Архитектура Task Tracker
 
+## SDLC Clarification Slice
+
+`api/routes/sdlc -> app::sdlc::SdlcService -> domain::sdlc::SdlcRepository ->
+infra::sdlc::PostgresSdlcRepository` is wired through `AppContext.sdlc` only
+when a stable instance ID is configured. Its separate Central Auth route layer
+never uses local JWT fallback or legacy project bypass. Repository authorization
+resolves active users by central subject and locks project/member authorization
+rows together with issue/task state. Global admin roles confer no SDLC access.
+Requirements hash covers the full typed document with canonical JSON. Questions
+invalidate readiness until PM publishes a new revision; independent verifier
+evidence plus exact owner-session consent atomically move the issue to Backlog.
+The issue gate is also enforced at PostgreSQL so legacy mutations cannot bypass
+it. Durable pull outbox separates Tracker persistence from Workflow resume.
+Fleet gateway, inbox/projection, Workflow fencing and the real verifier remain
+external integration responsibilities. See [contract](CHAT_CLARIFICATION_CONTRACT.md).
+
+PM assignment grants have a separate request boundary before handlers. The legacy
+router rejects them before linking a Central identity or converting it to local
+UserClaims. The strict router preserves the Principal, accepts one canonical
+task grant, and enumerates allowed GET/POST resources for that task using the
+original full URI. Owner answers/confirmation, global selectors, verifier and
+assignment/binding operations are not PM capabilities. Allowed reads reuse the
+issue/project/aggregate lock order, then verify the current assignment subject,
+exact grant and latest append-only assignment payload/version. The request path
+alone is not authority. Generic human/service PAT policy is unchanged; this is
+not global retirement of the ordinary central-mode bypass.
+
+Human Draft creation uses a project/central-subject/key advisory transaction
+lock with canonical JSON namespace encoding. It authorizes after the lock,
+rechecks immutable ownership on replay, and commits issue/binding/ledger/outbox
+atomically. Hash collisions can only serialize unrelated requests; exact ledger
+keys/payload hashes still determine identity. Number allocation matches ordinary
+issue MAX-suffix allocation; only PostgreSQL unique violations on `issues_key_key`
+restart the entire transaction (five attempts). No independent number sequence
+or ordinary non-idempotent issue POST is used for the Fleet creation saga.
+
+Creation also freezes the exact original title/description and server snapshot
+UUID in its append-only ledger, with a separate canonical UTF-8 content hash.
+PM draft input readback follows service -> repository and reuses the same
+`load`/authorization/lock order as context before selecting the indexed ledger.
+It verifies snapshot hash/binding and never reconstructs missing input from
+mutable issue fields. Existing CreatedDraft and owner confirmation wire remain
+unchanged. Workflow project mapping/admission remain separate integration work.
+Initial owner-CAS reservation now allocates Tracker-owned assignment/execution
+UUIDs and a durable SDLC ordinal in one transaction, but explicitly cannot
+dispatch. Selector identity is not actual Fleet verification. Reserved enrollment
+blocks all PM business writes and legacy allocator bypass; exact historical
+replay is read-only. The creation-operation GET shares creation's advisory lock,
+fresh ACL and exact author namespace, validates retained entity/binding/input and
+returns only the original CreatedDraft. See the bounded contract for full future
+admission, replacement quiescence and resume responsibilities. Opt-in metadata outbox
+projects immutable events and historical references without emitting content.
+The separate execution ownership lease reuses strict Central auth and the exact
+persisted PM grant, project/aggregate locks and immutable reservation/input
+checks. It locks one lease cursor, then reads PostgreSQL clock_timestamp; an
+append-only operation receipt and renewal cursor commit in one transaction.
+Historical replay is never renewal/current authority. No lease deletion,
+replacement/reacquire, admission or runtime side effect is enabled; reservation
+JSON, owner cursor and reserved application/DB business gates remain unchanged.
+The metadata serialized whole envelope is byte-bounded; legacy outbox remains unchanged.
+Fleet must pin the projection before consumption and persist its own inbox/cursor.
+
+Read-only project scope uses the same strict route layer but one indexed SQL
+snapshot instead of per-project authorization requests. The repository resolves
+the active central-subject identity and unions explicit ownership/membership,
+returning sorted unique IDs for the configured Tracker instance. The membership
+index is part of pending 000034. No cache is used; this read scope does not replace
+transactional authorization rechecks on SDLC write routes.
+The additive `project-directory` route follows the same controller/service/repo
+path and strict auth. Its one statement combines active subject, deduplicated
+owner/member IDs and UUID keyset limit+1 read. Only project ID/key/name are
+projected; the bounded page emits the last returned ID iff lookahead exists,
+otherwise required null. No counts, separate ACL read, retained page snapshot or
+scope cache is introduced. Every continuation rechecks access; selector results
+do not replace write/admission checks. Rust DTOs/route annotations own the schema.
+
 ## 1. Контекст
 
 Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.

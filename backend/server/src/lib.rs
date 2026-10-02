@@ -65,13 +65,25 @@ pub async fn run(
     // as the domain EmailPort implementation.
     let email: Arc<dyn domain::EmailPort> = Arc::new(SmtpEmailSender::new(&config.email));
     let events = app::context::EventBus::default();
-    let ctx = Arc::new(AppContext::with_events(
-        config.clone(),
-        repos,
-        storage,
-        events,
-        email.clone(),
-    ));
+    let mut ctx = AppContext::with_events(config.clone(), repos, storage, events, email.clone());
+    if let Ok(instance_id) = std::env::var("TASKTRACKER_SDLC__INSTANCE_ID") {
+        let repository = infra::sdlc::PostgresSdlcRepository::connect(
+            &config.database.url,
+            domain::sdlc::SdlcConfig {
+                instance_id,
+                orchestrator_subject: std::env::var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT")
+                    .unwrap_or_default(),
+                verifier_subject: std::env::var("TASKTRACKER_SDLC__VERIFIER_SUBJECT")
+                    .unwrap_or_default(),
+            },
+        )
+        .await
+        .expect("failed to initialize stable SDLC storage");
+        ctx.sdlc = Some(app::sdlc::SdlcService {
+            repository: Arc::new(repository),
+        });
+    }
+    let ctx = Arc::new(ctx);
 
     // Spawn the email digest background task. It checks unread notifications
     // every hour, sends hourly digests every cycle and daily digests at most

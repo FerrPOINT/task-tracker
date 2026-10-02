@@ -1,5 +1,80 @@
 # Дата-модель Task Tracker
 
+## SDLC: Additive Migration 000034
+
+Pending 000034 also adds `sdlc_project_members_user_idx(user_id,project_id)`.
+The project-access endpoint combines that membership index, the existing
+`projects.owner_id` index and central-subject identity index in one SQL snapshot.
+No scope cache or additional authorization table is introduced.
+The strict bounded project-directory uses the same existing identity/ownership/
+membership indexes and `projects` UUID primary key. Keyset paging projects only
+`id,key,name` with a limit+1 lookahead in that authorization snapshot. It adds
+no migration, stored cursor, directory cache, counts or metadata columns.
+
+`m20261001_0000034_sdlc_clarification` adds stable instance identity,
+immutable task/project/root/central-owner binding and a lockable JSONB aggregate
+in `sdlc_tasks`. Append-only relational history: `sdlc_agent_bindings`,
+`sdlc_assignments`, `sdlc_requests`, `sdlc_question_versions`, `sdlc_options`,
+`sdlc_requirements`, `sdlc_answers`, `sdlc_evidence`, `sdlc_confirmations`.
+`sdlc_idempotency` stores canonical command hashes/results per task/subject/key;
+`sdlc_outbox` stores stable event UUIDs and task-scoped ordered replay cursors.
+`sdlc_draft_creations` is a separate append-only creation ledger keyed by
+project/central-subject/idempotency-key before a task ID is known. It stores the
+canonical payload hash and exact typed creation result. A composite FK binds
+task/project/subject to the immutable aggregate owner. Issue, initial status
+history, aggregate, ledger and creation outbox event share one transaction.
+The same ledger stores immutable `input_snapshot_ref` (unique non-nil UUID),
+`input_title`, `input_description` and `input_sha256`. `task_id` is unique for
+indexed original-input readback. A CHECK permits either all-null historical
+inputs or a complete bounded snapshot with lowercase SHA-256; new creations
+always write all four values. The hash covers only canonical exact UTF-8
+title/description, not the replay key. Existing append-only triggers protect the
+snapshot. Missing historical data stays unavailable; no mutable-issue backfill
+or new provenance/mapping tables are introduced by input readback.
+This table extends pending 000034; it is not a new follow-up migration and is
+only validated on fresh disposable databases, never by resetting shared data.
+Foreign keys retain history; requirements and question/assignment versions have
+safe integer constraints. Mutable aggregate state and append-only rows commit
+in the same transaction. Project/root and outbox cursor columns are indexed.
+
+PM credential confinement adds no table or migration. Under the existing issue
+and aggregate locks, task-scoped reads compare the aggregate's current assignment
+with the latest `sdlc_assignments` row by indexed task/version and exact typed
+payload. A valid old grant or historical receipt cannot authorize an inconsistent
+current assignment. Request policy is not stored as a second ownership model.
+
+Initial PM reservation extends the same pending 000034 with append-only
+`sdlc_pm_executions`: non-nil unique execution/assignment UUIDs, unique positive
+bigint identity ordinal, task/assignment-version, owner CAS, snapshot/hash FK to
+the original creation ledger, stable assignment operation key and typed result.
+`sdlc_tasks.pm_owner_version/pm_execution_id/pm_admission_state` provide lockable
+current authority; initial reservation CAS is 0 -> 1 and state is reserved only.
+Assignment, execution, aggregate CAS, idempotency and old `pm.assigned` outbox
+commit in one transaction. Sequence gaps on rollback are expected; ordinals are
+not reused. History replay is never a current-pointer write. A DB trigger blocks
+reserved aggregate/control changes; application history lookup also denies PM
+business writes and legacy assignment if the current pointer is unavailable.
+The creation-operation GET uses the existing indexed project/author/key ledger,
+with no new table, DTO, migration or content in the response.
+Ownership lease extends only pending 000034 with `sdlc_pm_execution_leases`
+(one immutable lease UUID/generation per execution, lockable renewal version and
+PostgreSQL claimed/heartbeat/expiry timestamps) and append-only
+`sdlc_pm_lease_operations` (execution/subject/key, canonical command hash, original
+receipt, unique renewal version). TTL is exactly 30 seconds. Deletion/replacement
+and expired/non-monotonic renewals are DB-fenced. Lease and command receipt commit
+together; replay cannot touch current TTL. No admission/control/owner-version or
+reserved aggregate change occurs. Renewal version is not replacement generation.
+Metadata_v1 introduces no migration or new stored identifiers. It derives common
+metadata from immutable outbox payloads, snapshot refs from the creation ledger,
+and answer fences from the exact append-only question version. Existing content
+hashes retain their meaning; canonical metadata digest is a separate projection
+hash. Event IDs and global bigint sequences remain unchanged; opt-in cursors are
+decimal strings on the wire. Fleet projection/version pinning is external.
+An issue trigger gates status/sprint updates until exact current revision consent.
+The migration is additive and does not rewrite legacy issue/user identity.
+Business-data rollback is deliberately refused; disable new assignments and
+preserve history instead. DTOs and operations: [contract](CHAT_CLARIFICATION_CONTRACT.md).
+
 ## 0. Фактическая схема реализованных таблиц (миграции 000001–000029)
 
 Раздел 4 описывает целевую полную модель (фазы 5+). Ниже — таблицы, реально существующие в текущих миграциях (`backend/migration/src/`), полученные из живой БД. При расхождении приоритет у миграций.

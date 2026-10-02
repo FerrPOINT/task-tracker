@@ -1,5 +1,62 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+## SDLC Clarification: Implemented Backend Scope
+
+Opt-in Draft -> assigned PM questions -> owner answers -> new full requirements
+revision -> trusted readiness evidence -> exact owner confirmation -> Backlog.
+Backend contract and prerequisites: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
+Strict project membership and central task-owner identity apply to this slice,
+independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL
+verification is distinct from Fleet/Workflow integration and real PM acceptance;
+no production frontend or live autonomous flow is claimed by this implementation.
+
+Assignment-scoped PM PATs do not inherit generic legacy user authority. The
+legacy API refuses them before profile linking; SDLC permits only canonical
+bound-task PM methods/resources and checks fresh current assignment/ledger
+authority, including lease readback and mutations. Owner consent and verifier
+evidence cannot be authored by the PM. Generic PAT/human legacy policy is not
+retired by this bounded change; runtime handoff remains a separate acceptance.
+
+Human browser sessions can create a bound root Draft through the project-scoped
+idempotent endpoint. The verified central human owns it; identity/status/agent
+claims are not accepted. Creation is atomic and restart-safe, including a lost
+HTTP response. Fleet continues the assignment/runtime saga separately; Tracker
+does not dispatch PM execution during creation.
+
+Original Draft inputs are immutable and available through the strict project-
+authorized `pm-draft-input` readback. Snapshot ref/title/description/content hash
+are persisted in the creation transaction and survive edits/replay/restart.
+No historical snapshot is inferred from mutable issue text. This input endpoint
+does not imply PM admission or runtime delivery. Initial owner reservation now
+provides atomic Tracker assignment/execution UUID/version/ordinal and owner CAS,
+but dispatch_allowed is always false. Requested agent UUID is only a canonical
+selector. Future admission must verify actual Fleet agent/config/chat/workspace,
+Workflow mapping and all full-plan prerequisites. Reserved enrollment blocks PM
+business writes and legacy assignment. Creation-operation GET provides original
+seven-field readback for unknown acceptance before POST replay, scoped to exact
+human author/project/key with fresh ACL and 409 for retained corrupt/missing
+source; content is read separately from pm-draft-input.
+The separate machine-only execution ownership lease has PostgreSQL TTL 30s and
+suggested renewal interval 10s, exact persisted assignment grant/fence and fresh
+ACL on reads/replays/renewals. Lease version CAS and append-only history prevent
+double renewal on retry. Expiry/unknown outcomes never authorize automatic
+reacquire, admission, runtime heartbeat or run-side effects. Reservation owner
+version and reserved business gates remain unchanged; full admission is later.
+The separate opt-in metadata_v1 outbox bounds
+serialized whole responses; legacy full-result events remain unchanged. Fleet
+projection pinning/inbox and Workflow resume remain external integration work.
+
+Fleet directory consumers can read an uncached, versioned project-access scope.
+Only a verified Central Auth caller with service read access and an active local
+central-subject identity is accepted. Explicit project ownership or membership
+defines the sorted unique project IDs; admin, public and legacy Central bypasses
+do not expand this scope. Revocation affects the next request.
+The strict `project-directory` selector additionally returns only UUID/key/name
+in bounded UUID-keyset pages (default 50, max 100), with an explicit nullable
+continuation cursor. Active identity and explicit owner/member ACL share one
+SQL snapshot with the page; continuation/replay rechecks fresh access. Selection
+does not authorize creation/reservation/admission, and adds no migration/scope.
+
 > **Актуальный платформенный auth-контракт.** При настроенном Central Auth
 > локальные регистрация, парольный вход, password reset, TOTP и управление
 > пользователями отключены. Учётки создаются в Admin Panel, профили связываются
