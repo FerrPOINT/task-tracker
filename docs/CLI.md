@@ -141,3 +141,9 @@ cargo test -p app issue_identifier_resolves_key_uuid_and_restore_with_access_che
 Справка показывает имена token env variables, скрывая их значения даже при установленной переменной.
 
 Подтверждения project/issue/comment/label delete, label detach, notification read/read-all и member remove сохраняют прежний текст в `table` и `compact`. В `json` успешный пустой ответ выводится только как `{"status":"ok"}`. При ошибке API подтверждение успеха отсутствует.
+
+## Готовые сборки
+
+Установка, platform requirements, source/checksum и ограничения локального candidate: [CLI_INSTALL.md](CLI_INSTALL.md).
+
+Текущие Linux/WSL candidates и установка: [CLI_INSTALL.md](CLI_INSTALL.md). Проверки против образов с PostgreSQL, границы fixture execution и блокеры обновления sdlc1: [CLI_VALIDATION.md](CLI_VALIDATION.md). Перед использованием с рабочим стендом требуется подтверждённая совместимость его backend и применённых миграций.
