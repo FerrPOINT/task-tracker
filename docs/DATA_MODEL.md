@@ -46,6 +46,14 @@ reserved aggregate/control changes; application history lookup also denies PM
 business writes and legacy assignment if the current pointer is unavailable.
 The creation-operation GET uses the existing indexed project/author/key ledger,
 with no new table, DTO, migration or content in the response.
+Ownership lease extends only pending 000034 with `sdlc_pm_execution_leases`
+(one immutable lease UUID/generation per execution, lockable renewal version and
+PostgreSQL claimed/heartbeat/expiry timestamps) and append-only
+`sdlc_pm_lease_operations` (execution/subject/key, canonical command hash, original
+receipt, unique renewal version). TTL is exactly 30 seconds. Deletion/replacement
+and expired/non-monotonic renewals are DB-fenced. Lease and command receipt commit
+together; replay cannot touch current TTL. No admission/control/owner-version or
+reserved aggregate change occurs. Renewal version is not replacement generation.
 Metadata_v1 introduces no migration or new stored identifiers. It derives common
 metadata from immutable outbox payloads, snapshot refs from the creation ledger,
 and answer fences from the exact append-only question version. Existing content

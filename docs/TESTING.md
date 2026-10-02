@@ -2,6 +2,14 @@
 
 ## Tracker SDLC Verification
 
+CI explicitly runs the ignored `drafts` and `sdlc` HTTP suites against separate
+clean PostgreSQL 17.6 databases in an ephemeral Actions service. The ordinary
+workspace test command alone is not evidence for these suites. Ownership lease
+coverage includes duplicate claims/renewals, unknown acceptance readback, fresh
+ACL, expiry/restart and a heartbeat actually blocked on an issue row until after
+expiry; it must return 409 without advancing the renewal cursor or history.
+Lease ownership is not PM admission or genuine live Hermes acceptance.
+
 The disposable `drafts` HTTP/PostgreSQL test also covers the strict project-access
 route: sorted/deduplicated owner/member scope, read-scoped PAT, verified central
 identity, global-admin/local-ID/email bypass denial, immediate membership/account

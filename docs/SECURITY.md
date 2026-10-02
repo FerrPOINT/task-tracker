@@ -35,6 +35,22 @@ Task Tracker — self-hosted приложение с конфиденциаль�
   получают пользовательские права автоматически.
 - Legacy-режим сохраняет прежний project RBAC.
 
+### SDLC: Strict Project And Assignment Boundary
+
+SDLC routes do not inherit the ordinary central-mode project bypass above.
+They recheck active central-subject identity and explicit project ownership or
+membership. Business answers and exact-revision confirmation require the owner
+human session; an operator cannot consent for that owner.
+
+The PM ownership lease is machine-only, including readback and historical
+replay. Its holder is derived from the verified bearer and must match the current
+persisted assignment subject, exact PM grant and fence. Central service scopes
+still apply. Fresh ACL/account checks cannot be bypassed by idempotency replay.
+Expired ownership is not automatically reacquired; old receipts do not authorize
+side effects or extend TTL. The receipt always has `dispatch_allowed=false` and
+cannot replace future native/workspace/first-step admission checks. See
+[the contract](CHAT_CLARIFICATION_CONTRACT.md#pm-execution-ownership-lease-not-admission).
+
 ## 4. Transport
 
 - HTTPS/TLS everywhere в production.

@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+- PM Draft получил machine-only ownership lease: PostgreSQL TTL 30 секунд,
+  heartbeat CAS, идемпотентные receipts и readback текущего/исторического состояния.
+  Истечение lease не допускает повторного захвата, replay не продлевает TTL.
+  Lease не разрешает runtime dispatch: admission и настоящий PM-сценарий остаются
+  отдельной интеграцией. CI явно выполняет оба SDLC HTTP/PG набора в разных БД.
+
 - CLI сохраняет прежние текстовые подтверждения удаления и отметки уведомлений в table/compact; JSON успешных пустых ответов остаётся `{"status":"ok"}`.
 
 - Справка CLI скрывает значения token env variables, сохраняя имена переменных.

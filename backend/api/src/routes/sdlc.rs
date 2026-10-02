@@ -6,6 +6,7 @@ use axum::{
     routing::{get, post},
 };
 use domain::sdlc::*;
+use domain::sdlc_execution_lease::*;
 use domain::sdlc_metadata::*;
 use domain::sdlc_pm_draft::*;
 use serde::{Deserialize, Serialize};
@@ -107,6 +108,14 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         )
         .route("/issues/{id}/sdlc/context", get(context))
         .route("/issues/{id}/sdlc/pm-draft-input", get(pm_draft_input))
+        .route(
+            "/issues/{id}/sdlc/pm-draft-execution-lease",
+            get(execution_lease).post(claim_execution_lease),
+        )
+        .route(
+            "/issues/{id}/sdlc/pm-draft-execution-lease/heartbeat",
+            post(heartbeat_execution_lease),
+        )
         .route(
             "/issues/{id}/sdlc/pm-draft-assignment",
             get(pm_draft_assignment).post(reserve_pm_draft),
@@ -273,6 +282,66 @@ pub async fn pm_draft_assignment(
     Ok(Json(
         service(&ctx)?
             .pm_draft_assignment(id, &actor, query.idempotency_key.as_deref())
+            .await?,
+    ))
+}
+
+#[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease", tag="sdlc",
+    params(("id"=Uuid, Path)), request_body=ClaimExecutionLease,
+    responses((status=201,body=ExecutionLeaseReceipt),(status=200,description="Historical exact replay; consult current readback",body=ExecutionLeaseReceipt),
+        (status=401),(status=403),(status=404),(status=409,description="Lease claimed or source/fence inconsistent; no automatic reacquire"),(status=422),(status=503)),
+    security(("bearer"=[])))]
+pub async fn claim_execution_lease(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Json(command): Json<ClaimExecutionLease>,
+) -> Result<(axum::http::StatusCode, Json<ExecutionLeaseReceipt>), AppError> {
+    let (result, replayed) = service(&ctx)?
+        .claim_execution_lease(id, &actor, command)
+        .await?;
+    Ok((
+        if replayed {
+            axum::http::StatusCode::OK
+        } else {
+            axum::http::StatusCode::CREATED
+        },
+        Json(result),
+    ))
+}
+
+#[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/heartbeat", tag="sdlc",
+    params(("id"=Uuid, Path)), request_body=HeartbeatExecutionLease,
+    responses((status=200,description="Ownership renewal or historical exact replay; never runtime/admission authority",body=ExecutionLeaseReceipt),
+        (status=401),(status=403),(status=404),(status=409,description="Expired/unknown/stale lease; quiescence recovery required"),(status=422),(status=503)),
+    security(("bearer"=[])))]
+pub async fn heartbeat_execution_lease(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Json(command): Json<HeartbeatExecutionLease>,
+) -> Result<Json<ExecutionLeaseReceipt>, AppError> {
+    Ok(Json(
+        service(&ctx)?
+            .heartbeat_execution_lease(id, &actor, command)
+            .await?
+            .0,
+    ))
+}
+
+#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease", tag="sdlc",
+    params(("id"=Uuid, Path), PmDraftReadbackQuery),
+    responses((status=200,body=ExecutionLeaseReadback),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),
+    security(("bearer"=[])))]
+pub async fn execution_lease(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Query(query): Query<PmDraftReadbackQuery>,
+) -> Result<Json<ExecutionLeaseReadback>, AppError> {
+    Ok(Json(
+        service(&ctx)?
+            .execution_lease(id, &actor, query.idempotency_key.as_deref())
             .await?,
     ))
 }

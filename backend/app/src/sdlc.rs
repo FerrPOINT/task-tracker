@@ -20,6 +20,34 @@ pub struct SdlcService {
 }
 
 impl SdlcService {
+    pub async fn claim_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_execution_lease::ClaimExecutionLease,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.repository
+            .claim_execution_lease(task, actor, command)
+            .await
+    }
+    pub async fn heartbeat_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_execution_lease::HeartbeatExecutionLease,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.repository
+            .heartbeat_execution_lease(task, actor, command)
+            .await
+    }
+    pub async fn execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: Option<&str>,
+    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseReadback, AppError> {
+        self.repository.execution_lease(task, actor, key).await
+    }
     pub async fn project_access(&self, actor: &Principal) -> Result<ProjectAccess, AppError> {
         self.repository.project_access_scope(actor).await
     }

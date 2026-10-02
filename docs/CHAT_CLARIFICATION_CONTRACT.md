@@ -129,9 +129,9 @@ Unicode composition vectors, append-only/partial-snapshot constraints, legacy
 missing inputs, context ACL parity and unchanged operator confirmation denial.
 It does not attest live PM integration or Workflow admission.
 
-Remaining: owner-issued assignment CAS, ordinal-per-execution, trusted project
-mapping and Workflow authoritative namespace ownership/admission are not yet
-implemented here. Replacement needs a new execution/ordinal; resume retains its
+The bounded reservation below implements initial owner CAS and execution ordinal.
+Trusted project mapping and Workflow authoritative namespace ownership/admission
+remain external work. Replacement needs a new execution/ordinal; resume retains its
 identity. Provenance/catalog/machine/hash values must come from trusted server
 readback, never a browser trust blob. General Delivery contracts stay strict.
 The opt-in `metadata_v1` outbox below bounds serialized responses. Legacy LIMIT
@@ -203,6 +203,74 @@ execution/ordinal. Required workspace proof is never substituted by null; genuin
 inapplicable Delivery/Tech/CI fields need explicit typed absence in the PM variant.
 The full clarification/dispatch/recovery/resume/verifier/owner-confirmation and
 general Delivery plan is preserved; this reservation slice does not complete it.
+
+## PM execution ownership lease (not admission)
+
+The lease producer applies only to a persisted current `pm_draft_reserved`
+execution. It is an ownership TTL, not runtime heartbeat/readiness, authority for
+run-side effects, native bundle verification, namespace claim or admission.
+Reservation result JSON, owner version 1, assignment/execution/ordinal, metadata
+events and the reserved business/legacy-write gates remain unchanged.
+
+Machine-only `POST /api/v1/issues/{id}/sdlc/pm-draft-execution-lease` takes exactly
+`{expected_owner_version,fence:MachineFence,idempotency_key}`. First claim is 201;
+exact replay is 200. Any different claim key after a lease has ever existed is
+409, even after expiry. No release, replacement or automatic reacquire exists.
+`POST .../pm-draft-execution-lease/heartbeat` takes exactly
+`{expected_owner_version,fence,lease_id,expected_lease_version,idempotency_key}`.
+First renewal and exact historical replay both return 200. A new renewal requires
+current lease ID/version CAS and `expires_at > clock_timestamp()` after locking;
+version increments once and expiry becomes PostgreSQL now + 30 seconds. Clients
+should renew every 10 seconds, but this cannot authorize a runtime heartbeat.
+Owner/lease versions are positive safe JSON integers; all UUID inputs are
+canonical and non-nil. All fields are required, objects reject unknown fields.
+
+The eight-field `ExecutionLeaseReceipt` is
+`{contract_version:1,binding:PmDraftBinding,owner_version,fence:MachineFence,
+lease:{lease_id,version,holder_subject,claimed_at,heartbeat_at,expires_at},
+ttl_seconds:30,heartbeat_seconds:10,dispatch_allowed:false}`. Dates are persisted
+PostgreSQL UTC timestamps serialized with nine fractional digits and Z. The
+immutable server-issued lease UUID identifies this single ownership generation;
+version is renewal CAS, not a replacement generation. Replacement is closed and
+needs a later explicit quiescence/fencing contract. No second SDLC allocator exists.
+
+`GET .../pm-draft-execution-lease[?idempotency_key=...]` returns exactly
+`{contract_version:1,binding,owner_version,fence,observed_at,
+state:unclaimed|active|expired,current:ExecutionLease|null,
+operation:{idempotency_key,request_sha256,result:ExecutionLeaseReceipt}|null,
+dispatch_allowed:false}`. Both nullable fields are required. Expired current
+remains an object; it is never changed to absent/unclaimed. Historical result can
+have an older version/expiry than current and never attests live ownership.
+Readback is observational, not a consume/dispatch API or a transferable capability.
+
+Every read, command and replay uses verified Central machine bearer, exact
+persisted `assignment.machine_subject`, existing grant
+`task-tracker:sdlc:pm:<task>:<assignment>:<execution>:<agent>:<version>` and existing
+Central service read/write policy. No new scope is introduced. Fresh active local
+central-subject identity/project ACL, current owner cursor/pointer, assignment and
+original input are rechecked under the existing locks. Holder is derived from
+authenticated subject; no subject/credential/provenance authority is accepted in
+the body. Central validates bearer identity; lease does not fabricate additional
+parent/child/native provenance proof. Owner/operator human sessions cannot claim,
+renew or read this machine-only resource.
+
+Command identity is `(execution_id,verified_subject,idempotency_key)`; transport
+request IDs have no replay semantics. Digests are canonical sorted-key UTF-8 JSON
+`{operation:claim_pm_execution_lease|heartbeat_pm_execution_lease,payload:<command>}`.
+Same key/payload returns the original receipt without touching expiry/version;
+changed payload or operation is 409. Exact replay may succeed after expiry solely
+as historical readback; clients must check fresh current state before relying on
+ownership. Unknown heartbeat, stale fences, retained source inconsistency and
+expired new renewal are 409. Unknown/expired lease cannot be automatically
+reacquired; independent Fleet/Workflow quiescence remains a prerequisite to a
+future recovery protocol. Auth/ACL denials and outages retain 401/403/503.
+
+Pending 000034 adds only the lockable single-generation lease and append-only
+operation ledger. Claim/renewal/ledger commit atomically; clock is read after
+authorization/aggregate/lease locks. DB fences reject lease deletion, identity
+replacement, non-monotonic renewal and expired updates. Full admission must still
+verify all preceding workspace, namespace, native, credentials and first-step
+requirements; this lease does not complete or narrow the full PM/Delivery plan.
 
 ## Fleet gateway
 

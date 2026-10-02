@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "execution_lease.rs"]
+mod execution_lease;
+
 pub struct Fixture<'a> {
     pub db: &'a DatabaseConnection,
     pub client: &'a Client,
@@ -571,7 +574,7 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     let creation_count = count(f.db, "sdlc_draft_creations").await;
     stop.send(()).unwrap();
     handle.await.unwrap();
-    let (base, stop, handle) = start(config).await;
+    let (base, stop, handle) = start(config.clone()).await;
     let creation_url = creation_endpoint(&base, f.project, creation_key);
     assert_eq!(
         get_json(f.client, &creation_url, f.owner, 200).await,
@@ -691,4 +694,5 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     f.unavailable.store(false, Ordering::SeqCst);
     stop.send(()).unwrap();
     handle.await.unwrap();
+    execution_lease::verify(config, &f, &subject, &verifier).await;
 }

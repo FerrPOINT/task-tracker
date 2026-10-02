@@ -1,5 +1,57 @@
 # Tracker Clarification Verification
 
+## Ownership Lease Follow-Up, 2026-10-02
+
+The lease implementation was integrated with accepted Tracker main `fd3337b`
+before verification; the local merge baseline is `4e65725b`. Both Rust and an
+isolated frozen frontend snapshot use pinned Base
+`c083783a37791e277db796361203884b87828a7d`, verified read-only. Only pending
+000034 is extended; no accepted/shared database or runtime was migrated.
+
+Completed checks on the combined source:
+
+- PASS: Rust 1.88.0 Linux Docker fmt, locked all-targets check and strict
+  all-targets Clippy. Test-only migration dependency is declared explicitly;
+  Cargo lock reconciliation adds that dependency without upgrading packages.
+- PASS: serial locked workspace tests, 535 reported passed, zero failed,
+  23 ignored. The central-subject migration test still returns early without
+  its dedicated URL and is not claimed as PostgreSQL evidence.
+- PASS: fresh PostgreSQL 17.6 full-chain migration and actual TCP HTTP
+  `drafts --ignored`, 39.77 seconds. Lease coverage includes concurrent exact
+  claims/renewals, competing version CAS, payload/cross-operation conflict,
+  lost acknowledgement readback, source corruption, immediate ACL/account/Auth
+  revocation, restart and real expiry. A request is proven waiting in
+  `pg_stat_activity` on a held issue lock before expiry, then rejected after
+  the lock is released past expiry, without adding a receipt or renewal.
+  Historical replay does not renew; deletion/replacement and business writes
+  stay fenced. Pending migration down refuses to discard retained history.
+- PASS: separate disposable PostgreSQL TCP HTTP `sdlc --ignored`, 21.21
+  seconds, covering legacy clarification/confirmation, metadata and ownership
+  regressions. Both suites use a synthetic Central issuer, not live Base Auth.
+- PASS: isolated pinned/frozen frontend generate/typecheck/test, 45 files and
+  257 tests; OpenAPI client check/compatibility against current main,
+  lint/semantic/format/build, packed Base consumer and effective theme contrast
+  in Chromium against the built preview. The preview was stopped after checking.
+- PASS: six documentation/CI regression tests, README validation, 79 local
+  file links across 90 Markdown documents and credential-pattern smoke.
+- PASS: regenerated Rust OpenAPI is byte-identical to the committed spec;
+  no manual schema patch or package upgrade was used.
+
+Own QA PostgreSQL and build containers were stopped/removed without volume
+deletion. The frozen source snapshot and build caches are retained, not running
+services. Existing Compose groups, snapshots, secrets and pinned runtime images
+were not changed.
+
+CI preserves accepted pinned/locked/frozen, minimum-Rust, packed consumer,
+theme and deleted-key restore gates, and explicitly adds the two ignored
+SDLC HTTP suites using separate clean ephemeral PostgreSQL databases.
+
+The ownership receipt always says `dispatch_allowed=false`. This producer does
+not prove PM admission, credentials issuance, native catalog, task workspace,
+first-step consumption, live Hermes dispatch/resume or owner confirmation to
+Backlog. Those full-plan integration gaps remain. Other ignored legacy DB/Docker
+tests, whole-stack browser scenarios and live PM screenshots are not claimed.
+
 Historical baseline date: 1 October 2026. Later sections record completed
 sidecar/follow-up checks, including the 2 October input snapshot release.
 Scope is Tracker only; no sibling repo or production UI edits, merge, deployment

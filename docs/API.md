@@ -52,6 +52,19 @@ never installs current authority. All reserved PM writes/legacy assignments are
 blocked until later verified admission. Source DTOs: `backend/domain/src/sdlc_pm_draft.rs`.
 No admission, actual Fleet agent/config/chat/workspace or dispatch is claimed.
 
+Machine-only `POST/GET /api/v1/issues/{id}/sdlc/pm-draft-execution-lease`
+and `POST .../heartbeat` implement a separate persisted ownership lease.
+Claim uses `{expected_owner_version,fence,idempotency_key}`; heartbeat adds
+`lease_id,expected_lease_version`. TTL is 30s, suggested renewal interval 10s;
+PostgreSQL clock after locks and lease-version CAS determine validity. Exact
+idempotent replay never renews twice. GET distinguishes live/expired current from
+historical operation receipt; expiry is retained, not absence or automatic
+reacquire. Same existing exact PM grant and fresh machine/project authorization
+apply to every read/replay/renewal. No new scope, admission or run-side effect
+authority is introduced; reservation/owner cursor/business gate stay unchanged.
+Strict DTOs: `backend/domain/src/sdlc_execution_lease.rs`; complete wire and
+generation/recovery restrictions are in the clarification contract above.
+
 `GET /api/v1/issues/{id}/sdlc/pm-draft-input` returns
 `{contract_version:1,tracker_instance_id,project_id,task_id,root_task_id,owner_subject,
 input:{snapshot_ref,title,description,sha256}}`. It reads the immutable original

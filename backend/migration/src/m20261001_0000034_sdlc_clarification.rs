@@ -133,6 +133,67 @@ BEGIN
 END $$;
 CREATE TRIGGER sdlc_pm_reservation_gate BEFORE UPDATE ON sdlc_tasks
 FOR EACH ROW EXECUTE FUNCTION sdlc_pm_reservation_gate();
+CREATE TABLE sdlc_pm_execution_leases (
+    execution_id uuid PRIMARY KEY REFERENCES sdlc_pm_executions(execution_id) ON DELETE RESTRICT,
+    lease_id uuid NOT NULL UNIQUE CHECK (lease_id != '00000000-0000-0000-0000-000000000000'::uuid),
+    version bigint NOT NULL CHECK (version BETWEEN 1 AND 9007199254740991),
+    holder_subject text NOT NULL CHECK (length(holder_subject)>0),
+    claimed_at timestamptz NOT NULL,
+    heartbeat_at timestamptz NOT NULL,
+    expires_at timestamptz NOT NULL,
+    result jsonb NOT NULL,
+    CHECK (heartbeat_at>=claimed_at AND expires_at=heartbeat_at+interval '30 seconds'),
+    CHECK (version!=1 OR heartbeat_at=claimed_at),
+    CHECK ((result->'lease'->>'lease_id'=lease_id::text
+        AND (result->'lease'->>'version')::bigint=version
+        AND result->'lease'->>'holder_subject'=holder_subject
+        AND (result->'lease'->>'claimed_at')::timestamptz=claimed_at
+        AND (result->'lease'->>'heartbeat_at')::timestamptz=heartbeat_at
+        AND (result->'lease'->>'expires_at')::timestamptz=expires_at
+        AND result->'fence'->>'execution_id'=execution_id::text
+        AND result->'ttl_seconds'='30'::jsonb
+        AND result->'heartbeat_seconds'='10'::jsonb
+        AND result->'dispatch_allowed'='false'::jsonb) IS TRUE)
+);
+CREATE TABLE sdlc_pm_lease_operations (
+    execution_id uuid NOT NULL REFERENCES sdlc_pm_execution_leases(execution_id) ON DELETE RESTRICT,
+    actor_subject text NOT NULL CHECK (length(actor_subject)>0),
+    idempotency_key text NOT NULL CHECK (octet_length(idempotency_key) BETWEEN 1 AND 128),
+    payload_hash text NOT NULL CHECK (payload_hash ~ '^[0-9a-f]{64}$'),
+    lease_version bigint NOT NULL CHECK (lease_version BETWEEN 1 AND 9007199254740991),
+    result jsonb NOT NULL,
+    PRIMARY KEY(execution_id,actor_subject,idempotency_key),
+    UNIQUE(execution_id,lease_version),
+    CHECK ((result->'fence'->>'execution_id'=execution_id::text
+        AND (result->'lease'->>'version')::bigint=lease_version
+        AND result->'lease'->>'holder_subject'=actor_subject
+        AND result->'dispatch_allowed'='false'::jsonb) IS TRUE)
+);
+CREATE FUNCTION sdlc_pm_lease_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP='DELETE' THEN
+        RAISE EXCEPTION 'SDLC ownership lease cannot be deleted/reacquired' USING ERRCODE='23514';
+    END IF;
+    IF TG_OP='INSERT' THEN
+        IF NEW.version!=1 THEN
+            RAISE EXCEPTION 'SDLC initial ownership lease version invalid' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF NEW.execution_id IS DISTINCT FROM OLD.execution_id
+        OR NEW.lease_id IS DISTINCT FROM OLD.lease_id
+        OR NEW.holder_subject IS DISTINCT FROM OLD.holder_subject
+        OR NEW.claimed_at IS DISTINCT FROM OLD.claimed_at
+        OR NEW.version!=OLD.version+1
+        OR NEW.heartbeat_at<OLD.heartbeat_at
+        OR OLD.expires_at<=clock_timestamp()
+        OR (NEW.result-'lease') IS DISTINCT FROM (OLD.result-'lease') THEN
+        RAISE EXCEPTION 'SDLC expired or inconsistent ownership lease requires quiescence' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_pm_lease_gate BEFORE INSERT OR UPDATE OR DELETE ON sdlc_pm_execution_leases
+FOR EACH ROW EXECUTE FUNCTION sdlc_pm_lease_gate();
 CREATE TABLE sdlc_requests (
     request_id uuid PRIMARY KEY,
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
@@ -245,7 +306,7 @@ DO $$ DECLARE name text; BEGIN
     FOREACH name IN ARRAY ARRAY['sdlc_instance', 'sdlc_agent_bindings', 'sdlc_assignments',
         'sdlc_requests', 'sdlc_question_versions', 'sdlc_options', 'sdlc_requirements',
         'sdlc_answers', 'sdlc_evidence', 'sdlc_confirmations', 'sdlc_idempotency', 'sdlc_outbox',
-        'sdlc_draft_creations', 'sdlc_pm_executions']
+        'sdlc_draft_creations', 'sdlc_pm_executions', 'sdlc_pm_lease_operations']
     LOOP
         EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()', name);
     END LOOP;

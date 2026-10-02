@@ -41,7 +41,14 @@ fresh ACL and exact author namespace, validates retained entity/binding/input an
 returns only the original CreatedDraft. See the bounded contract for full future
 admission, replacement quiescence and resume responsibilities. Opt-in metadata outbox
 projects immutable events and historical references without emitting content.
-Its serialized whole envelope is byte-bounded; legacy outbox remains unchanged.
+The separate execution ownership lease reuses strict Central auth and the exact
+persisted PM grant, project/aggregate locks and immutable reservation/input
+checks. It locks one lease cursor, then reads PostgreSQL clock_timestamp; an
+append-only operation receipt and renewal cursor commit in one transaction.
+Historical replay is never renewal/current authority. No lease deletion,
+replacement/reacquire, admission or runtime side effect is enabled; reservation
+JSON, owner cursor and reserved application/DB business gates remain unchanged.
+The metadata serialized whole envelope is byte-bounded; legacy outbox remains unchanged.
 Fleet must pin the projection before consumption and persist its own inbox/cursor.
 
 Read-only project scope uses the same strict route layer but one indexed SQL

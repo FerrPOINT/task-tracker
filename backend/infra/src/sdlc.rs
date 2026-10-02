@@ -10,6 +10,9 @@ use serde_json::{Value as Json, json};
 use shared::AppError;
 use uuid::Uuid;
 
+#[path = "sdlc_execution_lease.rs"]
+mod execution_lease;
+
 pub struct PostgresSdlcRepository {
     db: DatabaseConnection,
     config: SdlcConfig,
@@ -462,6 +465,30 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn claim_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_execution_lease::ClaimExecutionLease,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.claim_pm_lease(task, actor, command).await
+    }
+    async fn heartbeat_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_execution_lease::HeartbeatExecutionLease,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.heartbeat_pm_lease(task, actor, command).await
+    }
+    async fn execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: Option<&str>,
+    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseReadback, AppError> {
+        self.read_pm_lease(task, actor, key).await
+    }
     async fn reserve_pm_draft(
         &self,
         task: Uuid,

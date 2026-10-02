@@ -512,6 +512,24 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn claim_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_execution_lease::ClaimExecutionLease,
+    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
+    async fn heartbeat_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_execution_lease::HeartbeatExecutionLease,
+    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
+    async fn execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: Option<&str>,
+    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseReadback, AppError>;
     async fn reserve_pm_draft(
         &self,
         task: Uuid,

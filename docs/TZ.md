@@ -29,6 +29,12 @@ business writes and legacy assignment. Creation-operation GET provides original
 seven-field readback for unknown acceptance before POST replay, scoped to exact
 human author/project/key with fresh ACL and 409 for retained corrupt/missing
 source; content is read separately from pm-draft-input.
+The separate machine-only execution ownership lease has PostgreSQL TTL 30s and
+suggested renewal interval 10s, exact persisted assignment grant/fence and fresh
+ACL on reads/replays/renewals. Lease version CAS and append-only history prevent
+double renewal on retry. Expiry/unknown outcomes never authorize automatic
+reacquire, admission, runtime heartbeat or run-side effects. Reservation owner
+version and reserved business gates remain unchanged; full admission is later.
 The separate opt-in metadata_v1 outbox bounds
 serialized whole responses; legacy full-result events remain unchanged. Fleet
 projection pinning/inbox and Workflow resume remain external integration work.

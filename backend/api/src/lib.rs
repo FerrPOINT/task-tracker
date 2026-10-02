@@ -87,6 +87,9 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::pm_draft_input,
         routes::sdlc::pm_draft_assignment,
         routes::sdlc::reserve_pm_draft,
+        routes::sdlc::claim_execution_lease,
+        routes::sdlc::heartbeat_execution_lease,
+        routes::sdlc::execution_lease,
         routes::sdlc::bind,
         routes::sdlc::assign,
         routes::sdlc::questions,
@@ -951,6 +954,50 @@ mod tests {
             revision["properties"]["revision"]["maximum"].as_f64(),
             Some(9007199254740991f64)
         );
+    }
+
+    #[test]
+    fn ownership_lease_schema_is_strict_separate_and_never_dispatch_authority() {
+        let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        for (name, fields) in [
+            ("ClaimExecutionLease", 3),
+            ("HeartbeatExecutionLease", 5),
+            ("ExecutionLeaseReceipt", 8),
+            ("ExecutionLeaseReadback", 9),
+            ("ExecutionLease", 6),
+            ("ExecutionLeaseOperation", 3),
+        ] {
+            let schema = &doc["components"]["schemas"][name];
+            assert_eq!(schema["additionalProperties"], false, "{name}");
+            assert_eq!(
+                schema["properties"].as_object().unwrap().len(),
+                fields,
+                "{name}"
+            );
+            assert_eq!(
+                schema["required"].as_array().unwrap().len(),
+                fields,
+                "{name}"
+            );
+        }
+        for name in ["ExecutionLeaseReceipt", "ExecutionLeaseReadback"] {
+            assert_eq!(
+                doc["components"]["schemas"][name]["properties"]["dispatch_allowed"]["enum"],
+                serde_json::json!([false])
+            );
+        }
+        let path = "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease";
+        for (route, method) in [
+            (path.to_string(), "get"),
+            (path.to_string(), "post"),
+            (format!("{path}/heartbeat"), "post"),
+        ] {
+            let operation = &doc["paths"][route][method];
+            assert!(!operation["security"].as_array().unwrap().is_empty());
+            for status in ["200", "401", "403", "404", "409", "422", "503"] {
+                assert!(operation["responses"][status].is_object());
+            }
+        }
     }
 
     #[test]

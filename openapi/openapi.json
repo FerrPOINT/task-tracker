@@ -1941,6 +1941,207 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "execution_lease",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "claim_execution_lease",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimExecutionLease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Historical exact replay; consult current readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Lease claimed or source/fence inconsistent; no automatic reacquire"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/heartbeat": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "heartbeat_execution_lease",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatExecutionLease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Ownership renewal or historical exact replay; never runtime/admission authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Expired/unknown/stale lease; quiescence recovery required"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/pm-draft-input": {
       "get": {
         "tags": [
@@ -6038,6 +6239,29 @@
         },
         "additionalProperties": false
       },
+      "ClaimExecutionLease": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "fence",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "CommentListResponse": {
         "type": "object",
         "required": [
@@ -6727,6 +6951,192 @@
         },
         "additionalProperties": false
       },
+      "ExecutionLease": {
+        "type": "object",
+        "required": [
+          "lease_id",
+          "version",
+          "holder_subject",
+          "claimed_at",
+          "heartbeat_at",
+          "expires_at"
+        ],
+        "properties": {
+          "claimed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "heartbeat_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "holder_subject": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLeaseOperation": {
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "request_sha256",
+          "result"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLeaseReadback": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "binding",
+          "owner_version",
+          "fence",
+          "observed_at",
+          "state",
+          "current",
+          "operation",
+          "dispatch_allowed"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/PmDraftBinding"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionLease"
+              }
+            ]
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "operation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionLeaseOperation"
+              }
+            ]
+          },
+          "owner_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ExecutionLeaseState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLeaseReceipt": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "binding",
+          "owner_version",
+          "fence",
+          "lease",
+          "ttl_seconds",
+          "heartbeat_seconds",
+          "dispatch_allowed"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/PmDraftBinding"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "heartbeat_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 10,
+            "minimum": 10
+          },
+          "lease": {
+            "$ref": "#/components/schemas/ExecutionLease"
+          },
+          "owner_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 30,
+            "minimum": 30
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLeaseState": {
+        "type": "string",
+        "enum": [
+          "unclaimed",
+          "active",
+          "expired"
+        ]
+      },
       "ExportIssuesRequest": {
         "type": "object",
         "required": [
@@ -6751,6 +7161,41 @@
             }
           }
         }
+      },
+      "HeartbeatExecutionLease": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "fence",
+          "lease_id",
+          "expected_lease_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
       },
       "IssueLinkListResponse": {
         "type": "object",

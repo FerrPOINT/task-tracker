@@ -3724,6 +3724,7 @@ dependencies = [
  "domain",
  "infra",
  "jsonwebtoken",
+ "migration",
  "p256",
  "reqwest",
  "sdlc-telemetry",
