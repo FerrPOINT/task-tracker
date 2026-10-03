@@ -220,7 +220,8 @@ task-tracker/
 - [docs/TZ.md](docs/TZ.md) — техническое задание.
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — модель данных.
 - [docs/API.md](docs/API.md) — API notes.
-- [docs/SDLC_ROUTING_V1.md](docs/SDLC_ROUTING_V1.md) — owner API маршрутизации семи ролей и неизменяемый snapshot публикации; явный API opt-in, не runtime admission.
+- [docs/SDLC_ROUTING_V1.md](docs/SDLC_ROUTING_V1.md) — owner API маршрутизации семи ролей и неизменяемый snapshot публикации; явный opt-in, не runtime admission.
+- [docs/SDLC_UI_V1.md](docs/SDLC_UI_V1.md) — owner consent/readback и отдельный opt-in опубликованной policy, без редактора или native readiness.
 - [docs/SDLC_RESERVATION_V1.md](docs/SDLC_RESERVATION_V1.md) — prepared Analysis assignment, capacity/lease/CAS и readback; без dispatch или admission.
 - [docs/CHAT_CLARIFICATION_CONTRACT.md](docs/CHAT_CLARIFICATION_CONTRACT.md) — SDLC Fleet DTOs, scoped paginated project directory, machine grants, PM reservation and ownership lease (not runtime admission).
 - [docs/CHAT_CLARIFICATION_VERIFICATION.md](docs/CHAT_CLARIFICATION_VERIFICATION.md) — Tracker verification and integration gaps.

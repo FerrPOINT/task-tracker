@@ -8,6 +8,19 @@ export type Confirmation = components['schemas']['Confirmation']
 export type MetadataEvent = components['schemas']['MetadataEvent']
 export type MetadataPage = components['schemas']['MetadataPage']
 export type ConfirmCommand = components['schemas']['ConfirmCommand']
+export type RoutingPolicy = components['schemas']['RoutingPolicy']
+export type RoleRoute = components['schemas']['RoleRoute']
+export type RoleRoutes = components['schemas']['RoleRoutes']
+
+export const routingRoles = {
+  project_manager: 'project_manager',
+  analyst: 'analyst',
+  architect: 'architect',
+  developer: 'developer',
+  reviewer: 'reviewer',
+  tester: 'tester',
+  devops: 'devops',
+} as const satisfies Record<keyof RoleRoutes, keyof RoleRoutes>
 
 export class SdlcRequestError extends Error {
   constructor(public readonly status: number) {
@@ -19,6 +32,78 @@ export type SdlcSnapshot = {
   context: SdlcContext
   requirements: RequirementsRevision | null
   intent: AnalysisIntent | null
+}
+
+export async function getSdlcRoutingPolicy(
+  context: SdlcContext,
+  signal?: AbortSignal,
+): Promise<RoutingPolicy | null> {
+  const { data, response } = await api.GET('/api/v1/projects/{project_id}/sdlc/routing-policy', {
+    params: { path: { project_id: context.project_id } },
+    signal,
+  })
+  if (response.status === 404) return null
+  if (!data) throw new SdlcRequestError(response.status)
+  const hash = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
+  const positive = (value: number) => Number.isSafeInteger(value) && value > 0
+  const numericId = (value: string) =>
+    typeof value === 'string' &&
+    /^[1-9][0-9]{0,18}$/.test(value) &&
+    BigInt(value) <= 9223372036854775807n
+  const uuid = (value: string) =>
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(value) &&
+    value !== '00000000-0000-0000-0000-000000000000'
+  const identityFields = [
+    'agent_id',
+    'namespace_id',
+    'workflow_id',
+  ] as const satisfies readonly (keyof RoleRoute)[]
+  if (
+    data.contract_version !== 1 ||
+    data.project_id !== context.project_id ||
+    data.tracker_instance_id !== context.tracker_instance_id ||
+    !positive(data.version) ||
+    !hash(data.routing_hash) ||
+    data.verification !== 'declared' ||
+    data.native_ready !== false ||
+    data.dispatch_allowed !== false ||
+    !data.routes ||
+    Object.keys(data.routes).length !== Object.keys(routingRoles).length ||
+    Object.values(routingRoles).some((role) => {
+      const route = data.routes[role]
+      const suffix = role.replaceAll('_', '-')
+      const profile =
+        role === 'tester'
+          ? 'hermes-sdlc-quality'
+          : role === 'devops'
+            ? 'hermes-sdlc-operations'
+            : `hermes-sdlc-${suffix}`
+      return (
+        !route ||
+        !uuid(route.agent_id) ||
+        !positive(route.fleet_config_revision) ||
+        route.package_commit !== '4b9b4c9297a13fb28a6ba2039af2f7cb719f2f58' ||
+        !hash(route.package_manifest_sha256) ||
+        !numericId(route.namespace_id) ||
+        !numericId(route.workflow_id) ||
+        route.namespace_name !== `hermes-${suffix}` ||
+        route.workflow_key !== `hermes-sdlc:${role}` ||
+        route.profile !== profile ||
+        route.workflow_catalog_version !== 3 ||
+        !hash(route.workflow_catalog_sha256) ||
+        route.package_manifest_sha256 !== data.routes.project_manager.package_manifest_sha256 ||
+        route.workflow_catalog_sha256 !== data.routes.project_manager.workflow_catalog_sha256
+      )
+    }) ||
+    identityFields.some(
+      (field) =>
+        new Set(Object.values(data.routes).map((route) => route[field])).size !==
+        Object.keys(routingRoles).length,
+    )
+  )
+    throw new SdlcRequestError(409)
+  return data
 }
 
 export async function getSdlcSnapshot(

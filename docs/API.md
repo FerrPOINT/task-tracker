@@ -1,5 +1,14 @@
 # API v1 Specification — Task Tracker
 
+## UI Opt-In Публикации
+
+Owner consent UI читает существующую project routing policy и передаёт
+`expected_routing_policy_version` только после отдельного explicit checkbox.
+Unchecked legacy omits поле; stale policy/error/loading не подменяет selection.
+Только current human task owner с `can_confirm`; backend ACL/CAS неизменны.
+Declared refs — preparation, не native-ready/dispatch.
+[Контракт и проверки UI](SDLC_UI_V1.md).
+
 ## Prepared Analysis reservation
 
 Tracker-only strict API: POST/GET
@@ -53,7 +62,8 @@ annotation is corrected and covered by the API schema test. Exact confirmation
 is followed by fresh context/intent readback; the Backlog receipt alone never
 renders Analysis, assignment or success. [UI wire and freshness contract](SDLC_UI_V1.md).
 
-Analysis claim/heartbeat/assignment ACK endpoints are not implemented. The existing
+Tracker-only prepared reservation/heartbeat/readback реализованы отдельно выше;
+это не Analysis runtime claim или assignment ACK. The existing
 execution-lease API is PM-specific and does not grant Analyst admission. Missing
 Tracker integration of Fleet's new read-only configuration observation, native
 admission/acceptance/verified-stop lookup and pre-decomposition Workflow assignment

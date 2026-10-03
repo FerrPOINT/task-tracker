@@ -351,6 +351,11 @@ CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию исп
 namespace меняется при смене credential без bearer в query keys; 401/403 скрывают
 cached owner data, stale/readback error блокирует consent. Mutation использует
 exact revision/hash и stable per-pin operation key, не optimistic transition.
+Отдельная owner-only query читает существующую published project routing policy.
+Unchecked publication opt-in сохраняет legacy omission; явный выбор фиксирует
+version/hash отдельно от head и передаёт exact version в generated ConfirmCommand.
+Stale policy/source errors блокируют routed confirmation без замены выбора;
+unknown POST блокирует retry до fresh context readback. Нет редактора policy.
 Нет Fleet/config/dispatch вызовов, новых runtime producers или live fixtures.
 Подробнее: [B-SDLC-05 UI contract](SDLC_UI_V1.md).
 

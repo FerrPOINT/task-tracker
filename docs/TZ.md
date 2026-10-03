@@ -1,5 +1,13 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+## B-SDLC-05: Явный Routing Opt-In
+
+В existing owner consent UI добавлен отдельный unchecked выбор существующей
+опубликованной project policy. Точная просмотренная версия включается в confirm
+только явно; legacy omission сохраняется. Нет policy editor, scheduler, native
+admission или release. Stale CAS/error сохраняют inputs и блокируют routed write;
+unknown POST требует fresh context readback. [Owner UI](SDLC_UI_V1.md).
+
 ## B-SDLC-01: prepared Analysis assignment
 
 Добавлен usable authorized Tracker reservation API с обязательным frozen routing
@@ -8,8 +16,8 @@ execution/lease identity, fence/key/hash, root1/agent1/pool2 hold и outbox.
 TTL30/heartbeat10 с lease-version CAS; read-only GET показывает expiry и
 reconciliation_needed. Replay не переписывает head. PM unknown блокирует reserve,
 legacy без snapshot не включаются. Это awaiting_admission, не InProgress/run;
-release/ACK/native admission/dispatch отсутствуют. UI routing по-прежнему explicit
-API-only, UI не расширен. [Owner API и проверки](SDLC_RESERVATION_V1.md).
+release/ACK/native admission/dispatch отсутствуют. UI публикации поддерживает
+отдельный explicit opt-in, без редактора policy. [Owner API и проверки](SDLC_RESERVATION_V1.md).
 
 ## SDLC Clarification: Implemented Backend Scope
 
@@ -20,7 +28,8 @@ consent/intent/outbox транзакции. Policy update влияет толь�
 исторические PM данные и legacy задачи не включаются автоматически. Policy управляет
 существующий владелец проекта с пользовательской сессией, без нового PAT grant или
 Central bypass. Это declared refs, не native readiness/admission/dispatch.
-Текущий UI не включает routing; policy UI остаётся pending: [контракт](SDLC_ROUTING_V1.md).
+UI включает routing только отдельным явным выбором published policy;
+policy editor остаётся pending: [контракт](SDLC_ROUTING_V1.md).
 
 The first B-SDLC-01 backend slice extends exact owner confirmation with one
 durable Analysis/Ready intent in the same transaction as consent, issue history,

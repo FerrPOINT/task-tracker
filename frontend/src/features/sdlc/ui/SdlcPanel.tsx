@@ -5,9 +5,12 @@ import { ArrowLeft, ArrowRight, Check, RefreshCw } from 'lucide-react'
 import { Button, EmptyState, ErrorState, Label, LoadingState } from '@sdlc/ui/ui'
 import {
   confirmRequirements,
+  routingRoles,
   SdlcRequestError,
   type MetadataEvent,
   type RequirementsRevision,
+  type ConfirmCommand,
+  type RoutingPolicy,
 } from '@/api/sdlc'
 import { useSdlcTask } from '../model/use-sdlc'
 
@@ -51,13 +54,28 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
   const qc = useQueryClient()
   const [cursors, setCursors] = useState(['0'])
   const after = cursors[cursors.length - 1] ?? '0'
-  const { snapshot, metadata, queryKey, authenticated } = useSdlcTask(issueId, after)
+  const { snapshot, metadata, routingPolicy, queryKey, authenticated } = useSdlcTask(issueId, after)
   const [acknowledgedPin, setAcknowledgedPin] = useState<string | null>(null)
+  const [publication, setPublication] = useState<{ pin: string; policy: RoutingPolicy } | null>(
+    null,
+  )
+  const [conflictedPublication, setConflictedPublication] = useState<string | null>(null)
   const operationKeys = useRef(new Map<string, string>())
   const confirm = useMutation({
-    mutationFn: ({ revision, hash, key }: { revision: number; hash: string; key: string }) =>
-      confirmRequirements(issueId, revision, { content_hash: hash, idempotency_key: key }),
+    mutationFn: ({ revision, command }: { revision: number; command: ConfirmCommand }) =>
+      confirmRequirements(issueId, revision, command),
     retry: false,
+    onError: (error, variables) => {
+      if (
+        error instanceof SdlcRequestError &&
+        error.status === 409 &&
+        variables.command.expected_routing_policy_version != null
+      ) {
+        setConflictedPublication(
+          `${variables.command.expected_routing_policy_version}:${variables.command.content_hash}`,
+        )
+      }
+    },
     onSettled: async () => {
       await snapshot.refetch()
       await qc.invalidateQueries({ queryKey: [...queryKey, 'metadata'] })
@@ -76,7 +94,14 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     (snapshot.error.status === 401 || snapshot.error.status === 403)
   const refresh = async () => {
     const result = await snapshot.refetch()
-    if (result.data && !result.error) await metadata.refetch()
+    if (result.data && !result.error) {
+      await metadata.refetch()
+      if (
+        result.data.context.permissions.can_confirm &&
+        result.data.context.stage === 'Clarification'
+      )
+        await routingPolicy.refetch()
+    }
   }
   if (!authenticated) return <ErrorState message={t('sdlc.errors.401')} />
   if (snapshot.isPending) return <LoadingState message={t('sdlc.loading')} />
@@ -114,11 +139,28 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     !snapshot.isFetching &&
     !snapshot.error &&
     !confirm.isPending
+  const selected = publication?.pin === pin ? publication.policy : null
+  const policyReady = Boolean(
+    routingPolicy.data && !routingPolicy.isFetching && !routingPolicy.error,
+  )
+  const publicationReady =
+    !selected ||
+    (policyReady &&
+      selected.version === routingPolicy.data?.version &&
+      selected.routing_hash === routingPolicy.data?.routing_hash &&
+      conflictedPublication !== `${selected.version}:${requirements?.content_hash}`)
+  const displayedPolicy = selected ?? (policyReady ? routingPolicy.data : null)
   const submitConfirmation = (document: RequirementsRevision) => {
-    if (!canConfirm || acknowledgedPin !== pin) return
-    const key = operationKeys.current.get(pin!) ?? crypto.randomUUID()
-    operationKeys.current.set(pin!, key)
-    confirm.mutate({ revision: document.revision, hash: document.content_hash, key })
+    if (!canConfirm || acknowledgedPin !== pin || !publicationReady) return
+    const operationPin = `${pin}:${selected ? `${selected.version}:${selected.routing_hash}` : 'legacy'}`
+    const key = operationKeys.current.get(operationPin) ?? crypto.randomUUID()
+    operationKeys.current.set(operationPin, key)
+    const command: ConfirmCommand = {
+      content_hash: document.content_hash,
+      idempotency_key: key,
+      ...(selected ? { expected_routing_policy_version: selected.version } : {}),
+    }
+    confirm.mutate({ revision: document.revision, command })
   }
 
   return (
@@ -232,8 +274,95 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                     />
                     <span>{t('sdlc.acknowledge', { revision: requirements.revision })}</span>
                   </Label>
+                  <section aria-label={t('sdlc.publication.title')} className="mb-4 min-w-0">
+                    <h4 className="mb-2 font-medium">{t('sdlc.publication.title')}</h4>
+                    {routingPolicy.isFetching && (
+                      <LoadingState message={t('sdlc.publication.loading')} />
+                    )}
+                    {routingPolicy.error && (
+                      <ErrorState
+                        message={errorMessage(routingPolicy.error)}
+                        onRetry={() => void routingPolicy.refetch()}
+                      />
+                    )}
+                    {!routingPolicy.isPending && !routingPolicy.error && !routingPolicy.data && (
+                      <p className="text-text-muted">{t('sdlc.publication.absent')}</p>
+                    )}
+                    {routingPolicy.error instanceof SdlcRequestError &&
+                    [401, 403].includes(routingPolicy.error.status)
+                      ? null
+                      : displayedPolicy && (
+                          <>
+                            <p className="mb-2 text-text-muted">
+                              {t('sdlc.publication.preparation')}
+                            </p>
+                            <dl className="mb-2">
+                              <Field label={t('sdlc.revision')}>{displayedPolicy.version}</Field>
+                            </dl>
+                            <details className="mb-3 min-w-0">
+                              <summary>{t('sdlc.publication.references')}</summary>
+                              <dl>
+                                <Field label="SHA-256">{displayedPolicy.routing_hash}</Field>
+                              </dl>
+                              {Object.values(routingRoles).map((role) => {
+                                const route = displayedPolicy.routes[role]
+                                return (
+                                  <section key={role} className="border-b border-border py-2">
+                                    <h5 className="mb-1 font-medium">
+                                      {t(`sdlc.publication.roles.${role}`)}
+                                    </h5>
+                                    <dl>
+                                      <Field label={t('sdlc.publication.agent')}>
+                                        {route.agent_id}
+                                      </Field>
+                                      <Field label={t('sdlc.publication.effectiveRevision')}>
+                                        {route.fleet_config_revision}
+                                      </Field>
+                                      <Field label={t('sdlc.publication.package')}>
+                                        {route.package_commit} / {route.package_manifest_sha256}
+                                      </Field>
+                                      <Field label={t('sdlc.publication.workflow')}>
+                                        {route.namespace_id} / {route.namespace_name} /{' '}
+                                        {route.workflow_id} / {route.workflow_key}
+                                      </Field>
+                                      <Field label={t('sdlc.publication.profile')}>
+                                        {route.profile} / {route.workflow_catalog_version} /{' '}
+                                        {route.workflow_catalog_sha256}
+                                      </Field>
+                                    </dl>
+                                  </section>
+                                )
+                              })}
+                            </details>
+                            <Label className="flex min-h-10 items-start gap-2">
+                              <input
+                                type="checkbox"
+                                className="mt-1 h-4 w-4 shrink-0 accent-accent"
+                                checked={Boolean(selected)}
+                                disabled={!canConfirm || (!selected && !policyReady)}
+                                onChange={(event) => {
+                                  setPublication(
+                                    event.target.checked && pin && policyReady
+                                      ? { pin, policy: routingPolicy.data! }
+                                      : null,
+                                  )
+                                  setConflictedPublication(null)
+                                }}
+                              />
+                              <span>
+                                {t('sdlc.publication.select', { version: displayedPolicy.version })}
+                              </span>
+                            </Label>
+                            {selected && !publicationReady && (
+                              <p role="status" className="mt-2 text-text-muted">
+                                {t('sdlc.publication.stale')}
+                              </p>
+                            )}
+                          </>
+                        )}
+                  </section>
                   <Button
-                    disabled={!canConfirm || acknowledgedPin !== pin}
+                    disabled={!canConfirm || acknowledgedPin !== pin || !publicationReady}
                     onClick={() => submitConfirmation(requirements)}
                     className="min-h-10 whitespace-normal"
                   >

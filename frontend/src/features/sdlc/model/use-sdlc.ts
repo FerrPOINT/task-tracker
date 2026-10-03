@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getSdlcMetadata, getSdlcSnapshot } from '@/api/sdlc'
+import { getSdlcMetadata, getSdlcRoutingPolicy, getSdlcSnapshot } from '@/api/sdlc'
 import { useAuthStore } from '@/shared/auth/store'
 
 export function useSdlcTask(issueId: string, after: string) {
@@ -26,5 +26,20 @@ export function useSdlcTask(issueId: string, after: string) {
     retry: false,
     gcTime: 0,
   })
-  return { snapshot, metadata, queryKey, authenticated: Boolean(session.token) }
+  const context = snapshot.data?.context
+  const routingPolicy = useQuery({
+    queryKey: [...queryKey, 'routing-policy', context?.project_id, context?.tracker_instance_id],
+    queryFn: ({ signal }) => getSdlcRoutingPolicy(context!, signal),
+    enabled: Boolean(
+      session.token &&
+      context?.permissions.can_confirm &&
+      context.stage === 'Clarification' &&
+      !forbidden &&
+      !snapshot.error &&
+      !snapshot.isFetching,
+    ),
+    retry: false,
+    gcTime: 0,
+  })
+  return { snapshot, metadata, routingPolicy, queryKey, authenticated: Boolean(session.token) }
 }

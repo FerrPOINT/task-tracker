@@ -11,7 +11,8 @@ Fresh Fleet native admission, Workflow acceptance и trusted verified-stop ос�
 обязательными следующими counterpart interfaces, а не результатом reserve.
 
 Нужен snapshot явной публикации из [SDLC_ROUTING_V1](SDLC_ROUTING_V1.md).
-Текущий UI confirmation routing не включает. Legacy задачи без snapshot не
+UI confirmation включает routing только отдельным явным выбором опубликованной
+policy, без автоматического enrollment. Legacy задачи без snapshot не
 включаются автоматически. Любое прежнее неподтверждённое PM execution/assignment,
 в том числе сохранённая история, даёт `409 pm_quiescence_unverified`.
 Stage, confirmation и expiry не доказывают остановку PM. Пока trusted stop
@@ -162,7 +163,8 @@ frozen JSON. Экспорт содержит Stage `Draft|Clarification|Backlog|
 11 strict metadata event types. Generated TypeScript consistency и scoped
 B05 typecheck прошли. Exhaustive B05 event-label map дополнен только нейтральной
 подписью prepared/awaiting admission; отдельный history component test прошёл.
-Новые policy UI, opt-in UI, admission или runtime-success состояния не добавлены.
+В reservation срезе policy/opt-in UI не добавлялись. Последующий
+[B-SDLC-05 opt-in](SDLC_UI_V1.md) не добавляет admission или runtime-success.
 
 Actual PG/HTTP metadata fixture сохраняет bounded ответ `metadata_v1` с
 `analysis.intent_created` и `analysis.assignment_reserved`; routing payload,

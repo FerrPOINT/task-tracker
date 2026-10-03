@@ -127,10 +127,11 @@ Replay старого consent не обращается к новому head pol
 Изменённая opt-in версия с прежним consent key даёт конфликт. Новая публикация может
 явно выбрать новую текущую версию; редактирование policy не переназначает текущую задачу.
 
-**Текущий UI confirmation не передаёт `expected_routing_policy_version` и не включает
-routing автоматически.** Этот срез предоставляет явный opt-in через API. UI настройки
-project policy и выбора версии при confirmation остаётся следующим интерфейсом;
-текущий UI не изменяется.
+**UI confirmation не включает routing автоматически.** Отдельный unchecked выбор
+существующей опубликованной policy передаёт точную просмотренную
+`expected_routing_policy_version`. Без выбора legacy omission сохраняется.
+Stale/error/loading source не подменяет выбор новым head; routed confirm блокируется.
+[Owner UI](SDLC_UI_V1.md). UI настройки project policy остаётся pending.
 
 Readback проверяет сохранённые policy/hash, task/root/instance и точный confirmation.
 Это только configuration/routing prerequisite. Analysis/Ready по-прежнему означает

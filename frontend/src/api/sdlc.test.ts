@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { confirmRequirements, getSdlcMetadata, getSdlcSnapshot, SdlcRequestError } from './sdlc'
+import {
+  confirmRequirements,
+  getSdlcMetadata,
+  getSdlcRoutingPolicy,
+  getSdlcSnapshot,
+  SdlcRequestError,
+} from './sdlc'
+import { routingPolicy } from './test-fixtures/routing-policy'
 import type { AnalysisIntent, SdlcContext, RequirementsRevision } from './sdlc'
 
 const { GET, POST } = vi.hoisted(() => ({ GET: vi.fn(), POST: vi.fn() }))
@@ -123,6 +130,62 @@ describe('SDLC generated API adapter', () => {
       params: { path: { id: task, revision: 2 } },
       body: command,
     })
+  })
+  it('reads the existing project policy with generated path parameters and abort signal', async () => {
+    const policy = routingPolicy(task)
+    const signal = new AbortController().signal
+    GET.mockResolvedValue(success(policy))
+    await expect(getSdlcRoutingPolicy(context, signal)).resolves.toEqual(policy)
+    expect(GET).toHaveBeenCalledWith('/api/v1/projects/{project_id}/sdlc/routing-policy', {
+      params: { path: { project_id: task } },
+      signal,
+    })
+  })
+  it.each([401, 403, 409, 503])('does not treat policy HTTP %i as absent', async (status) => {
+    GET.mockResolvedValue({ response: { status } })
+    await expect(getSdlcRoutingPolicy(context)).rejects.toMatchObject({ status })
+  })
+  it('keeps missing policy distinct from invalid or admitted policy', async () => {
+    GET.mockResolvedValue({ response: { status: 404 } })
+    await expect(getSdlcRoutingPolicy(context)).resolves.toBeNull()
+  })
+  it.each([
+    ['contract_version', 2],
+    ['version', 0],
+    ['version', 9007199254740992],
+    ['project_id', confirmation],
+    ['tracker_instance_id', 'foreign'],
+    ['native_ready', true],
+    ['dispatch_allowed', true],
+    ['verification', 'verified'],
+  ])('rejects malformed policy %s=%s', async (field, value) => {
+    GET.mockResolvedValue(success({ ...routingPolicy(task), [field]: value }))
+    await expect(getSdlcRoutingPolicy(context)).rejects.toMatchObject({ status: 409 })
+  })
+  it.each([
+    ['agent_id', '00000000-0000-4000-8000-000000000001'],
+    ['namespace_id', '1'],
+    ['workflow_id', '11'],
+    ['namespace_id', '02'],
+    ['workflow_id', '9223372036854775808'],
+    ['fleet_config_revision', 0],
+    ['package_commit', 'HEAD'],
+    ['workflow_catalog_version', 2],
+    ['package_manifest_sha256', 'f'.repeat(64)],
+    ['workflow_catalog_sha256', 'f'.repeat(64)],
+    ['namespace_name', 'hermes-architect'],
+    ['workflow_key', 'hermes-sdlc:architect'],
+    ['profile', 'hermes-sdlc-quality'],
+  ])('rejects malformed Analyst reference %s', async (field, value) => {
+    const policy = routingPolicy(task)
+    policy.routes.analyst = { ...policy.routes.analyst, [field]: value }
+    GET.mockResolvedValue(success(policy))
+    await expect(getSdlcRoutingPolicy(context)).rejects.toMatchObject({ status: 409 })
+  })
+  it('rejects missing roles without using incomplete preparation', async () => {
+    const policy = routingPolicy(task)
+    GET.mockResolvedValue(success({ ...policy, routes: { analyst: policy.routes.analyst } }))
+    await expect(getSdlcRoutingPolicy(context)).rejects.toMatchObject({ status: 409 })
   })
   it('uses typed metadata query parameters and rejects a legacy projection', async () => {
     const page = {

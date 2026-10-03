@@ -1,5 +1,55 @@
 # Owner SDLC UI v1
 
+## Явный Opt-In Публикации
+
+B-SDLC-05 добавляет в существующий consent panel отдельный unchecked выбор
+опубликованной project routing policy. Это не editor: UI читает существующий
+`GET /api/v1/projects/{project_id}/sdlc/routing-policy` по Central/project ACL
+только для текущего task owner с серверным `can_confirm` в Clarification.
+404 означает отсутствие policy; permission/error/loading не выбирают её автоматически.
+Без выбора тело confirm по-прежнему не содержит `expected_routing_policy_version`.
+С выбором передаётся только точная просмотренная версия вместе с прежними hash/key.
+
+UI фиксирует выбранный version/hash отдельно от query head. Refresh новой policy
+не заменяет выбор и не меняет operation key: выбранная старая версия остаётся
+видимой, но routed confirmation заблокирован. Stale CAS сохраняет оба checkbox;
+владелец должен явно пересмотреть выбор. Key scoped к credential/task requirement
+pin и exact routing version/hash либо legacy omission. Unknown POST не ретраится
+автоматически; пока fresh context readback не получен, cached permissions не
+разрешают повторную запись. Новый credential/revision/hash не наследует согласие.
+
+Названия семи ролей и labels локализованы; technical IDs, package/catalog refs и
+hash доступны в явно раскрываемом details. Refs означают только preparation,
+`verification:declared`, `native_ready:false`, `dispatch_allowed:false`.
+Response guard использует generated aliases и проверяет project/instance/version,
+pinned package commit/catalog3, exact role/profile/key mapping и отсутствие
+duplicate agent/namespace/workflow. Проверка ссылки не является native attestation.
+Backend остаётся authority для CAS, ACL, consent, immutable snapshot и assignment.
+Policy editor, Fleet calls, admission, run, ACK/release и scheduler не добавлены.
+
+Reservation backend и единственная pending migration 000034 в этом UI-срезе не
+изменялись. [Routing owner contract](SDLC_ROUTING_V1.md) и
+[prepared reservation boundary](SDLC_RESERVATION_V1.md) остаются обязательными.
+
+### Scoped Проверки Opt-In
+
+На Node 22.20.0 прошли 74 tests в `src/api/sdlc.test.ts` и
+`src/features/sdlc/ui/SdlcPanel.test.tsx`: явный выбор/unchecked legacy, exact
+version, owner-only GET, source loading/error/ACL, stale selection/CAS с сохранением
+inputs, unknown POST с failed context readback и stable replay key, новые pins,
+malformed policy/package/catalog/role refs и duplicate identities.
+Scoped TypeScript с read-only Base pin 9408802, focused ESLint, Prettier и
+штатный generated-client OpenAPI drift check прошли. Rust/OpenAPI DTO не менялись;
+перегенерация frozen JSON вручную или новый Rust build не выполнялись.
+
+Isolated Playwright проверил 375/1920/2560 px, unchecked initial choice,
+expanded technical refs, exact opt-in POST и queued readback. Overflow отсутствует,
+JS errors нет; 403 в ACL negative check ожидаем. Скриншоты просмотрены.
+Все API requests перехвачены только в test runner; live state/secrets/runtime/DB
+не используются. Vite/Chromium закрыты в finally, QA containers не запускались.
+Local ignored evidence: `.local/b-sdlc05-browser-1791046550447/`.
+Full build/CI/push/native admission не запускались и не заявляются.
+
 Source slice B-SDLC-05, 2026-10-03, on `feat/pm-clarification` / existing PR114.
 Source commit follows scoped checks only; no push, accepted runtime change or full
 build. The integrated full gate remains separate. Backend intent invariants
@@ -16,7 +66,8 @@ client reads the strict SDLC owner resources; there is no Fleet call from this U
 | --- | --- |
 | `GET /api/v1/issues/{id}/sdlc/context` | v1 instance/project/task/root/owner, current stage/revision/reason and server permissions |
 | `GET /api/v1/issues/{id}/sdlc/requirements/{revision}` | Exact current immutable full document and SHA-256, never reconstructed from issue description |
-| `POST /api/v1/issues/{id}/sdlc/requirements/{revision}/confirm` | Body `{content_hash, idempotency_key}`; explicit checkbox for the displayed exact pin, existing owner-session/ACL/evidence checks remain backend authoritative |
+| `POST /api/v1/issues/{id}/sdlc/requirements/{revision}/confirm` | Body `{content_hash, idempotency_key}` plus `expected_routing_policy_version` only after separate explicit publication selection; existing owner-session/ACL/evidence checks remain backend authoritative |
+| `GET /api/v1/projects/{project_id}/sdlc/routing-policy` | Existing published seven-role declared policy; exact version for explicit publication, not native readiness |
 | `GET /api/v1/issues/{id}/sdlc/analysis-intent` | Frozen intent readback only when context is Analysis; missing/inconsistent retained intent is not a successful queue state |
 | `GET /api/v1/issues/{id}/sdlc/events?projection=metadata_v1&after=0&limit=100&max_bytes=65536` | Typed, bounded metadata history, decimal server cursors and explicit next/previous pages; not a durable consumer ACK |
 
@@ -30,8 +81,8 @@ analysis / business`, cycle 0 / attempt 0 and `analysis:<confirmation UUID>`.
 Operation identity remains Tracker-issued and authoritative; the browser's
 confirmation idempotency key is not an assignment operation key or fence.
 
-The UI consumes all ten generated metadata event variants, including
-`analysis.intent_created`, as historical events. It displays actual event ref,
+The UI consumes all eleven generated metadata event variants, including
+`analysis.intent_created` and `analysis.assignment_reserved`, as historical events. It displays actual event ref,
 sequence, timestamp, metadata hash and Analysis intent/revision references.
 It never interprets an event as assignment acceptance, a run or terminal success.
 
@@ -65,7 +116,7 @@ fallback exists. Restart reads retained server state rather than browser live st
 
 | Group | Files relative to this checkout |
 | --- | --- |
-| Typed API + contract tests | `frontend/src/api/sdlc.ts`, `frontend/src/api/sdlc.test.ts` |
+| Typed API + contract tests | `frontend/src/api/sdlc.ts`, `frontend/src/api/sdlc.test.ts`, test-only `frontend/src/api/test-fixtures/routing-policy.ts` |
 | Query lifecycle | `frontend/src/features/sdlc/model/use-sdlc.ts` |
 | Owner panel + component tests | `frontend/src/features/sdlc/ui/SdlcPanel.tsx`, `frontend/src/features/sdlc/ui/SdlcPanel.test.tsx` |
 | Existing page integration + URL test | `frontend/src/pages/issue-detail/index.tsx`, `frontend/src/pages/issue-detail/issue-detail.test.tsx` |
@@ -79,7 +130,7 @@ script and remains intentionally gitignored. No lockfile/dependency update, seco
 migration or assignment ledger change belongs to this UI slice; pending 000034 is
 unchanged relative to the preceding B-SDLC-01 slice.
 
-## Scoped Evidence
+## Scoped Evidence Первого UI-Среза
 
 PASS: 54 tests in the API adapter, owner panel and issue-detail test files;
 exact consent/readback, stable retry key, stale revision reset, access denial,
@@ -125,10 +176,8 @@ blockers. This is the owner configuration observation source, not assignment ACK
 or a permission to claim. The UI neither exposes the machine credential nor treats
 that observation as installed/runtime-ready admission.
 
-Machine native capabilities, minimum immutable assignment wire, pre-decomposition
-Workflow workspace mapping and exact durable ACK/readback/verified-stop remain
-next blockers. Tracker has no non-PM claim/heartbeat/assignment endpoint yet, so
-there is no valid issuer/scope/ACK DTO to invent for Fleet consumption. Intent and
-configuration preparation are not runtime readiness. Future operation hash/key,
-capacity/fences/lease and outbox remain Tracker authoritative; expiry cannot
-redispatch a live/unknown run without verified stop. No second scheduler is added.
+Tracker-only prepared reservation wire/capacity/heartbeat/readback теперь реализованы
+в отдельном B-SDLC-01 срезе, но не являются Fleet acceptance/claim.
+Machine native capabilities и trusted ACK/verified-stop остаются blockers.
+Operation hash/key, capacity/fences/lease и outbox остаются Tracker authoritative;
+expiry не освобождает live/unknown capacity. Явный UI opt-in эти gates не снимает.

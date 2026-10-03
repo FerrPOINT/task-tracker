@@ -19,9 +19,10 @@ owner с Central human session. Exact confirmation явно выбирает cur
 с consent/Analysis intent/outbox. Изменение policy влияет только на новые явные
 snapshots. Исторические PM data/consent hashes и unenrolled legacy сохраняются.
 Readback доступен по existing service-read/project ACL без compound grants.
-Текущий UI confirmation не передаёт `expected_routing_policy_version` и не включает
-routing автоматически. Opt-in доступен явно через API; policy UI и fresh admission
-остаются pending, без расширения текущего UI-среза.
+Текущий UI confirmation передаёт `expected_routing_policy_version` только после
+отдельного unchecked выбора опубликованной policy. Legacy omission сохраняется;
+routing автоматически не включается. Policy editor и fresh admission остаются
+pending. [Явный UI opt-in](SDLC_UI_V1.md).
 
 Refs имеют `verification: declared`, `native_ready:false`, `dispatch_allowed:false`.
 Это не fresh Fleet observation, native attestation или runtime admission.
