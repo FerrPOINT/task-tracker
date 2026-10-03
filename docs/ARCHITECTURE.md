@@ -76,6 +76,9 @@ otherwise required null. No counts, separate ACL read, retained page snapshot or
 scope cache is introduced. Every continuation rechecks access; selector results
 do not replace write/admission checks. Rust DTOs/route annotations own the schema.
 
+Target autonomous SDLC: [Task lifecycle v1](SDLC_LIFECYCLE_V1.md). Owner — Tracker;
+документ не добавляет endpoints или миграции и не меняет факты текущего MVP.
+
 ## 1. Контекст
 
 Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.

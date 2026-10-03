@@ -220,7 +220,10 @@ Draft → Pending Approval → Approved / Rejected
 - Workflow нельзя удалить, если он используется в active workflow scheme.
 - При изменении active workflow создаётся draft, который нужно опубликовать.
 - Переход должен вести к статусу, входящему в workflow.
-- Запрещены переходы, приводящие к бесконечному циклу (проверка DAG при сохранении).
+- Проверка DAG относится к зависимостям children, а не ко всему графу стадий.
+  Контролируемые циклы Reopened/Rework допустимы; ограничиваются guarded outcomes,
+  cycle counter и escalation. Target SDLC описан в [SDLC lifecycle v1](SDLC_LIFECYCLE_V1.md),
+  не считается реализованным generic workflow engine.
 ## References
 
 - `docs/DATA_MODEL.md`
