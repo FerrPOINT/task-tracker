@@ -357,6 +357,40 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     expect(within(history).queryByText('No events after this sequence')).not.toBeInTheDocument()
     expect(within(history).queryByText('Analysis intent queued')).not.toBeInTheDocument()
   })
+  it('renders reservation history as prepared and still awaiting admission', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
+    const reserved: MetadataEvent = {
+      ...event,
+      event_type: 'analysis.assignment_reserved',
+      payload: {
+        ...event.payload,
+        resource: {
+          assignment_id: confirmationId,
+          execution_id: intentId,
+          workflow_task_ref: 'SDLC-3',
+          intent_id: intentId,
+          routing_snapshot_id: task,
+          agent_id: task,
+          fencing_token: 1,
+          assignment_hash: hash,
+        },
+      },
+    }
+    vi.mocked(getSdlcMetadata).mockResolvedValue({
+      contract_version: 1,
+      projection: 'metadata_v1',
+      after: '0',
+      next_after: '19',
+      has_more: false,
+      events: [reserved],
+    })
+    mount()
+    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    expect(
+      await within(history).findByText('Analysis assignment prepared, awaiting admission'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/InProgress|dispatch accepted|run started/)).not.toBeInTheDocument()
+  })
   it('keeps owner permissions server-derived and missing intent unverified', async () => {
     vi.mocked(getSdlcSnapshot).mockResolvedValue({
       ...initial,

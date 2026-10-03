@@ -404,6 +404,140 @@ BEGIN
 END $$;
 CREATE TRIGGER sdlc_analysis_routing_gate BEFORE INSERT ON sdlc_analysis_intents
 FOR EACH ROW EXECUTE FUNCTION sdlc_analysis_routing_gate();
+CREATE TABLE sdlc_reservation_capacity (singleton boolean PRIMARY KEY CHECK(singleton));
+INSERT INTO sdlc_reservation_capacity VALUES(true);
+CREATE SEQUENCE sdlc_analysis_reservation_fence MAXVALUE 9007199254740991 NO CYCLE;
+CREATE SEQUENCE sdlc_analysis_workflow_task_ordinal AS bigint NO CYCLE;
+CREATE TABLE sdlc_analysis_reservations (
+    assignment_id uuid PRIMARY KEY CHECK(assignment_id!='00000000-0000-0000-0000-000000000000'),
+    execution_id uuid NOT NULL UNIQUE CHECK(execution_id!='00000000-0000-0000-0000-000000000000'),
+    workflow_task_ordinal bigint NOT NULL UNIQUE CHECK(workflow_task_ordinal>0),
+    task_id uuid NOT NULL UNIQUE REFERENCES sdlc_tasks(task_id),
+    root_task_id uuid NOT NULL UNIQUE REFERENCES sdlc_tasks(task_id),
+    agent_id uuid NOT NULL UNIQUE CHECK(agent_id!='00000000-0000-0000-0000-000000000000'),
+    intent_id uuid NOT NULL UNIQUE REFERENCES sdlc_analysis_intents(intent_id),
+    routing_snapshot_id uuid NOT NULL REFERENCES sdlc_task_routing_snapshots(snapshot_id),
+    fencing_token bigint NOT NULL UNIQUE CHECK(fencing_token BETWEEN 1 AND 9007199254740991),
+    lease_id uuid NOT NULL UNIQUE CHECK(lease_id!='00000000-0000-0000-0000-000000000000'),
+    pool_slot smallint NOT NULL UNIQUE CHECK(pool_slot BETWEEN 1 AND 2),
+    payload jsonb NOT NULL,
+    CHECK(root_task_id=task_id),
+    CHECK((payload->'contract_version'='1'::jsonb AND payload->>'assignment_id'=assignment_id::text
+        AND payload->>'execution_id'=execution_id::text AND payload->>'task_id'=task_id::text
+        AND payload->>'workflow_task_ref'='SDLC-'||workflow_task_ordinal::text
+        AND payload->>'root_task_id'=root_task_id::text AND payload->>'agent_id'=agent_id::text
+        AND payload->>'intent_id'=intent_id::text AND payload->>'routing_snapshot_id'=routing_snapshot_id::text
+        AND payload->'fencing_token'=to_jsonb(fencing_token) AND payload->>'lease_id'=lease_id::text
+        AND payload->'reservation_version'='1'::jsonb AND payload->>'stage'='Analysis'
+        AND payload->>'role_key'='analyst' AND payload->>'workflow_key'='hermes-sdlc:analyst'
+        AND payload->>'mode_key'='analysis' AND payload->>'scope'='business'
+        AND payload->'cycle_number'='0'::jsonb AND payload->'attempt_number'='1'::jsonb
+        AND payload->>'assignment_operation_key'='analysis-reserve:'||assignment_id::text
+        AND payload->>'assignment_hash' ~ '^[0-9a-f]{64}$') IS TRUE)
+);
+CREATE INDEX sdlc_pm_assignment_agent_capacity ON sdlc_assignments((payload->>'agent_id'),task_id);
+CREATE FUNCTION sdlc_analysis_reservation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM task_id FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
+    PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
+    IF EXISTS(SELECT 1 FROM sdlc_assignments WHERE task_id=NEW.root_task_id OR payload->>'agent_id'=NEW.agent_id::text)
+        OR EXISTS(SELECT 1 FROM sdlc_pm_executions WHERE task_id=NEW.root_task_id)
+        OR EXISTS(SELECT 1 FROM sdlc_tasks WHERE task_id=NEW.root_task_id AND (pm_execution_id IS NOT NULL OR state->'assignment' IS DISTINCT FROM 'null'::jsonb)) THEN
+        RAISE EXCEPTION 'SDLC pm_quiescence_unverified' USING ERRCODE='23514';
+    END IF;
+    IF NOT EXISTS(SELECT 1 FROM sdlc_analysis_intents i JOIN sdlc_tasks t USING(task_id)
+        JOIN sdlc_task_routing_snapshots s ON s.snapshot_id=i.routing_snapshot_id
+        WHERE i.intent_id=NEW.intent_id AND i.task_id=NEW.task_id AND s.snapshot_id=NEW.routing_snapshot_id
+        AND t.state->>'stage'='Analysis' AND t.root_task_id=NEW.root_task_id
+        AND i.requirement_revision=(t.state->'revisions'->-1->>'revision')::bigint
+        AND i.content_hash=t.state->'revisions'->-1->>'content_hash'
+        AND NEW.payload->>'tracker_instance_id'=t.tracker_instance_id
+        AND NEW.payload->>'owner_subject'=t.owner_subject AND NEW.payload->>'project_id'=t.project_id::text
+        AND NEW.payload->>'confirmation_id'=i.confirmation_id::text
+        AND NEW.payload->'requirement_revision'=to_jsonb(i.requirement_revision)
+        AND NEW.payload->>'content_hash'=i.content_hash
+        AND NEW.payload->'routing_policy_version'=to_jsonb(s.policy_version)
+        AND NEW.payload->>'routing_hash'=s.payload->'policy'->>'routing_hash'
+        AND NEW.payload->'route'=s.payload->'policy'->'routes'->'analyst'
+        AND NEW.agent_id::text=s.payload->'policy'->'routes'->'analyst'->>'agent_id') THEN
+        RAISE EXCEPTION 'SDLC reservation requires exact routed current Analysis intent' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_analysis_reservation_gate BEFORE INSERT ON sdlc_analysis_reservations
+FOR EACH ROW EXECUTE FUNCTION sdlc_analysis_reservation_gate();
+CREATE FUNCTION sdlc_pm_capacity_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM task_id FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
+    PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
+    IF EXISTS(SELECT 1 FROM sdlc_analysis_reservations WHERE root_task_id=NEW.task_id OR agent_id::text=NEW.payload->>'agent_id') THEN
+        RAISE EXCEPTION 'SDLC root/agent capacity held by Analysis reservation' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_pm_capacity_gate BEFORE INSERT ON sdlc_assignments
+FOR EACH ROW EXECUTE FUNCTION sdlc_pm_capacity_gate();
+CREATE TABLE sdlc_analysis_reservation_leases (
+    assignment_id uuid PRIMARY KEY REFERENCES sdlc_analysis_reservations(assignment_id),
+    version bigint NOT NULL CHECK(version BETWEEN 1 AND 9007199254740991),
+    holder_subject text NOT NULL CHECK(length(holder_subject) BETWEEN 1 AND 128),
+    claimed_at timestamptz NOT NULL,
+    heartbeat_at timestamptz NOT NULL CHECK(heartbeat_at>=claimed_at),
+    expires_at timestamptz NOT NULL CHECK(expires_at=heartbeat_at+interval '30 seconds')
+);
+CREATE TABLE sdlc_analysis_reservation_operations (
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
+    idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
+    actor_subject text NOT NULL,
+    payload_hash text NOT NULL CHECK(payload_hash ~ '^[0-9a-f]{64}$'),
+    assignment_id uuid NOT NULL REFERENCES sdlc_analysis_reservations(assignment_id),
+    lease_version bigint NOT NULL CHECK(lease_version BETWEEN 1 AND 9007199254740991),
+    result jsonb NOT NULL,
+    PRIMARY KEY(task_id,idempotency_key), UNIQUE(assignment_id,lease_version),
+    CHECK((result->'lease'->'version'=to_jsonb(lease_version)
+        AND result->'lease'->>'holder_subject'=actor_subject
+        AND result->'assignment'->>'assignment_id'=assignment_id::text
+        AND result->'assignment'->>'task_id'=task_id::text
+        AND result->'ttl_seconds'='30'::jsonb AND result->'heartbeat_interval_seconds'='10'::jsonb
+        AND result->>'admission_state'='awaiting_admission'
+        AND result->'dispatch_allowed'='false'::jsonb AND result->'capacity_held'='true'::jsonb) IS TRUE)
+);
+ALTER TABLE sdlc_analysis_reservation_leases ADD CONSTRAINT sdlc_reservation_current_receipt
+    FOREIGN KEY(assignment_id,version) REFERENCES sdlc_analysis_reservation_operations(assignment_id,lease_version) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE sdlc_analysis_reservations ADD CONSTRAINT sdlc_reservation_lease_required
+    FOREIGN KEY(assignment_id) REFERENCES sdlc_analysis_reservation_leases(assignment_id) DEFERRABLE INITIALLY DEFERRED;
+CREATE FUNCTION sdlc_analysis_lease_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP='DELETE' THEN RAISE EXCEPTION 'SDLC reservation capacity cannot be released without verified stop' USING ERRCODE='23514'; END IF;
+    IF TG_OP='INSERT' THEN
+        IF NEW.version!=1 OR NEW.heartbeat_at!=NEW.claimed_at THEN
+            RAISE EXCEPTION 'SDLC reservation initial lease invalid' USING ERRCODE='23514';
+        END IF;
+    ELSIF NEW.assignment_id IS DISTINCT FROM OLD.assignment_id OR NEW.holder_subject IS DISTINCT FROM OLD.holder_subject
+        OR NEW.claimed_at IS DISTINCT FROM OLD.claimed_at OR NEW.version!=OLD.version+1
+        OR OLD.expires_at<=clock_timestamp() OR NEW.heartbeat_at<OLD.heartbeat_at THEN
+        RAISE EXCEPTION 'SDLC expired/stale reservation lease needs reconciliation' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_analysis_lease_gate BEFORE INSERT OR UPDATE OR DELETE ON sdlc_analysis_reservation_leases
+FOR EACH ROW EXECUTE FUNCTION sdlc_analysis_lease_gate();
+CREATE FUNCTION sdlc_analysis_operation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r JOIN sdlc_analysis_reservation_leases l USING(assignment_id)
+        WHERE r.assignment_id=NEW.assignment_id AND r.task_id=NEW.task_id AND r.payload=NEW.result->'assignment'
+        AND r.pool_slot::integer=(NEW.result->>'technical_pool_slot')::integer
+        AND l.version=NEW.lease_version AND l.holder_subject=NEW.actor_subject
+        AND l.claimed_at=(NEW.result->'lease'->>'claimed_at')::timestamptz
+        AND l.heartbeat_at=(NEW.result->'lease'->>'heartbeat_at')::timestamptz
+        AND l.expires_at=(NEW.result->'lease'->>'expires_at')::timestamptz
+        AND r.lease_id::text=NEW.result->'lease'->>'lease_id') THEN
+        RAISE EXCEPTION 'SDLC reservation operation must match current exact owner ledger' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_analysis_operation_gate BEFORE INSERT ON sdlc_analysis_reservation_operations
+FOR EACH ROW EXECUTE FUNCTION sdlc_analysis_operation_gate();
 CREATE TABLE sdlc_idempotency (
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
     actor_subject text NOT NULL, idempotency_key text NOT NULL,
@@ -493,7 +627,8 @@ DO $$ DECLARE name text; BEGIN
         'sdlc_requests', 'sdlc_question_versions', 'sdlc_options', 'sdlc_requirements',
         'sdlc_answers', 'sdlc_evidence', 'sdlc_confirmations', 'sdlc_idempotency', 'sdlc_outbox',
         'sdlc_draft_creations', 'sdlc_pm_executions', 'sdlc_pm_lease_operations', 'sdlc_analysis_intents',
-        'sdlc_project_routing_revisions', 'sdlc_project_routing_operations', 'sdlc_task_routing_snapshots']
+        'sdlc_project_routing_revisions', 'sdlc_project_routing_operations', 'sdlc_task_routing_snapshots',
+        'sdlc_reservation_capacity', 'sdlc_analysis_reservations', 'sdlc_analysis_reservation_operations']
     LOOP
         EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()', name);
     END LOOP;

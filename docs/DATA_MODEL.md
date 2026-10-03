@@ -1,5 +1,16 @@
 # Дата-модель Task Tracker
 
+## Ledger подготовленного Analysis assignment
+
+Только pending 000034: append-only `sdlc_analysis_reservations` и
+`sdlc_analysis_reservation_operations`, lockable `sdlc_reservation_capacity`,
+bounded monotonic fence sequence и mutable CAS `sdlc_analysis_reservation_leases`.
+Unique task/root/agent/pool slot сохраняют holds после expiry. Exact routed intent
+и immutable route проверяют SQL gates; deferred FK требуют lease/current receipt
+в той же транзакции. Heartbeat +1, TTL30; expired renewal/delete запрещены.
+История PM неизменна и без trusted stop блокирует root/agent reservation.
+[Модель, индексы и API](SDLC_RESERVATION_V1.md). Новая миграция не добавлена.
+
 ## SDLC: Additive Migration 000034
 
 Project routing расширяет только pending 000034 неизменяемыми таблицами

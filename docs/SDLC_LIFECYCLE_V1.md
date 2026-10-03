@@ -24,8 +24,9 @@ routing автоматически. Opt-in доступен явно через 
 остаются pending, без расширения текущего UI-среза.
 
 Refs имеют `verification: declared`, `native_ready:false`, `dispatch_allowed:false`.
-Это не fresh Fleet observation, native attestation или runtime admission; claim,
-capacity/lease/ACK, DAG и dispatch остаются pending. Ни policy, ни snapshot не
+Это не fresh Fleet observation, native attestation или runtime admission.
+Prepared reservation/capacity/lease реализованы отдельно ниже; admission/ACK, DAG
+и dispatch остаются pending. Ни policy, ни snapshot не
 снимают current capability blockers. [Полный owner API и SQL-контракт](SDLC_ROUTING_V1.md).
 
 Owner branch: `feat/pm-clarification`, существующая PM foundation PR #114.
@@ -69,17 +70,36 @@ intent. GET сверяет intent с текущим aggregate, exact confirmatio
 | Exact consent → Analysis/Ready + outbox | Реализован backend-срез; scoped проверки ниже |
 | Owner UI / typed intent и metadata consumer | Реализован B-SDLC-05; [контракт, файлы и scoped evidence](SDLC_UI_V1.md), без assignment/runtime |
 | PM admission нового reserved execution | Не реализован; нужен trusted Fleet/config/Workflow binding и quiescence |
-| Queue claim / execution admission | Не реализован; owner-interface gaps ниже, root exclusivity, capacity и CAS/fence до InProgress |
+| Prepared Analysis reservation | Реализован Tracker-only ledger/API: root1/agent1/pool2, immutable identity/hash, CAS/lease/outbox; [контракт](SDLC_RESERVATION_V1.md) |
+| Execution admission / dispatch | Не реализованы; нужны fresh native/Workflow acceptance и trusted stop counterpart |
 | До decomposition: root-only identity / queued Analysis fence | Реализован bounded guard ниже; не DAG/coverage/barrier |
 | Analyst terminal → Architecture | Не реализован; accepted Workflow terminal receipt и guarded transition |
 | Decomposition / children / DAG / coverage | Не реализованы; materialization owner-команды Tracker |
 | Barrier / aggregate / Rework / deployment | Не реализованы; exact active revisions и trusted owner receipts |
 | Сквозной PDLC / установка / acceptance | NOT RUN; этот срез не доказывает автономный runtime |
 
-### Analysis Claim: Проверенные Interface Gaps
+### Prepared Analysis Reservation
 
-Проверка source owner contracts 2026-10-03: claim slice не реализован, чтобы не
-вводить несовместимый assignment protocol. Workflow routing исправлен на реальный
+Tracker-only prepared assignment реализован по согласованному envelope v1.
+Frozen routing snapshot обязателен, agent/config/workflow берутся только из него.
+Отдельная scheduler identity требует exact `[task-tracker:write]` и persisted
+project ACL; старый compound PM grant не переиспользуется. Stage/status не меняются.
+Receipt: `awaiting_admission`, `dispatch_allowed:false`. Root1/agent1/pool2,
+backend identity/fence/hash, TTL30/heartbeat10, original operation readback и
+`analysis.assignment_reserved` outbox сохраняются одной PG-транзакцией.
+`workflow_task_ref: SDLC-<ordinal>` выдаёт отдельная backend sequence; это не issue
+key/root/legacy PM ordinal или fence. Ref входит в immutable hash и heartbeat
+его не меняет; Workflow consumer/acceptance пока отсутствуют.
+GET показывает expired/reconciliation_needed без writes; replay не продлевает
+lease и не переигрывает head. Unknown/expired удерживает capacity. Любой
+неподтверждённый прежний PM assignment/execution блокирует reserve как
+`pm_quiescence_unverified`; fake proof, release и ACK endpoints не добавлены.
+[Strict API, immutable поля и SQL guards](SDLC_RESERVATION_V1.md).
+
+### Analysis Admission: Проверенные Interface Gaps
+
+Проверка source owner contracts 2026-10-03: runtime admission не реализован.
+Prepared reservation выше не является исполнением. Workflow routing исправлен на реальный
 `hermes-sdlc:analyst`; role в intent остаётся `Analyst`, callable Workflow role key
 — `analyst`. Readback intent не admission, не ACK и не разрешение dispatch.
 Existing `execution-lease` routes и TTL 30s / heartbeat 10s относятся только к PM
@@ -89,14 +109,12 @@ foundation; их machine grant/binding нельзя переиспользова
 | --- | --- |
 | Fleet configuration source / native admission | Main сообщил о реализованном SOURCE `GET /internal/runtime/v1/agents/{agent_id}/configuration`: fresh bounded Base PAT introspection, EXACT scopes `[fleet-control:read]`, fixed dedicated `configuration_reader_subject` и deployment-owned concrete agent UUID allowlist `configuration_reader_agent_ids`. Base issuer не выпускает compound grants; task delegation/run authority отсутствует. Ответ v1 содержит `observation_ref`, agent/role/effective revision, pinned public package metadata, observed time, `managed_files_verified:true`, но `runtime_ready:false` и native/workflow blockers. Это read-only observation, не admission/assignment ACK. Declared project/task routing refs уже сохраняются; trusted Tracker client и проверенное observation binding к assignment/fence ещё отсутствуют. Нужны verified native capabilities и assignment protocol. Operator actions и config proof не снимают эти gates. Этот статус получен от owner Main, не является независимым runtime acceptance Tracker. |
 | Fleet `backend/api/src/routes/pm_runtime.rs`: `readback` | Trusted readback есть для PM binding/credential, не для Analyst assignment/execution/session/run. Нет callable non-PM durable acceptance lookup/ACK с exact immutable payload hash и verified-stop/terminal ACK для fencing release. Target `docs/contracts/SDLC_EXECUTION_V1.md` в Fleet PR #49 не является реализацией endpoint. |
-| Workflow `project_workflow/interfaces/ui/schemas.py`: `RuntimeAssignmentRequest` | Для Analysis обязательны nonblank `decomposition_revision_ref`, `task_workspace_ref`, positive `workspace_revision` и workspace/lease generations. Tracker на этом этапе имеет confirmation + requirement revision + intent, но ещё не accepted decomposition или TaskWorkspace ledger. Нужна согласованная owner mapping pre-decomposition Analysis и logical business-only workspace; фиктивный ref/revision не evidence. Intent attempt 0 до admission; первый accepted assignment должен иметь attempt 1, не копировать 0. |
+| Workflow `project_workflow/interfaces/ui/schemas.py`: `RuntimeAssignmentRequest` | Source counterpart теперь имеет явный `business-pre-decomposition` для PM/Analyst/Architect business, без decomposition/physical Forge refs. Это снимает прежний shape gap, но не даёт trusted owner execution evidence/admission. Tracker не вызывает этот API и не выдумывает Workflow cursor revision/receipt. Intent attempt 0, prepared assignment attempt 1. |
 | Workflow `docs/base-sdlc-admission.md`, `application/base_admission.py` | `base-sdlc-admission/v1` принимает frozen config attestation от authenticated assignment owner, проверяет pinned source package/catalog, но не physical installation, tools/session/lease liveness. `base-sdlc-source-admission-receipt/v1` не terminal receipt и не authorization для Tracker transition/release. Нельзя считать его runtime ACK/verified stop. |
-| Tracker `SdlcConfig`, `sdlc_execution_lease` и migration 000034 | Нет non-PM owner binding/grant, trusted Fleet/Workflow clients и retained Analysis assignment/capacity/ACK ledger. Intent и outbox уже durable, но это не agent/root/pool reservation. Эти строки следует добавлять только в pending 000034 после согласования minimum interfaces. |
+| Tracker `SdlcConfig`, `sdlc_reservation` и migration 000034 | Prepared Analysis assignment/capacity/lease ledger реализован. Trusted Fleet/Workflow clients, acceptance/ACK и PM/non-PM verified-stop counterpart отсутствуют. Поэтому нет release или InProgress/dispatch; PM unknown fail-closed. |
 
-Следующий bounded slice после закрытия gaps: Tracker как единственный assignment
-producer атомарно проверяет current intent/revision и fresh machine authority,
-резервирует agent 1 / root 1 / technical pool 2, сохраняет frozen assignment,
-monotonic fence, lease (TTL 30s / heartbeat 10s), operation receipt и outbox.
+Следующий bounded slice после закрытия gaps: admission уже prepared reservation.
+Tracker остаётся единственным assignment producer и владельцем retained capacity.
 Fleet owns execution/session/run binding и durable acceptance lookup; Workflow
 owns admission/cursor receipt. Remote calls не заменяют локальную транзакцию и не
 создают distributed transaction. Переход на InProgress — только после verified
@@ -106,8 +124,8 @@ Expiry означает expired lease, а не свободную capacity: live
 agent/root/pool до trusted exact verified-stop или terminal ACK. ACK/readback
 должны привязывать assignment/execution/session/run, fence и immutable hash;
 caller-supplied `stopped: true`, EOF и successful HTTP status не принимаются как
-доказательство. Scoped claim/capacity/heartbeat/expiry tests пока NOT RUN: endpoints
-и ledger отсутствуют. Проверки ниже относятся только к implemented intent slice.
+доказательство. Scoped reservation/capacity/heartbeat/expiry проверки описаны
+в reservation контракте; более ранние проверки ниже относятся к intent slice.
 
 Тесты: `backend/app/src/sdlc_tests.rs`, API schema tests и изолированный
 `backend/server/tests/sdlc.rs` с `support/analysis_intent.rs`. Последний проверяет

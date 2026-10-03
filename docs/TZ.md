@@ -1,5 +1,16 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+## B-SDLC-01: prepared Analysis assignment
+
+Добавлен usable authorized Tracker reservation API с обязательным frozen routing
+snapshot. Backend выбирает только pinned Analyst, создаёт immutable assignment/
+execution/lease identity, fence/key/hash, root1/agent1/pool2 hold и outbox.
+TTL30/heartbeat10 с lease-version CAS; read-only GET показывает expiry и
+reconciliation_needed. Replay не переписывает head. PM unknown блокирует reserve,
+legacy без snapshot не включаются. Это awaiting_admission, не InProgress/run;
+release/ACK/native admission/dispatch отсутствуют. UI routing по-прежнему explicit
+API-only, UI не расширен. [Owner API и проверки](SDLC_RESERVATION_V1.md).
+
 ## SDLC Clarification: Implemented Backend Scope
 
 Project-routing prerequisite сохраняет версионированные bindings, выбранные владельцем,

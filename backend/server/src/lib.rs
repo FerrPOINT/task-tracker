@@ -70,6 +70,10 @@ pub async fn run(
         let repository = infra::sdlc::PostgresSdlcRepository::connect(
             &config.database.url,
             domain::sdlc::SdlcConfig {
+                reservation_scheduler_subject: std::env::var(
+                    "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+                )
+                .unwrap_or_default(),
                 instance_id,
                 orchestrator_subject: std::env::var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT")
                     .unwrap_or_default(),

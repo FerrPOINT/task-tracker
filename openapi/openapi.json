@@ -1377,6 +1377,265 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/analysis-reservation": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_analysis_reservation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "reserve_analysis_reservation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveAnalysis"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay; no renewal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "PM quiescence unknown, stale intent/CAS or held capacity"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/analysis-reservation/heartbeat": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "heartbeat_analysis_reservation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatAnalysis"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_analysis_reservation_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/assignment": {
       "post": {
         "tags": [
@@ -6176,6 +6435,12 @@
           }
         }
       },
+      "AnalysisAdmissionState": {
+        "type": "string",
+        "enum": [
+          "awaiting_admission"
+        ]
+      },
       "AnalysisIntent": {
         "type": "object",
         "required": [
@@ -6269,6 +6534,142 @@
           },
           "workflow": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisReservationLeaseState": {
+        "type": "string",
+        "enum": [
+          "unreserved",
+          "active",
+          "expired"
+        ]
+      },
+      "AnalysisReservationOperation": {
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "request_sha256",
+          "result"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/AnalysisReservationReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisReservationReadback": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "observed_at",
+          "lease_state",
+          "reconciliation_needed",
+          "reason",
+          "current",
+          "dispatch_allowed",
+          "capacity_held"
+        ],
+        "properties": {
+          "capacity_held": {
+            "type": "boolean"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisReservationReceipt"
+              }
+            ]
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "lease_state": {
+            "$ref": "#/components/schemas/AnalysisReservationLeaseState"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reconciliation_needed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisReservationReceipt": {
+        "type": "object",
+        "required": [
+          "assignment",
+          "lease",
+          "technical_pool_slot",
+          "ttl_seconds",
+          "heartbeat_interval_seconds",
+          "admission_state",
+          "dispatch_allowed",
+          "capacity_held"
+        ],
+        "properties": {
+          "admission_state": {
+            "$ref": "#/components/schemas/AnalysisAdmissionState"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/PreparedAnalysisAssignment"
+          },
+          "capacity_held": {
+            "type": "boolean"
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "heartbeat_interval_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 10,
+            "minimum": 10
+          },
+          "lease": {
+            "$ref": "#/components/schemas/ExecutionLease"
+          },
+          "technical_pool_slot": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 2,
+            "minimum": 1
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 30,
+            "minimum": 30
           }
         },
         "additionalProperties": false
@@ -7677,6 +8078,47 @@
             }
           }
         }
+      },
+      "HeartbeatAnalysis": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "fencing_token",
+          "lease_id",
+          "expected_lease_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
       },
       "HeartbeatExecutionLease": {
         "type": "object",
@@ -9257,6 +9699,134 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "analysis.assignment_reserved"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "assignment_id",
+                      "execution_id",
+                      "workflow_task_ref",
+                      "intent_id",
+                      "routing_snapshot_id",
+                      "agent_id",
+                      "fencing_token",
+                      "assignment_hash"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": "string"
+                      },
+                      "assignment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "intent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "routing_snapshot_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "workflow_task_ref": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -9843,6 +10413,172 @@
         "enum": [
           "pm_draft_reserved"
         ]
+      },
+      "PreparedAnalysisAssignment": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "intent_id",
+          "confirmation_id",
+          "requirement_revision",
+          "content_hash",
+          "routing_snapshot_id",
+          "routing_policy_version",
+          "routing_hash",
+          "assignment_id",
+          "execution_id",
+          "reservation_version",
+          "workflow_task_ref",
+          "agent_id",
+          "route",
+          "stage",
+          "role_key",
+          "workflow_key",
+          "mode_key",
+          "scope",
+          "cycle_number",
+          "attempt_number",
+          "fencing_token",
+          "lease_id",
+          "assignment_operation_key",
+          "assignment_hash",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_operation_key": {
+            "type": "string"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "confirmation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cycle_number": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 0,
+            "minimum": 0
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "intent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mode_key": {
+            "type": "string"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "reservation_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "role_key": {
+            "type": "string"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "route": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "routing_hash": {
+            "type": "string"
+          },
+          "routing_policy_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/AnalysisStage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "workflow_key": {
+            "type": "string"
+          },
+          "workflow_task_ref": {
+            "type": "string",
+            "pattern": "^SDLC-[1-9][0-9]{0,18}$"
+          }
+        },
+        "additionalProperties": false
       },
       "ProjectAccess": {
         "type": "object",
@@ -10513,6 +11249,46 @@
             "items": {
               "type": "string"
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReserveAnalysis": {
+        "type": "object",
+        "required": [
+          "intent_id",
+          "routing_snapshot_id",
+          "requirement_revision",
+          "content_hash",
+          "expected_reservation_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "expected_reservation_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 0,
+            "minimum": 0
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "intent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "additionalProperties": false

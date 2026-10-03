@@ -1,5 +1,17 @@
 # Архитектура Task Tracker
 
+## Tracker-only Analysis preparation
+
+Слои `api/routes/sdlc_reservation -> SdlcService -> SdlcRepository -> infra/sdlc_reservation`.
+Tracker — единственный assignment producer; новый background scheduler, remote
+dispatch или shared schema не вводятся. Одна PG-транзакция фиксирует exact
+intent/snapshot, root/agent/pool capacity, immutable identity/hash/fence, lease,
+operation receipt и typed durable outbox. Lease head отдельно от immutable
+assignment. Readback expiry и original replay не меняют head. Unknown удерживает
+capacity до будущего trusted stop counterpart; любой прежний PM unknown блокирует
+reserve. Native admission/Workflow acceptance остаются fail-closed.
+[Owner контракт](SDLC_RESERVATION_V1.md).
+
 ## SDLC Clarification Slice
 
 `api/routes/sdlc_routing -> SdlcService -> SdlcRepository -> infra/sdlc_routing`

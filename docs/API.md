@@ -1,5 +1,17 @@
 # API v1 Specification — Task Tracker
 
+## Prepared Analysis reservation
+
+Tracker-only strict API: POST/GET
+`/api/v1/issues/{id}/sdlc/analysis-reservation`, POST `/heartbeat`, GET
+`/operations/{idempotency_key}`. Frozen routing обязателен; machine mutation
+требует отдельный configured scheduler subject, exact `task-tracker:write` и
+persisted project ACL. GET: human/project ACL или exact `task-tracker:read`.
+Receipt awaiting_admission/dispatch_allowed=false; GET явно показывает expired
+и reconciliation_needed. PM unknown, stale CAS/fence и capacity conflict fail-closed.
+Replay не продлевает lease. Release/ACK/run endpoints отсутствуют.
+Полные DTO и hash semantics: [SDLC_RESERVATION_V1](SDLC_RESERVATION_V1.md).
+
 ## SDLC Clarification API
 
 Маршрутизация SDLC проекта реализована как prerequisite под управлением владельца:

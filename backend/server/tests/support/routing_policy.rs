@@ -195,7 +195,7 @@ pub async fn snapshot(client: &Client, base: &str, task: Uuid, owner: &str) -> V
     .await
 }
 
-async fn ready_task(db: &DatabaseConnection, source: &TaskState, key: &str) -> Uuid {
+pub(super) async fn ready_task(db: &DatabaseConnection, source: &TaskState, key: &str) -> Uuid {
     // A legacy ready aggregate fixture, not an invented assignment or runtime receipt.
     let task = Uuid::new_v4();
     let mut state = source.clone();

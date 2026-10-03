@@ -267,6 +267,42 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
                 content_hash: confirmation.content_hash,
             })?
         }
+        "analysis.assignment_reserved" => {
+            let receipt: domain::sdlc_reservation::AnalysisReservationReceipt =
+                decode(&source.result)?;
+            let a = &receipt.assignment;
+            revision(a.requirement_revision, &a.content_hash, &refs)?;
+            valid(
+                a.assignment_id == event.event_id
+                    && a.task_id == event.task_id
+                    && a.root_task_id == source.root_task_id
+                    && a.project_id == source.project_id
+                    && a.tracker_instance_id == source.tracker_instance_id
+                    && a.owner_subject == source.owner_subject
+                    && source.requirement_revision == Some(a.requirement_revision)
+                    && matches!(source.stage, Stage::Analysis)
+                    && matches!(a.stage, AnalysisStage::Analysis)
+                    && a.role_key == "analyst"
+                    && a.mode_key == "analysis"
+                    && a.scope == "business"
+                    && a.workflow_key == "hermes-sdlc:analyst"
+                    && !receipt.dispatch_allowed
+                    && receipt.capacity_held
+                    && crate::sdlc_reservation::assignment_hash(a)
+                        .map_err(|_| MetadataErrorCode::MetadataSourceInvalid)?
+                        == a.assignment_hash,
+            )?;
+            value(AnalysisReservationResource {
+                assignment_id: a.assignment_id,
+                execution_id: a.execution_id,
+                workflow_task_ref: a.workflow_task_ref.clone(),
+                intent_id: a.intent_id,
+                routing_snapshot_id: a.routing_snapshot_id,
+                agent_id: a.agent_id,
+                fencing_token: a.fencing_token,
+                assignment_hash: a.assignment_hash.clone(),
+            })?
+        }
         "analysis.intent_created" => {
             let intent: AnalysisIntent = decode(&source.result)?;
             revision(intent.requirement_revision, &intent.content_hash, &refs)?;

@@ -134,8 +134,9 @@ project policy и выбора версии при confirmation остаётся
 
 Readback проверяет сохранённые policy/hash, task/root/instance и точный confirmation.
 Это только configuration/routing prerequisite. Analysis/Ready по-прежнему означает
-очередь, ожидающую admission. Свежий native admission, машинные claims/capacity/ACK,
-DAG/coverage, barrier, принятие terminal transitions и автономный dispatch не реализованы.
+очередь, ожидающую admission. [Prepared reservation](SDLC_RESERVATION_V1.md) теперь
+фиксирует assignment/capacity/lease только в Tracker. Свежий native admission,
+runtime ACK, DAG/coverage, barrier, terminal transitions и dispatch не реализованы.
 
 ## Хранение и проверки
 

@@ -187,6 +187,7 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route("/issues/{id}/sdlc/evidence", post(evidence))
         .route("/issues/{id}/sdlc/events", get(events))
         .merge(super::sdlc_routing::router())
+        .merge(super::sdlc_reservation::router())
         .route_layer(middleware::from_fn(
             crate::middleware::sdlc_auth::strict_central_auth,
         ))

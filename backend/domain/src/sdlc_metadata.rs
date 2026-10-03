@@ -115,6 +115,19 @@ pub struct ConfirmationResource {
     pub content_hash: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AnalysisReservationResource {
+    pub assignment_id: Uuid,
+    pub execution_id: Uuid,
+    pub workflow_task_ref: String,
+    pub intent_id: Uuid,
+    pub routing_snapshot_id: Uuid,
+    pub agent_id: Uuid,
+    pub fencing_token: i64,
+    pub assignment_hash: String,
+}
+
 macro_rules! metadata_events {
     ($($variant:ident, $name:literal, $resource:ty);+ $(;)?) => {
         #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -186,6 +199,7 @@ metadata_events! {
     EvidenceRecorded, "requirements.evidence_recorded", EvidenceResource;
     RequirementsConfirmed, "requirements.confirmed", ConfirmationResource;
     AnalysisIntentCreated, "analysis.intent_created", crate::sdlc::AnalysisIntent;
+    AnalysisAssignmentReserved, "analysis.assignment_reserved", AnalysisReservationResource;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]

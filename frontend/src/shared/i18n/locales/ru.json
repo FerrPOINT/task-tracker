@@ -79,7 +79,8 @@
       "requirementsPublished": "Требования опубликованы",
       "evidenceRecorded": "Readiness evidence сохранён",
       "requirementsConfirmed": "Требования подтверждены",
-      "intentQueued": "Analysis intent поставлен в очередь"
+      "intentQueued": "Analysis intent поставлен в очередь",
+      "assignmentPrepared": "Analysis assignment подготовлен, admission ожидается"
     }
   },
   "navigation": {

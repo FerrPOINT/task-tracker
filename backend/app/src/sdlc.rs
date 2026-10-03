@@ -20,6 +20,41 @@ pub struct SdlcService {
 }
 
 impl SdlcService {
+    pub async fn reserve_analysis(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::ReserveAnalysis,
+    ) -> Result<(domain::sdlc_reservation::AnalysisReservationReceipt, bool), AppError> {
+        self.repository.reserve_analysis(task, actor, command).await
+    }
+    pub async fn heartbeat_analysis(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::HeartbeatAnalysis,
+    ) -> Result<(domain::sdlc_reservation::AnalysisReservationReceipt, bool), AppError> {
+        self.repository
+            .heartbeat_analysis(task, actor, command)
+            .await
+    }
+    pub async fn analysis_reservation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::sdlc_reservation::AnalysisReservationReadback, AppError> {
+        self.repository.analysis_reservation(task, actor).await
+    }
+    pub async fn analysis_reservation_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_reservation::AnalysisReservationOperation, AppError> {
+        self.repository
+            .analysis_reservation_operation(task, actor, key)
+            .await
+    }
     pub async fn set_routing_policy(
         &self,
         project: Uuid,

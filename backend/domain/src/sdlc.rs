@@ -41,6 +41,7 @@ pub struct Principal {
 
 #[derive(Clone, Debug)]
 pub struct SdlcConfig {
+    pub reservation_scheduler_subject: String,
     pub instance_id: String,
     pub orchestrator_subject: String,
     pub verifier_subject: String,
@@ -567,6 +568,29 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn reserve_analysis(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_reservation::ReserveAnalysis,
+    ) -> Result<(crate::sdlc_reservation::AnalysisReservationReceipt, bool), AppError>;
+    async fn heartbeat_analysis(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_reservation::HeartbeatAnalysis,
+    ) -> Result<(crate::sdlc_reservation::AnalysisReservationReceipt, bool), AppError>;
+    async fn analysis_reservation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<crate::sdlc_reservation::AnalysisReservationReadback, AppError>;
+    async fn analysis_reservation_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_reservation::AnalysisReservationOperation, AppError>;
     async fn set_routing_policy(
         &self,
         project: Uuid,

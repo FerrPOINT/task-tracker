@@ -79,7 +79,8 @@
       "requirementsPublished": "Requirements published",
       "evidenceRecorded": "Readiness evidence recorded",
       "requirementsConfirmed": "Requirements confirmed",
-      "intentQueued": "Analysis intent queued"
+      "intentQueued": "Analysis intent queued",
+      "assignmentPrepared": "Analysis assignment prepared, awaiting admission"
     }
   },
   "navigation": {

@@ -12,6 +12,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
+#[path = "sdlc_reservation.rs"]
+mod reservation;
 #[path = "sdlc_routing.rs"]
 mod routing;
 
@@ -497,6 +499,12 @@ impl PostgresSdlcRepository {
             }
         }
         let result = &payload["result"];
+        if event.event_type == "analysis.assignment_reserved" {
+            let row = tx.query_one(statement("SELECT result FROM sdlc_analysis_reservation_operations WHERE assignment_id=$1 AND task_id=$2 AND lease_version=1",vec![event.event_id.into(),event.task_id.into()])).await.map_err(map_db)?;
+            if row.is_none_or(|r| r.try_get::<Json>("", "result").ok().as_ref() != Some(result)) {
+                return Ok(None);
+            }
+        }
         if event.event_type == "clarification.answered" {
             let Some(id) = result["question_id"]
                 .as_str()
@@ -523,6 +531,7 @@ impl PostgresSdlcRepository {
         let number = match event.event_type.as_str() {
             "requirements.published" | "requirements.confirmed" => result["revision"].as_i64(),
             "analysis.intent_created" => result["requirement_revision"].as_i64(),
+            "analysis.assignment_reserved" => result["assignment"]["requirement_revision"].as_i64(),
             "clarification.published"
             | "clarification.cancelled"
             | "clarification.answered"
@@ -547,6 +556,39 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn reserve_analysis(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::ReserveAnalysis,
+    ) -> Result<(domain::sdlc_reservation::AnalysisReservationReceipt, bool), AppError> {
+        self.reserve_analysis_intent(task, actor, command).await
+    }
+    async fn heartbeat_analysis(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::HeartbeatAnalysis,
+    ) -> Result<(domain::sdlc_reservation::AnalysisReservationReceipt, bool), AppError> {
+        self.heartbeat_analysis_reservation(task, actor, command)
+            .await
+    }
+    async fn analysis_reservation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::sdlc_reservation::AnalysisReservationReadback, AppError> {
+        self.read_analysis_reservation(task, actor).await
+    }
+    async fn analysis_reservation_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_reservation::AnalysisReservationOperation, AppError> {
+        self.read_analysis_reservation_operation(task, actor, key)
+            .await
+    }
     async fn set_routing_policy(
         &self,
         project: Uuid,

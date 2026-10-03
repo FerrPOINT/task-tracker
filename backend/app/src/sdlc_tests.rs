@@ -109,6 +109,7 @@ fn fixture() -> (
         confirmations: vec![],
     };
     let config = SdlcConfig {
+        reservation_scheduler_subject: "scheduler".into(),
         instance_id: "test-instance".into(),
         orchestrator_subject: "fleet".into(),
         verifier_subject: "verifier".into(),

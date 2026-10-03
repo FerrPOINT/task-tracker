@@ -28,6 +28,8 @@ use uuid::Uuid;
 
 #[path = "support/analysis_intent.rs"]
 mod analysis_intent;
+#[path = "support/analysis_reservation.rs"]
+mod analysis_reservation;
 #[path = "support/lifecycle_guard.rs"]
 mod lifecycle_guard;
 #[path = "support/metadata.rs"]
@@ -183,6 +185,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         ("pm", Uuid::new_v4()),
         ("fleet", Uuid::new_v4()),
         ("verifier", Uuid::new_v4()),
+        ("scheduler", Uuid::new_v4()),
     ] {
         sql(&db, "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active,is_system_admin) VALUES($1,$2,$3,$3,'!',$3,true,$4)", vec![id.into(), format!("{subject}@example.test").into(), subject.into(), (subject == "operator" || subject == "foreign").into()]).await;
     }
@@ -207,7 +210,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     ] {
         sql(&db, "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,reporter_id,priority,labels,position,time_spent_seconds) VALUES($1,(SELECT id FROM projects WHERE key=$2),$3,'task',(SELECT id FROM statuses WHERE is_default LIMIT 1),'Clarify',$4,'medium','[]',0,0)", vec![id.into(), project_key.into(), key.into(), owner_id.into()]).await;
     }
-    for subject in ["operator", "pm", "fleet", "verifier"] {
+    for subject in ["operator", "pm", "fleet", "verifier", "scheduler"] {
         sql(&db, "INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub=$2", vec![project.into(), subject.into()]).await;
     }
     let assignment = PmAssignment {
@@ -226,6 +229,30 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         machine_subject: "pm".into(),
     };
     let mut tokens = HashMap::new();
+    for (token, subject, scopes) in [
+        (
+            "sdlc_pat_reservation_scheduler",
+            "scheduler",
+            vec!["task-tracker:write"],
+        ),
+        (
+            "sdlc_pat_reservation_reader",
+            "scheduler",
+            vec!["task-tracker:read"],
+        ),
+        (
+            "sdlc_pat_reservation_compound",
+            "scheduler",
+            vec!["task-tracker:write", "task-tracker:read"],
+        ),
+        (
+            "sdlc_pat_reservation_foreign",
+            "foreign",
+            vec!["task-tracker:read"],
+        ),
+    ] {
+        tokens.insert(token.into(),json!({"sub":subject,"email":format!("{subject}@example.test"),"scopes":scopes,"expiresAt":chrono_now()+3600}));
+    }
     for (token, subject, scopes) in [
         (
             "sdlc_pat_replacement",
@@ -312,6 +339,10 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         );
         std::env::set_var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT", "fleet");
         std::env::set_var("TASKTRACKER_SDLC__VERIFIER_SUBJECT", "verifier");
+        std::env::set_var(
+            "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+            "scheduler",
+        );
     }
     let owner = human_token(&secret, &issuer, "owner", "sdlc", chrono_now() + 3600);
     let operator = human_token(&secret, &issuer, "operator", "sdlc", chrono_now() + 3600);
@@ -859,6 +890,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let mismatch = infra::sdlc::PostgresSdlcRepository::connect(
         &database_url,
         SdlcConfig {
+            reservation_scheduler_subject: "scheduler".into(),
             instance_id: "changed-instance".into(),
             orchestrator_subject: "fleet".into(),
             verifier_subject: "verifier".into(),
@@ -868,7 +900,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     assert!(matches!(mismatch, Err(AppError::Conflict(_))));
     stop.send(()).unwrap();
     handle.await.unwrap();
-    let (restarted, stop, handle) = start_tracker(config).await;
+    let (restarted, stop, handle) = start_tracker(config.clone()).await;
     let restart_url = format!("{restarted}/api/v1/issues/{task}/sdlc");
     let restart_metadata_url = format!("{restart_url}/events?projection=metadata_v1");
     assert_eq!(
@@ -981,6 +1013,16 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &routing_ready,
     )
     .await;
+    let (reserved_task, reserved_head) = analysis_reservation::check(
+        &db,
+        &client,
+        &restarted,
+        project,
+        task,
+        &owner,
+        &routing_ready,
+    )
+    .await;
     unavailable.store(true, Ordering::SeqCst);
     pm_credential_boundary::unavailable(&client, &restarted, task).await;
     metadata::get(&client, &restart_metadata_url, &owner, 503).await;
@@ -994,6 +1036,26 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             .status(),
         503
     );
+    stop.send(()).unwrap();
+    handle.await.unwrap();
+    unavailable.store(false, Ordering::SeqCst);
+    let (reservation_restart, stop, handle) = start_tracker(config).await;
+    let persisted = client
+        .get(format!(
+            "{reservation_restart}/api/v1/issues/{reserved_task}/sdlc/analysis-reservation"
+        ))
+        .bearer_auth("sdlc_pat_reservation_reader")
+        .send()
+        .await
+        .unwrap()
+        .json::<Value>()
+        .await
+        .unwrap();
+    assert_eq!(persisted["current"], reserved_head);
+    assert_eq!(persisted["lease_state"], "expired");
+    assert_eq!(persisted["reconciliation_needed"], true);
+    assert_eq!(persisted["capacity_held"], true);
+    println!("ANALYSIS_RESERVATION restart durable readback passed");
     stop.send(()).unwrap();
     handle.await.unwrap();
     auth_handle.abort();
