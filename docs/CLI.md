@@ -1,5 +1,7 @@
 # CLI — Task Tracker
 
+Поставка sdlc1 принята 2026-10-03: три backend обновлены после fresh backup, QA/rollback, live acceptance и наблюдения. [Установка](CLI_INSTALL.md), [проверки и ограничения](CLI_VALIDATION.md). Команды/API/exit codes сохранены; Linux x86_64/WSL, без version bumps/tags/public release.
+
 Консольный клиент для работы с API. Бинарник: `task-tracker`.
 
 ## Установка
