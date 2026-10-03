@@ -2,6 +2,49 @@
 
 ## SDLC Clarification API
 
+Exact owner confirmation now publishes Backlog and queues Analysis/Ready in the
+same transaction. The existing confirmation response remains `stage: Backlog`;
+current context reports `stage: Analysis`, `waiting_reason: queued_for_analysis`
+and no new confirmation permission. New PM commands cannot change this revision.
+Same-key/payload replay retains the original receipt; stale revision, changed
+payload or a second confirmation key is 409. Reserved PM admission remains gated.
+
+`GET /api/v1/issues/{id}/sdlc/analysis-intent` returns the strict frozen
+`AnalysisIntent` (Rust DTO in `backend/domain/src/sdlc.rs`): binding IDs, intent and
+confirmation UUIDs, exact revision/hash, `stage: Analysis`, `status: Ready`,
+`role: Analyst`, `workflow: hermes-sdlc:analyst`, `mode: analysis`, `scope: business`, cycle 0,
+attempt 0, creation time and stable `operation_key: analysis:<confirmation UUID>`.
+Central service-read and fresh explicit project access are required; PM grants
+cannot read this queue resource. Absent Analysis is 404, retained inconsistency
+409. It does not claim capacity, allocate an agent or permit dispatch.
+The same transaction emits `analysis.intent_created` after
+`requirements.confirmed`; `event_id` equals `intent_id`. Both legacy outbox and
+`metadata_v1` carry the new content-free frozen intent. Update consumer event
+unions before pickup. Further contracts/gaps: [lifecycle](SDLC_LIFECYCLE_V1.md).
+
+The owner issue-detail SDLC tab now uses these real endpoints and the generated
+`Analysis` / `analysis.intent_created` unions. Metadata polling is an explicit
+bounded page read, not a scheduler or inbox ACK: `projection=metadata_v1`, decimal
+`after`, `limit=100`, `max_bytes=65536` are query parameters. Their OpenAPI query
+annotation is corrected and covered by the API schema test. Exact confirmation
+is followed by fresh context/intent readback; the Backlog receipt alone never
+renders Analysis, assignment or success. [UI wire and freshness contract](SDLC_UI_V1.md).
+
+Analysis claim/heartbeat/assignment ACK endpoints are not implemented. The existing
+execution-lease API is PM-specific and does not grant Analyst admission. Missing
+Tracker integration of Fleet's new read-only configuration observation, native
+admission/acceptance/verified-stop lookup and pre-decomposition Workflow assignment
+mapping remain fail-closed; intent readback is not their substitute.
+
+`POST /api/v1/issues/{id}/sdlc/binding` retains the strict two-field `BindCommand`
+and owner-session/project ACL boundary, but is explicitly root-only:
+`root_task_id == id`. Any other root claim is 422 without writes, including a
+same-project issue. No child/decomposition/terminal authority is granted by this
+command or generic issue links. Retained non-root aggregates fail closed with 409.
+Queued Analysis aggregate updates are DB-fenced until real guarded admission;
+historical confirmation replay and readback remain unchanged. See the bounded
+[pre-decomposition guard](SDLC_LIFECYCLE_V1.md#pre-decomposition-guard-b-sdlc-01).
+
 `GET /api/v1/sdlc/project-access` returns
 `{contract_version:1,tracker_instance_id,project_ids:[UUID]}` with unique IDs sorted
 by UUID. Verified Central Auth service read access and an active local shadow
@@ -116,7 +159,7 @@ assignment CAS, dispatch or runtime delivery.
 
 `GET /api/v1/issues/{id}/sdlc/events?projection=metadata_v1&limit=100&max_bytes=262144`
 returns strict metadata references, canonical metadata digest, decimal-string
-after/next_after cursors and has_more. Defaults/limits and all nine resource
+after/next_after cursors and has_more. Defaults/limits and all ten resource
 variants are in the clarification contract. The entire serialized response is
 bounded (1024..1048576 bytes), preserving a contiguous task-event prefix and
 blocking rather than skipping unsupported/corrupt/oversized events. Typed static

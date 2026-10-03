@@ -26,6 +26,10 @@ use std::{
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
+#[path = "support/analysis_intent.rs"]
+mod analysis_intent;
+#[path = "support/lifecycle_guard.rs"]
+mod lifecycle_guard;
 #[path = "support/metadata.rs"]
 mod metadata;
 #[path = "support/pm_credential_boundary.rs"]
@@ -337,6 +341,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         422,
     )
     .await;
+    lifecycle_guard::binding(&db, &client, &base, &owner, task, unbound).await;
     let bind = json!({"root_task_id":task,"idempotency_key":"binding"});
     let context = post(&client, &format!("{url}/binding"), &owner, &bind, 200).await;
     assert_eq!(context["contract_version"], 1);
@@ -351,6 +356,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     );
     post(&client, &format!("{url}/binding"), &owner, &bind, 200).await;
     assert_eq!(count(&db, "sdlc_tasks").await, 1);
+    lifecycle_guard::reject_child_row(&db, task, unbound).await;
     assert_eq!(
         client
             .get(format!("{base}/api/v1/issues/{unbound}/sdlc/context"))
@@ -664,7 +670,9 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         .unwrap();
     assert_eq!(context["permissions"]["can_confirm"], true);
     post(&client, &confirm_url, &operator, &final_confirm, 403).await;
-    let confirmation = post(&client, &confirm_url, &owner, &final_confirm, 200).await;
+    let (confirmation, intent) =
+        analysis_intent::confirm(&db, &client, &url, &owner, &final_confirm, task).await;
+    analysis_intent::read(&client, &url, &foreign, 403).await;
     assert_eq!(confirmation["stage"], "Backlog");
     assert_eq!(confirmation["revision"], 2);
     let events = client
@@ -702,8 +710,8 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         .iter()
         .map(|e| e["event_type"].as_str().unwrap())
         .collect();
-    assert_eq!(types.len(), 8);
-    metadata::save("tracker-metadata-all8.http.json", &metadata_bytes);
+    assert_eq!(types.len(), 9);
+    metadata::save("tracker-metadata-all9.http.json", &metadata_bytes);
     assert_eq!(
         metadata::get(
             &client,
@@ -849,6 +857,11 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let (restarted, stop, handle) = start_tracker(config).await;
     let restart_url = format!("{restarted}/api/v1/issues/{task}/sdlc");
     let restart_metadata_url = format!("{restart_url}/events?projection=metadata_v1");
+    assert_eq!(
+        intent,
+        analysis_intent::read(&client, &restart_url, &owner, 200).await
+    );
+    assert_eq!(count(&db, "sdlc_analysis_intents").await, 1);
     pm_credential_boundary::current(&client, &restarted, task, false).await;
     assert_eq!(
         metadata::get(&client, &restart_metadata_url, &owner, 200)
@@ -890,10 +903,10 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             .await
             .unwrap()
     );
-    // Replacement changes current assignment; old answer fences and hashes stay frozen.
+    // A new PM assignment cannot reopen a revision already queued for Analysis.
     post(&client, &format!("{restart_url}/assignment"), "sdlc_pat_fleet",
-        &json!({"assignment":replacement,"expected_assignment_version":1,"idempotency_key":"replacement"}), 200).await;
-    pm_credential_boundary::current(&client, &restarted, task, true).await;
+        &json!({"assignment":replacement,"expected_assignment_version":1,"idempotency_key":"replacement"}), 409).await;
+    pm_credential_boundary::current(&client, &restarted, task, false).await;
     let replacement_fence = json!({"assignment_id":replacement.assignment_id,
         "execution_id":replacement.execution_id,"agent_id":replacement.agent_id,"assignment_version":2});
     let mut new_revision = publish.clone();
@@ -906,7 +919,17 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &format!("{restart_url}/requirements"),
         "sdlc_pat_replacement",
         &new_revision,
-        200,
+        409,
+    )
+    .await;
+    new_revision["fence"] = fence.clone();
+    new_revision["idempotency_key"] = json!("late-original-pm-revision");
+    post(
+        &client,
+        &format!("{restart_url}/requirements"),
+        "sdlc_pat_pm",
+        &new_revision,
+        409,
     )
     .await;
     let mut changed_question = question.clone();
@@ -920,12 +943,13 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &format!("{restart_url}/clarifications"),
         "sdlc_pat_replacement",
         &changed_question,
-        200,
+        409,
     )
     .await;
     let changed = metadata::get(&client, &restart_metadata_url, &owner, 200)
         .await
         .1;
+    assert_eq!(changed, metadata_page);
     assert_eq!(
         &changed["events"].as_array().unwrap()[..metadata_page["events"].as_array().unwrap().len()],
         metadata_page["events"].as_array().unwrap()

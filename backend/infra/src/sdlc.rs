@@ -135,9 +135,13 @@ impl PostgresSdlcRepository {
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("SDLC binding", task))?;
         let state = state_from(row)?;
-        if state.tracker_instance_id != self.config.instance_id || state.project_id != project {
+        if state.tracker_instance_id != self.config.instance_id
+            || state.project_id != project
+            || state.task_id != task
+        {
             return Err(AppError::conflict("SDLC binding mismatch"));
         }
+        state.require_root()?;
         Ok(state)
     }
 
@@ -273,6 +277,27 @@ impl PostgresSdlcRepository {
         row.try_get("", "enrolled").map_err(map_db)
     }
 
+    async fn current_analysis_intent(
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+    ) -> Result<AnalysisIntent, AppError> {
+        let confirmation = state
+            .confirmations
+            .last()
+            .ok_or_else(|| AppError::conflict("Analysis confirmation unavailable"))?;
+        let row = tx.query_one(statement(
+            "SELECT payload FROM sdlc_analysis_intents WHERE task_id=$1 AND requirement_revision=$2",
+            vec![state.task_id.into(), confirmation.revision.into()],
+        )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("Analysis intent unavailable"))?;
+        let intent: AnalysisIntent =
+            serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
+                .map_err(|_| AppError::conflict("Analysis intent invalid"))?;
+        if app::sdlc::analysis_intent(state, confirmation, intent.intent_id)? != intent {
+            return Err(AppError::conflict("Analysis intent inconsistent"));
+        }
+        Ok(intent)
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn finish(
         tx: &DatabaseTransaction,
@@ -294,13 +319,19 @@ impl PostgresSdlcRepository {
             Stage::Draft => "SDLC Draft",
             Stage::Clarification => "SDLC Clarification",
             Stage::Backlog => "Backlog",
+            Stage::Analysis => "SDLC Analysis",
         };
         if !matches!(state.stage, Stage::Backlog) || event_type == "requirements.confirmed" {
             exec(tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at) SELECT $1,i.id,i.status_id,s.id,u.id,now() FROM issues i JOIN statuses s ON s.id=(SELECT id FROM statuses WHERE name=$3 ORDER BY id LIMIT 1) JOIN users u ON u.central_sub=$4 WHERE i.id=$2 AND i.status_id<>s.id", vec![Uuid::new_v4().into(), task.into(), status_name.into(), actor.subject.clone().into()]).await?;
             exec(tx, "UPDATE issues SET status_id=(SELECT id FROM statuses WHERE name=$2 ORDER BY id LIMIT 1), sprint_id=NULL, updated_at=now() WHERE id=$1", vec![task.into(), status_name.into()]).await?;
         }
         exec(tx, "INSERT INTO sdlc_idempotency(task_id,actor_subject,idempotency_key,payload_hash,result) VALUES($1,$2,$3,$4,$5)", vec![task.into(), actor.subject.clone().into(), key.into(), hash.into(), result.clone().into()]).await?;
-        let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,"stage":state.stage,"requirement_revision":state.current_revision(),"result":result});
+        let event_stage = if event_type == "requirements.confirmed" {
+            Stage::Backlog
+        } else {
+            state.stage.clone()
+        };
+        let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,"stage":event_stage,"requirement_revision":state.current_revision(),"result":result});
         exec(
             tx,
             "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,$3,$4)",
@@ -311,7 +342,17 @@ impl PostgresSdlcRepository {
                 payload.into(),
             ],
         )
-        .await
+        .await?;
+        if event_type == "requirements.confirmed" {
+            let intent = Self::current_analysis_intent(tx, state).await?;
+            let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+                "project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,
+                "owner_subject":state.owner_subject,"stage":Stage::Analysis,
+                "requirement_revision":intent.requirement_revision,"result":intent});
+            exec(tx, "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'analysis.intent_created',$3)",
+                vec![intent.intent_id.into(), task.into(), payload.into()]).await?;
+        }
+        Ok(())
     }
 
     async fn persist_result(
@@ -379,6 +420,10 @@ impl PostgresSdlcRepository {
                 let confirmation: Confirmation =
                     serde_json::from_value(result.clone()).map_err(AppError::internal)?;
                 exec(tx, "INSERT INTO sdlc_confirmations(id,task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4,$5)", vec![confirmation.id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(), payload]).await?;
+                let intent = app::sdlc::analysis_intent(state, &confirmation, Uuid::new_v4())?;
+                exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload) VALUES($1,$2,$3,$4,$5,$6,$7)",
+                    vec![intent.intent_id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(),
+                        confirmation.id.into(), intent.operation_key.clone().into(), json_value(&intent)?]).await?;
                 "requirements.confirmed"
             }
             SdlcCommand::Evidence(c) => {
@@ -466,6 +511,7 @@ impl PostgresSdlcRepository {
         }
         let number = match event.event_type.as_str() {
             "requirements.published" | "requirements.confirmed" => result["revision"].as_i64(),
+            "analysis.intent_created" => result["requirement_revision"].as_i64(),
             "clarification.published"
             | "clarification.cancelled"
             | "clarification.answered"
@@ -490,6 +536,23 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn analysis_intent(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<AnalysisIntent, AppError> {
+        if app::sdlc::has_pm_grant(&actor.scopes) {
+            return Err(AppError::Forbidden);
+        }
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load_read(&tx, task, actor).await?;
+        if !matches!(state.stage, Stage::Analysis) {
+            return Err(AppError::not_found("Analysis intent", task));
+        }
+        let intent = Self::current_analysis_intent(&tx, &state).await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(intent)
+    }
     async fn claim_execution_lease(
         &self,
         task: Uuid,
@@ -1050,16 +1113,10 @@ impl SdlcRepository for PostgresSdlcRepository {
         if !actor.human_session || owner.is_empty() || actor.subject != owner {
             return Err(AppError::Forbidden);
         }
-        let root = tx
-            .query_one(statement(
-                "SELECT project_id FROM issues WHERE id=$1 AND deleted_at IS NULL",
-                vec![command.root_task_id.into()],
-            ))
-            .await
-            .map_err(map_db)?
-            .ok_or_else(|| AppError::not_found("root task", command.root_task_id))?;
-        if root.try_get::<Uuid>("", "project_id").map_err(map_db)? != project {
-            return Err(AppError::validation("root must belong to the same project"));
+        if command.root_task_id != task {
+            return Err(AppError::validation(
+                "root_task_id must equal task_id; children require accepted Architect decomposition",
+            ));
         }
         let hash = app::sdlc::canonical_hash(&json!({"operation":"bind","payload":command}))?;
         if let Some(result) =

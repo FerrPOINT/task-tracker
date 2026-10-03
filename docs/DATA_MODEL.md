@@ -2,6 +2,31 @@
 
 ## SDLC: Additive Migration 000034
 
+The same pending 000034 now admits aggregate stage `Analysis`, seeds
+`SDLC Analysis` (todo category) and adds append-only `sdlc_analysis_intents`.
+Its primary intent UUID, unique `(task_id,requirement_revision)`, unique
+confirmation UUID/operation key and composite FK to exact confirmation
+`(task_id,id,revision,content_hash)` prevent duplicate or unconfirmed pickup.
+Payload CHECK fixes Analysis/Ready, Analyst/hermes-sdlc:analyst/analysis/business, cycle 0
+and pre-admission attempt 0. A filtered outbox unique index prevents a second
+`analysis.intent_created` for the same task/revision. Intent, consent, aggregate,
+issue/status history, idempotency receipt and both events commit together.
+Issue trigger rejects generic status/sprint changes while Analysis is queued;
+current intent must match its exact requirement revision/hash. Existing PM
+reservation/lease guards and immutable history remain intact. No backfill of
+historical Backlog consent or accepted/shared database reset is performed.
+
+The pre-decomposition guard extends only this pending migration with named
+`sdlc_root_only CHECK(root_task_id=task_id)` and `sdlc_analysis_gate`. Existing
+binding/provisioning paths create roots, not delivery children. Once state is
+Analysis, the trigger rejects any changed aggregate/control row, including a
+stage rollback, revised requirements/hash or an invented decomposition; a no-op
+update is permitted. No DAG/coverage/decomposition/barrier ledger is fabricated.
+Future child materialization must replace the root-only restriction together with
+accepted decomposition membership/kind/revision constraints and authenticated
+Architect authority, not simply remove it or use generic links. No new migration
+number, applied-schema rewrite, backfill or shared DB reset is introduced.
+
 Pending 000034 also adds `sdlc_project_members_user_idx(user_id,project_id)`.
 The project-access endpoint combines that membership index, the existing
 `projects.owner_id` index and central-subject identity index in one SQL snapshot.

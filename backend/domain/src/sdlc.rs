@@ -88,6 +88,42 @@ pub enum Stage {
     Draft,
     Clarification,
     Backlog,
+    Analysis,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+pub enum AnalysisStage {
+    Analysis,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+pub enum AnalysisStatus {
+    Ready,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AnalysisIntent {
+    pub contract_version: u8,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub task_id: Uuid,
+    pub root_task_id: Uuid,
+    pub intent_id: Uuid,
+    pub confirmation_id: Uuid,
+    #[serde(deserialize_with = "safe_version")]
+    pub requirement_revision: i64,
+    pub content_hash: String,
+    pub stage: AnalysisStage,
+    pub status: AnalysisStatus,
+    pub role: String,
+    pub workflow: String,
+    pub mode: String,
+    pub scope: String,
+    pub cycle: u8,
+    pub attempt: u8,
+    pub operation_key: String,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -406,6 +442,14 @@ pub struct TaskState {
 }
 
 impl TaskState {
+    pub fn require_root(&self) -> Result<(), AppError> {
+        if self.task_id.is_nil() || self.root_task_id != self.task_id {
+            return Err(AppError::conflict(
+                "SDLC child lifecycle requires accepted Architect decomposition",
+            ));
+        }
+        Ok(())
+    }
     pub fn current_revision(&self) -> Option<i64> {
         self.revisions.last().map(|r| r.revision)
     }
@@ -416,7 +460,8 @@ impl TaskState {
         let Some(revision) = self.revisions.last() else {
             return false;
         };
-        !matches!(self.stage, Stage::Backlog)
+        self.require_root().is_ok()
+            && matches!(self.stage, Stage::Clarification)
             && self.confirmation_revision == Some(revision.revision)
             && !self
                 .questions
@@ -437,6 +482,7 @@ impl TaskState {
     }
     pub fn context(&self, actor: &Principal) -> SdlcContext {
         let can_answer = self.owner(actor)
+            && matches!(self.stage, Stage::Clarification)
             && self
                 .questions
                 .iter()
@@ -453,6 +499,7 @@ impl TaskState {
             waiting_reason: match self.stage {
                 Stage::Draft => Some("waiting_for_pm".into()),
                 Stage::Backlog => None,
+                Stage::Analysis => Some("queued_for_analysis".into()),
                 Stage::Clarification
                     if self
                         .questions
@@ -512,6 +559,11 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn analysis_intent(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<AnalysisIntent, AppError>;
     async fn claim_execution_lease(
         &self,
         task: Uuid,

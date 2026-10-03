@@ -10,7 +10,8 @@ resolves active users by central subject and locks project/member authorization
 rows together with issue/task state. Global admin roles confer no SDLC access.
 Requirements hash covers the full typed document with canonical JSON. Questions
 invalidate readiness until PM publishes a new revision; independent verifier
-evidence plus exact owner-session consent atomically move the issue to Backlog.
+evidence plus exact owner-session consent atomically publish Backlog and queue
+the issue for Analysis/Ready.
 The issue gate is also enforced at PostgreSQL so legacy mutations cannot bypass
 it. Durable pull outbox separates Tracker persistence from Workflow resume.
 Fleet gateway, inbox/projection, Workflow fencing and the real verifier remain
@@ -75,6 +76,28 @@ projected; the bounded page emits the last returned ID iff lookahead exists,
 otherwise required null. No counts, separate ACL read, retained page snapshot or
 scope cache is introduced. Every continuation rechecks access; selector results
 do not replace write/admission checks. Rust DTOs/route annotations own the schema.
+
+Target autonomous SDLC: [Task lifecycle v1](SDLC_LIFECYCLE_V1.md). Owner — Tracker;
+документ отделяет реализованные срезы от дальнейших target capabilities.
+
+Before Architect admission exists, the root-only identity guard is enforced by
+`TaskState::require_root`, repository load/binding and pending 000034. All existing
+PM business commands and reads reject non-root aggregates. The binding endpoint
+cannot provision independent PM flows for claimed delivery children. A queued
+Analysis row is frozen by a separate DB trigger; rollback to Backlog cannot bypass
+the generic issue status gate. Fresh ACL, existing issue/aggregate lock order,
+outbox and historical replay remain unchanged. This is a fail-closed lifecycle
+guard, not a decomposition graph, accepted terminal protocol or root barrier.
+
+Exact confirmation preserves its Backlog publication receipt while the final
+aggregate becomes Analysis and its issue status remains in todo category. The
+existing `execute` task lock and replay ledger serialize confirmation; application
+policy rejects new PM commands after queueing. Repository persists one frozen
+intent with a composite consent FK before `finish` writes state/history/receipt
+and ordered confirmation/intent outbox events. All share the original transaction;
+an outbox failure rolls back consent and queue. Readback reconstructs backend
+routing from the retained current confirmation and compares the typed intent.
+The queue intent is admission input only; no scheduler, run or dispatch is added.
 
 ## 1. Контекст
 
@@ -291,10 +314,20 @@ CORS: `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS`. По умолчанию исп
 ## 8. Frontend архитектура
 
 - **Pages** — экраны: login, register, dashboard, projects, project-board, project-backlog, search, issue-create, issue-detail
-- **Features** — time-tracking и будущие бизнес-модули
+- **Features** — time-tracking, owner SDLC intent/readback и будущие бизнес-модули
 - **Shared** — ui-kit, i18n, auth store, theme, API hooks
 - **App** — роутер (`react-router`), провайдеры QueryClient + ThemeProvider
 - **Widgets** — `AppShell` с sidebar + header, адаптивный под mobile
+
+`issue-detail?tab=sdlc -> features/sdlc -> api/sdlc` читает strict SDLC API через
+существующий Central bearer client. Generated DTOs и metadata union остаются
+единственным wire type source. Snapshot проверяет binding/revision/hash/routing,
+затем UI показывает frozen intent как queued awaiting admission. Query cache
+namespace меняется при смене credential без bearer в query keys; 401/403 скрывают
+cached owner data, stale/readback error блокирует consent. Mutation использует
+exact revision/hash и stable per-pin operation key, не optimistic transition.
+Нет Fleet/config/dispatch вызовов, новых runtime producers или live fixtures.
+Подробнее: [B-SDLC-05 UI contract](SDLC_UI_V1.md).
 
 ## 9. API, документация и тестирование
 

@@ -2,13 +2,32 @@
 
 ## SDLC Clarification: Implemented Backend Scope
 
+The first B-SDLC-01 backend slice extends exact owner confirmation with one
+durable Analysis/Ready intent in the same transaction as consent, issue history,
+command receipt and outbox. Backend fixes Analyst/analysis/business routing;
+PM cannot choose the next role or mutate the queued revision. A strict intent
+readback supports reconciliation after restart. Dispatch/admission, other stage
+transitions, decomposition/barrier/Rework and end-to-end PDLC remain incomplete:
+[implemented slice and next interfaces](SDLC_LIFECYCLE_V1.md).
+
+The next bounded B-SDLC-01 slice cannot safely accept Architect materialization:
+Architecture/non-PM admitted assignment and trusted terminal authority do not yet
+exist. Its concrete fallback closes root-binding/queued-state bypasses instead:
+root-only strict binding, non-root PM lifecycle/read denial and a DB freeze of
+queued Analysis. Real parent/root/dependencies, revisioned coverage, dependency
+cycle validation and the active-decomposition root barrier remain unimplemented.
+No operator/fixture assignment or receipt enables them.
+
 Opt-in Draft -> assigned PM questions -> owner answers -> new full requirements
 revision -> trusted readiness evidence -> exact owner confirmation -> Backlog.
 Backend contract and prerequisites: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
 Strict project membership and central task-owner identity apply to this slice,
 independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL
 verification is distinct from Fleet/Workflow integration and real PM acceptance;
-no production frontend or live autonomous flow is claimed by this implementation.
+The B-SDLC-05 owner issue-detail SDLC tab now implements exact confirmation and
+real intent/readback with typed metadata history, loading/access/error/stale/empty
+states. It labels Analysis/Ready as queued awaiting admission, not a run or success.
+[UI scope and checks](SDLC_UI_V1.md). No live autonomous flow is claimed.
 
 Assignment-scoped PM PATs do not inherit generic legacy user authority. The
 legacy API refuses them before profile linking; SDLC permits only canonical

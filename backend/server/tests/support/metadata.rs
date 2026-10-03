@@ -232,6 +232,10 @@ pub fn verify(page: &Value, legacy: &Value) {
                 assert_eq!(r["requirement_revision"], result["revision"]);
                 assert_eq!(r["content_hash"], result["content_hash"]);
             }
+            "analysis.intent_created" => {
+                assert_eq!(r, result);
+                assert_eq!(r["intent_id"], event["event_id"]);
+            }
             other => panic!("unsupported event: {other}"),
         }
     }

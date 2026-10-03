@@ -10,6 +10,40 @@ fn actor(subject: &str, human: bool, scopes: Vec<String>) -> Principal {
 }
 
 #[test]
+fn non_root_cannot_use_pm_lifecycle_or_issue_confirmation_permission() {
+    let (mut state, config, owner, pm, _, _) = fixture();
+    state.root_task_id = Uuid::new_v4();
+    let before = serde_json::to_value(&state).unwrap();
+    let command = SdlcCommand::Confirm {
+        revision: 1,
+        command: ConfirmCommand {
+            content_hash: "a".repeat(64),
+            idempotency_key: "child-confirm".into(),
+        },
+    };
+    assert!(matches!(state.require_root(), Err(AppError::Conflict(_))));
+    assert!(matches!(
+        authorize_pm_read(&state, &owner),
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        authorize_pm_read(&state, &pm),
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        apply(&mut state, &owner, &config, &command),
+        Err(AppError::Conflict(_))
+    ));
+    assert!(!state.context(&owner).permissions.can_confirm);
+    assert_eq!(serde_json::to_value(&state).unwrap(), before);
+    state.root_task_id = state.task_id;
+    assert!(state.require_root().is_ok());
+    state.task_id = Uuid::nil();
+    state.root_task_id = Uuid::nil();
+    assert!(state.require_root().is_err());
+}
+
+#[test]
 fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
     let human = actor("central-human", true, vec![]);
     let mut command = CreateDraftCommand {
@@ -341,6 +375,21 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
         apply(&mut state, &verifier, &config, &command).unwrap();
     }
     assert!(state.context(&owner).permissions.can_confirm);
+    let mut child = state.clone();
+    child.root_task_id = Uuid::new_v4();
+    assert!(!child.ready());
+    assert!(!child.context(&owner).permissions.can_confirm);
+    let stale = SdlcCommand::Confirm {
+        revision: 1,
+        command: ConfirmCommand {
+            content_hash: state.revisions[0].content_hash.clone(),
+            idempotency_key: "stale-confirmation".into(),
+        },
+    };
+    assert!(matches!(
+        apply(&mut state, &owner, &config, &stale),
+        Err(AppError::Conflict(_))
+    ));
     let mut wrong_hash = confirm(&state);
     if let SdlcCommand::Confirm { command, .. } = &mut wrong_hash {
         command.content_hash = "bad".into();
@@ -357,13 +406,35 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
         .is_err()
     );
     apply(&mut state, &owner, &config, &command).unwrap();
-    assert!(matches!(state.stage, Stage::Backlog));
-    publish(&mut state, &config, &pm, &fence);
+    assert!(matches!(state.stage, Stage::Analysis));
     assert!(!state.ready());
+    assert_eq!(
+        state.context(&owner).waiting_reason.as_deref(),
+        Some("queued_for_analysis")
+    );
+    let intent =
+        analysis_intent(&state, state.confirmations.last().unwrap(), Uuid::new_v4()).unwrap();
+    assert_eq!(intent.requirement_revision, 2);
+    assert_eq!(intent.status, AnalysisStatus::Ready);
+    assert_eq!(intent.workflow, "hermes-sdlc:analyst");
+    assert_eq!(intent.mode, "analysis");
+    assert_eq!(intent.scope, "business");
+    let saved = canonical_hash(&state).unwrap();
     assert!(matches!(
         apply(&mut state, &owner, &config, &command),
         Err(AppError::Conflict(_))
     ));
+    let mutation = SdlcCommand::PublishRevision(PublishRevision {
+        fence,
+        expected_requirement_revision: Some(2),
+        document: document(),
+        idempotency_key: "late-pm-revision".into(),
+    });
+    assert!(matches!(
+        apply(&mut state, &pm, &config, &mutation),
+        Err(AppError::Conflict(_))
+    ));
+    assert_eq!(canonical_hash(&state).unwrap(), saved);
 }
 
 #[test]

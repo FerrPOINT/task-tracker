@@ -330,7 +330,7 @@ type SdlcContext = {
   task_id: string;
   root_task_id: string;
   owner_subject: string;
-  stage: "Draft" | "Clarification" | "Backlog";
+  stage: "Draft" | "Clarification" | "Backlog" | "Analysis";
   requirement_revision: number | null; // 1..Number.MAX_SAFE_INTEGER when present
   waiting_reason: string | null;
   permissions: { can_answer: boolean; can_confirm: boolean };
@@ -353,7 +353,11 @@ return 503, never an empty successful context.
   `{expected_question_version, requirement_revision, selected_option_ids,
     text, comment, idempotency_key}`. Returns a durable typed answer.
 - `POST /requirements/{revision}/confirm`: `{content_hash,idempotency_key}`.
-  Returns the exact durable confirmation and `stage: "Backlog"`.
+  Returns the exact durable publication confirmation and `stage: "Backlog"`.
+  Current context is already `Analysis`, waiting reason `queued_for_analysis`.
+- `GET /analysis-intent`: strict frozen `AnalysisIntent`; Central service-read
+  and fresh explicit project ACL required, PM grants denied. Absent Analysis is
+  404; retained missing/inconsistent intent is 409. See [lifecycle](SDLC_LIFECYCLE_V1.md).
 
 Questions have UUID `id/request_id/task_id/root_task_id`, safe integer `version`
 and `requirement_revision`, requirement reference, assignment/execution/agent/
@@ -376,8 +380,8 @@ execution, concrete agent and assignment version. Human requests cannot publish
 questions/revisions. Readiness evidence needs a separately trusted verifier;
 PM credentials and owner claims cannot mark checks passed. Missing verifier
 contract/configuration fails closed. Confirmation evaluates persisted evidence
-for the exact document hash and revision inside the same transaction as Backlog,
-idempotency result and outbox event.
+for the exact document hash and revision inside the same transaction as Backlog
+publication, Analysis/Ready intent, idempotency result and both outbox events.
 
 Operational provisioning, machine DTOs and verification evidence details are
 documented here alongside the implementation before handoff.
@@ -458,8 +462,11 @@ Publishing a question invalidates confirmation readiness. Answering/cancelling
 questions does not restore it: PM must publish a new requirements revision after
 answers. Both checklist and prerequisites must be nonempty, with unique IDs;
 each requires exact-revision/hash evidence from the configured trusted verifier.
-Roots from a different project are rejected, even for users with access to both
-projects; root existence/deletion and same-project access are checked on binding.
+Binding is root-only: `root_task_id` must equal the route task UUID. Same-project
+child/root chains, cyclic-root attempts and foreign/nil/missing root claims are
+422 after owner/project authorization, with no ledger/outbox writes. The task
+itself must be live and accessible. Real delivery children require accepted
+Architect decomposition and must not enter an independent PM/Analysis flow.
 
 ## Provisioning and machine commands
 
@@ -514,9 +521,12 @@ type Evidence = {
 
 - `POST /binding` (`BindCommand -> SdlcContext`): human session only, exact
   issue reporter central subject plus strict project access. Task owner is
-  persisted from the issue reporter, never from the command. A root must exist,
-  be live, and belong to the same authorized project. Existing bindings are
+  persisted from the issue reporter, never from the command. `root_task_id` must
+  equal `{id}`; this endpoint cannot materialize children or accept a decomposition.
+  The issue must be live and belong to the authorized project. Existing bindings are
   immutable and cannot be repointed by issue edits or another binding command.
+  Root-only identity is independently DB-constrained in pending 000034; retained
+  non-root state is rejected by reads/commands, not silently promoted to a root.
 - `POST /assignment` (`AssignCommand -> PmAssignment`): configured non-session
   orchestrator only, `task-tracker:write` and `task-tracker:sdlc:assign` grants.
   First version is 1; replacements increment exactly by 1 and fence old open
@@ -525,8 +535,9 @@ type Evidence = {
   assigned non-session PM only; initial `expected_requirement_revision:null`,
   then exact current revision. Publish the initial full revision before asking
   questions. Mandatory open questions block further publication. Changed
-  requirements after Backlog create a new Clarification revision requiring new
-  evidence and owner consent; old confirmations remain historical.
+  requirements on historical Backlog bindings still require new evidence and
+  owner consent. New PM commands after Analysis queueing are 409; reopen and
+  downstream requirement revision capabilities are not implemented in this slice.
 - `POST /clarifications` (`PublishQuestion -> Question`): current assigned PM
   only, exact current unconfirmed requirements revision. Caller supplies stable
   UUIDs for request/question/options/checkpoint; first expected version is null.
@@ -569,7 +580,10 @@ outbox event commit together under issue/task locks. Outbox failure rolls back
 the answer/confirmation. Ordinary issue updates, board moves, transitions and
 sprint moves cannot bypass the gate, enforced by a PostgreSQL issue trigger.
 Unconfirmed issues use `SDLC Draft`/`SDLC Clarification`; confirmation moves to
-`Backlog` and clears sprint assignment. History tables reject UPDATE/DELETE;
+`Analysis`/Ready and clears sprint assignment, retaining the exact Backlog receipt.
+New PM assignments/revisions/questions cannot change the queued revision. Generic
+status/sprint changes remain blocked while queued; dispatch admission is separate.
+History tables reject UPDATE/DELETE;
 hard purge is blocked by foreign keys to retained SDLC history.
 
 `GET /events?after=0` returns `{events:[{sequence,event_id,task_id,event_type,
@@ -621,6 +635,7 @@ are required, including nullable fields; all objects reject unknown fields.
 | requirements.published | `{requirement_revision:Version,content_hash:SHA256}` |
 | requirements.evidence_recorded | `{requirement_revision:Version,content_hash:SHA256,check_id_sha256:SHA256}` |
 | requirements.confirmed | `{confirmation_id:UUID,requirement_revision:Version,content_hash:SHA256}` |
+| analysis.intent_created | Strict frozen `AnalysisIntent` without business content; `event_id=intent_id`, stage Analysis, status Ready, role Analyst, workflow hermes-sdlc:analyst, mode analysis, scope business, cycle/attempt 0, operation key `analysis:<confirmation UUID>` |
 
 Fence has the same four fields as pm.assigned. No result, aggregate, document,
 answer text, options, evidence reference or raw check_id is emitted. Requirements

@@ -37,8 +37,9 @@ import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
 import { useBoard, useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
+import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
 
-const issueTabs = ['activity', 'comments', 'worklog', 'attachments'] as const
+const issueTabs = ['activity', 'comments', 'worklog', 'attachments', 'sdlc'] as const
 type IssueTab = (typeof issueTabs)[number]
 
 function parseIssueTab(value: string | null): IssueTab {
@@ -261,7 +262,7 @@ export function IssueDetailPage() {
           activity={
             <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5">
                   <TabsTrigger className="min-h-10" value="activity">
                     {t('issue.activity')}
                   </TabsTrigger>
@@ -273,6 +274,9 @@ export function IssueDetailPage() {
                   </TabsTrigger>
                   <TabsTrigger className="min-h-10" value="attachments">
                     {t('attachments.title')}
+                  </TabsTrigger>
+                  <TabsTrigger className="min-h-10" value="sdlc">
+                    {t('sdlc.title')}
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="activity">
@@ -316,6 +320,9 @@ export function IssueDetailPage() {
                 </TabsContent>
                 <TabsContent value="attachments">
                   <AttachmentPanel issueId={id} />
+                </TabsContent>
+                <TabsContent value="sdlc">
+                  <SdlcPanel key={id} issueId={id} />
                 </TabsContent>
               </Tabs>
 

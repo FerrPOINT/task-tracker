@@ -22,7 +22,8 @@ CREATE TABLE sdlc_tasks (
     CHECK (state->>'project_id' = project_id::text),
     CHECK (state->>'tracker_instance_id' = tracker_instance_id),
     CHECK (state->>'owner_subject' = owner_subject),
-    CHECK (state->>'stage' IN ('Draft', 'Clarification', 'Backlog'))
+    CONSTRAINT sdlc_root_only CHECK (root_task_id = task_id),
+    CHECK (state->>'stage' IN ('Draft', 'Clarification', 'Backlog', 'Analysis'))
 );
 CREATE INDEX sdlc_tasks_project ON sdlc_tasks(project_id);
 CREATE INDEX sdlc_tasks_root ON sdlc_tasks(root_task_id);
@@ -238,8 +239,33 @@ CREATE TABLE sdlc_evidence (
 CREATE TABLE sdlc_confirmations (
     id uuid PRIMARY KEY, task_id uuid NOT NULL, revision bigint NOT NULL,
     content_hash text NOT NULL, payload jsonb NOT NULL,
-    UNIQUE(task_id, revision),
+    UNIQUE(task_id, revision), UNIQUE(task_id, id, revision, content_hash),
     FOREIGN KEY(task_id, revision, content_hash) REFERENCES sdlc_requirements(task_id, revision, content_hash)
+);
+CREATE TABLE sdlc_analysis_intents (
+    intent_id uuid PRIMARY KEY CHECK (intent_id != '00000000-0000-0000-0000-000000000000'::uuid),
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
+    requirement_revision bigint NOT NULL CHECK (requirement_revision BETWEEN 1 AND 9007199254740991),
+    content_hash text NOT NULL,
+    confirmation_id uuid NOT NULL UNIQUE,
+    operation_key text NOT NULL UNIQUE,
+    payload jsonb NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE(task_id, requirement_revision),
+    FOREIGN KEY(task_id,confirmation_id,requirement_revision,content_hash)
+        REFERENCES sdlc_confirmations(task_id,id,revision,content_hash),
+    CHECK ((payload->>'intent_id'=intent_id::text
+        AND payload->>'task_id'=task_id::text
+        AND payload->>'confirmation_id'=confirmation_id::text
+        AND (payload->>'requirement_revision')::bigint=requirement_revision
+        AND payload->>'content_hash'=content_hash
+        AND payload->>'operation_key'=operation_key
+        AND operation_key='analysis:'||confirmation_id::text
+        AND payload->'contract_version'='1'::jsonb
+        AND payload->>'stage'='Analysis' AND payload->>'status'='Ready'
+        AND payload->>'role'='Analyst' AND payload->>'workflow'='hermes-sdlc:analyst'
+        AND payload->>'mode'='analysis' AND payload->>'scope'='business'
+        AND payload->'cycle'='0'::jsonb AND payload->'attempt'='0'::jsonb) IS TRUE)
 );
 CREATE TABLE sdlc_idempotency (
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
@@ -256,9 +282,12 @@ CREATE TABLE sdlc_outbox (
     created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX sdlc_outbox_task_cursor ON sdlc_outbox(task_id, sequence);
+CREATE UNIQUE INDEX sdlc_outbox_analysis_once
+    ON sdlc_outbox(task_id, (payload->'result'->>'requirement_revision'))
+    WHERE event_type='analysis.intent_created';
 INSERT INTO statuses (id, name, category, position, is_default, is_closed)
 SELECT gen_random_uuid(), name, 'todo', 0, false, false
-FROM (VALUES ('SDLC Draft'), ('SDLC Clarification'), ('Backlog')) AS names(name)
+FROM (VALUES ('SDLC Draft'), ('SDLC Clarification'), ('Backlog'), ('SDLC Analysis')) AS names(name)
 WHERE NOT EXISTS (SELECT 1 FROM statuses s WHERE s.name = names.name);
 
 CREATE FUNCTION sdlc_binding_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -272,6 +301,17 @@ BEGIN
 END $$;
 CREATE TRIGGER sdlc_binding_immutable BEFORE UPDATE ON sdlc_tasks
 FOR EACH ROW EXECUTE FUNCTION sdlc_binding_immutable();
+
+CREATE FUNCTION sdlc_analysis_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.state->>'stage'='Analysis' AND NEW IS DISTINCT FROM OLD THEN
+        RAISE EXCEPTION 'SDLC queued Analysis requires guarded admission before lifecycle mutation'
+            USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_analysis_gate BEFORE UPDATE ON sdlc_tasks
+FOR EACH ROW EXECUTE FUNCTION sdlc_analysis_gate();
 
 CREATE FUNCTION sdlc_issue_gate() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE binding sdlc_tasks%ROWTYPE; target_name text;
@@ -293,6 +333,15 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'SDLC exact revision confirmation absent' USING ERRCODE = '23514';
     END IF;
+    IF binding.state->>'stage'='Analysis' THEN
+        IF target_name != 'SDLC Analysis' OR NEW.sprint_id IS NOT NULL OR NOT EXISTS (
+            SELECT 1 FROM sdlc_analysis_intents q WHERE q.task_id=NEW.id
+                AND q.requirement_revision=(binding.state->'revisions'->-1->>'revision')::bigint
+                AND q.content_hash=binding.state->'revisions'->-1->>'content_hash'
+        ) THEN
+            RAISE EXCEPTION 'SDLC queued Analysis requires guarded admission' USING ERRCODE='23514';
+        END IF;
+    END IF;
     RETURN NEW;
 END $$;
 CREATE TRIGGER sdlc_issue_gate BEFORE UPDATE ON issues
@@ -306,7 +355,7 @@ DO $$ DECLARE name text; BEGIN
     FOREACH name IN ARRAY ARRAY['sdlc_instance', 'sdlc_agent_bindings', 'sdlc_assignments',
         'sdlc_requests', 'sdlc_question_versions', 'sdlc_options', 'sdlc_requirements',
         'sdlc_answers', 'sdlc_evidence', 'sdlc_confirmations', 'sdlc_idempotency', 'sdlc_outbox',
-        'sdlc_draft_creations', 'sdlc_pm_executions', 'sdlc_pm_lease_operations']
+        'sdlc_draft_creations', 'sdlc_pm_executions', 'sdlc_pm_lease_operations', 'sdlc_analysis_intents']
     LOOP
         EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()', name);
     END LOOP;

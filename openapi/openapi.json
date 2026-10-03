@@ -1329,6 +1329,54 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/analysis-intent": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "analysis_intent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisIntent"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fresh explicit project access required; PM grant cannot read queue"
+          },
+          "404": {
+            "description": "Issue, binding or Analysis intent not found"
+          },
+          "409": {
+            "description": "Persisted Analysis intent inconsistent"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/assignment": {
       "post": {
         "tags": [
@@ -1412,6 +1460,9 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "root_task_id must equal task_id; children require accepted Architect decomposition"
           }
         },
         "security": [
@@ -1665,40 +1716,27 @@
           },
           {
             "name": "projection",
-            "in": "path",
-            "required": true,
+            "in": "query",
+            "required": false,
             "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/MetadataProjection"
-                }
-              ]
+              "$ref": "#/components/schemas/MetadataProjection"
             }
           },
           {
             "name": "after",
-            "in": "path",
+            "in": "query",
             "description": "Canonical nonnegative decimal i64 for metadata_v1; legacy i64 otherwise.",
-            "required": true,
+            "required": false,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           },
           {
             "name": "limit",
-            "in": "path",
-            "required": true,
+            "in": "query",
+            "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "int32",
               "maximum": 100,
               "minimum": 1
@@ -1706,13 +1744,10 @@
           },
           {
             "name": "max_bytes",
-            "in": "path",
-            "required": true,
+            "in": "query",
+            "required": false,
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "format": "int32",
               "maximum": 1048576,
               "minimum": 1024
@@ -5851,6 +5886,115 @@
           }
         }
       },
+      "AnalysisIntent": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "intent_id",
+          "confirmation_id",
+          "requirement_revision",
+          "content_hash",
+          "stage",
+          "status",
+          "role",
+          "workflow",
+          "mode",
+          "scope",
+          "cycle",
+          "attempt",
+          "operation_key",
+          "created_at"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "confirmation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "intent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "operation_key": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "role": {
+            "type": "string"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/AnalysisStage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AnalysisStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "workflow": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisStage": {
+        "type": "string",
+        "enum": [
+          "Analysis"
+        ]
+      },
+      "AnalysisStatus": {
+        "type": "string",
+        "enum": [
+          "Ready"
+        ]
+      },
       "Answer": {
         "type": "object",
         "required": [
@@ -8635,6 +8779,185 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "analysis.intent_created"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "contract_version",
+                      "tracker_instance_id",
+                      "project_id",
+                      "task_id",
+                      "root_task_id",
+                      "intent_id",
+                      "confirmation_id",
+                      "requirement_revision",
+                      "content_hash",
+                      "stage",
+                      "status",
+                      "role",
+                      "workflow",
+                      "mode",
+                      "scope",
+                      "cycle",
+                      "attempt",
+                      "operation_key",
+                      "created_at"
+                    ],
+                    "properties": {
+                      "attempt": {
+                        "type": "integer",
+                        "format": "int32",
+                        "minimum": 0
+                      },
+                      "confirmation_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "content_hash": {
+                        "type": "string"
+                      },
+                      "contract_version": {
+                        "type": "integer",
+                        "format": "int32",
+                        "minimum": 0
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "cycle": {
+                        "type": "integer",
+                        "format": "int32",
+                        "minimum": 0
+                      },
+                      "intent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "mode": {
+                        "type": "string"
+                      },
+                      "operation_key": {
+                        "type": "string"
+                      },
+                      "project_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "role": {
+                        "type": "string"
+                      },
+                      "root_task_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "scope": {
+                        "type": "string"
+                      },
+                      "stage": {
+                        "$ref": "#/components/schemas/AnalysisStage"
+                      },
+                      "status": {
+                        "$ref": "#/components/schemas/AnalysisStatus"
+                      },
+                      "task_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "tracker_instance_id": {
+                        "type": "string"
+                      },
+                      "workflow": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -10111,7 +10434,8 @@
         "enum": [
           "Draft",
           "Clarification",
-          "Backlog"
+          "Backlog",
+          "Analysis"
         ]
       },
       "StatusResponse": {

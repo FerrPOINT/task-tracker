@@ -84,6 +84,7 @@ struct ProjectionQuery {
 }
 
 #[derive(Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 pub struct MetadataEventsQuery {
     #[param(value_type = Option<MetadataProjection>)]
     pub projection: Option<String>,
@@ -144,6 +145,7 @@ pub fn router() -> Router<Arc<app::AppContext>> {
             get(draft_creation_operation),
         )
         .route("/issues/{id}/sdlc/context", get(context))
+        .route("/issues/{id}/sdlc/analysis-intent", get(analysis_intent))
         .route("/issues/{id}/sdlc/pm-draft-input", get(pm_draft_input))
         .route(
             "/issues/{id}/sdlc/pm-draft-execution-lease",
@@ -289,6 +291,24 @@ pub async fn context(
 }
 
 #[utoipa::path(
+    get, path="/api/v1/issues/{id}/sdlc/analysis-intent", tag="sdlc",
+    params(("id"=Uuid, Path)),
+    responses((status=200, body=AnalysisIntent),
+        (status=403, description="Fresh explicit project access required; PM grant cannot read queue"),
+        (status=404, description="Issue, binding or Analysis intent not found"),
+        (status=409, description="Persisted Analysis intent inconsistent"),
+        (status=503, description="SDLC or Central Auth unavailable")),
+    security(("bearer"=[]))
+)]
+pub async fn analysis_intent(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<AnalysisIntent>, AppError> {
+    Ok(Json(service(&ctx)?.analysis_intent(id, &actor).await?))
+}
+
+#[utoipa::path(
     get, path="/api/v1/issues/{id}/sdlc/pm-draft-input", tag="sdlc",
     params(("id"=Uuid, Path)),
     responses(
@@ -408,7 +428,7 @@ pub async fn execution_lease(
     ))
 }
 
-#[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/binding", params(("id"=Uuid, Path)), request_body=BindCommand, responses((status=200,body=SdlcContext)), security(("bearer"=[])))]
+#[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/binding", params(("id"=Uuid, Path)), request_body=BindCommand, responses((status=200,body=SdlcContext), (status=422,description="root_task_id must equal task_id; children require accepted Architect decomposition")), security(("bearer"=[])))]
 pub async fn bind(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(actor): Extension<Principal>,

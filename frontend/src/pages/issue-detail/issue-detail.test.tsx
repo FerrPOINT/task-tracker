@@ -18,6 +18,11 @@ const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
 const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@/features/sdlc/ui/SdlcPanel', () => ({
+  SdlcPanel: ({ issueId }: { issueId: string }) => (
+    <section aria-label="SDLC mount">{issueId}</section>
+  ),
+}))
 
 const issueData = {
   id: 'i1',
@@ -231,6 +236,13 @@ describe('IssueDetailPage', () => {
     mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
     render(wrapper(<IssueDetailPage />))
     expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+  })
+
+  it('opens the real SDLC panel boundary with a shareable tab URL', async () => {
+    render(wrapper(<IssueDetailPage />))
+    await userEvent.click(screen.getByRole('tab', { name: 'SDLC' }))
+    expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
+    expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/i1?tab=sdlc')
   })
 
   it('keeps issue details available while worklogs load', () => {

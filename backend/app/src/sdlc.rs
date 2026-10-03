@@ -20,6 +20,13 @@ pub struct SdlcService {
 }
 
 impl SdlcService {
+    pub async fn analysis_intent(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<AnalysisIntent, AppError> {
+        self.repository.analysis_intent(task, actor).await
+    }
     pub async fn claim_execution_lease(
         &self,
         task: Uuid,
@@ -161,6 +168,7 @@ pub fn pm_grant_task(actor: &Principal) -> Result<Option<Uuid>, AppError> {
 }
 
 pub fn authorize_pm_read(state: &TaskState, actor: &Principal) -> Result<(), AppError> {
+    state.require_root()?;
     let Some(task) = pm_grant_task(actor)? else {
         return Ok(());
     };
@@ -272,6 +280,7 @@ pub fn authorize(
     config: &SdlcConfig,
     command: &SdlcCommand,
 ) -> Result<(), AppError> {
+    state.require_root()?;
     match command {
         SdlcCommand::Answer { .. } | SdlcCommand::Confirm { .. } => require_owner(state, actor),
         SdlcCommand::Assign(_) => {
@@ -367,6 +376,52 @@ pub fn validate_document(document: &RequirementsDocument) -> Result<(), AppError
     Ok(())
 }
 
+pub fn analysis_intent(
+    state: &TaskState,
+    confirmation: &Confirmation,
+    intent_id: Uuid,
+) -> Result<AnalysisIntent, AppError> {
+    state.require_root()?;
+    let revision = state
+        .revisions
+        .last()
+        .ok_or_else(|| AppError::conflict("requirements absent"))?;
+    if !matches!(state.stage, Stage::Analysis)
+        || intent_id.is_nil()
+        || confirmation.id.is_nil()
+        || !matches!(confirmation.stage, Stage::Backlog)
+        || confirmation.task_id != state.task_id
+        || confirmation.owner_subject != state.owner_subject
+        || confirmation.revision != revision.revision
+        || confirmation.content_hash != revision.content_hash
+    {
+        return Err(AppError::conflict(
+            "Analysis intent confirmation binding inconsistent",
+        ));
+    }
+    Ok(AnalysisIntent {
+        contract_version: 1,
+        tracker_instance_id: state.tracker_instance_id.clone(),
+        project_id: state.project_id,
+        task_id: state.task_id,
+        root_task_id: state.root_task_id,
+        intent_id,
+        confirmation_id: confirmation.id,
+        requirement_revision: confirmation.revision,
+        content_hash: confirmation.content_hash.clone(),
+        stage: AnalysisStage::Analysis,
+        status: AnalysisStatus::Ready,
+        role: "Analyst".into(),
+        workflow: "hermes-sdlc:analyst".into(),
+        mode: "analysis".into(),
+        scope: "business".into(),
+        cycle: 0,
+        attempt: 0,
+        operation_key: format!("analysis:{}", confirmation.id),
+        created_at: confirmation.created_at,
+    })
+}
+
 pub fn validate_answer(question: &Question, command: &AnswerCommand) -> Result<(), AppError> {
     let selected: HashSet<_> = command.selected_option_ids.iter().collect();
     if selected.len() != command.selected_option_ids.len() {
@@ -422,6 +477,11 @@ pub fn apply(
 ) -> Result<Value, AppError> {
     authorize(state, actor, config, command)?;
     validate_key(command.key())?;
+    if matches!(state.stage, Stage::Analysis) {
+        return Err(AppError::conflict(
+            "Analysis intent freezes PM business writes",
+        ));
+    }
     let now = chrono::Utc::now();
     let result = match command {
         SdlcCommand::Assign(c) => {
@@ -624,7 +684,7 @@ pub fn apply(
                 stage: Stage::Backlog,
             };
             state.confirmations.push(confirmation.clone());
-            state.stage = Stage::Backlog;
+            state.stage = Stage::Analysis;
             serde_json::to_value(confirmation)
         }
         SdlcCommand::Evidence(c) => {

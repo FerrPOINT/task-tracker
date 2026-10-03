@@ -85,6 +85,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::create_draft,
         routes::sdlc::draft_creation_operation,
         routes::sdlc::context,
+        routes::sdlc::analysis_intent,
         routes::sdlc::pm_draft_input,
         routes::sdlc::pm_draft_assignment,
         routes::sdlc::reserve_pm_draft,
@@ -893,6 +894,16 @@ mod tests {
         let schemas = &schema["components"]["schemas"];
         let route = &schema["paths"]["/api/v1/issues/{id}/sdlc/events"]["get"];
         assert_eq!(route["operationId"], "sdlc_events");
+        for name in ["projection", "after", "limit", "max_bytes"] {
+            let parameter = route["parameters"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|parameter| parameter["name"] == name)
+                .unwrap();
+            assert_eq!(parameter["in"], "query", "{name}");
+            assert_ne!(parameter["required"], true, "{name}");
+        }
         assert_eq!(route["security"], serde_json::json!([{"bearer": []}]));
         assert_eq!(
             schemas["MetadataProjection"]["enum"],
@@ -926,7 +937,7 @@ mod tests {
             serde_json::json!(["events"])
         );
         let variants = schemas["MetadataEvent"]["oneOf"].as_array().unwrap();
-        assert_eq!(variants.len(), 9);
+        assert_eq!(variants.len(), 10);
         for variant in variants {
             assert_eq!(variant["additionalProperties"], false);
             assert_eq!(variant["required"].as_array().unwrap().len(), 7);
@@ -962,6 +973,43 @@ mod tests {
                 assert_eq!(object["required"].as_array().unwrap().len(), 7, "{name}");
             }
         }
+    }
+
+    #[test]
+    fn analysis_intent_readback_is_strict_and_not_a_dispatch_command() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let path = &schema["paths"]["/api/v1/issues/{id}/sdlc/analysis-intent"];
+        assert!(path["post"].is_null());
+        assert_eq!(path["get"]["security"], serde_json::json!([{"bearer": []}]));
+        let object = &schema["components"]["schemas"]["AnalysisIntent"];
+        assert_eq!(object["additionalProperties"], false);
+        assert_eq!(object["properties"].as_object().unwrap().len(), 19);
+        assert_eq!(object["required"].as_array().unwrap().len(), 19);
+        assert_eq!(
+            schema["components"]["schemas"]["AnalysisStage"]["enum"],
+            serde_json::json!(["Analysis"])
+        );
+        assert_eq!(
+            schema["components"]["schemas"]["AnalysisStatus"]["enum"],
+            serde_json::json!(["Ready"])
+        );
+    }
+
+    #[test]
+    fn root_binding_schema_does_not_offer_child_materialization_authority() {
+        let schema = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let binding = &schema["paths"]["/api/v1/issues/{id}/sdlc/binding"]["post"];
+        assert_eq!(binding["security"], serde_json::json!([{"bearer": []}]));
+        assert!(
+            binding["responses"]["422"]["description"]
+                .as_str()
+                .unwrap()
+                .contains("accepted Architect decomposition")
+        );
+        let command = &schema["components"]["schemas"]["BindCommand"];
+        assert_eq!(command["additionalProperties"], false);
+        assert_eq!(command["properties"].as_object().unwrap().len(), 2);
+        assert_eq!(command["required"].as_array().unwrap().len(), 2);
     }
 
     #[test]

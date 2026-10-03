@@ -185,6 +185,7 @@ metadata_events! {
     RequirementsPublished, "requirements.published", RevisionResource;
     EvidenceRecorded, "requirements.evidence_recorded", EvidenceResource;
     RequirementsConfirmed, "requirements.confirmed", ConfirmationResource;
+    AnalysisIntentCreated, "analysis.intent_created", crate::sdlc::AnalysisIntent;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]

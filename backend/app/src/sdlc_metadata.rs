@@ -267,6 +267,29 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
                 content_hash: confirmation.content_hash,
             })?
         }
+        "analysis.intent_created" => {
+            let intent: AnalysisIntent = decode(&source.result)?;
+            revision(intent.requirement_revision, &intent.content_hash, &refs)?;
+            valid(
+                intent.contract_version == 1
+                    && intent.task_id == event.task_id
+                    && intent.intent_id == event.event_id
+                    && !intent.confirmation_id.is_nil()
+                    && intent.tracker_instance_id == source.tracker_instance_id
+                    && intent.project_id == source.project_id
+                    && intent.root_task_id == source.root_task_id
+                    && source.requirement_revision == Some(intent.requirement_revision)
+                    && matches!(source.stage, Stage::Analysis)
+                    && intent.role == "Analyst"
+                    && intent.workflow == "hermes-sdlc:analyst"
+                    && intent.mode == "analysis"
+                    && intent.scope == "business"
+                    && intent.cycle == 0
+                    && intent.attempt == 0
+                    && intent.operation_key == format!("analysis:{}", intent.confirmation_id),
+            )?;
+            value(intent)?
+        }
         _ => return Err(MetadataErrorCode::MetadataSourceInvalid),
     };
     let mut projected = json!({"sequence":event.sequence.to_string(),"event_id":event.event_id,
@@ -500,6 +523,44 @@ mod tests {
         let mut other = first;
         other["event_type"] = json!("unknown");
         assert!(serde_json::from_value::<MetadataEvent>(other).is_err());
+    }
+
+    #[test]
+    fn analysis_projection_requires_canonical_workflow_and_frozen_queue_routing() {
+        let mut event = source(1, "owner");
+        let confirmation = Uuid::from_u128(3);
+        let content_hash = "a".repeat(64);
+        event.event_type = "analysis.intent_created".into();
+        event.payload["stage"] = json!("Analysis");
+        event.payload["requirement_revision"] = json!(1);
+        event.payload["result"] = json!({
+            "contract_version":1,"tracker_instance_id":"test","project_id":Uuid::from_u128(2),
+            "task_id":event.task_id,"root_task_id":event.task_id,"intent_id":event.event_id,
+            "confirmation_id":confirmation,"requirement_revision":1,"content_hash":content_hash,
+            "stage":"Analysis","status":"Ready","role":"Analyst","workflow":"hermes-sdlc:analyst",
+            "mode":"analysis","scope":"business","cycle":0,"attempt":0,
+            "operation_key":format!("analysis:{confirmation}"),"created_at":event.created_at
+        });
+        let references = || MetadataReferences {
+            requirement_hash: Some(content_hash.clone()),
+            ..refs()
+        };
+        let projected = value(project(&event, references()).unwrap()).unwrap();
+        assert_eq!(projected["payload"]["resource"], event.payload["result"]);
+        for (field, bad) in [
+            ("workflow", json!("analyst")),
+            ("role", json!("Developer")),
+            ("mode", json!("decomposition")),
+            ("scope", json!("delivery")),
+            ("attempt", json!(1)),
+        ] {
+            let mut changed = event.clone();
+            changed.payload["result"][field] = bad;
+            assert!(matches!(
+                project(&changed, references()),
+                Err(MetadataErrorCode::MetadataSourceInvalid)
+            ));
+        }
     }
 
     #[test]
