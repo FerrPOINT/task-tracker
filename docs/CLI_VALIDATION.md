@@ -1,5 +1,73 @@
 # Проверка CLI Task Tracker
 
+## Принятая поставка sdlc1 — 2026-10-03
+
+Backend принят: `sha256:7dd8fcbd39759e230ff14e760aefadfe327dd4a413b0a800cfbde9e5871498b4`. Проверенный code source
+`10eca7fbb47d356b22946e7e1360f2d9f0b4ef80`, опубликованный Base pin
+`9408802dfa978cba2f67162a49adca6f65851b01`, Rust 1.88.0, locked dependencies.
+Изменения main после этого source, включённые в документационный PR, не меняют
+backend/CLI tree. SHA документационного merge проверяется отдельно от build source.
+Предыдущий baseline image: `sha256:05ae216ded4a6992b167c97e7f54d1d0bb0078a5271e4f7332e989bcc6bdff8b`.
+
+UUID и ключ одной задачи, read/restore по ключу с проверкой доступа, поиск/страницы, update/unassign, stdin/comments, links, attachments/download/no-clobber, заранее определённый custom field и изменение/очистка value, worklogs, transitions и trash/restore.
+
+Установка и checksums: [CLI_INSTALL.md](CLI_INSTALL.md).
+Все более ранние dated sections ниже — исторические проверки и blockers,
+снятые этой поставкой, если явно не указано сохранённое ограничение.
+
+### Сохранность, откат и границы
+
+По отдельному решению пользователя принят новый чистый sdlc1, подготовленный
+другой задачей после потери прежнего Docker/data. Утраченные старые данные и
+images не восстановлены этой поставкой. Baseline отката — точные images нового
+чистого стенда, сохранённые до обновления; восстановление утраченного старого
+стенда не заявляется.
+
+Свежий согласованный backup трёх БД и пяти фактических файловых volumes:
+`20261003T142547-890aba`, 11 payloads с проверенными checksums. Перед ним
+проверены нулевые active jobs/queue/leases; остановлены только три писателя.
+Отдельная fresh-copy QA использовала backup `20261003T122738-8a92db`: restore
+45/31/17 таблиц CI/CD/Task/Wiki, rows/sequences/schema/constraints/owners/grants
+и hashes/ownership пяти volumes совпали. Эти volumes были пустыми на новом
+baseline; сохранность файлов дополнительно подтверждена fixture upload/Git/
+artifact/download сценариями, а не восстановлением потерянных старых файлов.
+
+На копии запуск кандидатов, затем точных прежних images не изменил исходные
+данные и схему. Старые images проходят 114 проверок и сохраняют четыре известные
+ограничения: Task read/restore по ключу, Wiki legacy multipart replay и старое
+CI/CD ограничение generic deployment только для Pulse. Поэтому откат возвращает
+прежнее поведение, а не гарантирует исправленные CLI-сценарии. Неожиданных
+отказов финальной репетиции нет. Первый rollout откатился из-за преждевременной
+проверки Docker health `starting`; после исправления локального readiness wait
+второй rollout принят. Рабочие данные не восстанавливались и ledger не правился.
+
+Под workspace lock атомарно заменены только три image pins, затем последовательно
+Task → Wiki → CI/CD через Compose `up --no-deps --no-build --pull never`.
+Readiness: HTTP и Docker healthy, deadline 180 секунд на сервис. Откат: под тем же
+lock вернуть три сохранённых pins и пересоздать эти сервисы в том же порядке;
+не выполнять автоматический restore рабочих данных. Защищённые backups,
+runtime-before и rollout manifest сохранены локально; секреты не публикуются.
+
+Наблюдение: 900 секунд, 31 sample каждые 30 секунд, readiness 200/healthy,
+0 restarts, 0 новых ERROR в обоих потоках логов. Остальные контейнеры/mounts
+не менялись нашим rollout. Во время наблюдения отдельная задача обновила
+admin-api/admin-web/ai-runtime sdlc2; их images сверены с её build/apply receipt,
+mounts сохранены. Это отражено отдельно, глобальная неизменность sdlc2 за весь
+интервал не заявляется. Наши keys/runtime fingerprints остались неизменными.
+
+QA-кандидаты: 123 основных + 10 дополнительных проверок — PASS. Live: 123
+успешные проверки и 6 focused checks — PASS. Отдельная ранняя попытка template
+`type=page` получила корректный validation 400: ошибка fixture, исправлена на
+поддерживаемый `release_note`; успешный повтор записан отдельно, исходный отказ
+не скрыт. JSON/204, confirmations, stdin, access/validation/conflict, redaction,
+transport timeout, no-clobber и cleanup проверены регрессиями и CLI-приёмкой.
+Execution states задавались собственными fixtures/API; production runner и
+внешний deploy не сертифицируются. Pulse — обычный тестовый repository/PR/pipeline
+в CI/CD, отдельного постоянного стенда нет. Собственные PAT отозваны, QA Compose
+ресурсы и временные keys удалены; принятые и прежние backend images сохранены.
+
+## Исторические проверки
+
 Проверено 2026-10-02 в изолированном task checkout `feat/cli-workflows`.
 
 ## Среда и обязательные gates
