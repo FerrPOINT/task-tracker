@@ -1,5 +1,8 @@
 # Архитектура Task Tracker
 
+Target autonomous SDLC: [Task lifecycle v1](SDLC_LIFECYCLE_V1.md). Owner — Tracker;
+документ не добавляет endpoints или миграции и не меняет факты текущего MVP.
+
 ## 1. Контекст
 
 Self-hosted таск-трекер (Jira-like). MVP покрывает проекты, канбан-доску, бэклог, поиск, дашборд, создание задач и JWT-аутентификацию.
