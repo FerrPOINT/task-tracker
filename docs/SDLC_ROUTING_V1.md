@@ -72,6 +72,40 @@ namespace IDs и workflow IDs должны различаться. Числов�
 native capabilities. Запись policy не устанавливает конфигурацию, не выделяет
 assignment, не захватывает lease и не запускает dispatch.
 
+### Соответствие counterpart DTO
+
+Для будущего consumer источником сопоставления служит Fleet
+`GET /internal/runtime/v1/agents/{agent_id}/configuration`. Его `workflow_binding`
+содержит frozen mapping, сверяемый Fleet со свежим Workflow owner readback
+`GET /internal/runtime/base/namespace-bindings/{namespace_id}`; отдельный ответ
+Workflow имеет envelope `{ok: true, binding: ...}`. Соответствие полей `RoleRoute`:
+
+| Tracker | Fleet configuration observation |
+| --- | --- |
+| `agent_id` | `agent_id` |
+| `fleet_config_revision` | `effective_revision`, никогда не desired revision или номер подготовленного draft |
+| `package_commit` | `package.commit`; также должен совпасть с `workflow_binding.skills_revision` |
+| `package_manifest_sha256` | `package.manifestSha256` |
+| `namespace_id`, `namespace_name` | `workflow_binding.namespace_id`, `workflow_binding.namespace_name` |
+| `workflow_id`, `workflow_key` | `workflow_binding.workflow_id`, `workflow_binding.workflow_key` |
+| `profile` | `workflow_binding.profile`; также должен совпасть с `package.profile` |
+| `workflow_catalog_version` | `workflow_binding.catalog_version` |
+| `workflow_catalog_sha256` | `workflow_binding.catalog_sha256`, не hash полного source-export envelope или его `sourceSha256` |
+
+Fleet wire `sdlc_role` сохраняет legacy значение `dev_ops`. Только на границе
+counterpart DTO оно нормализуется в канонический Tracker/package/Workflow role key
+`devops`; остальные role keys не меняются. Нормализованная роль должна совпасть
+с ключом в `routes`, `package.role` и `workflow_binding.role_key`. Эта нормализация
+не переименовывает Fleet enum, исторические данные или сохранённые legacy bindings.
+Числовые namespace/workflow IDs берутся из binding, а не выводятся из символических
+имён. Hashes относятся к соответствующим owner artifacts, не к JSON всего наблюдения.
+
+**Tracker consumer этих observations и fresh admission ещё не реализованы.**
+Таблица фиксирует контракт будущего сопоставления, а не уже выполняемый remote read
+или проверку при записи policy. Текущие ссылки остаются `declared`; `runtime_ready:false`
+в counterpart, совпадение refs и file/config proof не разрешают native execution.
+Следующие обязательные owner interfaces описаны в [lifecycle](SDLC_LIFECYCLE_V1.md).
+
 ## Snapshot точной публикации
 
 Существующее точное подтверждение владельца принимает необязательное поле
