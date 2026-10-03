@@ -242,6 +242,129 @@ CREATE TABLE sdlc_confirmations (
     UNIQUE(task_id, revision), UNIQUE(task_id, id, revision, content_hash),
     FOREIGN KEY(task_id, revision, content_hash) REFERENCES sdlc_requirements(task_id, revision, content_hash)
 );
+-- Only public owner-declared references, never private package content or admission.
+CREATE FUNCTION sdlc_valid_role_routes(routes jsonb) RETURNS boolean IMMUTABLE LANGUAGE plpgsql AS $$
+DECLARE role text; route jsonb; suffix text; profile text; field text;
+    agents text[] := '{}'; namespaces text[] := '{}'; workflows text[] := '{}';
+BEGIN
+    IF (jsonb_typeof(routes)='object'
+        AND routes ?& ARRAY['project_manager','analyst','architect','developer','reviewer','tester','devops']
+        AND routes - ARRAY['project_manager','analyst','architect','developer','reviewer','tester','devops']='{}'::jsonb) IS NOT TRUE THEN RETURN false; END IF;
+    FOREACH role IN ARRAY ARRAY['project_manager','analyst','architect','developer','reviewer','tester','devops'] LOOP
+        route := routes->role;
+        IF (jsonb_typeof(route)='object'
+            AND route ?& ARRAY['agent_id','fleet_config_revision','package_commit','package_manifest_sha256','namespace_id','namespace_name','workflow_id','workflow_key','profile','workflow_catalog_version','workflow_catalog_sha256']
+            AND route - ARRAY['agent_id','fleet_config_revision','package_commit','package_manifest_sha256','namespace_id','namespace_name','workflow_id','workflow_key','profile','workflow_catalog_version','workflow_catalog_sha256']='{}'::jsonb) IS NOT TRUE THEN RETURN false; END IF;
+        FOREACH field IN ARRAY ARRAY['agent_id','package_commit','package_manifest_sha256','namespace_id','namespace_name','workflow_id','workflow_key','profile','workflow_catalog_sha256'] LOOP
+            IF jsonb_typeof(route->field) IS DISTINCT FROM 'string' THEN RETURN false; END IF;
+        END LOOP;
+        IF (route->>'agent_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            AND route->>'agent_id' != '00000000-0000-0000-0000-000000000000'
+            AND jsonb_typeof(route->'fleet_config_revision')='number'
+            AND route->>'fleet_config_revision' ~ '^[1-9][0-9]{0,15}$') IS NOT TRUE THEN RETURN false; END IF;
+        IF (route->>'fleet_config_revision')::bigint > 9007199254740991 THEN RETURN false; END IF;
+        FOREACH field IN ARRAY ARRAY['namespace_id','workflow_id'] LOOP
+            IF (route->>field ~ '^[1-9][0-9]{0,18}$') IS NOT TRUE THEN RETURN false; END IF;
+            IF length(route->>field)=19 AND (route->>field) COLLATE "C" > '9223372036854775807' COLLATE "C" THEN RETURN false; END IF;
+        END LOOP;
+        suffix := replace(role,'_','-');
+        profile := CASE role WHEN 'tester' THEN 'hermes-sdlc-quality' WHEN 'devops' THEN 'hermes-sdlc-operations' ELSE 'hermes-sdlc-'||suffix END;
+        IF (route->>'package_commit'='4b9b4c9297a13fb28a6ba2039af2f7cb719f2f58'
+            AND route->>'package_manifest_sha256' ~ '^[0-9a-f]{64}$'
+            AND route->>'package_manifest_sha256'=routes->'project_manager'->>'package_manifest_sha256'
+            AND route->>'namespace_name'='hermes-'||suffix
+            AND route->>'workflow_key'='hermes-sdlc:'||role
+            AND route->>'profile'=profile
+            AND route->'workflow_catalog_version'='3'::jsonb
+            AND route->>'workflow_catalog_sha256' ~ '^[0-9a-f]{64}$'
+            AND route->>'workflow_catalog_sha256'=routes->'project_manager'->>'workflow_catalog_sha256') IS NOT TRUE THEN RETURN false; END IF;
+        IF route->>'agent_id'=ANY(agents) OR route->>'namespace_id'=ANY(namespaces) OR route->>'workflow_id'=ANY(workflows) THEN RETURN false; END IF;
+        agents := array_append(agents,route->>'agent_id');
+        namespaces := array_append(namespaces,route->>'namespace_id');
+        workflows := array_append(workflows,route->>'workflow_id');
+    END LOOP;
+    RETURN true;
+END $$;
+CREATE TABLE sdlc_project_routing_revisions (
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+    version bigint NOT NULL CHECK (version BETWEEN 1 AND 9007199254740991),
+    tracker_instance_id text NOT NULL REFERENCES sdlc_instance(instance_id),
+    routing_hash text NOT NULL CHECK (routing_hash ~ '^[0-9a-f]{64}$'),
+    payload jsonb NOT NULL,
+    PRIMARY KEY(project_id,version),
+    CHECK ((payload->'contract_version'='1'::jsonb
+        AND payload->>'project_id'=project_id::text
+        AND payload->>'tracker_instance_id'=tracker_instance_id
+        AND (payload->>'version')::bigint=version
+        AND payload->>'routing_hash'=routing_hash
+        AND payload->>'verification'='declared'
+        AND payload->'native_ready'='false'::jsonb AND payload->'dispatch_allowed'='false'::jsonb
+        AND sdlc_valid_role_routes(payload->'routes')) IS TRUE)
+);
+CREATE TABLE sdlc_project_routing_heads (
+    project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE RESTRICT,
+    version bigint NOT NULL,
+    FOREIGN KEY(project_id,version) REFERENCES sdlc_project_routing_revisions(project_id,version)
+);
+CREATE FUNCTION sdlc_routing_head_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP='DELETE' THEN RAISE EXCEPTION 'SDLC routing head cannot be deleted' USING ERRCODE='23514'; END IF;
+    IF (TG_OP='INSERT' AND NEW.version!=1) OR
+        (TG_OP='UPDATE' AND (NEW.project_id IS DISTINCT FROM OLD.project_id OR NEW.version!=OLD.version+1)) THEN
+        RAISE EXCEPTION 'SDLC routing head must advance by one' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_routing_head_gate BEFORE INSERT OR UPDATE OR DELETE ON sdlc_project_routing_heads
+FOR EACH ROW EXECUTE FUNCTION sdlc_routing_head_gate();
+CREATE TABLE sdlc_project_routing_operations (
+    project_id uuid NOT NULL,
+    actor_subject text NOT NULL CHECK (length(actor_subject)>0),
+    idempotency_key text NOT NULL CHECK (octet_length(idempotency_key) BETWEEN 1 AND 128),
+    payload_hash text NOT NULL CHECK (payload_hash ~ '^[0-9a-f]{64}$'),
+    version bigint NOT NULL,
+    PRIMARY KEY(project_id,actor_subject,idempotency_key),
+    UNIQUE(project_id,version),
+    FOREIGN KEY(project_id,version) REFERENCES sdlc_project_routing_revisions(project_id,version)
+);
+ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_task_project_identity UNIQUE(task_id,project_id);
+CREATE TABLE sdlc_task_routing_snapshots (
+    snapshot_id uuid PRIMARY KEY CHECK (snapshot_id!='00000000-0000-0000-0000-000000000000'::uuid),
+    task_id uuid NOT NULL UNIQUE,
+    project_id uuid NOT NULL,
+    policy_version bigint NOT NULL,
+    confirmation_id uuid NOT NULL UNIQUE,
+    requirement_revision bigint NOT NULL,
+    content_hash text NOT NULL,
+    payload jsonb NOT NULL,
+    FOREIGN KEY(task_id,project_id) REFERENCES sdlc_tasks(task_id,project_id),
+    FOREIGN KEY(project_id,policy_version) REFERENCES sdlc_project_routing_revisions(project_id,version),
+    FOREIGN KEY(task_id,confirmation_id,requirement_revision,content_hash) REFERENCES sdlc_confirmations(task_id,id,revision,content_hash),
+    UNIQUE(task_id,confirmation_id,requirement_revision,content_hash,snapshot_id),
+    CHECK ((payload->'contract_version'='1'::jsonb AND payload->>'snapshot_id'=snapshot_id::text
+        AND payload->>'task_id'=task_id::text AND payload->>'root_task_id'=task_id::text
+        AND payload->>'project_id'=project_id::text AND payload->>'confirmation_id'=confirmation_id::text
+        AND (payload->>'requirement_revision')::bigint=requirement_revision
+        AND payload->>'content_hash'=content_hash
+        AND (payload->'policy'->>'version')::bigint=policy_version
+        AND payload->'policy'->>'project_id'=project_id::text) IS TRUE)
+);
+CREATE INDEX sdlc_task_routing_policy_idx ON sdlc_task_routing_snapshots(project_id,policy_version);
+CREATE FUNCTION sdlc_routing_snapshot_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sdlc_tasks t WHERE t.task_id=NEW.task_id
+        AND t.project_id=NEW.project_id AND t.root_task_id=t.task_id AND t.pm_execution_id IS NULL
+        AND t.tracker_instance_id=NEW.payload->>'tracker_instance_id'
+        AND t.state->>'stage' IN ('Draft','Clarification')) OR NOT EXISTS (
+        SELECT 1 FROM sdlc_project_routing_revisions r JOIN sdlc_project_routing_heads h USING(project_id)
+        WHERE r.project_id=NEW.project_id AND r.version=NEW.policy_version AND h.version=r.version
+        AND r.payload=NEW.payload->'policy') THEN
+        RAISE EXCEPTION 'SDLC routing snapshot requires current exact publication policy' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_routing_snapshot_gate BEFORE INSERT ON sdlc_task_routing_snapshots
+FOR EACH ROW EXECUTE FUNCTION sdlc_routing_snapshot_gate();
 CREATE TABLE sdlc_analysis_intents (
     intent_id uuid PRIMARY KEY CHECK (intent_id != '00000000-0000-0000-0000-000000000000'::uuid),
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
@@ -252,6 +375,9 @@ CREATE TABLE sdlc_analysis_intents (
     payload jsonb NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE(task_id, requirement_revision),
+    routing_snapshot_id uuid,
+    FOREIGN KEY(task_id,confirmation_id,requirement_revision,content_hash,routing_snapshot_id)
+        REFERENCES sdlc_task_routing_snapshots(task_id,confirmation_id,requirement_revision,content_hash,snapshot_id),
     FOREIGN KEY(task_id,confirmation_id,requirement_revision,content_hash)
         REFERENCES sdlc_confirmations(task_id,id,revision,content_hash),
     CHECK ((payload->>'intent_id'=intent_id::text
@@ -267,6 +393,17 @@ CREATE TABLE sdlc_analysis_intents (
         AND payload->>'mode'='analysis' AND payload->>'scope'='business'
         AND payload->'cycle'='0'::jsonb AND payload->'attempt'='0'::jsonb) IS TRUE)
 );
+CREATE FUNCTION sdlc_analysis_routing_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE expected uuid;
+BEGIN
+    SELECT snapshot_id INTO expected FROM sdlc_task_routing_snapshots WHERE task_id=NEW.task_id;
+    IF NEW.routing_snapshot_id IS DISTINCT FROM expected THEN
+        RAISE EXCEPTION 'SDLC Analysis routing snapshot mismatch' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_analysis_routing_gate BEFORE INSERT ON sdlc_analysis_intents
+FOR EACH ROW EXECUTE FUNCTION sdlc_analysis_routing_gate();
 CREATE TABLE sdlc_idempotency (
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id),
     actor_subject text NOT NULL, idempotency_key text NOT NULL,
@@ -355,7 +492,8 @@ DO $$ DECLARE name text; BEGIN
     FOREACH name IN ARRAY ARRAY['sdlc_instance', 'sdlc_agent_bindings', 'sdlc_assignments',
         'sdlc_requests', 'sdlc_question_versions', 'sdlc_options', 'sdlc_requirements',
         'sdlc_answers', 'sdlc_evidence', 'sdlc_confirmations', 'sdlc_idempotency', 'sdlc_outbox',
-        'sdlc_draft_creations', 'sdlc_pm_executions', 'sdlc_pm_lease_operations', 'sdlc_analysis_intents']
+        'sdlc_draft_creations', 'sdlc_pm_executions', 'sdlc_pm_lease_operations', 'sdlc_analysis_intents',
+        'sdlc_project_routing_revisions', 'sdlc_project_routing_operations', 'sdlc_task_routing_snapshots']
     LOOP
         EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()', name);
     END LOOP;

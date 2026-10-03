@@ -2,6 +2,20 @@
 
 ## SDLC: Additive Migration 000034
 
+Project routing расширяет только pending 000034 неизменяемыми таблицами
+`sdlc_project_routing_revisions` (project/version, instance, canonical hash, семь
+строгих declared role bindings), `sdlc_project_routing_operations` (project/author/key,
+payload hash и исходная версия) и `sdlc_task_routing_snapshots` (одна публикация/task,
+полная сохранённая policy, exact confirmation/revision/hash). Изменяемый
+`sdlc_project_routing_heads` имеет монотонный gate шага +1 и revision FK. Составные
+snapshot FK связывают task/policy одного проекта и exact consent. Analysis intents
+имеют nullable `routing_snapshot_id`; null сохраняет legacy историю без opt-in.
+Поиск snapshots по project/policy-version индексирован; SQL запрещает повторные
+agent/namespace/workflow IDs, неверные refs, неподдерживаемые pins и заявления
+readiness/dispatch. Snapshot можно создать только для текущей exact root policy
+до публикации; backfill и переписывание применённой схемы не выполняются.
+[Подробная семантика](SDLC_ROUTING_V1.md).
+
 The same pending 000034 now admits aggregate stage `Analysis`, seeds
 `SDLC Analysis` (todo category) and adds append-only `sdlc_analysis_intents`.
 Its primary intent UUID, unique `(task_id,requirement_revision)`, unique

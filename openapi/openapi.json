@@ -2498,6 +2498,57 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/routing-snapshot": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "snapshot",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRoutingSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": "No explicit routed publication; legacy remains untouched"
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/transition": {
       "post": {
         "tags": [
@@ -3962,6 +4013,245 @@
           },
           "422": {
             "description": "Invalid creation key"
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/routing-policy": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "current",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "set",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRoutingPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exact durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": "Central human session and active project owner required"
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Stale CAS or changed idempotency payload"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/routing-policy/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "operation",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/routing-policy/versions/{version}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "version",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
           },
           "503": {
             "description": ""
@@ -6601,6 +6891,15 @@
         "properties": {
           "content_hash": {
             "type": "string"
+          },
+          "expected_routing_policy_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
           },
           "idempotency_key": {
             "type": "string"
@@ -10281,6 +10580,165 @@
           }
         }
       },
+      "RoleRoute": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "fleet_config_revision",
+          "package_commit",
+          "package_manifest_sha256",
+          "namespace_id",
+          "namespace_name",
+          "workflow_id",
+          "workflow_key",
+          "profile",
+          "workflow_catalog_version",
+          "workflow_catalog_sha256"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fleet_config_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "namespace_id": {
+            "type": "string"
+          },
+          "namespace_name": {
+            "type": "string"
+          },
+          "package_commit": {
+            "type": "string"
+          },
+          "package_manifest_sha256": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "workflow_catalog_sha256": {
+            "type": "string"
+          },
+          "workflow_catalog_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "workflow_id": {
+            "type": "string"
+          },
+          "workflow_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RoleRoutes": {
+        "type": "object",
+        "required": [
+          "project_manager",
+          "analyst",
+          "architect",
+          "developer",
+          "reviewer",
+          "tester",
+          "devops"
+        ],
+        "properties": {
+          "analyst": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "architect": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "developer": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "devops": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "project_manager": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "reviewer": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "tester": {
+            "$ref": "#/components/schemas/RoleRoute"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RoutingPolicy": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "version",
+          "routing_hash",
+          "routes",
+          "verification",
+          "native_ready",
+          "dispatch_allowed",
+          "author_subject",
+          "created_at"
+        ],
+        "properties": {
+          "author_subject": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dispatch_allowed": {
+            "type": "boolean"
+          },
+          "native_ready": {
+            "type": "boolean"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "routes": {
+            "$ref": "#/components/schemas/RoleRoutes"
+          },
+          "routing_hash": {
+            "type": "string"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/RoutingVerification"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "RoutingVerification": {
+        "type": "string",
+        "enum": [
+          "declared"
+        ]
+      },
       "SdlcContext": {
         "type": "object",
         "required": [
@@ -10356,6 +10814,32 @@
         "properties": {
           "value": {}
         }
+      },
+      "SetRoutingPolicy": {
+        "type": "object",
+        "required": [
+          "expected_version",
+          "routes",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "routes": {
+            "$ref": "#/components/schemas/RoleRoutes"
+          }
+        },
+        "additionalProperties": false
       },
       "SprintListResponse": {
         "type": "object",
@@ -10500,6 +10984,67 @@
           },
           "value": {}
         }
+      },
+      "TaskRoutingSnapshot": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "snapshot_id",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "confirmation_id",
+          "requirement_revision",
+          "content_hash",
+          "policy",
+          "created_at"
+        ],
+        "properties": {
+          "confirmation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/RoutingPolicy"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "TotpCodeRequest": {
         "type": "object",

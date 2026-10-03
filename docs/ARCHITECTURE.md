@@ -2,6 +2,19 @@
 
 ## SDLC Clarification Slice
 
+`api/routes/sdlc_routing -> SdlcService -> SdlcRepository -> infra/sdlc_routing`
+использует тот же строгий Central layer и pending 000034. Изменение policy сразу
+блокирует проект FOR UPDATE после проверки активного пользователя, без повышения
+shared project lock. Изменение принадлежит существующему владельцу проекта, а не
+пользователю с admin/member признаком. Публикация уже удерживает shared project
+authorization lock, поэтому обновление policy сериализуется с выбором exact-head
+snapshot до commit. Неизменяемые policy revisions/receipts и полные task snapshots
+отделяют текущие defaults проекта от исторической маршрутизации задачи.
+Remote calls и второй scheduler не добавлены. Входные refs являются объявлениями
+владельца, а не Fleet observation/native admission evidence. Без opt-in legacy
+confirmation hashes сохраняют побайтовую совместимость.
+[Полномочия, конкурентность и следующие интерфейсы](SDLC_ROUTING_V1.md).
+
 `api/routes/sdlc -> app::sdlc::SdlcService -> domain::sdlc::SdlcRepository ->
 infra::sdlc::PostgresSdlcRepository` is wired through `AppContext.sdlc` only
 when a stable instance ID is configured. Its separate Central Auth route layer

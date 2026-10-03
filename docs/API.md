@@ -2,6 +2,17 @@
 
 ## SDLC Clarification API
 
+Маршрутизация SDLC проекта реализована как prerequisite под управлением владельца:
+policy POST/current/version/operation readback в
+`/api/v1/projects/{project_id}/sdlc/routing-policy` и неизменяемый
+`/api/v1/issues/{id}/sdlc/routing-snapshot`. Exact confirmation может принять
+`expected_routing_policy_version` и атомарно зафиксировать текущую policy.
+Изменение доступно только владельцу проекта с Central human session;
+service-read/project ACL разрешает наблюдение, не admission. Семь конкретных
+agent/config/package/Workflow refs остаются **declared**, native-ready/dispatch false.
+Legacy данные не включаются автоматически и не переписываются. Текущий UI не передаёт
+opt-in версию. [Точный wire, CAS и ACL](SDLC_ROUTING_V1.md).
+
 Exact owner confirmation now publishes Backlog and queues Analysis/Ready in the
 same transaction. The existing confirmation response remains `stage: Backlog`;
 current context reports `stage: Analysis`, `waiting_reason: queued_for_analysis`

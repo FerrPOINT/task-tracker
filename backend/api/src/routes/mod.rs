@@ -22,6 +22,7 @@ pub mod links;
 pub mod notifications;
 pub mod reports;
 pub mod sdlc;
+pub mod sdlc_routing;
 pub mod users;
 pub mod watchers_votes;
 pub mod workflow;

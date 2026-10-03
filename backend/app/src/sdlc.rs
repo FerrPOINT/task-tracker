@@ -20,6 +20,43 @@ pub struct SdlcService {
 }
 
 impl SdlcService {
+    pub async fn set_routing_policy(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_routing::SetRoutingPolicy,
+    ) -> Result<(domain::sdlc_routing::RoutingPolicy, bool), AppError> {
+        self.repository
+            .set_routing_policy(project, actor, command)
+            .await
+    }
+    pub async fn routing_policy(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        version: Option<i64>,
+    ) -> Result<domain::sdlc_routing::RoutingPolicy, AppError> {
+        self.repository
+            .routing_policy(project, actor, version)
+            .await
+    }
+    pub async fn routing_policy_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_routing::RoutingPolicy, AppError> {
+        self.repository
+            .routing_policy_operation(project, actor, key)
+            .await
+    }
+    pub async fn task_routing_snapshot(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::sdlc_routing::TaskRoutingSnapshot, AppError> {
+        self.repository.task_routing_snapshot(task, actor).await
+    }
     pub async fn analysis_intent(
         &self,
         task: Uuid,

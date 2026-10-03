@@ -211,6 +211,14 @@ pub struct AnswerCommand {
 pub struct ConfirmCommand {
     pub content_hash: String,
     pub idempotency_key: String,
+    // Omission preserves historical command hashes and does not enroll legacy tasks.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "safe_optional_version"
+    )]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub expected_routing_policy_version: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
@@ -559,6 +567,29 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    async fn set_routing_policy(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_routing::SetRoutingPolicy,
+    ) -> Result<(crate::sdlc_routing::RoutingPolicy, bool), AppError>;
+    async fn routing_policy(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        version: Option<i64>,
+    ) -> Result<crate::sdlc_routing::RoutingPolicy, AppError>;
+    async fn routing_policy_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_routing::RoutingPolicy, AppError>;
+    async fn task_routing_snapshot(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<crate::sdlc_routing::TaskRoutingSnapshot, AppError>;
     async fn analysis_intent(
         &self,
         task: Uuid,

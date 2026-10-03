@@ -129,7 +129,7 @@ impl MetadataEventsQuery {
     }
 }
 
-fn service(ctx: &app::AppContext) -> Result<&app::sdlc::SdlcService, AppError> {
+pub(super) fn service(ctx: &app::AppContext) -> Result<&app::sdlc::SdlcService, AppError> {
     ctx.sdlc
         .as_ref()
         .ok_or_else(|| AppError::Unavailable("Tracker SDLC is not configured".into()))
@@ -186,6 +186,7 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         )
         .route("/issues/{id}/sdlc/evidence", post(evidence))
         .route("/issues/{id}/sdlc/events", get(events))
+        .merge(super::sdlc_routing::router())
         .route_layer(middleware::from_fn(
             crate::middleware::sdlc_auth::strict_central_auth,
         ))

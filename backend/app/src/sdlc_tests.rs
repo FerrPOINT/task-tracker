@@ -19,6 +19,7 @@ fn non_root_cannot_use_pm_lifecycle_or_issue_confirmation_permission() {
         command: ConfirmCommand {
             content_hash: "a".repeat(64),
             idempotency_key: "child-confirm".into(),
+            expected_routing_policy_version: None,
         },
     };
     assert!(matches!(state.require_root(), Err(AppError::Conflict(_))));
@@ -332,6 +333,7 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
         command: ConfirmCommand {
             content_hash: state.revisions.last().unwrap().content_hash.clone(),
             idempotency_key: "confirm".into(),
+            expected_routing_policy_version: None,
         },
     };
     let command = confirm(&state);
@@ -384,6 +386,7 @@ fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
         command: ConfirmCommand {
             content_hash: state.revisions[0].content_hash.clone(),
             idempotency_key: "stale-confirmation".into(),
+            expected_routing_policy_version: None,
         },
     };
     assert!(matches!(

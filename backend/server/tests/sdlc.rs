@@ -34,6 +34,8 @@ mod lifecycle_guard;
 mod metadata;
 #[path = "support/pm_credential_boundary.rs"]
 mod pm_credential_boundary;
+#[path = "support/routing_policy.rs"]
+mod routing_policy;
 
 #[derive(Clone)]
 struct AuthStub {
@@ -636,7 +638,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         200,
     )
     .await;
-    let final_confirm =
+    let mut final_confirm =
         json!({"content_hash":final_revision["content_hash"],"idempotency_key":"confirm-final"});
     let confirm_url = format!("{url}/requirements/2/confirm");
     post(&client, &confirm_url, &owner, &final_confirm, 409).await;
@@ -670,8 +672,20 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         .unwrap();
     assert_eq!(context["permissions"]["can_confirm"], true);
     post(&client, &confirm_url, &operator, &final_confirm, 403).await;
+    let (routing, routing_ready) = routing_policy::before(
+        &db, &client, &base, project, task, &owner, &operator, &foreign,
+    )
+    .await;
+    let mut stale_routing = final_confirm.clone();
+    stale_routing["expected_routing_policy_version"] = json!(1);
+    post(&client, &confirm_url, &owner, &stale_routing, 409).await;
+    assert_eq!(count(&db, "sdlc_confirmations").await, 0);
+    assert_eq!(count(&db, "sdlc_task_routing_snapshots").await, 0);
+    final_confirm["expected_routing_policy_version"] = routing["version"].clone();
     let (confirmation, intent) =
         analysis_intent::confirm(&db, &client, &url, &owner, &final_confirm, task).await;
+    let routing_snapshot = routing_policy::snapshot(&client, &base, task, &owner).await;
+    assert_eq!(routing_snapshot["policy"], routing);
     analysis_intent::read(&client, &url, &foreign, 403).await;
     assert_eq!(confirmation["stage"], "Backlog");
     assert_eq!(confirmation["revision"], 2);
@@ -955,6 +969,18 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         metadata_page["events"].as_array().unwrap()
     );
     metadata_pagination_and_blockers(&client, &restart_metadata_url, &owner, &db, task).await;
+    routing_policy::after(
+        &db,
+        &client,
+        &restarted,
+        project,
+        task,
+        &owner,
+        &foreign,
+        &routing_snapshot,
+        &routing_ready,
+    )
+    .await;
     unavailable.store(true, Ordering::SeqCst);
     pm_credential_boundary::unavailable(&client, &restarted, task).await;
     metadata::get(&client, &restart_metadata_url, &owner, 503).await;

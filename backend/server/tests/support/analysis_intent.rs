@@ -28,6 +28,7 @@ pub async fn confirm(
         count(db, "sdlc_outbox").await,
         count(db, "sdlc_idempotency").await,
         count(db, "issue_status_history").await,
+        count(db, "sdlc_task_routing_snapshots").await,
     ];
     // Fault after intent, consent, aggregate, issue history and command receipt writes.
     db.execute_unprepared("CREATE FUNCTION test_analysis_outbox_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='analysis.intent_created' THEN RAISE EXCEPTION 'SDLC test injected outbox failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER test_analysis_outbox_failure BEFORE INSERT ON sdlc_outbox FOR EACH ROW EXECUTE FUNCTION test_analysis_outbox_failure();").await.unwrap();
@@ -40,7 +41,8 @@ pub async fn confirm(
             count(db, "sdlc_analysis_intents").await,
             count(db, "sdlc_outbox").await,
             count(db, "sdlc_idempotency").await,
-            count(db, "issue_status_history").await
+            count(db, "issue_status_history").await,
+            count(db, "sdlc_task_routing_snapshots").await
         ]
     );
     read(client, url, owner, 404).await;

@@ -9,11 +9,34 @@ ReworkRequest, approvals, audit и transitions. Generic workflow/status APIs н�
 
 ## Реализованный source-срез B-SDLC-01
 
+### Project Role Routing Prerequisite
+
+Следующий concrete source-срез добавляет persisted project policy для семи разных
+agent UUID и immutable task publication snapshot с config/package/Workflow refs.
+Версии/hash/CAS/idempotency управляются backend; authority — существующий project
+owner с Central human session. Exact confirmation явно выбирает current policy
+через `expected_routing_policy_version`, snapshot сохраняется в той же транзакции
+с consent/Analysis intent/outbox. Изменение policy влияет только на новые явные
+snapshots. Исторические PM data/consent hashes и unenrolled legacy сохраняются.
+Readback доступен по existing service-read/project ACL без compound grants.
+Текущий UI confirmation не передаёт `expected_routing_policy_version` и не включает
+routing автоматически. Opt-in доступен явно через API; policy UI и fresh admission
+остаются pending, без расширения текущего UI-среза.
+
+Refs имеют `verification: declared`, `native_ready:false`, `dispatch_allowed:false`.
+Это не fresh Fleet observation, native attestation или runtime admission; claim,
+capacity/lease/ACK, DAG и dispatch остаются pending. Ни policy, ни snapshot не
+снимают current capability blockers. [Полный owner API и SQL-контракт](SDLC_ROUTING_V1.md).
+
 Owner branch: `feat/pm-clarification`, существующая PM foundation PR #114.
-Сверены current main `10eca7fbb47d356b22946e7e1360f2d9f0b4ef80` и открытый
+Первоначально сверены main `10eca7fbb47d356b22946e7e1360f2d9f0b4ef80` и тогда открытый
 пакет PR #116 `06439212829b9175e2d816c4e5f4e941e5ecea01`. Их изменения
 сведены в этот checkout как owned source reconciliation; обе версии сохраняются
 parents существующей reconciliation. Push и PR merge не выполняются.
+PR #116 позже merged externally без изменения package head. Read-only fetch
+проверил новый default `ed0ed57eae764fe3e8a692010acf46d288ac4084`: это docs merge,
+pending 000034 в default отсутствует. Текущая owner-ветка не reset/rebase/merged
+в ответ на это событие; baseline/default reconciliation остаётся у main.
 Приватные role instructions/skills Base в этот репозиторий не переносились.
 
 Существующий `POST /api/v1/issues/{id}/sdlc/requirements/{revision}/confirm`
@@ -64,7 +87,7 @@ foundation; их machine grant/binding нельзя переиспользова
 
 | Owner / проверенный source | Точный gap до machine claim |
 | --- | --- |
-| Fleet configuration source / native admission | Main сообщил о реализованном SOURCE `GET /internal/runtime/v1/agents/{agent_id}/configuration`: fresh bounded Base PAT introspection, EXACT scopes `[fleet-control:read]`, fixed dedicated `configuration_reader_subject` и deployment-owned concrete agent UUID allowlist `configuration_reader_agent_ids`. Base issuer не выпускает compound grants; task delegation/run authority отсутствует. Ответ v1 содержит `observation_ref`, agent/role/effective revision, pinned public package metadata, observed time, `managed_files_verified:true`, но `runtime_ready:false` и native/workflow blockers. Это read-only observation, не admission/assignment ACK. Tracker client и frozen binding к intent/fence ещё отсутствуют; нужны verified native capabilities и assignment protocol. Operator actions и config proof не снимают эти gates. Этот статус получен от owner Main, не является независимым runtime acceptance Tracker. |
+| Fleet configuration source / native admission | Main сообщил о реализованном SOURCE `GET /internal/runtime/v1/agents/{agent_id}/configuration`: fresh bounded Base PAT introspection, EXACT scopes `[fleet-control:read]`, fixed dedicated `configuration_reader_subject` и deployment-owned concrete agent UUID allowlist `configuration_reader_agent_ids`. Base issuer не выпускает compound grants; task delegation/run authority отсутствует. Ответ v1 содержит `observation_ref`, agent/role/effective revision, pinned public package metadata, observed time, `managed_files_verified:true`, но `runtime_ready:false` и native/workflow blockers. Это read-only observation, не admission/assignment ACK. Declared project/task routing refs уже сохраняются; trusted Tracker client и проверенное observation binding к assignment/fence ещё отсутствуют. Нужны verified native capabilities и assignment protocol. Operator actions и config proof не снимают эти gates. Этот статус получен от owner Main, не является независимым runtime acceptance Tracker. |
 | Fleet `backend/api/src/routes/pm_runtime.rs`: `readback` | Trusted readback есть для PM binding/credential, не для Analyst assignment/execution/session/run. Нет callable non-PM durable acceptance lookup/ACK с exact immutable payload hash и verified-stop/terminal ACK для fencing release. Target `docs/contracts/SDLC_EXECUTION_V1.md` в Fleet PR #49 не является реализацией endpoint. |
 | Workflow `project_workflow/interfaces/ui/schemas.py`: `RuntimeAssignmentRequest` | Для Analysis обязательны nonblank `decomposition_revision_ref`, `task_workspace_ref`, positive `workspace_revision` и workspace/lease generations. Tracker на этом этапе имеет confirmation + requirement revision + intent, но ещё не accepted decomposition или TaskWorkspace ledger. Нужна согласованная owner mapping pre-decomposition Analysis и logical business-only workspace; фиктивный ref/revision не evidence. Intent attempt 0 до admission; первый accepted assignment должен иметь attempt 1, не копировать 0. |
 | Workflow `docs/base-sdlc-admission.md`, `application/base_admission.py` | `base-sdlc-admission/v1` принимает frozen config attestation от authenticated assignment owner, проверяет pinned source package/catalog, но не physical installation, tools/session/lease liveness. `base-sdlc-source-admission-receipt/v1` не terminal receipt и не authorization для Tracker transition/release. Нельзя считать его runtime ACK/verified stop. |

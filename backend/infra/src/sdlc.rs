@@ -12,6 +12,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
+#[path = "sdlc_routing.rs"]
+mod routing;
 
 pub struct PostgresSdlcRepository {
     db: DatabaseConnection,
@@ -356,6 +358,7 @@ impl PostgresSdlcRepository {
     }
 
     async fn persist_result(
+        &self,
         tx: &DatabaseTransaction,
         task: Uuid,
         command: &SdlcCommand,
@@ -420,10 +423,18 @@ impl PostgresSdlcRepository {
                 let confirmation: Confirmation =
                     serde_json::from_value(result.clone()).map_err(AppError::internal)?;
                 exec(tx, "INSERT INTO sdlc_confirmations(id,task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4,$5)", vec![confirmation.id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(), payload]).await?;
+                let routing_snapshot = if let Some(version) = c.expected_routing_policy_version {
+                    Some(
+                        self.freeze_routing(tx, state, &confirmation, version)
+                            .await?,
+                    )
+                } else {
+                    None
+                };
                 let intent = app::sdlc::analysis_intent(state, &confirmation, Uuid::new_v4())?;
-                exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload) VALUES($1,$2,$3,$4,$5,$6,$7)",
+                exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
                     vec![intent.intent_id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(),
-                        confirmation.id.into(), intent.operation_key.clone().into(), json_value(&intent)?]).await?;
+                        confirmation.id.into(), intent.operation_key.clone().into(), json_value(&intent)?, routing_snapshot.map(|s| s.snapshot_id).into()]).await?;
                 "requirements.confirmed"
             }
             SdlcCommand::Evidence(c) => {
@@ -536,6 +547,37 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    async fn set_routing_policy(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_routing::SetRoutingPolicy,
+    ) -> Result<(domain::sdlc_routing::RoutingPolicy, bool), AppError> {
+        self.write_routing_policy(project, actor, command).await
+    }
+    async fn routing_policy(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        version: Option<i64>,
+    ) -> Result<domain::sdlc_routing::RoutingPolicy, AppError> {
+        self.read_routing_policy(project, actor, version).await
+    }
+    async fn routing_policy_operation(
+        &self,
+        project: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_routing::RoutingPolicy, AppError> {
+        self.read_routing_operation(project, actor, key).await
+    }
+    async fn task_routing_snapshot(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::sdlc_routing::TaskRoutingSnapshot, AppError> {
+        self.read_task_routing(task, actor).await
+    }
     async fn analysis_intent(
         &self,
         task: Uuid,
@@ -1186,7 +1228,9 @@ impl SdlcRepository for PostgresSdlcRepository {
             ));
         }
         let result = app::sdlc::apply(&mut state, actor, &self.config, &command)?;
-        let event = Self::persist_result(&tx, task, &command, &result, &state).await?;
+        let event = self
+            .persist_result(&tx, task, &command, &result, &state)
+            .await?;
         Self::finish(
             &tx,
             task,

@@ -2,6 +2,15 @@
 
 ## SDLC Clarification: Implemented Backend Scope
 
+Project-routing prerequisite сохраняет версионированные bindings, выбранные владельцем,
+для семи конкретных agents и точных config/package/Workflow refs. Явный opt-in при
+exact confirmation фиксирует один неизменяемый snapshot публикации задачи в той же
+consent/intent/outbox транзакции. Policy update влияет только на новые явные snapshots;
+исторические PM данные и legacy задачи не включаются автоматически. Policy управляет
+существующий владелец проекта с пользовательской сессией, без нового PAT grant или
+Central bypass. Это declared refs, не native readiness/admission/dispatch.
+Текущий UI не включает routing; policy UI остаётся pending: [контракт](SDLC_ROUTING_V1.md).
+
 The first B-SDLC-01 backend slice extends exact owner confirmation with one
 durable Analysis/Ready intent in the same transaction as consent, issue history,
 command receipt and outbox. Backend fixes Analyst/analysis/business routing;
