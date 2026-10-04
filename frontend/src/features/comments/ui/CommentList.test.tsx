@@ -47,6 +47,39 @@ describe('CommentList', () => {
 })
 
 describe('CommentItem', () => {
+  it('renders Markdown, not raw syntax, without executing HTML or unsafe links', () => {
+    const body =
+      '# Итоги\n\n**Результат** и *курсив*\n\n- Первый\n- Второй\n\n[Evidence](https://example.test/report)\n\n```text\ncode <tag>\n```\n\n<script>alert(1)</script>\n\n[Опасно](javascript:alert%281%29)'
+    const { container } = render(
+      <Wrapper>
+        <CommentItem comment={{ ...sampleComment, body }} onEdit={() => {}} onDelete={() => {}} />
+      </Wrapper>,
+    )
+    expect(screen.getByRole('heading', { name: 'Итоги' })).toBeVisible()
+    expect(screen.getByText('Результат').tagName).toBe('STRONG')
+    expect(screen.getByText('курсив').tagName).toBe('EM')
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByRole('link', { name: 'Evidence' })).toHaveAttribute(
+      'href',
+      'https://example.test/report',
+    )
+    expect(container.querySelector('pre code')).toHaveTextContent('code <tag>')
+    expect(container.querySelector('script')).toBeNull()
+    expect(container.querySelector('[href^="javascript:"]')).toBeNull()
+  })
+
+  it('passes the unchanged Markdown source to edit', () => {
+    const comment = { ...sampleComment, body: '**Исходник**\n\n- пункт' }
+    const onEdit = vi.fn()
+    render(
+      <Wrapper>
+        <CommentItem comment={comment} currentUserId="u1" onEdit={onEdit} onDelete={() => {}} />
+      </Wrapper>,
+    )
+    fireEvent.click(screen.getByText(/изменить/i))
+    expect(onEdit).toHaveBeenCalledWith(comment)
+  })
+
   it('does not show actions for non-author', () => {
     render(
       <Wrapper>
