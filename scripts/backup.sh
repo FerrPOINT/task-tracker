@@ -1,55 +1,15 @@
 #!/usr/bin/env bash
-# Backup task-tracker database and file attachments.
-#
-# Usage:  ./scripts/backup.sh [output-dir]
-#
-# If no output-dir is given, defaults to ${PROJECT_DIR}/backups.
-# Reads POSTGRES_USER / POSTGRES_DB from .env (same names as docker-compose.yml).
+# Complete coherent workspace backup; no deletion or guessed legacy volumes.
 set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ENV_FILE="${PROJECT_DIR}/.env"
-
-if [ -f "$ENV_FILE" ]; then
-  # shellcheck disable=SC1090
-  set -a; . "$ENV_FILE"; set +a
-fi
-
-: "${POSTGRES_USER:=tasktracker}"
-: "${POSTGRES_DB:=tasktracker}"
-
-BACKUP_DIR="${1:-${PROJECT_DIR}/backups}"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-BACKUP_NAME="task-tracker-${TIMESTAMP}"
-BACKUP_PATH="${BACKUP_DIR}/${BACKUP_NAME}"
-
-mkdir -p "$BACKUP_DIR"
-cd "$PROJECT_DIR"
-
-echo "Backing up database..."
-docker compose exec -T postgres pg_dump \
-  -U "${POSTGRES_USER}" \
-  -d "${POSTGRES_DB}" \
-  -Fc \
-  > "${BACKUP_PATH}.dump"
-
-echo "Backing up attachments..."
-# Resolve the actual volume name via compose (handles project-name prefixes).
-UPLOADS_VOLUME=$(docker compose config --volumes uploads 2>/dev/null || echo "task-tracker_uploads")
-docker run --rm \
-  -v "${UPLOADS_VOLUME}":/var/lib/tasktracker/uploads:ro \
-  -v "${BACKUP_DIR}":/backup \
-  --entrypoint /bin/tar \
-  debian:bookworm-slim \
-  -czf "/backup/${BACKUP_NAME}-attachments.tar.gz" \
-  -C /var/lib/tasktracker/uploads .
-
-echo "Creating archive..."
-tar -czf "${BACKUP_PATH}.tar.gz" -C "$BACKUP_DIR" \
-  "${BACKUP_NAME}.dump" \
-  "${BACKUP_NAME}-attachments.tar.gz"
-
-rm -f "${BACKUP_PATH}.dump" "${BACKUP_PATH}-attachments.tar.gz"
-
-echo "Backup created: ${BACKUP_PATH}.tar.gz"
+umask 077
+: "${SDLC_TASK:?Set the maintenance owner task}"
+: "${SDLC_WORKSPACE_DIR:?Select the initialized workspace}"
+: "${SDLC_PROJECT:?Set sdlc1 or sdlc2}"
+: "${SDLC_DOCKER_CONTEXT:?Select the Docker context}"
+: "${SDLC_SIGNING_KEY:?Select the preserved Auth signing key}"
+case "$SDLC_PROJECT" in sdlc1|sdlc2) ;; *) echo 'Unknown workspace project' >&2; exit 2 ;; esac
+exec python3 "$SDLC_WORKSPACE_DIR/services-base/scripts/platform_backup.py" backup \
+  --project "$SDLC_PROJECT" --workspace-profile "$SDLC_WORKSPACE_DIR/workspace.local.json" \
+  --compose-file "$SDLC_WORKSPACE_DIR/docker-compose.local.yml" \
+  --project-directory "$SDLC_WORKSPACE_DIR" --docker-context "$SDLC_DOCKER_CONTEXT" \
+  --task "$SDLC_TASK" --layout shared --quiesce --signing-key "$SDLC_SIGNING_KEY" --output "${1:?Specify a protected output archive}"

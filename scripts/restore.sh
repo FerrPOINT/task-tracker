@@ -1,59 +1,15 @@
 #!/usr/bin/env bash
-# Restore task-tracker database and file attachments from a backup archive.
-#
-# Usage:  ./scripts/restore.sh <backup.tar.gz>
+# Restore only to an explicitly prepared isolated, empty Compose destination.
 set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-ENV_FILE="${PROJECT_DIR}/.env"
-
-if [ -f "$ENV_FILE" ]; then
-  # shellcheck disable=SC1090
-  set -a; . "$ENV_FILE"; set +a
-fi
-
-: "${POSTGRES_USER:=tasktracker}"
-: "${POSTGRES_DB:=tasktracker}"
-
-if [ "$#" -ne 1 ]; then
-  echo "Usage: $0 <backup.tar.gz>" >&2
-  exit 1
-fi
-
-BACKUP_ARCHIVE="$1"
-BACKUP_NAME=$(basename "$BACKUP_ARCHIVE" .tar.gz)
-BACKUP_DIR=$(dirname "$BACKUP_ARCHIVE")
-
-if [ ! -f "$BACKUP_ARCHIVE" ]; then
-  echo "ERROR: backup archive not found: $BACKUP_ARCHIVE" >&2
-  exit 1
-fi
-
-cd "$PROJECT_DIR"
-
-echo "Extracting backup..."
-tar -xzf "$BACKUP_ARCHIVE" -C "$BACKUP_DIR"
-
-echo "Restoring database..."
-docker compose exec -T postgres pg_restore \
-  -U "${POSTGRES_USER}" \
-  -d "${POSTGRES_DB}" \
-  --clean --if-exists \
-  < "${BACKUP_DIR}/${BACKUP_NAME}.dump"
-
-echo "Restoring attachments..."
-# Resolve the actual volume name via compose (handles project-name prefixes).
-UPLOADS_VOLUME=$(docker compose config --volumes uploads 2>/dev/null || echo "task-tracker_uploads")
-if [ -f "${BACKUP_DIR}/${BACKUP_NAME}-attachments.tar.gz" ]; then
-  docker run --rm \
-    -v "${UPLOADS_VOLUME}":/var/lib/tasktracker/uploads \
-    -v "${BACKUP_DIR}":/backup:ro \
-    --entrypoint /bin/sh \
-    debian:bookworm-slim \
-    -c "cd /var/lib/tasktracker/uploads && tar -xzf \"/backup/${BACKUP_NAME}-attachments.tar.gz\" && chown -R 999:999 /var/lib/tasktracker/uploads"
-else
-  echo "WARNING: no attachments archive found in backup; skipping" >&2
-fi
-
-echo "Restore complete."
+umask 077
+: "${SDLC_TASK:?Set the maintenance owner task}"
+: "${SDLC_WORKSPACE_DIR:?Select the workspace containing Base tools}"
+: "${SDLC_RESTORE_PROJECT:?Select a unique sdlc-qa restore project}"
+: "${SDLC_RESTORE_COMPOSE:?Select the isolated destination manifest}"
+: "${SDLC_DOCKER_CONTEXT:?Select the Docker context}"
+: "${SDLC_SIGNING_KEY:?Select the preserved Auth signing key}"
+case "$SDLC_RESTORE_PROJECT" in sdlc-qa-*) ;; *) echo 'Restore requires an isolated QA project' >&2; exit 2 ;; esac
+exec python3 "$SDLC_WORKSPACE_DIR/services-base/scripts/platform_backup.py" restore \
+  --project "$SDLC_RESTORE_PROJECT" --compose-file "$SDLC_RESTORE_COMPOSE" \
+  --project-directory "$SDLC_WORKSPACE_DIR" --docker-context "$SDLC_DOCKER_CONTEXT" \
+  --task "$SDLC_TASK" --layout shared --signing-key-target "$SDLC_SIGNING_KEY" --archive "${1:?Specify a workspace backup archive}"
