@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { format } from 'date-fns'
 import { Pencil, Trash2 } from 'lucide-react'
@@ -14,13 +14,27 @@ interface WorklogTabProps {
   onEdit: (worklog: Worklog) => void
   onDelete: (id: string) => Promise<unknown>
   currentUserId: string
+  fallbackFocusRef?: RefObject<HTMLElement | null>
 }
 
-export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: WorklogTabProps) {
+export function WorklogTab({
+  worklogs,
+  onEdit,
+  onDelete,
+  currentUserId,
+  fallbackFocusRef,
+}: WorklogTabProps) {
   const { t } = useTranslation()
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deletePending, setDeletePending] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+
+  const openDelete = (id: string, trigger: HTMLButtonElement) => {
+    returnFocusRef.current = trigger
+    setDeleteError(null)
+    setDeletingId(id)
+  }
 
   const confirmDelete = async () => {
     if (!deletingId) return
@@ -28,6 +42,7 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
     setDeleteError(null)
     try {
       await onDelete(deletingId)
+      returnFocusRef.current = fallbackFocusRef?.current ?? null
       setDeletingId(null)
     } catch (error) {
       setDeleteError(error instanceof Error ? error.message : t('common.error'))
@@ -37,145 +52,161 @@ export function WorklogTab({ worklogs, onEdit, onDelete, currentUserId }: Worklo
   }
 
   const total = worklogs.reduce((sum, w) => sum + w.timeSpentSeconds, 0)
-
-  if (worklogs.length === 0) {
-    return <p className="text-sm text-text-muted">{t('timeTracking.worklog.empty')}</p>
-  }
+  const deleteDialog = (
+    <ConfirmDialog
+      open={deletingId !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setDeletingId(null)
+          setDeleteError(null)
+        }
+      }}
+      title={t('timeTracking.deleteWorklog')}
+      description={t('timeTracking.deleteConfirm')}
+      isPending={deletePending}
+      error={deleteError}
+      returnFocusRef={returnFocusRef}
+      fallbackFocusRef={fallbackFocusRef}
+      onConfirm={() => void confirmDelete()}
+    />
+  )
 
   return (
-    <div className="space-y-4">
-      <div className="hidden rounded-md border border-border 2xl:block" data-testid="worklog-table">
-        <Table className="min-w-[720px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="min-w-[110px] whitespace-nowrap">
-                {t('timeTracking.worklog.user')}
-              </TableHead>
-              <TableHead className="min-w-[110px] whitespace-nowrap">
-                {t('timeTracking.worklog.started')}
-              </TableHead>
-              <TableHead className="min-w-[100px] whitespace-nowrap">
-                {t('timeTracking.worklog.timeSpent')}
-              </TableHead>
-              <TableHead className="min-w-[100px] whitespace-nowrap">
-                {t('timeTracking.worklog.remaining')}
-              </TableHead>
-              <TableHead className="min-w-[180px] whitespace-nowrap">
-                {t('timeTracking.worklog.comment')}
-              </TableHead>
-              <TableHead className="min-w-[90px] whitespace-nowrap text-right">
-                {t('timeTracking.worklog.actions')}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+    <>
+      {deleteDialog}
+      {worklogs.length === 0 ? (
+        <p className="text-sm text-text-muted">{t('timeTracking.worklog.empty')}</p>
+      ) : (
+        <div className="space-y-4">
+          <div
+            className="hidden rounded-md border border-border 2xl:block"
+            data-testid="worklog-table"
+          >
+            <Table className="min-w-[720px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[110px] whitespace-nowrap">
+                    {t('timeTracking.worklog.user')}
+                  </TableHead>
+                  <TableHead className="min-w-[110px] whitespace-nowrap">
+                    {t('timeTracking.worklog.started')}
+                  </TableHead>
+                  <TableHead className="min-w-[100px] whitespace-nowrap">
+                    {t('timeTracking.worklog.timeSpent')}
+                  </TableHead>
+                  <TableHead className="min-w-[100px] whitespace-nowrap">
+                    {t('timeTracking.worklog.remaining')}
+                  </TableHead>
+                  <TableHead className="min-w-[180px] whitespace-nowrap">
+                    {t('timeTracking.worklog.comment')}
+                  </TableHead>
+                  <TableHead className="min-w-[90px] whitespace-nowrap text-right">
+                    {t('timeTracking.worklog.actions')}
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {worklogs.map((w) => (
+                  <TableRow key={w.id}>
+                    <TableCell className="whitespace-nowrap font-medium">
+                      {w.userDisplayName}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {format(new Date(w.startedAt), 'yyyy-MM-dd')}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {formatDuration(w.timeSpentSeconds)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">-</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{w.comment ?? '-'}</TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      {w.userId === currentUserId && (
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10"
+                            onClick={() => onEdit(w)}
+                            aria-label={t('timeTracking.editWorklog')}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-10 w-10 text-danger hover:opacity-80"
+                            onClick={(event) => openDelete(w.id, event.currentTarget)}
+                            aria-label={t('timeTracking.deleteWorklog')}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="space-y-3 2xl:hidden">
             {worklogs.map((w) => (
-              <TableRow key={w.id}>
-                <TableCell className="whitespace-nowrap font-medium">{w.userDisplayName}</TableCell>
-                <TableCell className="whitespace-nowrap">
-                  {format(new Date(w.startedAt), 'yyyy-MM-dd')}
-                </TableCell>
-                <TableCell className="whitespace-nowrap">
-                  {formatDuration(w.timeSpentSeconds)}
-                </TableCell>
-                <TableCell className="whitespace-nowrap">-</TableCell>
-                <TableCell className="max-w-[200px] truncate">{w.comment ?? '-'}</TableCell>
-                <TableCell className="whitespace-nowrap text-right">
-                  {w.userId === currentUserId && (
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-10 w-10"
-                        onClick={() => onEdit(w)}
-                        aria-label={t('timeTracking.editWorklog')}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-10 w-10 text-danger hover:opacity-80"
-                        onClick={() => setDeletingId(w.id)}
-                        aria-label={t('timeTracking.deleteWorklog')}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+              <Card key={w.id}>
+                <CardContent className="space-y-2 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 break-words font-medium text-text-primary">
+                      {w.userDisplayName}
                     </div>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-
-      <ConfirmDialog
-        open={deletingId !== null}
-        onOpenChange={(open) => !open && setDeletingId(null)}
-        title={t('timeTracking.deleteWorklog')}
-        description={t('timeTracking.deleteConfirm')}
-        isPending={deletePending}
-        error={deleteError}
-        onConfirm={() => void confirmDelete()}
-      />
-
-      <div className="space-y-3 2xl:hidden">
-        {worklogs.map((w) => (
-          <Card key={w.id}>
-            <CardContent className="space-y-2 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 break-words font-medium text-text-primary">
-                  {w.userDisplayName}
-                </div>
-                {w.userId === currentUserId && (
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10"
-                      onClick={() => onEdit(w)}
-                      aria-label={t('timeTracking.editWorklog')}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10 text-danger hover:opacity-80"
-                      onClick={() => setDeletingId(w.id)}
-                      aria-label={t('timeTracking.deleteWorklog')}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {w.userId === currentUserId && (
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-10 w-10"
+                          onClick={() => onEdit(w)}
+                          aria-label={t('timeTracking.editWorklog')}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-10 w-10 text-danger hover:opacity-80"
+                          onClick={(event) => openDelete(w.id, event.currentTarget)}
+                          aria-label={t('timeTracking.deleteWorklog')}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
-                <span className="text-text-muted">{t('timeTracking.worklog.started')}</span>
-                <span className="text-text-primary">
-                  {format(new Date(w.startedAt), 'yyyy-MM-dd')}
-                </span>
-                <span className="text-text-muted">{t('timeTracking.worklog.timeSpent')}</span>
-                <span className="text-text-primary">{formatDuration(w.timeSpentSeconds)}</span>
-                <span className="text-text-muted">{t('timeTracking.worklog.remaining')}</span>
-                <span className="text-text-primary">-</span>
-                {w.comment && (
-                  <>
-                    <span className="text-text-muted">{t('timeTracking.worklog.comment')}</span>
-                    <span className="min-w-0 break-words text-text-primary">{w.comment}</span>
-                  </>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+                    <span className="text-text-muted">{t('timeTracking.worklog.started')}</span>
+                    <span className="text-text-primary">
+                      {format(new Date(w.startedAt), 'yyyy-MM-dd')}
+                    </span>
+                    <span className="text-text-muted">{t('timeTracking.worklog.timeSpent')}</span>
+                    <span className="text-text-primary">{formatDuration(w.timeSpentSeconds)}</span>
+                    <span className="text-text-muted">{t('timeTracking.worklog.remaining')}</span>
+                    <span className="text-text-primary">-</span>
+                    {w.comment && (
+                      <>
+                        <span className="text-text-muted">{t('timeTracking.worklog.comment')}</span>
+                        <span className="min-w-0 break-words text-text-primary">{w.comment}</span>
+                      </>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
 
-      <div className="text-sm text-text-secondary">
-        {t('timeTracking.worklog.totalLogged')}:{' '}
-        <span className="font-semibold text-text-primary">{formatDuration(total)}</span>
-      </div>
-    </div>
+          <div className="text-sm text-text-secondary">
+            {t('timeTracking.worklog.totalLogged')}:{' '}
+            <span className="font-semibold text-text-primary">{formatDuration(total)}</span>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
