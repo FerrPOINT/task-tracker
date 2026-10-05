@@ -11,7 +11,7 @@ pub static BRIDGE: ServiceBridge = ServiceBridge::new("TT_AUTH__CENTRAL");
 /// Central-first bearer validation result, flattened for the middleware.
 pub enum CentralCheck {
     /// Validated centrally — shadow user must be linked by the caller.
-    Validated(sdlc_auth_core::AuthContext),
+    Validated(sdlc_auth_core::AuthContext, String),
     /// Not a central token (or central not configured) — legacy path.
     FallThrough,
     /// Central token, expired.
@@ -20,8 +20,12 @@ pub enum CentralCheck {
 }
 
 pub async fn check_token(token: &str) -> CentralCheck {
-    match BRIDGE.try_token(token).await {
-        BridgeOutcome::Validated(ctx) => CentralCheck::Validated(ctx),
+    let (outcome, name) = BRIDGE.try_token_with_name(token).await;
+    match outcome {
+        BridgeOutcome::Validated(ctx) => match name {
+            Some(name) => CentralCheck::Validated(ctx, name),
+            None => CentralCheck::Unavailable,
+        },
         BridgeOutcome::NotOurs | BridgeOutcome::NotConfigured => CentralCheck::FallThrough,
         BridgeOutcome::Expired => CentralCheck::Expired,
         BridgeOutcome::Invalid(reason) => {
