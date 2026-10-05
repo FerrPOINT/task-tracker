@@ -25,11 +25,11 @@ pub async fn bearer_auth(
     // Central fleet auth-server first (ES256 via JWKS); legacy HS256 access
     // tokens remain valid during the migration window.
     match super::central_auth::check_token(&token).await {
-        super::central_auth::CentralCheck::Validated(central) => {
+        super::central_auth::CentralCheck::Validated(central, display_name) => {
             if !central.allows_service("task-tracker", req.method().as_str()) {
                 return Err(StatusCode::FORBIDDEN);
             }
-            let user = find_or_link_central_user(&ctx, &central)
+            let user = find_or_link_central_user(&ctx, &central, &display_name)
                 .await
                 .map_err(|_| StatusCode::UNAUTHORIZED)?;
             let claims = app::auth::UserClaims {
@@ -83,6 +83,7 @@ pub async fn bearer_auth(
 async fn find_or_link_central_user(
     ctx: &Arc<app::AppContext>,
     central: &sdlc_auth_core::AuthContext,
+    display_name: &str,
 ) -> Result<domain::User, shared::AppError> {
     let email = central.email.as_deref().unwrap_or_default().to_lowercase();
     let email = email.trim();
@@ -91,11 +92,7 @@ async fn find_or_link_central_user(
     }
     ctx.repos
         .users
-        .find_or_create_central_user(
-            &central.user_id,
-            email,
-            email.split('@').next().unwrap_or(email),
-        )
+        .find_or_create_central_user(&central.user_id, email, display_name)
         .await
 }
 

@@ -47,14 +47,11 @@ impl JwtAuthService {
     async fn find_or_link_central_user(
         &self,
         central: &sdlc_auth_core::AuthContext,
+        display_name: &str,
     ) -> Result<User, AppError> {
         let email = central.email.as_deref().ok_or(AppError::Unauthorized)?;
         self.users
-            .find_or_create_central_user(
-                &central.user_id,
-                email,
-                email.split('@').next().unwrap_or(email),
-            )
+            .find_or_create_central_user(&central.user_id, email, display_name)
             .await
     }
 }
@@ -126,10 +123,9 @@ impl crate::context::AuthService for JwtAuthService {
     }
 
     async fn login(&self, cmd: LoginCommand) -> Result<AuthDto, AppError> {
-        // Central fleet auth first; local password login remains the fallback
-        // during the migration window (see central_login module).
-        if let Some((pair, central)) = try_central_login(&cmd.email, &cmd.password).await {
-            let user = self.find_or_link_central_user(&central).await?;
+        // Configured central mode must never fall through to old credentials.
+        if let Some((pair, central, name)) = try_central_login(&cmd.email, &cmd.password).await {
+            let user = self.find_or_link_central_user(&central, &name).await?;
             return Ok(AuthDto {
                 access_token: pair.access_token,
                 refresh_token: pair.refresh_token.unwrap_or_default(),
@@ -138,6 +134,10 @@ impl crate::context::AuthService for JwtAuthService {
                     .unwrap_or(self.config.access_token_ttl_minutes * 60),
                 user: UserDto::from(user),
             });
+        }
+
+        if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            return Err(AppError::Unauthorized);
         }
 
         let user = self.users.get_by_email(&cmd.email).await?;
