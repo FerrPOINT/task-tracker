@@ -1,6 +1,5 @@
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
 import { statusLabel } from '@/shared/lib/status-label'
@@ -29,12 +28,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-bold sm:text-2xl">{t('dashboard.title')}</h1>
-        <Button size="sm" className="min-h-11 gap-1 sm:min-h-9" asChild>
-          <Link to="/issues/create">{t('navigation.create')}</Link>
-        </Button>
-      </div>
+      <h1 className="text-xl font-bold sm:text-2xl">{t('dashboard.title')}</h1>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
         <section className="min-w-0 border-t border-border pt-4">

@@ -311,7 +311,7 @@ export function AppShell() {
             <Button
               asChild
               size="sm"
-              className="hidden min-h-10 min-w-10 gap-1 px-2.5 text-xs md:inline-flex"
+              className="min-h-10 min-w-10 gap-1 px-2.5 text-xs"
             >
               <Link
                 to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
