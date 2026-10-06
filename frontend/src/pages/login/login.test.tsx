@@ -25,6 +25,13 @@ function renderLogin(path = '/login') {
 }
 
 describe('LoginPage', () => {
+  it('presents one platform login without product branding or legacy warnings', async () => {
+    renderLogin('/login?logged_out=1')
+    expect(await screen.findByRole('heading', { name: 'Вход в платформу', exact: true })).toBeInTheDocument()
+    expect(screen.queryByText(/Base|SDLC|Task Tracker|Fleet Control|Wiki|CI[/]CD|Admin Panel|второй фактор|защита входа/i)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Войти через SSO', exact: true })).toBeInTheDocument()
+  })
+
   beforeEach(() => {
     beginSso.mockReset().mockImplementation(() => new Promise<void>(() => {}))
     useAuthStore.getState().logout()
@@ -43,7 +50,6 @@ describe('LoginPage', () => {
       ),
     )
     expect(screen.queryByLabelText(/пароль/i)).not.toBeInTheDocument()
-    expect(screen.getByText(/второй фактор.*отключён/i)).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Переходим в Central Auth')
     expect(screen.getByRole('button', { name: 'Войти через SSO' })).toBeDisabled()
   })
@@ -74,12 +80,12 @@ describe('LoginPage', () => {
     expect(beginSso).toHaveBeenCalledTimes(2)
   })
 
-  it('localizes sign-in and the required security notice in English', async () => {
+  it('localizes platform sign-in without legacy warnings in English', async () => {
     await i18n.changeLanguage('en')
     renderLogin('/login?logged_out=1')
-    expect(screen.getByRole('heading', { name: 'Sign in to Task Tracker' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sign in to the platform' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Sign in with SSO' })).toBeEnabled()
-    expect(screen.getByText(/two-factor authentication is disabled/i)).toBeInTheDocument()
+    expect(screen.queryByText(/two-factor authentication is disabled/i)).not.toBeInTheDocument()
   })
 
   it.each([new SsoLogoutPendingError(), new DOMException('Cancelled', 'AbortError')])(
