@@ -1,4 +1,5 @@
 import { memo, useState } from 'react'
+import { CommentBody } from '@/entities/comment/ui/CommentBody'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -138,7 +139,7 @@ export const CommentItem = memo(function CommentItem({
           </div>
         )}
       </div>
-      <div className="whitespace-pre-wrap text-sm text-text-secondary">{comment.body}</div>
+      <CommentBody body={comment.body} />
     </div>
   )
 })

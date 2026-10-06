@@ -43,6 +43,7 @@
     "openapi-fetch": "^0.13.5",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-markdown": "10.1.0",
     "react-hook-form": "^7.55.0",
     "react-i18next": "^15.5.0",
     "react-router": "^8.4.0",

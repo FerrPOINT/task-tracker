@@ -2,6 +2,7 @@ import { format } from 'date-fns'
 import { useTranslation } from 'react-i18next'
 import { MessageSquare, Clock } from 'lucide-react'
 import type { Comment } from '@/entities/comment/model'
+import { CommentBody } from '@/entities/comment/ui/CommentBody'
 import type { Worklog } from '@/entities/worklog/model'
 import { formatDuration } from '@/shared/lib/time'
 
@@ -54,7 +55,7 @@ export function ActivityFeed({ comments, worklogs }: ActivityFeedProps) {
                     {format(new Date(c.createdAt), 'yyyy-MM-dd HH:mm')}
                   </span>
                 </div>
-                <div className="whitespace-pre-wrap text-sm text-text-secondary">{c.body}</div>
+                <CommentBody body={c.body} />
               </div>
             </div>
           )
