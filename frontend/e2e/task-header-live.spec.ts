@@ -219,7 +219,7 @@ test('real Task header preserves context, actions, SSO and accessible responsive
     await profile.tap()
     await page.getByRole('menuitem', { name: 'Выйти', exact: true }).tap()
     await expect(page).toHaveURL(/localhost:7701\/oidc\/logout\?client_id=task-tracker/)
-    await page.getByRole('button', { name: 'Выйти из всех приложений', exact: true }).tap()
+    await page.getByRole('button', { name: 'Выйти', exact: true }).tap()
     await expect(page).toHaveURL(/localhost:7722\/login\?logged_out/)
     await page.goto(`${appUrl}/projects`, { waitUntil: 'commit' })
     await expect(page).toHaveURL(/localhost:7701\/oidc\/authorize/)

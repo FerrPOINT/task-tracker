@@ -42,13 +42,13 @@
     "totpCode": "Код двухфакторной аутентификации",
     "sso": {
       "title": "Вход в Task Tracker",
-      "signIn": "Войти через SDLC",
+      "signIn": "Войти через SSO",
       "redirecting": "Переходим в Central Auth...",
       "unavailable": "Не удалось открыть Central Auth. Повторите попытку.",
       "retry": "Повторить вход",
       "completing": "Завершаем вход...",
       "callbackError": "Не удалось завершить вход. Повторите попытку.",
-      "securityNotice": "Вход общий для приложений SDLC. Ранее настроенный второй фактор Task Tracker отключён; защита входа снижена."
+      "securityNotice": "Вход единый для всей платформы. Ранее настроенный второй фактор Task Tracker отключён; защита входа снижена."
     }
   },
   "notifications": {
