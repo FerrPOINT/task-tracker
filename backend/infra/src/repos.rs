@@ -200,6 +200,24 @@ struct UserRepo {
 
 #[async_trait]
 impl UserRepository for UserRepo {
+    async fn central_profiles(
+        &self,
+        subjects: &[String],
+    ) -> Result<std::collections::HashMap<String, User>, AppError> {
+        if subjects.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let models = user::Entity::find()
+            .filter(user::Column::CentralSub.is_in(subjects.iter().cloned()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .filter_map(|model| model.central_sub.clone().map(|sub| (sub, map_user(model))))
+            .collect())
+    }
+
     async fn find_or_create_central_user(
         &self,
         sub: &str,
@@ -223,7 +241,7 @@ impl UserRepository for UserRepo {
                 return Ok(map_user(model));
             }
         }
-        let id = uuid::Uuid::new_v4();
+        let id = UserId::for_central_subject(sub).as_uuid();
         self.db
             .as_ref()
             .execute(sea_orm::Statement::from_sql_and_values(

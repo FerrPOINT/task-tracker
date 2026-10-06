@@ -1,6 +1,7 @@
 use axum::{
     Extension, Json,
     extract::{Path, State},
+    http::HeaderMap,
 };
 use std::sync::Arc;
 
@@ -81,6 +82,7 @@ pub async fn add_member(
     State(ctx): State<Arc<AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Path(project_key): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<AddProjectMemberRequest>,
 ) -> Result<(axum::http::StatusCode, Json<ProjectMemberResponse>), AppError> {
     let requester = claims
@@ -92,9 +94,10 @@ pub async fn add_member(
         .user_id
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id"))?;
+    let resolved = super::users::resolve_directory_references(&ctx, &headers, &[user_id]).await?;
     let cmd = app::commands::AddProjectMemberCommand {
         project_id,
-        user_id,
+        user_id: resolved[&user_id],
         role: body.role,
     };
     let m = ctx.services.member.add(cmd, requester).await?;

@@ -26,6 +26,103 @@ async fn setup() -> (DatabaseConnection, SeaOrmRepositories) {
 
 #[tokio::test]
 #[ignore = "requires isolated PostgreSQL test database"]
+async fn directory_profile_lookup_is_read_only_and_includes_inactive_bindings() {
+    let (_db, repos) = setup().await;
+    let subject = "opaque-central-subject".to_string();
+    let absent = repos
+        .users
+        .central_profiles(std::slice::from_ref(&subject))
+        .await
+        .unwrap();
+    assert!(absent.is_empty());
+    assert!(repos.users.list().await.unwrap().is_empty());
+    let profile = repos
+        .users
+        .find_or_create_central_user(&subject, "same@example.test", "Central")
+        .await
+        .unwrap();
+    assert_eq!(profile.id, shared::UserId::for_central_subject(&subject));
+    let mut inactive = profile.clone();
+    inactive.is_active = false;
+    repos.users.save(&inactive).await.unwrap();
+    let before = repos.users.get_by_id(profile.id).await.unwrap();
+    let found = repos
+        .users
+        .central_profiles(&[subject.clone(), "absent-subject".into()])
+        .await
+        .unwrap();
+    assert_eq!(found.len(), 1);
+    assert!(!found[&subject].is_active);
+    assert_eq!(found[&subject].id, profile.id);
+    let after = repos.users.get_by_id(profile.id).await.unwrap();
+    assert_eq!(after.updated_at, before.updated_at);
+    assert_eq!(after.display_name, before.display_name);
+    assert_eq!(repos.users.list().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL test database"]
+async fn existing_random_uuid_binding_survives_deterministic_profile_ids() {
+    let (db, repos) = setup().await;
+    let id = Uuid::new_v4();
+    let subject = Uuid::new_v4().to_string();
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+        "INSERT INTO users (id, email, username, display_name, password_hash, central_sub, is_system_admin, is_active, created_at, updated_at)
+         VALUES ($1, 'same@example.test', 'historical-central', 'Central', '!', $2, true, true, now(), now())",
+        [id.into(), subject.clone().into()],
+    )).await.unwrap();
+    let found = repos
+        .users
+        .central_profiles(std::slice::from_ref(&subject))
+        .await
+        .unwrap();
+    assert_eq!(found[&subject].id.as_uuid(), id);
+    let materialized = repos
+        .users
+        .find_or_create_central_user(&subject, "same@example.test", "Central")
+        .await
+        .unwrap();
+    assert_eq!(materialized.id.as_uuid(), id);
+    assert_eq!(materialized.username.as_ref(), "historical-central");
+    assert_eq!(repos.users.list().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL test database"]
+async fn deterministic_id_collision_never_links_or_overwrites_a_legacy_user() {
+    let (db, repos) = setup().await;
+    let subject = Uuid::new_v4().to_string();
+    let id = shared::UserId::for_central_subject(&subject);
+    db.execute(Statement::from_sql_and_values(DbBackend::Postgres,
+        "INSERT INTO users (id, email, username, display_name, password_hash, is_system_admin, is_active, created_at, updated_at)
+         VALUES ($1, 'same@example.test', 'historic', 'Historic Author', '!', false, true, now(), now())",
+        [id.as_uuid().into()],
+    )).await.unwrap();
+    let before = repos.users.get_by_id(id).await.unwrap();
+    assert!(
+        repos
+            .users
+            .find_or_create_central_user(&subject, "same@example.test", "Must not link")
+            .await
+            .is_err()
+    );
+    let after = repos.users.get_by_id(id).await.unwrap();
+    assert_eq!(after.display_name, before.display_name);
+    assert_eq!(after.username, before.username);
+    assert_eq!(after.updated_at, before.updated_at);
+    assert!(!after.is_system_admin);
+    assert!(
+        repos
+            .users
+            .central_profiles(&[subject])
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires isolated PostgreSQL test database"]
 async fn verified_name_updates_only_the_matching_subject() {
     let (db, repos) = setup().await;
     let legacy_id = Uuid::new_v4();
