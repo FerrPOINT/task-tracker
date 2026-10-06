@@ -84,4 +84,4 @@ export const router = createBrowserRouter([
   { path: '/sso/callback', element: withSuspense(<SsoCallbackPage />) },
   { path: '/register', element: <Navigate to="/login" replace /> },
   { path: '*', element: <Navigate to="/" replace /> },
-])
+], { basename: import.meta.env.BASE_URL })

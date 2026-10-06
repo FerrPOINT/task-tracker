@@ -2,13 +2,13 @@ import createClient from 'openapi-fetch'
 import type { paths } from './generated'
 import { useAuthStore } from '@/shared/auth/store'
 
-export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
+export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? import.meta.env.BASE_URL.replace(/\/$/, '')
 
 export const api = createClient<paths>({ baseUrl: apiBaseUrl, credentials: 'include' })
 
 export async function refreshAccessToken(): Promise<boolean> {
   useAuthStore.getState().logout()
-  window.location.assign('/login')
+  window.location.assign(`${import.meta.env.BASE_URL}login`)
   return false
 }
 
