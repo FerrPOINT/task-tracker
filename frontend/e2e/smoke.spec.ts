@@ -10,6 +10,14 @@ const mockUser = {
   issueId: 'issue-1',
 }
 
+const markdownComment =
+  '# Итоги\n\n**Результат**\n\nПервая строка\nВторая строка\n\n- Первый\n- Второй\n\n' +
+  'ДлинныйИдентификатор'.repeat(24) +
+  '\n\n```text\n  ' +
+  'code_block_'.repeat(40) +
+  '\n```\n\n' +
+  '<script>alert(1)</script>\n\n[Опасно](javascript:alert%281%29)'
+
 function routeJson(route: Route, body: unknown, status = 200) {
   return route.fulfill({
     status,
@@ -266,9 +274,33 @@ test.describe('smoke', () => {
         time_spent_seconds: 0,
       }),
     )
-    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) =>
-      routeJson(route, { comments: [] }),
-    )
+    const commentWrites: string[] = []
+    page.on('request', (request) => {
+      if (
+        /\/api\/v1\/(?:issues\/[^/]+\/comments|comments\/)/.test(new URL(request.url()).pathname) &&
+        ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method())
+      ) {
+        commentWrites.push(request.method())
+      }
+    })
+    await page.route(`**/api/v1/issues/${mockUser.issueId}/comments**`, (route) => {
+      if (route.request().method() !== 'GET') {
+        return routeJson(route, { error: 'Read-only fixture' }, 405)
+      }
+      return routeJson(route, {
+        comments: [
+          {
+            id: 'comment-markdown',
+            issue_id: mockUser.issueId,
+            author_id: mockUser.id,
+            author_name: 'Demo User',
+            body: markdownComment,
+            created_at: '2026-09-01T10:00:00Z',
+            updated_at: '2026-09-01T10:00:00Z',
+          },
+        ],
+      })
+    })
     await page.route(`**/api/v1/issues/${mockUser.issueId}/worklogs**`, (route) =>
       routeJson(route, { worklogs: [] }),
     )
@@ -376,6 +408,63 @@ test.describe('smoke', () => {
         }
         if (mode === 'detail-with-aside') {
           await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+          for (const [tabName, tabKey] of [
+            [/comments|комментарии/i, 'comments'],
+            [/activity|активность/i, 'activity'],
+          ] as const) {
+            await page.getByRole('tab', { name: tabName }).click()
+            await expect(page.getByRole('tab', { name: tabName })).toHaveAttribute(
+              'aria-selected',
+              'true',
+            )
+            await page
+              .getByRole('tablist')
+              .evaluate((element) =>
+                Promise.allSettled(
+                  element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+                ),
+              )
+            const panel = page.getByRole('tabpanel')
+            await expect(panel.getByRole('heading', { name: 'Итоги', level: 1 })).toBeVisible()
+            await expect(panel.locator('strong')).toHaveText('Результат')
+            await expect(panel.getByRole('listitem')).toHaveCount(2)
+            await expect(panel.locator('pre code')).toHaveText(
+              '  ' + 'code_block_'.repeat(40) + '\n',
+            )
+            await expect(panel.locator('script, [href^="javascript:"]')).toHaveCount(0)
+            await expect(panel.getByText('Первая строка Вторая строка')).toHaveCSS(
+              'white-space',
+              'pre-line',
+            )
+            await expect
+              .poll(() =>
+                page.evaluate(
+                  () =>
+                    document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+                ),
+              )
+              .toBe(true)
+            let previousGeometry: string | undefined
+            await expect
+              .poll(async () => {
+                const box = await panel.boundingBox()
+                const geometry = JSON.stringify(box)
+                const stable = box !== null && geometry === previousGeometry
+                previousGeometry = geometry
+                return stable
+              })
+              .toBe(true)
+            if (viewport.width !== 1440) {
+              await page.getByRole('main').evaluate((element) => {
+                element.scrollTop = 0
+              })
+              await page.evaluate(() => window.scrollTo(0, 0))
+              await page.screenshot({
+                path: testInfo.outputPath(`markdown-${viewport.width}-${tabKey}.png`),
+                fullPage: true,
+              })
+            }
+          }
         }
 
         const layout = page.locator('[data-page-layout]')
@@ -426,5 +515,6 @@ test.describe('smoke', () => {
         }
       }
     }
+    expect(commentWrites).toEqual([])
   })
 })
