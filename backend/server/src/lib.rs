@@ -85,6 +85,11 @@ pub async fn run(
         .expect("failed to initialize stable SDLC storage");
         ctx.sdlc = Some(app::sdlc::SdlcService {
             repository: Arc::new(repository),
+            fleet_configuration: app::sdlc_configuration::FleetConfigurationReader::new(
+                &std::env::var("TASKTRACKER_SDLC__FLEET_URL").unwrap_or_default(),
+                &std::env::var("TASKTRACKER_SDLC__FLEET_READ_TOKEN").unwrap_or_default(),
+            )
+            .ok(),
         });
     }
     let ctx = Arc::new(ctx);

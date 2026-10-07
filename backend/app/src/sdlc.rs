@@ -17,9 +17,74 @@ mod tests;
 #[derive(Clone)]
 pub struct SdlcService {
     pub repository: Arc<dyn SdlcRepository>,
+    pub fleet_configuration: Option<crate::sdlc_configuration::FleetConfigurationReader>,
 }
 
 impl SdlcService {
+    pub async fn analysis_configuration_preflight(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::sdlc_configuration::AnalysisConfigurationPreflight, AppError> {
+        crate::sdlc_reservation::reader(actor)?;
+        let before = self.repository.analysis_reservation(task, actor).await?;
+        let current = before
+            .current
+            .as_ref()
+            .ok_or_else(|| AppError::conflict("prepared Analysis assignment required"))?;
+        if !matches!(
+            before.lease_state,
+            domain::sdlc_reservation::AnalysisReservationLeaseState::Active
+        ) || before.reconciliation_needed
+        {
+            return Err(AppError::conflict("active Analysis reservation required"));
+        }
+        let reader = self.fleet_configuration.as_ref().ok_or_else(|| {
+            AppError::Unavailable("Fleet configuration reader not configured".into())
+        })?;
+        let observed = reader
+            .read(
+                &current.assignment.route,
+                &current.assignment.role_key,
+                &current.assignment.mode_key,
+            )
+            .await?;
+        // Never hold a database transaction across owner HTTP. Reauthorize and
+        // re-read the lease after the observation, including expiry and CAS.
+        let after = self.repository.analysis_reservation(task, actor).await?;
+        if after.current.as_ref() != Some(current)
+            || after.reconciliation_needed
+            || !matches!(
+                after.lease_state,
+                domain::sdlc_reservation::AnalysisReservationLeaseState::Active
+            )
+        {
+            return Err(AppError::conflict(
+                "Analysis reservation changed during configuration observation",
+            ));
+        }
+        observed.ensure_fresh()?;
+        Ok(domain::sdlc_configuration::AnalysisConfigurationPreflight {
+            contract_version: 1,
+            assignment_id: current.assignment.assignment_id,
+            execution_id: current.assignment.execution_id,
+            assignment_hash: current.assignment.assignment_hash.clone(),
+            agent_id: current.assignment.agent_id,
+            effective_config_revision: current.assignment.route.fleet_config_revision,
+            observation_ref: observed.observation_ref,
+            configuration_observed_at: observed.observed_at,
+            lease_version: current.lease.version,
+            fencing_token: current.assignment.fencing_token,
+            configuration_matched: true,
+            runtime_ready: false,
+            dispatch_allowed: false,
+            blockers: vec![
+                "native_execution_admission_unavailable".into(),
+                "workflow_assignment_acceptance_unavailable".into(),
+                "trusted_execution_stop_unavailable".into(),
+            ],
+        })
+    }
     pub async fn reserve_analysis(
         &self,
         task: Uuid,

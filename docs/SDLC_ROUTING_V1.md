@@ -100,9 +100,10 @@ counterpart DTO оно нормализуется в канонический Tr
 Числовые namespace/workflow IDs берутся из binding, а не выводятся из символических
 имён. Hashes относятся к соответствующим owner artifacts, не к JSON всего наблюдения.
 
-**Tracker consumer этих observations и fresh admission ещё не реализованы.**
-Таблица фиксирует контракт будущего сопоставления, а не уже выполняемый remote read
-или проверку при записи policy. Текущие ссылки остаются `declared`; `runtime_ready:false`
+**Tracker consumer observations реализован для prepared Analysis preflight**:
+[контракт](SDLC_CONFIGURATION_PREFLIGHT_V1.md). Он выполняет remote read и exact
+сопоставление, но не меняет policy или её `declared` verification. Fresh execution
+admission не реализован. Текущие ссылки остаются `declared`; `runtime_ready:false`
 в counterpart, совпадение refs и file/config proof не разрешают native execution.
 Следующие обязательные owner interfaces описаны в [lifecycle](SDLC_LIFECYCLE_V1.md).
 

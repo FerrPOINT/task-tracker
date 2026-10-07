@@ -1500,6 +1500,57 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/analysis-reservation/configuration-preflight": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_analysis_configuration_preflight",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisConfigurationPreflight"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/analysis-reservation/heartbeat": {
       "post": {
         "tags": [
@@ -6440,6 +6491,89 @@
         "enum": [
           "awaiting_admission"
         ]
+      },
+      "AnalysisConfigurationPreflight": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "assignment_id",
+          "execution_id",
+          "assignment_hash",
+          "agent_id",
+          "effective_config_revision",
+          "observation_ref",
+          "configuration_observed_at",
+          "lease_version",
+          "fencing_token",
+          "configuration_matched",
+          "runtime_ready",
+          "dispatch_allowed",
+          "blockers"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "configuration_matched": {
+            "type": "boolean"
+          },
+          "configuration_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "effective_config_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lease_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "observation_ref": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runtime_ready": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "AnalysisIntent": {
         "type": "object",

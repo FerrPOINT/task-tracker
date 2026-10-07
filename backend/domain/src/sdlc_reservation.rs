@@ -26,7 +26,7 @@ fn no_dispatch<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
     }
     Ok(false)
 }
-fn false_schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+pub(crate) fn false_schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
     utoipa::openapi::schema::ObjectBuilder::new()
         .schema_type(utoipa::openapi::schema::Type::Boolean)
         .enum_values(Some([false]))

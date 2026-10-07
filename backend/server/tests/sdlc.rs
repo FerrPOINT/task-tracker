@@ -46,6 +46,39 @@ struct AuthStub {
     unavailable: Arc<AtomicBool>,
 }
 
+#[derive(Clone)]
+struct FleetStub {
+    payload: Arc<tokio::sync::Mutex<Value>>,
+    revoke_reader: Arc<AtomicBool>,
+    db: Arc<DatabaseConnection>,
+    project: Uuid,
+}
+
+const FLEET_READER_TOKEN: &str =
+    "sdlc_pat_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+async fn fleet_configuration_fixture(
+    State(stub): State<FleetStub>,
+    headers: HeaderMap,
+) -> Result<(HeaderMap, Json<Value>), StatusCode> {
+    if headers.get("authorization").and_then(|v| v.to_str().ok())
+        != Some(&format!("Bearer {FLEET_READER_TOKEN}"))
+    {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if stub.revoke_reader.swap(false, Ordering::SeqCst) {
+        sql(&stub.db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='scheduler')",vec![stub.project.into()]).await;
+    }
+    let mut body = stub.payload.lock().await.clone();
+    if body.is_null() {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    body["observed_at"] = json!(shared::now());
+    let mut h = HeaderMap::new();
+    h.insert("cache-control", "no-store".parse().unwrap());
+    Ok((h, Json(body)))
+}
+
 async fn introspect(
     State(stub): State<AuthStub>,
     headers: HeaderMap,
@@ -329,10 +362,29 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let auth_handle = tokio::spawn(async move {
         axum::serve(listener, auth_router).await.unwrap();
     });
+    let fleet_stub = FleetStub {
+        payload: Arc::new(tokio::sync::Mutex::new(Value::Null)),
+        revoke_reader: Arc::new(AtomicBool::new(false)),
+        db: Arc::new(Database::connect(&database_url).await.unwrap()),
+        project,
+    };
+    let fleet_router = Router::new()
+        .route(
+            "/internal/runtime/v1/agents/{id}/configuration",
+            get(fleet_configuration_fixture),
+        )
+        .with_state(fleet_stub.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let fleet_origin = format!("http://{}", listener.local_addr().unwrap());
+    let fleet_handle = tokio::spawn(async move {
+        axum::serve(listener, fleet_router).await.unwrap();
+    });
     // This binary has one test. Configuration is set before starting Tracker or its auth bridge.
     unsafe {
         std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{issuer}/jwks"));
         std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &issuer);
+        std::env::set_var("TASKTRACKER_SDLC__FLEET_URL", &fleet_origin);
+        std::env::set_var("TASKTRACKER_SDLC__FLEET_READ_TOKEN", FLEET_READER_TOKEN);
         std::env::set_var(
             "TASKTRACKER_SDLC__INSTANCE_ID",
             "tracker-integration-\u{416}\u{1f680}\"\\\r\n",
@@ -703,10 +755,13 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         .unwrap();
     assert_eq!(context["permissions"]["can_confirm"], true);
     post(&client, &confirm_url, &operator, &final_confirm, 403).await;
-    let (routing, routing_ready) = routing_policy::before(
-        &db, &client, &base, project, task, &owner, &operator, &foreign,
-    )
-    .await;
+    let routing_actors = routing_policy::Actors {
+        owner: &owner,
+        operator: &operator,
+        foreign: &foreign,
+    };
+    let (routing, routing_ready) =
+        routing_policy::before(&db, &client, &base, project, task, &routing_actors).await;
     let mut stale_routing = final_confirm.clone();
     stale_routing["expected_routing_policy_version"] = json!(1);
     post(&client, &confirm_url, &owner, &stale_routing, 409).await;
@@ -1005,10 +1060,8 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &db,
         &client,
         &restarted,
-        project,
         task,
-        &owner,
-        &foreign,
+        &routing_actors,
         &routing_snapshot,
         &routing_ready,
     )
@@ -1017,10 +1070,10 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         &db,
         &client,
         &restarted,
-        project,
         task,
         &owner,
         &routing_ready,
+        &fleet_stub,
     )
     .await;
     unavailable.store(true, Ordering::SeqCst);
@@ -1056,6 +1109,8 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     assert_eq!(persisted["reconciliation_needed"], true);
     assert_eq!(persisted["capacity_held"], true);
     println!("ANALYSIS_RESERVATION restart durable readback passed");
+    fleet_handle.abort();
+    assert!(fleet_handle.await.unwrap_err().is_cancelled());
     stop.send(()).unwrap();
     handle.await.unwrap();
     auth_handle.abort();

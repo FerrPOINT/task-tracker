@@ -88,6 +88,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc_reservation::reserve,
         routes::sdlc_reservation::heartbeat,
         routes::sdlc_reservation::current,
+        routes::sdlc_reservation::configuration_preflight,
         routes::sdlc_reservation::operation,
         routes::sdlc::project_access,
         routes::sdlc::project_directory,

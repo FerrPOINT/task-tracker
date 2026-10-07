@@ -1,5 +1,10 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+Prepared Analysis has a protected fresh Fleet configuration preflight, matching
+concrete agent/effective config/package/Workflow refs and rechecking lease/ACL
+after HTTP. This prerequisite does not activate native dispatch or change tasks.
+[Contract](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
+
 ## B-SDLC-05: Явный Routing Opt-In
 
 В existing owner consent UI добавлен отдельный unchecked выбор существующей

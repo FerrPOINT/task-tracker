@@ -17,6 +17,10 @@ pub(super) fn router() -> Router<Arc<app::AppContext>> {
             get(current).post(reserve),
         )
         .route(
+            "/issues/{id}/sdlc/analysis-reservation/configuration-preflight",
+            get(configuration_preflight),
+        )
+        .route(
             "/issues/{id}/sdlc/analysis-reservation/heartbeat",
             post(heartbeat),
         )
@@ -29,6 +33,27 @@ fn no_store() -> HeaderMap {
     let mut h = HeaderMap::new();
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     h
+}
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-reservation/configuration-preflight",operation_id="read_analysis_configuration_preflight",tag="sdlc",params(("id"=Uuid,Path)),responses((status=200,body=domain::sdlc_configuration::AnalysisConfigurationPreflight),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
+pub async fn configuration_preflight(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(task): Path<Uuid>,
+) -> Result<
+    (
+        HeaderMap,
+        Json<domain::sdlc_configuration::AnalysisConfigurationPreflight>,
+    ),
+    AppError,
+> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .analysis_configuration_preflight(task, &actor)
+                .await?,
+        ),
+    ))
 }
 #[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/analysis-reservation",operation_id="reserve_analysis_reservation",tag="sdlc",params(("id"=Uuid,Path)),request_body=ReserveAnalysis,
     responses((status=201,body=AnalysisReservationReceipt),(status=200,body=AnalysisReservationReceipt,description="Original durable replay; no renewal"),(status=401),(status=403),(status=404),(status=409,description="PM quiescence unknown, stale intent/CAS or held capacity"),(status=422),(status=503)),security(("bearer"=[])))]
@@ -113,6 +138,7 @@ mod tests {
             }
         }
         for name in [
+            "AnalysisConfigurationPreflight",
             "ReserveAnalysis",
             "HeartbeatAnalysis",
             "PreparedAnalysisAssignment",
@@ -135,6 +161,16 @@ mod tests {
                 .get("run_id")
                 .is_none()
         );
+        let preflight = &s["components"]["schemas"]["AnalysisConfigurationPreflight"]["properties"];
+        assert_eq!(
+            preflight["runtime_ready"]["enum"],
+            serde_json::json!([false])
+        );
+        assert_eq!(
+            preflight["dispatch_allowed"]["enum"],
+            serde_json::json!([false])
+        );
+        assert!(s["paths"]["/api/v1/issues/{id}/sdlc/analysis-reservation/configuration-preflight"]["get"]["security"].is_array());
         assert!(s["components"]["schemas"]["AnalysisReservationReadback"]["properties"]["reconciliation_needed"].is_object());
     }
 }

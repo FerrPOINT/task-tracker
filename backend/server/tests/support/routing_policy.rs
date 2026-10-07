@@ -1,5 +1,11 @@
 use super::*;
 
+pub(super) struct Actors<'a> {
+    pub owner: &'a str,
+    pub operator: &'a str,
+    pub foreign: &'a str,
+}
+
 async fn read(client: &Client, url: &str, token: &str, status: u16) -> Value {
     let response = client.get(url).bearer_auth(token).send().await.unwrap();
     let actual = response.status().as_u16();
@@ -40,16 +46,17 @@ fn command() -> Value {
     json!({"expected_version":null,"routes":routes,"idempotency_key":"routing-initial"})
 }
 
-pub async fn before(
+pub(super) async fn before(
     db: &DatabaseConnection,
     client: &Client,
     base: &str,
     project: Uuid,
     task: Uuid,
-    owner: &str,
-    operator: &str,
-    foreign: &str,
+    actors: &Actors<'_>,
 ) -> (Value, TaskState) {
+    let owner = actors.owner;
+    let operator = actors.operator;
+    let foreign = actors.foreign;
     let url = format!("{base}/api/v1/projects/{project}/sdlc/routing-policy");
     let body = command();
     for token in [
@@ -212,17 +219,18 @@ pub(super) async fn ready_task(db: &DatabaseConnection, source: &TaskState, key:
     task
 }
 
-pub async fn after(
+pub(super) async fn after(
     db: &DatabaseConnection,
     client: &Client,
     base: &str,
-    project: Uuid,
     task: Uuid,
-    owner: &str,
-    foreign: &str,
+    actors: &Actors<'_>,
     old: &Value,
     ready: &TaskState,
 ) {
+    let project = ready.project_id;
+    let owner = actors.owner;
+    let foreign = actors.foreign;
     assert_eq!(old, &snapshot(client, base, task, owner).await);
     let url = format!("{base}/api/v1/projects/{project}/sdlc/routing-policy");
     let mut update = json!({"expected_version":2,"routes":old["policy"]["routes"],"idempotency_key":"next-policy"});

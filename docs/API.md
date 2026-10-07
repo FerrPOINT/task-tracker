@@ -1597,3 +1597,11 @@ GET/PATCH/DELETE `/api/v1/issues/{id}` и POST `/api/v1/issues/{id}/transition`,
 ## Общая база
 
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
+
+## Analysis Configuration Preflight
+
+Protected read-only `GET /api/v1/issues/{id}/sdlc/analysis-reservation/configuration-preflight`
+compares fresh Fleet configuration with an active prepared assignment, then
+reauthorizes and rechecks the lease. It never grants dispatch or runtime readiness.
+Operator env: `TASKTRACKER_SDLC__FLEET_URL`, `TASKTRACKER_SDLC__FLEET_READ_TOKEN`.
+See [strict contract and failure states](SDLC_CONFIGURATION_PREFLIGHT_V1.md).

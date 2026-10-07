@@ -76,11 +76,13 @@ pub async fn check(
     db: &DatabaseConnection,
     client: &Client,
     base: &str,
-    project: Uuid,
     pm_task: Uuid,
     owner: &str,
     ready: &TaskState,
+    fleet_stub: &FleetStub,
 ) -> (Uuid, Value) {
+    let project = ready.project_id;
+    assert_eq!(project, fleet_stub.project);
     let path = |task| format!("{base}/api/v1/issues/{task}/sdlc/analysis-reservation");
     let scheduler = "sdlc_pat_reservation_scheduler";
     let reader = "sdlc_pat_reservation_reader";
@@ -230,6 +232,7 @@ pub async fn check(
     );
     assert!(result["assignment"].get("run_id").is_none());
     let winner_path = path(winner);
+    configuration_preflight(db, client, &winner_path, owner, reader, &result, fleet_stub).await;
     let (x, y) = tokio::join!(
         post(client, &winner_path, scheduler, &command, 200),
         post(client, &winner_path, scheduler, &command, 200)
@@ -447,6 +450,13 @@ pub async fn check(
     assert_eq!(expired["reconciliation_needed"], true);
     assert_eq!(expired["reason"], "lease_expired_stop_unverified");
     assert_eq!(expired["capacity_held"], true);
+    read(
+        client,
+        &format!("{}/configuration-preflight", path(winner)),
+        reader,
+        409,
+    )
+    .await;
     assert_eq!(expired["current"], third);
     assert_eq!(
         read(client, &path(winner), reader, 200).await["current"],
@@ -484,4 +494,102 @@ pub async fn check(
         "ANALYSIS_RESERVATION real expiry/read-only GET/unknown capacity hold/no release/no replay rewind passed"
     );
     (winner, third)
+}
+
+async fn configuration_preflight(
+    db: &DatabaseConnection,
+    client: &Client,
+    path: &str,
+    owner: &str,
+    reader: &str,
+    reserved: &Value,
+    stub: &FleetStub,
+) {
+    let route = &reserved["assignment"]["route"];
+    let value = json!({"contract_version":1,"observation_ref":Uuid::new_v4(),"agent_id":route["agent_id"],
+        "sdlc_role":"analyst","effective_revision":route["fleet_config_revision"],"managed_files_verified":true,"runtime_ready":false,
+        "observed_at":shared::now(),"blockers":["runtime_skill_inventory_not_verified","workflow_assignment_protocol_not_verified"],
+        "package":{"schema":"base-sdlc/package-proof/v1","repository":"https://github.com/FerrPOINT/services-base.git",
+          "commit":route["package_commit"],"manifestSha256":route["package_manifest_sha256"],"role":"analyst",
+          "namespace":route["namespace_name"],"profile":route["profile"],"modes":["analysis"],
+          "roleInstructionSha256":"c".repeat(64),"skillSha256":{"acceptance-test-design":"d".repeat(64)}},
+        "workflow_binding":{"schema":"base-sdlc/workflow-binding/v1","namespace_id":route["namespace_id"],
+          "namespace_name":route["namespace_name"],"workflow_id":route["workflow_id"],"workflow_key":route["workflow_key"],
+          "role_key":"analyst","profile":route["profile"],"catalog_version":3,
+          "catalog_sha256":route["workflow_catalog_sha256"],"skills_revision":route["package_commit"],"runtime_ready":false}});
+    let url = format!("{path}/configuration-preflight");
+    let before = count(db, "sdlc_analysis_reservation_operations").await;
+    let outbox_before = count(db, "sdlc_outbox").await;
+    *stub.payload.lock().await = value.clone();
+    for token in [owner, reader] {
+        let response = read(client, &url, token, 200).await;
+        assert_eq!(
+            response["assignment_id"],
+            reserved["assignment"]["assignment_id"]
+        );
+        assert_eq!(
+            response["assignment_hash"],
+            reserved["assignment"]["assignment_hash"]
+        );
+        assert_eq!(response["configuration_matched"], true);
+        assert_eq!(response["runtime_ready"], false);
+        assert_eq!(response["dispatch_allowed"], false);
+        assert_eq!(response["lease_version"], reserved["lease"]["version"]);
+    }
+    if std::env::var("TT_SDLC_TEST_CURL").as_deref() == Ok("1") {
+        // Only synthetic fixture credentials are passed to this acceptance client.
+        let result = tokio::process::Command::new("curl")
+            .args([
+                "--silent",
+                "--show-error",
+                "--fail",
+                "--noproxy",
+                "*",
+                "--max-time",
+                "5",
+                "--header",
+                &format!("Authorization: Bearer {reader}"),
+                &url,
+            ])
+            .kill_on_drop(true)
+            .output()
+            .await
+            .expect("curl is required for the opt-in HTTP acceptance gate");
+        assert!(result.status.success(), "curl preflight did not succeed");
+        let response: Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(
+            response["assignment_hash"],
+            reserved["assignment"]["assignment_hash"]
+        );
+        assert_eq!(response["runtime_ready"], false);
+        assert_eq!(response["dispatch_allowed"], false);
+        if let Ok(dir) = std::env::var("TT_SDLC_TEST_EVIDENCE_DIR") {
+            std::fs::write(
+                std::path::Path::new(&dir).join("analysis-configuration-preflight-curl.json"),
+                serde_json::to_vec_pretty(&response).unwrap(),
+            )
+            .unwrap();
+        }
+        println!("ANALYSIS_CONFIGURATION opt-in curl HTTP acceptance passed");
+    }
+    let mut changed = value.clone();
+    changed["effective_revision"] = json!(999999);
+    *stub.payload.lock().await = changed;
+    read(client, &url, reader, 409).await;
+    *stub.payload.lock().await = Value::Null;
+    read(client, &url, reader, 503).await;
+    *stub.payload.lock().await = value;
+    stub.revoke_reader.store(true, Ordering::SeqCst);
+    read(client, &url, reader, 403).await;
+    sql(db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='scheduler'",vec![stub.project.into()]).await;
+    read(client, &url, "sdlc_pat_reservation_scheduler", 403).await;
+    assert_eq!(
+        count(db, "sdlc_analysis_reservation_operations").await,
+        before
+    );
+    assert_eq!(count(db, "sdlc_outbox").await, outbox_before);
+    assert_eq!(read(client, path, reader, 200).await["current"], *reserved);
+    println!(
+        "ANALYSIS_CONFIGURATION fresh HTTP match/pending/no writes/drift/unavailable/ACL revoke passed; synthetic Fleet owner fixture"
+    );
 }

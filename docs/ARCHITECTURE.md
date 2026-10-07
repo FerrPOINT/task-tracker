@@ -1,5 +1,13 @@
 # Архитектура Task Tracker
 
+Prepared Analysis configuration preflight uses `api -> SdlcService ->
+FleetConfigurationReader` and the existing authorized reservation repository.
+The reader uses operator credentials only, bounded HTTP and Fleet's real owner
+DTO. Two repository reads bracket HTTP, so no transaction/ACL lock is held while
+waiting on Fleet, and expiry or authorization change rejects the result.
+No durable admission, dispatch or caller-provided proof is introduced.
+[Contract](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
+
 ## Tracker-only Analysis preparation
 
 Слои `api/routes/sdlc_reservation -> SdlcService -> SdlcRepository -> infra/sdlc_reservation`.
