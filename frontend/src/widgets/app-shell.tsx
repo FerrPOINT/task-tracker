@@ -308,11 +308,7 @@ export function AppShell() {
         }
         actions={
           <>
-            <Button
-              asChild
-              size="sm"
-              className="min-h-10 min-w-10 gap-1 px-2.5 text-xs"
-            >
+            <Button asChild size="sm" className="min-h-10 min-w-10 gap-1 px-2.5 text-xs">
               <Link
                 to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
                 aria-label={t('navigation.create')}

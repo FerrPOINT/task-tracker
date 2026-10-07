@@ -99,12 +99,12 @@ impl SprintService for SprintServiceImpl {
             .await?;
         // A sprint ending before it starts is nonsense and breaks burndown
         // math (remaining_days goes negative/null).
-        if let (Some(start), Some(end)) = (cmd.start_date, cmd.end_date) {
-            if end < start {
-                return Err(AppError::invalid_input(
-                    "end_date must not be earlier than start_date",
-                ));
-            }
+        if let (Some(start), Some(end)) = (cmd.start_date, cmd.end_date)
+            && end < start
+        {
+            return Err(AppError::invalid_input(
+                "end_date must not be earlier than start_date",
+            ));
         }
         let project = self.projects.get_by_id(cmd.project_id).await?;
         let sprint = domain::Sprint {
@@ -173,12 +173,12 @@ impl SprintService for SprintServiceImpl {
         }
         // Same date sanity as create: reject inverted ranges after merging
         // partial updates.
-        if let (Some(start), Some(end)) = (sprint.start_date, sprint.end_date) {
-            if end < start {
-                return Err(AppError::invalid_input(
-                    "end_date must not be earlier than start_date",
-                ));
-            }
+        if let (Some(start), Some(end)) = (sprint.start_date, sprint.end_date)
+            && end < start
+        {
+            return Err(AppError::invalid_input(
+                "end_date must not be earlier than start_date",
+            ));
         }
         self.sprints.save(&sprint).await?;
         let dto = self.sprint_dto(sprint).await?;
@@ -198,10 +198,10 @@ impl SprintService for SprintServiceImpl {
         }
         // One active sprint per project: board pickers and burndown assume a
         // unique active sprint (get_active_by_project would go ambiguous).
-        if let Ok(Some(current)) = self.sprints.get_active_by_project(sprint.project_id).await {
-            if current.id != sprint.id {
-                return Err(AppError::conflict("project already has an active sprint"));
-            }
+        if let Ok(Some(current)) = self.sprints.get_active_by_project(sprint.project_id).await
+            && current.id != sprint.id
+        {
+            return Err(AppError::conflict("project already has an active sprint"));
         }
         sprint.state = domain::SprintState::Active;
         sprint.start_date = Some(sprint.start_date.unwrap_or_else(shared::now));
