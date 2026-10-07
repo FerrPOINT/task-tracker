@@ -146,30 +146,30 @@ impl crate::context::CommentService for CommentServiceImpl {
             updated_at: shared::now(),
         };
         self.comments.save(&comment).await?;
-        if let Ok(issue) = self.issues.get_by_id(cmd.issue_id).await {
-            if let Ok(project) = self.projects.get_by_id(issue.project_id).await {
-                self.events.publish(shared::TrackerEvent::IssueCommented {
-                    issue_id: cmd.issue_id.to_string(),
-                    project_key: project.key.to_string(),
-                });
-                let key = issue.key.to_string();
-                helpers::notify_issue_recipients(
-                    &self.watchers,
-                    &self.notifications,
-                    &self.notification_settings,
-                    &self.events,
-                    &issue,
-                    requester,
-                    "issue_commented",
-                    format!("New comment on {key}"),
-                    None,
-                    serde_json::json!({
-                        "issue_key": key,
-                        "comment_id": comment.id.to_string(),
-                    }),
-                )
-                .await;
-            }
+        if let Ok(issue) = self.issues.get_by_id(cmd.issue_id).await
+            && let Ok(project) = self.projects.get_by_id(issue.project_id).await
+        {
+            self.events.publish(shared::TrackerEvent::IssueCommented {
+                issue_id: cmd.issue_id.to_string(),
+                project_key: project.key.to_string(),
+            });
+            let key = issue.key.to_string();
+            helpers::notify_issue_recipients(
+                &self.watchers,
+                &self.notifications,
+                &self.notification_settings,
+                &self.events,
+                &issue,
+                requester,
+                "issue_commented",
+                format!("New comment on {key}"),
+                None,
+                serde_json::json!({
+                    "issue_key": key,
+                    "comment_id": comment.id.to_string(),
+                }),
+            )
+            .await;
         }
         Ok(CommentDto::from_comment(
             comment,

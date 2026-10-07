@@ -1,5 +1,6 @@
 import { expect, describe, it, vi } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { I18nextProvider } from 'react-i18next'
 import i18n from '@/shared/i18n/config'
@@ -47,6 +48,29 @@ describe('LogWorkDialog', () => {
     await waitFor(() => {
       expect(screen.getByText(/Provide time spent/i)).toBeInTheDocument()
     })
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('blocks Escape and the close button until the pending request settles', async () => {
+    const onOpenChange = vi.fn()
+    const props = { open: true, onOpenChange, onSubmit: vi.fn() }
+    const page = render(<LogWorkDialog {...props} isPending />, { wrapper })
+    const user = userEvent.setup()
+    await user.keyboard('{Escape}')
+    await user.click(screen.getByRole('button', { name: 'Закрыть' }))
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    page.rerender(<LogWorkDialog {...props} isPending={false} />)
+    await user.keyboard('{Escape}')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('does not submit a second worklog while the first request is pending', async () => {
+    const onSubmit = vi.fn()
+    render(<LogWorkDialog open onOpenChange={vi.fn()} onSubmit={onSubmit} isPending />, { wrapper })
+    fireEvent.change(screen.getByLabelText(/Time spent/i), { target: { value: '1.5h' } })
+    fireEvent.submit(screen.getByRole('dialog').querySelector('form')!)
+    await waitFor(() => expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled())
     expect(onSubmit).not.toHaveBeenCalled()
   })
 })

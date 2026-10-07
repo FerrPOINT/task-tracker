@@ -15,7 +15,7 @@ Self-hosted таск-трекер (Jira-like). MVP покрывает проек
 
 | Компонент | Библиотека | Версия |
 |---|---|---|
-| Язык | Rust | 1.97.1 |
+| Язык | Rust | 1.88.0 |
 | Web framework | axum | 0.8.3 |
 | Async runtime | tokio | 1.44 |
 | DB ORM | sea-orm | 1.1 |
