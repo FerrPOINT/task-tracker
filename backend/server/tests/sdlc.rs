@@ -42,8 +42,11 @@ mod routing_policy;
 #[derive(Clone)]
 struct AuthStub {
     jwks: Value,
+    key: Arc<jsonwebtoken::DecodingKey>,
+    issuer: String,
     tokens: Arc<HashMap<String, Value>>,
     unavailable: Arc<AtomicBool>,
+    profile_invalid: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -91,20 +94,45 @@ async fn introspect(
         .and_then(|h| h.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "))
         .ok_or(StatusCode::UNAUTHORIZED)?;
-    Ok(Json(
-        stub.tokens
-            .get(token)
-            .cloned()
-            .ok_or(StatusCode::UNAUTHORIZED)?,
-    ))
+    let mut value = stub
+        .tokens
+        .get(token)
+        .cloned()
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    if stub.profile_invalid.load(Ordering::SeqCst) {
+        value["display_name"] = Value::Null;
+    }
+    Ok(Json(value))
 }
 
-async fn session(State(stub): State<AuthStub>) -> StatusCode {
+async fn session(
+    State(stub): State<AuthStub>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, StatusCode> {
     if stub.unavailable.load(Ordering::SeqCst) {
-        StatusCode::SERVICE_UNAVAILABLE
-    } else {
-        StatusCode::OK
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
+    let token = headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut validation = jsonwebtoken::Validation::new(jsonwebtoken::Algorithm::ES256);
+    validation.set_issuer(&[&stub.issuer]);
+    validation.set_audience(&["sdlc"]);
+    let claims = jsonwebtoken::decode::<Value>(token, &stub.key, &validation)
+        .map_err(|_| StatusCode::UNAUTHORIZED)?
+        .claims;
+    let subject = claims["sub"].as_str().ok_or(StatusCode::UNAUTHORIZED)?;
+    if !matches!(subject, "owner" | "operator" | "foreign") || claims["sid"] != "test-session" {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let id = if stub.profile_invalid.load(Ordering::SeqCst) {
+        "different-subject"
+    } else {
+        subject
+    };
+    Ok(Json(json!({"id":id,"display_name":subject})))
 }
 
 async fn sql(db: &DatabaseConnection, query: &str, values: Vec<sea_orm::Value>) {
@@ -341,13 +369,28 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         );
     }
     pm_credential_boundary::tokens(&mut tokens, &assignment, &replacement, task);
+    for value in tokens.values_mut() {
+        value["display_name"] = value["sub"].clone();
+    }
     let secret = SecretKey::from_slice(&[7u8; 32]).unwrap();
     let point = secret.public_key().to_encoded_point(false);
     let unavailable = Arc::new(AtomicBool::new(false));
+    let profile_invalid = Arc::new(AtomicBool::new(false));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}", listener.local_addr().unwrap());
     let stub = AuthStub {
         jwks: json!({"keys":[{"kid":"tracker-test","kty":"EC","crv":"P-256","alg":"ES256","use":"sig","x":URL_SAFE_NO_PAD.encode(point.x().unwrap()),"y":URL_SAFE_NO_PAD.encode(point.y().unwrap())}]}),
         tokens: Arc::new(tokens),
+        key: Arc::new(
+            jsonwebtoken::DecodingKey::from_ec_components(
+                &URL_SAFE_NO_PAD.encode(point.x().unwrap()),
+                &URL_SAFE_NO_PAD.encode(point.y().unwrap()),
+            )
+            .unwrap(),
+        ),
+        issuer: issuer.clone(),
         unavailable: unavailable.clone(),
+        profile_invalid: profile_invalid.clone(),
     };
     let auth_router = Router::new()
         .route(
@@ -357,8 +400,6 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         .route("/auth/me", get(session))
         .route("/auth/tokens/introspect", get(introspect))
         .with_state(stub);
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let issuer = format!("http://{}", listener.local_addr().unwrap());
     let auth_handle = tokio::spawn(async move {
         axum::serve(listener, auth_router).await.unwrap();
     });
@@ -402,6 +443,28 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let client = Client::new();
     let (base, stop, handle) = start_tracker(config.clone()).await;
     let url = format!("{base}/api/v1/issues/{task}/sdlc");
+    let profiles_before = count(&db, "users").await;
+    profile_invalid.store(true, Ordering::SeqCst);
+    for path in [
+        format!("{url}/context"),
+        format!("{base}/api/v1/issues/{task}"),
+    ] {
+        for token in [&owner[..], "sdlc_pat_owner"] {
+            assert_eq!(
+                client
+                    .get(&path)
+                    .bearer_auth(token)
+                    .send()
+                    .await
+                    .unwrap()
+                    .status(),
+                503
+            );
+        }
+    }
+    assert_eq!(count(&db, "users").await, profiles_before);
+    assert_eq!(count(&db, "sdlc_tasks").await, 0);
+    profile_invalid.store(false, Ordering::SeqCst);
     for token in [
         "local-token".to_string(),
         human_token(&secret, &issuer, "owner", "wrong", chrono_now() + 3600),

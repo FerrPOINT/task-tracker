@@ -51,7 +51,7 @@ proptest = "1.11"
 # cli
 clap = { version = "4.5", features = ["derive"] }
 # shared
-uuid = { version = "1.16", features = ["v4", "v7", "serde"] }
+uuid = { version = "1.16", features = ["v4", "v5", "v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 # web
 http = "1.3"

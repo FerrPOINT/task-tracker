@@ -97,6 +97,7 @@ export function LogWorkDialog({
   }
 
   const handleSubmit = form.handleSubmit((values) => {
+    if (isPending) return
     onSubmit({
       timeSpent: values.timeSpent,
       startedAt: new Date(values.startedAt).toISOString(),
@@ -105,6 +106,7 @@ export function LogWorkDialog({
   })
 
   const handleOpenChange = (nextOpen: boolean) => {
+    if (isPending) return
     if (!nextOpen) {
       setTimerRunning(false)
       setTimerSeconds(0)
@@ -114,7 +116,10 @@ export function LogWorkDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent
+        onEscapeKeyDown={(event) => isPending && event.preventDefault()}
+        onInteractOutside={(event) => isPending && event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>
             {isEdit ? t('timeTracking.editWorklog') : t('timeTracking.logWork')}

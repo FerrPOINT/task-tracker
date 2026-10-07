@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
 };
 use std::sync::Arc;
 
@@ -28,6 +28,7 @@ use std::str::FromStr;
 pub async fn create_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
+    headers: HeaderMap,
     Json(req): Json<CreateIssueRequest>,
 ) -> Result<(StatusCode, Json<IssueResponse>), AppError> {
     let actor_id = shared::UserId::from_uuid(
@@ -45,7 +46,8 @@ pub async fn create_issue(
             .id
             .to_string(),
     };
-    let reporter_id = req
+    let explicit_reporter = req.reporter_id.is_some();
+    let mut reporter_id = req
         .reporter_id
         .map(|reporter_id| {
             reporter_id
@@ -55,6 +57,23 @@ pub async fn create_issue(
         })
         .transpose()?
         .unwrap_or(actor_id);
+    let mut assignee_id = req
+        .assignee_id
+        .map(|id| {
+            id.parse::<UserId>()
+                .map_err(|_| AppError::invalid_input("assignee_id"))
+        })
+        .transpose()?;
+    let mut references = Vec::new();
+    if explicit_reporter {
+        references.push(reporter_id);
+    }
+    references.extend(assignee_id);
+    let resolved = super::users::resolve_directory_references(&ctx, &headers, &references).await?;
+    if explicit_reporter {
+        reporter_id = resolved[&reporter_id];
+    }
+    assignee_id = assignee_id.map(|id| resolved[&id]);
     let cmd = CreateIssueCommand {
         project_key,
         issue_type: shared::IssueType::from_str(&req.issue_type)
@@ -64,15 +83,7 @@ pub async fn create_issue(
         priority: shared::Priority::from_str(&req.priority)
             .map_err(|_| AppError::invalid_input("priority"))?,
         status_id,
-        assignee_id: req
-            .assignee_id
-            .map(|assignee_id| {
-                assignee_id
-                    .parse()
-                    .map(shared::UserId::from_uuid)
-                    .map_err(|_| AppError::invalid_input("assignee_id"))
-            })
-            .transpose()?,
+        assignee_id,
         reporter_id,
         actor_id,
         custom_fields: req.custom_fields,
@@ -93,12 +104,13 @@ pub async fn update_issue(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<UserClaims>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(req): Json<UpdateIssueRequest>,
 ) -> Result<Json<IssueResponse>, AppError> {
     let actor_id = shared::UserId::from_uuid(
         uuid::Uuid::parse_str(&claims.sub).map_err(|_| AppError::invalid_input("invalid token"))?,
     );
-    let cmd = UpdateIssueCommand {
+    let mut cmd = UpdateIssueCommand {
         summary: req.summary,
         description: req.description,
         priority: req
@@ -137,6 +149,10 @@ pub async fn update_issue(
         actor_id,
     };
     let issue_id = ctx.services.issue.resolve_identifier(&id, actor_id).await?;
+    if let Some(Some(id)) = cmd.assignee_id {
+        let resolved = super::users::resolve_directory_references(&ctx, &headers, &[id]).await?;
+        cmd.assignee_id = Some(Some(resolved[&id]));
+    }
     let i = ctx.services.issue.update(issue_id, cmd, actor_id).await?;
     Ok(Json(map_issue(i)))
 }

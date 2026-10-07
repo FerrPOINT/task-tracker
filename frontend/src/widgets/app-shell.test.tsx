@@ -218,6 +218,7 @@ describe('AppShell notifications', () => {
       'href',
       '/issues/create?project_key=XP',
     )
+    expect(screen.getByRole('link', { name: 'Создать' })).not.toHaveClass('hidden')
   })
 
   it('closes the mobile navigation dialog with Escape and after choosing a link', async () => {

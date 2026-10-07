@@ -75,6 +75,13 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Готово: 3')).toBeInTheDocument()
   })
 
+  it('leaves issue creation to the shell instead of duplicating its primary action', async () => {
+    render(wrapper(<DashboardPage />))
+    await screen.findByText('Fix tests')
+    expect(screen.queryByRole('link', { name: 'Создать' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Создать' })).not.toBeInTheDocument()
+  })
+
   it('keeps the project list available when assigned issues fail to load', async () => {
     getDashboard.mockRejectedValueOnce(new Error('Failed to load dashboard'))
     const user = userEvent.setup()

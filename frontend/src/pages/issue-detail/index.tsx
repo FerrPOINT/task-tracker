@@ -57,6 +57,8 @@ export function IssueDetailPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingWorklog, setEditingWorklog] = useState<Worklog | undefined>(undefined)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const issueActionsRef = useRef<HTMLButtonElement | null>(null)
+  const worklogTabRef = useRef<HTMLButtonElement | null>(null)
 
   const issueQuery = useIssue(id)
   const boardQuery = useBoard(issueQuery.data?.project_key)
@@ -201,6 +203,7 @@ export function IssueDetailPage() {
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
+                  ref={issueActionsRef}
                   variant="secondary"
                   size="icon"
                   className="h-10 w-10 xl:h-9 xl:w-9"
@@ -269,7 +272,7 @@ export function IssueDetailPage() {
                   <TabsTrigger className="min-h-10" value="comments">
                     {t('issue.comments')}
                   </TabsTrigger>
-                  <TabsTrigger className="min-h-10" value="worklog">
+                  <TabsTrigger ref={worklogTabRef} className="min-h-10" value="worklog">
                     {t('timeTracking.worklog.title')}
                   </TabsTrigger>
                   <TabsTrigger className="min-h-10" value="attachments">
@@ -315,6 +318,7 @@ export function IssueDetailPage() {
                       onEdit={handleEdit}
                       onDelete={handleDelete}
                       currentUserId={currentUserId ?? ''}
+                      fallbackFocusRef={worklogTabRef}
                     />
                   )}
                 </TabsContent>
@@ -392,6 +396,7 @@ export function IssueDetailPage() {
       />
       <ConfirmDialog
         open={deleteConfirmOpen}
+        returnFocusRef={issueActionsRef}
         onOpenChange={(open) => {
           setDeleteConfirmOpen(open)
           if (!open) deleteIssueMutation.reset()

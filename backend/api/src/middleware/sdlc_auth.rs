@@ -17,7 +17,7 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
         })
         .ok_or(AppError::Unauthorized)?;
     let central = match super::central_auth::check_token(token).await {
-        super::central_auth::CentralCheck::Validated(central) => central,
+        super::central_auth::CentralCheck::Validated(central, _verified_name) => central,
         super::central_auth::CentralCheck::Unavailable => {
             return Err(AppError::Unavailable("Central Auth unavailable".into()));
         }

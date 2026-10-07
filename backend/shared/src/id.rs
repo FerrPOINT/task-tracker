@@ -72,6 +72,27 @@ uuid_id!(ProjectComponentId);
 uuid_id!(ProjectVersionId);
 uuid_id!(CustomFieldId);
 
+impl UserId {
+    /// Stable reference for a central subject before its local profile exists.
+    pub fn for_central_subject(subject: &str) -> Self {
+        let name = format!("urn:sdlc:task-tracker:central-user:{}", subject.trim());
+        Self(Uuid::new_v5(&Uuid::NAMESPACE_URL, name.as_bytes()))
+    }
+}
+
+#[cfg(test)]
+mod central_user_ids {
+    use super::UserId;
+
+    #[test]
+    fn central_reference_is_stable_and_subject_scoped() {
+        let id = UserId::for_central_subject("subject-a");
+        assert_eq!(id, UserId::for_central_subject(" subject-a "));
+        assert_ne!(id, UserId::for_central_subject("subject-b"));
+        assert_eq!(id.as_uuid().get_version_num(), 5);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProjectKey(Arc<str>);
 

@@ -200,16 +200,48 @@ struct UserRepo {
 
 #[async_trait]
 impl UserRepository for UserRepo {
+    async fn central_profiles(
+        &self,
+        subjects: &[String],
+    ) -> Result<std::collections::HashMap<String, User>, AppError> {
+        if subjects.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+        let models = user::Entity::find()
+            .filter(user::Column::CentralSub.is_in(subjects.iter().cloned()))
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(models
+            .into_iter()
+            .filter_map(|model| model.central_sub.clone().map(|sub| (sub, map_user(model))))
+            .collect())
+    }
+
     async fn find_or_create_central_user(
         &self,
         sub: &str,
         email: &str,
         display_name: &str,
     ) -> Result<User, AppError> {
-        if sub.trim().is_empty() || email.trim().is_empty() {
+        if sub.trim().is_empty() || email.trim().is_empty() || display_name.trim().is_empty() {
             return Err(AppError::Unauthorized);
         }
-        let id = uuid::Uuid::new_v4();
+        // An unchanged authenticated read must not acquire a profile write lock.
+        if let Some(model) = user::Entity::find()
+            .filter(user::Column::CentralSub.eq(sub.trim()))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+        {
+            if !model.is_active {
+                return Err(AppError::Unauthorized);
+            }
+            if model.is_system_admin && model.display_name == display_name.trim() {
+                return Ok(map_user(model));
+            }
+        }
+        let id = UserId::for_central_subject(sub).as_uuid();
         self.db
             .as_ref()
             .execute(sea_orm::Statement::from_sql_and_values(
@@ -217,7 +249,9 @@ impl UserRepository for UserRepo {
                 "INSERT INTO users (id, email, username, display_name, password_hash, central_sub, \
                is_system_admin, is_active, created_at, updated_at) \
              VALUES ($1, $2, $3, $4, '!', $5, true, true, now(), now()) \
-             ON CONFLICT (central_sub) WHERE central_sub IS NOT NULL DO NOTHING",
+             ON CONFLICT (central_sub) WHERE central_sub IS NOT NULL DO UPDATE \
+             SET display_name = EXCLUDED.display_name, updated_at = now() \
+             WHERE users.is_active AND users.display_name IS DISTINCT FROM EXCLUDED.display_name",
                 [
                     id.into(),
                     email.trim().to_lowercase().into(),
@@ -230,7 +264,7 @@ impl UserRepository for UserRepo {
             .map_err(AppError::database)?;
         self.db.as_ref().execute(sea_orm::Statement::from_sql_and_values(
             sea_orm::DatabaseBackend::Postgres,
-            "UPDATE users SET is_system_admin = true WHERE central_sub = $1 AND NOT is_system_admin",
+                "UPDATE users SET is_system_admin = true WHERE central_sub = $1 AND is_active AND NOT is_system_admin",
             [sub.trim().into()],
         )).await.map_err(AppError::database)?;
         let model = user::Entity::find()

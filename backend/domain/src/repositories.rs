@@ -85,6 +85,13 @@ pub trait OidcRepository: Send + Sync {
 
 #[async_trait]
 pub trait UserRepository: Send + Sync {
+    /// Read existing subject bindings, including inactive historical profiles.
+    async fn central_profiles(
+        &self,
+        _subjects: &[String],
+    ) -> Result<std::collections::HashMap<String, User>, AppError> {
+        Ok(std::collections::HashMap::new())
+    }
     async fn find_or_create_central_user(
         &self,
         _sub: &str,

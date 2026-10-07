@@ -414,6 +414,19 @@ describe('IssueDetailPage', () => {
     })
   })
 
+  it.each(['Escape', 'Cancel'])('restores issue actions focus after %s', async (dismiss) => {
+    const user = userEvent.setup()
+    render(wrapper(<IssueDetailPage />))
+    const actions = screen.getByRole('button', { name: /действия|actions/i })
+    await user.click(actions)
+    await user.click(screen.getByRole('menuitem', { name: /удалить|delete/i }))
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    if (dismiss === 'Escape') await user.keyboard('{Escape}')
+    else await user.click(screen.getByRole('button', { name: /отмена|cancel/i }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(actions).toHaveFocus())
+  })
+
   it('keeps desktop details and supplemental actions in one independent sidebar', () => {
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query === '(min-width: 1024px)',
