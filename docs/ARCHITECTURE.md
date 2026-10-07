@@ -112,6 +112,7 @@ do not replace write/admission checks. Rust DTOs/route annotations own the schem
 
 Target autonomous SDLC: [Task lifecycle v1](SDLC_LIFECYCLE_V1.md). Owner — Tracker;
 документ отделяет реализованные срезы от дальнейших target capabilities.
+Описание target capabilities само по себе не активирует новые API или миграции.
 
 Before Architect admission exists, the root-only identity guard is enforced by
 `TaskState::require_root`, repository load/binding and pending 000034. All existing
@@ -366,6 +367,16 @@ Stale policy/source errors блокируют routed confirmation без зам�
 unknown POST блокирует retry до fresh context readback. Нет редактора policy.
 Нет Fleet/config/dispatch вызовов, новых runtime producers или live fixtures.
 Подробнее: [B-SDLC-05 UI contract](SDLC_UI_V1.md).
+
+Удаление использует общий `ConfirmDialog` из Base. Экран передаёт явную
+ссылку на кнопку меню задачи; для worklog возврат focus после успеха направлен
+на вкладку журнала, которая остаётся после удаления строки. При отмене focus
+возвращается на кнопку исходной записи. Диалог остаётся смонтированным даже
+при пустом списке до завершения Promise удаления и обновления query cache.
+Ошибка относится только к текущему подтверждению и сбрасывается при закрытии
+или выборе другой записи. Форма создания/редактирования worklog блокирует
+закрытие и повторную отправку во время pending. Парсер длительности и правила
+журнала принадлежат Tracker; контракт Base, API и схема БД не меняются.
 
 ## 9. API, документация и тестирование
 

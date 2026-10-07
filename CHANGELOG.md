@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Prepared Analysis сверяет свежую защищённую конфигурацию Fleet с frozen routing
+  и повторно проверяет lease/ACL после HTTP. Это read-only preflight, не native
+  admission; runtime readiness и dispatch остаются false.
+
 - PM assignment-scoped credentials больше не преобразуются в legacy user claims:
   legacy API запрещён до привязки пользователя; SDLC ограничен одной канонической
   задачей, разрешёнными методами/операциями и текущим назначением. Чтение и lease
