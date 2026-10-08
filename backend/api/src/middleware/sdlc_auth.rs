@@ -38,11 +38,7 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     .any(|key| {
         std::env::var(key).is_ok_and(|subject| !subject.is_empty() && subject == central.user_id)
     });
-    let trusted_human = !configured_machine
-        && central.role.as_deref() != Some("service_account")
-        && (central.session_id.is_some()
-            || matches!(central.role.as_deref(), Some("admin" | "member" | "user")))
-        && !app::sdlc::has_pm_grant(&central.scopes);
+    let trusted_human = is_trusted_human(&central, configured_machine);
     let actor = domain::sdlc::Principal {
         subject: central.user_id,
         human_session: central.session_id.is_some(),
@@ -64,6 +60,48 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     pm_request_policy(&actor, request.method().as_str(), path)?;
     request.extensions_mut().insert(actor);
     Ok(next.run(request).await)
+}
+
+fn is_trusted_human(central: &sdlc_auth_core::AuthContext, configured_machine: bool) -> bool {
+    !configured_machine
+        && central.role.as_deref() != Some("service_account")
+        && (central.session_id.is_some()
+            // Auth's verified personal-token response identifies a user and
+            // scopes, but intentionally does not carry a role or browser SID.
+            || central.token.starts_with("sdlc_pat_")
+            || matches!(central.role.as_deref(), Some("admin" | "member" | "user")))
+        && !app::sdlc::has_pm_grant(&central.scopes)
+}
+
+#[cfg(test)]
+mod human_identity_tests {
+    use super::*;
+    #[test]
+    fn verified_personal_identity_preserves_machine_and_owner_session_boundaries() {
+        let mut central = sdlc_auth_core::AuthContext {
+            user_id: "verified-user".into(),
+            role: None,
+            scopes: ["task-tracker:read".into()].into(),
+            session_id: None,
+            email: Some("human@example.test".into()),
+            token: "sdlc_pat_verified".into(),
+        };
+        assert!(is_trusted_human(&central, false));
+        assert!(central.session_id.is_none());
+        assert!(!is_trusted_human(&central, true));
+        central.role = Some("service_account".into());
+        assert!(!is_trusted_human(&central, false));
+        central.role = None;
+        central
+            .scopes
+            .insert(format!("{}task-grant", app::sdlc::PM_GRANT_PREFIX));
+        assert!(!is_trusted_human(&central, false));
+        central.scopes.clear();
+        central.token = "untyped-token".into();
+        assert!(!is_trusted_human(&central, false));
+        central.session_id = Some("verified-session".into());
+        assert!(is_trusted_human(&central, false));
+    }
 }
 
 fn pm_request_policy(
