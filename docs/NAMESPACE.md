@@ -56,3 +56,8 @@ NamespaceRef находится в URL и query keys; ошибочный binding
 
 Для прямых owner-запросов wizard/counters задаётся явный список origins
 через `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS` (значения через запятую).
+
+Owner/readers и SDLC проверяют identity/scopes независимо от display metadata.
+PAT старого Auth без имени использует только существующий active профиль с
+точным central subject; новый профиль и повышение роли из отсутствующих
+metadata не создаются. Machine subjects отсекаются до human profile mapping.

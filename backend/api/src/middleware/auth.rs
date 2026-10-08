@@ -36,7 +36,7 @@ pub async fn bearer_auth(
             if !central.allows_service("task-tracker", req.method().as_str()) {
                 return Err(StatusCode::FORBIDDEN);
             }
-            let user = find_or_link_central_user(&ctx, &central, &display_name)
+            let user = find_or_link_central_user(&ctx, &central, display_name.as_deref())
                 .await
                 .map_err(|_| StatusCode::UNAUTHORIZED)?;
             let claims = app::auth::UserClaims {
@@ -90,8 +90,22 @@ pub async fn bearer_auth(
 async fn find_or_link_central_user(
     ctx: &Arc<app::AppContext>,
     central: &sdlc_auth_core::AuthContext,
-    display_name: &str,
+    display_name: Option<&str>,
 ) -> Result<domain::User, shared::AppError> {
+    // Older Auth PAT introspection verifies identity/scopes without display
+    // metadata. Reuse only an existing exact-subject active profile; never
+    // provision, rename or promote a user from missing metadata.
+    let Some(display_name) = display_name else {
+        let mut profiles = ctx
+            .repos
+            .users
+            .central_profiles(&[central.user_id.clone()])
+            .await?;
+        return profiles
+            .remove(&central.user_id)
+            .filter(|user| user.is_active)
+            .ok_or(shared::AppError::Unauthorized);
+    };
     let email = central.email.as_deref().unwrap_or_default().to_lowercase();
     let email = email.trim();
     if email.is_empty() {
