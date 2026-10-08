@@ -100,7 +100,9 @@ async fn introspect(
         .cloned()
         .ok_or(StatusCode::UNAUTHORIZED)?;
     if stub.profile_invalid.load(Ordering::SeqCst) {
-        value["display_name"] = Value::Null;
+        // Missing display metadata is valid for older PAT introspection.
+        // This rejection fixture must corrupt required identity instead.
+        value["sub"] = json!("");
     }
     Ok(Json(value))
 }
@@ -445,11 +447,14 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let url = format!("{base}/api/v1/issues/{task}/sdlc");
     let profiles_before = count(&db, "users").await;
     profile_invalid.store(true, Ordering::SeqCst);
-    for path in [
-        format!("{url}/context"),
-        format!("{base}/api/v1/issues/{task}"),
+    // A mismatched optional profile cannot replace the verified JWT subject.
+    // The existing exact-subject profile remains usable; the unbound SDLC
+    // context is absent. Corrupt required PAT identity still fails closed.
+    for (path, owner_status) in [
+        (format!("{url}/context"), 404),
+        (format!("{base}/api/v1/issues/{task}"), 200),
     ] {
-        for token in [&owner[..], "sdlc_pat_owner"] {
+        for (token, expected) in [(&owner[..], owner_status), ("sdlc_pat_owner", 401)] {
             assert_eq!(
                 client
                     .get(&path)
@@ -458,7 +463,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
                     .await
                     .unwrap()
                     .status(),
-                503
+                expected
             );
         }
     }
