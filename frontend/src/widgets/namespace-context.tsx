@@ -62,7 +62,7 @@ export function NamespaceShellContext() {
       unavailable={malformed || catalog.isError || Boolean(ref && query.isError)}
       options={items.map((item) => ({
         value: `${item.binding.namespace.registry_instance_id}/${item.binding.namespace.namespace_id}`,
-        label: item.label,
+        label: `${item.label} · ${item.resource_key ?? item.binding.namespace.namespace_id}`,
       }))}
       manageUrl={
         admin
