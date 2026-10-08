@@ -3,6 +3,7 @@ pub mod email;
 pub mod entities;
 pub mod jql;
 pub mod repos;
+pub mod sdlc;
 pub mod storage;
 
 pub use db::*;

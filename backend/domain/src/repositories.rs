@@ -295,13 +295,13 @@ impl TransitionGuard {
     /// Returns `Err(conflict)` when moving one more issue into the target
     /// column would exceed its configured WIP limit.
     pub fn ensure_wip_ok(&self) -> Result<(), AppError> {
-        if let Some(limit) = self.wip_limit {
-            if self.target_count >= limit as u64 {
-                return Err(AppError::conflict(format!(
-                    "WIP limit ({limit}) reached for {}",
-                    self.column_name
-                )));
-            }
+        if let Some(limit) = self.wip_limit
+            && self.target_count >= limit as u64
+        {
+            return Err(AppError::conflict(format!(
+                "WIP limit ({limit}) reached for {}",
+                self.column_name
+            )));
         }
         Ok(())
     }

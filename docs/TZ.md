@@ -1,5 +1,115 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+Prepared Analysis has a protected fresh Fleet configuration preflight, matching
+concrete agent/effective config/package/Workflow refs and rechecking lease/ACL
+after HTTP. This prerequisite does not activate native dispatch or change tasks.
+[Contract](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
+
+## B-SDLC-05: Явный Routing Opt-In
+
+В existing owner consent UI добавлен отдельный unchecked выбор существующей
+опубликованной project policy. Точная просмотренная версия включается в confirm
+только явно; legacy omission сохраняется. Нет policy editor, scheduler, native
+admission или release. Stale CAS/error сохраняют inputs и блокируют routed write;
+unknown POST требует fresh context readback. [Owner UI](SDLC_UI_V1.md).
+
+## B-SDLC-01: prepared Analysis assignment
+
+Добавлен usable authorized Tracker reservation API с обязательным frozen routing
+snapshot. Backend выбирает только pinned Analyst, создаёт immutable assignment/
+execution/lease identity, fence/key/hash, root1/agent1/pool2 hold и outbox.
+TTL30/heartbeat10 с lease-version CAS; read-only GET показывает expiry и
+reconciliation_needed. Replay не переписывает head. PM unknown блокирует reserve,
+legacy без snapshot не включаются. Это awaiting_admission, не InProgress/run;
+release/ACK/native admission/dispatch отсутствуют. UI публикации поддерживает
+отдельный explicit opt-in, без редактора policy. [Owner API и проверки](SDLC_RESERVATION_V1.md).
+
+## SDLC Clarification: Implemented Backend Scope
+
+Project-routing prerequisite сохраняет версионированные bindings, выбранные владельцем,
+для семи конкретных agents и точных config/package/Workflow refs. Явный opt-in при
+exact confirmation фиксирует один неизменяемый snapshot публикации задачи в той же
+consent/intent/outbox транзакции. Policy update влияет только на новые явные snapshots;
+исторические PM данные и legacy задачи не включаются автоматически. Policy управляет
+существующий владелец проекта с пользовательской сессией, без нового PAT grant или
+Central bypass. Это declared refs, не native readiness/admission/dispatch.
+UI включает routing только отдельным явным выбором published policy;
+policy editor остаётся pending: [контракт](SDLC_ROUTING_V1.md).
+
+The first B-SDLC-01 backend slice extends exact owner confirmation with one
+durable Analysis/Ready intent in the same transaction as consent, issue history,
+command receipt and outbox. Backend fixes Analyst/analysis/business routing;
+PM cannot choose the next role or mutate the queued revision. A strict intent
+readback supports reconciliation after restart. Dispatch/admission, other stage
+transitions, decomposition/barrier/Rework and end-to-end PDLC remain incomplete:
+[implemented slice and next interfaces](SDLC_LIFECYCLE_V1.md).
+
+The next bounded B-SDLC-01 slice cannot safely accept Architect materialization:
+Architecture/non-PM admitted assignment and trusted terminal authority do not yet
+exist. Its concrete fallback closes root-binding/queued-state bypasses instead:
+root-only strict binding, non-root PM lifecycle/read denial and a DB freeze of
+queued Analysis. Real parent/root/dependencies, revisioned coverage, dependency
+cycle validation and the active-decomposition root barrier remain unimplemented.
+No operator/fixture assignment or receipt enables them.
+
+Opt-in Draft -> assigned PM questions -> owner answers -> new full requirements
+revision -> trusted readiness evidence -> exact owner confirmation -> Backlog.
+Backend contract and prerequisites: [CHAT_CLARIFICATION_CONTRACT.md](CHAT_CLARIFICATION_CONTRACT.md).
+Strict project membership and central task-owner identity apply to this slice,
+independently of the legacy shared-user policy below. Backend HTTP/PostgreSQL
+verification is distinct from Fleet/Workflow integration and real PM acceptance;
+The B-SDLC-05 owner issue-detail SDLC tab now implements exact confirmation and
+real intent/readback with typed metadata history, loading/access/error/stale/empty
+states. It labels Analysis/Ready as queued awaiting admission, not a run or success.
+[UI scope and checks](SDLC_UI_V1.md). No live autonomous flow is claimed.
+
+Assignment-scoped PM PATs do not inherit generic legacy user authority. The
+legacy API refuses them before profile linking; SDLC permits only canonical
+bound-task PM methods/resources and checks fresh current assignment/ledger
+authority, including lease readback and mutations. Owner consent and verifier
+evidence cannot be authored by the PM. Generic PAT/human legacy policy is not
+retired by this bounded change; runtime handoff remains a separate acceptance.
+
+Human browser sessions can create a bound root Draft through the project-scoped
+idempotent endpoint. The verified central human owns it; identity/status/agent
+claims are not accepted. Creation is atomic and restart-safe, including a lost
+HTTP response. Fleet continues the assignment/runtime saga separately; Tracker
+does not dispatch PM execution during creation.
+
+Original Draft inputs are immutable and available through the strict project-
+authorized `pm-draft-input` readback. Snapshot ref/title/description/content hash
+are persisted in the creation transaction and survive edits/replay/restart.
+No historical snapshot is inferred from mutable issue text. This input endpoint
+does not imply PM admission or runtime delivery. Initial owner reservation now
+provides atomic Tracker assignment/execution UUID/version/ordinal and owner CAS,
+but dispatch_allowed is always false. Requested agent UUID is only a canonical
+selector. Future admission must verify actual Fleet agent/config/chat/workspace,
+Workflow mapping and all full-plan prerequisites. Reserved enrollment blocks PM
+business writes and legacy assignment. Creation-operation GET provides original
+seven-field readback for unknown acceptance before POST replay, scoped to exact
+human author/project/key with fresh ACL and 409 for retained corrupt/missing
+source; content is read separately from pm-draft-input.
+The separate machine-only execution ownership lease has PostgreSQL TTL 30s and
+suggested renewal interval 10s, exact persisted assignment grant/fence and fresh
+ACL on reads/replays/renewals. Lease version CAS and append-only history prevent
+double renewal on retry. Expiry/unknown outcomes never authorize automatic
+reacquire, admission, runtime heartbeat or run-side effects. Reservation owner
+version and reserved business gates remain unchanged; full admission is later.
+The separate opt-in metadata_v1 outbox bounds
+serialized whole responses; legacy full-result events remain unchanged. Fleet
+projection pinning/inbox and Workflow resume remain external integration work.
+
+Fleet directory consumers can read an uncached, versioned project-access scope.
+Only a verified Central Auth caller with service read access and an active local
+central-subject identity is accepted. Explicit project ownership or membership
+defines the sorted unique project IDs; admin, public and legacy Central bypasses
+do not expand this scope. Revocation affects the next request.
+The strict `project-directory` selector additionally returns only UUID/key/name
+in bounded UUID-keyset pages (default 50, max 100), with an explicit nullable
+continuation cursor. Active identity and explicit owner/member ACL share one
+SQL snapshot with the page; continuation/replay rechecks fresh access. Selection
+does not authorize creation/reservation/admission, and adds no migration/scope.
+
 > **Актуальный платформенный auth-контракт.** При настроенном Central Auth
 > локальные регистрация, парольный вход, password reset, TOTP и управление
 > пользователями отключены. Учётки создаются в Admin Panel, профили связываются
