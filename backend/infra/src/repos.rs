@@ -18,8 +18,9 @@ use domain::{
 };
 use sea_orm::sea_query::extension::postgres::PgExpr as _;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, EntityTrait,
-    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, TransactionTrait, sea_query::Expr,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseConnection, DbBackend, EntityTrait,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set, Statement, TransactionTrait,
+    sea_query::Expr,
 };
 use shared::{
     AppError, AttachmentId, AuditLogId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey,
@@ -28,6 +29,8 @@ use shared::{
     WorklogId,
 };
 use uuid::Uuid;
+#[path = "repos_namespace.rs"]
+mod namespace;
 
 use crate::entities::{
     attachment, audit_log, board, comment, custom_field, issue, issue_custom_field_value,
@@ -406,6 +409,192 @@ struct ProjectRepo {
 
 #[async_trait]
 impl ProjectRepository for ProjectRepo {
+    async fn namespace_task_catalog(
+        &self,
+        namespace: &shared::resource_context::NamespaceRef,
+        offset: i64,
+    ) -> Result<Vec<shared::resource_context::TaskCatalogItem>, AppError> {
+        let contexts = self.namespace_contexts(Some(namespace), 1, 0).await?;
+        let binding = &contexts
+            .first()
+            .ok_or_else(|| AppError::not_found("namespace_binding", namespace.namespace_id))?
+            .binding;
+        let rows=self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT id,key,summary FROM issues WHERE project_id=$1 AND deleted_at IS NULL ORDER BY created_at DESC,id LIMIT 50 OFFSET $2",[binding.resource.resource_id.into(),offset.max(0).into()])).await.map_err(AppError::database)?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(shared::resource_context::TaskCatalogItem {
+                    namespace: namespace.clone(),
+                    task: shared::resource_context::TaskRef {
+                        tracker_instance_id: binding.resource.instance_id,
+                        task_id: row.try_get("", "id").map_err(AppError::database)?,
+                    },
+                    task_key: row.try_get("", "key").map_err(AppError::database)?,
+                    label: row.try_get("", "summary").map_err(AppError::database)?,
+                })
+            })
+            .collect()
+    }
+    async fn namespace_available_resources(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<shared::resource_context::ResourceCatalogItem>, AppError> {
+        let instance = std::env::var("TT_NAMESPACE__INSTANCE_ID")
+            .ok()
+            .and_then(|value| value.parse::<uuid::Uuid>().ok())
+            .filter(|id| !id.is_nil())
+            .ok_or_else(|| AppError::Unavailable("namespace_owner_not_configured".into()))?;
+        let rows=self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT p.id,p.key,p.name FROM projects p WHERE NOT EXISTS(SELECT 1 FROM tracker_namespace_bindings b WHERE b.resource_id=p.id) ORDER BY p.key,p.id LIMIT $1 OFFSET $2",[limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(shared::resource_context::ResourceCatalogItem {
+                    resource: shared::resource_context::ResourceRef {
+                        kind: shared::resource_context::ResourceKind::TrackerProject,
+                        instance_id: instance,
+                        resource_id: row.try_get("", "id").map_err(AppError::database)?,
+                    },
+                    label: row.try_get("", "name").map_err(AppError::database)?,
+                    resource_key: row.try_get("", "key").map_err(AppError::database)?,
+                })
+            })
+            .collect()
+    }
+    async fn namespace_stats(
+        &self,
+        project: ProjectId,
+    ) -> Result<shared::resource_context::ResourceStats, AppError> {
+        let binding = namespace::binding(&self.db, project)
+            .await?
+            .ok_or_else(|| AppError::not_found("namespace_binding", project))?;
+        let row=self.db.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT (SELECT count(*) FROM issues WHERE project_id=$1 AND deleted_at IS NULL) AS tasks,(SELECT count(*) FROM project_members WHERE project_id=$1) AS team",[project.as_uuid().into()])).await.map_err(AppError::database)?.ok_or_else(|| AppError::Unavailable("namespace_stats_not_available".into()))?;
+        Ok(shared::resource_context::ResourceStats {
+            binding,
+            counters: std::collections::BTreeMap::from([
+                (
+                    "tasks".into(),
+                    row.try_get("", "tasks").map_err(AppError::database)?,
+                ),
+                (
+                    "team".into(),
+                    row.try_get("", "team").map_err(AppError::database)?,
+                ),
+            ]),
+        })
+    }
+    async fn namespace_contexts(
+        &self,
+        namespace: Option<&shared::resource_context::NamespaceRef>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<shared::resource_context::ResourceContextSummary>, AppError> {
+        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
+        rows.into_iter()
+            .map(|row| {
+                let command: shared::resource_context::OwnerCommand =
+                    serde_json::from_value(row.try_get("", "command").map_err(AppError::database)?)
+                        .map_err(|_| {
+                            AppError::Unavailable("invalid_namespace_projection".into())
+                        })?;
+                namespace::validate_projection(&command)?;
+                Ok(shared::resource_context::ResourceContextSummary {
+                    binding: command.readback(true),
+                    label: row.try_get("", "name").map_err(AppError::database)?,
+                    resource_key: row.try_get("", "key").map_err(AppError::database)?,
+                })
+            })
+            .collect()
+    }
+    async fn issue_creation_ticket(
+        &self,
+        project: ProjectId,
+        actor: UserId,
+        operation: uuid::Uuid,
+        payload: &serde_json::Value,
+        allocate: bool,
+    ) -> Result<Option<domain::IssueCreationTicket>, AppError> {
+        let tx = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        tx.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,2))",
+            [operation.to_string().into()],
+        ))
+        .await
+        .map_err(AppError::database)?;
+        let mut row = tx
+            .query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT * FROM issue_creation_receipts WHERE operation_id=$1",
+                [operation.into()],
+            ))
+            .await
+            .map_err(AppError::database)?;
+        if row.is_none() && allocate {
+            let issue_id = uuid::Uuid::new_v4();
+            row = tx.query_one(Statement::from_sql_and_values(DbBackend::Postgres,"INSERT INTO issue_creation_receipts(operation_id,project_id,actor_id,payload,issue_id,number) VALUES($1,$2,$3,$4,$5,allocate_project_issue_number($2)) RETURNING *",[operation.into(),project.as_uuid().into(),actor.as_uuid().into(),payload.clone().into(),issue_id.into()])).await.map_err(AppError::database)?;
+        }
+        let result = if let Some(row) = row {
+            if row
+                .try_get::<uuid::Uuid>("", "project_id")
+                .map_err(AppError::database)?
+                != project.as_uuid()
+                || row
+                    .try_get::<uuid::Uuid>("", "actor_id")
+                    .map_err(AppError::database)?
+                    != actor.as_uuid()
+                || row
+                    .try_get::<serde_json::Value>("", "payload")
+                    .map_err(AppError::database)?
+                    != *payload
+            {
+                return Err(AppError::conflict("issue_operation_payload_conflict"));
+            }
+            Some(domain::IssueCreationTicket {
+                issue_id: IssueId::from_uuid(
+                    row.try_get("", "issue_id").map_err(AppError::database)?,
+                ),
+                number: u32::try_from(
+                    row.try_get::<i64>("", "number")
+                        .map_err(AppError::database)?,
+                )
+                .map_err(|_| AppError::conflict("issue_counter_exhausted"))?,
+                completed: row.try_get("", "completed").map_err(AppError::database)?,
+            })
+        } else {
+            None
+        };
+        tx.commit().await.map_err(AppError::database)?;
+        Ok(result)
+    }
+
+    async fn list_accessible_page(
+        &self,
+        ids: &[ProjectId],
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Project>, AppError> {
+        let rows = project::Entity::find()
+            .filter(project::Column::Id.is_in(ids.iter().map(|id| id.as_uuid())))
+            .order_by_asc(project::Column::Key)
+            .order_by_asc(project::Column::Id)
+            .limit(limit.clamp(1, 100))
+            .offset(offset)
+            .all(&*self.db)
+            .await
+            .map_err(AppError::database)?;
+        Ok(rows.into_iter().map(map_project).collect())
+    }
+    async fn namespace_binding(
+        &self,
+        id: ProjectId,
+    ) -> Result<Option<shared::resource_context::OwnerReadback>, AppError> {
+        namespace::binding(&self.db, id).await
+    }
+    async fn apply_namespace(
+        &self,
+        command: &shared::resource_context::OwnerCommand,
+    ) -> Result<shared::resource_context::OwnerReadback, AppError> {
+        namespace::apply(&self.db, command).await
+    }
     async fn get_by_id(&self, id: ProjectId) -> Result<Project, AppError> {
         let model = project::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
@@ -549,26 +738,18 @@ impl ProjectRepository for ProjectRepo {
     }
 
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError> {
-        // MAX(number) computed in SQL from the numeric suffix of issue keys, so
-        // deleted issues never cause key reuse and we ship one row back instead
-        // of every key in the project.
-        let suffix = issue::Entity::find()
-            .filter(issue::Column::ProjectId.eq(project_id.as_uuid()))
-            .select_only()
-            .column_as(
-                sea_orm::sea_query::Expr::cust("MAX((substring(key FROM '-([0-9]+)$'))::bigint)"),
-                "max_num",
-            )
-            .into_tuple::<Option<i64>>()
-            .one(&*self.db)
+        let row = self
+            .db
+            .query_one(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT allocate_project_issue_number($1) AS number",
+                [sea_orm::Value::Uuid(Some(Box::new(project_id.as_uuid())))],
+            ))
             .await
             .map_err(AppError::database)?
-            .flatten();
-        let next = suffix
-            .unwrap_or(0)
-            .checked_add(1)
-            .ok_or_else(|| AppError::invalid_input("issue number overflow"))?;
-        u32::try_from(next).map_err(|_| AppError::invalid_input("issue number overflow"))
+            .ok_or_else(|| AppError::Internal("allocator returned no row".into()))?;
+        let number: i64 = row.try_get("", "number").map_err(AppError::database)?;
+        u32::try_from(number).map_err(|_| AppError::invalid_input("issue number overflow"))
     }
 }
 
@@ -718,6 +899,49 @@ impl IssueRepo {
 
 #[async_trait]
 impl IssueRepository for IssueRepo {
+    async fn repository_links(&self, task: IssueId) -> Result<Vec<serde_json::Value>, AppError> {
+        let rows=self.db.query_all(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"SELECT snapshot FROM task_repository_links WHERE issue_id=$1 ORDER BY created_at,repository_id LIMIT 100",[sea_orm::Value::Uuid(Some(Box::new(task.as_uuid())))])).await.map_err(AppError::database)?;
+        rows.into_iter()
+            .map(|row| row.try_get("", "snapshot").map_err(AppError::database))
+            .collect()
+    }
+    async fn link_repository(
+        &self,
+        task: IssueId,
+        actor: UserId,
+        repository: &domain::task_repositories::RepositoryRef,
+        snapshot: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        self.db.execute(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"INSERT INTO task_repository_links(issue_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(issue_id,forge_instance_id,repository_id) DO NOTHING",vec![sea_orm::Value::Uuid(Some(Box::new(task.as_uuid()))),sea_orm::Value::Uuid(Some(Box::new(repository.forge_instance_id))),sea_orm::Value::Uuid(Some(Box::new(repository.repository_id))),snapshot.clone().into(),sea_orm::Value::Uuid(Some(Box::new(actor.as_uuid())))])).await.map_err(AppError::database)?;
+        Ok(())
+    }
+    async fn status_category_counts(
+        &self,
+        projects: &[ProjectId],
+        _statuses: &[domain::Status],
+    ) -> Result<std::collections::HashMap<ProjectId, [i64; 3]>, AppError> {
+        let values = projects
+            .iter()
+            .map(|id| sea_orm::Value::Uuid(Some(Box::new(id.as_uuid()))))
+            .collect::<Vec<_>>();
+        let rows = self.db.query_all(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,"SELECT i.project_id,s.category,count(*)::bigint AS count FROM issues i JOIN statuses s ON s.id=i.status_id WHERE i.project_id=ANY($1) AND i.deleted_at IS NULL GROUP BY i.project_id,s.category",[sea_orm::Value::Array(sea_orm::sea_query::ArrayType::Uuid,Some(Box::new(values)))])).await.map_err(AppError::database)?;
+        let mut result = std::collections::HashMap::new();
+        for row in rows {
+            let project: Uuid = row.try_get("", "project_id").map_err(AppError::database)?;
+            let category: String = row.try_get("", "category").map_err(AppError::database)?;
+            let index = match category.as_str() {
+                "todo" => 0,
+                "inprogress" => 1,
+                "done" => 2,
+                _ => return Err(AppError::Internal("invalid_status_category".into())),
+            };
+            result
+                .entry(ProjectId::from_uuid(project))
+                .or_insert([0, 0, 0])[index] =
+                row.try_get("", "count").map_err(AppError::database)?;
+        }
+        Ok(result)
+    }
     async fn change_status_atomic(
         &self,
         issue_id: IssueId,
@@ -1006,6 +1230,13 @@ impl IssueRepository for IssueRepo {
                 .await
                 .map_err(AppError::database)?;
         }
+        txn.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "UPDATE issue_creation_receipts SET completed=true WHERE issue_id=$1",
+            [issue.id.as_uuid().into()],
+        ))
+        .await
+        .map_err(AppError::database)?;
         txn.commit().await.map_err(AppError::database)?;
         Ok(issue.id)
     }

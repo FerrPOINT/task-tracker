@@ -1,4 +1,5 @@
-import { Link, useSearchParams } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { useSearchParams } from 'react-router'
 import { Search, X, ArrowUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState, useMemo, useEffect } from 'react'

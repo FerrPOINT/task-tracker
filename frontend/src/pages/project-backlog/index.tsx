@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { useParams, useSearchParams } from 'react-router'
 import { Plus, MoreHorizontal, Play, CheckCircle2, Pencil, ArrowRightLeft, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'

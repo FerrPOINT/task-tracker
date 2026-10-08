@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { useSearchParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type {
   NotificationItem,

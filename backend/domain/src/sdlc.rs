@@ -36,6 +36,8 @@ pub fn safe_optional_version<'de, D: serde::Deserializer<'de>>(
 pub struct Principal {
     pub subject: String,
     pub human_session: bool,
+    /// Verified human identity; independent of browser sessions and task-owner approvals.
+    pub trusted_human: bool,
     pub scopes: HashSet<String>,
 }
 

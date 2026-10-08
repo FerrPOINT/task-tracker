@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import { act, render, screen, fireEvent } from '@testing-library/react'
-import { MemoryRouter, useLocation, useNavigate } from 'react-router'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { MemoryRouter, useLocation } from 'react-router'
 
 import SearchPage from './'
 import { SearchRequestError } from '@/api/search'

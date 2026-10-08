@@ -1,3 +1,4 @@
+import { NamespacePage } from '@/pages/namespace'
 import { lazy, Suspense } from 'react'
 import { createBrowserRouter, Navigate } from 'react-router'
 import { AppShell } from '@/widgets/app-shell'
@@ -61,6 +62,7 @@ export const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
+          { path: '/namespace', element: <NamespacePage /> },
           { path: '/', element: withSuspense(<DashboardPage />) },
           { path: '/projects', element: withSuspense(<ProjectsPage />) },
           { path: '/projects/:projectKey/board', element: withSuspense(<ProjectBoardPage />) },

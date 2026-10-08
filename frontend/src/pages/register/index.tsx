@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'

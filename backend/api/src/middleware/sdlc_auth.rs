@@ -26,15 +26,41 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     if !central.allows_service("task-tracker", request.method().as_str()) {
         return Err(AppError::Forbidden);
     }
+    if crate::routes::namespace::registered_machine(&central.user_id) {
+        return Err(AppError::Forbidden);
+    }
+    let configured_machine = [
+        "TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT",
+        "TASKTRACKER_SDLC__VERIFIER_SUBJECT",
+        "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+    ]
+    .iter()
+    .any(|key| {
+        std::env::var(key).is_ok_and(|subject| !subject.is_empty() && subject == central.user_id)
+    });
+    let trusted_human = !configured_machine
+        && central.role.as_deref() != Some("service_account")
+        && (central.session_id.is_some()
+            || matches!(central.role.as_deref(), Some("admin" | "member" | "user")))
+        && !app::sdlc::has_pm_grant(&central.scopes);
     let actor = domain::sdlc::Principal {
         subject: central.user_id,
         human_session: central.session_id.is_some(),
+        trusted_human,
         scopes: central.scopes,
     };
     let path = request
         .extensions()
         .get::<OriginalUri>()
         .map_or_else(|| request.uri().path(), |uri| uri.0.path());
+    if (configured_machine || central.role.as_deref() == Some("service_account"))
+        && matches!(
+            path,
+            "/api/v1/sdlc/project-directory" | "/api/v1/sdlc/project-access"
+        )
+    {
+        return Err(AppError::Forbidden);
+    }
     pm_request_policy(&actor, request.method().as_str(), path)?;
     request.extensions_mut().insert(actor);
     Ok(next.run(request).await)
@@ -101,6 +127,7 @@ mod tests {
             domain::sdlc::Principal {
                 subject: "pm".into(),
                 human_session: false,
+                trusted_human: false,
                 scopes: [scope.clone()].into(),
             },
             task,

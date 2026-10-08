@@ -114,3 +114,6 @@ pub struct StatusDto {
     pub position: i32,
     pub is_default: bool,
 }
+
+pub mod task_documents;
+pub mod task_repositories;

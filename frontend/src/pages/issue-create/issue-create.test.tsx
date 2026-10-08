@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { IssueCreatePage } from './'
 import { ThemeProvider } from '@sdlc/ui/lib'
@@ -146,6 +147,7 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
 
 describe('IssueCreatePage', () => {
   beforeEach(() => {
+    window.sessionStorage.clear()
     createIssue.mockClear()
     listProjects.mockClear()
     listUsers.mockClear()
@@ -194,6 +196,18 @@ describe('IssueCreatePage', () => {
     await user.click(screen.getByRole('button', { name: /^создать$/i }))
     await waitFor(() => expect(createIssue).toHaveBeenCalled())
     expect(createIssue.mock.calls[0]?.[0]).toMatchObject({ project_key: 'TT' })
+  })
+
+  it('does not select a legacy default when a Namespace URL is malformed', async () => {
+    render(wrapper(<IssueCreatePage />, '/issues/create?namespace_id=broken&source=wiki'))
+    await screen.findByRole('option', { name: /Task Tracker/ })
+    expect(screen.getByLabelText(/Проект/)).toHaveValue('')
+    expect(screen.getByText('Некорректная ссылка на проект Namespace')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
+    expect(listCustomFields).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/create?namespace_id=broken&source=wiki',
+    )
   })
 
   it('blocks submission while required project fields failed to load, then retries', async () => {

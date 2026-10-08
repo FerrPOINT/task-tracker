@@ -26,8 +26,11 @@ pub async fn bearer_auth(
     // tokens remain valid during the migration window.
     match super::central_auth::check_token(&token).await {
         super::central_auth::CentralCheck::Validated(central, display_name) => {
-            // Never erase a task-scoped PM grant into unrestricted legacy user claims.
-            if app::sdlc::has_pm_grant(&central.scopes) {
+            // Preserve task-scoped PM grants and machine identity before human mapping.
+            if app::sdlc::has_pm_grant(&central.scopes)
+                || crate::routes::namespace::human_route_machine(&central.user_id)
+                || central.role.as_deref() == Some("service_account")
+            {
                 return Err(StatusCode::FORBIDDEN);
             }
             if !central.allows_service("task-tracker", req.method().as_str()) {

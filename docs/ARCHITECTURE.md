@@ -1,5 +1,9 @@
 # Архитектура Task Tracker
 
+[Namespace context](NAMESPACE.md) разрешает Project по confirmed local binding.
+Counter и lifecycle guards принадлежат Tracker; каталог людей следует общей
+trusted policy, а machine scopes и owner-only SDLC confirmations сохраняются.
+
 Prepared Analysis configuration preflight uses `api -> SdlcService ->
 FleetConfigurationReader` and the existing authorized reservation repository.
 The reader uses operator credentials only, bounded HTTP and Fleet's real owner

@@ -255,6 +255,34 @@ impl crate::context::IssueService for IssueServiceImpl {
         self.authz
             .require_project_edit(project.id, requester)
             .await?;
+        let payload = serde_json::to_value(&cmd)
+            .map_err(|_| AppError::invalid_input("invalid issue command"))?;
+        if let Some(operation) = cmd.operation_id {
+            if let Some(ticket) = self
+                .projects
+                .issue_creation_ticket(project.id, requester, operation, &payload, false)
+                .await?
+            {
+                if ticket.completed {
+                    let original = self
+                        .issues
+                        .get_by_id_include_deleted(ticket.issue_id)
+                        .await
+                        .map_err(|error| match error {
+                            AppError::NotFound(_) => AppError::conflict("original_issue_purged"),
+                            other => other,
+                        })?;
+                    return super::helpers::build_issue_dtos_with_projects(
+                        Arc::clone(&self.projects),
+                        Arc::clone(&self.users),
+                        Arc::clone(&self.labels),
+                        vec![original],
+                    )
+                    .await
+                    .map(|mut issues| issues.remove(0));
+                }
+            }
+        }
         if cmd.summary.trim().is_empty() || cmd.summary.chars().count() > 500 {
             return Err(AppError::invalid_input(
                 "summary must be between 1 and 500 characters",
@@ -288,10 +316,23 @@ impl crate::context::IssueService for IssueServiceImpl {
         let custom_field_values = self
             .normalize_custom_fields_for_create(project.id, &cmd.custom_fields)
             .await?;
-        // Retry on key conflicts: concurrent creators may compute the same next number.
+        let ticket = match cmd.operation_id {
+            Some(operation) => {
+                self.projects
+                    .issue_creation_ticket(project.id, requester, operation, &payload, true)
+                    .await?
+            }
+            None => None,
+        };
+        // Legacy clients still allocate from the same permanent counter.
+
         let mut issue = None;
         for _ in 0..5 {
-            let number = self.projects.next_issue_number(project.id).await?;
+            let number = if let Some(ticket) = &ticket {
+                ticket.number
+            } else {
+                self.projects.next_issue_number(project.id).await?
+            };
             let mut candidate = Issue::create(
                 &project,
                 number,
@@ -302,6 +343,9 @@ impl crate::context::IssueService for IssueServiceImpl {
                 cmd.reporter_id,
                 cmd.priority,
             );
+            if let Some(ticket) = &ticket {
+                candidate.id = ticket.issue_id;
+            }
             if let Some(assignee_id) = cmd.assignee_id {
                 candidate.assign(Some(assignee_id));
             }
@@ -327,7 +371,23 @@ impl crate::context::IssueService for IssueServiceImpl {
                 // `issues.key` is the only unique constraint on INSERT here,
                 // so any duplicate-entry conflict is de facto a key collision.
                 Err(AppError::Database(msg)) if msg.contains("issues_key_key") => continue,
-                Err(AppError::Conflict(ref msg)) if msg == "duplicate entry" => continue,
+                Err(AppError::Conflict(ref msg)) if msg == "duplicate entry" => {
+                    if let Some(ticket) = &ticket {
+                        let original = self
+                            .issues
+                            .get_by_id_include_deleted(ticket.issue_id)
+                            .await?;
+                        return super::helpers::build_issue_dtos_with_projects(
+                            Arc::clone(&self.projects),
+                            Arc::clone(&self.users),
+                            Arc::clone(&self.labels),
+                            vec![original],
+                        )
+                        .await
+                        .map(|mut issues| issues.remove(0));
+                    }
+                    continue;
+                }
                 Err(e) => return Err(e),
             }
         }

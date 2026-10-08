@@ -7,6 +7,7 @@ pub mod dashboard;
 pub mod health;
 pub mod issues;
 pub mod members;
+pub mod namespace;
 pub mod projects;
 pub mod search;
 pub mod sprints;

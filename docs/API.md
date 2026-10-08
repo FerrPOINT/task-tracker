@@ -1621,3 +1621,8 @@ compares fresh Fleet configuration with an active prepared assignment, then
 reauthorizes and rechecks the lease. It never grants dispatch or runtime readiness.
 Operator env: `TASKTRACKER_SDLC__FLEET_URL`, `TASKTRACKER_SDLC__FLEET_READ_TOKEN`.
 See [strict contract and failure states](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
+
+
+## Сквозной Namespace
+
+Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).

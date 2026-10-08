@@ -11,3 +11,6 @@ pub use email::*;
 pub use entities::*;
 pub use repos::*;
 pub use storage::*;
+
+pub mod task_documents;
+pub mod task_repositories;

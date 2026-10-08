@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+
 import { useTranslation } from 'react-i18next'
 import { completeSso } from '@sdlc/ui/sso'
 import { Button } from '@sdlc/ui/ui'

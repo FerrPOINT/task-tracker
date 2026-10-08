@@ -75,6 +75,17 @@ pub async fn create_issue(
     }
     assignee_id = assignee_id.map(|id| resolved[&id]);
     let cmd = CreateIssueCommand {
+        operation_id: headers
+            .get("Idempotency-Key")
+            .map(|value| {
+                value
+                    .to_str()
+                    .ok()
+                    .and_then(|v| uuid::Uuid::parse_str(v).ok())
+                    .filter(|v| !v.is_nil())
+                    .ok_or_else(|| AppError::invalid_input("invalid Idempotency-Key"))
+            })
+            .transpose()?,
         project_key,
         issue_type: shared::IssueType::from_str(&req.issue_type)
             .map_err(|_| AppError::invalid_input("issue_type"))?,

@@ -5,6 +5,7 @@ fn actor(subject: &str, human: bool, scopes: Vec<String>) -> Principal {
     Principal {
         subject: subject.into(),
         human_session: human,
+        trusted_human: false,
         scopes: scopes.into_iter().collect(),
     }
 }

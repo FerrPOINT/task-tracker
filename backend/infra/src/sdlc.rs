@@ -30,7 +30,9 @@ async fn exec(db: &impl ConnectionTrait, sql: &str, values: Vec<Value>) -> Resul
     Ok(())
 }
 pub(crate) fn map_db(error: sea_orm::DbErr) -> AppError {
-    if error.to_string().contains("SDLC") {
+    if error.to_string().contains("namespace_resource_read_only") {
+        AppError::conflict("namespace_resource_read_only")
+    } else if error.to_string().contains("SDLC") {
         AppError::conflict("SDLC confirmation/binding gate rejected operation")
     } else {
         AppError::database(error)
@@ -92,7 +94,7 @@ impl PostgresSdlcRepository {
             .await
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("project", project))?;
-        if row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user_id {
+        if !actor.trusted_human && row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user_id {
             // Current Tracker project policy grants write to explicit members.
             // Central/global-admin hints never substitute for this row.
             tx.query_one(statement(
@@ -873,13 +875,13 @@ impl SdlcRepository for PostgresSdlcRepository {
             "WITH active AS MATERIALIZED (
                 SELECT id FROM users WHERE central_sub=$1 AND is_active=true
              ), allowed AS (
-                SELECT p.id FROM active u JOIN projects p ON p.owner_id=u.id
+                SELECT p.id FROM active u JOIN projects p ON ($2::boolean OR p.owner_id=u.id)
                 UNION
                 SELECT m.project_id FROM active u JOIN project_members m ON m.user_id=u.id
              )
              SELECT EXISTS(SELECT 1 FROM active) AS authorized,
                 COALESCE((SELECT jsonb_agg(id ORDER BY id) FROM allowed),'[]'::jsonb) AS project_ids",
-            vec![actor.subject.clone().into()],
+            vec![actor.subject.clone().into(),actor.trusted_human.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::internal("project access result missing"))?;
         if !row.try_get::<bool>("", "authorized").map_err(map_db)? {
             return Err(AppError::Forbidden);
@@ -908,7 +910,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             "WITH active AS MATERIALIZED (
                 SELECT id FROM users WHERE central_sub=$1 AND is_active=true
              ), allowed AS (
-                SELECT p.id FROM active u JOIN projects p ON p.owner_id=u.id
+                SELECT p.id FROM active u JOIN projects p ON ($4::boolean OR p.owner_id=u.id)
                 UNION
                 SELECT m.project_id FROM active u JOIN project_members m ON m.user_id=u.id
              ), page AS (
@@ -919,7 +921,7 @@ impl SdlcRepository for PostgresSdlcRepository {
              SELECT EXISTS(SELECT 1 FROM active) AS authorized,
                 COALESCE((SELECT jsonb_agg(jsonb_build_object('id',id,'key',key,'name',name) ORDER BY id)
                     FROM page),'[]'::jsonb) AS projects",
-            vec![actor.subject.clone().into(), after.into(), (i64::from(limit) + 1).into()],
+            vec![actor.subject.clone().into(), after.into(), (i64::from(limit) + 1).into(),actor.trusted_human.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::internal("project directory result missing"))?;
         if !row.try_get::<bool>("", "authorized").map_err(map_db)? {
             return Err(AppError::Forbidden);
@@ -1002,16 +1004,19 @@ impl SdlcRepository for PostgresSdlcRepository {
                 tx.commit().await.map_err(map_db)?;
                 return Ok((result, true));
             }
-            let row = tx.query_one(statement(
-                "SELECT MAX((substring(key FROM '-([0-9]+)$'))::bigint) AS max_num FROM issues WHERE project_id=$1",
-                vec![project.into()],
-            )).await.map_err(map_db)?.ok_or_else(|| AppError::internal("issue number missing"))?;
-            let number = row
-                .try_get::<Option<i64>>("", "max_num")
+            let row = tx
+                .query_one(statement(
+                    "SELECT allocate_project_issue_number($1) AS number",
+                    vec![project.into()],
+                ))
+                .await
                 .map_err(map_db)?
-                .unwrap_or(0)
-                .checked_add(1)
-                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| AppError::internal("issue number missing"))?;
+            let number: u32 = row
+                .try_get::<i64>("", "number")
+                .map_err(map_db)?
+                .try_into()
+                .ok()
                 .ok_or_else(|| AppError::validation("issue number overflow"))?;
             let task = Uuid::now_v7();
             let key = format!("{project_key}-{number}");

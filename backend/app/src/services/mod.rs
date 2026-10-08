@@ -1,4 +1,5 @@
 mod helpers;
+pub use helpers::default_board_columns;
 
 pub mod admin;
 pub mod attachment;

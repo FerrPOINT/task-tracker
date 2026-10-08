@@ -1,4 +1,5 @@
-import { Link } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+
 import { Plus, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
@@ -48,7 +49,8 @@ function ProjectAvatar({ projectKey }: { projectKey: string }) {
 
 export function ProjectsPage() {
   const { t } = useTranslation()
-  const { data: projects, isLoading, error, refetch } = useProjects()
+  const [offset, setOffset] = useState(0)
+  const { data: projects, isLoading, error, refetch } = useProjects(offset, 50)
   const [formOpen, setFormOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
@@ -70,6 +72,22 @@ export function ProjectsPage() {
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          disabled={offset === 0}
+          onClick={() => setOffset(Math.max(0, offset - 50))}
+        >
+          Назад
+        </Button>
+        <Button
+          variant="outline"
+          disabled={(projects?.length ?? 0) < 50}
+          onClick={() => setOffset(offset + 50)}
+        >
+          Далее
+        </Button>
+      </div>
       <ProjectFormDialog
         open={formOpen}
         project={editingProject}

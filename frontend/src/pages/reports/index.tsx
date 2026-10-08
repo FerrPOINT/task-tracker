@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { useSearchParams } from 'react-router'
 import { Download, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {

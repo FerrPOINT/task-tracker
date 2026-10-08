@@ -74,6 +74,7 @@ mod tests {
         let mut actor = Principal {
             subject: "scheduler".into(),
             human_session: false,
+            trusted_human: false,
             scopes: ["task-tracker:write".into()].into(),
         };
         scheduler(&actor, &config).unwrap();

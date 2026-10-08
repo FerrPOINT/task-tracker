@@ -116,6 +116,19 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::confirm,
         routes::sdlc::evidence,
         routes::sdlc::events,
+        routes::namespace::apply,
+        routes::namespace::available_resources,
+        routes::namespace::stats,
+        routes::namespace::contexts,
+        routes::namespace::context,
+        routes::namespace::documents,
+        routes::namespace::repositories,
+        routes::namespace::delivery_evidence,
+        routes::namespace::link_repository,
+        routes::namespace::available_repositories,
+        routes::namespace::readback,
+        routes::namespace::task_context,
+        routes::namespace::task_catalog,
         routes::health::catalog_health,
         routes::health::health,
         routes::auth::register,
@@ -410,6 +423,32 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let auth = from_fn_with_state(ctx.clone(), middleware::auth::bearer_auth);
 
     let protected = Router::new()
+        .route("/tasks/{id}/documents", get(routes::namespace::documents))
+        .route(
+            "/tasks/{id}/delivery-evidence",
+            get(routes::namespace::delivery_evidence),
+        )
+        .route(
+            "/tasks/{id}/repositories",
+            get(routes::namespace::repositories).post(routes::namespace::link_repository),
+        )
+        .route(
+            "/tasks/{id}/available-repositories",
+            get(routes::namespace::available_repositories),
+        )
+        .route("/namespace-contexts", get(routes::namespace::contexts))
+        .route(
+            "/namespace-available-resources",
+            get(routes::namespace::available_resources),
+        )
+        .route(
+            "/namespace-stats/{registry}/{namespace}",
+            get(routes::namespace::stats),
+        )
+        .route(
+            "/namespace-contexts/{registry}/{namespace}",
+            get(routes::namespace::context),
+        )
         .route(
             "/projects",
             get(routes::projects::list_projects).post(routes::projects::create_project),
@@ -641,9 +680,25 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .route_layer(auth);
 
+    let owner_routes = Router::new()
+        .route(
+            "/namespace-resources/tracker_project/{id}",
+            get(routes::namespace::readback).put(routes::namespace::apply),
+        )
+        .route_layer(axum::middleware::from_fn(routes::namespace::owner_auth))
+        .merge(
+            Router::new()
+                .route(
+                    "/namespace-tasks/{id}",
+                    get(routes::namespace::task_context),
+                )
+                .route("/namespace-tasks", get(routes::namespace::task_catalog))
+                .route_layer(axum::middleware::from_fn(routes::namespace::reader_auth)),
+        );
     let api = public
         .merge(auth_routes)
         .merge(protected)
+        .merge(owner_routes)
         .merge(routes::sdlc::router());
 
     // The SSE stream is a long-lived connection, not a request/response the

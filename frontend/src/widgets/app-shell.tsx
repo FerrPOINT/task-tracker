@@ -1,5 +1,7 @@
+import { NamespaceShellContext, useNamespaceContext } from './namespace-context'
 import { useEffect, useState } from 'react'
-import { Link, useLocation, Outlet } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { useLocation, Outlet } from 'react-router'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import {
@@ -55,7 +57,10 @@ function useCurrentProjectKey() {
   const issueId = isCreateIssueRoute ? undefined : issueMatch?.[1]
   const createIssueProjectKey = isCreateIssueRoute
     ? (new URLSearchParams(location.search).get('project_key') ??
-      (location.state as { project_key?: string } | null)?.project_key)
+      (!new URLSearchParams(location.search).has('namespace_id') &&
+      !new URLSearchParams(location.search).has('registry_instance_id')
+        ? (location.state as { project_key?: string } | null)?.project_key
+        : undefined))
     : undefined
   const reportsProjectKey =
     location.pathname === '/reports'
@@ -105,6 +110,7 @@ export function AppShell() {
   const { t } = useTranslation()
   const location = useLocation()
   const projectKey = useCurrentProjectKey()
+  const namespace = useNamespaceContext()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () =>
@@ -120,8 +126,9 @@ export function AppShell() {
     desktop.addEventListener('change', closeOnDesktop)
     return () => desktop.removeEventListener('change', closeOnDesktop)
   }, [])
-  const { data: user } = useCurrentUser()
   const { data: projects = [] } = useProjects()
+  const currentProject = projects.find((project) => project.key === projectKey)
+  const { data: user } = useCurrentUser()
   const { data: notificationList } = useNotifications()
   const markNotificationRead = useMarkNotificationRead()
   const markAllNotificationsRead = useMarkAllNotificationsRead()
@@ -129,7 +136,6 @@ export function AppShell() {
   const logout = useLogout()
   const notifications = notificationList?.notifications ?? []
   const unreadCount = notificationList?.unread_count ?? 0
-  const currentProject = projects.find((project) => project.key === projectKey)
   const pageLayout =
     location.pathname === '/issues/create' || location.pathname.endsWith('/settings/custom-fields')
       ? 'reading'
@@ -273,38 +279,44 @@ export function AppShell() {
           </>
         }
         context={
-          <DropdownMenu modal={false}>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                aria-label={t('navigation.projects')}
-                title={currentProject?.name ?? t('navigation.projects')}
-                className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
+          import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+            <NamespaceShellContext />
+          ) : (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label={t('navigation.projects')}
+                  title={currentProject?.name ?? t('navigation.projects')}
+                  className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
+                >
+                  <span className="truncate">
+                    {currentProject?.name ?? t('navigation.projects')}
+                  </span>
+                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-[calc(100dvh-4rem)] w-64 overflow-y-auto"
               >
-                <span className="truncate">{currentProject?.name ?? t('navigation.projects')}</span>
-                <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="max-h-[calc(100dvh-4rem)] w-64 overflow-y-auto"
-            >
-              <DropdownMenuItem asChild>
-                <Link to="/projects" className="gap-2">
-                  <FolderKanban className="h-4 w-4" />
-                  {t('navigation.allProjects')}
-                </Link>
-              </DropdownMenuItem>
-              {projects.map((project) => (
-                <DropdownMenuItem key={project.key} asChild>
-                  <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
-                    <span className="truncate">{project.name}</span>
-                    <span className="text-xs text-text-muted">{project.key}</span>
+                <DropdownMenuItem asChild>
+                  <Link to="/projects" className="gap-2">
+                    <FolderKanban className="h-4 w-4" />
+                    {t('navigation.allProjects')}
                   </Link>
                 </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                {projects.map((project) => (
+                  <DropdownMenuItem key={project.key} asChild>
+                    <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
+                      <span className="truncate">{project.name}</span>
+                      <span className="text-xs text-text-muted">{project.key}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
         }
         actions={
           <>
@@ -527,7 +539,21 @@ export function AppShell() {
 
         <main className="shell-main flex-1">
           <PageFrame mode={pageLayout}>
-            <Outlet />
+            {namespace.malformed ? (
+              <p role="alert" className="text-danger">
+                Некорректная ссылка на проект.
+              </p>
+            ) : namespace.ref && projectKey && namespace.query.isPending ? (
+              <p role="status">Проверяем привязку Tracker…</p>
+            ) : namespace.ref &&
+              projectKey &&
+              (namespace.query.isError || namespace.query.data?.resource_key !== projectKey) ? (
+              <p role="alert" className="text-danger">
+                Ресурс не подтверждён в выбранном проекте.
+              </p>
+            ) : (
+              <Outlet />
+            )}
           </PageFrame>
         </main>
       </div>

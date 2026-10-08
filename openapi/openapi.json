@@ -3905,6 +3905,404 @@
         ]
       }
     },
+    "/api/v1/namespace-available-resources": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_available_resources",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResourceCatalogItem"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/namespace-contexts": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_contexts",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResourceContextSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/namespace-contexts/{registry}/{namespace}": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_context",
+        "parameters": [
+          {
+            "name": "registry",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "namespace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceContextSummary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No confirmed local binding"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/namespace-resources/tracker_project/{id}": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_readback",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerReadback"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Binding not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_apply",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OwnerCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OwnerReadback"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Binding/fence conflict"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/namespace-stats/{registry}/{namespace}": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_stats",
+        "parameters": [
+          {
+            "name": "registry",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "namespace",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceStats"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/namespace-tasks": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_task_catalog",
+        "parameters": [
+          {
+            "name": "registry_instance_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "namespace_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskCatalogItem"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/namespace-tasks/{id}": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_task_context",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "registry_instance_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "namespace_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verified immutable Task UUID/project/namespace metadata"
+          },
+          "403": {
+            "description": "Foreign namespace"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/notification-settings": {
       "get": {
         "tags": [
@@ -4084,6 +4482,34 @@
           "routes::projects"
         ],
         "operationId": "list_projects",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -6276,6 +6702,244 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tasks/{id}/available-repositories": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_available_task_repositories",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskRepositoryLink"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Forge unavailable, not an empty catalog"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tasks/{id}/delivery-evidence": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_task_delivery_evidence",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskPullEvidence"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Forge unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tasks/{id}/documents": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_namespace_documents",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskDocumentLink"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Wiki unavailable, not a zero count"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/tasks/{id}/repositories": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_task_repository_links",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskRepositoryLink"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "namespaces"
+        ],
+        "operationId": "tracker_link_task_repository",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryRef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRepositoryLink"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Forge reader unavailable"
           }
         },
         "security": [
@@ -10054,6 +10718,24 @@
           }
         }
       },
+      "NamespaceRef": {
+        "type": "object",
+        "required": [
+          "registry_instance_id",
+          "namespace_id"
+        ],
+        "properties": {
+          "namespace_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "registry_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "NotificationListResponse": {
         "type": "object",
         "required": [
@@ -10217,6 +10899,83 @@
             "format": "int64",
             "maximum": 9007199254740991,
             "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "OwnerCommand": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "namespace",
+          "resource",
+          "operation_id",
+          "generation",
+          "state"
+        ],
+        "properties": {
+          "create_spec": {},
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "namespace": {
+            "$ref": "#/components/schemas/NamespaceRef"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/ResourceRef"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OwnerReadback": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "namespace",
+          "resource",
+          "operation_id",
+          "generation",
+          "state",
+          "drained"
+        ],
+        "properties": {
+          "drained": {
+            "type": "boolean"
+          },
+          "generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "namespace": {
+            "$ref": "#/components/schemas/NamespaceRef"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/ResourceRef"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -11217,6 +11976,44 @@
           }
         }
       },
+      "RepositoryCheckRef": {
+        "type": "object",
+        "required": [
+          "pipeline_id",
+          "commit_sha",
+          "status"
+        ],
+        "properties": {
+          "commit_sha": {
+            "type": "string"
+          },
+          "pipeline_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "RepositoryRef": {
+        "type": "object",
+        "required": [
+          "forge_instance_id",
+          "repository_id"
+        ],
+        "properties": {
+          "forge_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "RequirementsDocument": {
         "type": "object",
         "required": [
@@ -11460,6 +12257,97 @@
           }
         },
         "additionalProperties": false
+      },
+      "ResourceCatalogItem": {
+        "type": "object",
+        "required": [
+          "resource",
+          "label",
+          "resource_key"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/ResourceRef"
+          },
+          "resource_key": {
+            "type": "string"
+          }
+        }
+      },
+      "ResourceContextSummary": {
+        "type": "object",
+        "description": "Owner-local navigation metadata. Labels and keys are never used as identities.",
+        "required": [
+          "binding",
+          "label",
+          "resource_key"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/OwnerReadback"
+          },
+          "label": {
+            "type": "string"
+          },
+          "resource_key": {
+            "type": "string"
+          }
+        }
+      },
+      "ResourceKind": {
+        "type": "string",
+        "enum": [
+          "tracker_project",
+          "wiki_space",
+          "git_group"
+        ]
+      },
+      "ResourceRef": {
+        "type": "object",
+        "required": [
+          "kind",
+          "instance_id",
+          "resource_id"
+        ],
+        "properties": {
+          "instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ResourceKind"
+          },
+          "resource_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ResourceStats": {
+        "type": "object",
+        "required": [
+          "binding",
+          "counters"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/OwnerReadback"
+          },
+          "counters": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int64"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
       },
       "RevisionDiff": {
         "type": "object",
@@ -11893,6 +12781,161 @@
             "type": "string"
           },
           "value": {}
+        }
+      },
+      "TaskCatalogItem": {
+        "type": "object",
+        "required": [
+          "namespace",
+          "task",
+          "task_key",
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "namespace": {
+            "$ref": "#/components/schemas/NamespaceRef"
+          },
+          "task": {
+            "$ref": "#/components/schemas/TaskRef"
+          },
+          "task_key": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskDocumentLink": {
+        "type": "object",
+        "required": [
+          "namespace",
+          "document_id",
+          "revision_id",
+          "title",
+          "version",
+          "space_key",
+          "task_key"
+        ],
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "namespace": {
+            "$ref": "#/components/schemas/NamespaceRef"
+          },
+          "revision_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "space_key": {
+            "type": "string"
+          },
+          "task_key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "TaskPullEvidence": {
+        "type": "object",
+        "required": [
+          "namespace",
+          "repository",
+          "pull_request_id",
+          "number",
+          "title",
+          "status",
+          "commits",
+          "checks"
+        ],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepositoryCheckRef"
+            }
+          },
+          "commits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "namespace": {
+            "$ref": "#/components/schemas/NamespaceRef"
+          },
+          "number": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pull_request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repository": {
+            "$ref": "#/components/schemas/RepositoryRef"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskRef": {
+        "type": "object",
+        "required": [
+          "tracker_instance_id",
+          "task_id"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskRepositoryLink": {
+        "type": "object",
+        "required": [
+          "namespace",
+          "forge_instance_id",
+          "repository_id",
+          "public_name",
+          "kind"
+        ],
+        "properties": {
+          "forge_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "namespace": {
+            "$ref": "#/components/schemas/NamespaceRef"
+          },
+          "public_name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          }
         }
       },
       "TaskRoutingSnapshot": {

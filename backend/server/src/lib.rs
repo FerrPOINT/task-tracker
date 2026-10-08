@@ -92,6 +92,16 @@ pub async fn run(
             .ok(),
         });
     }
+    if let Some(reader) = infra::task_documents::WikiReader::from_deployment()
+        .expect("invalid namespace Wiki reader configuration")
+    {
+        ctx.task_documents = Arc::new(reader);
+    }
+    if let Some(reader) = infra::task_repositories::ForgeReader::from_deployment()
+        .expect("invalid namespace Forge reader configuration")
+    {
+        ctx.task_repositories = Arc::new(reader);
+    }
     let ctx = Arc::new(ctx);
 
     // Spawn the email digest background task. It checks unread notifications

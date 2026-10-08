@@ -18,6 +18,7 @@ mod m20260914_0000031_password_reset;
 mod m20260914_0000032_oidc;
 mod m20260918_0000033_central_subject;
 pub mod m20261001_0000034_sdlc_clarification;
+mod m20261008_0000090_namespace;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -47,6 +48,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260914_0000032_oidc::Migration),
             Box::new(m20260918_0000033_central_subject::Migration),
             Box::new(m20261001_0000034_sdlc_clarification::Migration),
+            Box::new(m20261008_0000090_namespace::Migration),
         ]
     }
 }

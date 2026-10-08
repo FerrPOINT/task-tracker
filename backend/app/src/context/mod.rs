@@ -45,6 +45,8 @@ impl EventBus {
 #[derive(Clone)]
 pub struct AppContext {
     pub sdlc: Option<crate::sdlc::SdlcService>,
+    pub task_documents: Arc<dyn domain::task_documents::TaskDocumentsReader>,
+    pub task_repositories: Arc<dyn domain::task_repositories::TaskRepositoriesReader>,
     pub config: Arc<AppConfig>,
     pub services: Services,
     pub repos: Arc<domain::Repositories>,
@@ -196,6 +198,8 @@ impl AppContext {
         ));
         Self {
             sdlc: None,
+            task_documents: Arc::new(domain::task_documents::UnavailableTaskDocuments),
+            task_repositories: Arc::new(domain::task_repositories::UnavailableTaskRepositories),
             config,
             events: events.clone(),
             authz: authz.clone(),

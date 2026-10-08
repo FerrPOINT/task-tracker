@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+- Namespace cohort: стабильные refs, локальные binding projections и lifecycle guards; аддитивные migrations, совместимый rollback и отдельные execution v2 gates. Runtime-приёмка ещё не завершена.
+
+
 - Prepared Analysis сверяет свежую защищённую конфигурацию Fleet с frozen routing
   и повторно проверяет lease/ACL после HTTP. Это read-only preflight, не native
   admission; runtime readiness и dispatch остаются false.

@@ -2078,3 +2078,8 @@ erDiagram
 - `docs/TZ.md`
 - `docs/WORKFLOW.md`
 - `docs/MIGRATIONS.md`
+
+
+## Сквозной Namespace
+
+Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).

@@ -1,4 +1,5 @@
-import { Link, useParams, useSearchParams } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { useParams, useSearchParams } from 'react-router'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
@@ -37,6 +38,8 @@ import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
 import { useBoard, useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
+import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPanel'
+import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
 import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
 
 const issueTabs = ['activity', 'comments', 'worklog', 'attachments', 'sdlc'] as const
@@ -347,6 +350,12 @@ export function IssueDetailPage() {
                 <Card className="md:col-span-2">
                   <CardContent className="pt-5">
                     <LinkEditor issueId={id} currentKey={issue.key} />
+                    {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
+                      <TaskDocumentsPanel taskId={id} projectKey={issue.project_key} />
+                    )}
+                    {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
+                      <TaskRepositoriesPanel taskId={id} projectKey={issue.project_key} />
+                    )}
                   </CardContent>
                 </Card>
               </div>

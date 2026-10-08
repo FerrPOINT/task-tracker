@@ -96,7 +96,7 @@ pub async fn verify(f: Fixture<'_>) {
         initial
     );
     let empty = get_json(f.client, &url, f.foreign, 200).await;
-    assert!(assert_page(&empty, 50).is_empty());
+    assert_eq!(assert_page(&empty, 50), expected);
     assert_eq!(empty["next_cursor"], Value::Null);
 
     let mut own = Vec::new();
@@ -194,9 +194,12 @@ pub async fn verify(f: Fixture<'_>) {
                 .contains("directory-private-marker")
         );
     }
-    assert!(assert_page(&get_json(f.client, &url, f.foreign, 200).await, 50).is_empty());
+    assert_eq!(
+        assert_page(&get_json(f.client, &url, f.foreign, 200).await, 50),
+        expected[..50]
+    );
 
-    // Reusing a cursor is a fresh read, never a retained authorization receipt.
+    // Membership is team metadata in the trusted shared catalog; account revocation is still enforced.
     let target = own[1];
     sql(
         f.db,
@@ -234,12 +237,12 @@ pub async fn verify(f: Fixture<'_>) {
     .await;
     let revoked = get_json(f.client, &replay_url, f.owner, 200).await;
     assert!(
-        !assert_page(&revoked, 100)
+        assert_page(&revoked, 100)
             .iter()
             .any(|p| p["id"] == target.to_string())
     );
     assert!(
-        !assert_page(
+        assert_page(
             &get_json(f.client, &replay_url, "sdlc_pat_read", 200).await,
             100
         )

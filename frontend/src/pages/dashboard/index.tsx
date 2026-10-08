@@ -1,4 +1,5 @@
-import { Link } from 'react-router'
+import { NamespaceLink as Link } from '@sdlc/ui/ui'
+
 import { useTranslation } from 'react-i18next'
 import { ErrorState } from '@sdlc/ui/ui'
 import { useDashboard, useProjects } from '@/shared/api/hooks'

@@ -64,8 +64,9 @@ pub struct ProjectQueryDto {
     pub offset: u64,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateIssueCommand {
+    pub operation_id: Option<uuid::Uuid>,
     pub project_key: shared::ProjectKey,
     pub issue_type: shared::IssueType,
     pub status_id: String,
