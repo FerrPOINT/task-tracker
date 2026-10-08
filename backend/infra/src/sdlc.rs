@@ -94,7 +94,9 @@ impl PostgresSdlcRepository {
             .await
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("project", project))?;
-        if !actor.trusted_human && row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user_id {
+        if (!actor.trusted_human || !actor.human_session)
+            && row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user_id
+        {
             // Current Tracker project policy grants write to explicit members.
             // Central/global-admin hints never substitute for this row.
             tx.query_one(statement(

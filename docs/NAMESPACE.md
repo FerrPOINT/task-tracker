@@ -17,6 +17,8 @@ Machine scopes, creator receipts и exact-owner confirmations сохраняют
 остаётся author-scoped: чужой ключ операции возвращает 404, approvals требуют
 точного owner, PAT без human session и machine credentials не создают Draft.
 Удаление записи команды не отзывает эти права человека.
+SDLC v1 service/PAT readers сохраняют явный project scope и assignment fences;
+проверка общего human/PAT каталога не выдаёт им human session.
 
 Migration 0090 добавляет confirmed bindings, immutable managed marker,
 `project_issue_counters`, creation receipts и `task_repository_links`.

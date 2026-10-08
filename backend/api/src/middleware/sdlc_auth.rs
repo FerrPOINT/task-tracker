@@ -39,9 +39,10 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
         std::env::var(key).is_ok_and(|subject| !subject.is_empty() && subject == central.user_id)
     });
     let trusted_human = is_trusted_human(&central, configured_machine);
+    let human_session = is_human_session(&central, configured_machine);
     let actor = domain::sdlc::Principal {
         subject: central.user_id,
-        human_session: central.session_id.is_some(),
+        human_session,
         trusted_human,
         scopes: central.scopes,
     };
@@ -60,6 +61,12 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     pm_request_policy(&actor, request.method().as_str(), path)?;
     request.extensions_mut().insert(actor);
     Ok(next.run(request).await)
+}
+
+fn is_human_session(central: &sdlc_auth_core::AuthContext, configured_machine: bool) -> bool {
+    central.session_id.is_some()
+        && !configured_machine
+        && central.role.as_deref() != Some("service_account")
 }
 
 fn is_trusted_human(central: &sdlc_auth_core::AuthContext, configured_machine: bool) -> bool {
@@ -101,6 +108,13 @@ mod human_identity_tests {
         assert!(!is_trusted_human(&central, false));
         central.session_id = Some("verified-session".into());
         assert!(is_trusted_human(&central, false));
+        assert!(is_human_session(&central, false));
+        assert!(!is_human_session(&central, true));
+        central.role = Some("service_account".into());
+        assert!(!is_human_session(&central, false));
+        central.role = None;
+        central.session_id = None;
+        assert!(!is_human_session(&central, false));
     }
 }
 

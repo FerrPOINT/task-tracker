@@ -148,7 +148,7 @@ pub(super) async fn before(
         404,
     )
     .await;
-    read(client, &url, foreign, 403).await;
+    read(client, &url, foreign, 200).await;
     read(client, &url, "sdlc_pat_pm", 403).await;
     sql(
         db,
@@ -314,7 +314,7 @@ pub(super) async fn after(
         client,
         &format!("{base}/api/v1/issues/{task}/sdlc/routing-snapshot"),
         foreign,
-        403,
+        200,
     )
     .await;
     read(

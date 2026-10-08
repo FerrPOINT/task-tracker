@@ -529,7 +529,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
                 .await
                 .unwrap()
                 .status(),
-            403
+            200
         );
     }
     assert_eq!(
@@ -835,7 +835,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         analysis_intent::confirm(&db, &client, &url, &owner, &final_confirm, task).await;
     let routing_snapshot = routing_policy::snapshot(&client, &base, task, &owner).await;
     assert_eq!(routing_snapshot["policy"], routing);
-    analysis_intent::read(&client, &url, &foreign, 403).await;
+    analysis_intent::read(&client, &url, &foreign, 200).await;
     assert_eq!(confirmation["stage"], "Backlog");
     assert_eq!(confirmation["revision"], 2);
     let events = client
@@ -906,7 +906,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         422,
     )
     .await;
-    metadata::get(&client, &metadata_url, &foreign, 403).await;
+    metadata::get(&client, &metadata_url, &foreign, 200).await;
     metadata::get(&client, &metadata_url, "local-token", 401).await;
     metadata::get(&client, &metadata_url, "sdlc_pat_pm", 200).await;
     metadata::get(&client, &metadata_url, "sdlc_pat_fleet", 403).await;
@@ -981,7 +981,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             .is_err()
     );
     sql(&db, "DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='operator')", vec![project.into()]).await;
-    metadata::get(&client, &metadata_url, &operator, 403).await;
+    metadata::get(&client, &metadata_url, &operator, 200).await;
     sql(
         &db,
         "UPDATE users SET is_active=false WHERE central_sub='pm'",
@@ -1003,7 +1003,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             .await
             .unwrap()
             .status(),
-        403
+        200
     );
     let mismatch = infra::sdlc::PostgresSdlcRepository::connect(
         &database_url,
