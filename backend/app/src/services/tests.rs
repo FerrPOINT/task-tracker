@@ -1384,6 +1384,24 @@ impl ProjectRepository for ListOnlyProjectRepository {
         Ok(vec![self.project.clone()])
     }
 
+    async fn list_accessible_page(
+        &self,
+        ids: &[ProjectId],
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Project>, AppError> {
+        // Inject failure at the new batched repository boundary. Production
+        // pagination no longer performs a per-project get_by_id in the service.
+        if !ids.contains(&self.project.id) || limit == 0 || offset > 0 {
+            return Ok(Vec::new());
+        }
+        match self.get_by_id(self.project.id).await {
+            Ok(project) => Ok(vec![project]),
+            Err(AppError::NotFound(_)) => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+    }
+
     async fn save(&self, _project: &Project) -> Result<ProjectId, AppError> {
         Ok(self.project.id)
     }
@@ -1427,7 +1445,7 @@ async fn ctx_with_list_only_project_repo(get_by_id_error: AppError) -> (AppConte
 }
 
 #[tokio::test]
-async fn project_list_propagates_project_get_error() {
+async fn project_list_propagates_page_error() {
     let (ctx, user_id) = ctx_with_list_only_project_repo(AppError::Internal("x".into())).await;
 
     assert_internal(
