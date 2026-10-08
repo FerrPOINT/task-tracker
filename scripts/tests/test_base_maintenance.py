@@ -64,7 +64,7 @@ class BaseMaintenanceTests(unittest.TestCase):
                         "--task", "tracker-maintenance-test", "--layout", "auto",
                     ]
                     expected += (["--quiesce", "--signing-key"] if operation == "backup"
-                                 else ["--signing-key-target"])
+                                 else ["--qa-only", "--signing-key-target"])
                     expected += [str(path / "preserved key.pem"),
                                  "--output" if operation == "backup" else "--archive", archive]
                     self.assertEqual(args, expected)

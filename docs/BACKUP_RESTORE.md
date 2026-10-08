@@ -48,6 +48,7 @@ workspace, а не отдельный dump Task Tracker. Состав, пров�
 ./scripts/restore.sh /protected/backups/workspace-2026-10-08.tar.gz
 ```
 
+Wrapper передаёт `--qa-only`: Base отвергает постоянный профиль назначения.
 Base проверяет профиль, endpoint, отдельное пустое назначение, целостность
 архива и fingerprint ключа до восстановления. Wrapper не предоставляет
 `--allow-source-project`, `--skip-file-volumes` или in-place `--clean`.

@@ -13,4 +13,4 @@ exec python3 "$SDLC_WORKSPACE_DIR/services-base/scripts/platform_backup.py" rest
   --project "$SDLC_PROJECT" --workspace-profile "$SDLC_WORKSPACE_DIR/workspace.local.json" \
   --compose-file "$SDLC_WORKSPACE_DIR/docker-compose.local.yml" \
   --project-directory "$SDLC_WORKSPACE_DIR" --docker-context "$SDLC_DOCKER_CONTEXT" \
-  --task "$SDLC_TASK" --layout auto --signing-key-target "$SDLC_SIGNING_KEY" --archive "$1"
+  --task "$SDLC_TASK" --layout auto --qa-only --signing-key-target "$SDLC_SIGNING_KEY" --archive "$1"
