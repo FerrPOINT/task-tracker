@@ -43,6 +43,7 @@ describe('LoginPage', () => {
       ),
     )
     expect(screen.queryByLabelText(/пароль/i)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Тема|Theme/i })).not.toBeInTheDocument()
     expect(screen.getByText(/второй фактор.*отключён/i)).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Переходим в Central Auth')
     expect(screen.getByRole('button', { name: 'Войти через SDLC' })).toBeDisabled()
