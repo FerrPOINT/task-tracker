@@ -1034,6 +1034,19 @@ impl SdlcRepository for PostgresSdlcRepository {
                         if message.contains("\"issues_key_key\""));
                 tx.rollback().await.map_err(map_db)?;
                 if key_conflict {
+                    // A legacy writer may have committed the candidate key
+                    // outside the allocator. The rolled-back allocation must
+                    // not retry that same number indefinitely. Advance only
+                    // from the now-visible conflicting issue, retaining the
+                    // permanent counter rather than recomputing MAX + 1.
+                    exec(
+                        &self.db,
+                        "INSERT INTO project_issue_counters(project_id,high_water_mark)
+                         SELECT $1,$2 WHERE EXISTS(SELECT 1 FROM issues WHERE project_id=$1 AND key=$3)
+                         ON CONFLICT(project_id) DO UPDATE SET high_water_mark=GREATEST(project_issue_counters.high_water_mark,EXCLUDED.high_water_mark)",
+                        vec![project.into(), i64::from(number).into(), key.into()],
+                    )
+                    .await?;
                     continue;
                 }
                 return Err(map_db(error));

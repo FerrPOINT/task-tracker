@@ -13,11 +13,17 @@ Human contexts/catalog/stats: `/api/v1/namespace-contexts`,
 Human Project directory использует shared-trusted policy и bounded pagination;
 пакетные counters не делают отдельный запрос на каждый Project.
 Machine scopes, creator receipts и exact-owner confirmations сохраняются.
+Проверенная human session может создать Draft в общем Project. Readback
+остаётся author-scoped: чужой ключ операции возвращает 404, approvals требуют
+точного owner, PAT без human session и machine credentials не создают Draft.
+Удаление записи команды не отзывает эти права человека.
 
 Migration 0090 добавляет confirmed bindings, immutable managed marker,
 `project_issue_counters`, creation receipts и `task_repository_links`.
 Обычные Issues и Draft foundation 0034 используют один atomic allocator;
-original-key replay проверяется до выдачи номера. Выданные новым counter номера
+original-key replay проверяется до выдачи номера. После конфликта со старым
+прямым INSERT counter продвигается по подтверждённой записи, без MAX+1.
+Выданные новым counter номера
 не переиспользуются после purge. Начальный high-water mark включает имеющиеся
 данные; неизвестные ранее удалённые номера восстановленными не объявляются.
 Project keys сохраняют прежний валидатор: 1–10 ASCII букв, цифр или дефисов.

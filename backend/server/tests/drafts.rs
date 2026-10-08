@@ -514,7 +514,8 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         get_json(&client, &creation_readback, &owner, 200).await,
         result
     );
-    get_json(&client, &creation_readback, &foreign, 403).await;
+    // Shared project access does not expose another author's exact creation key.
+    get_json(&client, &creation_readback, &foreign, 404).await;
     get_json(&client, &creation_readback, &operator, 404).await;
     get_json(
         &client,
@@ -790,7 +791,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         vec![other_project.into(), owner_id.into()],
     )
     .await;
-    get_json(&client, &other_input_url, &owner, 403).await;
+    get_json(&client, &other_input_url, &owner, 200).await;
     get_json(
         &client,
         &format!(
@@ -798,7 +799,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
             other["task_id"].as_str().unwrap()
         ),
         &owner,
-        403,
+        200,
     )
     .await;
     assert_eq!(get_json(&client, &input_url, &owner, 200).await, snapshot);
@@ -808,7 +809,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         vec![other_project.into(), owner_id.into()],
     )
     .await;
-    // Ordinary issue creators share MAX(suffix) and the unique key, even while drafts are created.
+    // Ordinary issues and Drafts share the permanent allocator and unique key.
     let ordinary = json!({"project_key":"DRAFT","issue_type":"task","summary":"Ordinary task","description":"ordinary","priority":"medium"});
     let ordinary_url = format!("{base}/api/v1/issues");
     let concurrent_draft = command("with-ordinary");
@@ -887,7 +888,8 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         [project.into()])).await.unwrap().unwrap().try_get::<i64>("","n").unwrap();
     let after_delete = expect(&client, &url, &owner, &command("after-deleted-number"), 201).await;
     assert_eq!(after_delete["task_key"], format!("DRAFT-{}", max + 1));
-    // Team membership is not a project ACL. Removing it leaves ordinary human reads/replay available.
+    // Team membership is not a project ACL. Removing it preserves author reads
+    // and replay; foreign exact-owner confirmation still fails below.
     sql(
         &db,
         "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
