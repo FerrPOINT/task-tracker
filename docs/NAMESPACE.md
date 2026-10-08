@@ -53,3 +53,6 @@ human mapping; personal/owner-only ограничения SDLC не станов
 UI включается `VITE_NAMESPACE_ENABLED=true` после совместимого cohort.
 NamespaceRef находится в URL и query keys; ошибочный binding не выбирает
 первый Project. Старые SDK/skills pins и строгие SDLC v1 envelopes сохраняются.
+
+Для прямых owner-запросов wizard/counters задаётся явный список origins
+через `TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS` (значения через запятую).
