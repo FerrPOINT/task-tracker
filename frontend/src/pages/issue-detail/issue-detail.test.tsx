@@ -233,6 +233,15 @@ describe('IssueDetailPage', () => {
     })
   })
 
+  it('resolves historical key URLs to the loaded UUID for owner panels and reads', async () => {
+    render(wrapper(<IssueDetailPage />, '/issues/TT-1?tab=sdlc'))
+    expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
+    expect(mockUseIssue).toHaveBeenCalledWith('TT-1')
+    expect(mockWorklogs).toHaveBeenCalledWith('i1')
+    expect(mockComments).toHaveBeenCalledWith('i1')
+    expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/TT-1?tab=sdlc')
+  })
+
   it('renders loading state while the issue itself loads', () => {
     mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
     render(wrapper(<IssueDetailPage />))

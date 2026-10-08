@@ -68,11 +68,13 @@ export function IssueDetailPage() {
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
-  const worklogsQuery = useWorklogs(id)
-  const commentsQuery = useComments(id)
-  const create = useCreateWorklog(id)
-  const update = useUpdateWorklog(id)
-  const remove = useDeleteWorklog(id)
+  // Historical issue URLs may contain a key; owner APIs use the loaded UUID.
+  const taskId = issueQuery.data?.id ?? ''
+  const worklogsQuery = useWorklogs(taskId)
+  const commentsQuery = useComments(taskId)
+  const create = useCreateWorklog(taskId)
+  const update = useUpdateWorklog(taskId)
+  const remove = useDeleteWorklog(taskId)
 
   useEffect(() => {
     latestTab.current = activeTab
@@ -305,7 +307,7 @@ export function IssueDetailPage() {
                   ) : null}
                 </TabsContent>
                 <TabsContent value="comments">
-                  <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
+                  <CommentsPanel issueId={issue.id} currentUserId={currentUserId ?? undefined} />
                 </TabsContent>
                 <TabsContent value="worklog">
                   {worklogsQuery.error ? (
@@ -326,17 +328,17 @@ export function IssueDetailPage() {
                   )}
                 </TabsContent>
                 <TabsContent value="attachments">
-                  <AttachmentPanel issueId={id} />
+                  <AttachmentPanel issueId={issue.id} />
                 </TabsContent>
                 <TabsContent value="sdlc">
-                  <SdlcPanel key={id} issueId={id} />
+                  <SdlcPanel key={issue.id} issueId={issue.id} />
                 </TabsContent>
               </Tabs>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                   <CardContent className="pt-5">
-                    <LabelEditor issueId={id} projectKey={issue.project_key} />
+                    <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
                 <Card>
@@ -344,17 +346,17 @@ export function IssueDetailPage() {
                     <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
+                    <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
                 <Card className="md:col-span-2">
                   <CardContent className="pt-5">
-                    <LinkEditor issueId={id} currentKey={issue.key} />
+                    <LinkEditor issueId={issue.id} currentKey={issue.key} />
                     {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
-                      <TaskDocumentsPanel taskId={id} projectKey={issue.project_key} />
+                      <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
                     )}
                     {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
-                      <TaskRepositoriesPanel taskId={id} projectKey={issue.project_key} />
+                      <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
                     )}
                   </CardContent>
                 </Card>
@@ -383,7 +385,7 @@ export function IssueDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <IssueEngagementPanel
-                    issueId={id}
+                    issueId={issue.id}
                     projectKey={issue.project_key}
                     currentUserId={currentUserId}
                     reporterId={issue.reporter_id}
