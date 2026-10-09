@@ -42,6 +42,7 @@ Positive and negative.
 | ADR-0008 | shadcn/ui + Tailwind CSS 4.1.0 | Accepted |
 | ADR-0009 | TanStack Query + Zustand for state | Accepted |
 | ADR-0010 | apalis for background jobs | Accepted |
+| [ADR-0011](adr/0011-sdlc-clarification.md) | Strict SDLC ownership and durable clarification gate | Accepted |
 
 ## 4. Creating New ADRs
 

@@ -76,6 +76,15 @@ jobs:
         env:
           TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
         run: cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
+      - name: Isolated PostgreSQL HTTP clarification and ownership lease
+        env:
+          TT_SDLC_DRAFT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_drafts
+          TT_SDLC_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_clarifications
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_drafts
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_clarifications
+          cargo test -p server --test drafts --locked -- --ignored --test-threads=1
+          cargo test -p server --test sdlc --locked -- --ignored --test-threads=1
       - name: OpenAPI drift gate
         run: |
           mkdir -p ../openapi

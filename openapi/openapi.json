@@ -1329,6 +1329,1536 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/analysis-intent": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "analysis_intent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisIntent"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Fresh explicit project access required; PM grant cannot read queue"
+          },
+          "404": {
+            "description": "Issue, binding or Analysis intent not found"
+          },
+          "409": {
+            "description": "Persisted Analysis intent inconsistent"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/analysis-reservation": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_analysis_reservation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "reserve_analysis_reservation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveAnalysis"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay; no renewal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "PM quiescence unknown, stale intent/CAS or held capacity"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/analysis-reservation/configuration-preflight": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_analysis_configuration_preflight",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisConfigurationPreflight"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/analysis-reservation/heartbeat": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "heartbeat_analysis_reservation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatAnalysis"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_analysis_reservation_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisReservationOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/assignment": {
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "assign",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmAssignment"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/binding": {
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "bind",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SdlcContext"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "root_task_id must equal task_id; children require accepted Architect decomposition"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/clarifications": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "questions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "publish_question",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishQuestion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/clarifications/{question_id}/answers": {
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "answer",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Answer"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/clarifications/{question_id}/cancel": {
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelQuestion"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Question"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/context": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "context",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SdlcContext"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/events": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "sdlc_events",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projection",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/MetadataProjection"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Canonical nonnegative decimal i64 for metadata_v1; legacy i64 otherwise.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 100,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "max_bytes",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 1048576,
+              "minimum": 1024
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventsSuccess"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Metadata budget too small; invalid query uses the standard validation envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetadataError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/evidence": {
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "evidence",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Evidence"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-assignment": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "pm_draft_assignment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "reserve_pm_draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReservePmDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftReservation"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftReservation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "execution_lease",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "claim_execution_lease",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimExecutionLease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Historical exact replay; consult current readback",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Lease claimed or source/fence inconsistent; no automatic reacquire"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/heartbeat": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "heartbeat_execution_lease",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HeartbeatExecutionLease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Ownership renewal or historical exact replay; never runtime/admission authority",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Expired/unknown/stale lease; quiescence recovery required"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-input": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "pm_draft_input",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftInputResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified Central Auth bearer required"
+          },
+          "403": {
+            "description": "Service read access and active explicit project access required"
+          },
+          "404": {
+            "description": "Issue or SDLC binding not found"
+          },
+          "409": {
+            "description": "Original immutable creation input unavailable or inconsistent"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/requirements": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "current_revision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequirementsRevision"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "publish_revision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRevision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequirementsRevision"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/requirements/revisions": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "revisions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionsResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/requirements/{revision}": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "revision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequirementsRevision"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/requirements/{revision}/confirm": {
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Confirmation"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/requirements/{revision}/diff": {
+      "get": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "diff",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "against",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionDiff"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/routing-snapshot": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "snapshot",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskRoutingSnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": "No explicit routed publication; legacy remains untouched"
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/transition": {
       "post": {
         "tags": [
@@ -2659,6 +4189,382 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/drafts": {
+      "post": {
+        "tags": [
+          "routes::sdlc"
+        ],
+        "operationId": "create_draft",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDraftCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exact durable creation replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedDraft"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Bound Draft created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Valid Central Auth bearer required"
+          },
+          "403": {
+            "description": "Human session and explicit project write access required"
+          },
+          "404": {
+            "description": "Project or original task no longer exists"
+          },
+          "409": {
+            "description": "Idempotency payload or ownership binding conflict"
+          },
+          "422": {
+            "description": "Invalid or unknown command fields"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "draft_creation_operation",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "description": "Exact creation key, UTF-8 percent-encoded as one path segment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": "Human session and fresh explicit project access required"
+          },
+          "404": {
+            "description": "Project or exact author-scoped creation operation absent"
+          },
+          "409": {
+            "description": "Retained operation entity, binding or original input inconsistent or missing"
+          },
+          "422": {
+            "description": "Invalid creation key"
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/routing-policy": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "current",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "set",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRoutingPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exact durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": "Central human session and active project owner required"
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Stale CAS or changed idempotency payload"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/routing-policy/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "operation",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/routing-policy/versions/{version}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "version",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -4103,6 +6009,113 @@
         ]
       }
     },
+    "/api/v1/sdlc/project-access": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "project_access",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAccess"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Verified Central Auth bearer required"
+          },
+          "403": {
+            "description": "Service read access and active central-subject identity required"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/sdlc/project-directory": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "project_directory",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "description": "Exclusive canonical nonnil UUID cursor; not an authority or existence claim.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDirectory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed, duplicate or unknown query fields"
+          },
+          "401": {
+            "description": "Verified Central Auth bearer required"
+          },
+          "403": {
+            "description": "Service read access and active central-subject identity required"
+          },
+          "409": {
+            "description": "Project directory source invalid"
+          },
+          "422": {
+            "description": "Invalid cursor or limit"
+          },
+          "503": {
+            "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/search": {
       "get": {
         "tags": [
@@ -4473,6 +6486,461 @@
           }
         }
       },
+      "AnalysisAdmissionState": {
+        "type": "string",
+        "enum": [
+          "awaiting_admission"
+        ]
+      },
+      "AnalysisConfigurationPreflight": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "assignment_id",
+          "execution_id",
+          "assignment_hash",
+          "agent_id",
+          "effective_config_revision",
+          "observation_ref",
+          "configuration_observed_at",
+          "lease_version",
+          "fencing_token",
+          "configuration_matched",
+          "runtime_ready",
+          "dispatch_allowed",
+          "blockers"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "configuration_matched": {
+            "type": "boolean"
+          },
+          "configuration_observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "effective_config_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lease_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "observation_ref": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runtime_ready": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisIntent": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "intent_id",
+          "confirmation_id",
+          "requirement_revision",
+          "content_hash",
+          "stage",
+          "status",
+          "role",
+          "workflow",
+          "mode",
+          "scope",
+          "cycle",
+          "attempt",
+          "operation_key",
+          "created_at"
+        ],
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "confirmation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "intent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "operation_key": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "role": {
+            "type": "string"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/AnalysisStage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AnalysisStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "workflow": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisReservationLeaseState": {
+        "type": "string",
+        "enum": [
+          "unreserved",
+          "active",
+          "expired"
+        ]
+      },
+      "AnalysisReservationOperation": {
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "request_sha256",
+          "result"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/AnalysisReservationReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisReservationReadback": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "observed_at",
+          "lease_state",
+          "reconciliation_needed",
+          "reason",
+          "current",
+          "dispatch_allowed",
+          "capacity_held"
+        ],
+        "properties": {
+          "capacity_held": {
+            "type": "boolean"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AnalysisReservationReceipt"
+              }
+            ]
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "lease_state": {
+            "$ref": "#/components/schemas/AnalysisReservationLeaseState"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reconciliation_needed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisReservationReceipt": {
+        "type": "object",
+        "required": [
+          "assignment",
+          "lease",
+          "technical_pool_slot",
+          "ttl_seconds",
+          "heartbeat_interval_seconds",
+          "admission_state",
+          "dispatch_allowed",
+          "capacity_held"
+        ],
+        "properties": {
+          "admission_state": {
+            "$ref": "#/components/schemas/AnalysisAdmissionState"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/PreparedAnalysisAssignment"
+          },
+          "capacity_held": {
+            "type": "boolean"
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "heartbeat_interval_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 10,
+            "minimum": 10
+          },
+          "lease": {
+            "$ref": "#/components/schemas/ExecutionLease"
+          },
+          "technical_pool_slot": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 2,
+            "minimum": 1
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 30,
+            "minimum": 30
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisStage": {
+        "type": "string",
+        "enum": [
+          "Analysis"
+        ]
+      },
+      "AnalysisStatus": {
+        "type": "string",
+        "enum": [
+          "Ready"
+        ]
+      },
+      "Answer": {
+        "type": "object",
+        "required": [
+          "id",
+          "question_id",
+          "question_version",
+          "requirement_revision",
+          "selected_option_ids",
+          "author_subject",
+          "created_at"
+        ],
+        "properties": {
+          "author_subject": {
+            "type": "string"
+          },
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "question_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "question_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "selected_option_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "AnswerCommand": {
+        "type": "object",
+        "required": [
+          "expected_question_version",
+          "requirement_revision",
+          "selected_option_ids",
+          "idempotency_key"
+        ],
+        "properties": {
+          "comment": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expected_question_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "selected_option_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "AssignCommand": {
+        "type": "object",
+        "required": [
+          "assignment",
+          "idempotency_key"
+        ],
+        "properties": {
+          "assignment": {
+            "$ref": "#/components/schemas/PmAssignment"
+          },
+          "expected_assignment_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "AttachLabelRequest": {
         "type": "object",
         "required": [
@@ -4672,6 +7140,23 @@
           }
         }
       },
+      "BindCommand": {
+        "type": "object",
+        "required": [
+          "root_task_id",
+          "idempotency_key"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "BoardColumnResponse": {
         "type": "object",
         "required": [
@@ -4774,6 +7259,50 @@
             "type": "string"
           }
         }
+      },
+      "CancelQuestion": {
+        "type": "object",
+        "required": [
+          "fence",
+          "expected_question_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_question_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ClaimExecutionLease": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "fence",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "CommentListResponse": {
         "type": "object",
@@ -4888,6 +7417,70 @@
           }
         }
       },
+      "ConfirmCommand": {
+        "type": "object",
+        "required": [
+          "content_hash",
+          "idempotency_key"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "expected_routing_policy_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Confirmation": {
+        "type": "object",
+        "required": [
+          "id",
+          "task_id",
+          "revision",
+          "content_hash",
+          "owner_subject",
+          "created_at",
+          "stage"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
       "ControlChartPointResponse": {
         "type": "object",
         "required": [
@@ -4952,6 +7545,31 @@
             }
           }
         }
+      },
+      "CreateDraftCommand": {
+        "type": "object",
+        "required": [
+          "title",
+          "description",
+          "idempotency_key"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
       },
       "CreateIssueRequest": {
         "type": "object",
@@ -5111,6 +7729,45 @@
           }
         }
       },
+      "CreatedDraft": {
+        "type": "object",
+        "required": [
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "task_key",
+          "owner_subject",
+          "stage"
+        ],
+        "properties": {
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DraftStage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_key": {
+            "type": "string"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "CumulativeFlowPointResponse": {
         "type": "object",
         "required": [
@@ -5263,6 +7920,274 @@
           }
         }
       },
+      "DraftStage": {
+        "type": "string",
+        "enum": [
+          "Draft"
+        ]
+      },
+      "EventsSuccess": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/OutboxResponse"
+          },
+          {
+            "$ref": "#/components/schemas/MetadataPage"
+          }
+        ]
+      },
+      "Evidence": {
+        "type": "object",
+        "required": [
+          "requirement_revision",
+          "content_hash",
+          "check_id",
+          "evidence_reference",
+          "verifier_subject",
+          "created_at"
+        ],
+        "properties": {
+          "check_id": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence_reference": {
+            "type": "string"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "verifier_subject": {
+            "type": "string"
+          }
+        }
+      },
+      "EvidenceCommand": {
+        "type": "object",
+        "required": [
+          "fence",
+          "requirement_revision",
+          "content_hash",
+          "check_id",
+          "evidence_reference",
+          "idempotency_key"
+        ],
+        "properties": {
+          "check_id": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "evidence_reference": {
+            "type": "string"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLease": {
+        "type": "object",
+        "required": [
+          "lease_id",
+          "version",
+          "holder_subject",
+          "claimed_at",
+          "heartbeat_at",
+          "expires_at"
+        ],
+        "properties": {
+          "claimed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "heartbeat_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "holder_subject": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLeaseOperation": {
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "request_sha256",
+          "result"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLeaseReadback": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "binding",
+          "owner_version",
+          "fence",
+          "observed_at",
+          "state",
+          "current",
+          "operation",
+          "dispatch_allowed"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/PmDraftBinding"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionLease"
+              }
+            ]
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "operation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionLeaseOperation"
+              }
+            ]
+          },
+          "owner_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ExecutionLeaseState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLeaseReceipt": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "binding",
+          "owner_version",
+          "fence",
+          "lease",
+          "ttl_seconds",
+          "heartbeat_seconds",
+          "dispatch_allowed"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/PmDraftBinding"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "heartbeat_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 10,
+            "minimum": 10
+          },
+          "lease": {
+            "$ref": "#/components/schemas/ExecutionLease"
+          },
+          "owner_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 30,
+            "minimum": 30
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExecutionLeaseState": {
+        "type": "string",
+        "enum": [
+          "unclaimed",
+          "active",
+          "expired"
+        ]
+      },
       "ExportIssuesRequest": {
         "type": "object",
         "required": [
@@ -5287,6 +8212,82 @@
             }
           }
         }
+      },
+      "HeartbeatAnalysis": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "fencing_token",
+          "lease_id",
+          "expected_lease_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "HeartbeatExecutionLease": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "fence",
+          "lease_id",
+          "expected_lease_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
       },
       "IssueLinkListResponse": {
         "type": "object",
@@ -5564,6 +8565,1469 @@
           }
         }
       },
+      "MachineFence": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "agent_id",
+          "assignment_version"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MetadataError": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "projection",
+          "code",
+          "after",
+          "blocked_sequence",
+          "event_id",
+          "required_bytes",
+          "max_bytes"
+        ],
+        "properties": {
+          "after": {
+            "type": "string"
+          },
+          "blocked_sequence": {
+            "type": "string"
+          },
+          "code": {
+            "$ref": "#/components/schemas/MetadataErrorCode"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "max_bytes": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "projection": {
+            "$ref": "#/components/schemas/MetadataProjection"
+          },
+          "required_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "MetadataErrorCode": {
+        "type": "string",
+        "enum": [
+          "metadata_budget_too_small",
+          "metadata_event_unrepresentable",
+          "metadata_source_invalid"
+        ]
+      },
+      "MetadataEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "task.created"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "input"
+                    ],
+                    "properties": {
+                      "input": {
+                        "oneOf": [
+                          {
+                            "type": "null"
+                          },
+                          {
+                            "$ref": "#/components/schemas/MetadataInputRef"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "task.bound"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "pm.assigned"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "assignment_id",
+                      "execution_id",
+                      "agent_id",
+                      "assignment_version"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "assignment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "assignment_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "execution_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "clarification.published"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "question_id",
+                      "question_version",
+                      "request_id",
+                      "checkpoint_id",
+                      "requirement_revision",
+                      "state",
+                      "fence"
+                    ],
+                    "properties": {
+                      "checkpoint_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "question_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "question_version": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "request_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "open"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "clarification.cancelled"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "question_id",
+                      "question_version",
+                      "request_id",
+                      "checkpoint_id",
+                      "requirement_revision",
+                      "state",
+                      "fence"
+                    ],
+                    "properties": {
+                      "checkpoint_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "question_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "question_version": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "request_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "cancelled"
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "clarification.answered"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "answer_id",
+                      "question_id",
+                      "question_version",
+                      "request_id",
+                      "checkpoint_id",
+                      "requirement_revision",
+                      "fence"
+                    ],
+                    "properties": {
+                      "answer_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "checkpoint_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "question_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "question_version": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      },
+                      "request_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "requirements.published"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "requirement_revision",
+                      "content_hash"
+                    ],
+                    "properties": {
+                      "content_hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "requirements.evidence_recorded"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "requirement_revision",
+                      "content_hash",
+                      "check_id_sha256"
+                    ],
+                    "properties": {
+                      "check_id_sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "content_hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "requirements.confirmed"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "confirmation_id",
+                      "requirement_revision",
+                      "content_hash"
+                    ],
+                    "properties": {
+                      "confirmation_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "content_hash": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64",
+                        "maximum": 9007199254740991,
+                        "minimum": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "analysis.intent_created"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "contract_version",
+                      "tracker_instance_id",
+                      "project_id",
+                      "task_id",
+                      "root_task_id",
+                      "intent_id",
+                      "confirmation_id",
+                      "requirement_revision",
+                      "content_hash",
+                      "stage",
+                      "status",
+                      "role",
+                      "workflow",
+                      "mode",
+                      "scope",
+                      "cycle",
+                      "attempt",
+                      "operation_key",
+                      "created_at"
+                    ],
+                    "properties": {
+                      "attempt": {
+                        "type": "integer",
+                        "format": "int32",
+                        "minimum": 0
+                      },
+                      "confirmation_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "content_hash": {
+                        "type": "string"
+                      },
+                      "contract_version": {
+                        "type": "integer",
+                        "format": "int32",
+                        "minimum": 0
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "cycle": {
+                        "type": "integer",
+                        "format": "int32",
+                        "minimum": 0
+                      },
+                      "intent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "mode": {
+                        "type": "string"
+                      },
+                      "operation_key": {
+                        "type": "string"
+                      },
+                      "project_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "role": {
+                        "type": "string"
+                      },
+                      "root_task_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "scope": {
+                        "type": "string"
+                      },
+                      "stage": {
+                        "$ref": "#/components/schemas/AnalysisStage"
+                      },
+                      "status": {
+                        "$ref": "#/components/schemas/AnalysisStatus"
+                      },
+                      "task_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "tracker_instance_id": {
+                        "type": "string"
+                      },
+                      "workflow": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "analysis.assignment_reserved"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "assignment_id",
+                      "execution_id",
+                      "workflow_task_ref",
+                      "intent_id",
+                      "routing_snapshot_id",
+                      "agent_id",
+                      "fencing_token",
+                      "assignment_hash"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": "string"
+                      },
+                      "assignment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "intent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "routing_snapshot_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "workflow_task_ref": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "MetadataInputRef": {
+        "type": "object",
+        "required": [
+          "snapshot_ref",
+          "sha256"
+        ],
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "snapshot_ref": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MetadataPage": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "projection",
+          "after",
+          "next_after",
+          "has_more",
+          "events"
+        ],
+        "properties": {
+          "after": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetadataEvent"
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_after": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]{0,18})$"
+          },
+          "projection": {
+            "$ref": "#/components/schemas/MetadataProjection"
+          }
+        },
+        "additionalProperties": false
+      },
+      "MetadataProjection": {
+        "type": "string",
+        "enum": [
+          "metadata_v1"
+        ]
+      },
       "MoveIssueRequest": {
         "type": "object",
         "required": [
@@ -5688,6 +10152,75 @@
           }
         }
       },
+      "OutboxEvent": {
+        "type": "object",
+        "required": [
+          "sequence",
+          "event_id",
+          "task_id",
+          "event_type",
+          "payload",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "event_type": {
+            "type": "string"
+          },
+          "payload": {},
+          "sequence": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "OutboxResponse": {
+        "type": "object",
+        "required": [
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OutboxEvent"
+            }
+          }
+        }
+      },
+      "OwnerCas": {
+        "type": "object",
+        "required": [
+          "expected_version",
+          "version"
+        ],
+        "properties": {
+          "expected_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "PasswordResetConfirm": {
         "type": "object",
         "required": [
@@ -5713,6 +10246,554 @@
             "type": "string"
           }
         }
+      },
+      "Permissions": {
+        "type": "object",
+        "required": [
+          "can_answer",
+          "can_confirm"
+        ],
+        "properties": {
+          "can_answer": {
+            "type": "boolean"
+          },
+          "can_confirm": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PmAssignment": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "agent_id",
+          "version",
+          "machine_subject"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "machine_subject": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftAdmissionState": {
+        "type": "string",
+        "enum": [
+          "reserved"
+        ]
+      },
+      "PmDraftBinding": {
+        "type": "object",
+        "required": [
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject"
+        ],
+        "properties": {
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftExecution": {
+        "type": "object",
+        "required": [
+          "ordinal",
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^SDLC-[1-9][0-9]{0,18}$"
+          },
+          "ordinal": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftInput": {
+        "type": "object",
+        "required": [
+          "snapshot_ref",
+          "title",
+          "description",
+          "sha256"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 100000
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "snapshot_ref": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftInputResponse": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "input"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "input": {
+            "$ref": "#/components/schemas/PmDraftInput"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftOperation": {
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "request_sha256",
+          "result"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/PmDraftReservation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftReadback": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "binding",
+          "owner_version",
+          "current",
+          "operation"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/PmDraftBinding"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PmDraftReservation"
+              }
+            ]
+          },
+          "operation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PmDraftOperation"
+              }
+            ]
+          },
+          "owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftReservation": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "variant",
+          "binding",
+          "owner_cas",
+          "assignment",
+          "execution",
+          "input",
+          "assignment_operation_key",
+          "admission_state",
+          "dispatch_allowed"
+        ],
+        "properties": {
+          "admission_state": {
+            "$ref": "#/components/schemas/PmDraftAdmissionState"
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/PmAssignment"
+          },
+          "assignment_operation_key": {
+            "type": "string"
+          },
+          "binding": {
+            "$ref": "#/components/schemas/PmDraftBinding"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "dispatch_allowed": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "execution": {
+            "$ref": "#/components/schemas/PmDraftExecution"
+          },
+          "input": {
+            "$ref": "#/components/schemas/MetadataInputRef"
+          },
+          "owner_cas": {
+            "$ref": "#/components/schemas/OwnerCas"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/PmDraftVariant"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftVariant": {
+        "type": "string",
+        "enum": [
+          "pm_draft_reserved"
+        ]
+      },
+      "PreparedAnalysisAssignment": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "intent_id",
+          "confirmation_id",
+          "requirement_revision",
+          "content_hash",
+          "routing_snapshot_id",
+          "routing_policy_version",
+          "routing_hash",
+          "assignment_id",
+          "execution_id",
+          "reservation_version",
+          "workflow_task_ref",
+          "agent_id",
+          "route",
+          "stage",
+          "role_key",
+          "workflow_key",
+          "mode_key",
+          "scope",
+          "cycle_number",
+          "attempt_number",
+          "fencing_token",
+          "lease_id",
+          "assignment_operation_key",
+          "assignment_hash",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_operation_key": {
+            "type": "string"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "confirmation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cycle_number": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 0,
+            "minimum": 0
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "intent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mode_key": {
+            "type": "string"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "reservation_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "role_key": {
+            "type": "string"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "route": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "routing_hash": {
+            "type": "string"
+          },
+          "routing_policy_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/AnalysisStage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "workflow_key": {
+            "type": "string"
+          },
+          "workflow_task_ref": {
+            "type": "string",
+            "pattern": "^SDLC-[1-9][0-9]{0,18}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectAccess": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_ids"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "project_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectDirectory": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "projects",
+          "next_cursor"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectDirectoryEntry"
+            }
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectDirectoryEntry": {
+        "type": "object",
+        "required": [
+          "id",
+          "key",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "ProjectListResponse": {
         "type": "object",
@@ -5817,6 +10898,288 @@
           }
         }
       },
+      "PublishQuestion": {
+        "type": "object",
+        "required": [
+          "fence",
+          "request_id",
+          "question_id",
+          "requirement_revision",
+          "checkpoint_id",
+          "text",
+          "rationale",
+          "required",
+          "mode",
+          "options",
+          "idempotency_key"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_question_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/QuestionMode"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionOption"
+            }
+          },
+          "question_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "recommended_option_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "requirement_reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublishRevision": {
+        "type": "object",
+        "required": [
+          "fence",
+          "document",
+          "idempotency_key"
+        ],
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/RequirementsDocument"
+          },
+          "expected_requirement_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Question": {
+        "type": "object",
+        "required": [
+          "id",
+          "request_id",
+          "task_id",
+          "root_task_id",
+          "version",
+          "requirement_revision",
+          "assignment_id",
+          "execution_id",
+          "agent_id",
+          "assignment_version",
+          "checkpoint_id",
+          "text",
+          "rationale",
+          "required",
+          "mode",
+          "options",
+          "state",
+          "author_subject",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "answer": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Answer"
+              }
+            ]
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "author_subject": {
+            "type": "string"
+          },
+          "checkpoint_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/QuestionMode"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuestionOption"
+            }
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "recommended_option_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "requirement_reference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/QuestionState"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "QuestionMode": {
+        "type": "string",
+        "enum": [
+          "single",
+          "multiple",
+          "text"
+        ]
+      },
+      "QuestionOption": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "consequences"
+        ],
+        "properties": {
+          "consequences": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "is_custom": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "QuestionState": {
+        "type": "string",
+        "enum": [
+          "open",
+          "answered",
+          "superseded",
+          "cancelled"
+        ]
+      },
+      "QuestionsResponse": {
+        "type": "object",
+        "required": [
+          "questions"
+        ],
+        "properties": {
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Question"
+            }
+          }
+        }
+      },
       "RefreshRequest": {
         "type": "object",
         "properties": {
@@ -5854,6 +11217,505 @@
           }
         }
       },
+      "RequirementsDocument": {
+        "type": "object",
+        "required": [
+          "goal",
+          "scope",
+          "exclusions",
+          "scenarios",
+          "acceptance_criteria",
+          "constraints",
+          "dependencies",
+          "assumptions",
+          "checklist",
+          "prerequisites"
+        ],
+        "properties": {
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclusions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "goal": {
+            "type": "string"
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "RequirementsRevision": {
+        "type": "object",
+        "required": [
+          "goal",
+          "scope",
+          "exclusions",
+          "scenarios",
+          "acceptance_criteria",
+          "constraints",
+          "dependencies",
+          "assumptions",
+          "checklist",
+          "prerequisites",
+          "revision",
+          "content_hash",
+          "author_subject",
+          "created_at"
+        ],
+        "properties": {
+          "acceptance_criteria": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "author_subject": {
+            "type": "string"
+          },
+          "checklist": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "constraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "exclusions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "goal": {
+            "type": "string"
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReserveAnalysis": {
+        "type": "object",
+        "required": [
+          "intent_id",
+          "routing_snapshot_id",
+          "requirement_revision",
+          "content_hash",
+          "expected_reservation_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "expected_reservation_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 0,
+            "minimum": 0
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "intent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReservePmDraft": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "expected_assignment_version",
+          "requested_agent_id",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_assignment_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 0
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "requested_agent_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RevisionDiff": {
+        "type": "object",
+        "required": [
+          "before",
+          "after"
+        ],
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/RequirementsRevision"
+          },
+          "before": {
+            "$ref": "#/components/schemas/RequirementsRevision"
+          }
+        }
+      },
+      "RevisionsResponse": {
+        "type": "object",
+        "required": [
+          "revisions"
+        ],
+        "properties": {
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RequirementsRevision"
+            }
+          }
+        }
+      },
+      "RoleRoute": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "fleet_config_revision",
+          "package_commit",
+          "package_manifest_sha256",
+          "namespace_id",
+          "namespace_name",
+          "workflow_id",
+          "workflow_key",
+          "profile",
+          "workflow_catalog_version",
+          "workflow_catalog_sha256"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fleet_config_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "namespace_id": {
+            "type": "string"
+          },
+          "namespace_name": {
+            "type": "string"
+          },
+          "package_commit": {
+            "type": "string"
+          },
+          "package_manifest_sha256": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "workflow_catalog_sha256": {
+            "type": "string"
+          },
+          "workflow_catalog_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "workflow_id": {
+            "type": "string"
+          },
+          "workflow_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RoleRoutes": {
+        "type": "object",
+        "required": [
+          "project_manager",
+          "analyst",
+          "architect",
+          "developer",
+          "reviewer",
+          "tester",
+          "devops"
+        ],
+        "properties": {
+          "analyst": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "architect": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "developer": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "devops": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "project_manager": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "reviewer": {
+            "$ref": "#/components/schemas/RoleRoute"
+          },
+          "tester": {
+            "$ref": "#/components/schemas/RoleRoute"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RoutingPolicy": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "version",
+          "routing_hash",
+          "routes",
+          "verification",
+          "native_ready",
+          "dispatch_allowed",
+          "author_subject",
+          "created_at"
+        ],
+        "properties": {
+          "author_subject": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dispatch_allowed": {
+            "type": "boolean"
+          },
+          "native_ready": {
+            "type": "boolean"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "routes": {
+            "$ref": "#/components/schemas/RoleRoutes"
+          },
+          "routing_hash": {
+            "type": "string"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/RoutingVerification"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "RoutingVerification": {
+        "type": "string",
+        "enum": [
+          "declared"
+        ]
+      },
+      "SdlcContext": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "stage",
+          "permissions"
+        ],
+        "properties": {
+          "assignment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PmAssignment"
+              }
+            ]
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/Permissions"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "waiting_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "SetCustomFieldValueRequest": {
         "type": "object",
         "required": [
@@ -5862,6 +11724,32 @@
         "properties": {
           "value": {}
         }
+      },
+      "SetRoutingPolicy": {
+        "type": "object",
+        "required": [
+          "expected_version",
+          "routes",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "routes": {
+            "$ref": "#/components/schemas/RoleRoutes"
+          }
+        },
+        "additionalProperties": false
       },
       "SprintListResponse": {
         "type": "object",
@@ -5935,6 +11823,15 @@
           }
         }
       },
+      "Stage": {
+        "type": "string",
+        "enum": [
+          "Draft",
+          "Clarification",
+          "Backlog",
+          "Analysis"
+        ]
+      },
       "StatusResponse": {
         "type": "object",
         "required": [
@@ -5997,6 +11894,67 @@
           },
           "value": {}
         }
+      },
+      "TaskRoutingSnapshot": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "snapshot_id",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "confirmation_id",
+          "requirement_revision",
+          "content_hash",
+          "policy",
+          "created_at"
+        ],
+        "properties": {
+          "confirmation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/RoutingPolicy"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "TotpCodeRequest": {
         "type": "object",
