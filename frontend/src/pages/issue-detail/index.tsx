@@ -172,21 +172,22 @@ export function IssueDetailPage() {
         {issueQuery.error && (
           <ErrorState message={t('issue.refreshError')} onRetry={() => void issueQuery.refetch()} />
         )}
-        <div className="mb-2 text-sm text-text-muted">
-          <Link
-            to={`/projects/${issue.project_key}/board`}
-            className="inline-flex min-h-6 items-center rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-          >
-            {issue.project_name}
-          </Link>{' '}
-          / {issue.key}
-        </div>
-
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <span className="rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-text-primary">
-            {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+            <div className="min-w-0 max-w-full break-words text-sm text-text-muted">
+              <Link
+                to={`/projects/${issue.project_key}/board`}
+                className="inline-block min-h-6 max-w-full break-words rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              >
+                {issue.project_name}
+              </Link>{' '}
+              / {issue.key}
+            </div>
+            <span className="shrink-0 rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-text-primary">
+              {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
+            </span>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               size="sm"
