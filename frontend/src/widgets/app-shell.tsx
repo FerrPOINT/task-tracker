@@ -271,7 +271,7 @@ export function AppShell() {
             </DialogPrimitive.Root>
             <Link
               to="/"
-              className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus min-[360px]:flex"
+              className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:flex"
               aria-label={t('app.name')}
             >
               <PlatformMark size="sm" withName={false} />
