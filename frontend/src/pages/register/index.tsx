@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
-import { ThemeToggle } from '@sdlc/ui/ui'
 import { PlatformMark } from '@sdlc/ui/ui'
 import { useRegister } from '@/shared/api/hooks'
 
@@ -36,9 +35,6 @@ export function RegisterPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="absolute right-4 top-4">
-        <ThemeToggle />
-      </div>
       <div className="w-full max-w-sm rounded-lg border border-border bg-surface p-6 shadow-sm">
         <div className="mb-6 flex items-center justify-center">
           <PlatformMark withName />
