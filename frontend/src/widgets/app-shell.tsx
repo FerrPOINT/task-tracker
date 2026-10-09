@@ -4,6 +4,7 @@ import {
   useNamespaceContext,
 } from './namespace-context'
 import { useEffect, useId, useState } from 'react'
+import { SidebarItem } from '@sdlc/ui/ui'
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
 import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
 import { useLocation, Outlet } from 'react-router'
@@ -94,21 +95,18 @@ function SidebarLink({
   compact?: boolean
 }) {
   return (
-    <Link
-      to={to}
-      onClick={onClick}
-      title={compact ? label : undefined}
-      aria-label={compact ? label : undefined}
-      aria-current={active ? 'page' : undefined}
-      className={`flex min-h-11 items-center rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:min-h-10 ${compact ? 'justify-center' : 'gap-3'} ${
-        active
-          ? 'bg-surface-raised text-text-primary'
-          : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
-      }`}
-    >
-      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-      {!compact && <span className="truncate">{label}</span>}
-    </Link>
+    <SidebarItem asChild active={active} compact={compact}>
+      <Link
+        to={to}
+        onClick={onClick}
+        title={compact ? label : undefined}
+        aria-label={compact ? label : undefined}
+        aria-current={active ? 'page' : undefined}
+      >
+        <Icon aria-hidden="true" />
+        {!compact && <span className="base-sidebar-item-label">{label}</span>}
+      </Link>
+    </SidebarItem>
   )
 }
 
@@ -164,14 +162,14 @@ function ProjectNavigation({
         ]
         return (
           <section key={project.id} aria-label={label}>
-            <button
-              type="button"
+            <SidebarItem
+              kind="group"
+              compact={compact}
               aria-label={label}
               aria-expanded={open}
               aria-controls={contentId}
               title={label}
               onClick={() => onToggle(project.id)}
-              className={`flex min-h-11 w-full min-w-0 items-center rounded-md px-3 text-left text-xs font-medium text-text-muted hover:bg-surface-raised hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:min-h-10 ${compact ? 'justify-center' : 'gap-2'}`}
             >
               {compact ? (
                 <FolderKanban className="h-4 w-4" aria-hidden="true" />
@@ -184,7 +182,7 @@ function ProjectNavigation({
                   />
                 </>
               )}
-            </button>
+            </SidebarItem>
             <div id={contentId} hidden={!open}>
               {items.map((item) => {
                 const target = project.namespace
@@ -384,7 +382,7 @@ export function AppShell() {
                       {t('navigation.create')}
                     </Link>
                   </Button>
-                  <nav aria-label={t('navigation.mainNav')}>
+                  <nav className="flex flex-col gap-1" aria-label={t('navigation.mainNav')}>
                     {navItems.map((item) => (
                       <SidebarLink
                         key={item.to}
@@ -638,7 +636,7 @@ export function AppShell() {
               )}
             </Button>
           </div>
-          <nav aria-label={t('navigation.mainNav')}>
+          <nav className="flex flex-col gap-1" aria-label={t('navigation.mainNav')}>
             {navItems.map((item) => (
               <SidebarLink
                 key={item.to}
