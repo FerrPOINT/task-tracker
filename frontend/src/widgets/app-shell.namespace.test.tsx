@@ -287,6 +287,7 @@ describe('project sidebar and Namespace selection', () => {
     expect(heading.querySelector('svg')).not.toBeNull()
     const list = document.getElementById(heading.getAttribute('aria-controls')!)!
     expect(list).toHaveClass('base-sidebar-list')
+    expect(list).toHaveAttribute('data-nested', 'true')
     expect(list).not.toHaveAttribute('hidden')
     for (const link of within(list).getAllByRole('link'))
       expect(link).toHaveClass('base-sidebar-item')
@@ -300,7 +301,20 @@ describe('project sidebar and Namespace selection', () => {
     expect(mobileList).toHaveAttribute('hidden')
     await user.click(mobileHeading)
     expect(mobileList).not.toHaveAttribute('hidden')
+    expect(mobileList).toHaveAttribute('data-nested', 'true')
     expect(within(mobileList).getByRole('link', { name: 'Доска' })).toHaveClass('base-sidebar-item')
+  })
+
+  it('disables nested indentation when the whole sidebar is compact', async () => {
+    const user = userEvent.setup()
+    mount()
+    const heading = await screen.findByRole('button', { name: 'Одинаковый проект · A' })
+    const list = document.getElementById(heading.getAttribute('aria-controls')!)!
+    await user.click(screen.getByRole('button', { name: 'Свернуть боковую панель' }))
+    expect(list).toHaveAttribute('data-nested', 'false')
+    expect(within(list).getByRole('link', { name: 'Доска' })).toHaveAttribute('title', 'Доска')
+    await user.click(screen.getByRole('button', { name: 'Развернуть боковую панель' }))
+    expect(list).toHaveAttribute('data-nested', 'true')
   })
 
   it('reads the whole paginated catalog for both the picker and sidebar', async () => {

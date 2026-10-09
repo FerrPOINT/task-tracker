@@ -182,7 +182,7 @@ function ProjectNavigation({
                 </>
               )}
             </SidebarItem>
-            <div id={contentId} hidden={!open} className="base-sidebar-list">
+            <div id={contentId} hidden={!open} className="base-sidebar-list" data-nested={!compact}>
               {items.map((item) => {
                 const target = project.namespace
                   ? withNamespaceLocation(item.to, project.namespace)
