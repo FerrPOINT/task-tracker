@@ -34,13 +34,27 @@ export function useNamespaceContext() {
   })
   return { ref, malformed, query }
 }
+export function useNamespaceCatalog(enabled = true) {
+  return useQuery({
+    queryKey: ['namespace-contexts', 'task-tracker'],
+    enabled,
+    queryFn: async ({ signal }) => {
+      const items: ResourceContext[] = []
+      for (let offset = 0; ; offset += 100) {
+        const page = await get<ResourceContext[]>(
+          `/api/v1/namespace-contexts?limit=100&offset=${offset}`,
+          signal,
+        )
+        items.push(...page)
+        if (page.length < 100) return items
+      }
+    },
+  })
+}
 export function NamespaceShellContext() {
   const navigate = useNavigate()
   const { ref, malformed, query } = useNamespaceContext()
-  const catalog = useQuery({
-    queryKey: ['namespace-contexts', 'task-tracker'],
-    queryFn: ({ signal }) => get<ResourceContext[]>('/api/v1/namespace-contexts?limit=100', signal),
-  })
+  const catalog = useNamespaceCatalog()
   const items = [...(catalog.data ?? [])]
   if (
     query.data &&

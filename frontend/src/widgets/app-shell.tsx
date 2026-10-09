@@ -1,6 +1,11 @@
-import { NamespaceShellContext, useNamespaceContext } from './namespace-context'
-import { useEffect, useState } from 'react'
+import {
+  NamespaceShellContext,
+  useNamespaceCatalog,
+  useNamespaceContext,
+} from './namespace-context'
+import { useEffect, useId, useState } from 'react'
 import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
 import { useLocation, Outlet } from 'react-router'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
@@ -106,11 +111,117 @@ function SidebarLink({
   )
 }
 
+type ProjectNavigationGroup = {
+  id: string
+  key: string
+  name: string
+  namespace?: NamespaceLocation
+}
+
+function ProjectNavigation({
+  groups,
+  collapsed,
+  onToggle,
+  isActive,
+  compact = false,
+  onNavigate,
+}: {
+  groups: ProjectNavigationGroup[]
+  collapsed: Set<string>
+  onToggle: (id: string) => void
+  isActive: (path: string) => boolean
+  compact?: boolean
+  onNavigate?: () => void
+}) {
+  const { t } = useTranslation()
+  const prefix = useId()
+  if (!groups.length) return null
+  return (
+    <nav
+      aria-label={t('navigation.projectNav')}
+      className="mt-3 space-y-2 border-t border-border pt-3"
+    >
+      {groups.map((project, index) => {
+        const contentId = `${prefix}-project-${index}`
+        const label = `${project.name} · ${project.key}`
+        const open = !collapsed.has(project.id)
+        const key = encodeURIComponent(project.key)
+        const items = [
+          { to: `/projects/${key}/board`, icon: Columns2, labelKey: 'navigation.board' },
+          { to: `/projects/${key}/backlog`, icon: List, labelKey: 'navigation.backlog' },
+          {
+            to: `/reports?project_key=${key}`,
+            icon: BarChart3,
+            labelKey: 'navigation.projectReports',
+          },
+          { to: `/projects/${key}/trash`, icon: Trash2, labelKey: 'trash.title' },
+          {
+            to: `/projects/${key}/settings/custom-fields`,
+            icon: Settings2,
+            labelKey: 'navigation.settings',
+          },
+        ]
+        return (
+          <section key={project.id} aria-label={label}>
+            <button
+              type="button"
+              aria-label={label}
+              aria-expanded={open}
+              aria-controls={contentId}
+              title={label}
+              onClick={() => onToggle(project.id)}
+              className={`flex min-h-11 w-full min-w-0 items-center rounded-md px-3 text-left text-xs font-medium text-text-muted hover:bg-surface-raised hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:min-h-10 ${compact ? 'justify-center' : 'gap-2'}`}
+            >
+              {compact ? (
+                <FolderKanban className="h-4 w-4" aria-hidden="true" />
+              ) : (
+                <>
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 ${open ? '' : '-rotate-90'}`}
+                    aria-hidden="true"
+                  />
+                </>
+              )}
+            </button>
+            <div id={contentId} hidden={!open}>
+              {items.map((item) => {
+                const target = project.namespace
+                  ? withNamespaceLocation(item.to, project.namespace)
+                  : item.to
+                return (
+                  <SidebarLink
+                    key={item.to}
+                    to={target}
+                    icon={item.icon}
+                    label={t(item.labelKey)}
+                    active={isActive(target)}
+                    compact={compact}
+                    onClick={onNavigate}
+                  />
+                )
+              })}
+            </div>
+          </section>
+        )
+      })}
+    </nav>
+  )
+}
+
 export function AppShell() {
   const { t } = useTranslation()
   const location = useLocation()
-  const projectKey = useCurrentProjectKey()
+  const routeProjectKey = useCurrentProjectKey()
   const namespace = useNamespaceContext()
+  const namespaceEnabled = import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
+  const catalog = useNamespaceCatalog(namespaceEnabled)
+  const projectKey = namespace.ref
+    ? namespace.query.isError
+      ? undefined
+      : namespace.query.data?.resource_key
+    : routeProjectKey
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () =>
@@ -128,6 +239,50 @@ export function AppShell() {
   }, [])
   const { data: projects = [] } = useProjects()
   const currentProject = projects.find((project) => project.key === projectKey)
+  const contexts =
+    namespace.malformed || namespace.query.isError
+      ? []
+      : namespace.ref
+        ? namespace.query.data
+          ? [namespace.query.data]
+          : []
+        : catalog.isError
+          ? []
+          : (catalog.data ?? [])
+  const projectGroups: ProjectNavigationGroup[] = namespaceEnabled
+    ? contexts.map((context) => ({
+        id: `${context.binding.resource.instance_id}/${context.binding.resource.resource_id}`,
+        key: context.resource_key,
+        name: context.label,
+        namespace: context.binding.namespace,
+      }))
+    : projectKey
+      ? [
+          {
+            id: currentProject?.id ?? projectKey,
+            key: projectKey,
+            name: currentProject?.name ?? projectKey,
+          },
+        ]
+      : projects.map((project) => ({ id: project.id, key: project.key, name: project.name }))
+  const selectedProjectId = namespace.ref && projectGroups[0]?.id
+  useEffect(() => {
+    if (!selectedProjectId) return
+    setCollapsedProjects((current) => {
+      if (!current.has(selectedProjectId)) return current
+      const next = new Set(current)
+      next.delete(selectedProjectId)
+      return next
+    })
+  }, [selectedProjectId])
+  function toggleProject(id: string) {
+    setCollapsedProjects((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
   const { data: user } = useCurrentUser()
   const { data: notificationList } = useNotifications()
   const markNotificationRead = useMarkNotificationRead()
@@ -150,24 +305,6 @@ export function AppShell() {
     { to: '/reports', icon: BarChart3, labelKey: 'navigation.reports' },
     { to: '/admin', icon: ShieldCheck, labelKey: 'navigation.admin' },
   ]
-
-  const projectItems = projectKey
-    ? [
-        { to: `/projects/${projectKey}/board`, icon: Columns2, labelKey: 'navigation.board' },
-        { to: `/projects/${projectKey}/backlog`, icon: List, labelKey: 'navigation.backlog' },
-        {
-          to: `/reports?project_key=${projectKey}`,
-          icon: BarChart3,
-          labelKey: 'navigation.projectReports',
-        },
-        { to: `/projects/${projectKey}/trash`, icon: Trash2, labelKey: 'trash.title' },
-        {
-          to: `/projects/${projectKey}/settings/custom-fields`,
-          icon: Settings2,
-          labelKey: 'navigation.settings',
-        },
-      ]
-    : []
 
   function isActive(path: string) {
     const [pathname, query] = path.split('?')
@@ -246,26 +383,13 @@ export function AppShell() {
                       />
                     ))}
                   </nav>
-                  {projectKey && (
-                    <nav
-                      aria-label={t('navigation.projectNav')}
-                      className="mt-4 border-t border-border pt-3"
-                    >
-                      <div className="mb-1 truncate px-3 text-xs font-medium uppercase text-text-muted">
-                        {currentProject?.name ?? projectKey}
-                      </div>
-                      {projectItems.map((item) => (
-                        <SidebarLink
-                          key={item.to}
-                          to={item.to}
-                          icon={item.icon}
-                          label={t(item.labelKey)}
-                          active={isActive(item.to)}
-                          onClick={closeMobileMenu}
-                        />
-                      ))}
-                    </nav>
-                  )}
+                  <ProjectNavigation
+                    groups={projectGroups}
+                    collapsed={collapsedProjects}
+                    onToggle={toggleProject}
+                    isActive={isActive}
+                    onNavigate={closeMobileMenu}
+                  />
                 </DialogPrimitive.Content>
               </DialogPrimitive.Portal>
             </DialogPrimitive.Root>
@@ -470,7 +594,7 @@ export function AppShell() {
 
       <div className="flex min-h-[calc(100dvh-var(--shell-header-height))]">
         <aside
-          className={`hidden shrink-0 flex-col gap-2 border-r border-border bg-surface p-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)]' : 'w-[var(--shell-sidebar-expanded)]'}`}
+          className={`sticky top-[var(--shell-header-height)] hidden h-[calc(100dvh-var(--shell-header-height))] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-surface p-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)]' : 'w-[var(--shell-sidebar-expanded)]'}`}
         >
           <div
             className={`flex min-h-9 items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}
@@ -513,28 +637,13 @@ export function AppShell() {
               />
             ))}
           </nav>
-          {projectKey && (
-            <nav
-              aria-label={t('navigation.projectNav')}
-              className="mt-3 border-t border-border pt-3"
-            >
-              {!sidebarCollapsed && (
-                <div className="mb-1 truncate px-3 text-xs font-medium uppercase text-text-muted">
-                  {currentProject?.name ?? projectKey}
-                </div>
-              )}
-              {projectItems.map((item) => (
-                <SidebarLink
-                  key={item.to}
-                  to={item.to}
-                  icon={item.icon}
-                  label={t(item.labelKey)}
-                  active={isActive(item.to)}
-                  compact={sidebarCollapsed}
-                />
-              ))}
-            </nav>
-          )}
+          <ProjectNavigation
+            groups={projectGroups}
+            collapsed={collapsedProjects}
+            onToggle={toggleProject}
+            isActive={isActive}
+            compact={sidebarCollapsed}
+          />
         </aside>
 
         <main className="shell-main flex-1">
@@ -543,11 +652,12 @@ export function AppShell() {
               <p role="alert" className="text-danger">
                 Некорректная ссылка на проект.
               </p>
-            ) : namespace.ref && projectKey && namespace.query.isPending ? (
+            ) : namespace.ref && routeProjectKey && namespace.query.isPending ? (
               <p role="status">Проверяем привязку Tracker…</p>
             ) : namespace.ref &&
-              projectKey &&
-              (namespace.query.isError || namespace.query.data?.resource_key !== projectKey) ? (
+              routeProjectKey &&
+              (namespace.query.isError ||
+                namespace.query.data?.resource_key !== routeProjectKey) ? (
               <p role="alert" className="text-danger">
                 Ресурс не подтверждён в выбранном проекте.
               </p>
