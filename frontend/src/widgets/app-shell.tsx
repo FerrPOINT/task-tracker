@@ -159,24 +159,30 @@ function ProjectNavigation({
           },
         ]
         return (
-          <ProjectNavigationGroup key={project.id} name={project.name} projectKey={project.key}
-            compact={compact} open={open} onToggle={() => onToggle(project.id)}>
-              {items.map((item) => {
-                const target = project.namespace
-                  ? withNamespaceLocation(item.to, project.namespace)
-                  : item.to
-                return (
-                  <SidebarLink
-                    key={item.to}
-                    to={target}
-                    icon={item.icon}
-                    label={t(item.labelKey)}
-                    active={isActive(target)}
-                    compact={compact}
-                    onClick={onNavigate}
-                  />
-                )
-              })}
+          <ProjectNavigationGroup
+            key={project.id}
+            name={project.name}
+            projectKey={project.key}
+            compact={compact}
+            open={open}
+            onToggle={() => onToggle(project.id)}
+          >
+            {items.map((item) => {
+              const target = project.namespace
+                ? withNamespaceLocation(item.to, project.namespace)
+                : item.to
+              return (
+                <SidebarLink
+                  key={item.to}
+                  to={target}
+                  icon={item.icon}
+                  label={t(item.labelKey)}
+                  active={isActive(target)}
+                  compact={compact}
+                  onClick={onNavigate}
+                />
+              )
+            })}
           </ProjectNavigationGroup>
         )
       })}
