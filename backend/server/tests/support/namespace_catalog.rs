@@ -4,12 +4,12 @@ pub fn tokens(tokens: &mut HashMap<String, Value>) {
     for (name, subject, scopes) in [
         (
             "sdlc_pat_namespace_reader",
-            "verifier",
+            "namespace-reader",
             vec!["task-tracker:read"],
         ),
         (
             "sdlc_pat_namespace_writer",
-            "verifier",
+            "namespace-reader",
             vec!["task-tracker:write"],
         ),
         (
@@ -28,10 +28,12 @@ pub async fn verify(
     client: &Client,
     base: &str,
     db: &DatabaseConnection,
-    project: Uuid,
+    source_project: Uuid,
     human: &str,
 ) {
     use shared::resource_context::{NamespaceRef, OwnerCommand, ResourceKind, ResourceRef};
+    let project = Uuid::new_v4();
+    sql(db, "INSERT INTO projects(id,key,name,owner_id,default_board_id) SELECT $1,'READR','Reader fixture',owner_id,$2 FROM projects WHERE id=$3", vec![project.into(), Uuid::new_v4().into(), source_project.into()]).await;
     let registry: Uuid = std::env::var("TT_NAMESPACE__REGISTRY_INSTANCE_ID")
         .unwrap()
         .parse()
@@ -84,8 +86,8 @@ pub async fn verify(
         page[0]["binding"]["namespace"]["namespace_id"],
         namespace.to_string()
     );
-    assert_eq!(page[0]["label"], "SDLC");
-    assert_eq!(page[0]["resource_key"], "SDLC");
+    assert_eq!(page[0]["label"], "Reader fixture");
+    assert_eq!(page[0]["resource_key"], "READR");
     let next: Value = client
         .get(format!("{base}/api/v1/namespace-projects?limit=1&offset=1"))
         .bearer_auth("sdlc_pat_namespace_reader")

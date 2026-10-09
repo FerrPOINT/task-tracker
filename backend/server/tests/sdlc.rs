@@ -429,7 +429,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     unsafe {
         std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{issuer}/jwks"));
         std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &issuer);
-        std::env::set_var("TT_NAMESPACE__READER_SUBJECTS", "verifier");
+        std::env::set_var("TT_NAMESPACE__READER_SUBJECTS", "namespace-reader");
         std::env::set_var(
             "TT_NAMESPACE__REGISTRY_INSTANCE_ID",
             "11111111-1111-4111-8111-111111111111",
