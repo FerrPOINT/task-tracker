@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
@@ -106,8 +107,11 @@ export function DashboardPage() {
                   to={`/projects/${project.key}/board`}
                   className="block min-h-11 rounded-sm p-3 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                 >
-                  <div className="mb-1 break-words text-sm font-medium text-text-primary">
-                    {project.key} · {project.name}
+                  <div className="mb-1 flex items-center gap-2 break-words text-sm font-medium text-text-primary">
+                    <ProjectAvatar projectKey={project.key} />
+                    <span className="min-w-0">
+                      {project.key} · {project.name}
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 text-xs text-text-muted">
                     <span className="rounded bg-surface-raised px-1.5 py-0.5">

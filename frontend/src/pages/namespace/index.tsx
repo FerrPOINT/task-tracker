@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { withNamespaceLocation } from '@sdlc/ui/lib'
@@ -30,7 +31,10 @@ export function NamespacePage() {
   const context = query.data
   return (
     <div className="space-y-5">
-      <h1 className="text-xl font-semibold">{context.label}</h1>
+      <h1 className="flex items-center gap-2 text-xl font-semibold">
+        <ProjectAvatar projectKey={context.resource_key} />
+        {context.label}
+      </h1>
       <p className="text-sm text-text-muted">
         {context.binding.state === 'archived'
           ? 'Проект в архиве. История доступна для чтения.'

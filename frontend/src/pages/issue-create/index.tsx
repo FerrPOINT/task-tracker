@@ -1,3 +1,4 @@
+import { ProjectPicker } from '@sdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { getProject } from '@/api/project'
 import { useSessionCommand } from '@sdlc/ui/lib'
@@ -235,25 +236,21 @@ export function IssueCreatePage() {
             <label htmlFor="issue-project" className="text-sm font-medium">
               {t('issueCreate.project')} *
             </label>
-            <select
+            <ProjectPicker
               id="issue-project"
-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+              className="w-full"
               value={selectedProjectKey}
-              onChange={(e) => updateProjectKey(e.target.value)}
+              options={projects.map((p) => ({
+                value: p.key,
+                label: `${p.name} (${p.key})`,
+                projectKey: p.key,
+              }))}
+              placeholder={t('issueCreate.selectProject')}
+              allowEmpty={false}
+              onChange={updateProjectKey}
               disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
-              required
-            >
-              {!currentProject && (
-                <option value="" disabled>
-                  {t('issueCreate.selectProject')}
-                </option>
-              )}
-              {projects.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.name} ({p.key})
-                </option>
-              ))}
-            </select>
+              aria-required="true"
+            />
           </div>
           <div className="space-y-2">
             <label htmlFor="issue-type" className="text-sm font-medium">

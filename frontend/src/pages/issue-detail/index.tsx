@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
@@ -177,8 +178,9 @@ export function IssueDetailPage() {
             <div className="min-w-0 max-w-full break-words text-sm text-text-muted">
               <Link
                 to={`/projects/${issue.project_key}/board`}
-                className="inline-block min-h-6 max-w-full break-words rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+                className="inline-flex items-center gap-2 min-h-6 max-w-full break-words rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               >
+                <ProjectAvatar projectKey={issue.project_key} size="xs" />
                 {issue.project_name}
               </Link>{' '}
               / {issue.key}

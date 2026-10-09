@@ -78,12 +78,14 @@ export function NamespaceShellContext() {
         : ''
   return (
     <NamespacePicker
+      projectIcons
       value={value}
       loading={catalog.isPending}
       unavailable={malformed || catalog.isError || Boolean(!allProjects && ref && query.isError)}
       options={items.map((item) => ({
         value: `${item.binding.namespace.registry_instance_id}/${item.binding.namespace.namespace_id}`,
         label: `${item.label} · ${item.resource_key ?? item.binding.namespace.namespace_id}`,
+        projectKey: item.resource_key,
       }))}
       onChange={(next) => {
         const [registry_instance_id = '', namespace_id = ''] = next.split('/')

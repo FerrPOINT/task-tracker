@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
@@ -49,7 +50,10 @@ export function ProjectFormDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? t('projects.editProject') : t('projects.createProject')}
+            <span className="flex items-center gap-2">
+              {isEdit && <ProjectAvatar projectKey={project.key} />}
+              {isEdit ? t('projects.editProject') : t('projects.createProject')}
+            </span>
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">

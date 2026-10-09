@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import {
   NamespaceShellContext,
   useNamespaceCatalog,
@@ -171,7 +172,7 @@ function ProjectNavigation({
               title={label}
               onClick={() => onToggle(project.id)}
             >
-              <FolderKanban aria-hidden="true" />
+              <ProjectAvatar projectKey={project.key} size="xs" />
               {!compact && (
                 <>
                   <span className="base-sidebar-item-label flex-1">{label}</span>
@@ -424,6 +425,7 @@ export function AppShell() {
                   title={currentProject?.name ?? t('navigation.projects')}
                   className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
                 >
+                  {currentProject && <ProjectAvatar projectKey={currentProject.key} size="xs" />}
                   <span className="truncate">
                     {currentProject?.name ?? t('navigation.projects')}
                   </span>
@@ -443,7 +445,8 @@ export function AppShell() {
                 {projects.map((project) => (
                   <DropdownMenuItem key={project.key} asChild>
                     <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
-                      <span className="truncate">{project.name}</span>
+                      <ProjectAvatar projectKey={project.key} size="xs" />
+                      <span className="min-w-0 flex-1 truncate">{project.name}</span>
                       <span className="text-xs text-text-muted">{project.key}</span>
                     </Link>
                   </DropdownMenuItem>

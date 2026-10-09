@@ -113,7 +113,7 @@ describe('project sidebar and Namespace selection', () => {
     expect(within(a).queryByRole('link', { name: 'Доска' })).not.toBeInTheDocument()
     expect(within(b).getByRole('link', { name: 'Бэклог' })).toBeVisible()
     await user.click(within(b).getByRole('link', { name: 'Доска' }))
-    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue(''))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Namespace' })).toHaveValue(''))
     expect(screen.getByRole('region', { name: 'Одинаковый проект · A' })).toBeInTheDocument()
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(screen.getByLabelText('Current URL')).toHaveTextContent(
@@ -121,7 +121,7 @@ describe('project sidebar and Namespace selection', () => {
     )
     await user.click(screen.getByRole('link', { name: 'Task detail' }))
     expect(screen.getByLabelText('Current URL')).toHaveTextContent('tab=worklog&project_scope=all')
-    expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Namespace' })).toHaveValue('')
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     await user.click(screen.getByRole('button', { name: 'Navigate backlog' }))
     expect(screen.getByLabelText('Current URL')).toHaveTextContent(
@@ -135,8 +135,9 @@ describe('project sidebar and Namespace selection', () => {
     mount()
     await screen.findByRole('button', { name: 'Одинаковый проект · A' })
     await user.click(screen.getByRole('button', { name: 'Одинаковый проект · A' }))
-    const picker = screen.getByRole('combobox', { name: 'Namespace' })
-    await user.selectOptions(picker, selected(0))
+    const picker = screen.getByRole('button', { name: 'Namespace' })
+    await user.click(picker)
+    await user.click(screen.getByRole('menuitemradio', { name: 'Одинаковый проект · A' }))
     await waitFor(() =>
       expect(
         screen.queryByRole('region', { name: 'Одинаковый проект · B' }),
@@ -152,10 +153,12 @@ describe('project sidebar and Namespace selection', () => {
       'href',
       `/issues/create?project_key=A&registry_instance_id=${registry}&namespace_id=${refs[0]}`,
     )
-    await user.selectOptions(picker, selected(1))
+    await user.click(picker)
+    await user.click(screen.getByRole('menuitemradio', { name: 'Одинаковый проект · B' }))
     await screen.findByRole('button', { name: 'Одинаковый проект · B' })
     expect(screen.queryByRole('region', { name: 'Одинаковый проект · A' })).not.toBeInTheDocument()
-    await user.selectOptions(picker, '')
+    await user.click(picker)
+    await user.click(screen.getByRole('menuitemradio', { name: 'Все проекты' }))
     await screen.findByRole('button', { name: 'Одинаковый проект · A' })
     expect(screen.getByRole('button', { name: 'Одинаковый проект · B' })).toHaveAttribute(
       'aria-expanded',
@@ -182,8 +185,8 @@ describe('project sidebar and Namespace selection', () => {
     )
     mount(`/projects/A/board${search(0)}`)
     await screen.findByRole('alert')
-    expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue(selected(0))
-    expect(screen.getByRole('combobox', { name: 'Namespace' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Namespace' })).toHaveValue(selected(0))
+    expect(screen.getByRole('button', { name: 'Namespace' })).toBeDisabled()
     expect(screen.queryByRole('navigation', { name: 'Навигация проекта' })).not.toBeInTheDocument()
     expect(screen.queryByText('Wrong fallback')).not.toBeInTheDocument()
   })
@@ -200,7 +203,7 @@ describe('project sidebar and Namespace selection', () => {
     await user.click(within(b).getByRole('button', { name: 'Одинаковый проект · B' }))
     await user.click(within(b).getByRole('link', { name: 'Бэклог' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Namespace' })).toHaveValue('')
     expect(screen.getAllByRole('region')).toHaveLength(2)
   })
 
@@ -208,9 +211,10 @@ describe('project sidebar and Namespace selection', () => {
     const user = userEvent.setup()
     mount(`/projects/B/trash${search(1)}&project_scope=all`)
     await screen.findByRole('button', { name: 'Одинаковый проект · A' })
-    const picker = screen.getByRole('combobox', { name: 'Namespace' })
+    const picker = screen.getByRole('button', { name: 'Namespace' })
     expect(picker).toHaveValue('')
-    await user.selectOptions(picker, selected(0))
+    await user.click(picker)
+    await user.click(screen.getByRole('menuitemradio', { name: 'Одинаковый проект · A' }))
     await waitFor(() => expect(screen.getAllByRole('region')).toHaveLength(1))
     await user.click(screen.getByRole('button', { name: 'Back' }))
     await waitFor(() => expect(screen.getAllByRole('region')).toHaveLength(2))
@@ -223,7 +227,7 @@ describe('project sidebar and Namespace selection', () => {
   it('keeps all projects visible while rejecting a foreign resource binding', async () => {
     mount(`/projects/WRONG/board${search(0)}&project_scope=all`)
     await screen.findByRole('button', { name: 'Одинаковый проект · B' })
-    expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Namespace' })).toHaveValue('')
     expect(screen.getByRole('alert')).toHaveTextContent('Ресурс не подтверждён')
     expect(screen.queryByText('Wrong fallback')).not.toBeInTheDocument()
   })
@@ -284,7 +288,7 @@ describe('project sidebar and Namespace selection', () => {
     mount()
     const heading = await screen.findByRole('button', { name: 'Одинаковый проект · A' })
     expect(heading).toHaveClass('base-sidebar-item')
-    expect(heading.querySelector('svg')).not.toBeNull()
+    expect(heading.querySelector('[data-project-avatar]')).not.toBeNull()
     const list = document.getElementById(heading.getAttribute('aria-controls')!)!
     expect(list).toHaveClass('base-sidebar-list')
     expect(list).toHaveAttribute('data-nested', 'true')
@@ -349,8 +353,7 @@ describe('project sidebar and Namespace selection', () => {
     mount()
     await screen.findByRole('button', { name: 'Одинаковый проект · B' })
     expect(screen.getAllByRole('region')).toHaveLength(101)
-    expect(
-      within(screen.getByRole('combobox', { name: 'Namespace' })).getAllByRole('option'),
-    ).toHaveLength(102)
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Namespace' }))
+    expect(screen.getAllByRole('menuitemradio')).toHaveLength(102)
   })
 })

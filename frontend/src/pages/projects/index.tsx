@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { Plus, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react'
@@ -29,23 +30,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@sdlc/ui/ui'
-
-function ProjectAvatar({ projectKey }: { projectKey: string }) {
-  const colors = [
-    'bg-accent text-accent-foreground',
-    'bg-emerald-500 text-zinc-950',
-    'bg-amber-500 text-zinc-950',
-    'bg-rose-500 text-zinc-950',
-  ]
-  const color = colors[projectKey.charCodeAt(0) % colors.length]
-  return (
-    <div
-      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-bold ${color}`}
-    >
-      {projectKey.slice(0, 2).toUpperCase()}
-    </div>
-  )
-}
 
 export function ProjectsPage() {
   const { t } = useTranslation()
@@ -192,7 +176,7 @@ export function ProjectsPage() {
                 to={`/projects/${project.key}/board`}
                 className="row-start-1 flex min-h-10 min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               >
-                <ProjectAvatar projectKey={project.key} />
+                <ProjectAvatar projectKey={project.key} size="md" />
                 <span className="min-w-0">
                   <span
                     className="line-clamp-2 font-semibold hover:text-accent hover:underline sm:line-clamp-1"
