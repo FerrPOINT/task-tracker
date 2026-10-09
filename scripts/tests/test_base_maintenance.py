@@ -46,6 +46,7 @@ class BaseMaintenanceTests(unittest.TestCase):
                  *(arguments if arguments is not None else [archive])],
                 env=env, capture_output=True, text=True,
             )
+            self.last_stderr = result.stderr
             receipt = path / "receipt.json"
             args = json.loads(receipt.read_text()) if receipt.exists() else []
             return result.returncode, args, path, archive
@@ -55,7 +56,7 @@ class BaseMaintenanceTests(unittest.TestCase):
             for project in ("sdlc1", "sdlc2"):
                 with self.subTest(operation=operation, project=project):
                     code, args, path, archive = self.invoke(operation, project=project)
-                    self.assertEqual(code, 0)
+                    self.assertEqual(code, 0, self.last_stderr)
                     expected = [
                         str(path / "services-base/scripts/platform_backup.py"), operation,
                         "--project", project, "--workspace-profile", str(path / "workspace.local.json"),
