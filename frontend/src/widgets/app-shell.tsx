@@ -1,10 +1,10 @@
-import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectAvatar, ProjectNavigationGroup } from '@sdlc/ui/ui'
 import {
   NamespaceShellContext,
   useNamespaceCatalog,
   useNamespaceContext,
 } from './namespace-context'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { SidebarItem } from '@sdlc/ui/ui'
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
 import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
@@ -134,16 +134,13 @@ function ProjectNavigation({
   onNavigate?: () => void
 }) {
   const { t } = useTranslation()
-  const prefix = useId()
   if (!groups.length) return null
   return (
     <nav
       aria-label={t('navigation.projectNav')}
       className="base-sidebar-list mt-3 border-t border-border pt-3"
     >
-      {groups.map((project, index) => {
-        const contentId = `${prefix}-project-${index}`
-        const label = `${project.name} · ${project.key}`
+      {groups.map((project) => {
         const open = !collapsed.has(project.id)
         const key = encodeURIComponent(project.key)
         const items = [
@@ -162,28 +159,8 @@ function ProjectNavigation({
           },
         ]
         return (
-          <section key={project.id} aria-label={label} className="base-sidebar-list">
-            <SidebarItem
-              kind="group"
-              compact={compact}
-              aria-label={label}
-              aria-expanded={open}
-              aria-controls={contentId}
-              title={label}
-              onClick={() => onToggle(project.id)}
-            >
-              <ProjectAvatar projectKey={project.key} size="xs" />
-              {!compact && (
-                <>
-                  <span className="base-sidebar-item-label flex-1">{label}</span>
-                  <ChevronDown
-                    className={`h-4 w-4 shrink-0 ${open ? '' : '-rotate-90'}`}
-                    aria-hidden="true"
-                  />
-                </>
-              )}
-            </SidebarItem>
-            <div id={contentId} hidden={!open} className="base-sidebar-list" data-nested={!compact}>
+          <ProjectNavigationGroup key={project.id} name={project.name} projectKey={project.key}
+            compact={compact} open={open} onToggle={() => onToggle(project.id)}>
               {items.map((item) => {
                 const target = project.namespace
                   ? withNamespaceLocation(item.to, project.namespace)
@@ -200,8 +177,7 @@ function ProjectNavigation({
                   />
                 )
               })}
-            </div>
-          </section>
+          </ProjectNavigationGroup>
         )
       })}
     </nav>
