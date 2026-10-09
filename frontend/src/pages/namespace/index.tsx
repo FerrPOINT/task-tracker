@@ -1,4 +1,4 @@
-import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { withNamespaceLocation } from '@sdlc/ui/lib'
 import { useNamespaceContext } from '@/widgets/namespace-context'

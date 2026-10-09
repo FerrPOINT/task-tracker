@@ -5,6 +5,7 @@ import { parseNamespaceLocation, withNamespaceLocation } from '@sdlc/ui/lib'
 import type { components } from '@/api/generated'
 import { apiBaseUrl } from '@/api/client'
 import { useAuthStore } from '@/shared/auth/store'
+import { isAllProjects } from '@/shared/lib/project-navigation'
 export type ResourceContext = components['schemas']['ResourceContextSummary']
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const token = useAuthStore.getState().token
@@ -52,8 +53,10 @@ export function useNamespaceCatalog(enabled = true) {
   })
 }
 export function NamespaceShellContext() {
+  const location = useLocation()
   const navigate = useNavigate()
   const { ref, malformed, query } = useNamespaceContext()
+  const allProjects = !malformed && isAllProjects(location.search)
   const catalog = useNamespaceCatalog()
   const items = [...(catalog.data ?? [])]
   if (
@@ -66,12 +69,18 @@ export function NamespaceShellContext() {
     )
   )
     items.push(query.data)
-  const value = ref ? `${ref.registry_instance_id}/${ref.namespace_id}` : malformed ? 'invalid' : ''
+  const value = malformed
+    ? 'invalid'
+    : allProjects
+      ? ''
+      : ref
+        ? `${ref.registry_instance_id}/${ref.namespace_id}`
+        : ''
   return (
     <NamespacePicker
       value={value}
       loading={catalog.isPending}
-      unavailable={malformed || catalog.isError || Boolean(ref && query.isError)}
+      unavailable={malformed || catalog.isError || Boolean(!allProjects && ref && query.isError)}
       options={items.map((item) => ({
         value: `${item.binding.namespace.registry_instance_id}/${item.binding.namespace.namespace_id}`,
         label: `${item.label} · ${item.resource_key ?? item.binding.namespace.namespace_id}`,
@@ -79,7 +88,10 @@ export function NamespaceShellContext() {
       onChange={(next) => {
         const [registry_instance_id = '', namespace_id = ''] = next.split('/')
         navigate(
-          withNamespaceLocation('/namespace', next ? { registry_instance_id, namespace_id } : null),
+          withNamespaceLocation(
+            next ? '/namespace' : '/namespace?project_scope=all',
+            next ? { registry_instance_id, namespace_id } : null,
+          ),
         )
       }}
     />

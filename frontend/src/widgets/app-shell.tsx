@@ -4,7 +4,7 @@ import {
   useNamespaceContext,
 } from './namespace-context'
 import { useEffect, useId, useState } from 'react'
-import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
 import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
 import { useLocation, Outlet } from 'react-router'
 import * as DialogPrimitive from '@radix-ui/react-dialog'
@@ -215,6 +215,7 @@ export function AppShell() {
   const routeProjectKey = useCurrentProjectKey()
   const namespace = useNamespaceContext()
   const namespaceEnabled = import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
+  const allProjects = !namespace.malformed && isAllProjects(location.search)
   const catalog = useNamespaceCatalog(namespaceEnabled)
   const projectKey = namespace.ref
     ? namespace.query.isError
@@ -240,9 +241,9 @@ export function AppShell() {
   const { data: projects = [] } = useProjects()
   const currentProject = projects.find((project) => project.key === projectKey)
   const contexts =
-    namespace.malformed || namespace.query.isError
+    namespace.malformed || (!allProjects && namespace.query.isError)
       ? []
-      : namespace.ref
+      : namespace.ref && !allProjects
         ? namespace.query.data
           ? [namespace.query.data]
           : []
@@ -265,7 +266,7 @@ export function AppShell() {
           },
         ]
       : projects.map((project) => ({ id: project.id, key: project.key, name: project.name }))
-  const selectedProjectId = namespace.ref && projectGroups[0]?.id
+  const selectedProjectId = !allProjects && namespace.ref && projectGroups[0]?.id
   useEffect(() => {
     if (!selectedProjectId) return
     setCollapsedProjects((current) => {

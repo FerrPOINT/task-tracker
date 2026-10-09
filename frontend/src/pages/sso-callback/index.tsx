@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
 import { completeSso } from '@sdlc/ui/sso'

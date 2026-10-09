@@ -148,6 +148,19 @@ describe('SearchPage', () => {
     expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0 }))
   })
 
+  it('clears only search filters while preserving Namespace and the all-project catalog', () => {
+    mockHooks()
+    renderPage(
+      '/search?q=test&status=open&registry_instance_id=registry&namespace_id=namespace&project_scope=all',
+    )
+    fireEvent.click(screen.getByRole('button', { name: /сбросить|clear/i }))
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      'registry_instance_id=registry&namespace_id=namespace&project_scope=all',
+    )
+    expect(screen.getByTestId('location')).not.toHaveTextContent('status=')
+    expect(screen.getByTestId('location')).not.toHaveTextContent('q=')
+  })
+
   it('restores URL-backed JQL and page with browser history', () => {
     mockHooks()
     renderPage('/search?mode=jql&jql=project%20%3D%20TT&page=2')

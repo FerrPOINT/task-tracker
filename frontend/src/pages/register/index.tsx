@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { NamespaceLink as Link } from '@sdlc/ui/ui'
-import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'

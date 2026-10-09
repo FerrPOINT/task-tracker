@@ -1,4 +1,4 @@
-import { NamespaceLink as Link } from '@sdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { List, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'

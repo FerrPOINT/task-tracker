@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { ThemeProvider } from '@sdlc/ui/lib'
 import { AppShell } from './app-shell'
+import { ProjectLink, useProjectNavigate } from '@/shared/lib/project-navigation'
 import type { ResourceContext } from './namespace-context'
 
 vi.mock('@/shared/api/hooks', () => ({
@@ -37,7 +38,16 @@ const selected = (index: number) => `${registry}/${refs[index]}`
 const search = (index: number) => `?registry_instance_id=${registry}&namespace_id=${refs[index]}`
 function Location() {
   const location = useLocation()
-  return <output aria-label="Current URL">{location.pathname + location.search}</output>
+  const navigate = useProjectNavigate()
+  return (
+    <>
+      <output aria-label="Current URL">{location.pathname + location.search}</output>
+      <ProjectLink to="/issues/task-id?tab=worklog">Task detail</ProjectLink>
+      <button onClick={() => navigate(-1)}>Back</button>
+      <button onClick={() => navigate(1)}>Forward</button>
+      <button onClick={() => navigate('/projects/B/backlog')}>Navigate backlog</button>
+    </>
+  )
 }
 function mount(path = '/namespace') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -90,11 +100,11 @@ describe('project sidebar and Namespace selection', () => {
     })
     expect(within(a).getByRole('link', { name: 'Доска' })).toHaveAttribute(
       'href',
-      `/projects/A/board${search(0)}`,
+      `/projects/A/board${search(0)}&project_scope=all`,
     )
     expect(within(b).getByRole('link', { name: 'Доска' })).toHaveAttribute(
       'href',
-      `/projects/B/board${search(1)}`,
+      `/projects/B/board${search(1)}&project_scope=all`,
     )
     const toggle = within(a).getByRole('button', { name: 'Одинаковый проект · A' })
     await user.click(toggle)
@@ -102,11 +112,21 @@ describe('project sidebar and Namespace selection', () => {
     expect(within(a).queryByRole('link', { name: 'Доска' })).not.toBeInTheDocument()
     expect(within(b).getByRole('link', { name: 'Бэклог' })).toBeVisible()
     await user.click(within(b).getByRole('link', { name: 'Доска' }))
-    await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue(selected(1)),
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue(''))
+    expect(screen.getByRole('region', { name: 'Одинаковый проект · A' })).toBeInTheDocument()
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.getByLabelText('Current URL')).toHaveTextContent(
+      `/projects/B/board${search(1)}&project_scope=all`,
     )
-    expect(screen.queryByRole('region', { name: 'Одинаковый проект · A' })).not.toBeInTheDocument()
-    expect(screen.getByLabelText('Current URL')).toHaveTextContent(`/projects/B/board${search(1)}`)
+    await user.click(screen.getByRole('link', { name: 'Task detail' }))
+    expect(screen.getByLabelText('Current URL')).toHaveTextContent('tab=worklog&project_scope=all')
+    expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue('')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(screen.getByRole('button', { name: 'Navigate backlog' }))
+    expect(screen.getByLabelText('Current URL')).toHaveTextContent(
+      '/projects/B/backlog?project_scope=all',
+    )
+    expect(screen.getAllByRole('region')).toHaveLength(2)
   })
 
   it('updates navigation and task creation on top selection, restores all and opens a selected collapsed group', async () => {
@@ -179,7 +199,32 @@ describe('project sidebar and Namespace selection', () => {
     await user.click(within(b).getByRole('button', { name: 'Одинаковый проект · B' }))
     await user.click(within(b).getByRole('link', { name: 'Бэклог' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue(selected(1))
+    expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue('')
+    expect(screen.getAllByRole('region')).toHaveLength(2)
+  })
+
+  it('restores the filter through history and a copied all-project resource URL', async () => {
+    const user = userEvent.setup()
+    mount(`/projects/B/trash${search(1)}&project_scope=all`)
+    await screen.findByRole('button', { name: 'Одинаковый проект · A' })
+    const picker = screen.getByRole('combobox', { name: 'Namespace' })
+    expect(picker).toHaveValue('')
+    await user.selectOptions(picker, selected(0))
+    await waitFor(() => expect(screen.getAllByRole('region')).toHaveLength(1))
+    await user.click(screen.getByRole('button', { name: 'Back' }))
+    await waitFor(() => expect(screen.getAllByRole('region')).toHaveLength(2))
+    expect(picker).toHaveValue('')
+    await user.click(screen.getByRole('button', { name: 'Forward' }))
+    await waitFor(() => expect(screen.getAllByRole('region')).toHaveLength(1))
+    expect(picker).toHaveValue(selected(0))
+  })
+
+  it('keeps all projects visible while rejecting a foreign resource binding', async () => {
+    mount(`/projects/WRONG/board${search(0)}&project_scope=all`)
+    await screen.findByRole('button', { name: 'Одинаковый проект · B' })
+    expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue('')
+    expect(screen.getByRole('alert')).toHaveTextContent('Ресурс не подтверждён')
+    expect(screen.queryByText('Wrong fallback')).not.toBeInTheDocument()
   })
 
   it('reads the whole paginated catalog for both the picker and sidebar', async () => {
