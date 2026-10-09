@@ -53,6 +53,7 @@ import {
 
 const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
 const issuePattern = /^\/issues\/([^/]+)$/
+const collapsedProjectsStorageKey = 'tt-project-nav-collapsed:v1'
 
 function useCurrentProjectKey() {
   const location = useLocation()
@@ -222,7 +223,28 @@ export function AppShell() {
       ? undefined
       : namespace.query.data?.resource_key
     : routeProjectKey
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => new Set())
+  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => {
+    try {
+      const stored: unknown = JSON.parse(
+        window.localStorage.getItem(collapsedProjectsStorageKey) ?? '[]',
+      )
+      return new Set(
+        Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [],
+      )
+    } catch {
+      return new Set()
+    }
+  })
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        collapsedProjectsStorageKey,
+        JSON.stringify([...collapsedProjects]),
+      )
+    } catch {
+      // Keep navigation usable when browser preference storage is unavailable.
+    }
+  }, [collapsedProjects])
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () =>
@@ -266,16 +288,6 @@ export function AppShell() {
           },
         ]
       : projects.map((project) => ({ id: project.id, key: project.key, name: project.name }))
-  const selectedProjectId = !allProjects && namespace.ref && projectGroups[0]?.id
-  useEffect(() => {
-    if (!selectedProjectId) return
-    setCollapsedProjects((current) => {
-      if (!current.has(selectedProjectId)) return current
-      const next = new Set(current)
-      next.delete(selectedProjectId)
-      return next
-    })
-  }, [selectedProjectId])
   function toggleProject(id: string) {
     setCollapsedProjects((current) => {
       const next = new Set(current)

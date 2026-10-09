@@ -70,6 +70,7 @@ describe('project sidebar and Namespace selection', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
     window.localStorage.removeItem('tt-sidebar-collapsed')
+    window.localStorage.removeItem('tt-project-nav-collapsed:v1')
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
@@ -129,7 +130,7 @@ describe('project sidebar and Namespace selection', () => {
     expect(screen.getAllByRole('region')).toHaveLength(2)
   })
 
-  it('updates navigation and task creation on top selection, restores all and opens a selected collapsed group', async () => {
+  it('updates navigation and task creation on top selection, restores all and preserves a selected collapsed group', async () => {
     const user = userEvent.setup()
     mount()
     await screen.findByRole('button', { name: 'Одинаковый проект · A' })
@@ -143,7 +144,7 @@ describe('project sidebar and Namespace selection', () => {
     )
     expect(screen.getByRole('button', { name: 'Одинаковый проект · A' })).toHaveAttribute(
       'aria-expanded',
-      'true',
+      'false',
     )
     expect(
       within(screen.getByRole('banner')).getByRole('link', { name: 'Создать' }),
@@ -225,6 +226,57 @@ describe('project sidebar and Namespace selection', () => {
     expect(screen.getByRole('combobox', { name: 'Namespace' })).toHaveValue('')
     expect(screen.getByRole('alert')).toHaveTextContent('Ресурс не подтверждён')
     expect(screen.queryByText('Wrong fallback')).not.toBeInTheDocument()
+  })
+
+  it('remembers independent groups across remounts, including expansion and selected-project URLs', async () => {
+    const user = userEvent.setup()
+    const first = mount()
+    await screen.findByRole('button', { name: 'Одинаковый проект · A' })
+    await user.click(screen.getByRole('button', { name: 'Одинаковый проект · A' }))
+    first.unmount()
+    const second = mount(`/projects/A/trash${search(0)}`)
+    const a = await screen.findByRole('button', { name: 'Одинаковый проект · A' })
+    expect(a).toHaveAttribute('aria-expanded', 'false')
+    await user.click(a)
+    second.unmount()
+    mount(`/projects/B/trash${search(1)}&project_scope=all`)
+    expect(await screen.findByRole('button', { name: 'Одинаковый проект · A' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Одинаковый проект · B' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+  })
+
+  it('restores collapsed state by stable identity despite identical project names', async () => {
+    window.localStorage.setItem(
+      'tt-project-nav-collapsed:v1',
+      JSON.stringify([`${registry}/${refs[1]}`]),
+    )
+    mount()
+    expect(await screen.findByRole('button', { name: 'Одинаковый проект · A' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Одинаковый проект · B' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+
+  it('ignores malformed saved preferences without hiding the project catalog', async () => {
+    window.localStorage.setItem('tt-project-nav-collapsed:v1', '{broken')
+    mount()
+    expect(await screen.findByRole('button', { name: 'Одинаковый проект · A' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Одинаковый проект · B' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
   })
 
   it('reads the whole paginated catalog for both the picker and sidebar', async () => {
