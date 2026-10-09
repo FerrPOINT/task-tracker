@@ -279,6 +279,30 @@ describe('project sidebar and Namespace selection', () => {
     )
   })
 
+  it('uses one Base row/list contract for project headings and nested links in both navigation surfaces', async () => {
+    const user = userEvent.setup()
+    mount()
+    const heading = await screen.findByRole('button', { name: 'Одинаковый проект · A' })
+    expect(heading).toHaveClass('base-sidebar-item')
+    expect(heading.querySelector('svg')).not.toBeNull()
+    const list = document.getElementById(heading.getAttribute('aria-controls')!)!
+    expect(list).toHaveClass('base-sidebar-list')
+    expect(list).not.toHaveAttribute('hidden')
+    for (const link of within(list).getAllByRole('link'))
+      expect(link).toHaveClass('base-sidebar-item')
+    await user.click(heading)
+    expect(list).toHaveAttribute('hidden')
+    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
+    const dialog = await screen.findByRole('dialog')
+    const mobileHeading = within(dialog).getByRole('button', { name: 'Одинаковый проект · A' })
+    const mobileList = document.getElementById(mobileHeading.getAttribute('aria-controls')!)!
+    expect(mobileHeading).toHaveClass('base-sidebar-item')
+    expect(mobileList).toHaveAttribute('hidden')
+    await user.click(mobileHeading)
+    expect(mobileList).not.toHaveAttribute('hidden')
+    expect(within(mobileList).getByRole('link', { name: 'Доска' })).toHaveClass('base-sidebar-item')
+  })
+
   it('reads the whole paginated catalog for both the picker and sidebar', async () => {
     const first = Array.from({ length: 100 }, (_, index) => ({
       ...contexts[0],

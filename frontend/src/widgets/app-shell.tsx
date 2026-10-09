@@ -138,7 +138,7 @@ function ProjectNavigation({
   return (
     <nav
       aria-label={t('navigation.projectNav')}
-      className="mt-3 space-y-2 border-t border-border pt-3"
+      className="base-sidebar-list mt-3 border-t border-border pt-3"
     >
       {groups.map((project, index) => {
         const contentId = `${prefix}-project-${index}`
@@ -161,7 +161,7 @@ function ProjectNavigation({
           },
         ]
         return (
-          <section key={project.id} aria-label={label}>
+          <section key={project.id} aria-label={label} className="base-sidebar-list">
             <SidebarItem
               kind="group"
               compact={compact}
@@ -171,11 +171,10 @@ function ProjectNavigation({
               title={label}
               onClick={() => onToggle(project.id)}
             >
-              {compact ? (
-                <FolderKanban className="h-4 w-4" aria-hidden="true" />
-              ) : (
+              <FolderKanban aria-hidden="true" />
+              {!compact && (
                 <>
-                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  <span className="base-sidebar-item-label flex-1">{label}</span>
                   <ChevronDown
                     className={`h-4 w-4 shrink-0 ${open ? '' : '-rotate-90'}`}
                     aria-hidden="true"
@@ -183,7 +182,7 @@ function ProjectNavigation({
                 </>
               )}
             </SidebarItem>
-            <div id={contentId} hidden={!open}>
+            <div id={contentId} hidden={!open} className="base-sidebar-list">
               {items.map((item) => {
                 const target = project.namespace
                   ? withNamespaceLocation(item.to, project.namespace)
@@ -382,7 +381,7 @@ export function AppShell() {
                       {t('navigation.create')}
                     </Link>
                   </Button>
-                  <nav className="flex flex-col gap-1" aria-label={t('navigation.mainNav')}>
+                  <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
                     {navItems.map((item) => (
                       <SidebarLink
                         key={item.to}
@@ -636,7 +635,7 @@ export function AppShell() {
               )}
             </Button>
           </div>
-          <nav className="flex flex-col gap-1" aria-label={t('navigation.mainNav')}>
+          <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
             {navItems.map((item) => (
               <SidebarLink
                 key={item.to}
