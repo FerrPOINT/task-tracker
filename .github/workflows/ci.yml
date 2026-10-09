@@ -20,7 +20,9 @@ jobs:
           path: task-tracker
       - name: README validator tests
         working-directory: task-tracker
-        run: python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks
+        run: |
+          python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks scripts.tests.test_base_maintenance
+          bash -n scripts/backup.sh scripts/restore.sh
       - name: README structural validation
         working-directory: task-tracker
         run: python3 scripts/verify_readme.py
