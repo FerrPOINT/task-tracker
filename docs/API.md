@@ -1,5 +1,12 @@
 # API v1 Specification — Task Tracker
 
+## Каталог сквозных проектов для серверных consumers
+
+`GET /api/v1/namespace-projects` — пагинированный machine-only reader
+подтверждённых Tracker bindings, имени и ключа проекта. Требует отдельного
+reader subject и `task-tracker:read`; human routes не открываются.
+[Контракт и доступ](NAMESPACE_PROJECT_READER.md).
+
 ## UI Opt-In Публикации
 
 Owner consent UI читает существующую project routing policy и передаёт

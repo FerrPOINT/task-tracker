@@ -1,5 +1,11 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+Сквозной проект сохраняет Tracker identity, имя, ключ и общий Base avatar.
+Forge получает их через ограниченный server-side каталог подтверждённых
+Namespace bindings, без передачи пользовательского PAT и без проектного ACL.
+Общие раскрываемые секции навигации используют primitive Base; состояния
+секций сохраняются продуктом по стабильным refs.
+
 Prepared Analysis has a protected fresh Fleet configuration preflight, matching
 concrete agent/effective config/package/Workflow refs and rechecking lease/ACL
 after HTTP. This prerequisite does not activate native dispatch or change tasks.

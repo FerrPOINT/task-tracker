@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Добавлен ограниченный machine-only reader сквозных проектов для Forge:
+  пагинация, стабильные refs и подтверждённая локальная binding projection.
+  Sidebar использует общий Base primitive раскрываемой группы проекта.
+
 - Namespace cohort: стабильные refs, локальные binding projections и lifecycle guards; аддитивные migrations, совместимый rollback и отдельные execution v2 gates. Runtime-приёмка ещё не завершена.
 
 
