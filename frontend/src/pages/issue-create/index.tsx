@@ -249,7 +249,6 @@ export function IssueCreatePage() {
               allowEmpty={false}
               onChange={updateProjectKey}
               disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
-              aria-required="true"
             />
           </div>
           <div className="space-y-2">
