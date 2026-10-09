@@ -41,6 +41,7 @@ describe('RegisterPage', () => {
     })
 
     render(wrapper(<RegisterPage />))
+    expect(screen.queryByRole('button', { name: /Тема|Theme/i })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /зарегистрироваться|sign up/i })).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText(/имя пользователя|username/i), 'newuser')
