@@ -4061,6 +4061,61 @@
         ]
       }
     },
+    "/api/v1/namespace-projects": {
+      "get": {
+        "tags": [
+          "namespaces"
+        ],
+        "summary": "Machine reader exposes verified navigation metadata, never human mutations.",
+        "operationId": "tracker_namespace_project_catalog",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ResourceContextSummary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/namespace-resources/tracker_project/{id}": {
       "get": {
         "tags": [

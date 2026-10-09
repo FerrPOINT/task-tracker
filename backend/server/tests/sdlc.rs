@@ -34,6 +34,8 @@ mod analysis_reservation;
 mod lifecycle_guard;
 #[path = "support/metadata.rs"]
 mod metadata;
+#[path = "support/namespace_catalog.rs"]
+mod namespace_catalog;
 #[path = "support/pm_credential_boundary.rs"]
 mod pm_credential_boundary;
 #[path = "support/routing_policy.rs"]
@@ -378,6 +380,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let point = secret.public_key().to_encoded_point(false);
     let unavailable = Arc::new(AtomicBool::new(false));
     let profile_invalid = Arc::new(AtomicBool::new(false));
+    namespace_catalog::tokens(&mut tokens);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let issuer = format!("http://{}", listener.local_addr().unwrap());
     let stub = AuthStub {
@@ -426,6 +429,15 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     unsafe {
         std::env::set_var("TT_AUTH__CENTRAL_JWKS_URI", format!("{issuer}/jwks"));
         std::env::set_var("TT_AUTH__CENTRAL_ISSUER", &issuer);
+        std::env::set_var("TT_NAMESPACE__READER_SUBJECTS", "verifier");
+        std::env::set_var(
+            "TT_NAMESPACE__REGISTRY_INSTANCE_ID",
+            "11111111-1111-4111-8111-111111111111",
+        );
+        std::env::set_var(
+            "TT_NAMESPACE__INSTANCE_ID",
+            "22222222-2222-4222-8222-222222222222",
+        );
         std::env::set_var("TASKTRACKER_SDLC__FLEET_URL", &fleet_origin);
         std::env::set_var("TASKTRACKER_SDLC__FLEET_READ_TOKEN", FLEET_READER_TOKEN);
         std::env::set_var(
@@ -444,6 +456,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let foreign = human_token(&secret, &issuer, "foreign", "sdlc", chrono_now() + 3600);
     let client = Client::new();
     let (base, stop, handle) = start_tracker(config.clone()).await;
+    namespace_catalog::verify(&client, &base, &db, project, &owner).await;
     let url = format!("{base}/api/v1/issues/{task}/sdlc");
     let profiles_before = count(&db, "users").await;
     profile_invalid.store(true, Ordering::SeqCst);

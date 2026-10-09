@@ -225,6 +225,24 @@ pub async fn contexts(
     }
     Ok(Json(visible))
 }
+/// Machine reader exposes verified navigation metadata, never human mutations.
+#[utoipa::path(get,operation_id="tracker_namespace_project_catalog",path="/api/v1/namespace-projects",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceContextSummary>)))]
+pub async fn project_catalog(
+    State(ctx): State<Arc<app::AppContext>>,
+    Query(page): Query<Page>,
+) -> Result<Json<Vec<ResourceContextSummary>>, AppError> {
+    Ok(Json(
+        ctx.repos
+            .projects
+            .namespace_contexts(
+                None,
+                page.limit.unwrap_or(50).clamp(1, 100),
+                page.offset.unwrap_or(0).max(0),
+            )
+            .await?,
+    ))
+}
+
 #[utoipa::path(get,operation_id="tracker_namespace_context",path="/api/v1/namespace-contexts/{registry}/{namespace}",tag="namespaces",params(("registry"=Uuid,Path),("namespace"=Uuid,Path)),responses((status=200,body=ResourceContextSummary),(status=404,description="No confirmed local binding")))]
 pub async fn context(
     State(ctx): State<Arc<app::AppContext>>,

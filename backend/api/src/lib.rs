@@ -120,6 +120,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::namespace::available_resources,
         routes::namespace::stats,
         routes::namespace::contexts,
+        routes::namespace::project_catalog,
         routes::namespace::context,
         routes::namespace::documents,
         routes::namespace::repositories,
@@ -693,6 +694,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
                     get(routes::namespace::task_context),
                 )
                 .route("/namespace-tasks", get(routes::namespace::task_catalog))
+                .route(
+                    "/namespace-projects",
+                    get(routes::namespace::project_catalog),
+                )
                 .route_layer(axum::middleware::from_fn(routes::namespace::reader_auth)),
         );
     let api = public
