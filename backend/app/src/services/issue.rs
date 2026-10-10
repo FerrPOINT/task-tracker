@@ -19,6 +19,10 @@ fn ensure_issue_creation_ticket_retriable(
     Ok(())
 }
 
+fn resolve_completed_issue_creation_replay<T>(issue: Option<T>) -> Result<T, AppError> {
+    issue.ok_or_else(|| AppError::conflict("original_issue_purged"))
+}
+
 pub struct IssueServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
@@ -41,6 +45,24 @@ pub struct IssueServiceImpl {
 }
 
 impl IssueServiceImpl {
+    async fn get_issue_creation_replay(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Option<IssueDto>, AppError> {
+        match self.issues.get_by_id_include_deleted(issue_id).await {
+            Ok(original) => super::helpers::build_issue_dtos_with_projects(
+                Arc::clone(&self.projects),
+                Arc::clone(&self.users),
+                Arc::clone(&self.labels),
+                vec![original],
+            )
+            .await
+            .map(|mut issues| Some(issues.remove(0))),
+            Err(AppError::NotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     async fn recover_issue_creation_key_collision(
         &self,
         project: domain::ProjectId,
@@ -53,40 +75,31 @@ impl IssueServiceImpl {
         let Some(current) = ticket.clone() else {
             return Ok(None);
         };
-        match self
-            .issues
-            .get_by_id_include_deleted(current.issue_id)
-            .await
-        {
-            Ok(original) => super::helpers::build_issue_dtos_with_projects(
-                Arc::clone(&self.projects),
-                Arc::clone(&self.users),
-                Arc::clone(&self.labels),
-                vec![original],
-            )
-            .await
-            .map(|mut issues| Some(issues.remove(0))),
-            Err(AppError::NotFound(_)) => {
-                ensure_issue_creation_ticket_retriable(&current)?;
-                let operation = operation
-                    .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?;
-                let advanced = self
-                    .projects
-                    .advance_issue_creation_ticket(
-                        project,
-                        actor,
-                        operation,
-                        payload,
-                        current.issue_id,
-                        number,
-                    )
-                    .await?;
-                ensure_issue_creation_ticket_retriable(&advanced)?;
-                *ticket = Some(advanced);
-                Ok(None)
-            }
-            Err(error) => Err(error),
+        if let Some(original) = self.get_issue_creation_replay(current.issue_id).await? {
+            return Ok(Some(original));
         }
+        ensure_issue_creation_ticket_retriable(&current)?;
+        let operation =
+            operation.ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?;
+        let advanced = self
+            .projects
+            .advance_issue_creation_ticket(
+                project,
+                actor,
+                operation,
+                payload,
+                current.issue_id,
+                number,
+            )
+            .await?;
+        if advanced.completed {
+            return resolve_completed_issue_creation_replay(
+                self.get_issue_creation_replay(advanced.issue_id).await?,
+            )
+            .map(Some);
+        }
+        *ticket = Some(advanced);
+        Ok(None)
     }
 
     /// WIP capacity snapshot for any status-changing path. The count is
@@ -303,7 +316,7 @@ impl IssueServiceImpl {
 
 #[cfg(test)]
 mod idempotency_recovery_tests {
-    use super::ensure_issue_creation_ticket_retriable;
+    use super::{ensure_issue_creation_ticket_retriable, resolve_completed_issue_creation_replay};
 
     #[test]
     fn completed_receipt_cannot_recreate_a_purged_issue() {
@@ -328,6 +341,18 @@ mod idempotency_recovery_tests {
         };
 
         assert!(ensure_issue_creation_ticket_retriable(&ticket).is_ok());
+    }
+
+    #[test]
+    fn completed_race_returns_issue_that_appeared_during_recovery() {
+        assert!(matches!(
+            resolve_completed_issue_creation_replay(Some("created concurrently")),
+            Ok("created concurrently")
+        ));
+        assert!(matches!(
+            resolve_completed_issue_creation_replay::<()>(None),
+            Err(shared::AppError::Conflict(ref code)) if code == "original_issue_purged"
+        ));
     }
 }
 
