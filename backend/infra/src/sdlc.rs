@@ -12,6 +12,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
+#[path = "sdlc_native_admission.rs"]
+mod native_admission;
 #[path = "sdlc_reservation.rs"]
 mod reservation;
 #[path = "sdlc_routing.rs"]
@@ -1275,37 +1277,27 @@ impl SdlcRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<Json, AppError> {
-        app::sdlc::validate_key(command.key())?;
-        let tx = self.db.begin().await.map_err(map_db)?;
-        let mut state = self.load(&tx, task, actor).await?;
-        app::sdlc::authorize(&state, actor, &self.config, &command)?;
-        let hash = app::sdlc::command_hash(&command)?;
-        if let Some(result) = Self::replay(&tx, task, actor, command.key(), &hash).await? {
-            tx.commit().await.map_err(map_db)?;
-            return Ok(result);
-        }
-        if Self::enrolled(&tx, task).await? {
-            return Err(AppError::conflict(
-                "reserved PM execution requires verified admission",
-            ));
-        }
-        let result = app::sdlc::apply(&mut state, actor, &self.config, &command)?;
-        let event = self
-            .persist_result(&tx, task, &command, &result, &state)
-            .await?;
-        Self::finish(
-            &tx,
-            task,
-            actor,
-            command.key(),
-            &hash,
-            &result,
-            event,
-            &state,
-        )
-        .await?;
-        tx.commit().await.map_err(map_db)?;
-        Ok(result)
+        self.execute_with_native(task, actor, command, None, None)
+            .await
+    }
+    async fn prepare_native_command(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &SdlcCommand,
+    ) -> Result<domain::sdlc_native_admission::CommandAdmission, AppError> {
+        self.native_command_preflight(task, actor, command).await
+    }
+    async fn execute_verified(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: SdlcCommand,
+        expected: PmDraftReservation,
+        observed: Option<domain::sdlc_native_admission::NativeAdmission>,
+    ) -> Result<Json, AppError> {
+        self.execute_with_native(task, actor, command, Some(expected), observed)
+            .await
     }
     async fn outbox(
         &self,

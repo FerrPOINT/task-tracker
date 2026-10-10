@@ -1,5 +1,9 @@
 # API v1 Specification — Task Tracker
 
+Reserved PM requirement/question writes require server-verified native admission;
+the command schema does not accept a readiness claim. Owner answers and separate
+verifier evidence use admitted history. [Contract](PM_NATIVE_ADMISSION.md).
+
 ## Каталог сквозных проектов для серверных consumers
 
 `GET /api/v1/namespace-projects` — пагинированный machine-only reader

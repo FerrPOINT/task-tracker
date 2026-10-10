@@ -1,5 +1,9 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+PM native admission closes the reserved-execution write boundary using actual
+Fleet/Workflow facts; it does not activate Analysis dispatch or allow PM to
+self-certify readiness. [Implementation and gates](PM_NATIVE_ADMISSION.md).
+
 Сквозной проект сохраняет Tracker identity, имя, ключ и общий Base avatar.
 Forge получает их через ограниченный server-side каталог подтверждённых
 Namespace bindings, без передачи пользовательского PAT и без проектного ACL.

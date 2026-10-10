@@ -1,5 +1,10 @@
 # Дата-модель Task Tracker
 
+Additive 000091 adds immutable `sdlc_pm_native_admissions`, keyed by execution/run
+and tied to assignment version, fence and exact owner observation. The accepted
+command and first observation commit together; populated downgrade is refused.
+[Admission contract](PM_NATIVE_ADMISSION.md).
+
 ## Ledger подготовленного Analysis assignment
 
 Только pending 000034: append-only `sdlc_analysis_reservations` и

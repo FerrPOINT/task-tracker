@@ -18,6 +18,7 @@ mod tests;
 pub struct SdlcService {
     pub repository: Arc<dyn SdlcRepository>,
     pub fleet_configuration: Option<crate::sdlc_configuration::FleetConfigurationReader>,
+    pub fleet_native: Option<crate::sdlc_native_admission::FleetNativeReader>,
 }
 
 impl SdlcService {
@@ -256,8 +257,30 @@ impl SdlcService {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<T, AppError> {
-        serde_json::from_value(self.repository.execute(task, actor, command).await?)
-            .map_err(AppError::internal)
+        use domain::sdlc_native_admission::CommandAdmission;
+        let value = match self
+            .repository
+            .prepare_native_command(task, actor, &command)
+            .await?
+        {
+            CommandAdmission::Legacy => self.repository.execute(task, actor, command).await?,
+            CommandAdmission::Replay(value) => value,
+            CommandAdmission::History(expected) => {
+                self.repository
+                    .execute_verified(task, actor, command, expected, None)
+                    .await?
+            }
+            CommandAdmission::Native(expected) => {
+                let reader = self.fleet_native.as_ref().ok_or_else(|| {
+                    AppError::Unavailable("Fleet native admission reader not configured".into())
+                })?;
+                let observed = reader.read(&expected).await?;
+                self.repository
+                    .execute_verified(task, actor, command, expected, Some(observed))
+                    .await?
+            }
+        };
+        serde_json::from_value(value).map_err(AppError::internal)
     }
 }
 

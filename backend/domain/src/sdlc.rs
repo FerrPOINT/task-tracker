@@ -688,6 +688,20 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<serde_json::Value, AppError>;
+    async fn prepare_native_command(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &SdlcCommand,
+    ) -> Result<crate::sdlc_native_admission::CommandAdmission, AppError>;
+    async fn execute_verified(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: SdlcCommand,
+        expected: crate::sdlc_pm_draft::PmDraftReservation,
+        observed: Option<crate::sdlc_native_admission::NativeAdmission>,
+    ) -> Result<serde_json::Value, AppError>;
     async fn outbox(
         &self,
         task: Uuid,

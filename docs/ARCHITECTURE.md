@@ -1,5 +1,9 @@
 # Архитектура Task Tracker
 
+Reserved PM commands use fresh Fleet native owner observation, followed by
+Tracker reservation/lease recheck and atomic command/history write. No database
+transaction is held across owner HTTP. [PM native admission](PM_NATIVE_ADMISSION.md).
+
 [Reader проектов для Forge](NAMESPACE_PROJECT_READER.md) возвращает только подтверждённые Namespace-проекты через отдельную machine-only границу. Reader не создаёт human identity и не пересылает пользовательский PAT.
 
 [Namespace context](NAMESPACE.md) разрешает Project по confirmed local binding.
