@@ -90,6 +90,8 @@ services:
     build:
       context: ..
       dockerfile: task-tracker/frontend/Dockerfile
+      args:
+        VITE_PLATFORM_ORIGIN: ${VITE_PLATFORM_ORIGIN:-}
     restart: unless-stopped
     environment:
       NODE_ENV: production

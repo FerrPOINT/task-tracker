@@ -1,6 +1,7 @@
 import { NamespacePage } from '@/pages/namespace'
 import { lazy, Suspense } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router'
+import { Navigate } from 'react-router'
+import { createProductRouter, PlatformRoute } from '@sdlc/ui/platform'
 import { AppShell } from '@/widgets/app-shell'
 import { RequireAuth } from '@/shared/auth/require-auth'
 
@@ -52,10 +53,10 @@ function PageLoader() {
 }
 
 const withSuspense = (element: React.ReactElement) => (
-  <Suspense fallback={<PageLoader />}>{element}</Suspense>
+  <Suspense fallback={<PageLoader />}><PlatformRoute>{element}</PlatformRoute></Suspense>
 )
 
-export const router = createBrowserRouter([
+export const router = createProductRouter([
   {
     element: <RequireAuth />,
     children: [
@@ -86,4 +87,4 @@ export const router = createBrowserRouter([
   { path: '/sso/callback', element: withSuspense(<SsoCallbackPage />) },
   { path: '/register', element: <Navigate to="/login" replace /> },
   { path: '*', element: <Navigate to="/" replace /> },
-])
+], { serviceKey: 'task-tracker', portalOrigin: import.meta.env.VITE_PLATFORM_ORIGIN })
