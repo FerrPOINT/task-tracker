@@ -4,6 +4,7 @@ import { ErrorState } from '@sdlc/ui/ui'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
 import { statusLabel } from '@/shared/lib/status-label'
 import { useAuthStore } from '@/shared/auth/store'
+import { usePlatformReadiness } from '@sdlc/ui/platform'
 
 const PREVIEW_LIMIT = 5
 
@@ -22,6 +23,7 @@ export function DashboardPage() {
     refetch: refetchProjects,
   } = useProjects()
   const userId = useAuthStore((state) => state.userId)
+  usePlatformReadiness({ pending: dashboardLoading || projectsLoading, error: dashboardError || projectsError ? 'Не удалось загрузить дашборд Tracker.' : null })
 
   const assigned = dashboard?.assigned_issues ?? []
   const assignedSearch = userId ? `/search?assignee_id=${encodeURIComponent(userId)}` : '/search'
