@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+- Base обновлён для удержания focus в `ConfirmDialog` во время pending.
+
 - Закреплён проверяемый общий Base candidate; standalone-инструкция выбирает
   активный Namespace pin с legacy fallback, как CI и `scripts/build.py`.
 - Инструкция coverage отражает фактические пороги и отдельный локальный gate.
