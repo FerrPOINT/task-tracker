@@ -32,6 +32,52 @@ pub struct IssueServiceImpl {
 }
 
 impl IssueServiceImpl {
+    async fn recover_issue_creation_key_collision(
+        &self,
+        project: domain::ProjectId,
+        actor: UserId,
+        operation: Option<uuid::Uuid>,
+        payload: &serde_json::Value,
+        number: u32,
+        ticket: &mut Option<domain::IssueCreationTicket>,
+    ) -> Result<Option<IssueDto>, AppError> {
+        let Some(current) = ticket.clone() else {
+            return Ok(None);
+        };
+        match self
+            .issues
+            .get_by_id_include_deleted(current.issue_id)
+            .await
+        {
+            Ok(original) => super::helpers::build_issue_dtos_with_projects(
+                Arc::clone(&self.projects),
+                Arc::clone(&self.users),
+                Arc::clone(&self.labels),
+                vec![original],
+            )
+            .await
+            .map(|mut issues| Some(issues.remove(0))),
+            Err(AppError::NotFound(_)) => {
+                let operation = operation
+                    .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?;
+                *ticket = Some(
+                    self.projects
+                        .advance_issue_creation_ticket(
+                            project,
+                            actor,
+                            operation,
+                            payload,
+                            current.issue_id,
+                            number,
+                        )
+                        .await?,
+                );
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     /// WIP capacity snapshot for any status-changing path. The count is
     /// re-validated inside `change_status_atomic`; this only carries the
     /// limit and column name into the critical section.
@@ -316,7 +362,7 @@ impl crate::context::IssueService for IssueServiceImpl {
         let custom_field_values = self
             .normalize_custom_fields_for_create(project.id, &cmd.custom_fields)
             .await?;
-        let ticket = match cmd.operation_id {
+        let mut ticket = match cmd.operation_id {
             Some(operation) => {
                 self.projects
                     .issue_creation_ticket(project.id, requester, operation, &payload, true)
@@ -370,21 +416,35 @@ impl crate::context::IssueService for IssueServiceImpl {
                 // constraint or as the sanitized unique-violation Conflict.
                 // `issues.key` is the only unique constraint on INSERT here,
                 // so any duplicate-entry conflict is de facto a key collision.
-                Err(AppError::Database(msg)) if msg.contains("issues_key_key") => continue,
-                Err(AppError::Conflict(ref msg)) if msg == "duplicate entry" => {
-                    if let Some(ticket) = &ticket {
-                        let original = self
-                            .issues
-                            .get_by_id_include_deleted(ticket.issue_id)
-                            .await?;
-                        return super::helpers::build_issue_dtos_with_projects(
-                            Arc::clone(&self.projects),
-                            Arc::clone(&self.users),
-                            Arc::clone(&self.labels),
-                            vec![original],
+                Err(AppError::Database(msg)) if msg.contains("issues_key_key") => {
+                    if let Some(original) = self
+                        .recover_issue_creation_key_collision(
+                            project.id,
+                            requester,
+                            cmd.operation_id,
+                            &payload,
+                            number,
+                            &mut ticket,
                         )
-                        .await
-                        .map(|mut issues| issues.remove(0));
+                        .await?
+                    {
+                        return Ok(original);
+                    }
+                    continue;
+                }
+                Err(AppError::Conflict(ref msg)) if msg == "duplicate entry" => {
+                    if let Some(original) = self
+                        .recover_issue_creation_key_collision(
+                            project.id,
+                            requester,
+                            cmd.operation_id,
+                            &payload,
+                            number,
+                            &mut ticket,
+                        )
+                        .await?
+                    {
+                        return Ok(original);
                     }
                     continue;
                 }
