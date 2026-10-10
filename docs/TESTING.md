@@ -131,7 +131,8 @@ not real customer input. They do not claim live Fleet/Workflow runtime acceptanc
 - Backend: реальные интеграционные тесты с PostgreSQL через Docker; unit-тесты для domain/services.
 - Frontend: unit-тесты на Vitest; E2E на Playwright.
 - После изменений UI — скриншоты в 375×812, 1920×1080, 2560×1440.
-- Coverage gate в CI: ≥60% (`cargo-llvm-cov`, job `coverage`); локальный полный прогон — `just test-backend-coverage`.
+- Отдельный coverage gate: строки ≥75%, регионы ≥65%, функции ≥60%
+  (`cargo-llvm-cov`); полный прогон — `just test-backend-coverage`.
 
 ## 2. Backend тесты
 
@@ -176,7 +177,11 @@ cd backend && cargo test -p infra --test repos --test fk_regression -- --include
 cd backend && ./scripts/run-e2e-tests.sh
 ```
 
-CI-порог покрытия — 60% (`coverage` job); цель по слоям ниже — ориентир, не гейт.
+Скрипт проверяет строки ≥75%, регионы ≥65%, функции ≥60%. Эти пороги
+применяются к полному workspace, включая ignored PostgreSQL-тесты.
+Текущий `.github/workflows/ci.yml` запускает backend-тесты и отдельные
+PostgreSQL-сценарии; coverage выполняется отдельным локальным гейтом перед merge.
+Цели по слоям ниже служат ориентиром.
 
 ## 3. Frontend тесты
 
@@ -286,7 +291,7 @@ Lefthook (`lefthook.yml`):
 | Application | ≥90% |
 | Infra (docker-тесты) | ≥85% |
 | API routes | ≥85% |
-| **CI gate (всё workspace)** | **≥60%** |
+| **Coverage gate (всё workspace)** | **строки ≥75%, регионы ≥65%, функции ≥60%** |
 
 ### Frontend
 
