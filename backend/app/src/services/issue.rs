@@ -10,6 +10,15 @@ use domain::{
 };
 use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
 
+fn ensure_issue_creation_ticket_retriable(
+    ticket: &domain::IssueCreationTicket,
+) -> Result<(), AppError> {
+    if ticket.completed {
+        return Err(AppError::conflict("original_issue_purged"));
+    }
+    Ok(())
+}
+
 pub struct IssueServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
@@ -58,20 +67,22 @@ impl IssueServiceImpl {
             .await
             .map(|mut issues| Some(issues.remove(0))),
             Err(AppError::NotFound(_)) => {
+                ensure_issue_creation_ticket_retriable(&current)?;
                 let operation = operation
                     .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?;
-                *ticket = Some(
-                    self.projects
-                        .advance_issue_creation_ticket(
-                            project,
-                            actor,
-                            operation,
-                            payload,
-                            current.issue_id,
-                            number,
-                        )
-                        .await?,
-                );
+                let advanced = self
+                    .projects
+                    .advance_issue_creation_ticket(
+                        project,
+                        actor,
+                        operation,
+                        payload,
+                        current.issue_id,
+                        number,
+                    )
+                    .await?;
+                ensure_issue_creation_ticket_retriable(&advanced)?;
+                *ticket = Some(advanced);
                 Ok(None)
             }
             Err(error) => Err(error),
@@ -287,6 +298,36 @@ impl IssueServiceImpl {
         }
 
         Ok(normalized_values)
+    }
+}
+
+#[cfg(test)]
+mod idempotency_recovery_tests {
+    use super::ensure_issue_creation_ticket_retriable;
+
+    #[test]
+    fn completed_receipt_cannot_recreate_a_purged_issue() {
+        let ticket = domain::IssueCreationTicket {
+            issue_id: shared::IssueId::new(),
+            number: 7,
+            completed: true,
+        };
+
+        let error = ensure_issue_creation_ticket_retriable(&ticket).unwrap_err();
+        assert!(
+            matches!(error, shared::AppError::Conflict(ref code) if code == "original_issue_purged")
+        );
+    }
+
+    #[test]
+    fn incomplete_receipt_remains_retryable_after_key_collision() {
+        let ticket = domain::IssueCreationTicket {
+            issue_id: shared::IssueId::new(),
+            number: 7,
+            completed: false,
+        };
+
+        assert!(ensure_issue_creation_ticket_retriable(&ticket).is_ok());
     }
 }
 
