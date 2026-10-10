@@ -1,8 +1,11 @@
 # Дата-модель Task Tracker
 
 Additive 000091 adds immutable `sdlc_pm_native_admissions`, keyed by execution/run
-and tied to assignment version, fence and exact owner observation. The accepted
-command and first observation commit together; populated downgrade is refused.
+and tied to assignment version, fence and exact owner observation. Additive
+000092 adds transaction-scoped `sdlc_pm_state_write_permits`; a reserved task's
+trigger consumes one permit for the exact next JSON state. Historical admission
+alone never authorizes later database writes. The accepted command, first
+observation and its state change commit together; populated downgrade is refused.
 [Admission contract](PM_NATIVE_ADMISSION.md).
 
 ## Ledger подготовленного Analysis assignment

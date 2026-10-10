@@ -3390,7 +3390,6 @@ dependencies = [
  "thiserror 2.0.20",
  "tower-http 0.7.1",
  "tracing",
- "utoipa",
  "uuid",
 ]
 

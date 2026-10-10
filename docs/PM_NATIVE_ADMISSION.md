@@ -20,6 +20,12 @@ is bounded. Tracker then reauthorizes, compares reservation, validates freshness
 and lease and checks the monotonic run fence before committing. Additive migration
 000091 stores immutable observation history with the command transaction.
 
+Historical admission is not a standing database write grant. When an authorized
+command changes a reserved task, the same transaction records its exact next state
+in `sdlc_pm_state_write_permits`; the reservation trigger consumes that one-use
+permit while applying the state update. A failed command rolls back both permit
+and state, and an unscoped update remains rejected after admission.
+
 Machine writes need current observation. Owner answer/confirmation and the
 separate verifier require existing history, allowing the original owner response
 while PM waits. Generic assignment replacement and stale/foreign fences remain

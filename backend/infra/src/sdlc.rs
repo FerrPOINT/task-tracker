@@ -319,10 +319,19 @@ impl PostgresSdlcRepository {
         event_type: &str,
         state: &TaskState,
     ) -> Result<(), AppError> {
+        let next_state = json_value(state)?;
+        exec(
+            tx,
+            "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
+             SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks
+             WHERE task_id=$1 AND pm_execution_id IS NOT NULL AND state IS DISTINCT FROM $2",
+            vec![task.into(), next_state.clone().into()],
+        )
+        .await?;
         exec(
             tx,
             "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
-            vec![task.into(), json_value(state)?],
+            vec![task.into(), next_state.into()],
         )
         .await?;
         let status_name = match state.stage {
