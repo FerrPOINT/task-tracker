@@ -758,6 +758,25 @@ struct IssueRepo {
 }
 
 impl IssueRepo {
+    async fn advance_issue_counter(
+        txn: &sea_orm::DatabaseTransaction,
+        issue: &Issue,
+    ) -> Result<(), AppError> {
+        txn.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO project_issue_counters(project_id,high_water_mark) VALUES($1,$2) \
+             ON CONFLICT(project_id) DO UPDATE SET high_water_mark=EXCLUDED.high_water_mark \
+             WHERE project_issue_counters.high_water_mark < EXCLUDED.high_water_mark",
+            [
+                issue.project_id.as_uuid().into(),
+                i64::from(issue.key.number).into(),
+            ],
+        ))
+        .await
+        .map_err(crate::sdlc::map_db)?;
+        Ok(())
+    }
+
     /// `deleted_filter`: "exclude" = only live issues, "only" = only trashed,
     /// "include" = both.
     async fn search_by_jql(
@@ -1204,7 +1223,10 @@ impl IssueRepository for IssueRepo {
                 .await
                 .map_err(crate::sdlc::map_db)?;
         } else {
-            active.insert(&*self.db).await.map_err(AppError::database)?;
+            let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+            Self::advance_issue_counter(&txn, issue).await?;
+            active.insert(&txn).await.map_err(AppError::database)?;
+            txn.commit().await.map_err(AppError::database)?;
         }
         Ok(issue.id)
     }
@@ -1216,6 +1238,7 @@ impl IssueRepository for IssueRepo {
         custom_field_values: &[(CustomFieldId, serde_json::Value)],
     ) -> Result<IssueId, AppError> {
         let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        Self::advance_issue_counter(&txn, issue).await?;
         issue_active_model(issue)
             .insert(&txn)
             .await

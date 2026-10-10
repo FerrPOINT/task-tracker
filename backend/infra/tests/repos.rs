@@ -497,6 +497,113 @@ async fn project_next_issue_number_uses_numeric_suffix_ordering() {
 
     let next = repos.projects.next_issue_number(project.id).await.unwrap();
     assert_eq!(next, 11);
+
+    // A later save with a lower key must not decrease the high-water mark.
+    let issue_8 = Issue::create(
+        &project,
+        8,
+        IssueType::Task,
+        status,
+        "eighth",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&issue_8).await.unwrap();
+    for issue in [&issue_8, &issue_9, &issue_10] {
+        repos.issues.delete(issue.id).await.unwrap();
+        repos.issues.purge(issue.id).await.unwrap();
+    }
+    assert_eq!(
+        repos.projects.next_issue_number(project.id).await.unwrap(),
+        12
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn issue_creation_counter_rolls_back_with_failed_insert() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+    let issue = Issue::create(
+        &project,
+        42,
+        IssueType::Task,
+        StatusId::from_uuid(Uuid::new_v4()),
+        "invalid status",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    assert!(repos.issues.save(&issue).await.is_err());
+    assert_eq!(
+        repos.projects.next_issue_number(project.id).await.unwrap(),
+        1
+    );
+
+    let history = domain::IssueStatusHistory {
+        id: shared::IssueStatusHistoryId::new(),
+        issue_id: issue.id,
+        from_status_id: None,
+        to_status_id: issue.status_id,
+        changed_by_id: user.id,
+        changed_at: now(),
+    };
+    assert!(
+        repos
+            .issues
+            .create_with_initial_data(&issue, &history, &[])
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        repos.projects.next_issue_number(project.id).await.unwrap(),
+        2
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn issue_creation_with_initial_data_advances_counter_after_purge() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let issue = Issue::create(
+        &project,
+        42,
+        IssueType::Task,
+        status,
+        "direct creation",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    let history = domain::IssueStatusHistory {
+        id: shared::IssueStatusHistoryId::new(),
+        issue_id: issue.id,
+        from_status_id: None,
+        to_status_id: status,
+        changed_by_id: user.id,
+        changed_at: now(),
+    };
+    repos
+        .issues
+        .create_with_initial_data(&issue, &history, &[])
+        .await
+        .unwrap();
+    repos.issues.delete(issue.id).await.unwrap();
+    repos.issues.purge(issue.id).await.unwrap();
+    assert_eq!(
+        repos.projects.next_issue_number(project.id).await.unwrap(),
+        43
+    );
 }
 
 #[tokio::test]

@@ -25,6 +25,9 @@ Migration 0090 добавляет confirmed bindings, immutable managed marker,
 Обычные Issues и Draft foundation 0034 используют один atomic allocator;
 original-key replay проверяется до выдачи номера. После конфликта со старым
 прямым INSERT counter продвигается по подтверждённой записи, без MAX+1.
+Создание через обычный IssueRepository также продвигает high-water mark в
+транзакции INSERT; ошибка записи откатывает продвижение. Сохранение задачи с
+меньшим номером не уменьшает counter.
 Выданные новым counter номера
 не переиспользуются после purge. Начальный high-water mark включает имеющиеся
 данные; неизвестные ранее удалённые номера восстановленными не объявляются.
