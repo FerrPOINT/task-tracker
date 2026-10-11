@@ -42,21 +42,27 @@ Down-миграции не поставляются; откат схемы БД 
 ## 5. Бэкап
 
 ```bash
-./scripts/backup.sh [путь-без-расширения]
-# создает <имя>.tar.gz: pg_dump (-Fc) + attachments из Docker volume `uploads`
-ls -lh backups/
+./scripts/backup.sh /protected/backups/workspace-2026-10-08.tar.gz
 ```
+
+Требуются явные `SDLC_TASK`, `SDLC_WORKSPACE_DIR`, `SDLC_PROJECT`,
+`SDLC_DOCKER_CONTEXT`, `SDLC_SIGNING_KEY`: см. [BACKUP_RESTORE](BACKUP_RESTORE.md).
+Это полный согласованный архив workspace через Base с остановкой writers,
+без автоматической ротации защищённых копий.
 
 ## 6. Восстановление
 
+Сначала подготовьте отдельное пустое назначение по процедуре Base и выберите
+его профиль в `SDLC_WORKSPACE_DIR`. Не останавливайте и не перезаписывайте
+постоянные группы вручную. Ключ и секреты назначения сохраняются отдельно.
+
 ```bash
-docker compose stop backend frontend
-./scripts/restore.sh backups/task-tracker-<дата>.tar.gz
-docker compose up -d
-curl -f http://localhost:3456/api/v1/health
+./scripts/restore.sh /protected/backups/workspace-2026-10-08.tar.gz
 ```
 
-`restore.sh` восстанавливает и БД (pg_restore `--clean --if-exists`), и attachments (в volume `uploads`, с chown под non-root backend uid 999).
+Base проверяет профиль, пустое назначение и архив. После восстановления
+проверьте данные, права и readiness: подробности в [BACKUP_RESTORE](BACKUP_RESTORE.md).
+Старый single-product архив не является полным workspace backup.
 
 ## 7. Масштабирование
 

@@ -11,6 +11,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.classify.outputs.backend }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+          fetch-depth: 0
+      - id: classify
+        working-directory: task-tracker
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/classify_ci_changes.py
+
   docs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -20,12 +38,16 @@ jobs:
           path: task-tracker
       - name: README validator tests
         working-directory: task-tracker
-        run: python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks
+        run: |
+          python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks scripts.tests.test_ci_change_classifier scripts.tests.test_base_maintenance
+          bash -n scripts/backup.sh scripts/restore.sh
       - name: README structural validation
         working-directory: task-tracker
         run: python3 scripts/verify_readme.py
 
   backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -102,6 +124,8 @@ jobs:
           diff -u ../openapi/openapi.json ../openapi/openapi.json.generated
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -161,6 +185,8 @@ jobs:
           pnpm theme:check http://127.0.0.1:4173
 
   minimum-rust:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

@@ -1,46 +1,69 @@
 # Backup & Restore — Task Tracker
 
-## 1. Что входит в бэкап
+## Контракт
 
-- PostgreSQL: `pg_dump -Fc` (custom format, восстановление через `pg_restore`).
-- Attachments: содержимое Docker volume `uploads` (tar.gz, с сохранением прав).
+`scripts/backup.sh` и `scripts/restore.sh` делегируют операции
+`services-base/scripts/platform_backup.py`. Это согласованный архив полного
+workspace, а не отдельный dump Task Tracker. Состав, проверки checksum,
+права БД, файловые volumes и блокировки определяет Base по явному профилю.
+Имена физических ресурсов не вычисляются в Task Tracker.
 
-Скрипты: `scripts/backup.sh` (создание), `scripts/restore.sh` (восстановление), `scripts/cleanup_old_backups.sh` (ротация).
+Обязательные переменные для обеих команд:
 
-## 2. Автоматизация
+| Переменная | Значение |
+|---|---|
+| `SDLC_TASK` | Владелец операции, без секретов |
+| `SDLC_WORKSPACE_DIR` | Абсолютный путь к подготовленному workspace с Base |
+| `SDLC_PROJECT` | Логический workspace: `sdlc1` или `sdlc2` |
+| `SDLC_DOCKER_CONTEXT` | Явный Docker context нужного daemon |
+| `SDLC_SIGNING_KEY` | Путь к сохранённому ключу Central Auth |
 
- cron-пример (ежедневно в 03:15, хранить 14 копий):
+Команды требуют ровно один аргумент — полный путь к архиву. Профиль читается
+из `$SDLC_WORKSPACE_DIR/workspace.local.json`, app Compose — из
+`$SDLC_WORKSPACE_DIR/docker-compose.local.yml`. Инструменты и подготовка
+назначения описаны в Base `deploy/LOCAL_GROUPS.md`.
 
-```cron
-15 3 * * * cd /opt/dev/task-tracker && ./scripts/backup.sh >> backups/backup.log 2>&1 && ./scripts/cleanup_old_backups.sh 14
-```
+## Резервная копия
 
-## 3. Ручной бэкап
+После выбора исходного workspace и защищённого места хранения:
 
 ```bash
-./scripts/backup.sh backups/manual-$(date +%F)
-# Контроль: в архиве два файла — <имя>.dump и <имя>-attachments.tar.gz
-tar -tzf backups/manual-*.tar.gz
+./scripts/backup.sh /protected/backups/workspace-2026-10-08.tar.gz
 ```
 
-## 4. Восстановление
+Передаётся `--quiesce`: Base согласованно приостанавливает writers и возвращает
+их согласно своему протоколу. Планируйте окно операции; wrapper не запускает
+контейнеры напрямую и не удаляет старые архивы. Ключ не включается в архив:
+сохраняется его fingerprint, сам ключ хранится отдельно в защищённом месте.
+
+## Восстановление
+
+Сначала по процедуре Base подготовьте отдельное изолированное пустое
+назначение, совместимые образы и сохранённые секреты. Затем выберите
+**профиль назначения**, а не рабочий workspace, в `SDLC_WORKSPACE_DIR`;
+`SDLC_PROJECT` остаётся логическим `sdlc1`/`sdlc2`. Физические временные проекты
+берутся из квалифицированного профиля, не из произвольных env overrides.
 
 ```bash
-docker compose stop backend frontend
-./scripts/restore.sh backups/task-tracker-YYYY-MM-DD-HHMMSS.tar.gz
-docker compose up -d
-curl -f http://localhost:3456/api/v1/health
+./scripts/restore.sh /protected/backups/workspace-2026-10-08.tar.gz
 ```
 
-`restore.sh`:
+Wrapper передаёт `--qa-only`: Base отвергает постоянный профиль назначения.
+Base проверяет профиль, endpoint, отдельное пустое назначение, целостность
+архива и fingerprint ключа до восстановления. Wrapper не предоставляет
+`--allow-source-project`, `--skip-file-volumes` или in-place `--clean`.
+Отказ проверки не следует обходить ручным восстановлением в рабочие volumes.
+После операции обязательны проверка данных, прав, readiness и продуктовых
+сценариев; выполнение wrapper само по себе не доказывает готовность релиза.
 
-1. распаковывает архив;
-2. `pg_restore --clean --if-exists` в базу из `TASKTRACKER_DATABASE__URL` / переменных `.env`;
-3. восстанавливает attachments в volume `uploads` и делает `chown 999:999` (backend работает non-root).
+## Старые архивы и автоматизация
 
-## 5. Point-in-time recovery
-
-WAL-архивирование не настроено по умолчанию. Для PITR подключите внешний инструмент (pgBackRest, WAL-G) к volume `postgres_data`.
+Исторические архивы одного продукта (`dump` + attachments) сохраняются,
+но не считаются совместимыми с форматом полного workspace. Для них нужна
+отдельная согласованная процедура; этот wrapper не конвертирует их автоматически.
+`cleanup_old_backups.sh` — историческая ротация, её нельзя применять к защищённым
+workspace-архивам без отдельной политики хранения. Не подключайте прежний cron
+с удалением копий к новому backup. WAL/PITR этой командой не настраивается.
 
 ## References
 
