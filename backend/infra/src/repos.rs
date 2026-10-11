@@ -844,6 +844,7 @@ fn namespace_available_resources_statement(
         DbBackend::Postgres,
         "SELECT p.id,p.key,p.name FROM projects p \
          WHERE p.id = ANY($1) \
+           AND NOT p.namespace_managed \
            AND NOT EXISTS(SELECT 1 FROM tracker_namespace_bindings b WHERE b.resource_id=p.id) \
          ORDER BY p.key,p.id LIMIT $2 OFFSET $3",
         [

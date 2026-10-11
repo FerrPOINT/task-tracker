@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- Потеря Namespace projection больше не делает управляемый проект свободным:
+  каталог исключает его, а повторная привязка под блокировкой возвращает
+  `namespace_projection_missing`, сохраняя исходную границу ownership.
+
 - PostgreSQL HTTP fixtures проверяют точный fail-closed ответ при отсутствии
   Fleet native reader и неизменность admission/lease state; история по-прежнему
   не разрешает новые machine writes.
