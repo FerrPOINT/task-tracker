@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Umbrella build for the SDLC fleet root compose (context = /opt/dev/sdlc).
 # Stages the sibling services-base checkout so the sdlc-auth-core path
 # dependency (../../../services-base/...) resolves.
@@ -23,13 +24,16 @@ COPY task-tracker/backend/api ./api
 COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
-RUN cargo build --locked --release --bin server
+RUN --mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,target=/usr/local/cargo/registry,sharing=shared \
+    --mount=type=cache,id=task-tracker-cargo-target-rust-1.88,target=/cargo-target,sharing=locked \
+    CARGO_TARGET_DIR=/cargo-target cargo build --locked --release --bin server \
+    && cp /cargo-target/release/server /app/server
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates libssl3 wget && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r tasktracker && useradd -r -g tasktracker -d /app -s /usr/sbin/nologin tasktracker
 WORKDIR /app
-COPY --from=builder /app/target/release/server /usr/local/bin/task-tracker-server
+COPY --from=builder /app/server /usr/local/bin/task-tracker-server
 RUN mkdir -p /var/lib/tasktracker/uploads && chown -R tasktracker:tasktracker /var/lib/tasktracker
 USER tasktracker
 ENV TASKTRACKER_UPLOADS_DIR=/var/lib/tasktracker/uploads
