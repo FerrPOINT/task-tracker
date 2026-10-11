@@ -35,6 +35,33 @@ Task Tracker — self-hosted приложение с конфиденциаль�
   получают пользовательские права автоматически.
 - Legacy-режим сохраняет прежний project RBAC.
 
+### SDLC: Strict Project And Assignment Boundary
+
+SDLC routes do not inherit the ordinary central-mode project bypass above.
+They recheck active central-subject identity and explicit project ownership or
+membership. Business answers and exact-revision confirmation require the owner
+human session; an operator cannot consent for that owner.
+
+`GET /api/v1/sdlc/project-directory` uses that strict boundary, not ordinary
+central-mode project listing. One SQL snapshot checks the active local identity
+by verified central subject and explicit project ownership/membership before
+UUID-keyset paging. Admin role, matching email/local user UUID, public/legacy
+access, cookie-only credentials and unrelated service grants do not confer
+directory access. Every page and replay uses fresh ACL, without a scope cache.
+Only canonical project ID/key/name and a nullable continuation cursor are exposed;
+there are no descriptions, counts or owner/member attributes. An authorized
+nonmember (including global admin) receives an empty page, not the global catalog.
+A cursor never proves continued access or authorizes creation/admission.
+
+The PM ownership lease is machine-only, including readback and historical
+replay. Its holder is derived from the verified bearer and must match the current
+persisted assignment subject, exact PM grant and fence. Central service scopes
+still apply. Fresh ACL/account checks cannot be bypassed by idempotency replay.
+Expired ownership is not automatically reacquired; old receipts do not authorize
+side effects or extend TTL. The receipt always has `dispatch_allowed=false` and
+cannot replace future native/workspace/first-step admission checks. See
+[the contract](CHAT_CLARIFICATION_CONTRACT.md#pm-execution-ownership-lease-not-admission).
+
 ## 4. Transport
 
 - HTTPS/TLS everywhere в production.
@@ -185,3 +212,23 @@ Content-Security-Policy: ...
 - `docs/ARCHITECTURE.md`
 - `docs/DEPLOYMENT.md`
 - `docs/API.md`
+## SDLC Clarification Authorization
+
+PM credential confinement rejects any PM assignment grant on the legacy
+router before Central context becomes UserClaims. Strict SDLC requests with that
+grant require one canonical task capability, allowed method/path and current
+assignment subject/scope plus matching persisted assignment ledger on reads.
+Owner answers/confirmation, verifier evidence and assignment/binding writes are
+not PM operations. Generic human/service PAT behavior is unchanged. These checks
+passed actual TCP/PostgreSQL regressions, including latest-ledger validation on
+lease reads/claim/heartbeat. The synthetic Central fixture is not real Base
+delegation or runtime handoff; that acceptance remains required before admission.
+
+SDLC uses a dedicated central-only middleware, live session/PAT checks and
+service scopes. PostgreSQL rechecks active central subject and explicit project
+owner/member rows under locks on every read/write/replay. Legacy global admin
+and TT_AUTH project bypass confer no SDLC access. Answer/confirm require the
+exact persisted owner and a human session; PM writes require current assignment,
+execution, concrete agent/version and exact scope. A separate configured verifier
+attests readiness; owner/PM boolean claims cannot pass checks. See the
+[contract](CHAT_CLARIFICATION_CONTRACT.md) for provisioning and fail-closed errors.

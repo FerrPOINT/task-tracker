@@ -27,8 +27,12 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+migration = { path = "../migration" }
 reqwest = { workspace = true, features = ["json"] }
 serde_json.workspace = true
 sea-orm.workspace = true
 serial_test = "3.2"
 uuid.workspace = true
+jsonwebtoken.workspace = true
+base64 = "0.22"
+p256 = { version = "0.13", features = ["pem", "pkcs8"] }

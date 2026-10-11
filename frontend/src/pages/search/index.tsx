@@ -1,4 +1,6 @@
-import { Link, useSearchParams } from 'react-router'
+import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useSearchParams } from 'react-router'
 import { Search, X, ArrowUpDown, Filter, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState, useMemo, useEffect } from 'react'
@@ -114,7 +116,22 @@ export default function SearchPage() {
   const clearFilters = () => {
     setDebouncedQuery('')
     setJqlDraft('')
-    setSearchParams(new URLSearchParams())
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous)
+      for (const key of [
+        'q',
+        'mode',
+        'jql',
+        'project_key',
+        'status',
+        'assignee_id',
+        'priority',
+        'sort',
+        'page',
+      ])
+        next.delete(key)
+      return next
+    })
   }
 
   const setMode = (nextMode: 'simple' | 'jql') => {
@@ -234,7 +251,10 @@ export default function SearchPage() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="h-10 w-full justify-between">
-                    {projectName}
+                    <span className="flex min-w-0 items-center gap-2">
+                      {projectKey && <ProjectAvatar projectKey={projectKey} size="xs" />}
+                      <span className="truncate">{projectName}</span>
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
@@ -246,11 +266,14 @@ export default function SearchPage() {
                   </DropdownMenuItem>
                   {projects?.map((p) => (
                     <DropdownMenuItem
-                      className="min-h-10"
+                      className="min-h-10 gap-2"
                       key={p.key}
                       onClick={() => setFilter('project_key', p.key)}
                     >
-                      {p.key} — {p.name}
+                      <ProjectAvatar projectKey={p.key} size="xs" />
+                      <span>
+                        {p.key} — {p.name}
+                      </span>
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>

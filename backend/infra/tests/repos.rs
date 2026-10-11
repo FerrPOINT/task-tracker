@@ -24,18 +24,19 @@ fn base_db_url() -> String {
     })
 }
 
-async fn setup() -> domain::Repositories {
+fn infra_test_db_url() -> String {
     let base_url = base_db_url();
-    // Replace database name with isolated infra test DB
-    let db_url = format!(
-        "{}/{}",
+    format!(
+        "{}/tasktracker_infra_test",
         base_url
             .rsplit_once('/')
-            .map(|(h, _)| h)
-            .unwrap_or(&base_url),
-        "tasktracker_infra_test"
-    );
-    let db = Database::connect(&db_url)
+            .map(|(host, _)| host)
+            .unwrap_or(&base_url)
+    )
+}
+
+async fn setup() -> domain::Repositories {
+    let db = Database::connect(infra_test_db_url())
         .await
         .expect("connect to test db");
     migration::Migrator::up(&db, None)
@@ -497,6 +498,256 @@ async fn project_next_issue_number_uses_numeric_suffix_ordering() {
 
     let next = repos.projects.next_issue_number(project.id).await.unwrap();
     assert_eq!(next, 11);
+
+    // A later save with a lower key must not decrease the high-water mark.
+    let issue_8 = Issue::create(
+        &project,
+        8,
+        IssueType::Task,
+        status,
+        "eighth",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&issue_8).await.unwrap();
+    for issue in [&issue_8, &issue_9, &issue_10] {
+        repos.issues.delete(issue.id).await.unwrap();
+        repos.issues.purge(issue.id).await.unwrap();
+    }
+    assert_eq!(
+        repos.projects.next_issue_number(project.id).await.unwrap(),
+        12
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn issue_creation_counter_rolls_back_with_failed_insert() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+    let issue = Issue::create(
+        &project,
+        42,
+        IssueType::Task,
+        StatusId::from_uuid(Uuid::new_v4()),
+        "invalid status",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    assert!(repos.issues.save(&issue).await.is_err());
+    assert_eq!(
+        repos.projects.next_issue_number(project.id).await.unwrap(),
+        1
+    );
+
+    let history = domain::IssueStatusHistory {
+        id: shared::IssueStatusHistoryId::new(),
+        issue_id: issue.id,
+        from_status_id: None,
+        to_status_id: issue.status_id,
+        changed_by_id: user.id,
+        changed_at: now(),
+    };
+    assert!(
+        repos
+            .issues
+            .create_with_initial_data(&issue, &history, &[])
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        repos.projects.next_issue_number(project.id).await.unwrap(),
+        2
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn issue_creation_with_initial_data_advances_counter_after_purge() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+    let status =
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap());
+    let issue = Issue::create(
+        &project,
+        42,
+        IssueType::Task,
+        status,
+        "direct creation",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    let history = domain::IssueStatusHistory {
+        id: shared::IssueStatusHistoryId::new(),
+        issue_id: issue.id,
+        from_status_id: None,
+        to_status_id: status,
+        changed_by_id: user.id,
+        changed_at: now(),
+    };
+    repos
+        .issues
+        .create_with_initial_data(&issue, &history, &[])
+        .await
+        .unwrap();
+    repos.issues.delete(issue.id).await.unwrap();
+    repos.issues.purge(issue.id).await.unwrap();
+    assert_eq!(
+        repos.projects.next_issue_number(project.id).await.unwrap(),
+        43
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+#[serial_test::serial]
+async fn archived_namespace_context_is_not_drained_while_assignment_exists() {
+    use shared::resource_context::{NamespaceRef, OwnerCommand, ResourceKind, ResourceRef};
+
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+    let registry =
+        Uuid::parse_str(&std::env::var("TT_NAMESPACE__REGISTRY_INSTANCE_ID").unwrap()).unwrap();
+    let instance = Uuid::parse_str(&std::env::var("TT_NAMESPACE__INSTANCE_ID").unwrap()).unwrap();
+    let namespace_id = Uuid::new_v4();
+    let command = OwnerCommand {
+        schema_version: 1,
+        namespace: NamespaceRef {
+            registry_instance_id: registry,
+            namespace_id,
+        },
+        resource: ResourceRef {
+            kind: ResourceKind::TrackerProject,
+            instance_id: instance,
+            resource_id: project.id.as_uuid(),
+        },
+        operation_id: Uuid::new_v4(),
+        generation: 2,
+        state: "archived".into(),
+        create_spec: None,
+    };
+    let db = Database::connect(infra_test_db_url()).await.unwrap();
+    db.execute_unprepared("SELECT 1").await.unwrap();
+    let task = Issue::create(
+        &project,
+        1,
+        IssueType::Task,
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap()),
+        "active assignment",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&task).await.unwrap();
+    db.execute(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Postgres,
+        "INSERT INTO sdlc_instance(instance_id) VALUES ('tracker-test') ON CONFLICT DO NOTHING",
+        vec![],
+    ))
+    .await
+    .unwrap();
+    db.execute(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,
+        "INSERT INTO sdlc_tasks(task_id,tracker_instance_id,project_id,root_task_id,owner_subject,state) VALUES ($1,'tracker-test',$2,$1,'owner',jsonb_build_object('task_id',$1::text,'root_task_id',$1::text,'project_id',$2::text,'tracker_instance_id','tracker-test','owner_subject','owner','stage','Backlog'))",
+        vec![task.id.as_uuid().into(), project.id.as_uuid().into()])).await.unwrap();
+    db.execute(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Postgres,
+        "INSERT INTO sdlc_assignments(task_id,version,payload) VALUES ($1,1,'{}'::jsonb)",
+        vec![task.id.as_uuid().into()],
+    ))
+    .await
+    .unwrap();
+    db.execute(sea_orm::Statement::from_sql_and_values(sea_orm::DatabaseBackend::Postgres,
+        "INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command) VALUES ($1,$2,$3,2,'archived',$4)",
+        vec![project.id.as_uuid().into(), registry.into(), namespace_id.into(), serde_json::to_value(&command).unwrap().into()])).await.unwrap();
+
+    let listed = repos
+        .projects
+        .namespace_contexts(None, 10, 0)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+    assert!(!listed[0].binding.drained);
+    assert!(
+        serde_json::to_value(
+            repos
+                .projects
+                .namespace_binding(project.id)
+                .await
+                .unwrap()
+                .unwrap()
+        )
+        .unwrap()["drained"]
+            == false
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+async fn issue_creation_ticket_advances_after_legacy_number_collision() {
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+    let operation = Uuid::new_v4();
+    let payload = serde_json::json!({"summary":"same idempotent request"});
+    let reserved = repos
+        .projects
+        .issue_creation_ticket(project.id, user.id, operation, &payload, true)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reserved.number, 1);
+
+    // Model an older client winning the unique issue key after the durable
+    // receipt reserved it but before its own insert commits.
+    let legacy = Issue::create(
+        &project,
+        reserved.number,
+        IssueType::Task,
+        StatusId::from_uuid(Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap()),
+        "legacy writer",
+        None,
+        user.id,
+        Priority::Medium,
+    );
+    repos.issues.save(&legacy).await.unwrap();
+
+    let advanced = repos
+        .projects
+        .advance_issue_creation_ticket(
+            project.id,
+            user.id,
+            operation,
+            &payload,
+            reserved.issue_id,
+            reserved.number,
+        )
+        .await
+        .unwrap();
+    assert_eq!(advanced.issue_id, reserved.issue_id);
+    assert_eq!(advanced.number, 2);
+    assert!(!advanced.completed);
+    let replay = repos
+        .projects
+        .issue_creation_ticket(project.id, user.id, operation, &payload, false)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(replay.issue_id, reserved.issue_id);
+    assert_eq!(replay.number, advanced.number);
 }
 
 #[tokio::test]

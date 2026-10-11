@@ -1,5 +1,7 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { useEffect, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useParams, useSearchParams } from 'react-router'
 import { Plus, MoreHorizontal, Play, CheckCircle2, Pencil, ArrowRightLeft, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
@@ -280,7 +282,8 @@ export function ProjectBacklogPage() {
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold sm:text-2xl">
+          <h1 className="flex min-w-0 items-center gap-2 text-xl font-bold sm:text-2xl">
+            <ProjectAvatar projectKey={key ?? ''} />
             {t('backlog.title', { projectName: key })}
           </h1>
           <div className="text-sm text-text-muted">

@@ -120,8 +120,125 @@ pub trait UserRepository: Send + Sync {
     async fn list(&self) -> Result<Vec<User>, AppError>;
 }
 
+#[derive(Debug, Clone)]
+pub struct IssueCreationTicket {
+    pub issue_id: IssueId,
+    pub number: u32,
+    pub completed: bool,
+}
+
 #[async_trait]
 pub trait ProjectRepository: Send + Sync {
+    async fn namespace_task_catalog(
+        &self,
+        _namespace: &shared::resource_context::NamespaceRef,
+        _offset: i64,
+    ) -> Result<Vec<shared::resource_context::TaskCatalogItem>, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_catalog_not_supported".into(),
+        ))
+    }
+    async fn namespace_available_resources(
+        &self,
+        _limit: i64,
+        _offset: i64,
+    ) -> Result<Vec<shared::resource_context::ResourceCatalogItem>, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_catalog_not_supported".into(),
+        ))
+    }
+    async fn namespace_stats(
+        &self,
+        _project: ProjectId,
+    ) -> Result<shared::resource_context::ResourceStats, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_stats_not_supported".into(),
+        ))
+    }
+    async fn namespace_contexts(
+        &self,
+        _namespace: Option<&shared::resource_context::NamespaceRef>,
+        _limit: i64,
+        _offset: i64,
+    ) -> Result<Vec<shared::resource_context::ResourceContextSummary>, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_catalog_not_supported".into(),
+        ))
+    }
+    async fn issue_creation_ticket(
+        &self,
+        _project: ProjectId,
+        _actor: UserId,
+        _operation: uuid::Uuid,
+        _payload: &serde_json::Value,
+        _allocate: bool,
+    ) -> Result<Option<IssueCreationTicket>, AppError> {
+        Err(AppError::Unavailable(
+            "issue_idempotency_not_supported".into(),
+        ))
+    }
+    async fn advance_issue_creation_ticket(
+        &self,
+        _project: ProjectId,
+        _actor: UserId,
+        _operation: uuid::Uuid,
+        _payload: &serde_json::Value,
+        _issue_id: IssueId,
+        _expected_number: u32,
+    ) -> Result<IssueCreationTicket, AppError> {
+        Err(AppError::Unavailable(
+            "issue_idempotency_not_supported".into(),
+        ))
+    }
+
+    async fn list_accessible_page(
+        &self,
+        ids: &[ProjectId],
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Project>, AppError> {
+        let mut projects = self
+            .list(ProjectQuery::default())
+            .await?
+            .into_iter()
+            .filter(|p| ids.contains(&p.id))
+            .collect::<Vec<_>>();
+        projects.sort_by(|a, b| {
+            a.key
+                .as_str()
+                .cmp(b.key.as_str())
+                .then_with(|| a.id.to_string().cmp(&b.id.to_string()))
+        });
+        Ok(projects
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
+    async fn namespace_binding(
+        &self,
+        _id: ProjectId,
+    ) -> Result<Option<shared::resource_context::OwnerReadback>, AppError> {
+        Ok(None)
+    }
+    async fn apply_namespace(
+        &self,
+        _command: &shared::resource_context::OwnerCommand,
+    ) -> Result<shared::resource_context::OwnerReadback, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_owner_not_implemented".into(),
+        ))
+    }
+    async fn require_writable(&self, id: ProjectId) -> Result<(), AppError> {
+        if self
+            .namespace_binding(id)
+            .await?
+            .is_some_and(|binding| binding.state != "active")
+        {
+            return Err(AppError::conflict("namespace_resource_read_only"));
+        }
+        Ok(())
+    }
     async fn get_by_id(&self, id: ProjectId) -> Result<Project, AppError>;
     async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError>;
     async fn list(&self, query: ProjectQuery) -> Result<Vec<Project>, AppError>;
@@ -148,6 +265,42 @@ pub struct ProjectQuery {
 
 #[async_trait]
 pub trait IssueRepository: Send + Sync {
+    async fn repository_links(&self, _task: IssueId) -> Result<Vec<serde_json::Value>, AppError> {
+        Err(AppError::Unavailable(
+            "repository_links_not_implemented".into(),
+        ))
+    }
+    async fn link_repository(
+        &self,
+        _task: IssueId,
+        _actor: UserId,
+        _repository: &crate::task_repositories::RepositoryRef,
+        _snapshot: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        Err(AppError::Unavailable(
+            "repository_links_not_implemented".into(),
+        ))
+    }
+    async fn status_category_counts(
+        &self,
+        projects: &[ProjectId],
+        statuses: &[crate::Status],
+    ) -> Result<std::collections::HashMap<ProjectId, [i64; 3]>, AppError> {
+        let mut result = std::collections::HashMap::new();
+        for project in projects {
+            let mut counts = [0, 0, 0];
+            for status in statuses {
+                let index = match status.category {
+                    crate::StatusCategory::Todo => 0,
+                    crate::StatusCategory::InProgress => 1,
+                    crate::StatusCategory::Done => 2,
+                };
+                counts[index] += self.count_by_project_status(*project, status.id).await? as i64;
+            }
+            result.insert(*project, counts);
+        }
+        Ok(result)
+    }
     /// Fetch a live (non-deleted) issue by id. Returns `NotFound` for
     /// soft-deleted issues — use [`get_by_id_include_deleted`] to access
     /// trashed issues.
@@ -295,13 +448,13 @@ impl TransitionGuard {
     /// Returns `Err(conflict)` when moving one more issue into the target
     /// column would exceed its configured WIP limit.
     pub fn ensure_wip_ok(&self) -> Result<(), AppError> {
-        if let Some(limit) = self.wip_limit {
-            if self.target_count >= limit as u64 {
-                return Err(AppError::conflict(format!(
-                    "WIP limit ({limit}) reached for {}",
-                    self.column_name
-                )));
-            }
+        if let Some(limit) = self.wip_limit
+            && self.target_count >= limit as u64
+        {
+            return Err(AppError::conflict(format!(
+                "WIP limit ({limit}) reached for {}",
+                self.column_name
+            )));
         }
         Ok(())
     }

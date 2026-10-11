@@ -51,7 +51,11 @@ jobs:
       - name: Read pinned Base revision
         id: base
         working-directory: task-tracker
-        run: echo "sha=$(cat .base-revision)" >> "$GITHUB_OUTPUT"
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
       - name: Check out services-base sibling (path deps)
         uses: actions/checkout@v7
         with:
@@ -61,7 +65,7 @@ jobs:
           ref: ${{ steps.base.outputs.sha }}
       - name: Verify pinned Base checkout
         working-directory: task-tracker
-        run: python3 ../services-base/scripts/verify_base_revision.py --revision .base-revision --base ../services-base
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.88.0"
@@ -76,6 +80,15 @@ jobs:
         env:
           TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
         run: cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
+      - name: Isolated PostgreSQL HTTP clarification and ownership lease
+        env:
+          TT_SDLC_DRAFT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_drafts
+          TT_SDLC_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_clarifications
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_drafts
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_clarifications
+          cargo test -p server --test drafts --locked -- --ignored --test-threads=1
+          cargo test -p server --test sdlc --locked -- --ignored --test-threads=1
       - name: OpenAPI drift gate
         run: |
           mkdir -p ../openapi
@@ -96,7 +109,11 @@ jobs:
       - name: Read pinned Base revision
         id: base
         working-directory: task-tracker
-        run: echo "sha=$(cat .base-revision)" >> "$GITHUB_OUTPUT"
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
       - name: Check out services-base sibling (@sdlc/ui file dep)
         uses: actions/checkout@v7
         with:
@@ -106,7 +123,7 @@ jobs:
           ref: ${{ steps.base.outputs.sha }}
       - name: Verify pinned Base checkout
         working-directory: task-tracker
-        run: python3 ../services-base/scripts/verify_base_revision.py --revision .base-revision --base ../services-base
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
       - uses: pnpm/action-setup@v6
         with:
           version: 10.28.1
@@ -147,7 +164,11 @@ jobs:
       - name: Read pinned Base revision
         id: base
         working-directory: task-tracker
-        run: echo "sha=$(cat .base-revision)" >> "$GITHUB_OUTPUT"
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v7
         with:
           repository: FerrPOINT/services-base
@@ -156,7 +177,7 @@ jobs:
           token: ${{ secrets.SERVICES_BASE_TOKEN }}
       - name: Verify pinned Base checkout
         working-directory: task-tracker
-        run: python3 ../services-base/scripts/verify_base_revision.py --revision .base-revision --base ../services-base
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: "1.88.0"

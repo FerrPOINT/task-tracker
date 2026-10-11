@@ -1,10 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render as renderView, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import type { ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
 import { ThemeProvider } from '@sdlc/ui/lib'
 
 import { AppShell } from './app-shell'
+
+function render(view: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return renderView(<QueryClientProvider client={client}>{view}</QueryClientProvider>)
+}
 
 const useCurrentUser = vi.hoisted(() => vi.fn())
 const useIssue = vi.hoisted(() => vi.fn())

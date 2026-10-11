@@ -1,5 +1,7 @@
+import { ProjectPicker } from '@sdlc/ui/ui'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useSearchParams } from 'react-router'
 import { Download, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -192,29 +194,22 @@ export function ReportsPage() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-0 flex-col gap-1.5">
           <Label htmlFor="report-project">{t('reports.project')}</Label>
-          <select
+          <ProjectPicker
             id="report-project"
             aria-label={t('reports.project')}
-            className="min-h-11 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:min-h-10"
             value={projectId}
+            options={projects.map((p) => ({ value: p.id, label: p.name, projectKey: p.key }))}
+            placeholder={t('reports.selectProject')}
             disabled={
               (projectsQuery.isLoading || Boolean(projectsQuery.error)) && projects.length === 0
             }
-            onChange={(e) => {
-              const nextId = e.target.value
+            onChange={(nextId) => {
               const nextProject = projects.find((project) => project.id === nextId)
               updateParams({ project_key: nextProject?.key, sprint_id: undefined })
               setExportError(null)
               setFailedExport(null)
             }}
-          >
-            <option value="">{t('reports.selectProject')}</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
 
         {tab === 'burndown' && projectKey && (

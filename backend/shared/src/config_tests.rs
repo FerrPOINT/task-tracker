@@ -15,6 +15,7 @@ fn clear_env() {
         "TASKTRACKER_DATABASE__IDLE_TIMEOUT_SECONDS",
         "TASKTRACKER_SERVER__ADDRESS",
         "TASKTRACKER_SERVER__PORT",
+        "TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS",
         "TASKTRACKER_AUTH__JWT_SECRET",
         "TASKTRACKER_JWT_SECRET",
         "TASKTRACKER_AUTH__ACCESS_TOKEN_TTL_MINUTES",
@@ -244,5 +245,35 @@ fn general_rate_above_nanosecond_precision_is_rejected() {
 
     let err = AppConfig::from_path("/nonexistent.toml").unwrap_err();
     assert!(err.to_string().contains("must not exceed 1000000000"));
+    clear_env();
+}
+
+#[test]
+fn cors_environment_accepts_explicit_owner_origins() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    clear_env();
+    set_env("TASKTRACKER_JWT_SECRET", "test-secret-32-chars-long!!!!!");
+    set_env(
+        "TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS",
+        "http://localhost:7722,http://localhost:7772",
+    );
+    assert_eq!(
+        AppConfig::from_path("/nonexistent.toml")
+            .unwrap()
+            .server
+            .cors_allowed_origins,
+        vec!["http://localhost:7722", "http://localhost:7772"]
+    );
+    set_env(
+        "TASKTRACKER_SERVER__CORS_ALLOWED_ORIGINS",
+        "http://localhost:7722",
+    );
+    assert_eq!(
+        AppConfig::from_path("/nonexistent.toml")
+            .unwrap()
+            .server
+            .cors_allowed_origins,
+        vec!["http://localhost:7722"]
+    );
     clear_env();
 }

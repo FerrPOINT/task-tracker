@@ -6,6 +6,45 @@
 
 ## [Unreleased]
 
+- Закреплён общий Base cursor policy: доступные вкладки, кнопки, селекты
+  и пункты меню показывают курсор действия без локальных копий CSS.
+
+- Base обновлён для удержания focus в `ConfirmDialog` во время pending.
+
+- Закреплён проверяемый общий Base candidate; standalone-инструкция выбирает
+  активный Namespace pin с legacy fallback, как CI и `scripts/build.py`.
+- Инструкция coverage отражает фактические пороги и отдельный локальный gate.
+- Прямое создание Issue атомарно продвигает постоянный счётчик номеров;
+  purge и сохранение меньшего номера не допускают повторную выдачу номера.
+
+- Добавлен ограниченный machine-only reader сквозных проектов для Forge:
+  пагинация, стабильные refs и подтверждённая локальная binding projection.
+  Sidebar использует общий Base primitive раскрываемой группы проекта.
+
+- Namespace cohort: стабильные refs, локальные binding projections и lifecycle guards; аддитивные migrations, совместимый rollback и отдельные execution v2 gates. Runtime-приёмка ещё не завершена.
+
+
+- Prepared Analysis сверяет свежую защищённую конфигурацию Fleet с frozen routing
+  и повторно проверяет lease/ACL после HTTP. Это read-only preflight, не native
+  admission; runtime readiness и dispatch остаются false.
+
+- PM assignment-scoped credentials больше не преобразуются в legacy user claims:
+  legacy API запрещён до привязки пользователя; SDLC ограничен одной канонической
+  задачей, разрешёнными методами/операциями и текущим назначением. Чтение и lease
+  сверяют последний assignment ledger. Rust/PostgreSQL проверки пройдены;
+  runtime handoff пока не подключён.
+
+- Добавлен SDLC-каталог проектов для формы создания PM Draft: keyset-пагинация
+  по UUID и только минимальные ID/key/name проектов текущего central subject.
+  Доступ проверяется заново для каждой страницы; legacy public/admin bypass,
+  локальный UUID и email не предоставляют доступ. Каталог не подтверждает
+  readiness агента и не разрешает runtime dispatch.
+
+- PM Draft получил machine-only ownership lease: PostgreSQL TTL 30 секунд,
+  heartbeat CAS, идемпотентные receipts и readback текущего/исторического состояния.
+  Истечение lease не допускает повторного захвата, replay не продлевает TTL.
+  Lease не разрешает runtime dispatch: admission и настоящий PM-сценарий остаются
+  отдельной интеграцией. CI явно выполняет оба SDLC HTTP/PG набора в разных БД.
 - Подтверждения удаления задачи/worklog возвращают клавиатурный фокус на инициатор либо стабильную вкладку после удаления строки. Ошибка очищается при новом подтверждении; pending записи worklog блокирует повторную отправку, Escape и закрытие. Дробные duration и продуктовые права сохранены; Base закреплён для воспроизводимой общей поставки.
 
 - Центральный каталог пользователей читается без создания чужих профилей.

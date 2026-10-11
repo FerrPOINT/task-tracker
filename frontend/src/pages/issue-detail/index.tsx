@@ -1,4 +1,6 @@
-import { Link, useParams, useSearchParams } from 'react-router'
+import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useParams, useSearchParams } from 'react-router'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
@@ -37,8 +39,11 @@ import { useAuthStore } from '@/shared/auth/store'
 import { IssueMetaEditor } from '@/features/issue-detail/ui/IssueMetaEditor'
 import { IssueDescriptionEditor } from '@/features/issue-detail/ui/IssueDescriptionEditor'
 import { useBoard, useUpdateIssue, useDeleteIssue, useSprints, useIssue } from '@/shared/api/hooks'
+import { TaskDocumentsPanel } from '@/features/issue-detail/ui/TaskDocumentsPanel'
+import { TaskRepositoriesPanel } from '@/features/issue-detail/ui/TaskRepositoriesPanel'
+import { SdlcPanel } from '@/features/sdlc/ui/SdlcPanel'
 
-const issueTabs = ['activity', 'comments', 'worklog', 'attachments'] as const
+const issueTabs = ['activity', 'comments', 'worklog', 'attachments', 'sdlc'] as const
 type IssueTab = (typeof issueTabs)[number]
 
 function parseIssueTab(value: string | null): IssueTab {
@@ -64,11 +69,13 @@ export function IssueDetailPage() {
   const sprintsQuery = useSprints(issueQuery.data?.project_key)
   const updateIssue = useUpdateIssue(id)
   const deleteIssueMutation = useDeleteIssue()
-  const worklogsQuery = useWorklogs(id)
-  const commentsQuery = useComments(id)
-  const create = useCreateWorklog(id)
-  const update = useUpdateWorklog(id)
-  const remove = useDeleteWorklog(id)
+  // Historical issue URLs may contain a key; owner APIs use the loaded UUID.
+  const taskId = issueQuery.data?.id ?? ''
+  const worklogsQuery = useWorklogs(taskId)
+  const commentsQuery = useComments(taskId)
+  const create = useCreateWorklog(taskId)
+  const update = useUpdateWorklog(taskId)
+  const remove = useDeleteWorklog(taskId)
 
   useEffect(() => {
     latestTab.current = activeTab
@@ -166,21 +173,23 @@ export function IssueDetailPage() {
         {issueQuery.error && (
           <ErrorState message={t('issue.refreshError')} onRetry={() => void issueQuery.refetch()} />
         )}
-        <div className="mb-2 text-sm text-text-muted">
-          <Link
-            to={`/projects/${issue.project_key}/board`}
-            className="inline-flex min-h-6 items-center rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-          >
-            {issue.project_name}
-          </Link>{' '}
-          / {issue.key}
-        </div>
-
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <span className="rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-text-primary">
-            {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1">
+            <div className="min-w-0 max-w-full break-words text-sm text-text-muted">
+              <Link
+                to={`/projects/${issue.project_key}/board`}
+                className="inline-flex items-center gap-2 min-h-6 max-w-full break-words rounded-sm hover:text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              >
+                <ProjectAvatar projectKey={issue.project_key} size="xs" />
+                {issue.project_name}
+              </Link>{' '}
+              / {issue.key}
+            </div>
+            <span className="shrink-0 rounded bg-accent/20 px-2 py-0.5 text-xs font-medium text-text-primary">
+              {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
+            </span>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button
               variant="secondary"
               size="sm"
@@ -264,7 +273,7 @@ export function IssueDetailPage() {
           activity={
             <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-2">
               <Tabs value={activeTab} onValueChange={updateActiveTab}>
-                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-4 lg:grid-cols-2 xl:grid-cols-4">
+                <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-5 lg:grid-cols-2 xl:grid-cols-5">
                   <TabsTrigger className="min-h-10" value="activity">
                     {t('issue.activity')}
                   </TabsTrigger>
@@ -276,6 +285,9 @@ export function IssueDetailPage() {
                   </TabsTrigger>
                   <TabsTrigger className="min-h-10" value="attachments">
                     {t('attachments.title')}
+                  </TabsTrigger>
+                  <TabsTrigger className="min-h-10" value="sdlc">
+                    {t('sdlc.title')}
                   </TabsTrigger>
                 </TabsList>
                 <TabsContent value="activity">
@@ -298,7 +310,7 @@ export function IssueDetailPage() {
                   ) : null}
                 </TabsContent>
                 <TabsContent value="comments">
-                  <CommentsPanel issueId={id} currentUserId={currentUserId ?? undefined} />
+                  <CommentsPanel issueId={issue.id} currentUserId={currentUserId ?? undefined} />
                 </TabsContent>
                 <TabsContent value="worklog">
                   {worklogsQuery.error ? (
@@ -319,14 +331,17 @@ export function IssueDetailPage() {
                   )}
                 </TabsContent>
                 <TabsContent value="attachments">
-                  <AttachmentPanel issueId={id} />
+                  <AttachmentPanel issueId={issue.id} />
+                </TabsContent>
+                <TabsContent value="sdlc">
+                  <SdlcPanel key={issue.id} issueId={issue.id} />
                 </TabsContent>
               </Tabs>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
                   <CardContent className="pt-5">
-                    <LabelEditor issueId={id} projectKey={issue.project_key} />
+                    <LabelEditor issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
                 <Card>
@@ -334,12 +349,18 @@ export function IssueDetailPage() {
                     <CardTitle className="text-sm">{t('customFields.title')}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <CustomFieldsPanel issueId={id} projectKey={issue.project_key} />
+                    <CustomFieldsPanel issueId={issue.id} projectKey={issue.project_key} />
                   </CardContent>
                 </Card>
                 <Card className="md:col-span-2">
                   <CardContent className="pt-5">
-                    <LinkEditor issueId={id} currentKey={issue.key} />
+                    <LinkEditor issueId={issue.id} currentKey={issue.key} />
+                    {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
+                      <TaskDocumentsPanel taskId={issue.id} projectKey={issue.project_key} />
+                    )}
+                    {import.meta.env.VITE_NAMESPACE_ENABLED === 'true' && (
+                      <TaskRepositoriesPanel taskId={issue.id} projectKey={issue.project_key} />
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -367,7 +388,7 @@ export function IssueDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <IssueEngagementPanel
-                    issueId={id}
+                    issueId={issue.id}
                     projectKey={issue.project_key}
                     currentUserId={currentUserId}
                     reporterId={issue.reporter_id}

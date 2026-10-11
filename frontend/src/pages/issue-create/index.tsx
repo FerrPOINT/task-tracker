@@ -1,5 +1,12 @@
+import { ProjectPicker } from '@sdlc/ui/ui'
+import { useQuery } from '@tanstack/react-query'
+import { getProject } from '@/api/project'
+import { useSessionCommand } from '@sdlc/ui/lib'
+import { useNamespaceContext } from '@/widgets/namespace-context'
+import type { CreateIssueInput } from '@/api/issue-create'
 import { useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate, useSearchParams } from 'react-router'
+import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigation'
+import { useSearchParams } from 'react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
@@ -22,7 +29,7 @@ import {
 export function IssueCreatePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const location = useLocation()
+  const namespace = useNamespaceContext()
   const [searchParams, setSearchParams] = useSearchParams()
   const { mutate, isPending, error } = useCreateIssue()
   const userId = useAuthStore((s) => s.userId)
@@ -38,11 +45,28 @@ export function IssueCreatePage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({})
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
-  // Prefer ?project_key=..., then router state (board "+ Создать"), else first project.
+  const selected = useQuery({
+    queryKey: [
+      'namespace-project',
+      namespace.ref?.registry_instance_id,
+      namespace.ref?.namespace_id,
+      namespace.query.data?.resource_key,
+    ],
+    enabled: Boolean(namespace.query.data),
+    queryFn: ({ signal }) => getProject(namespace.query.data!.resource_key, signal),
+  })
+  const projects = useMemo(
+    () => (selected.data ? [selected.data] : namespace.ref ? [] : (projectsQuery.data ?? [])),
+    [projectsQuery.data, selected.data, namespace.ref],
+  )
+  // A legacy blank URL retains its default. Invalid explicit context never falls back.
   const queryProjectKey = searchParams.get('project_key') ?? ''
-  const stateProjectKey = (location.state as { project_key?: string } | null)?.project_key ?? ''
-  const project_key = queryProjectKey || stateProjectKey || (projects[0]?.key ?? '')
+  const project_key = namespace.ref
+    ? (namespace.query.data?.resource_key ?? '')
+    : queryProjectKey || (!namespace.malformed ? (projects[0]?.key ?? '') : '')
+  const pendingRef = useSessionCommand<CreateIssueInput>(
+    `tracker:issue-create:${userId}:${namespace.ref?.registry_instance_id}:${namespace.ref?.namespace_id}:${project_key}`,
+  )
   const issueTypes = useMemo(
     () => (issueTypesQuery.data ?? []).filter((issueType) => !issueType.is_subtask),
     [issueTypesQuery.data],
@@ -70,6 +94,8 @@ export function IssueCreatePage() {
     !isPending &&
     !setupLoading &&
     !setupError &&
+    !namespace.malformed &&
+    (!namespace.ref || namespace.query.data?.binding.state === 'active') &&
     Boolean(userId && currentProject && selectedType && summary.trim())
   const assignableUsers = useMemo(() => {
     const allowedIds = new Set((projectMembersQuery.data?.members ?? []).map((m) => m.user_id))
@@ -124,20 +150,22 @@ export function IssueCreatePage() {
         .map((field) => [field.id, customFieldValues[field.id]] as const)
         .filter(([, value]) => !isEmptyCustomFieldValue(value)),
     )
-    mutate(
-      {
-        project_key: selectedProjectKey,
-        issue_type: selectedType.toLowerCase(),
-        summary: summary.trim(),
-        description: description || null,
-        priority: priority.toLowerCase(),
-        assignee_id: assignee_id || null,
-        custom_fields,
+    pendingRef.current ??= {
+      project_key: selectedProjectKey,
+      issue_type: selectedType.toLowerCase(),
+      summary: summary.trim(),
+      description: description || null,
+      priority: priority.toLowerCase(),
+      assignee_id: assignee_id || null,
+      custom_fields,
+      operation_id: crypto.randomUUID(),
+    }
+    mutate(pendingRef.current, {
+      onSuccess: () => {
+        pendingRef.current = null
+        navigate(`/projects/${selectedProjectKey}/backlog`)
       },
-      {
-        onSuccess: () => navigate(`/projects/${selectedProjectKey}/backlog`),
-      },
-    )
+    })
   }
 
   function updateProjectKey(nextProjectKey: string) {
@@ -153,7 +181,16 @@ export function IssueCreatePage() {
       <h1 className="mb-5 text-xl font-bold sm:text-2xl">{t('issueCreate.title')}</h1>
 
       <form onSubmit={handleSubmit} className="max-w-4xl space-y-5 border-t border-border pt-5">
+        {namespace.malformed && <ErrorState message="Некорректная ссылка на проект Namespace" />}
+        {namespace.ref && namespace.query.isError && (
+          <ErrorState message="Привязка проекта недоступна" />
+        )}
         {error && <ErrorState message={t('issueCreate.saveError')} />}
+        {pendingRef.current && (
+          <p role="status" className="text-sm">
+            Повтор отправит исходную задачу с прежним ключом операции.
+          </p>
+        )}
         {validationError && <ErrorState message={validationError} />}
         {!userId && <div className="text-sm text-danger">{t('issueCreate.noReporter')}</div>}
         {setupLoading && <p className="text-sm text-text-muted">{t('issueCreate.loading')}</p>}
@@ -199,25 +236,20 @@ export function IssueCreatePage() {
             <label htmlFor="issue-project" className="text-sm font-medium">
               {t('issueCreate.project')} *
             </label>
-            <select
+            <ProjectPicker
               id="issue-project"
-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+              className="w-full"
               value={selectedProjectKey}
-              onChange={(e) => updateProjectKey(e.target.value)}
+              options={projects.map((p) => ({
+                value: p.key,
+                label: `${p.name} (${p.key})`,
+                projectKey: p.key,
+              }))}
+              placeholder={t('issueCreate.selectProject')}
+              allowEmpty={false}
+              onChange={updateProjectKey}
               disabled={projectsQuery.isLoading || projects.length === 0 || isPending}
-              required
-            >
-              {!currentProject && (
-                <option value="" disabled>
-                  {t('issueCreate.selectProject')}
-                </option>
-              )}
-              {projects.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.name} ({p.key})
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <div className="space-y-2">
             <label htmlFor="issue-type" className="text-sm font-medium">

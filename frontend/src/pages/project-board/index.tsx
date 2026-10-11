@@ -1,4 +1,6 @@
-import { Link, useParams, useSearchParams } from 'react-router'
+import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useParams, useSearchParams } from 'react-router'
 import { List, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
@@ -225,7 +227,8 @@ export function ProjectBoardPage() {
     <div className="min-w-0">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-bold sm:text-xl">
+          <h1 className="flex min-w-0 items-center gap-2 truncate text-lg font-bold sm:text-xl">
+            <ProjectAvatar projectKey={key ?? ''} />
             {t('board.title', { projectName: key, sprintName: sprint?.name ?? t('board.backlog') })}
           </h1>
           <div className="text-sm text-text-muted">

@@ -5,9 +5,10 @@ export type MoveIssueInput = components['schemas']['MoveIssueRequest']
 export type Board = components['schemas']['BoardResponse']
 export type Backlog = components['schemas']['BacklogResponse']
 
-export async function getBoard(projectKey: string): Promise<Board> {
+export async function getBoard(projectKey: string, signal?: AbortSignal): Promise<Board> {
   const { data, error } = await api.GET('/api/v1/projects/{project_key}/board', {
     params: { path: { project_key: projectKey } },
+    signal,
   })
   if (error || !data) throw new Error('Failed to load board')
   return data
@@ -19,8 +20,10 @@ export async function getBacklog(
   projectKey: string,
   offset = 0,
   limit = BACKLOG_PAGE_SIZE,
+  signal?: AbortSignal,
 ): Promise<Backlog> {
   const { data, error } = await api.GET('/api/v1/projects/{project_key}/backlog', {
+    signal,
     params: {
       path: { project_key: projectKey },
       query: { offset, limit },

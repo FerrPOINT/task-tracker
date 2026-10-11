@@ -196,6 +196,8 @@ impl AppConfig {
                 Environment::with_prefix("TASKTRACKER")
                     .separator("__")
                     .prefix_separator("_")
+                    .list_separator(",")
+                    .with_list_parse_key("server.cors_allowed_origins")
                     .try_parsing(true),
             )
             .build()?

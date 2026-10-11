@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
-import { Link } from 'react-router'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+
 import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
 import { Button } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'

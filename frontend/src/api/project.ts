@@ -5,8 +5,15 @@ export type Project = components['schemas']['ProjectResponse']
 export type CreateProjectRequest = components['schemas']['CreateProjectRequest']
 export type UpdateProjectRequest = components['schemas']['UpdateProjectRequest']
 
-export async function listProjects(): Promise<Project[]> {
-  const { data, error } = await api.GET('/api/v1/projects')
+export async function listProjects(
+  offset = 0,
+  limit = 100,
+  signal?: AbortSignal,
+): Promise<Project[]> {
+  const { data, error } = await api.GET('/api/v1/projects', {
+    params: { query: { offset, limit } },
+    signal,
+  })
   if (error || !data) throw new Error('failed to load projects')
   return data.projects
 }
@@ -31,4 +38,13 @@ export async function deleteProject(key: string): Promise<void> {
     params: { path: { project_key: key } },
   })
   if (error) throw new Error('failed to delete project')
+}
+
+export async function getProject(key: string, signal?: AbortSignal): Promise<Project> {
+  const { data, error } = await api.GET('/api/v1/projects/{project_key}', {
+    params: { path: { project_key: key } },
+    signal,
+  })
+  if (error || !data) throw new Error('Project unavailable')
+  return data
 }

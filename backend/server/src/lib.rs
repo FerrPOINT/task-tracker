@@ -65,13 +65,49 @@ pub async fn run(
     // as the domain EmailPort implementation.
     let email: Arc<dyn domain::EmailPort> = Arc::new(SmtpEmailSender::new(&config.email));
     let events = app::context::EventBus::default();
-    let ctx = Arc::new(AppContext::with_events(
-        config.clone(),
-        repos,
-        storage,
-        events,
-        email.clone(),
-    ));
+    let mut ctx = AppContext::with_events(config.clone(), repos, storage, events, email.clone());
+    if let Ok(instance_id) = std::env::var("TASKTRACKER_SDLC__INSTANCE_ID") {
+        let repository = infra::sdlc::PostgresSdlcRepository::connect(
+            &config.database.url,
+            domain::sdlc::SdlcConfig {
+                reservation_scheduler_subject: std::env::var(
+                    "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+                )
+                .unwrap_or_default(),
+                instance_id,
+                orchestrator_subject: std::env::var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT")
+                    .unwrap_or_default(),
+                verifier_subject: std::env::var("TASKTRACKER_SDLC__VERIFIER_SUBJECT")
+                    .unwrap_or_default(),
+            },
+        )
+        .await
+        .expect("failed to initialize stable SDLC storage");
+        ctx.sdlc = Some(app::sdlc::SdlcService {
+            repository: Arc::new(repository),
+            fleet_native: app::sdlc_native_admission::FleetNativeReader::new(
+                &std::env::var("TASKTRACKER_SDLC__FLEET_NATIVE_URL").unwrap_or_default(),
+                &std::env::var("TASKTRACKER_SDLC__FLEET_NATIVE_READ_TOKEN").unwrap_or_default(),
+            )
+            .ok(),
+            fleet_configuration: app::sdlc_configuration::FleetConfigurationReader::new(
+                &std::env::var("TASKTRACKER_SDLC__FLEET_URL").unwrap_or_default(),
+                &std::env::var("TASKTRACKER_SDLC__FLEET_READ_TOKEN").unwrap_or_default(),
+            )
+            .ok(),
+        });
+    }
+    if let Some(reader) = infra::task_documents::WikiReader::from_deployment()
+        .expect("invalid namespace Wiki reader configuration")
+    {
+        ctx.task_documents = Arc::new(reader);
+    }
+    if let Some(reader) = infra::task_repositories::ForgeReader::from_deployment()
+        .expect("invalid namespace Forge reader configuration")
+    {
+        ctx.task_repositories = Arc::new(reader);
+    }
+    let ctx = Arc::new(ctx);
 
     // Spawn the email digest background task. It checks unread notifications
     // every hour, sends hourly digests every cycle and daily digests at most
