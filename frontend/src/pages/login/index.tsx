@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Navigate, useLocation } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { beginSso, isSsoNavigationInterruption } from '@sdlc/ui/sso'
-import { Button, PlatformMark, ThemeToggle } from '@sdlc/ui/ui'
+import { Button, PlatformMark } from '@sdlc/ui/ui'
 import { ssoConfig, useAuthStore } from '@/shared/auth/store'
 
 export function LoginPage() {
@@ -39,9 +39,6 @@ export function LoginPage() {
   if (token) return <Navigate to={returnTo} replace />
   return (
     <main className="relative grid min-h-screen place-items-center bg-background p-4">
-      <div className="absolute right-4 top-4 [&_button]:min-h-11 [&_button]:min-w-11">
-        <ThemeToggle />
-      </div>
       <div className="w-full max-w-sm space-y-5 text-center">
         <PlatformMark withName />
         <h1 className="text-xl font-semibold">{t('auth.sso.title')}</h1>

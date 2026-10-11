@@ -25,7 +25,7 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button, PageFrame, PlatformMark } from '@sdlc/ui/ui'
-import { ThemeToggle } from '@sdlc/ui/ui'
+import { ThemeMenuItems } from '@sdlc/ui/ui'
 import { PlatformHeader } from '@sdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
@@ -317,7 +317,6 @@ export function AppShell() {
                 <span className="hidden xl:inline">{t('navigation.create')}</span>
               </Link>
             </Button>
-            <ThemeToggle />
             <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -436,6 +435,7 @@ export function AppShell() {
                 {user?.display_name && user.display_name !== user.email && (
                   <div className="break-words px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
                 )}
+                <ThemeMenuItems />
                 <DropdownMenuItem asChild>
                   <Link to="/admin" className="gap-2 text-text-secondary">
                     <ShieldCheck className="h-4 w-4" />
