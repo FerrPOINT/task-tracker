@@ -436,6 +436,7 @@ impl ProjectRepository for ProjectRepo {
     }
     async fn namespace_available_resources(
         &self,
+        accessible_projects: &[ProjectId],
         limit: i64,
         offset: i64,
     ) -> Result<Vec<shared::resource_context::ResourceCatalogItem>, AppError> {
@@ -444,7 +445,12 @@ impl ProjectRepository for ProjectRepo {
             .and_then(|value| value.parse::<uuid::Uuid>().ok())
             .filter(|id| !id.is_nil())
             .ok_or_else(|| AppError::Unavailable("namespace_owner_not_configured".into()))?;
-        let rows=self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT p.id,p.key,p.name FROM projects p WHERE NOT EXISTS(SELECT 1 FROM tracker_namespace_bindings b WHERE b.resource_id=p.id) ORDER BY p.key,p.id LIMIT $1 OFFSET $2",[limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
+        let statement = namespace_available_resources_statement(accessible_projects, limit, offset);
+        let rows = self
+            .db
+            .query_all(statement)
+            .await
+            .map_err(AppError::database)?;
         rows.into_iter()
             .map(|row| {
                 Ok(shared::resource_context::ResourceCatalogItem {
@@ -822,6 +828,51 @@ impl ProjectRepository for ProjectRepo {
             .ok_or_else(|| AppError::Internal("allocator returned no row".into()))?;
         let number: i64 = row.try_get("", "number").map_err(AppError::database)?;
         u32::try_from(number).map_err(|_| AppError::invalid_input("issue number overflow"))
+    }
+}
+
+fn namespace_available_resources_statement(
+    accessible_projects: &[ProjectId],
+    limit: i64,
+    offset: i64,
+) -> Statement {
+    let project_ids = accessible_projects
+        .iter()
+        .map(|id| sea_orm::Value::Uuid(Some(Box::new(id.as_uuid()))))
+        .collect::<Vec<_>>();
+    Statement::from_sql_and_values(
+        DbBackend::Postgres,
+        "SELECT p.id,p.key,p.name FROM projects p \
+         WHERE p.id = ANY($1) \
+           AND NOT EXISTS(SELECT 1 FROM tracker_namespace_bindings b WHERE b.resource_id=p.id) \
+         ORDER BY p.key,p.id LIMIT $2 OFFSET $3",
+        [
+            sea_orm::Value::Array(
+                sea_orm::sea_query::ArrayType::Uuid,
+                Some(Box::new(project_ids)),
+            ),
+            limit.clamp(1, 100).into(),
+            offset.max(0).into(),
+        ],
+    )
+}
+
+#[cfg(test)]
+mod namespace_available_resources_tests {
+    use super::*;
+
+    #[test]
+    fn access_filter_is_applied_before_limit_and_offset() {
+        let first = ProjectId::new();
+        let second = ProjectId::new();
+        let statement = namespace_available_resources_statement(&[first, second], 50, 50);
+
+        let access_filter = statement.sql.find("p.id = ANY($1)").unwrap();
+        let limit = statement.sql.find("LIMIT $2 OFFSET $3").unwrap();
+        assert!(access_filter < limit);
+        let rendered = statement.to_string();
+        assert!(rendered.contains(&first.to_string()));
+        assert!(rendered.contains(&second.to_string()));
     }
 }
 

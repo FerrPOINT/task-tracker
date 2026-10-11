@@ -201,61 +201,6 @@ impl NamespaceContextPager {
     }
 }
 
-const NAMESPACE_AVAILABLE_RESOURCES_RAW_PAGE_SIZE: i64 = 100;
-
-struct NamespaceAvailableResourcesPager {
-    // Public offsets count visible projects; this cursor counts raw catalog rows.
-    raw_offset: i64,
-    visible_offset: usize,
-    limit: usize,
-    items: Vec<ResourceCatalogItem>,
-}
-
-impl NamespaceAvailableResourcesPager {
-    fn new(limit: i64, visible_offset: i64) -> Self {
-        Self {
-            raw_offset: 0,
-            visible_offset: visible_offset as usize,
-            limit: limit as usize,
-            items: Vec::with_capacity(limit as usize + 1),
-        }
-    }
-
-    fn push_if_accessible(
-        &mut self,
-        item: ResourceCatalogItem,
-        accessible_projects: &HashSet<ProjectId>,
-    ) {
-        let project = ProjectId::from_uuid(item.resource.resource_id);
-        if !accessible_projects.contains(&project) {
-            return;
-        }
-        if self.visible_offset > 0 {
-            self.visible_offset -= 1;
-        } else if self.items.len() <= self.limit {
-            self.items.push(item);
-        }
-    }
-
-    fn has_lookahead(&self) -> bool {
-        self.items.len() > self.limit
-    }
-
-    fn advance_raw_page(&mut self, raw_count: usize) -> bool {
-        if self.has_lookahead() || raw_count < NAMESPACE_AVAILABLE_RESOURCES_RAW_PAGE_SIZE as usize
-        {
-            return false;
-        }
-        self.raw_offset += raw_count as i64;
-        true
-    }
-
-    fn finish(mut self) -> Vec<ResourceCatalogItem> {
-        self.items.truncate(self.limit);
-        self.items
-    }
-}
-
 #[utoipa::path(get,operation_id="tracker_namespace_available_resources",path="/api/v1/namespace-available-resources",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceCatalogItem>)))]
 pub async fn available_resources(
     State(ctx): State<Arc<app::AppContext>>,
@@ -265,34 +210,13 @@ pub async fn available_resources(
     let user = shared::UserId::from_uuid(claims.sub.parse().map_err(|_| AppError::Unauthorized)?);
     let limit = page.limit.unwrap_or(50).clamp(1, 100);
     let offset = page.offset.unwrap_or(0).max(0);
-    let accessible_projects: HashSet<_> = ctx
-        .authz
-        .accessible_project_ids(user)
-        .await?
-        .into_iter()
-        .collect();
-    let mut pager = NamespaceAvailableResourcesPager::new(limit, offset);
-    loop {
-        let resources = ctx
-            .repos
+    let accessible_projects = ctx.authz.accessible_project_ids(user).await?;
+    Ok(Json(
+        ctx.repos
             .projects
-            .namespace_available_resources(
-                NAMESPACE_AVAILABLE_RESOURCES_RAW_PAGE_SIZE,
-                pager.raw_offset,
-            )
-            .await?;
-        let raw_count = resources.len();
-        for resource in resources {
-            pager.push_if_accessible(resource, &accessible_projects);
-            if pager.has_lookahead() {
-                break;
-            }
-        }
-        if !pager.advance_raw_page(raw_count) {
-            break;
-        }
-    }
-    Ok(Json(pager.finish()))
+            .namespace_available_resources(&accessible_projects, limit, offset)
+            .await?,
+    ))
 }
 #[utoipa::path(get,operation_id="tracker_namespace_stats",path="/api/v1/namespace-stats/{registry}/{namespace}",tag="namespaces",params(("registry"=Uuid,Path),("namespace"=Uuid,Path)),responses((status=200,body=ResourceStats)))]
 pub async fn stats(
@@ -431,18 +355,6 @@ pub async fn task_context(
 mod namespace_context_page_tests {
     use super::*;
 
-    fn catalog_item(id: Uuid) -> ResourceCatalogItem {
-        ResourceCatalogItem {
-            resource: ResourceRef {
-                kind: ResourceKind::TrackerProject,
-                instance_id: Uuid::from_u128(1),
-                resource_id: id,
-            },
-            label: format!("Project {id}"),
-            resource_key: format!("P{}", &id.to_string()[..8]),
-        }
-    }
-
     fn item() -> ResourceContextSummary {
         let id = Uuid::new_v4();
         ResourceContextSummary {
@@ -557,52 +469,6 @@ mod namespace_context_page_tests {
                 .collect::<Vec<_>>(),
             [three.resource_key.as_str(), four.resource_key.as_str()]
         );
-    }
-
-    #[test]
-    fn available_resource_pages_fill_from_later_raw_pages_without_skipping_visible_items() {
-        let raw: Vec<_> = (0..160)
-            .map(|index| catalog_item(Uuid::from_u128(index + 1)))
-            .collect();
-        let accessible: HashSet<_> = raw
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| index % 2 == 0)
-            .map(|(_, item)| ProjectId::from_uuid(item.resource.resource_id))
-            .collect();
-
-        let load_page = |offset| {
-            let mut pager = NamespaceAvailableResourcesPager::new(50, offset);
-            loop {
-                let start = pager.raw_offset as usize;
-                let batch: Vec<_> = raw
-                    .iter()
-                    .skip(start)
-                    .take(NAMESPACE_AVAILABLE_RESOURCES_RAW_PAGE_SIZE as usize)
-                    .cloned()
-                    .collect();
-                let raw_count = batch.len();
-                for item in batch {
-                    pager.push_if_accessible(item, &accessible);
-                    if pager.has_lookahead() {
-                        break;
-                    }
-                }
-                if !pager.advance_raw_page(raw_count) {
-                    break;
-                }
-            }
-            pager.finish()
-        };
-
-        let first = load_page(0);
-        let second = load_page(50);
-        assert_eq!(first.len(), 50);
-        assert_eq!(second.len(), 30);
-        assert_eq!(first[0].resource.resource_id, Uuid::from_u128(1));
-        assert_eq!(first[49].resource.resource_id, Uuid::from_u128(99));
-        assert_eq!(second[0].resource.resource_id, Uuid::from_u128(101));
-        assert_eq!(second[29].resource.resource_id, Uuid::from_u128(159));
     }
 }
 
