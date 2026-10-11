@@ -144,21 +144,49 @@ pub struct Page {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
-#[derive(serde::Serialize, utoipa::ToSchema)]
-pub struct NamespaceContextPage {
-    pub items: Vec<ResourceContextSummary>,
-    pub next_offset: Option<i64>,
+const NAMESPACE_CONTEXT_RAW_PAGE_SIZE: i64 = 100;
+
+struct NamespaceContextPager {
+    // API offsets count authorized entries; this cursor only counts raw bindings.
+    raw_offset: i64,
+    visible_offset: usize,
+    limit: usize,
+    items: Vec<ResourceContextSummary>,
 }
 
-fn namespace_context_page(
-    items: Vec<ResourceContextSummary>,
-    unfiltered_count: usize,
-    limit: i64,
-    offset: i64,
-) -> NamespaceContextPage {
-    NamespaceContextPage {
-        items,
-        next_offset: (unfiltered_count > limit as usize).then_some(offset.saturating_add(limit)),
+impl NamespaceContextPager {
+    fn new(limit: i64, visible_offset: i64) -> Self {
+        Self {
+            raw_offset: 0,
+            visible_offset: visible_offset as usize,
+            limit: limit as usize,
+            items: Vec::with_capacity(limit as usize + 1),
+        }
+    }
+
+    fn push_authorized(&mut self, item: ResourceContextSummary) {
+        if self.visible_offset > 0 {
+            self.visible_offset -= 1;
+        } else if self.items.len() <= self.limit {
+            self.items.push(item);
+        }
+    }
+
+    fn has_lookahead(&self) -> bool {
+        self.items.len() > self.limit
+    }
+
+    fn advance_raw_page(&mut self, raw_count: usize) -> bool {
+        if self.has_lookahead() || raw_count < NAMESPACE_CONTEXT_RAW_PAGE_SIZE as usize {
+            return false;
+        }
+        self.raw_offset += raw_count as i64;
+        true
+    }
+
+    fn finish(mut self) -> Vec<ResourceContextSummary> {
+        self.items.truncate(self.limit);
+        self.items
     }
 }
 
@@ -214,42 +242,45 @@ pub async fn stats(
     ctx.authz.require_project_access(project, user).await?;
     Ok(Json(ctx.repos.projects.namespace_stats(project).await?))
 }
-#[utoipa::path(get,operation_id="tracker_namespace_contexts",path="/api/v1/namespace-contexts",tag="namespaces",params(Page),responses((status=200,body=NamespaceContextPage)))]
+#[utoipa::path(get,operation_id="tracker_namespace_contexts",path="/api/v1/namespace-contexts",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceContextSummary>)))]
 pub async fn contexts(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<app::auth::UserClaims>,
     Query(page): Query<Page>,
-) -> Result<Json<NamespaceContextPage>, AppError> {
+) -> Result<Json<Vec<ResourceContextSummary>>, AppError> {
     let user = shared::UserId::from_uuid(claims.sub.parse().map_err(|_| AppError::Unauthorized)?);
     let limit = page.limit.unwrap_or(50).clamp(1, 100);
     let offset = page.offset.unwrap_or(0).max(0);
-    let resources = ctx
-        .repos
-        .projects
-        .namespace_contexts(None, limit + 1, offset)
-        .await?;
-    let unfiltered_count = resources.len();
-    let mut visible = Vec::new();
-    for resource in resources.into_iter().take(limit as usize) {
-        match ctx
-            .authz
-            .require_project_access(
-                ProjectId::from_uuid(resource.binding.resource.resource_id),
-                user,
-            )
-            .await
-        {
-            Ok(()) => visible.push(resource),
-            Err(AppError::Forbidden) => {}
-            Err(error) => return Err(error),
+    let mut pager = NamespaceContextPager::new(limit, offset);
+    loop {
+        let resources = ctx
+            .repos
+            .projects
+            .namespace_contexts(None, NAMESPACE_CONTEXT_RAW_PAGE_SIZE, pager.raw_offset)
+            .await?;
+        let raw_count = resources.len();
+        for resource in resources {
+            match ctx
+                .authz
+                .require_project_access(
+                    ProjectId::from_uuid(resource.binding.resource.resource_id),
+                    user,
+                )
+                .await
+            {
+                Ok(()) => pager.push_authorized(resource),
+                Err(AppError::Forbidden) => {}
+                Err(error) => return Err(error),
+            }
+            if pager.has_lookahead() {
+                break;
+            }
+        }
+        if !pager.advance_raw_page(raw_count) {
+            break;
         }
     }
-    Ok(Json(namespace_context_page(
-        visible,
-        unfiltered_count,
-        limit,
-        offset,
-    )))
+    Ok(Json(pager.finish()))
 }
 /// Machine reader exposes verified navigation metadata, never human mutations.
 #[utoipa::path(get,operation_id="tracker_namespace_project_catalog",path="/api/v1/namespace-projects",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceContextSummary>)))]
@@ -352,25 +383,78 @@ mod namespace_context_page_tests {
     }
 
     #[test]
-    fn sparse_authorized_page_keeps_cursor_from_unfiltered_source_page() {
-        let sparse_first = namespace_context_page(vec![item(), item()], 101, 100, 0);
-        assert_eq!(sparse_first.items.len(), 2);
-        assert_eq!(sparse_first.next_offset, Some(100));
+    fn sparse_authorized_projects_fill_visible_pages_across_raw_pages() {
+        let one = item();
+        let two = item();
+        let three = item();
+        let four = item();
+        let mut first = NamespaceContextPager::new(2, 0);
+        first.push_authorized(one.clone());
+        assert!(first.advance_raw_page(100));
+        first.push_authorized(two.clone());
+        first.push_authorized(three.clone());
+        first.push_authorized(four.clone());
+        assert!(first.has_lookahead());
+        let page = first.finish();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.resource_key.as_str())
+                .collect::<Vec<_>>(),
+            [one.resource_key.as_str(), two.resource_key.as_str()]
+        );
 
-        let sparse_tail = namespace_context_page(vec![item()], 38, 100, 100);
-        assert_eq!(sparse_tail.items.len(), 1);
-        assert_eq!(sparse_tail.next_offset, None);
+        let mut second = NamespaceContextPager::new(2, 2);
+        second.push_authorized(one);
+        assert!(second.advance_raw_page(100));
+        second.push_authorized(two);
+        second.push_authorized(three.clone());
+        second.push_authorized(four.clone());
+        assert!(!second.has_lookahead());
+        assert!(!second.advance_raw_page(38));
+        let page = second.finish();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.resource_key.as_str())
+                .collect::<Vec<_>>(),
+            [three.resource_key.as_str(), four.resource_key.as_str()]
+        );
     }
 
     #[test]
-    fn fully_accessible_pages_advance_then_stop_at_the_source_end() {
-        let full_first = namespace_context_page((0..100).map(|_| item()).collect(), 101, 100, 0);
-        assert_eq!(full_first.items.len(), 100);
-        assert_eq!(full_first.next_offset, Some(100));
+    fn fully_accessible_page_uses_visible_offset_and_limit_plus_one_lookahead() {
+        let one = item();
+        let two = item();
+        let three = item();
+        let four = item();
+        let five = item();
+        let mut first = NamespaceContextPager::new(2, 0);
+        first.push_authorized(one.clone());
+        first.push_authorized(two.clone());
+        first.push_authorized(three.clone());
+        assert!(first.has_lookahead());
+        assert!(!first.advance_raw_page(100));
+        let page = first.finish();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.resource_key.as_str())
+                .collect::<Vec<_>>(),
+            [one.resource_key.as_str(), two.resource_key.as_str()]
+        );
 
-        let full_tail = namespace_context_page((0..38).map(|_| item()).collect(), 38, 100, 100);
-        assert_eq!(full_tail.items.len(), 38);
-        assert_eq!(full_tail.next_offset, None);
+        let mut second = NamespaceContextPager::new(2, 2);
+        second.push_authorized(one);
+        second.push_authorized(two);
+        second.push_authorized(three.clone());
+        second.push_authorized(four.clone());
+        second.push_authorized(five);
+        assert!(second.has_lookahead());
+        let page = second.finish();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.resource_key.as_str())
+                .collect::<Vec<_>>(),
+            [three.resource_key.as_str(), four.resource_key.as_str()]
+        );
     }
 }
 
