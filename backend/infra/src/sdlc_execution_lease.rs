@@ -41,7 +41,7 @@ impl PostgresSdlcRepository {
         }
         Ok(result)
     }
-    async fn lease_current(
+    pub(super) async fn lease_current(
         tx: &DatabaseTransaction,
         reservation: &PmDraftReservation,
     ) -> Result<Option<ExecutionLeaseReceipt>, AppError> {

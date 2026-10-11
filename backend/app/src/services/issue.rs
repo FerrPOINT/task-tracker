@@ -314,48 +314,6 @@ impl IssueServiceImpl {
     }
 }
 
-#[cfg(test)]
-mod idempotency_recovery_tests {
-    use super::{ensure_issue_creation_ticket_retriable, resolve_completed_issue_creation_replay};
-
-    #[test]
-    fn completed_receipt_cannot_recreate_a_purged_issue() {
-        let ticket = domain::IssueCreationTicket {
-            issue_id: shared::IssueId::new(),
-            number: 7,
-            completed: true,
-        };
-
-        let error = ensure_issue_creation_ticket_retriable(&ticket).unwrap_err();
-        assert!(
-            matches!(error, shared::AppError::Conflict(ref code) if code == "original_issue_purged")
-        );
-    }
-
-    #[test]
-    fn incomplete_receipt_remains_retryable_after_key_collision() {
-        let ticket = domain::IssueCreationTicket {
-            issue_id: shared::IssueId::new(),
-            number: 7,
-            completed: false,
-        };
-
-        assert!(ensure_issue_creation_ticket_retriable(&ticket).is_ok());
-    }
-
-    #[test]
-    fn completed_race_returns_issue_that_appeared_during_recovery() {
-        assert!(matches!(
-            resolve_completed_issue_creation_replay(Some("created concurrently")),
-            Ok("created concurrently")
-        ));
-        assert!(matches!(
-            resolve_completed_issue_creation_replay::<()>(None),
-            Err(shared::AppError::Conflict(ref code)) if code == "original_issue_purged"
-        ));
-    }
-}
-
 #[async_trait]
 impl crate::context::IssueService for IssueServiceImpl {
     async fn create(
@@ -1098,5 +1056,47 @@ impl crate::context::IssueService for IssueServiceImpl {
             issues,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod idempotency_recovery_tests {
+    use super::{ensure_issue_creation_ticket_retriable, resolve_completed_issue_creation_replay};
+
+    #[test]
+    fn completed_receipt_cannot_recreate_a_purged_issue() {
+        let ticket = domain::IssueCreationTicket {
+            issue_id: shared::IssueId::new(),
+            number: 7,
+            completed: true,
+        };
+
+        let error = ensure_issue_creation_ticket_retriable(&ticket).unwrap_err();
+        assert!(
+            matches!(error, shared::AppError::Conflict(ref code) if code == "original_issue_purged")
+        );
+    }
+
+    #[test]
+    fn incomplete_receipt_remains_retryable_after_key_collision() {
+        let ticket = domain::IssueCreationTicket {
+            issue_id: shared::IssueId::new(),
+            number: 7,
+            completed: false,
+        };
+
+        assert!(ensure_issue_creation_ticket_retriable(&ticket).is_ok());
+    }
+
+    #[test]
+    fn completed_race_returns_issue_that_appeared_during_recovery() {
+        assert!(matches!(
+            resolve_completed_issue_creation_replay(Some("created concurrently")),
+            Ok("created concurrently")
+        ));
+        assert!(matches!(
+            resolve_completed_issue_creation_replay::<()>(None),
+            Err(shared::AppError::Conflict(ref code)) if code == "original_issue_purged"
+        ));
     }
 }
