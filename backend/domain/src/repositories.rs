@@ -177,6 +177,19 @@ pub trait ProjectRepository: Send + Sync {
             "issue_idempotency_not_supported".into(),
         ))
     }
+    async fn advance_issue_creation_ticket(
+        &self,
+        _project: ProjectId,
+        _actor: UserId,
+        _operation: uuid::Uuid,
+        _payload: &serde_json::Value,
+        _issue_id: IssueId,
+        _expected_number: u32,
+    ) -> Result<IssueCreationTicket, AppError> {
+        Err(AppError::Unavailable(
+            "issue_idempotency_not_supported".into(),
+        ))
+    }
 
     async fn list_accessible_page(
         &self,

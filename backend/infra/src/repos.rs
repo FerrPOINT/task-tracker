@@ -487,7 +487,7 @@ impl ProjectRepository for ProjectRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<shared::resource_context::ResourceContextSummary>, AppError> {
-        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
+        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key,NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AS drained FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
         rows.into_iter()
             .map(|row| {
                 let command: shared::resource_context::OwnerCommand =
@@ -497,7 +497,8 @@ impl ProjectRepository for ProjectRepo {
                         })?;
                 namespace::validate_projection(&command)?;
                 Ok(shared::resource_context::ResourceContextSummary {
-                    binding: command.readback(true),
+                    binding: command
+                        .readback(row.try_get("", "drained").map_err(AppError::database)?),
                     label: row.try_get("", "name").map_err(AppError::database)?,
                     resource_key: row.try_get("", "key").map_err(AppError::database)?,
                 })
@@ -564,6 +565,77 @@ impl ProjectRepository for ProjectRepo {
         };
         tx.commit().await.map_err(AppError::database)?;
         Ok(result)
+    }
+
+    async fn advance_issue_creation_ticket(
+        &self,
+        project: ProjectId,
+        actor: UserId,
+        operation: uuid::Uuid,
+        payload: &serde_json::Value,
+        issue_id: IssueId,
+        expected_number: u32,
+    ) -> Result<domain::IssueCreationTicket, AppError> {
+        let tx = self.db.as_ref().begin().await.map_err(AppError::database)?;
+        tx.execute(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT pg_advisory_xact_lock(hashtextextended($1,2))",
+            [operation.to_string().into()],
+        ))
+        .await
+        .map_err(AppError::database)?;
+        let row = tx.query_one(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "SELECT project_id,actor_id,payload,issue_id,number,completed FROM issue_creation_receipts WHERE operation_id=$1 FOR UPDATE",
+            [operation.into()],
+        )).await.map_err(AppError::database)?
+            .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?;
+        if row
+            .try_get::<uuid::Uuid>("", "project_id")
+            .map_err(AppError::database)?
+            != project.as_uuid()
+            || row
+                .try_get::<uuid::Uuid>("", "actor_id")
+                .map_err(AppError::database)?
+                != actor.as_uuid()
+            || row
+                .try_get::<serde_json::Value>("", "payload")
+                .map_err(AppError::database)?
+                != *payload
+            || row
+                .try_get::<uuid::Uuid>("", "issue_id")
+                .map_err(AppError::database)?
+                != issue_id.as_uuid()
+        {
+            return Err(AppError::conflict("issue_operation_payload_conflict"));
+        }
+        let current_number = row
+            .try_get::<i64>("", "number")
+            .map_err(AppError::database)?;
+        let completed = row
+            .try_get::<bool>("", "completed")
+            .map_err(AppError::database)?;
+        let row = if !completed && current_number == i64::from(expected_number) {
+            tx.query_one(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "UPDATE issue_creation_receipts SET number=allocate_project_issue_number(project_id) WHERE operation_id=$1 RETURNING issue_id,number,completed",
+                [operation.into()],
+            )).await.map_err(AppError::database)?
+                .ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?
+        } else {
+            row
+        };
+        let ticket = domain::IssueCreationTicket {
+            issue_id: IssueId::from_uuid(row.try_get("", "issue_id").map_err(AppError::database)?),
+            number: u32::try_from(
+                row.try_get::<i64>("", "number")
+                    .map_err(AppError::database)?,
+            )
+            .map_err(|_| AppError::conflict("issue_counter_exhausted"))?,
+            completed: row.try_get("", "completed").map_err(AppError::database)?,
+        };
+        tx.commit().await.map_err(AppError::database)?;
+        Ok(ticket)
     }
 
     async fn list_accessible_page(

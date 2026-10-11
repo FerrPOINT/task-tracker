@@ -10,6 +10,19 @@ use domain::{
 };
 use shared::{AppError, IssueId, ProjectKey, StatusId, UserId};
 
+fn ensure_issue_creation_ticket_retriable(
+    ticket: &domain::IssueCreationTicket,
+) -> Result<(), AppError> {
+    if ticket.completed {
+        return Err(AppError::conflict("original_issue_purged"));
+    }
+    Ok(())
+}
+
+fn resolve_completed_issue_creation_replay<T>(issue: Option<T>) -> Result<T, AppError> {
+    issue.ok_or_else(|| AppError::conflict("original_issue_purged"))
+}
+
 pub struct IssueServiceImpl {
     issues: Arc<dyn IssueRepository>,
     projects: Arc<dyn ProjectRepository>,
@@ -32,6 +45,63 @@ pub struct IssueServiceImpl {
 }
 
 impl IssueServiceImpl {
+    async fn get_issue_creation_replay(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Option<IssueDto>, AppError> {
+        match self.issues.get_by_id_include_deleted(issue_id).await {
+            Ok(original) => super::helpers::build_issue_dtos_with_projects(
+                Arc::clone(&self.projects),
+                Arc::clone(&self.users),
+                Arc::clone(&self.labels),
+                vec![original],
+            )
+            .await
+            .map(|mut issues| Some(issues.remove(0))),
+            Err(AppError::NotFound(_)) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    async fn recover_issue_creation_key_collision(
+        &self,
+        project: domain::ProjectId,
+        actor: UserId,
+        operation: Option<uuid::Uuid>,
+        payload: &serde_json::Value,
+        number: u32,
+        ticket: &mut Option<domain::IssueCreationTicket>,
+    ) -> Result<Option<IssueDto>, AppError> {
+        let Some(current) = ticket.clone() else {
+            return Ok(None);
+        };
+        if let Some(original) = self.get_issue_creation_replay(current.issue_id).await? {
+            return Ok(Some(original));
+        }
+        ensure_issue_creation_ticket_retriable(&current)?;
+        let operation =
+            operation.ok_or_else(|| AppError::conflict("issue_operation_receipt_missing"))?;
+        let advanced = self
+            .projects
+            .advance_issue_creation_ticket(
+                project,
+                actor,
+                operation,
+                payload,
+                current.issue_id,
+                number,
+            )
+            .await?;
+        if advanced.completed {
+            return resolve_completed_issue_creation_replay(
+                self.get_issue_creation_replay(advanced.issue_id).await?,
+            )
+            .map(Some);
+        }
+        *ticket = Some(advanced);
+        Ok(None)
+    }
+
     /// WIP capacity snapshot for any status-changing path. The count is
     /// re-validated inside `change_status_atomic`; this only carries the
     /// limit and column name into the critical section.
@@ -316,7 +386,7 @@ impl crate::context::IssueService for IssueServiceImpl {
         let custom_field_values = self
             .normalize_custom_fields_for_create(project.id, &cmd.custom_fields)
             .await?;
-        let ticket = match cmd.operation_id {
+        let mut ticket = match cmd.operation_id {
             Some(operation) => {
                 self.projects
                     .issue_creation_ticket(project.id, requester, operation, &payload, true)
@@ -370,21 +440,35 @@ impl crate::context::IssueService for IssueServiceImpl {
                 // constraint or as the sanitized unique-violation Conflict.
                 // `issues.key` is the only unique constraint on INSERT here,
                 // so any duplicate-entry conflict is de facto a key collision.
-                Err(AppError::Database(msg)) if msg.contains("issues_key_key") => continue,
-                Err(AppError::Conflict(ref msg)) if msg == "duplicate entry" => {
-                    if let Some(ticket) = &ticket {
-                        let original = self
-                            .issues
-                            .get_by_id_include_deleted(ticket.issue_id)
-                            .await?;
-                        return super::helpers::build_issue_dtos_with_projects(
-                            Arc::clone(&self.projects),
-                            Arc::clone(&self.users),
-                            Arc::clone(&self.labels),
-                            vec![original],
+                Err(AppError::Database(msg)) if msg.contains("issues_key_key") => {
+                    if let Some(original) = self
+                        .recover_issue_creation_key_collision(
+                            project.id,
+                            requester,
+                            cmd.operation_id,
+                            &payload,
+                            number,
+                            &mut ticket,
                         )
-                        .await
-                        .map(|mut issues| issues.remove(0));
+                        .await?
+                    {
+                        return Ok(original);
+                    }
+                    continue;
+                }
+                Err(AppError::Conflict(ref msg)) if msg == "duplicate entry" => {
+                    if let Some(original) = self
+                        .recover_issue_creation_key_collision(
+                            project.id,
+                            requester,
+                            cmd.operation_id,
+                            &payload,
+                            number,
+                            &mut ticket,
+                        )
+                        .await?
+                    {
+                        return Ok(original);
                     }
                     continue;
                 }
@@ -972,5 +1056,47 @@ impl crate::context::IssueService for IssueServiceImpl {
             issues,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod idempotency_recovery_tests {
+    use super::{ensure_issue_creation_ticket_retriable, resolve_completed_issue_creation_replay};
+
+    #[test]
+    fn completed_receipt_cannot_recreate_a_purged_issue() {
+        let ticket = domain::IssueCreationTicket {
+            issue_id: shared::IssueId::new(),
+            number: 7,
+            completed: true,
+        };
+
+        let error = ensure_issue_creation_ticket_retriable(&ticket).unwrap_err();
+        assert!(
+            matches!(error, shared::AppError::Conflict(ref code) if code == "original_issue_purged")
+        );
+    }
+
+    #[test]
+    fn incomplete_receipt_remains_retryable_after_key_collision() {
+        let ticket = domain::IssueCreationTicket {
+            issue_id: shared::IssueId::new(),
+            number: 7,
+            completed: false,
+        };
+
+        assert!(ensure_issue_creation_ticket_retriable(&ticket).is_ok());
+    }
+
+    #[test]
+    fn completed_race_returns_issue_that_appeared_during_recovery() {
+        assert!(matches!(
+            resolve_completed_issue_creation_replay(Some("created concurrently")),
+            Ok("created concurrently")
+        ));
+        assert!(matches!(
+            resolve_completed_issue_creation_replay::<()>(None),
+            Err(shared::AppError::Conflict(ref code)) if code == "original_issue_purged"
+        ));
     }
 }
