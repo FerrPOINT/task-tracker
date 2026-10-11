@@ -857,25 +857,6 @@ fn namespace_available_resources_statement(
     )
 }
 
-#[cfg(test)]
-mod namespace_available_resources_tests {
-    use super::*;
-
-    #[test]
-    fn access_filter_is_applied_before_limit_and_offset() {
-        let first = ProjectId::new();
-        let second = ProjectId::new();
-        let statement = namespace_available_resources_statement(&[first, second], 50, 50);
-
-        let access_filter = statement.sql.find("p.id = ANY($1)").unwrap();
-        let limit = statement.sql.find("LIMIT $2 OFFSET $3").unwrap();
-        assert!(access_filter < limit);
-        let rendered = statement.to_string();
-        assert!(rendered.contains(&first.to_string()));
-        assert!(rendered.contains(&second.to_string()));
-    }
-}
-
 struct IssueRepo {
     db: Arc<DatabaseConnection>,
 }
@@ -3680,5 +3661,24 @@ impl OidcRepository for OidcRepo {
             expires_at: row.expires_at,
             created_at: row.created_at,
         })
+    }
+}
+
+#[cfg(test)]
+mod namespace_available_resources_tests {
+    use super::*;
+
+    #[test]
+    fn access_filter_is_applied_before_limit_and_offset() {
+        let first = ProjectId::new();
+        let second = ProjectId::new();
+        let statement = namespace_available_resources_statement(&[first, second], 50, 50);
+
+        let access_filter = statement.sql.find("p.id = ANY($1)").unwrap();
+        let limit = statement.sql.find("LIMIT $2 OFFSET $3").unwrap();
+        assert!(access_filter < limit);
+        let rendered = statement.to_string();
+        assert!(rendered.contains(&first.to_string()));
+        assert!(rendered.contains(&second.to_string()));
     }
 }
