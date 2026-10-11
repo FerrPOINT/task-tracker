@@ -7,7 +7,7 @@ use axum::{
     response::Response,
 };
 use shared::{AppError, IssueId, ProjectId, resource_context::*};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use uuid::Uuid;
 
 fn subjects(key: &str) -> Vec<String> {
@@ -172,6 +172,17 @@ impl NamespaceContextPager {
         }
     }
 
+    fn push_if_accessible(
+        &mut self,
+        item: ResourceContextSummary,
+        accessible_projects: &HashSet<ProjectId>,
+    ) {
+        let project = ProjectId::from_uuid(item.binding.resource.resource_id);
+        if accessible_projects.contains(&project) {
+            self.push_authorized(item);
+        }
+    }
+
     fn has_lookahead(&self) -> bool {
         self.items.len() > self.limit
     }
@@ -251,6 +262,12 @@ pub async fn contexts(
     let user = shared::UserId::from_uuid(claims.sub.parse().map_err(|_| AppError::Unauthorized)?);
     let limit = page.limit.unwrap_or(50).clamp(1, 100);
     let offset = page.offset.unwrap_or(0).max(0);
+    let accessible_projects: HashSet<_> = ctx
+        .authz
+        .accessible_project_ids(user)
+        .await?
+        .into_iter()
+        .collect();
     let mut pager = NamespaceContextPager::new(limit, offset);
     loop {
         let resources = ctx
@@ -260,18 +277,7 @@ pub async fn contexts(
             .await?;
         let raw_count = resources.len();
         for resource in resources {
-            match ctx
-                .authz
-                .require_project_access(
-                    ProjectId::from_uuid(resource.binding.resource.resource_id),
-                    user,
-                )
-                .await
-            {
-                Ok(()) => pager.push_authorized(resource),
-                Err(AppError::Forbidden) => {}
-                Err(error) => return Err(error),
-            }
+            pager.push_if_accessible(resource, &accessible_projects);
             if pager.has_lookahead() {
                 break;
             }
@@ -380,6 +386,23 @@ mod namespace_context_page_tests {
             label: format!("Project {id}"),
             resource_key: format!("P{}", &id.to_string()[..8]),
         }
+    }
+
+    #[test]
+    fn namespace_page_includes_only_projects_in_the_prefetched_access_set() {
+        let accessible = item();
+        let inaccessible = item();
+        let accessible_ids = HashSet::from([ProjectId::from_uuid(
+            accessible.binding.resource.resource_id,
+        )]);
+        let mut pager = NamespaceContextPager::new(2, 0);
+
+        pager.push_if_accessible(inaccessible, &accessible_ids);
+        pager.push_if_accessible(accessible.clone(), &accessible_ids);
+
+        let page = pager.finish();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].resource_key, accessible.resource_key);
     }
 
     #[test]
