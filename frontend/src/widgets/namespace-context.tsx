@@ -7,6 +7,19 @@ import { apiBaseUrl } from '@/api/client'
 import { useAuthStore } from '@/shared/auth/store'
 import { isAllProjects } from '@/shared/lib/project-navigation'
 export type ResourceContext = components['schemas']['ResourceContextSummary']
+export type NamespaceContextPage = components['schemas']['NamespaceContextPage']
+export async function fetchNamespaceCatalog(
+  loadPage: (offset: number) => Promise<NamespaceContextPage>,
+) {
+  const items: ResourceContext[] = []
+  let offset: number | null = 0
+  while (offset !== null) {
+    const page = await loadPage(offset)
+    items.push(...page.items)
+    offset = page.next_offset
+  }
+  return items
+}
 async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   const token = useAuthStore.getState().token
   const response = await fetch(apiBaseUrl + path, {
@@ -39,17 +52,10 @@ export function useNamespaceCatalog(enabled = true) {
   return useQuery({
     queryKey: ['namespace-contexts', 'task-tracker'],
     enabled,
-    queryFn: async ({ signal }) => {
-      const items: ResourceContext[] = []
-      for (let offset = 0; ; offset += 100) {
-        const page = await get<ResourceContext[]>(
-          `/api/v1/namespace-contexts?limit=100&offset=${offset}`,
-          signal,
-        )
-        items.push(...page)
-        if (page.length < 100) return items
-      }
-    },
+    queryFn: ({ signal }) =>
+      fetchNamespaceCatalog((offset) =>
+        get<NamespaceContextPage>(`/api/v1/namespace-contexts?limit=100&offset=${offset}`, signal),
+      ),
   })
 }
 export function NamespaceShellContext() {

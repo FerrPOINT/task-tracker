@@ -78,7 +78,10 @@ describe('project sidebar and Namespace selection', () => {
         const entry = contexts.find((item) =>
           path.pathname.endsWith(`/${item.binding.namespace.namespace_id}`),
         )
-        return new Response(JSON.stringify(entry ?? contexts), { status: 200 })
+        const body = path.pathname.endsWith('/namespace-contexts')
+          ? { items: contexts, next_offset: null }
+          : entry
+        return new Response(JSON.stringify(body), { status: 200 })
       }),
     )
   })
@@ -178,9 +181,12 @@ describe('project sidebar and Namespace selection', () => {
       'fetch',
       vi.fn(
         async (url: string) =>
-          new Response(JSON.stringify(url.includes('/namespace-contexts/') ? {} : contexts), {
-            status: url.includes('/namespace-contexts/') ? 404 : 200,
-          }),
+          new Response(
+            JSON.stringify(
+              url.includes('/namespace-contexts/') ? {} : { items: contexts, next_offset: null },
+            ),
+            { status: url.includes('/namespace-contexts/') ? 404 : 200 },
+          ),
       ),
     )
     mount(`/projects/A/board${search(0)}`)
@@ -344,8 +350,8 @@ describe('project sidebar and Namespace selection', () => {
           new Response(
             JSON.stringify(
               new URL(url, 'http://tracker.test').searchParams.get('offset') === '0'
-                ? first
-                : [contexts[1]],
+                ? { items: first, next_offset: 100 }
+                : { items: [contexts[1]], next_offset: null },
             ),
           ),
       ),

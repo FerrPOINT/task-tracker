@@ -487,7 +487,7 @@ impl ProjectRepository for ProjectRepo {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<shared::resource_context::ResourceContextSummary>, AppError> {
-        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key,NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AS drained FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,100).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
+        let rows = self.db.query_all(Statement::from_sql_and_values(DbBackend::Postgres,"SELECT b.command,p.name,p.key,NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=p.id) AS drained FROM tracker_namespace_bindings b JOIN projects p ON p.id=b.resource_id WHERE ($1::uuid IS NULL OR (b.registry_instance_id=$1 AND b.namespace_id=$2)) ORDER BY p.name,p.id LIMIT $3 OFFSET $4",[namespace.map(|n| n.registry_instance_id).into(),namespace.map(|n| n.namespace_id).into(),limit.clamp(1,101).into(),offset.max(0).into()])).await.map_err(AppError::database)?;
         rows.into_iter()
             .map(|row| {
                 let command: shared::resource_context::OwnerCommand =

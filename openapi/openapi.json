@@ -3997,10 +3997,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ResourceContextSummary"
-                  }
+                  "$ref": "#/components/schemas/NamespaceContextPage"
                 }
               }
             }
@@ -10770,6 +10767,28 @@
         "properties": {
           "issue_id": {
             "type": "string"
+          }
+        }
+      },
+      "NamespaceContextPage": {
+        "type": "object",
+        "required": [
+          "items",
+          "next_offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceContextSummary"
+            }
+          },
+          "next_offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
           }
         }
       },

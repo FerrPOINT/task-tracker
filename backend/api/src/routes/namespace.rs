@@ -144,6 +144,24 @@ pub struct Page {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
+#[derive(serde::Serialize, utoipa::ToSchema)]
+pub struct NamespaceContextPage {
+    pub items: Vec<ResourceContextSummary>,
+    pub next_offset: Option<i64>,
+}
+
+fn namespace_context_page(
+    items: Vec<ResourceContextSummary>,
+    unfiltered_count: usize,
+    limit: i64,
+    offset: i64,
+) -> NamespaceContextPage {
+    NamespaceContextPage {
+        items,
+        next_offset: (unfiltered_count > limit as usize).then_some(offset.saturating_add(limit)),
+    }
+}
+
 #[utoipa::path(get,operation_id="tracker_namespace_available_resources",path="/api/v1/namespace-available-resources",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceCatalogItem>)))]
 pub async fn available_resources(
     State(ctx): State<Arc<app::AppContext>>,
@@ -196,20 +214,23 @@ pub async fn stats(
     ctx.authz.require_project_access(project, user).await?;
     Ok(Json(ctx.repos.projects.namespace_stats(project).await?))
 }
-#[utoipa::path(get,operation_id="tracker_namespace_contexts",path="/api/v1/namespace-contexts",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceContextSummary>)))]
+#[utoipa::path(get,operation_id="tracker_namespace_contexts",path="/api/v1/namespace-contexts",tag="namespaces",params(Page),responses((status=200,body=NamespaceContextPage)))]
 pub async fn contexts(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<app::auth::UserClaims>,
     Query(page): Query<Page>,
-) -> Result<Json<Vec<ResourceContextSummary>>, AppError> {
+) -> Result<Json<NamespaceContextPage>, AppError> {
     let user = shared::UserId::from_uuid(claims.sub.parse().map_err(|_| AppError::Unauthorized)?);
+    let limit = page.limit.unwrap_or(50).clamp(1, 100);
+    let offset = page.offset.unwrap_or(0).max(0);
     let resources = ctx
         .repos
         .projects
-        .namespace_contexts(None, page.limit.unwrap_or(50), page.offset.unwrap_or(0))
+        .namespace_contexts(None, limit + 1, offset)
         .await?;
+    let unfiltered_count = resources.len();
     let mut visible = Vec::new();
-    for resource in resources {
+    for resource in resources.into_iter().take(limit as usize) {
         match ctx
             .authz
             .require_project_access(
@@ -223,7 +244,12 @@ pub async fn contexts(
             Err(error) => return Err(error),
         }
     }
-    Ok(Json(visible))
+    Ok(Json(namespace_context_page(
+        visible,
+        unfiltered_count,
+        limit,
+        offset,
+    )))
 }
 /// Machine reader exposes verified navigation metadata, never human mutations.
 #[utoipa::path(get,operation_id="tracker_namespace_project_catalog",path="/api/v1/namespace-projects",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceContextSummary>)))]
@@ -295,6 +321,57 @@ pub async fn task_context(
     Ok(Json(
         serde_json::json!({"schema_version":1,"namespace":binding.namespace,"tracker_instance_id":binding.resource.instance_id,"project_id":task.project_id.as_uuid(),"task_id":id,"task_key":task.key.to_string(),"state":binding.state,"generation":binding.generation}),
     ))
+}
+
+#[cfg(test)]
+mod namespace_context_page_tests {
+    use super::*;
+
+    fn item() -> ResourceContextSummary {
+        let id = Uuid::new_v4();
+        ResourceContextSummary {
+            binding: OwnerReadback {
+                schema_version: 1,
+                namespace: NamespaceRef {
+                    registry_instance_id: Uuid::new_v4(),
+                    namespace_id: Uuid::new_v4(),
+                },
+                resource: ResourceRef {
+                    kind: ResourceKind::TrackerProject,
+                    instance_id: Uuid::new_v4(),
+                    resource_id: id,
+                },
+                operation_id: Uuid::new_v4(),
+                generation: 1,
+                state: "active".into(),
+                drained: true,
+            },
+            label: format!("Project {id}"),
+            resource_key: format!("P{}", &id.to_string()[..8]),
+        }
+    }
+
+    #[test]
+    fn sparse_authorized_page_keeps_cursor_from_unfiltered_source_page() {
+        let sparse_first = namespace_context_page(vec![item(), item()], 101, 100, 0);
+        assert_eq!(sparse_first.items.len(), 2);
+        assert_eq!(sparse_first.next_offset, Some(100));
+
+        let sparse_tail = namespace_context_page(vec![item()], 38, 100, 100);
+        assert_eq!(sparse_tail.items.len(), 1);
+        assert_eq!(sparse_tail.next_offset, None);
+    }
+
+    #[test]
+    fn fully_accessible_pages_advance_then_stop_at_the_source_end() {
+        let full_first = namespace_context_page((0..100).map(|_| item()).collect(), 101, 100, 0);
+        assert_eq!(full_first.items.len(), 100);
+        assert_eq!(full_first.next_offset, Some(100));
+
+        let full_tail = namespace_context_page((0..38).map(|_| item()).collect(), 38, 100, 100);
+        assert_eq!(full_tail.items.len(), 38);
+        assert_eq!(full_tail.next_offset, None);
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
