@@ -3,6 +3,15 @@ use super::*;
 #[path = "execution_lease.rs"]
 mod execution_lease;
 
+async fn require_native_reader(client: &Client, url: &str, token: &str, body: &Value) {
+    let error = expect(client, url, token, body, 503).await;
+    assert_eq!(error["error"]["code"], "UNAVAILABLE");
+    assert_eq!(
+        error["error"]["message"],
+        "Fleet native admission reader not configured"
+    );
+}
+
 pub struct Fixture<'a> {
     pub db: &'a DatabaseConnection,
     pub client: &'a Client,
@@ -347,16 +356,19 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
             format!("task-tracker:sdlc:evidence:{task}:1"),
         ],
     );
+    // This fixture deliberately has no Fleet native reader. Reserved PM writes
+    // fail closed as UNAVAILABLE; history-only actions still return CONFLICT.
+    let native_count_before = count(f.db, "sdlc_pm_native_admissions").await;
     let mut next = result["assignment"].clone();
     next["version"] = json!(2);
     next["execution_id"] = json!(Uuid::new_v4());
     expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/assignment"),&orch,
         &json!({"assignment":next,"expected_assignment_version":1,"idempotency_key":"legacy-bypass"}),409).await;
-    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/requirements"),&pm,
-        &json!({"fence":fence,"expected_requirement_revision":null,"document":{"goal":"goal","scope":[],"exclusions":[],"scenarios":[],"acceptance_criteria":[],"constraints":[],"dependencies":[],"assumptions":[],"checklist":[],"prerequisites":[]},"idempotency_key":"denied-revision"}),409).await;
-    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),&pm,
-        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":Uuid::new_v4(),"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":null,"text":"text","rationale":"rationale","required":true,"mode":"text","options":[],"recommended_option_id":null,"idempotency_key":"denied-question"}),409).await;
-    expect(
+    require_native_reader(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/requirements"),&pm,
+        &json!({"fence":fence,"expected_requirement_revision":null,"document":{"goal":"goal","scope":[],"exclusions":[],"scenarios":[],"acceptance_criteria":[],"constraints":[],"dependencies":[],"assumptions":[],"checklist":[],"prerequisites":[]},"idempotency_key":"denied-revision"})).await;
+    require_native_reader(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),&pm,
+        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":Uuid::new_v4(),"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":null,"text":"text","rationale":"rationale","required":true,"mode":"text","options":[],"recommended_option_id":null,"idempotency_key":"denied-question"})).await;
+    require_native_reader(
         f.client,
         &format!(
             "{base}/api/v1/issues/{task}/sdlc/clarifications/{}/cancel",
@@ -364,7 +376,6 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
         ),
         &pm,
         &json!({"fence":fence,"expected_question_version":1,"idempotency_key":"denied-cancel"}),
-        409,
     )
     .await;
     expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/evidence"),&evidence,
@@ -379,6 +390,10 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
         409,
     )
     .await;
+    assert_eq!(
+        count(f.db, "sdlc_pm_native_admissions").await,
+        native_count_before
+    );
     assert!(f.db.execute_unprepared(&format!("UPDATE sdlc_tasks SET state=jsonb_set(state,'{{assignment,version}}','2') WHERE task_id='{task}'")).await.is_err());
     assert!(f.db.execute_unprepared(&format!("UPDATE sdlc_tasks SET pm_owner_version=0,pm_execution_id=NULL,pm_admission_state=NULL WHERE task_id='{task}'")).await.is_err());
     assert!(

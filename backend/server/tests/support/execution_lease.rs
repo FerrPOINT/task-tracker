@@ -264,14 +264,16 @@ pub async fn verify(
         assignment
     );
     let pm_write = json!({"fence":fence,"document":{"goal":"goal","scope":["scope"],"exclusions":[],"scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]},"expected_requirement_revision":null,"idempotency_key":"lease-is-not-admission"});
-    expect(
+    require_native_reader(
         f.client,
         &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
         &token,
         &pm_write,
-        409,
     )
     .await;
+    assert_eq!(count(f.db, "sdlc_pm_native_admissions").await, 0);
+    let state = get_json(f.client, &url, &token, 200).await;
+    assert_eq!(state["current"], live["current"]);
     let execution_id = Uuid::parse_str(a["execution_id"].as_str().unwrap()).unwrap();
     assert!(
         f.db.execute(statement(

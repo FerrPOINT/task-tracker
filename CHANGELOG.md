@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+- PostgreSQL HTTP fixtures проверяют точный fail-closed ответ при отсутствии
+  Fleet native reader и неизменность admission/lease state; история по-прежнему
+  не разрешает новые machine writes.
+
 - Закреплён общий Base cursor policy: доступные вкладки, кнопки, селекты
   и пункты меню показывают курсор действия без локальных копий CSS.
 
