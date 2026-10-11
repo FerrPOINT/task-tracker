@@ -72,6 +72,25 @@ class CiChangeClassifierTest(unittest.TestCase):
         self.assertEqual(classify("push", "", "", repo=self.repo),
                          {"backend": "true", "frontend": "true"})
 
+    def test_namespace_sdk_and_ci_changes_keep_both_gates_enabled(self) -> None:
+        for name in [
+            ".namespace-base-revision",
+            ".github/workflows/ci.yml",
+            "scripts/classify_ci_changes.py",
+        ]:
+            with self.subTest(path=name):
+                base = self.git("rev-parse", "HEAD")
+                path = self.repo / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("changed shared build input\n", encoding="utf-8")
+                self.git("add", name)
+                self.git("commit", "-m", "change shared build input")
+                head = self.git("rev-parse", "HEAD")
+                self.assertEqual(
+                    classify("pull_request", base, head, repo=self.repo),
+                    {"backend": "true", "frontend": "true"},
+                )
+
     def test_pull_request_requires_both_exact_shas(self) -> None:
         with self.assertRaises(ValueError):
             classify("pull_request", self.base, "", repo=self.repo)

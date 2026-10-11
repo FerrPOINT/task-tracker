@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+- CI проверяет backend и frontend при изменении Namespace SDK pin или общих
+  правил запуска проверок. Такие изменения больше не пропускают build/MSRV gates.
+
 - Backup/restore используют явный профиль workspace и owner через Base.
   Restore требует квалифицированное временное назначение через `--qa-only`.
   Restore больше не принимает старый произвольный физический Compose-проект;

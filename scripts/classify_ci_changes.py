@@ -8,8 +8,15 @@ from pathlib import Path
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND_PATHS = ("backend/", "openapi/", ".base-revision")
-FRONTEND_PATHS = ("frontend/", "openapi/", ".base-revision")
+SHARED_PATHS = (
+    "openapi/",
+    ".base-revision",
+    ".namespace-base-revision",
+    ".github/workflows/",
+    "scripts/classify_ci_changes.py",
+)
+BACKEND_PATHS = ("backend/",) + SHARED_PATHS
+FRONTEND_PATHS = ("frontend/",) + SHARED_PATHS
 
 
 def classify(event_name: str, base_sha: str, head_sha: str, *, repo: Path = ROOT) -> dict[str, str]:
