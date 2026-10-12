@@ -104,6 +104,12 @@ task-tracker worklog list --issue PROJ-1 --limit 25 --offset 0
 task-tracker worklog create --issue PROJ-1 --started-at 2026-10-01T10:00:00Z --duration-seconds 1800 --from-file work.md
 task-tracker worklog update <worklog-id> --duration-seconds 2400
 task-tracker worklog delete <worklog-id>
+task-tracker sdlc context --task <issue-uuid>
+task-tracker sdlc input --task <issue-uuid>
+task-tracker sdlc questions --task <issue-uuid>
+task-tracker sdlc requirements --task <issue-uuid>
+task-tracker sdlc question publish --task <issue-uuid> --from-file question.json
+task-tracker sdlc revision publish --task <issue-uuid> --from-file -
 task-tracker issue delete PROJ-1
 task-tracker trash --project-key PROJ --limit 25 --offset 0
 task-tracker issue restore PROJ-1
@@ -114,6 +120,33 @@ Issue filters: `--q`, `--priority`, `--status`, `--assignee-id`, `--sort-by`, `-
 MIME type upload определяется по имени файла; `--content-type` переопределяет его. Сервер сохраняет свой allowlist допустимых типов.
 
 `--unassign` передаёт JSON `null` и конфликтует с `--assignee-id`. Для comment add/update поддержаны прежний inline body и `--from-file`. Форматы `json|table|compact` сохранены; default `json`. Ошибки выполнения возвращают прежний код `1`, ошибки CLI parsing — `2`.
+
+### SDLC PM producer commands
+
+`sdlc` — тонкая обвязка над существующими typed SDLC API. `--task` принимает
+только canonical issue UUID и не выполняет обычный `GET /issues/{key}` lookup:
+PM machine-token имеет task-scoped grant, а не общий доступ к задаче по ключу.
+Команды чтения:
+
+```bash
+task-tracker sdlc context --task <issue-uuid>
+task-tracker sdlc input --task <issue-uuid>
+task-tracker sdlc questions --task <issue-uuid>
+task-tracker sdlc requirements --task <issue-uuid>
+```
+
+Команды публикации принимают строгий JSON body существующих серверных DTO и
+отправляют его без дополнительных headers, operation receipt routes, retries или
+локального вычисления revision/hash:
+
+```bash
+task-tracker sdlc question publish --task <issue-uuid> --from-file question.json
+task-tracker sdlc revision publish --task <issue-uuid> --from-file -
+```
+
+Для machine publication действуют серверные проверки ownership/project scope,
+machine scope, assignment, lease/fence и idempotency key внутри JSON body.
+Owner-only answer/confirm/evidence команды не входят в PM CLI producer packet.
 
 ### Реестр сценариев и проверок
 
@@ -128,11 +161,13 @@ MIME type upload определяется по имени файла; `--content
 | attachment list/upload/download/delete | GET/POST `/issues/{id}/attachments`; GET `/attachments/{id}/download`; DELETE `/attachments/{id}` | multipart, content type, atomic/no clobber; workflows + real_api |
 | field list/values/set | GET `/projects/{key}/custom-fields`, `/issues/{id}/custom-fields`; PUT `/issues/{id}/custom-fields/{field}/value` | JSON inline/file/stdin; workflows |
 | worklog list/create/update/delete | GET/POST `/issues/{id}/worklogs`; PATCH/DELETE `/worklogs/{id}` | дата, duration, описание; workflows |
+| sdlc context/input/questions/requirements | GET `/issues/{uuid}/sdlc/context`, `/pm-draft-input`, `/clarifications`, `/requirements` | только canonical UUID; workflows request assertions |
+| sdlc question/revision publish | POST `/issues/{uuid}/sdlc/clarifications`, `/requirements` | JSON file/stdin body as-is; no idempotency header/retry; workflows |
 | trash + issue restore | GET `/projects/{key}/trash`; POST `/issues/{id}/restore` | пагинация; real_api + application access test |
 
 ### Границы пакета
 
-Нет новых команд управления определениями custom fields, components/versions, watchers/votes, export или безвозвратным удалением. Административные команды сохраняются на прежнем уровне. Тестовый real_api запускает настоящие handlers/application services с изолированными memory repositories и storage; это проверка CLI/API, а не приёмка PostgreSQL persistence.
+Нет новых команд управления определениями custom fields, components/versions, watchers/votes, export или безвозвратным удалением. SDLC packet не добавляет MCP/Fleet admission profile, новый runtime-протокол, proof endpoint, scheduler или server schema. Административные команды сохраняются на прежнем уровне. Тестовый real_api запускает настоящие handlers/application services с изолированными memory repositories и storage; это проверка CLI/API, а не приёмка PostgreSQL persistence.
 
 ```bash
 cd backend

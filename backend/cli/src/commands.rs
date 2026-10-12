@@ -4,6 +4,7 @@ use clap::{Args, Subcommand};
 use reqwest::{Method, multipart};
 use serde_json::{Value, json};
 use std::path::PathBuf;
+use uuid::Uuid;
 
 #[derive(Debug, Args)]
 pub struct Page {
@@ -202,6 +203,63 @@ pub enum WorklogCommand {
         id: String,
     },
 }
+
+#[derive(Subcommand)]
+pub enum SdlcCommand {
+    /// Read server-derived SDLC task context by canonical issue UUID
+    Context {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// Read immutable PM draft input by canonical issue UUID
+    Input {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// List clarification questions by canonical issue UUID
+    Questions {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// Read current requirements revision by canonical issue UUID
+    Requirements {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// Publish PM clarification questions
+    Question {
+        #[command(subcommand)]
+        command: SdlcQuestionCommand,
+    },
+    /// Publish PM requirements revisions
+    Revision {
+        #[command(subcommand)]
+        command: SdlcRevisionCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SdlcQuestionCommand {
+    /// Publish a clarification question JSON payload from a file or stdin
+    Publish {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_name = "PATH|-")]
+        from_file: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SdlcRevisionCommand {
+    /// Publish a requirements revision JSON payload from a file or stdin
+    Publish {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_name = "PATH|-")]
+        from_file: String,
+    },
+}
+
 pub async fn issue_id(api: &Api, identifier: &str) -> Result<String> {
     let value = api
         .get(&format!("/api/v1/issues/{}", enc(identifier)))
@@ -212,6 +270,37 @@ pub async fn issue_id(api: &Api, identifier: &str) -> Result<String> {
         .context("В ответе задачи нет id")?
         .to_owned())
 }
+
+fn sdlc_path(task: Uuid, suffix: &str) -> String {
+    format!("/api/v1/issues/{task}/sdlc{suffix}")
+}
+
+fn json_input(path: &str) -> Result<Value> {
+    let text = support::read_text(path)?;
+    serde_json::from_str(&text).context("SDLC payload должен быть JSON")
+}
+
+pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
+    match command {
+        SdlcCommand::Context { task } => api.get(&sdlc_path(task, "/context")).await,
+        SdlcCommand::Input { task } => api.get(&sdlc_path(task, "/pm-draft-input")).await,
+        SdlcCommand::Questions { task } => api.get(&sdlc_path(task, "/clarifications")).await,
+        SdlcCommand::Requirements { task } => api.get(&sdlc_path(task, "/requirements")).await,
+        SdlcCommand::Question { command } => match command {
+            SdlcQuestionCommand::Publish { task, from_file } => {
+                api.post(&sdlc_path(task, "/clarifications"), json_input(&from_file)?)
+                    .await
+            }
+        },
+        SdlcCommand::Revision { command } => match command {
+            SdlcRevisionCommand::Publish { task, from_file } => {
+                api.post(&sdlc_path(task, "/requirements"), json_input(&from_file)?)
+                    .await
+            }
+        },
+    }
+}
+
 fn request(api: &Api, method: Method, path: &str) -> Result<reqwest::RequestBuilder> {
     api.client
         .request(
