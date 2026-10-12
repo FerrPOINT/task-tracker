@@ -330,7 +330,7 @@ type SdlcContext = {
   task_id: string;
   root_task_id: string;
   owner_subject: string;
-  stage: "Draft" | "Clarification" | "Backlog" | "Analysis";
+  stage: "Draft" | "Clarification" | "Backlog" | "Analysis" | "Architecture";
   requirement_revision: number | null; // 1..Number.MAX_SAFE_INTEGER when present
   waiting_reason: string | null;
   permissions: { can_answer: boolean; can_confirm: boolean };

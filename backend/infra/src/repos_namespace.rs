@@ -47,7 +47,7 @@ pub async fn binding(
 /// Foundation v1 has no verified stop/release protocol. Reserved ownership is
 /// never inferred quiescent from an expired lease or dispatch_allowed=false.
 async fn drained(db: &DatabaseConnection, project: Uuid) -> Result<bool, AppError> {
-    let row=db.query_one(statement("SELECT NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AS drained",vec![id(project)])).await.map_err(AppError::database)?.ok_or_else(|| AppError::Unavailable("namespace_drain_readback_missing".into()))?;
+    let row=db.query_one(statement("SELECT NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds h JOIN sdlc_tasks t ON t.task_id=h.root_task_id WHERE t.project_id=$1) AS drained",vec![id(project)])).await.map_err(AppError::database)?.ok_or_else(|| AppError::Unavailable("namespace_drain_readback_missing".into()))?;
     row.try_get("", "drained").map_err(AppError::database)
 }
 

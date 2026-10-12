@@ -28,6 +28,11 @@ pub(super) fn router() -> Router<Arc<app::AppContext>> {
             "/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
             get(operation),
         )
+        .route("/issues/{id}/sdlc/analysis-result", post(submit_result))
+        .route(
+            "/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",
+            get(result_operation),
+        )
 }
 fn no_store() -> HeaderMap {
     let mut h = HeaderMap::new();
@@ -123,6 +128,42 @@ pub async fn operation(
         ),
     ))
 }
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/analysis-result",operation_id="submit_analysis_result",tag="sdlc",params(("id"=Uuid,Path)),request_body=SubmitAnalysisResult,
+    responses((status=201,body=AnalysisResultReceipt),(status=200,body=AnalysisResultReceipt,description="Original durable replay; no duplicate transition"),(status=401),(status=403),(status=404),(status=409,description="Stale lease/fence, released capacity or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn submit_result(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(task): Path<Uuid>,
+    Json(command): Json<SubmitAnalysisResult>,
+) -> Result<(StatusCode, HeaderMap, Json<AnalysisResultReceipt>), AppError> {
+    let (receipt, replay) = service(&ctx)?
+        .submit_analysis_result(task, &actor, command)
+        .await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(receipt),
+    ))
+}
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",operation_id="read_analysis_result_operation",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=AnalysisResultOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn result_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((task, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<AnalysisResultOperation>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .analysis_result_operation(task, &actor, &key)
+                .await?,
+        ),
+    ))
+}
 #[cfg(test)]
 mod tests {
     use utoipa::OpenApi;
@@ -144,6 +185,9 @@ mod tests {
             "PreparedAnalysisAssignment",
             "AnalysisReservationReceipt",
             "AnalysisReservationReadback",
+            "SubmitAnalysisResult",
+            "AnalysisResultReceipt",
+            "AnalysisResultOperation",
         ] {
             assert_eq!(
                 s["components"]["schemas"][name]["additionalProperties"], false,
@@ -153,9 +197,21 @@ mod tests {
         for path in [
             "/api/v1/issues/{id}/sdlc/analysis-reservation",
             "/api/v1/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
+            "/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",
         ] {
             assert!(s["paths"][path]["get"]["security"].is_array());
         }
+        assert!(
+            s["paths"]["/api/v1/issues/{id}/sdlc/analysis-result"]["post"]["security"].is_array()
+        );
+        assert_eq!(
+            s["components"]["schemas"]["SubmitAnalysisResult"]["properties"]["contract_version"]["maximum"],
+            serde_json::json!(1)
+        );
+        assert_eq!(
+            s["components"]["schemas"]["AnalysisResultReceipt"]["properties"]["next_stage"]["$ref"],
+            "#/components/schemas/Stage"
+        );
         assert!(
             s["components"]["schemas"]["PreparedAnalysisAssignment"]["properties"]
                 .get("run_id")

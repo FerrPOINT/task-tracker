@@ -1,4 +1,4 @@
-use crate::sdlc::{AnalysisStage, safe_version};
+use crate::sdlc::{AnalysisStage, Stage, safe_version};
 use crate::sdlc_execution_lease::ExecutionLease;
 use crate::sdlc_routing::RoleRoute;
 use chrono::{DateTime, Utc};
@@ -25,6 +25,14 @@ fn no_dispatch<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
         return Err(D::Error::custom("reservation cannot allow dispatch"));
     }
     Ok(false)
+}
+fn one<'de, D: Deserializer<'de>>(d: D) -> Result<u8, D::Error> {
+    let n = u8::deserialize(d)?;
+    if n == 1 {
+        Ok(n)
+    } else {
+        Err(D::Error::custom("contract_version must be 1"))
+    }
 }
 pub(crate) fn false_schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
     utoipa::openapi::schema::ObjectBuilder::new()
@@ -160,4 +168,95 @@ pub struct AnalysisReservationReadback {
     #[schema(schema_with = false_schema)]
     pub dispatch_allowed: bool,
     pub capacity_held: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SubmitAnalysisResult {
+    #[serde(deserialize_with = "one")]
+    #[schema(minimum = 1, maximum = 1)]
+    pub contract_version: u8,
+    #[serde(deserialize_with = "uuid")]
+    pub assignment_id: Uuid,
+    #[serde(deserialize_with = "uuid")]
+    pub execution_id: Uuid,
+    #[serde(deserialize_with = "uuid")]
+    pub agent_id: Uuid,
+    #[serde(deserialize_with = "uuid")]
+    pub intent_id: Uuid,
+    #[serde(deserialize_with = "uuid")]
+    pub routing_snapshot_id: Uuid,
+    #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub requirement_revision: i64,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub content_hash: String,
+    #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub fencing_token: i64,
+    #[serde(deserialize_with = "uuid")]
+    pub lease_id: Uuid,
+    #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub expected_lease_version: i64,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub assignment_hash: String,
+    #[schema(min_length = 1, max_length = 512)]
+    pub terminal_receipt_ref: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub terminal_receipt_sha256: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub architecture_input_sha256: String,
+    #[schema(min_length = 1, max_length = 100000)]
+    pub summary: String,
+    #[schema(min_length = 1, max_length = 128)]
+    pub idempotency_key: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AnalysisResultReceipt {
+    #[schema(minimum = 1, maximum = 1)]
+    pub contract_version: u8,
+    pub result_id: Uuid,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub task_id: Uuid,
+    pub root_task_id: Uuid,
+    pub owner_subject: String,
+    pub assignment_id: Uuid,
+    pub execution_id: Uuid,
+    pub agent_id: Uuid,
+    pub intent_id: Uuid,
+    pub routing_snapshot_id: Uuid,
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub requirement_revision: i64,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub content_hash: String,
+    pub workflow_task_ref: String,
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub fencing_token: i64,
+    pub lease_id: Uuid,
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub lease_version: i64,
+    pub previous_stage: Stage,
+    pub next_stage: Stage,
+    pub previous_status: String,
+    pub next_status: String,
+    pub terminal_receipt_ref: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub terminal_receipt_sha256: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub architecture_input_sha256: String,
+    pub summary: String,
+    pub idempotency_key: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AnalysisResultOperation {
+    pub idempotency_key: String,
+    pub request_sha256: String,
+    pub result: AnalysisResultReceipt,
 }

@@ -32,6 +32,15 @@ Receipt awaiting_admission/dispatch_allowed=false; GET явно показыва
 Replay не продлевает lease. Release/ACK/run endpoints отсутствуют.
 Полные DTO и hash semantics: [SDLC_RESERVATION_V1](SDLC_RESERVATION_V1.md).
 
+`POST /api/v1/issues/{id}/sdlc/analysis-result` is the first Tracker-authoritative
+terminal producer endpoint for Analyst work. It accepts the exact prepared
+assignment identity, active lease/fence, Workflow terminal receipt ref/hash and
+Architecture input hash; Tracker validates the current reservation and atomically
+records the result, releases Analysis capacity and advances the root task to
+`stage: Architecture` / `SDLC Architecture`. Same-key replay is retained at
+`/analysis-result/operations/{idempotency_key}` and never creates a second
+transition. Fleet/Hermes still do not mutate Tracker business state directly.
+
 ## SDLC Clarification API
 
 Маршрутизация SDLC проекта реализована как prerequisite под управлением владельца:

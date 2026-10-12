@@ -54,13 +54,13 @@ readback supports reconciliation after restart. Dispatch/admission, other stage
 transitions, decomposition/barrier/Rework and end-to-end PDLC remain incomplete:
 [implemented slice and next interfaces](SDLC_LIFECYCLE_V1.md).
 
-The next bounded B-SDLC-01 slice cannot safely accept Architect materialization:
-Architecture/non-PM admitted assignment and trusted terminal authority do not yet
-exist. Its concrete fallback closes root-binding/queued-state bypasses instead:
-root-only strict binding, non-root PM lifecycle/read denial and a DB freeze of
-queued Analysis. Real parent/root/dependencies, revisioned coverage, dependency
-cycle validation and the active-decomposition root barrier remain unimplemented.
-No operator/fixture assignment or receipt enables them.
+The next bounded B-SDLC-01 slices separate responsibilities: Tracker now accepts
+an exact Analyst terminal result and moves the root to Architecture, but Architect
+materialization and trusted Architect terminal authority still do not exist.
+Root-only strict binding, non-root PM lifecycle/read denial and guarded Analysis
+state writes remain the fallback until real parent/root/dependencies, revisioned
+coverage, dependency cycle validation and active-decomposition root barrier are
+implemented.
 
 Opt-in Draft -> assigned PM questions -> owner answers -> new full requirements
 revision -> trusted readiness evidence -> exact owner confirmation -> Backlog.
