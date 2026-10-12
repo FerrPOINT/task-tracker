@@ -349,7 +349,7 @@ impl PostgresSdlcRepository {
         let event_stage = if event_type == "requirements.confirmed" {
             Stage::Backlog
         } else {
-            state.stage.clone()
+            state.stage
         };
         let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,"stage":event_stage,"requirement_revision":state.current_revision(),"result":result});
         exec(
