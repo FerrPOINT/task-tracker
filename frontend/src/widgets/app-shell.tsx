@@ -1,3 +1,4 @@
+import { useProjectDisclosures } from '@sdlc/ui/lib'
 import { ProjectAvatar, ProjectNavigationGroup } from '@sdlc/ui/ui'
 import {
   NamespaceShellContext,
@@ -125,6 +126,7 @@ function ProjectNavigation({
   isActive,
   compact = false,
   onNavigate,
+  catalogStatus,
 }: {
   groups: ProjectNavigationGroup[]
   collapsed: Set<string>
@@ -132,9 +134,22 @@ function ProjectNavigation({
   isActive: (path: string) => boolean
   compact?: boolean
   onNavigate?: () => void
+  catalogStatus?: 'loading' | 'error'
 }) {
   const { t } = useTranslation()
-  if (!groups.length) return null
+  if (catalogStatus === 'error')
+    return (
+      <p role="alert" className="p-3 text-sm text-warning">
+        Проекты недоступны
+      </p>
+    )
+  if (catalogStatus === 'loading')
+    return (
+      <p role="status" className="p-3 text-sm text-text-muted">
+        Загружаем проекты…
+      </p>
+    )
+  if (!groups.length) return <p className="p-3 text-sm text-text-muted">Нет доступных проектов</p>
   return (
     <nav
       aria-label={t('navigation.projectNav')}
@@ -163,6 +178,11 @@ function ProjectNavigation({
             key={project.id}
             name={project.name}
             projectKey={project.key}
+            active={items.some((item) =>
+              isActive(
+                project.namespace ? withNamespaceLocation(item.to, project.namespace) : item.to,
+              ),
+            )}
             compact={compact}
             open={open}
             onToggle={() => onToggle(project.id)}
@@ -203,28 +223,8 @@ export function AppShell() {
       ? undefined
       : namespace.query.data?.resource_key
     : routeProjectKey
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => {
-    try {
-      const stored: unknown = JSON.parse(
-        window.localStorage.getItem(collapsedProjectsStorageKey) ?? '[]',
-      )
-      return new Set(
-        Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [],
-      )
-    } catch {
-      return new Set()
-    }
-  })
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        collapsedProjectsStorageKey,
-        JSON.stringify([...collapsedProjects]),
-      )
-    } catch {
-      // Keep navigation usable when browser preference storage is unavailable.
-    }
-  }, [collapsedProjects])
+  const projectDisclosures = useProjectDisclosures(collapsedProjectsStorageKey)
+  const collapsedProjects = new Set(projectDisclosures.collapsed)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () =>
@@ -269,12 +269,7 @@ export function AppShell() {
         ]
       : projects.map((project) => ({ id: project.id, key: project.key, name: project.name }))
   function toggleProject(id: string) {
-    setCollapsedProjects((current) => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    projectDisclosures.toggle(id)
   }
   const { data: user } = useCurrentUser()
   const { data: notificationList } = useNotifications()
@@ -378,6 +373,15 @@ export function AppShell() {
                   </nav>
                   <ProjectNavigation
                     groups={projectGroups}
+                    catalogStatus={
+                      namespaceEnabled
+                        ? catalog.isPending
+                          ? 'loading'
+                          : catalog.isError
+                            ? 'error'
+                            : undefined
+                        : undefined
+                    }
                     collapsed={collapsedProjects}
                     onToggle={toggleProject}
                     isActive={isActive}
@@ -634,6 +638,15 @@ export function AppShell() {
           </nav>
           <ProjectNavigation
             groups={projectGroups}
+            catalogStatus={
+              namespaceEnabled
+                ? catalog.isPending
+                  ? 'loading'
+                  : catalog.isError
+                    ? 'error'
+                    : undefined
+                : undefined
+            }
             collapsed={collapsedProjects}
             onToggle={toggleProject}
             isActive={isActive}
