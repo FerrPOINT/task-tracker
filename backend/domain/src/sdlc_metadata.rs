@@ -128,6 +128,20 @@ pub struct AnalysisReservationResource {
     pub assignment_hash: String,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AnalysisResultResource {
+    pub result_id: Uuid,
+    pub assignment_id: Uuid,
+    pub execution_id: Uuid,
+    pub workflow_task_ref: String,
+    pub terminal_receipt_ref: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub terminal_receipt_sha256: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub architecture_input_sha256: String,
+}
+
 macro_rules! metadata_events {
     ($($variant:ident, $name:literal, $resource:ty);+ $(;)?) => {
         #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -200,6 +214,7 @@ metadata_events! {
     RequirementsConfirmed, "requirements.confirmed", ConfirmationResource;
     AnalysisIntentCreated, "analysis.intent_created", crate::sdlc::AnalysisIntent;
     AnalysisAssignmentReserved, "analysis.assignment_reserved", AnalysisReservationResource;
+    AnalysisResultAccepted, "analysis.result_accepted", AnalysisResultResource;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]

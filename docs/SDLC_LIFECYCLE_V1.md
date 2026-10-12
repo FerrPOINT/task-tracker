@@ -74,7 +74,7 @@ intent. GET сверяет intent с текущим aggregate, exact confirmatio
 | Prepared Analysis reservation | Реализован Tracker-only ledger/API: root1/agent1/pool2, immutable identity/hash, CAS/lease/outbox; [контракт](SDLC_RESERVATION_V1.md) |
 | Execution admission / dispatch | Не реализованы; нужны fresh native/Workflow acceptance и trusted stop counterpart |
 | До decomposition: root-only identity / queued Analysis fence | Реализован bounded guard ниже; не DAG/coverage/barrier |
-| Analyst terminal → Architecture | Не реализован; accepted Workflow terminal receipt и guarded transition |
+| Analyst terminal → Architecture | Реализован Tracker-only result endpoint: active reservation lease, terminal receipt hash, guarded transition |
 | Decomposition / children / DAG / coverage | Не реализованы; materialization owner-команды Tracker |
 | Barrier / aggregate / Rework / deployment | Не реализованы; exact active revisions и trusted owner receipts |
 | Сквозной PDLC / установка / acceptance | NOT RUN; этот срез не доказывает автономный runtime |
@@ -191,9 +191,9 @@ B-SDLC-01/B-SDLC-05/guard и owned package/main changes; full gate остаёт�
 
 2026-10-03: Main выбрал bounded fallback после сверки owner prerequisites:
 ближайший concrete lifecycle guard вместо speculative Architect API.
-`Stage` пока не содержит Architecture;
-нет non-PM admitted assignment/fence/config ledger, accepted Analyst terminal
-transition или authenticated Architect materialization/terminal capability.
+`Stage` теперь содержит Architecture только как результат accepted Analyst
+terminal transition; authenticated Architect materialization/terminal capability
+ещё не реализована.
 Оператор, PM credential, Base source-admission receipt и caller-supplied flags
 не заменяют эти prerequisites. Поэтому parent/children/dependencies, versioned
 coverage, dependency cycle validation и root barrier не объявляются реализованными.
@@ -208,15 +208,15 @@ missing root возвращает 422 без state/history/idempotency/outbox wr
 
 `TaskState::require_root` и repository load отвергают retained non-root/nil task
 identity с 409; application reads/commands и consent readiness также fail-closed.
-Pending 000034 получает только root-only CHECK и `sdlc_analysis_gate`: changed
-aggregate/control row после queued Analysis запрещён до future guarded admission.
+Pending 000034 получает root-only CHECK и `sdlc_analysis_gate`; additive 000093
+ослабляет gate только для одного transaction-permitted перехода
+Analysis -> Architecture после append-only `sdlc_analysis_results`.
 Нельзя откатить stage к Backlog/Draft, подменить revision/hash/assignment либо
 добавить invented accepted decomposition и затем обойти issue status gate.
-No-op state update и обычный frozen readback остаются допустимыми. Новых assignments,
-receipts, producer/scheduler, авторуна или миграции 000035 нет.
+No-op state update и обычный frozen readback остаются допустимыми.
 
-Future Architect slice должен согласовать accepted Analyst -> Architecture
-transition, actual non-PM admitted identity/fence и trusted terminal authority.
+Future Architect slice должен добавить actual Architect admission/materialization
+и trusted terminal authority.
 Только вместе с этим root-only CHECK можно заменить на реальные ROOT/DELIVERY_CHILD
 membership/parent/project/revision constraints, atomic materialization, DAG/coverage
 validation и barrier по exact trusted DevOps deployment/acceptance receipts всех

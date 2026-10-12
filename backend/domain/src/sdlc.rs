@@ -86,12 +86,13 @@ pub enum QuestionState {
     Cancelled,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
 pub enum Stage {
     Draft,
     Clarification,
     Backlog,
     Analysis,
+    Architecture,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
@@ -511,6 +512,7 @@ impl TaskState {
                 Stage::Draft => Some("waiting_for_pm".into()),
                 Stage::Backlog => None,
                 Stage::Analysis => Some("queued_for_analysis".into()),
+                Stage::Architecture => Some("queued_for_architecture".into()),
                 Stage::Clarification
                     if self
                         .questions
@@ -593,6 +595,18 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         key: &str,
     ) -> Result<crate::sdlc_reservation::AnalysisReservationOperation, AppError>;
+    async fn submit_analysis_result(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_reservation::SubmitAnalysisResult,
+    ) -> Result<(crate::sdlc_reservation::AnalysisResultReceipt, bool), AppError>;
+    async fn analysis_result_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_reservation::AnalysisResultOperation, AppError>;
     async fn set_routing_policy(
         &self,
         project: Uuid,

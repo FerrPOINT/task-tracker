@@ -90,6 +90,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc_reservation::current,
         routes::sdlc_reservation::configuration_preflight,
         routes::sdlc_reservation::operation,
+        routes::sdlc_reservation::submit_result,
+        routes::sdlc_reservation::result_operation,
         routes::sdlc::project_access,
         routes::sdlc::project_directory,
         routes::sdlc::create_draft,
@@ -1007,7 +1009,7 @@ mod tests {
             serde_json::json!(["events"])
         );
         let variants = schemas["MetadataEvent"]["oneOf"].as_array().unwrap();
-        assert_eq!(variants.len(), 11);
+        assert_eq!(variants.len(), 12);
         for variant in variants {
             assert_eq!(variant["additionalProperties"], false);
             assert_eq!(variant["required"].as_array().unwrap().len(), 7);

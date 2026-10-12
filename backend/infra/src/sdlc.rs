@@ -339,6 +339,7 @@ impl PostgresSdlcRepository {
             Stage::Clarification => "SDLC Clarification",
             Stage::Backlog => "Backlog",
             Stage::Analysis => "SDLC Analysis",
+            Stage::Architecture => "SDLC Architecture",
         };
         if !matches!(state.stage, Stage::Backlog) || event_type == "requirements.confirmed" {
             exec(tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at) SELECT $1,i.id,i.status_id,s.id,u.id,now() FROM issues i JOIN statuses s ON s.id=(SELECT id FROM statuses WHERE name=$3 ORDER BY id LIMIT 1) JOIN users u ON u.central_sub=$4 WHERE i.id=$2 AND i.status_id<>s.id", vec![Uuid::new_v4().into(), task.into(), status_name.into(), actor.subject.clone().into()]).await?;
@@ -520,6 +521,12 @@ impl PostgresSdlcRepository {
                 return Ok(None);
             }
         }
+        if event.event_type == "analysis.result_accepted" {
+            let row = tx.query_one(statement("SELECT result FROM sdlc_analysis_result_operations WHERE result_id=$1 AND task_id=$2",vec![event.event_id.into(),event.task_id.into()])).await.map_err(map_db)?;
+            if row.is_none_or(|r| r.try_get::<Json>("", "result").ok().as_ref() != Some(result)) {
+                return Ok(None);
+            }
+        }
         if event.event_type == "clarification.answered" {
             let Some(id) = result["question_id"]
                 .as_str()
@@ -547,6 +554,7 @@ impl PostgresSdlcRepository {
             "requirements.published" | "requirements.confirmed" => result["revision"].as_i64(),
             "analysis.intent_created" => result["requirement_revision"].as_i64(),
             "analysis.assignment_reserved" => result["assignment"]["requirement_revision"].as_i64(),
+            "analysis.result_accepted" => result["requirement_revision"].as_i64(),
             "clarification.published"
             | "clarification.cancelled"
             | "clarification.answered"
@@ -603,6 +611,23 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Result<domain::sdlc_reservation::AnalysisReservationOperation, AppError> {
         self.read_analysis_reservation_operation(task, actor, key)
             .await
+    }
+    async fn submit_analysis_result(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::SubmitAnalysisResult,
+    ) -> Result<(domain::sdlc_reservation::AnalysisResultReceipt, bool), AppError> {
+        self.submit_analysis_terminal_result(task, actor, command)
+            .await
+    }
+    async fn analysis_result_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_reservation::AnalysisResultOperation, AppError> {
+        self.read_analysis_result_operation(task, actor, key).await
     }
     async fn set_routing_policy(
         &self,

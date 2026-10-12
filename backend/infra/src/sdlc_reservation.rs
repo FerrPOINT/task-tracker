@@ -49,7 +49,7 @@ impl PostgresSdlcRepository {
         tx: &DatabaseTransaction,
         state: &TaskState,
     ) -> Result<Option<AnalysisReservationReceipt>, AppError> {
-        let row = tx.query_one(statement("SELECT r.payload,r.pool_slot,l.version,l.holder_subject,l.claimed_at,l.heartbeat_at,l.expires_at FROM sdlc_analysis_reservations r JOIN sdlc_analysis_reservation_leases l USING(assignment_id) WHERE r.task_id=$1 FOR UPDATE OF l",vec![state.task_id.into()])).await.map_err(map_db)?;
+        let row = tx.query_one(statement("SELECT r.payload,h.pool_slot,l.version,l.holder_subject,l.claimed_at,l.heartbeat_at,l.expires_at FROM sdlc_analysis_reservations r JOIN sdlc_analysis_reservation_leases l USING(assignment_id) JOIN sdlc_analysis_capacity_holds h USING(assignment_id) WHERE r.task_id=$1 FOR UPDATE OF l",vec![state.task_id.into()])).await.map_err(map_db)?;
         let Some(row) = row else {
             return Ok(None);
         };
@@ -125,6 +125,31 @@ impl PostgresSdlcRepository {
     ) -> Result<(), AppError> {
         exec(tx,"INSERT INTO sdlc_analysis_reservation_operations(task_id,idempotency_key,actor_subject,payload_hash,assignment_id,lease_version,result) VALUES($1,$2,$3,$4,$5,$6,$7)",vec![result.assignment.task_id.into(),key.into(),actor.subject.clone().into(),hash.into(),result.assignment.assignment_id.into(),result.lease.version.into(),json_value(result)?]).await
     }
+    async fn result_operation(
+        tx: &DatabaseTransaction,
+        task: Uuid,
+        key: &str,
+    ) -> Result<Option<AnalysisResultOperation>, AppError> {
+        let row = tx.query_one(statement("SELECT payload_hash,result FROM sdlc_analysis_result_operations WHERE task_id=$1 AND idempotency_key=$2",vec![task.into(),key.into()])).await.map_err(map_db)?;
+        row.map(|r| {
+            Ok(AnalysisResultOperation {
+                idempotency_key: key.into(),
+                request_sha256: r.try_get("", "payload_hash").map_err(map_db)?,
+                result: serde_json::from_value(r.try_get("", "result").map_err(map_db)?)
+                    .map_err(|_| inconsistent())?,
+            })
+        })
+        .transpose()
+    }
+    async fn save_result_operation(
+        tx: &DatabaseTransaction,
+        actor: &Principal,
+        key: &str,
+        hash: &str,
+        result: &AnalysisResultReceipt,
+    ) -> Result<(), AppError> {
+        exec(tx,"INSERT INTO sdlc_analysis_result_operations(task_id,idempotency_key,actor_subject,payload_hash,result_id,result) VALUES($1,$2,$3,$4,$5,$6)",vec![result.task_id.into(),key.into(),actor.subject.clone().into(),hash.into(),result.result_id.into(),json_value(result)?]).await
+    }
     pub(super) async fn reserve_analysis_intent(
         &self,
         task: Uuid,
@@ -182,14 +207,14 @@ impl PostgresSdlcRepository {
             return Err(AppError::conflict("pm_quiescence_unverified"));
         }
         let agent = snapshot.policy.routes.analyst.agent_id;
-        let blocked = tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_analysis_reservations WHERE root_task_id=$1 OR agent_id=$2) AS busy, EXISTS(SELECT 1 FROM sdlc_assignments WHERE payload->>'agent_id'=$2::text) AS pm",vec![state.root_task_id.into(),agent.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
+        let blocked = tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=$1 OR agent_id=$2) AS busy, EXISTS(SELECT 1 FROM sdlc_assignments WHERE payload->>'agent_id'=$2::text) AS pm",vec![state.root_task_id.into(),agent.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
         if blocked.try_get::<bool>("", "pm").map_err(map_db)? {
             return Err(AppError::conflict("pm_quiescence_unverified"));
         }
         if blocked.try_get::<bool>("", "busy").map_err(map_db)? {
             return Err(AppError::conflict("root_or_agent_capacity_held"));
         }
-        let slot = tx.query_one(statement("SELECT s::smallint AS slot FROM generate_series(1,2) s WHERE NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations WHERE pool_slot=s) ORDER BY s LIMIT 1",vec![])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("technical_pool_capacity_held"))?.try_get::<i16>("","slot").map_err(map_db)?;
+        let slot = tx.query_one(statement("SELECT s::smallint AS slot FROM generate_series(1,2) s WHERE NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE pool_slot=s) ORDER BY s LIMIT 1",vec![])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("technical_pool_capacity_held"))?.try_get::<i16>("","slot").map_err(map_db)?;
         let fence = tx
             .query_one(statement(
                 "SELECT nextval('sdlc_analysis_reservation_fence') AS n",
@@ -266,6 +291,7 @@ impl PostgresSdlcRepository {
         };
         let a = &result.assignment;
         exec(&tx,"INSERT INTO sdlc_analysis_reservations(assignment_id,execution_id,task_id,root_task_id,agent_id,intent_id,routing_snapshot_id,fencing_token,lease_id,pool_slot,payload,workflow_task_ordinal) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",vec![id.into(),a.execution_id.into(),task.into(),a.root_task_id.into(),agent.into(),a.intent_id.into(),a.routing_snapshot_id.into(),fence.into(),lease_id.into(),slot.into(),json_value(a)?,workflow_ordinal.into()]).await?;
+        exec(&tx,"INSERT INTO sdlc_analysis_capacity_holds(assignment_id,root_task_id,agent_id,pool_slot) VALUES($1,$2,$3,$4)",vec![id.into(),a.root_task_id.into(),agent.into(),slot.into()]).await?;
         exec(&tx,"INSERT INTO sdlc_analysis_reservation_leases(assignment_id,version,holder_subject,claimed_at,heartbeat_at,expires_at) VALUES($1,1,$2,$3,$3,$4)",vec![id.into(),actor.subject.clone().into(),now.into(),result.lease.expires_at.into()]).await?;
         Self::save_reservation_operation(&tx, actor, &command.idempotency_key, &hash, &result)
             .await?;
@@ -373,17 +399,159 @@ impl PostgresSdlcRepository {
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
-        let current = Self::reservation_current(&tx, &state)
-            .await?
-            .ok_or_else(|| AppError::not_found("Analysis reservation", task))?;
         let op = Self::reservation_operation(&tx, task, key)
             .await?
             .ok_or_else(|| AppError::not_found("reservation operation", key))?;
-        if op.result.assignment != current.assignment
-            || op.result.lease.version > current.lease.version
-        {
-            return Err(inconsistent());
+        if let Some(current) = Self::reservation_current(&tx, &state).await? {
+            if op.result.assignment != current.assignment
+                || op.result.lease.version > current.lease.version
+            {
+                return Err(inconsistent());
+            }
+        } else {
+            let row = tx.query_one(statement("SELECT r.payload,EXISTS(SELECT 1 FROM sdlc_analysis_results ar WHERE ar.assignment_id=r.assignment_id) AS released FROM sdlc_analysis_reservations r WHERE r.task_id=$1 AND r.assignment_id=$2",
+                vec![task.into(), op.result.assignment.assignment_id.into()])).await.map_err(map_db)?
+                .ok_or_else(inconsistent)?;
+            let assignment: PreparedAnalysisAssignment =
+                serde_json::from_value(row.try_get("", "payload").map_err(map_db)?)
+                    .map_err(|_| inconsistent())?;
+            if assignment != op.result.assignment
+                || !row.try_get::<bool>("", "released").map_err(map_db)?
+            {
+                return Err(inconsistent());
+            }
         }
+        tx.commit().await.map_err(map_db)?;
+        Ok(op)
+    }
+
+    pub(super) async fn submit_analysis_terminal_result(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: SubmitAnalysisResult,
+    ) -> Result<(AnalysisResultReceipt, bool), AppError> {
+        app::sdlc_reservation::scheduler(actor, &self.config)?;
+        app::sdlc_reservation::validate_analysis_result(&command)?;
+        let hash = app::sdlc::canonical_hash(
+            &json!({"operation":"submit_analysis_result","payload":&command}),
+        )?;
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let mut state = self.load(&tx, task, actor).await?;
+        if let Some(op) = Self::result_operation(&tx, task, &command.idempotency_key).await? {
+            if op.request_sha256 != hash {
+                return Err(AppError::conflict("Analysis result key payload conflict"));
+            }
+            tx.commit().await.map_err(map_db)?;
+            return Ok((op.result, true));
+        }
+        if !matches!(state.stage, Stage::Analysis) {
+            return Err(AppError::conflict("active Analysis stage required"));
+        }
+        let current = Self::reservation_current(&tx, &state)
+            .await?
+            .ok_or_else(|| AppError::conflict("Analysis reservation absent or released"))?;
+        let now = clock(&tx).await?;
+        let a = &current.assignment;
+        if current.lease.holder_subject != actor.subject {
+            return Err(AppError::Forbidden);
+        }
+        if current.lease.expires_at <= now
+            || current.lease.version != command.expected_lease_version
+            || command.assignment_id != a.assignment_id
+            || command.execution_id != a.execution_id
+            || command.agent_id != a.agent_id
+            || command.intent_id != a.intent_id
+            || command.routing_snapshot_id != a.routing_snapshot_id
+            || command.requirement_revision != a.requirement_revision
+            || command.content_hash != a.content_hash
+            || command.fencing_token != a.fencing_token
+            || command.lease_id != a.lease_id
+            || command.assignment_hash != a.assignment_hash
+        {
+            return Err(AppError::conflict("stale Analysis terminal fence"));
+        }
+        let duplicate = tx.query_one(statement(
+            "SELECT result_id FROM sdlc_analysis_results WHERE task_id=$1 OR assignment_id=$2 OR intent_id=$3",
+            vec![task.into(), a.assignment_id.into(), a.intent_id.into()],
+        )).await.map_err(map_db)?;
+        if duplicate.is_some() {
+            return Err(AppError::conflict("Analysis result already accepted"));
+        }
+        let result = AnalysisResultReceipt {
+            contract_version: 1,
+            result_id: Uuid::now_v7(),
+            tracker_instance_id: a.tracker_instance_id.clone(),
+            project_id: a.project_id,
+            task_id: a.task_id,
+            root_task_id: a.root_task_id,
+            owner_subject: a.owner_subject.clone(),
+            assignment_id: a.assignment_id,
+            execution_id: a.execution_id,
+            agent_id: a.agent_id,
+            intent_id: a.intent_id,
+            routing_snapshot_id: a.routing_snapshot_id,
+            requirement_revision: a.requirement_revision,
+            content_hash: a.content_hash.clone(),
+            workflow_task_ref: a.workflow_task_ref.clone(),
+            fencing_token: a.fencing_token,
+            lease_id: a.lease_id,
+            lease_version: current.lease.version,
+            previous_stage: Stage::Analysis,
+            next_stage: Stage::Architecture,
+            previous_status: "SDLC Analysis".into(),
+            next_status: "SDLC Architecture".into(),
+            terminal_receipt_ref: command.terminal_receipt_ref.clone(),
+            terminal_receipt_sha256: command.terminal_receipt_sha256.clone(),
+            architecture_input_sha256: command.architecture_input_sha256.clone(),
+            summary: command.summary.clone(),
+            idempotency_key: command.idempotency_key.clone(),
+            created_at: now,
+        };
+        exec(&tx,"INSERT INTO sdlc_analysis_results(result_id,assignment_id,execution_id,task_id,intent_id,lease_version,terminal_receipt_ref,terminal_receipt_sha256,architecture_input_sha256,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+            vec![result.result_id.into(),result.assignment_id.into(),result.execution_id.into(),task.into(),result.intent_id.into(),result.lease_version.into(),
+                result.terminal_receipt_ref.clone().into(),result.terminal_receipt_sha256.clone().into(),result.architecture_input_sha256.clone().into(),json_value(&result)?]).await?;
+        Self::save_result_operation(&tx, actor, &command.idempotency_key, &hash, &result).await?;
+        state.stage = Stage::Architecture;
+        let next_state = json_value(&state)?;
+        exec(&tx,"INSERT INTO sdlc_analysis_state_write_permits(task_id,transaction_id,next_state) VALUES($1,pg_current_xact_id(),$2)",
+            vec![task.into(),next_state.clone()]).await?;
+        exec(
+            &tx,
+            "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+            vec![task.into(), next_state],
+        )
+        .await?;
+        exec(&tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at)
+            SELECT $1,i.id,i.status_id,s.id,u.id,now() FROM issues i
+            JOIN statuses s ON s.id=(SELECT id FROM statuses WHERE name=$3 ORDER BY id LIMIT 1)
+            JOIN users u ON u.central_sub=$4
+            WHERE i.id=$2 AND i.status_id<>s.id",
+            vec![Uuid::new_v4().into(), task.into(), result.next_status.clone().into(), actor.subject.clone().into()]).await?;
+        exec(&tx, "UPDATE issues SET status_id=(SELECT id FROM statuses WHERE name=$2 ORDER BY id LIMIT 1), sprint_id=NULL, updated_at=now() WHERE id=$1", vec![task.into(), result.next_status.clone().into()]).await?;
+        let payload = json!({"contract_version":1,"tracker_instance_id":&result.tracker_instance_id,
+            "project_id":result.project_id,"task_id":task,"root_task_id":result.root_task_id,
+            "owner_subject":&result.owner_subject,"stage":Stage::Architecture,
+            "requirement_revision":result.requirement_revision,"result":&result});
+        exec(&tx,"INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,'analysis.result_accepted',$3)",
+            vec![result.result_id.into(), task.into(), payload.into()]).await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok((result, false))
+    }
+
+    pub(super) async fn read_analysis_result_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<AnalysisResultOperation, AppError> {
+        app::sdlc_reservation::reader(actor)?;
+        app::sdlc::validate_key(key)?;
+        let tx = self.db.begin().await.map_err(map_db)?;
+        self.load(&tx, task, actor).await?;
+        let op = Self::result_operation(&tx, task, key)
+            .await?
+            .ok_or_else(|| AppError::not_found("Analysis result operation", key))?;
         tx.commit().await.map_err(map_db)?;
         Ok(op)
     }

@@ -121,6 +121,26 @@ impl SdlcService {
             .analysis_reservation_operation(task, actor, key)
             .await
     }
+    pub async fn submit_analysis_result(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::SubmitAnalysisResult,
+    ) -> Result<(domain::sdlc_reservation::AnalysisResultReceipt, bool), AppError> {
+        self.repository
+            .submit_analysis_result(task, actor, command)
+            .await
+    }
+    pub async fn analysis_result_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_reservation::AnalysisResultOperation, AppError> {
+        self.repository
+            .analysis_result_operation(task, actor, key)
+            .await
+    }
     pub async fn set_routing_policy(
         &self,
         project: Uuid,
@@ -637,9 +657,9 @@ pub fn apply(
 ) -> Result<Value, AppError> {
     authorize(state, actor, config, command)?;
     validate_key(command.key())?;
-    if matches!(state.stage, Stage::Analysis) {
+    if matches!(state.stage, Stage::Analysis | Stage::Architecture) {
         return Err(AppError::conflict(
-            "Analysis intent freezes PM business writes",
+            "Analysis/Architecture intent freezes PM business writes",
         ));
     }
     let now = chrono::Utc::now();

@@ -13,14 +13,17 @@ changing migration 000091. Downgrade refuses while any v2 admission exists.
 
 ## Ledger подготовленного Analysis assignment
 
-Только pending 000034: append-only `sdlc_analysis_reservations` и
+Pending 000034 хранит append-only `sdlc_analysis_reservations` и
 `sdlc_analysis_reservation_operations`, lockable `sdlc_reservation_capacity`,
 bounded monotonic fence sequence и mutable CAS `sdlc_analysis_reservation_leases`.
-Unique task/root/agent/pool slot сохраняют holds после expiry. Exact routed intent
-и immutable route проверяют SQL gates; deferred FK требуют lease/current receipt
-в той же транзакции. Heartbeat +1, TTL30; expired renewal/delete запрещены.
-История PM неизменна и без trusted stop блокирует root/agent reservation.
-[Модель, индексы и API](SDLC_RESERVATION_V1.md). Новая миграция не добавлена.
+Additive 000093 добавляет `sdlc_analysis_capacity_holds` как текущий mutable
+capacity ledger, append-only `sdlc_analysis_results` и
+`sdlc_analysis_result_operations`, а также transaction-scoped
+`sdlc_analysis_state_write_permits`. Принятый terminal result удаляет hold в той
+же транзакции, но reservation/result history остаётся append-only. Exact routed
+intent, active lease и immutable route проверяют SQL gates; heartbeat +1, TTL30;
+expired renewal/delete запрещены. История PM неизменна и без trusted stop
+блокирует root/agent reservation. [Модель, индексы и API](SDLC_RESERVATION_V1.md).
 
 ## SDLC: Additive Migration 000034
 

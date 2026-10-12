@@ -303,6 +303,37 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
                 assignment_hash: a.assignment_hash.clone(),
             })?
         }
+        "analysis.result_accepted" => {
+            let receipt: domain::sdlc_reservation::AnalysisResultReceipt = decode(&source.result)?;
+            revision(receipt.requirement_revision, &receipt.content_hash, &refs)?;
+            valid(
+                receipt.contract_version == 1
+                    && receipt.result_id == event.event_id
+                    && receipt.task_id == event.task_id
+                    && receipt.root_task_id == source.root_task_id
+                    && receipt.project_id == source.project_id
+                    && receipt.tracker_instance_id == source.tracker_instance_id
+                    && receipt.owner_subject == source.owner_subject
+                    && source.requirement_revision == Some(receipt.requirement_revision)
+                    && matches!(source.stage, Stage::Architecture)
+                    && matches!(receipt.previous_stage, Stage::Analysis)
+                    && matches!(receipt.next_stage, Stage::Architecture)
+                    && receipt.previous_status == "SDLC Analysis"
+                    && receipt.next_status == "SDLC Architecture",
+            )?;
+            hash(&receipt.terminal_receipt_sha256)?;
+            hash(&receipt.architecture_input_sha256)?;
+            valid(!receipt.terminal_receipt_ref.trim().is_empty())?;
+            value(AnalysisResultResource {
+                result_id: receipt.result_id,
+                assignment_id: receipt.assignment_id,
+                execution_id: receipt.execution_id,
+                workflow_task_ref: receipt.workflow_task_ref,
+                terminal_receipt_ref: receipt.terminal_receipt_ref,
+                terminal_receipt_sha256: receipt.terminal_receipt_sha256,
+                architecture_input_sha256: receipt.architecture_input_sha256,
+            })?
+        }
         "analysis.intent_created" => {
             let intent: AnalysisIntent = decode(&source.result)?;
             revision(intent.requirement_revision, &intent.content_hash, &refs)?;
