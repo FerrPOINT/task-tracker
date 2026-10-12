@@ -1823,191 +1823,6 @@
         ]
       }
     },
-    "/api/v1/issues/{id}/sdlc/pm-draft-completion": {
-      "post": {
-        "tags": [
-          "sdlc"
-        ],
-        "operationId": "complete_pm_draft",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CompletePmDraft"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Original durable replay; no duplicate completion",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PmDraftCompletionReceipt"
-                }
-              }
-            }
-          },
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PmDraftCompletionReceipt"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": ""
-          },
-          "403": {
-            "description": ""
-          },
-          "404": {
-            "description": ""
-          },
-          "409": {
-            "description": "Stale PM fence/lease, missing lease or payload conflict"
-          },
-          "422": {
-            "description": ""
-          },
-          "503": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      },
-      "get": {
-        "tags": [
-          "sdlc"
-        ],
-        "operationId": "read_pm_draft_completion",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PmDraftCompletionReadback"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": ""
-          },
-          "403": {
-            "description": ""
-          },
-          "404": {
-            "description": ""
-          },
-          "409": {
-            "description": ""
-          },
-          "503": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
-    "/api/v1/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}": {
-      "get": {
-        "tags": [
-          "sdlc"
-        ],
-        "operationId": "read_pm_draft_completion_operation",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "idempotency_key",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PmDraftCompletionOperation"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": ""
-          },
-          "403": {
-            "description": ""
-          },
-          "404": {
-            "description": ""
-          },
-          "409": {
-            "description": ""
-          },
-          "422": {
-            "description": ""
-          },
-          "503": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ]
-      }
-    },
     "/api/v1/issues/{id}/sdlc/assignment": {
       "post": {
         "tags": [
@@ -2577,6 +2392,191 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PmDraftReservation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-completion": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "complete_pm_draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompletePmDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay; no duplicate completion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftCompletionReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftCompletionReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Stale PM fence/lease, missing lease or payload conflict"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_pm_draft_completion",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftCompletionReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_pm_draft_completion_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftCompletionOperation"
                 }
               }
             }
@@ -8563,66 +8563,6 @@
           }
         }
       },
-      "ComponentListResponse": {
-        "type": "object",
-        "required": [
-          "components"
-        ],
-        "properties": {
-          "components": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ComponentResponse"
-            }
-          }
-        }
-      },
-      "ComponentRequest": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "name": {
-            "type": "string"
-          }
-        }
-      },
-      "ComponentResponse": {
-        "type": "object",
-        "required": [
-          "id",
-          "project_id",
-          "name",
-          "created_at"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "project_id": {
-            "type": "string"
-          }
-        }
-      },
       "CompletePmDraft": {
         "type": "object",
         "required": [
@@ -8693,6 +8633,66 @@
           }
         },
         "additionalProperties": false
+      },
+      "ComponentListResponse": {
+        "type": "object",
+        "required": [
+          "components"
+        ],
+        "properties": {
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComponentResponse"
+            }
+          }
+        }
+      },
+      "ComponentRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ComponentResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string"
+          }
+        }
       },
       "ConfirmCommand": {
         "type": "object",
