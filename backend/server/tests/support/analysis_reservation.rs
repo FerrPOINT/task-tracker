@@ -95,31 +95,6 @@ fn terminal_result(reservation: &Value, key: &str) -> Value {
     })
 }
 
-fn pm_fence(assignment: &Value) -> Value {
-    json!({
-        "assignment_id": assignment["assignment_id"],
-        "execution_id": assignment["execution_id"],
-        "agent_id": assignment["agent_id"],
-        "assignment_version": assignment["version"],
-    })
-}
-
-fn pm_completion(fence: &Value, lease: &Value, intent: &Value, key: &str) -> Value {
-    json!({
-        "contract_version": 1,
-        "fence": fence,
-        "lease_id": lease["lease"]["lease_id"],
-        "lease_version": lease["lease"]["version"],
-        "requirement_revision": intent["requirement_revision"],
-        "content_hash": intent["content_hash"],
-        "terminal_receipt_ref": format!("fleet/pm/{key}/terminal.json"),
-        "terminal_receipt_sha256": "c".repeat(64),
-        "workflow_receipt_ref": format!("workflow/pm/{key}/terminal.json"),
-        "workflow_receipt_sha256": "d".repeat(64),
-        "idempotency_key": key,
-    })
-}
-
 pub async fn check(
     db: &DatabaseConnection,
     client: &Client,
@@ -191,91 +166,33 @@ pub async fn check(
         200,
     )
     .await;
-    let pm_fence = pm_fence(&pm_context["assignment"]);
+    // This task came through legacy assignment/native admission, not a Tracker
+    // reservation. A confirmed document cannot manufacture reservation authority.
+    let assignment = &pm_context["assignment"];
+    let fence = json!({"assignment_id":assignment["assignment_id"],
+        "execution_id":assignment["execution_id"],"agent_id":assignment["agent_id"],
+        "assignment_version":assignment["version"]});
     let lease_url = format!("{base}/api/v1/issues/{pm_task}/sdlc/pm-draft-execution-lease");
-    let lease = post(
-        client,
-        &lease_url,
-        "sdlc_pat_pm",
-        &json!({"expected_owner_version":1,"fence":pm_fence.clone(),"idempotency_key":"pm-completion-lease"}),
-        201,
-    )
-    .await;
-    let completion_url = format!("{base}/api/v1/issues/{pm_task}/sdlc/pm-draft-completion");
-    assert!(read(client, &completion_url, reader, 200).await["current"].is_null());
-    post(
-        client,
-        &completion_url,
-        "sdlc_pat_pm",
-        &pm_completion(&pm_fence, &lease, &pm_intent, "pm-completed"),
-        403,
-    )
-    .await;
-    let completion_command = pm_completion(&pm_fence, &lease, &pm_intent, "pm-completed");
-    let completion = post(client, &completion_url, scheduler, &completion_command, 201).await;
-    assert_eq!(completion["next_pm_admission_state"], "completed");
+    let rejected = post(client, &lease_url, "sdlc_pat_pm",
+        &json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"legacy-cannot-claim-reserved-lease"}),409).await;
     assert_eq!(
-        completion["requirement_revision"],
-        pm_intent["requirement_revision"]
+        rejected["error"]["message"],
+        "PM reservation is not current"
     );
-    assert_eq!(
-        post(client, &completion_url, scheduler, &completion_command, 200).await,
-        completion
-    );
-    let mut conflicting_completion = completion_command.clone();
-    conflicting_completion["terminal_receipt_sha256"] = json!("e".repeat(64));
-    post(
-        client,
-        &completion_url,
-        scheduler,
-        &conflicting_completion,
-        409,
-    )
-    .await;
-    assert_eq!(
-        read(client, &completion_url, reader, 200).await["current"],
-        completion
-    );
-    assert_eq!(
-        read(
-            client,
-            &format!("{completion_url}/operations/pm-completed"),
-            reader,
-            200
-        )
-        .await["result"],
-        completion
-    );
-    let clear = read(client, &path(pm_task), reader, 200).await;
-    assert_eq!(clear["reconciliation_needed"], false);
-    assert!(clear["reason"].is_null());
-    let pm_analysis = post(client, &path(pm_task), scheduler, &pm, 201).await;
-    assert_eq!(
-        pm_analysis["assignment"]["requirement_revision"],
-        pm_intent["requirement_revision"]
-    );
-    let pm_result_url = format!("{base}/api/v1/issues/{pm_task}/sdlc/analysis-result");
-    let pm_result = post(
-        client,
-        &pm_result_url,
-        scheduler,
-        &terminal_result(&pm_analysis, "accept-completed-pm-analysis"),
-        201,
-    )
-    .await;
-    assert_eq!(pm_result["next_stage"], "Architecture");
-    assert_eq!(
-        read(
-            client,
-            &format!("{base}/api/v1/issues/{pm_task}/sdlc/context"),
-            owner,
-            200
-        )
-        .await["assignment"],
-        pm_context["assignment"]
-    );
-    assert_eq!(count(db, "sdlc_pm_completions").await, 1);
-    assert_eq!(count(db, "sdlc_pm_completion_operations").await, 1);
+    assert_eq!(count(db, "sdlc_pm_execution_leases").await, 0);
+    assert_eq!(count(db, "sdlc_pm_completions").await, 0);
+    let mut after_rejected_claim = read(client, &path(pm_task), reader, 200).await;
+    let mut before_rejected_claim = pm_readback.clone();
+    // Readback observation time advances even when business state is unchanged.
+    after_rejected_claim
+        .as_object_mut()
+        .unwrap()
+        .remove("observed_at");
+    before_rejected_claim
+        .as_object_mut()
+        .unwrap()
+        .remove("observed_at");
+    assert_eq!(after_rejected_claim, before_rejected_claim);
     let (legacy, legacy_command) =
         publication(db, client, base, owner, ready, "SDLC-1000", None).await;
     post(client, &path(legacy), scheduler, &legacy_command, 409).await;
@@ -527,10 +444,10 @@ pub async fn check(
         .unwrap();
     let event_payload: Value = event.try_get("", "payload").unwrap();
     assert_eq!(event_payload["result"]["result_id"], accepted["result_id"]);
-    assert_eq!(count(db, "sdlc_analysis_results").await, 2);
-    assert_eq!(count(db, "sdlc_analysis_result_operations").await, 2);
+    assert_eq!(count(db, "sdlc_analysis_results").await, 1);
+    assert_eq!(count(db, "sdlc_analysis_result_operations").await, 1);
     assert_eq!(count(db, "sdlc_analysis_capacity_holds").await, 1);
-    assert_eq!(count(db, "sdlc_analysis_reservations").await, 3);
+    assert_eq!(count(db, "sdlc_analysis_reservations").await, 2);
     assert_eq!(
         read(client, &path(winner), reader, 200).await["current"]["assignment"],
         result["assignment"]
@@ -711,7 +628,7 @@ pub async fn check(
     )
     .await;
     post(client, &path(loser), scheduler, &loser_command, 409).await;
-    assert_eq!(count(db, "sdlc_analysis_reservations").await, 3);
+    assert_eq!(count(db, "sdlc_analysis_reservations").await, 2);
     println!(
         "ANALYSIS_RESERVATION real expiry/read-only GET/unknown capacity hold/no release/no replay rewind passed"
     );

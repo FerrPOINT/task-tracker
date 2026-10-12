@@ -134,7 +134,7 @@ async fn post(client: &Client, url: &str, token: &str, body: &Value) -> (u16, Va
 
 async fn expect(client: &Client, url: &str, token: &str, body: &Value, status: u16) -> Value {
     let (actual, result) = post(client, url, token, body).await;
-    assert_eq!(actual, status, "{result}");
+    assert_eq!(actual, status, "POST {url}: {result}");
     result
 }
 
