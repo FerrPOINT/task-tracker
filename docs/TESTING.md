@@ -10,6 +10,13 @@ ACL, expiry/restart and a heartbeat actually blocked on an issue row until after
 expiry; it must return 409 without advancing the renewal cursor or history.
 Lease ownership is not PM admission or genuine live Hermes acceptance.
 
+The same `drafts` TCP/PostgreSQL suite checks PM producer publication through
+the Tracker lease: human/operator credentials, a foreign machine subject, missing
+PM scope, stale fencing and an expired lease are denied without state, lease or
+outbox changes. Exact accepted-command replay returns the original revision,
+including after lease expiry; changed-payload replay conflicts without another
+write. These checks do not establish Fleet dispatch or agent execution.
+
 The lease suite also corrupts retained assignment payloads and inserts a newer
 ledger version only in its disposable fixture. Plain/operation lease GET, claim
 and heartbeat must all return 409, both before and after a claim, without changing
@@ -319,3 +326,5 @@ Lefthook (`lefthook.yml`):
 ## Общая база
 
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
+
+Legacy assignment/native admission не создаёт Tracker reservation: HTTP/PG сценарий проверяет отказ claim без lease/completion и сохраняет blocker Analysis. Успешный PM completion проверяется отдельно после настоящего reservation, финальной публикации и подтверждения exact revision. Полная интеграция с Fleet требует отдельной приёмки.
