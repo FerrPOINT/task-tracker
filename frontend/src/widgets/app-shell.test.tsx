@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render as renderView, screen, waitFor, within } from '@testing-library/react'
+import { render as renderView, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
@@ -165,17 +165,18 @@ describe('AppShell notifications', () => {
       'aria-current',
       'page',
     )
-    expect(within(navigation).getByRole('link', { name: 'Отчёты' })).toHaveAttribute(
-      'href',
-      '/reports',
-    )
-    expect(within(navigation).getByRole('link', { name: 'Администрирование' })).toHaveAttribute(
+    expect(within(navigation).queryByRole('link', { name: 'Отчёты' })).not.toBeInTheDocument()
+    expect(
+      within(navigation).queryByRole('link', { name: 'Администрирование' }),
+    ).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Служебное' }))
+    expect(screen.getByRole('link', { name: 'Администрирование' })).toHaveAttribute(
       'href',
       '/admin',
     )
   })
 
-  it('highlights only the current project destination', () => {
+  it('highlights only the current project destination', async () => {
     mockHooks([])
     render(
       <ThemeProvider>
@@ -193,10 +194,12 @@ describe('AppShell notifications', () => {
     expect(within(navigation).getByRole('link', { name: 'Бэклог' })).not.toHaveAttribute(
       'aria-current',
     )
-    expect(within(navigation).getByRole('link', { name: 'Корзина' })).not.toHaveAttribute(
-      'aria-current',
-    )
-    expect(within(navigation).getByRole('link', { name: 'Настройки проекта' })).not.toHaveAttribute(
+    expect(within(navigation).queryByRole('link', { name: 'Корзина' })).not.toBeInTheDocument()
+    await userEvent
+      .setup()
+      .click(within(navigation).getByRole('button', { name: /Действия проекта/ }))
+    expect(screen.getByRole('menuitem', { name: 'Корзина' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('menuitem', { name: 'Настройки проекта' })).not.toHaveAttribute(
       'aria-current',
     )
   })
@@ -216,11 +219,7 @@ describe('AppShell notifications', () => {
       'aria-current',
       'page',
     )
-    expect(
-      within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('link', {
-        name: 'Отчёты',
-      }),
-    ).not.toHaveAttribute('aria-current')
+    expect(screen.queryByRole('link', { name: 'Отчёты' })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Создать' })).toHaveAttribute(
       'href',
       '/issues/create?project_key=XP',
