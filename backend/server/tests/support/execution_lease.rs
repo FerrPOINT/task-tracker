@@ -378,6 +378,17 @@ pub async fn verify(
     evidence["evidence_reference"] = json!("workflow://verified/prerequisite");
     evidence["idempotency_key"] = json!("verifier-prerequisite-no-native-history");
     expect(f.client, &evidence_url, &verifier_token, &evidence, 200).await;
+    let before_confirm = get_json(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/context"),
+        f.owner,
+        200,
+    )
+    .await;
+    assert_eq!(
+        before_confirm["waiting_reason"], "waiting_for_owner_confirmation",
+        "{before_confirm}"
+    );
     let confirm_url = format!("{base}/api/v1/issues/{task}/sdlc/requirements/2/confirm");
     let confirm = json!({"content_hash":final_revision["content_hash"],"idempotency_key":"confirm-no-native-history"});
     expect(f.client, &confirm_url, f.operator, &confirm, 403).await;
