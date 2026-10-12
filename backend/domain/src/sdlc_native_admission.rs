@@ -343,7 +343,7 @@ impl AdmissionObservation {
 pub enum CommandAdmission {
     Legacy,
     Replay(serde_json::Value),
-    Native(PmDraftReservation),
+    MachineLease(PmDraftReservation),
     History(PmDraftReservation),
 }
 

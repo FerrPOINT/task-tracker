@@ -3,6 +3,12 @@ use super::*;
 #[path = "execution_lease.rs"]
 mod execution_lease;
 
+async fn require_execution_lease(client: &Client, url: &str, token: &str, body: &Value) {
+    let error = expect(client, url, token, body, 409).await;
+    assert_eq!(error["error"]["code"], "CONFLICT");
+    assert_eq!(error["error"]["message"], "PM execution lease missing");
+}
+
 pub struct Fixture<'a> {
     pub db: &'a DatabaseConnection,
     pub client: &'a Client,
@@ -359,13 +365,17 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
         vec!["task-tracker:write".into()],
     );
     // This fixture deliberately has no Fleet native reader. A real PM draft
-    // reservation still owns its draft writes through exact transaction permits.
+    // reservation owns its producer writes through the exact execution lease.
     let native_count_before = count(f.db, "sdlc_pm_native_admissions").await;
     let mut next = result["assignment"].clone();
     next["version"] = json!(2);
     next["execution_id"] = json!(Uuid::new_v4());
     expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/assignment"),&orch,
         &json!({"assignment":next,"expected_assignment_version":1,"idempotency_key":"legacy-bypass"}),409).await;
+    require_execution_lease(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/requirements"),&pm,
+        &json!({"fence":fence,"expected_requirement_revision":null,"document":{"goal":"goal","scope":[],"exclusions":[],"scenarios":[],"acceptance_criteria":[],"constraints":[],"dependencies":[],"assumptions":[],"checklist":[],"prerequisites":[]},"idempotency_key":"denied-revision"})).await;
+    require_execution_lease(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),&pm,
+        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":Uuid::new_v4(),"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":null,"text":"text","rationale":"rationale","required":true,"mode":"text","options":[],"recommended_option_id":null,"idempotency_key":"denied-question"})).await;
     let lease = expect(
         f.client,
         &format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-execution-lease"),

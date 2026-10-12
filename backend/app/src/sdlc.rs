@@ -18,7 +18,6 @@ mod tests;
 pub struct SdlcService {
     pub repository: Arc<dyn SdlcRepository>,
     pub fleet_configuration: Option<crate::sdlc_configuration::FleetConfigurationReader>,
-    pub fleet_native: Option<crate::sdlc_native_admission::FleetNativeReader>,
 }
 
 impl SdlcService {
@@ -317,13 +316,9 @@ impl SdlcService {
                     .execute_verified(task, actor, command, expected, None)
                     .await?
             }
-            CommandAdmission::Native(expected) => {
-                let reader = self.fleet_native.as_ref().ok_or_else(|| {
-                    AppError::Unavailable("Fleet native admission reader not configured".into())
-                })?;
-                let observed = reader.read(&expected).await?;
+            CommandAdmission::MachineLease(expected) => {
                 self.repository
-                    .execute_verified(task, actor, command, expected, Some(observed))
+                    .execute_verified(task, actor, command, expected, None)
                     .await?
             }
         };
