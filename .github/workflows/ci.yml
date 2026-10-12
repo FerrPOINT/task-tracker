@@ -80,6 +80,12 @@ jobs:
         env:
           TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
         run: cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
+      - name: Fleet MCP admission upgrade (isolated PostgreSQL)
+        env:
+          TRACKER_MCP_ADMISSION_TEST_URL: postgres://tasktracker@127.0.0.1:5432/tracker_mcp_qa_upgrade
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_mcp_qa_upgrade
+          cargo test --locked -p migration existing_v1_schema_upgrades_without_rewriting_history -- --ignored --test-threads=1
       - name: Isolated PostgreSQL HTTP clarification and ownership lease
         env:
           TT_SDLC_DRAFT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_drafts

@@ -50,26 +50,12 @@ impl MigrationTrait for Migration {
           fence bigint NOT NULL CHECK(fence>0), proof jsonb NOT NULL CHECK(jsonb_typeof(proof)='object'),
           created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
           PRIMARY KEY(execution_id,session_run_id),
-          CHECK (((proof->>'contract_version'='1' AND proof->>'session_run_id'=session_run_id::text
-              AND proof->>'observation_ref'=observation_ref::text AND proof->>'fence'=fence::text
-              AND proof #>> '{identity,execution_ref}'=execution_id::text
-              AND proof #>> '{identity,assignment_ref}'=assignment_id::text
-              AND proof #>> '{identity,assignment_revision}'=assignment_version::text
-              AND proof->>'configuration_sha256' ~ '^[0-9a-f]{64}$')
-            OR (proof->>'contract_version'='2' AND proof->>'profile'='fleet_mcp_custody_v1'
-              AND proof->>'session_run_id'=session_run_id::text
-              AND proof->>'observation_ref'=observation_ref::text AND proof->>'fence'=fence::text
-              AND proof #>> '{identity,execution_ref}'=execution_id::text
-              AND proof #>> '{identity,assignment_ref}'=assignment_id::text
-              AND proof #>> '{identity,assignment_revision}'=assignment_version::text
-              AND proof->>'configuration_sha256' ~ '^[0-9a-f]{64}$'
-              AND proof->>'dispatch_request_sha256' ~ '^[0-9a-f]{64}$'
-              AND proof #>> '{profile_configuration,evidence_basis}'='fleet_effective_config_and_accepted_run'
-              AND proof #>> '{profile_configuration,runtime_source_revision}'='bbaf7af5c83546d19f8060f4097d3bb25cd1a3c3'
-              AND proof #>> '{profile_configuration,mcp_server}'='fleet_pm'
-              AND proof #> '{profile_configuration,platform_toolsets}'='[\"fleet_pm\"]'::jsonb
-              AND proof #> '{profile_configuration,advertised_server_tools}'='[\"tracker_clarifications\",\"tracker_context\",\"tracker_publish_question\",\"tracker_publish_revision\",\"tracker_requirements\",\"workflow_step\"]'::jsonb
-              AND proof #> '{profile_configuration,configured_wire_tools}'='[\"mcp__fleet_pm__tracker_clarifications\",\"mcp__fleet_pm__tracker_context\",\"mcp__fleet_pm__tracker_publish_question\",\"mcp__fleet_pm__tracker_publish_revision\",\"mcp__fleet_pm__tracker_requirements\",\"mcp__fleet_pm__workflow_step\"]'::jsonb)) IS TRUE));
+          CHECK ((proof->>'contract_version'='1' AND proof->>'session_run_id'=session_run_id::text
+            AND proof->>'observation_ref'=observation_ref::text AND proof->>'fence'=fence::text
+            AND proof #>> '{identity,execution_ref}'=execution_id::text
+            AND proof #>> '{identity,assignment_ref}'=assignment_id::text
+            AND proof #>> '{identity,assignment_revision}'=assignment_version::text
+            AND proof->>'configuration_sha256' ~ '^[0-9a-f]{64}$') IS TRUE));
           CREATE FUNCTION sdlc_native_admission_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
           BEGIN RAISE EXCEPTION 'SDLC native admission history is immutable' USING ERRCODE='23514'; END $$;
           CREATE TRIGGER sdlc_native_admission_immutable BEFORE UPDATE OR DELETE ON sdlc_pm_native_admissions

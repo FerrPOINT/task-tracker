@@ -27,8 +27,10 @@ Tracker uses deployment-only `TASKTRACKER_SDLC__FLEET_NATIVE_URL` and
 `TASKTRACKER_SDLC__FLEET_NATIVE_READ_TOKEN`. Redirects are disabled and the response
 is bounded. Tracker then reauthorizes, compares reservation, validates freshness
 and lease and checks the monotonic run fence before committing. Additive migration
-000091 stores immutable versioned observation history with the command
-transaction. Repeated history for the same execution/run may refresh
+000091 stores immutable v1 observation history with the command transaction.
+Additive migration 000093 permits the v2 profile in existing installations
+without changing the original migration or rewriting history. Its downgrade
+refuses while v2 history exists. Repeated history for the same execution/run may refresh
 `observation_ref` and `observed_at`, but cannot change the profile, identity,
 fence, accepted run/session/binding, configuration revision/hash or dispatch
 request hash.
