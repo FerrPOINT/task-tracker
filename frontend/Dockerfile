@@ -12,6 +12,8 @@ COPY task-tracker/openapi/openapi.json ../openapi/openapi.json
 RUN pnpm install --frozen-lockfile
 
 COPY task-tracker/frontend/ ./
+ARG VITE_NAMESPACE_ENABLED="false"
+ENV VITE_NAMESPACE_ENABLED=${VITE_NAMESPACE_ENABLED}
 ARG VITE_PLATFORM_BRANDING_URL=""
 ENV VITE_PLATFORM_BRANDING_URL=${VITE_PLATFORM_BRANDING_URL}
 ARG VITE_PLATFORM_SERVICES_URL=""
@@ -21,6 +23,8 @@ ENV VITE_AUTH_ISSUER=${VITE_AUTH_ISSUER}
 RUN pnpm build
 
 FROM nginx:alpine
+ARG VITE_NAMESPACE_ENABLED="false"
+LABEL io.pdlc.namespace-ui.enabled=${VITE_NAMESPACE_ENABLED}
 COPY --from=builder /app/dist /usr/share/nginx/html
 COPY task-tracker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

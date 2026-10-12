@@ -26,6 +26,20 @@ class CiContractChecksTest(unittest.TestCase):
         )
         self.assertIn("cargo test --locked --workspace -- --test-threads=1", backend)
 
+    def test_backend_explicitly_runs_disposable_postgres_sdlc_tests(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        backend_job = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
+        self.assertIn("image: postgres:17.6", backend_job)
+        self.assertIn("TT_SDLC_DRAFT_TEST_DATABASE_URL:", backend_job)
+        self.assertIn("TT_SDLC_TEST_DATABASE_URL:", backend_job)
+        self.assertIn("createdb -U tasktracker tracker_drafts", backend_job)
+        self.assertIn("createdb -U tasktracker tracker_clarifications", backend_job)
+        for suite in ("drafts", "sdlc"):
+            self.assertIn(
+                f"cargo test -p server --test {suite} --locked -- --ignored --test-threads=1",
+                backend_job,
+            )
+
     def test_frontend_job_checks_openapi_backward_compatibility(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         frontend_job = workflow.split("\n  frontend:\n", 1)[1]

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router'
 import { SsoCallbackPage } from './'
 import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
@@ -9,12 +9,20 @@ import i18n from '@/shared/i18n/config'
 const completeSso = vi.hoisted(() => vi.fn())
 vi.mock('@sdlc/ui/sso', () => ({ completeSso }))
 
+function ReturnLocation() {
+  const location = useLocation()
+  return (
+    <output aria-label="Return URL">{location.pathname + location.search + location.hash}</output>
+  )
+}
+
 function renderCallback() {
   return render(
     <MemoryRouter initialEntries={['/sso/callback']}>
       <Routes>
         <Route path="/sso/callback" element={<SsoCallbackPage />} />
         <Route path="/login" element={<p>Login destination</p>} />
+        <Route path="/namespace" element={<ReturnLocation />} />
         <Route path="/projects" element={<p>Projects destination</p>} />
       </Routes>
     </MemoryRouter>,
@@ -29,6 +37,7 @@ describe('SsoCallbackPage', () => {
 
   afterEach(async () => {
     vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
     await i18n.changeLanguage('ru')
   })
 
@@ -80,6 +89,30 @@ describe('SsoCallbackPage', () => {
     await waitFor(() => expect(screen.getByText('Projects destination')).toBeInTheDocument())
     expect(useAuthStore.getState().token).toBe('test-token')
   })
+
+  it.each(['', '&project_scope=all'])(
+    'restores the exact project selection after SSO: %s',
+    async (scope) => {
+      vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
+      const returnTo = `/namespace?registry_instance_id=506a8476-3868-4581-af70-6d22c93ced2f&namespace_id=0ee31fca-2533-44bf-b54e-a7759fe80b14${scope}`
+      completeSso.mockResolvedValueOnce({ accessToken: 'test-token', returnTo })
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          json: async () => ({
+            id: 'user-1',
+            email: 'qa@example.test',
+            username: 'qa',
+            display_name: 'QA User',
+          }),
+        })),
+      )
+      renderCallback()
+      expect(await screen.findByLabelText('Return URL')).toHaveTextContent(returnTo)
+      expect(screen.getByLabelText('Return URL').textContent).toBe(returnTo)
+    },
+  )
 
   it('localizes callback failure in English', async () => {
     await i18n.changeLanguage('en')

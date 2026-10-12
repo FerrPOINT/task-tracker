@@ -22,6 +22,7 @@ chrono.workspace = true
 uuid.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
+reqwest.workspace = true
 moka.workspace = true
 migration = { path = "../migration" }
 lettre.workspace = true

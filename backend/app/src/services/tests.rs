@@ -420,6 +420,7 @@ async fn create_demo_issue(ctx: &AppContext, user: &User, summary: &str) -> Issu
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: summary.to_string(),
                 description: None,
@@ -527,6 +528,7 @@ async fn issue_service_create() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Test issue".to_string(),
                 description: None,
@@ -577,6 +579,7 @@ async fn issue_service_update_and_move() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: project_key.clone(),
                 summary: "Move me".to_string(),
                 description: None,
@@ -654,6 +657,7 @@ async fn board_move_issue_publishes_issue_moved_event() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: project_key.clone(),
                 summary: "Move from board".to_string(),
                 description: None,
@@ -712,6 +716,7 @@ async fn board_move_same_status_is_noop_for_history_and_events() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: project_key.clone(),
                 summary: "Board same status".to_string(),
                 description: None,
@@ -761,6 +766,7 @@ async fn transition_same_status_is_noop_for_history_and_events() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key,
                 summary: "Transition same status".to_string(),
                 description: None,
@@ -819,6 +825,7 @@ async fn issue_create_rejects_non_member_assignee_and_reporter() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Bad assignee".to_string(),
                 description: None,
@@ -841,6 +848,7 @@ async fn issue_create_rejects_non_member_assignee_and_reporter() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Bad reporter".to_string(),
                 description: None,
@@ -875,6 +883,7 @@ async fn issue_update_rejects_non_member_assignee() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Needs update".to_string(),
                 description: None,
@@ -926,6 +935,7 @@ async fn issue_update_prevalidates_assignee_before_status_transition() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Atomic update".to_string(),
                 description: None,
@@ -986,6 +996,7 @@ async fn issue_update_distinguishes_omitted_and_null_assignee() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Assignee clear".to_string(),
                 description: None,
@@ -1052,6 +1063,7 @@ async fn issue_update_same_status_is_noop_for_workflow_history() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Same status update".to_string(),
                 description: None,
@@ -1110,6 +1122,7 @@ async fn dashboard_lists_assigned_issues() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Assigned task".to_string(),
                 description: None,
@@ -1183,6 +1196,7 @@ async fn search_finds_issue() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Searchable keyword".to_string(),
                 description: None,
@@ -1370,6 +1384,24 @@ impl ProjectRepository for ListOnlyProjectRepository {
         Ok(vec![self.project.clone()])
     }
 
+    async fn list_accessible_page(
+        &self,
+        ids: &[ProjectId],
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Project>, AppError> {
+        // Inject failure at the new batched repository boundary. Production
+        // pagination no longer performs a per-project get_by_id in the service.
+        if !ids.contains(&self.project.id) || limit == 0 || offset > 0 {
+            return Ok(Vec::new());
+        }
+        match self.get_by_id(self.project.id).await {
+            Ok(project) => Ok(vec![project]),
+            Err(AppError::NotFound(_)) => Ok(Vec::new()),
+            Err(error) => Err(error),
+        }
+    }
+
     async fn save(&self, _project: &Project) -> Result<ProjectId, AppError> {
         Ok(self.project.id)
     }
@@ -1413,7 +1445,7 @@ async fn ctx_with_list_only_project_repo(get_by_id_error: AppError) -> (AppConte
 }
 
 #[tokio::test]
-async fn project_list_propagates_project_get_error() {
+async fn project_list_propagates_page_error() {
     let (ctx, user_id) = ctx_with_list_only_project_repo(AppError::Internal("x".into())).await;
 
     assert_internal(
@@ -1453,6 +1485,7 @@ async fn board_service_backlog() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Backlog item".to_string(),
                 description: None,
@@ -1501,6 +1534,7 @@ async fn active_sprint_issue_ids_include_only_issues_in_that_sprint() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "In active sprint".to_string(),
                 description: None,
@@ -1521,6 +1555,7 @@ async fn active_sprint_issue_ids_include_only_issues_in_that_sprint() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Plain backlog item".to_string(),
                 description: None,
@@ -1541,6 +1576,7 @@ async fn active_sprint_issue_ids_include_only_issues_in_that_sprint() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "In progress without sprint".to_string(),
                 description: None,
@@ -1621,6 +1657,7 @@ async fn backlog_offset_reaches_later_items_without_duplicates() {
             .issue
             .create(
                 CreateIssueCommand {
+                    operation_id: None,
                     project_key: ProjectKey::new("TT"),
                     summary: summary.to_string(),
                     description: None,
@@ -1672,6 +1709,7 @@ async fn backlog_offset_reaches_items_beyond_default_issue_cap() {
             .issue
             .create(
                 CreateIssueCommand {
+                    operation_id: None,
                     project_key: ProjectKey::new("TT"),
                     summary: format!("Large backlog {idx:04}"),
                     description: None,
@@ -1715,6 +1753,7 @@ async fn project_counters_include_issues_beyond_default_issue_cap() {
             .issue
             .create(
                 CreateIssueCommand {
+                    operation_id: None,
                     project_key: ProjectKey::new("TT"),
                     summary: format!("Counter item {idx:04}"),
                     description: None,
@@ -1763,6 +1802,7 @@ async fn issue_service_create_fails_for_missing_project() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("ZZ"),
                 summary: "orphan".to_string(),
                 description: None,
@@ -1788,6 +1828,7 @@ async fn issue_service_create_fails_for_invalid_status_id() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "bad status".to_string(),
                 description: None,
@@ -1819,6 +1860,7 @@ async fn issue_service_update_fails_for_invalid_status_id() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Update me".to_string(),
                 description: None,
@@ -2275,6 +2317,7 @@ async fn issue_create_propagates_repo_error() {
             .issue
             .create(
                 CreateIssueCommand {
+                    operation_id: None,
                     project_key: ProjectKey::new("TT"),
                     summary: "x".to_string(),
                     description: None,
@@ -2623,6 +2666,7 @@ async fn disabled_event_types_suppress_in_app_notification() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Muted assignment".to_string(),
                 description: None,
@@ -2673,6 +2717,7 @@ async fn notify_own_changes_false_suppresses_self_notifications() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Self comment".to_string(),
                 description: None,
@@ -2727,6 +2772,7 @@ async fn comment_notifications_deduplicate_recipients() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Unassigned issue".to_string(),
                 description: None,
@@ -2791,6 +2837,7 @@ async fn comment_create_rejects_spoofed_author_and_actor() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Comment spoofing".to_string(),
                 description: None,
@@ -2848,6 +2895,7 @@ async fn comment_create_propagates_author_lookup_error_without_writing() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "comment author lookup failure".to_string(),
                 description: None,
@@ -2913,6 +2961,7 @@ async fn comment_list_propagates_author_directory_error() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "comment list user lookup failure".to_string(),
                 description: None,
@@ -2972,6 +3021,7 @@ async fn watcher_receives_comment_notification() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Watched comment".to_string(),
                 description: None,
@@ -3104,6 +3154,7 @@ async fn watcher_receives_issue_update_notification() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Watched update".to_string(),
                 description: None,
@@ -3261,6 +3312,7 @@ async fn watcher_receives_issue_link_create_and_delete_notifications() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: project_key.clone(),
                 summary: "Watched link source".to_string(),
                 description: None,
@@ -3281,6 +3333,7 @@ async fn watcher_receives_issue_link_create_and_delete_notifications() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key,
                 summary: "Watched link target".to_string(),
                 description: None,
@@ -3351,6 +3404,7 @@ async fn watcher_add_and_list() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Watched issue".to_string(),
                 description: None,
@@ -3397,6 +3451,7 @@ async fn watcher_remove() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Watched issue".to_string(),
                 description: None,
@@ -3445,6 +3500,7 @@ async fn watcher_watch_and_unwatch_publish_issue_updated_events() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Watched issue realtime".to_string(),
                 description: None,
@@ -3510,6 +3566,7 @@ async fn vote_add_and_count() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Voted issue".to_string(),
                 description: None,
@@ -3548,6 +3605,7 @@ async fn vote_remove() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Voted issue".to_string(),
                 description: None,
@@ -3587,6 +3645,7 @@ async fn vote_and_unvote_publish_issue_updated_events() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Voted issue realtime".to_string(),
                 description: None,
@@ -3647,6 +3706,7 @@ async fn vote_rejects_reporter_self_vote() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Own vote".to_string(),
                 description: None,
@@ -3688,6 +3748,7 @@ async fn issue_link_create_and_delete_publish_issue_updated_events_for_both_issu
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: project_key.clone(),
                 summary: "Source link realtime".to_string(),
                 description: None,
@@ -3708,6 +3769,7 @@ async fn issue_link_create_and_delete_publish_issue_updated_events_for_both_issu
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key,
                 summary: "Target link realtime".to_string(),
                 description: None,
@@ -3956,6 +4018,7 @@ async fn custom_field_set_and_get_value() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Issue with custom field".to_string(),
                 description: None,
@@ -4014,6 +4077,7 @@ async fn issue_create_rejects_missing_or_empty_required_custom_fields() {
         .await
         .unwrap();
     let base = CreateIssueCommand {
+        operation_id: None,
         project_key: ProjectKey::new("TT"),
         summary: "Missing required custom field".to_string(),
         description: None,
@@ -4047,6 +4111,7 @@ async fn issue_create_rejects_missing_or_empty_required_custom_fields() {
             .issue
             .create(
                 CreateIssueCommand {
+                    operation_id: None,
                     custom_fields,
                     ..base.clone()
                 },
@@ -4091,6 +4156,7 @@ async fn issue_create_persists_custom_fields_and_normalizes_dates() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Custom field create".to_string(),
                 description: None,
@@ -4167,6 +4233,7 @@ async fn custom_field_null_clears_optional_and_rejects_required() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Clear custom field".to_string(),
                 description: None,
@@ -4252,6 +4319,7 @@ async fn attachment_upload_deletes_blob_when_metadata_save_fails() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Attachment cleanup".to_string(),
                 description: None,
@@ -4309,6 +4377,7 @@ async fn attachment_delete_keeps_blob_when_metadata_delete_fails() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Attachment delete failure".to_string(),
                 description: None,
@@ -4421,6 +4490,7 @@ async fn attachment_upload_and_delete_publish_issue_updated_events() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key,
                 summary: "Attachment realtime".to_string(),
                 description: None,
@@ -4558,6 +4628,7 @@ async fn label_attach_and_detach_publish_issue_updated_events() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: project_key.clone(),
                 summary: "Label realtime".to_string(),
                 description: None,
@@ -4639,6 +4710,7 @@ async fn label_update_and_delete_publish_issue_updated_events_for_attached_issue
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: project_key.clone(),
                 summary: "Label lifecycle realtime".to_string(),
                 description: None,
@@ -4721,6 +4793,7 @@ async fn comment_update_and_delete_publish_comment_events() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key,
                 summary: "Comment realtime".to_string(),
                 description: None,
@@ -4860,6 +4933,7 @@ async fn issue_soft_delete_and_restore_publishes_invalidation_events() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Event lifecycle issue".to_string(),
                 description: None,
@@ -4909,6 +4983,7 @@ async fn issue_soft_delete_and_restore() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Soft delete me".to_string(),
                 description: None,
@@ -4951,6 +5026,7 @@ async fn issue_soft_delete_lists_in_trash() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Trashed issue".to_string(),
                 description: None,
@@ -5035,6 +5111,7 @@ async fn issue_purge_from_trash() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Purge me".to_string(),
                 description: None,
@@ -5084,6 +5161,7 @@ async fn issue_purge_from_trash_deletes_attachment_files() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Purge attachment".to_string(),
                 description: None,
@@ -5136,6 +5214,7 @@ async fn project_delete_deletes_issue_attachment_files() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Project delete attachment".to_string(),
                 description: None,
@@ -5199,6 +5278,7 @@ async fn worklog_create_rejects_spoofed_author() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Worklog spoofing".to_string(),
                 description: None,
@@ -5266,6 +5346,7 @@ async fn worklog_create_propagates_author_lookup_error_without_writing() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "worklog author lookup failure".to_string(),
                 description: None,
@@ -5334,6 +5415,7 @@ async fn worklog_list_propagates_author_directory_error() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "worklog list user lookup failure".to_string(),
                 description: None,
@@ -5572,6 +5654,7 @@ async fn sprint_move_issue_publishes_issue_updated_event() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Move to sprint".to_string(),
                 description: None,
@@ -5651,6 +5734,7 @@ async fn sprint_move_issue_updates_issue_timestamp() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Move timestamp".to_string(),
                 description: None,
@@ -5858,6 +5942,7 @@ async fn notification_created_on_issue_assign() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Assigned issue".to_string(),
                 description: None,
@@ -5904,6 +5989,7 @@ async fn issue_update_same_assignee_does_not_duplicate_assignment_notification()
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Idempotent assignee notification".to_string(),
                 description: None,
@@ -6728,6 +6814,7 @@ async fn restore_non_deleted_issue_returns_error() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Not deleted".to_string(),
                 description: None,
@@ -6785,6 +6872,7 @@ async fn board_move_rejects_issue_from_other_project() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("OTHER"),
                 summary: "Cross-project issue".to_string(),
                 description: None,
@@ -6839,6 +6927,7 @@ async fn custom_field_set_value_validates_text_type() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "CF validation test".to_string(),
                 description: None,
@@ -6901,6 +6990,7 @@ async fn custom_field_set_value_validates_select_type() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Select field test".to_string(),
                 description: None,
@@ -6962,6 +7052,7 @@ async fn custom_field_set_value_validates_number_type() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Number field test".to_string(),
                 description: None,
@@ -7028,6 +7119,7 @@ async fn custom_field_set_value_validates_date_type() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "Date field test".to_string(),
                 description: None,
@@ -7251,6 +7343,7 @@ async fn authz_require_project_access_denies_non_member() {
         .issue
         .create(
             CreateIssueCommand {
+                operation_id: None,
                 project_key: ProjectKey::new("TT"),
                 summary: "authz unit test issue".to_string(),
                 description: None,

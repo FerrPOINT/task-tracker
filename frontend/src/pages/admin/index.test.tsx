@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, useLocation, useNavigate } from 'react-router'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { MemoryRouter, useLocation } from 'react-router'
 import { AdminPage } from './index'
 
 const useAdminSettings = vi.hoisted(() => vi.fn())

@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { IssueDetailPage } from './'
 import { ThemeProvider } from '@sdlc/ui/lib'
@@ -18,6 +19,11 @@ const mockUseUpdateIssue = vi.hoisted(() => vi.fn())
 const mockUseDeleteIssue = vi.hoisted(() => vi.fn())
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@/features/sdlc/ui/SdlcPanel', () => ({
+  SdlcPanel: ({ issueId }: { issueId: string }) => (
+    <section aria-label="SDLC mount">{issueId}</section>
+  ),
+}))
 
 const issueData = {
   id: 'i1',
@@ -227,10 +233,26 @@ describe('IssueDetailPage', () => {
     })
   })
 
+  it('resolves historical key URLs to the loaded UUID for owner panels and reads', async () => {
+    render(wrapper(<IssueDetailPage />, '/issues/TT-1?tab=sdlc'))
+    expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
+    expect(mockUseIssue).toHaveBeenCalledWith('TT-1')
+    expect(mockWorklogs).toHaveBeenCalledWith('i1')
+    expect(mockComments).toHaveBeenCalledWith('i1')
+    expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/TT-1?tab=sdlc')
+  })
+
   it('renders loading state while the issue itself loads', () => {
     mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
     render(wrapper(<IssueDetailPage />))
     expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+  })
+
+  it('opens the real SDLC panel boundary with a shareable tab URL', async () => {
+    render(wrapper(<IssueDetailPage />))
+    await userEvent.click(screen.getByRole('tab', { name: 'SDLC' }))
+    expect(screen.getByLabelText('SDLC mount')).toHaveTextContent('i1')
+    expect(screen.getByLabelText('current location')).toHaveTextContent('/issues/i1?tab=sdlc')
   })
 
   it('keeps issue details available while worklogs load', () => {

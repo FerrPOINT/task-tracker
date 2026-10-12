@@ -1,6 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest'
 import { act, render, screen, fireEvent } from '@testing-library/react'
-import { MemoryRouter, useLocation, useNavigate } from 'react-router'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { MemoryRouter, useLocation } from 'react-router'
 
 import SearchPage from './'
 import { SearchRequestError } from '@/api/search'
@@ -145,6 +146,19 @@ describe('SearchPage', () => {
     expect(screen.getByTestId('location')).not.toHaveTextContent('sort=')
     fireEvent.click(screen.getByRole('button', { name: /простой|simple/i }))
     expect(useIssues).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 0 }))
+  })
+
+  it('clears only search filters while preserving Namespace and the all-project catalog', () => {
+    mockHooks()
+    renderPage(
+      '/search?q=test&status=open&registry_instance_id=registry&namespace_id=namespace&project_scope=all',
+    )
+    fireEvent.click(screen.getByRole('button', { name: /сбросить|clear/i }))
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      'registry_instance_id=registry&namespace_id=namespace&project_scope=all',
+    )
+    expect(screen.getByTestId('location')).not.toHaveTextContent('status=')
+    expect(screen.getByTestId('location')).not.toHaveTextContent('q=')
   })
 
   it('restores URL-backed JQL and page with browser history', () => {

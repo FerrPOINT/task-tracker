@@ -107,21 +107,28 @@ impl crate::context::ProjectService for ProjectServiceImpl {
 
     async fn list(
         &self,
-        _query: crate::commands::ProjectQueryDto,
+        query: crate::commands::ProjectQueryDto,
         requester: UserId,
     ) -> Result<Vec<ProjectDto>, AppError> {
-        // Projects visible to a user: owned by them or with a membership row.
-        // A global list leaks other people's projects into selectors (and then
-        // fails with a bare 403 on first use).
-        let accessible = self.authz.accessible_project_ids(requester).await?;
-        let mut projects = Vec::with_capacity(accessible.len());
-        for pid in accessible {
-            match self.projects.get_by_id(pid).await {
-                Ok(p) => projects.push(p),
-                Err(AppError::NotFound(_)) => {}
-                Err(e) => return Err(e),
-            }
-        }
+        let limit = if query.limit == 0 {
+            50
+        } else {
+            query.limit.clamp(1, 100)
+        };
+        let projects = if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
+            self.projects
+                .list(domain::ProjectQuery {
+                    owner_id: None,
+                    limit,
+                    offset: query.offset,
+                })
+                .await?
+        } else {
+            let accessible = self.authz.accessible_project_ids(requester).await?;
+            self.projects
+                .list_accessible_page(&accessible, limit, query.offset)
+                .await?
+        };
         let statuses = self.statuses.list_all().await?;
         // One user-list fetch instead of a per-project owner lookup (N+1).
         let owner_names: std::collections::HashMap<_, _> = self
@@ -131,11 +138,16 @@ impl crate::context::ProjectService for ProjectServiceImpl {
             .into_iter()
             .map(|u| (u.id, u.display_name.as_ref().to_string()))
             .collect();
+        let counts = self
+            .issues
+            .status_category_counts(
+                &projects.iter().map(|p| p.id).collect::<Vec<_>>(),
+                &statuses,
+            )
+            .await?;
         let mut dtos = Vec::new();
         for project in projects {
-            let (todo, in_progress, done) = self
-                .count_by_status_categories(project.id, &statuses)
-                .await?;
+            let [todo, in_progress, done] = counts.get(&project.id).copied().unwrap_or([0, 0, 0]);
             let owner_name = owner_names
                 .get(&project.owner_id)
                 .cloned()
@@ -219,6 +231,9 @@ impl crate::context::ProjectService for ProjectServiceImpl {
     async fn delete(&self, key: &ProjectKey, requester_id: UserId) -> Result<(), AppError> {
         let project = self.projects.get_by_key(key).await?;
         self.authz.require_owner(project.id, requester_id).await?;
+        if self.projects.namespace_binding(project.id).await?.is_some() {
+            return Err(AppError::conflict("managed_project_cannot_be_deleted"));
+        }
         let issues = self
             .issues
             .list_unbounded(IssueQuery {

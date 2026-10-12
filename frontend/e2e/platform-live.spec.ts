@@ -383,7 +383,10 @@ test.describe('live platform switcher', () => {
 
     await page.getByRole('link', { name: projectName }).click()
     await page.locator('a[href="/issues/create"]').first().click()
-    await page.locator('#issue-project').selectOption(projectKey)
+    await page.locator('#issue-project').click()
+    await page
+      .getByRole('menuitemradio', { name: `${projectName} (${projectKey})`, exact: true })
+      .click()
     const summary = `QA ${account.runId} issue`
     await page.locator('#issue-summary').fill(summary)
     await page.locator('#issue-description').fill('Live QA scenario')
@@ -512,7 +515,8 @@ test.describe('live platform switcher', () => {
     expect(started.ok(), `${started.status()} ${await started.text()}`).toBeTruthy()
     await page.locator('a[href^="/reports"]').first().click()
     await expect(page.getByRole('heading', { name: /Отчёт/ }).first()).toBeVisible()
-    await page.locator('#report-project').selectOption({ label: projectName })
+    await page.locator('#report-project').click()
+    await page.getByRole('menuitemradio', { name: projectName, exact: true }).click()
     await page.locator('#report-sprint').selectOption({ label: sprintName })
     await expect(page).toHaveURL(/sprint_id=/)
     await page.getByRole('tab', { name: 'Burndown' }).click()

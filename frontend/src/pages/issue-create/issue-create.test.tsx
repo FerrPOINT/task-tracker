@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { IssueCreatePage } from './'
 import { ThemeProvider } from '@sdlc/ui/lib'
@@ -146,6 +147,7 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
 
 describe('IssueCreatePage', () => {
   beforeEach(() => {
+    window.sessionStorage.clear()
     createIssue.mockClear()
     listProjects.mockClear()
     listUsers.mockClear()
@@ -189,11 +191,24 @@ describe('IssueCreatePage', () => {
     expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
     expect(listCustomFields).not.toHaveBeenCalled()
 
-    await user.selectOptions(screen.getByLabelText(/Проект/), 'TT')
+    await user.click(screen.getByLabelText(/Проект/))
+    await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker (TT)' }))
     await user.type(await screen.findByLabelText(/Required text/), 'ready')
     await user.click(screen.getByRole('button', { name: /^создать$/i }))
     await waitFor(() => expect(createIssue).toHaveBeenCalled())
     expect(createIssue.mock.calls[0]?.[0]).toMatchObject({ project_key: 'TT' })
+  })
+
+  it('does not select a legacy default when a Namespace URL is malformed', async () => {
+    render(wrapper(<IssueCreatePage />, '/issues/create?namespace_id=broken&source=wiki'))
+    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toBeEnabled())
+    expect(screen.getByLabelText(/Проект/)).toHaveValue('')
+    expect(screen.getByText('Некорректная ссылка на проект Namespace')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
+    expect(listCustomFields).not.toHaveBeenCalled()
+    expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
+      '/issues/create?namespace_id=broken&source=wiki',
+    )
   })
 
   it('blocks submission while required project fields failed to load, then retries', async () => {
@@ -257,8 +272,9 @@ describe('IssueCreatePage', () => {
     const user = userEvent.setup()
     render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT&source=board'))
 
-    await screen.findByRole('option', { name: /Operations/ })
-    await user.selectOptions(screen.getByLabelText(/Проект/), 'OPS')
+    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toBeEnabled())
+    await user.click(screen.getByLabelText(/Проект/))
+    await user.click(screen.getByRole('menuitemradio', { name: /\(OPS\)/ }))
     expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
       '/issues/create?project_key=OPS&source=board',
     )

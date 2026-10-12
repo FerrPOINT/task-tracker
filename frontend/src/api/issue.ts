@@ -20,8 +20,9 @@ export async function deleteIssue(id: string): Promise<void> {
   if (error) throw new Error('Failed to delete issue')
 }
 
-export async function getIssue(id: string): Promise<Issue | null> {
+export async function getIssue(id: string, signal?: AbortSignal): Promise<Issue | null> {
   const { data, error, response } = await api.GET('/api/v1/issues/{id}', {
+    signal,
     params: { path: { id } },
   })
   if (response.status === 404) return null

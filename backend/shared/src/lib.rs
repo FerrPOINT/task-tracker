@@ -10,6 +10,7 @@ pub use id::*;
 
 // Fleet-shared error/envelope live in sdlc-shared (services-base); re-export
 // keeps every `shared::AppError` / `shared::EventEnvelope` call site intact.
+pub use sdlc_shared::resource_context;
 pub use sdlc_shared::{AppError, AppResult, ErrorBody, ErrorEnvelope, EventEnvelope};
 
 use chrono::{DateTime, FixedOffset, Utc};

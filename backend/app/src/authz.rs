@@ -60,14 +60,15 @@ impl Authz {
         project_id: ProjectId,
         user: UserId,
     ) -> Result<(), AppError> {
-        // MVP: members can edit. Same as access.
-        self.require_project_access(project_id, user).await
+        self.require_project_access(project_id, user).await?;
+        self.projects.require_writable(project_id).await
     }
 
     /// Verify the user is the project owner.
     ///
     /// Used for project deletion, member management, and settings updates.
     pub async fn require_owner(&self, project_id: ProjectId, user: UserId) -> Result<(), AppError> {
+        self.projects.require_writable(project_id).await?;
         if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() {
             self.projects.get_by_id(project_id).await?;
             return Ok(());

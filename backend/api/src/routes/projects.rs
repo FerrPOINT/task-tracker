@@ -1,4 +1,8 @@
-use axum::{Extension, Json, extract::State, http::StatusCode};
+use axum::{
+    Extension, Json,
+    extract::{Query, State},
+    http::StatusCode,
+};
 use shared::{AppError, ProjectKey, UserId};
 use std::sync::Arc;
 
@@ -7,24 +11,34 @@ use crate::dto::{
 };
 use app::commands::ProjectQueryDto;
 
+#[derive(serde::Deserialize, utoipa::IntoParams)]
+pub struct ProjectListQuery {
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
+}
+
 #[utoipa::path(
     get,
     path = "/api/v1/projects",
+    params(ProjectListQuery),
     responses((status = 200, body = ProjectListResponse)),
     security(("bearer" = []))
 )]
 pub async fn list_projects(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<crate::middleware::auth::UserClaims>,
+    Query(page): Query<ProjectListQuery>,
 ) -> Result<Json<ProjectListResponse>, AppError> {
     let requester = claims
         .sub
         .parse::<UserId>()
         .map_err(|_| AppError::invalid_input("invalid user id in token"))?;
-    let query = ProjectQueryDto {
-        limit: 100,
-        offset: 0,
-    };
+    let limit = page.limit.unwrap_or(100);
+    let offset = page.offset.unwrap_or(0);
+    if !(1..=100).contains(&limit) || offset > i64::MAX as u64 {
+        return Err(AppError::invalid_input("invalid_project_page"));
+    }
+    let query = ProjectQueryDto { limit, offset };
     let items = ctx.services.project.list(query, requester).await?;
     Ok(Json(ProjectListResponse {
         projects: items.into_iter().map(map_project_response).collect(),

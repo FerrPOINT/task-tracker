@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
+import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 import { toast } from 'sonner'
 
 import { ProjectTrashPage } from './'

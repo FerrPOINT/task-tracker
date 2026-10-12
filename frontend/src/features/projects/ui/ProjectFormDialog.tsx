@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
@@ -40,7 +41,7 @@ export function ProjectFormDialog({
     e.preventDefault()
     const payload = isEdit
       ? ({ name, description: description || null } as UpdateProjectRequest)
-      : ({ key: key.toUpperCase(), name, description: description || null } as CreateProjectRequest)
+      : ({ key, name, description: description || null } as CreateProjectRequest)
     onSubmit(payload)
   }
 
@@ -49,7 +50,10 @@ export function ProjectFormDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? t('projects.editProject') : t('projects.createProject')}
+            <span className="flex items-center gap-2">
+              {isEdit && <ProjectAvatar projectKey={project.key} />}
+              {isEdit ? t('projects.editProject') : t('projects.createProject')}
+            </span>
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
@@ -61,7 +65,9 @@ export function ProjectFormDialog({
             <Input
               id="project-form-key"
               value={key}
-              onChange={(e) => setKey(e.target.value.toUpperCase())}
+              onChange={(e) => setKey(e.target.value)}
+              pattern="[A-Za-z0-9\x2D]{1,10}"
+              maxLength={10}
               placeholder={t('projects.keyPlaceholder')}
               disabled={isEdit}
               required

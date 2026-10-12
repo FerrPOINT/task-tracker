@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigation'
+
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'

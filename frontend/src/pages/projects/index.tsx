@@ -1,4 +1,6 @@
-import { Link } from 'react-router'
+import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectLink as Link } from '@/shared/lib/project-navigation'
+
 import { Plus, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
@@ -29,26 +31,10 @@ import {
   DropdownMenuTrigger,
 } from '@sdlc/ui/ui'
 
-function ProjectAvatar({ projectKey }: { projectKey: string }) {
-  const colors = [
-    'bg-accent text-accent-foreground',
-    'bg-emerald-500 text-zinc-950',
-    'bg-amber-500 text-zinc-950',
-    'bg-rose-500 text-zinc-950',
-  ]
-  const color = colors[projectKey.charCodeAt(0) % colors.length]
-  return (
-    <div
-      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sm font-bold ${color}`}
-    >
-      {projectKey.slice(0, 2).toUpperCase()}
-    </div>
-  )
-}
-
 export function ProjectsPage() {
   const { t } = useTranslation()
-  const { data: projects, isLoading, error, refetch } = useProjects()
+  const [offset, setOffset] = useState(0)
+  const { data: projects, isLoading, error, refetch } = useProjects(offset, 50)
   const [formOpen, setFormOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
@@ -70,6 +56,22 @@ export function ProjectsPage() {
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          disabled={offset === 0}
+          onClick={() => setOffset(Math.max(0, offset - 50))}
+        >
+          Назад
+        </Button>
+        <Button
+          variant="outline"
+          disabled={(projects?.length ?? 0) < 50}
+          onClick={() => setOffset(offset + 50)}
+        >
+          Далее
+        </Button>
+      </div>
       <ProjectFormDialog
         open={formOpen}
         project={editingProject}
@@ -174,7 +176,7 @@ export function ProjectsPage() {
                 to={`/projects/${project.key}/board`}
                 className="row-start-1 flex min-h-10 min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               >
-                <ProjectAvatar projectKey={project.key} />
+                <ProjectAvatar projectKey={project.key} size="md" />
                 <span className="min-w-0">
                   <span
                     className="line-clamp-2 font-semibold hover:text-accent hover:underline sm:line-clamp-1"

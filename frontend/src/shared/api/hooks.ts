@@ -1,3 +1,5 @@
+import { useLocation } from 'react-router'
+import { parseNamespaceLocation } from '@sdlc/ui/lib'
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { endSso } from '@sdlc/ui/sso'
@@ -323,27 +325,39 @@ export function useRemoveIssueFromSprint(projectKey: string) {
   })
 }
 
-export function useProjects() {
+export function useProjects(offset = 0, limit = 100) {
   return useQuery({
-    queryKey: projectKeys.all,
-    queryFn: listProjects,
+    queryKey: [...projectKeys.all, offset, limit],
+    queryFn: ({ signal }) => listProjects(offset, limit, signal),
   })
 }
 
 export function useBoard(projectKey: string | undefined) {
+  const namespace = parseNamespaceLocation(useLocation().search)
   return useQuery({
-    queryKey: projectKeys.detail(projectKey ?? ''),
-    queryFn: () => getBoard(projectKey!),
+    queryKey: [
+      ...projectKeys.detail(projectKey ?? ''),
+      namespace?.registry_instance_id,
+      namespace?.namespace_id,
+    ],
+    queryFn: ({ signal }) => getBoard(projectKey!, signal),
     enabled: !!projectKey,
   })
 }
 
 export function useBacklog(projectKey: string | undefined, offset = 0, limit = 100) {
+  const namespace = parseNamespaceLocation(useLocation().search)
   return useQuery({
-    queryKey: ['backlog', projectKey ?? '', offset, limit],
-    queryFn: () => getBacklog(projectKey!, offset, limit),
+    queryKey: [
+      'backlog',
+      projectKey ?? '',
+      offset,
+      limit,
+      namespace?.registry_instance_id,
+      namespace?.namespace_id,
+    ],
+    queryFn: ({ signal }) => getBacklog(projectKey!, offset, limit, signal),
     enabled: !!projectKey,
-    placeholderData: (prev) => prev,
   })
 }
 
@@ -358,9 +372,10 @@ export function useIssues(filters: SearchFilters = {}) {
 }
 
 export function useIssue(id: string) {
+  const namespace = parseNamespaceLocation(useLocation().search)
   return useQuery({
-    queryKey: ['issue', id],
-    queryFn: () => getIssue(id),
+    queryKey: ['issue', id, namespace?.registry_instance_id, namespace?.namespace_id],
+    queryFn: ({ signal }) => getIssue(id, signal),
     enabled: id.length > 0,
     refetchOnWindowFocus: false,
     staleTime: 0,
