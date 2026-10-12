@@ -9,6 +9,12 @@ observation and its state change commit together; populated downgrade is refused
 Additive 000093 extends the existing admission constraint to accept the closed
 Fleet MCP v2 profile alongside native v1 without rewriting historical rows or
 changing migration 000091. Downgrade refuses while any v2 admission exists.
+Additive 000095 records immutable `sdlc_pm_completions` and
+`sdlc_pm_completion_operations` for exact trusted PM terminal handoff. It allows
+only `reserved -> completed` on the current PM pointer after matching fence,
+lease version and requirement hash, preserves PM assignment history, and lets
+prepared Analysis reserve only when that current completion matches the task
+state.
 [Admission contract](PM_NATIVE_ADMISSION.md).
 
 ## Ledger подготовленного Analysis assignment

@@ -225,7 +225,7 @@ pub struct ConfirmCommand {
     pub expected_routing_policy_version: Option<i64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct MachineFence {
     pub assignment_id: Uuid,
@@ -607,6 +607,23 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         key: &str,
     ) -> Result<crate::sdlc_reservation::AnalysisResultOperation, AppError>;
+    async fn complete_pm_draft(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_reservation::CompletePmDraft,
+    ) -> Result<(crate::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError>;
+    async fn pm_draft_completion(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<crate::sdlc_reservation::PmDraftCompletionReadback, AppError>;
+    async fn pm_draft_completion_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_reservation::PmDraftCompletionOperation, AppError>;
     async fn set_routing_policy(
         &self,
         project: Uuid,

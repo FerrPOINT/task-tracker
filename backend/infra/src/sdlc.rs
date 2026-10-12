@@ -629,6 +629,30 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Result<domain::sdlc_reservation::AnalysisResultOperation, AppError> {
         self.read_analysis_result_operation(task, actor, key).await
     }
+    async fn complete_pm_draft(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::CompletePmDraft,
+    ) -> Result<(domain::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError> {
+        self.complete_pm_draft_execution(task, actor, command).await
+    }
+    async fn pm_draft_completion(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::sdlc_reservation::PmDraftCompletionReadback, AppError> {
+        self.read_pm_draft_completion(task, actor).await
+    }
+    async fn pm_draft_completion_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_reservation::PmDraftCompletionOperation, AppError> {
+        self.read_pm_draft_completion_operation(task, actor, key)
+            .await
+    }
     async fn set_routing_policy(
         &self,
         project: Uuid,

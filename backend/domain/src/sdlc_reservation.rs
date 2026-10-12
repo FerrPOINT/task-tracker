@@ -1,4 +1,4 @@
-use crate::sdlc::{AnalysisStage, Stage, safe_version};
+use crate::sdlc::{AnalysisStage, MachineFence, Stage, safe_version};
 use crate::sdlc_execution_lease::ExecutionLease;
 use crate::sdlc_routing::RoleRoute;
 use chrono::{DateTime, Utc};
@@ -12,6 +12,18 @@ fn uuid<'de, D: Deserializer<'de>>(d: D) -> Result<Uuid, D::Error> {
         return Err(D::Error::custom("invalid canonical reservation UUID"));
     }
     Ok(id)
+}
+fn canonical_fence<'de, D: Deserializer<'de>>(d: D) -> Result<MachineFence, D::Error> {
+    let raw = serde_json::Value::deserialize(d)?;
+    let fence: MachineFence = serde_json::from_value(raw.clone()).map_err(D::Error::custom)?;
+    if [fence.assignment_id, fence.execution_id, fence.agent_id]
+        .iter()
+        .any(Uuid::is_nil)
+        || serde_json::to_value(&fence).map_err(D::Error::custom)? != raw
+    {
+        return Err(D::Error::custom("invalid PM completion fence"));
+    }
+    Ok(fence)
 }
 fn zero<'de, D: Deserializer<'de>>(d: D) -> Result<i64, D::Error> {
     let n = i64::deserialize(d)?;
@@ -259,4 +271,82 @@ pub struct AnalysisResultOperation {
     pub idempotency_key: String,
     pub request_sha256: String,
     pub result: AnalysisResultReceipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CompletePmDraft {
+    #[serde(deserialize_with = "one")]
+    #[schema(minimum = 1, maximum = 1)]
+    pub contract_version: u8,
+    #[serde(deserialize_with = "canonical_fence")]
+    pub fence: MachineFence,
+    #[serde(deserialize_with = "uuid")]
+    pub lease_id: Uuid,
+    #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub lease_version: i64,
+    #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub requirement_revision: i64,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub content_hash: String,
+    #[schema(min_length = 1, max_length = 512)]
+    pub terminal_receipt_ref: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub terminal_receipt_sha256: String,
+    #[schema(min_length = 1, max_length = 512)]
+    pub workflow_receipt_ref: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub workflow_receipt_sha256: String,
+    #[schema(min_length = 1, max_length = 128)]
+    pub idempotency_key: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PmDraftCompletionReceipt {
+    #[schema(minimum = 1, maximum = 1)]
+    pub contract_version: u8,
+    pub completion_id: Uuid,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub task_id: Uuid,
+    pub root_task_id: Uuid,
+    pub owner_subject: String,
+    pub fence: MachineFence,
+    pub owner_version: i64,
+    pub lease_id: Uuid,
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub lease_version: i64,
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub requirement_revision: i64,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub content_hash: String,
+    pub terminal_receipt_ref: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub terminal_receipt_sha256: String,
+    pub workflow_receipt_ref: String,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
+    pub workflow_receipt_sha256: String,
+    pub previous_pm_admission_state: String,
+    pub next_pm_admission_state: String,
+    pub idempotency_key: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PmDraftCompletionOperation {
+    pub idempotency_key: String,
+    pub request_sha256: String,
+    pub result: PmDraftCompletionReceipt,
+}
+
+#[derive(Clone, Debug, Serialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PmDraftCompletionReadback {
+    pub contract_version: u8,
+    #[schema(required = true, nullable = true)]
+    pub current: Option<PmDraftCompletionReceipt>,
 }

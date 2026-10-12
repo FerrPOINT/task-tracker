@@ -1823,6 +1823,191 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/pm-draft-completion": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "complete_pm_draft",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompletePmDraft"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay; no duplicate completion",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftCompletionReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftCompletionReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Stale PM fence/lease, missing lease or payload conflict"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_pm_draft_completion",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftCompletionReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_pm_draft_completion_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmDraftCompletionOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/assignment": {
       "post": {
         "tags": [
@@ -8438,6 +8623,77 @@
           }
         }
       },
+      "CompletePmDraft": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "fence",
+          "lease_id",
+          "lease_version",
+          "requirement_revision",
+          "content_hash",
+          "terminal_receipt_ref",
+          "terminal_receipt_sha256",
+          "workflow_receipt_ref",
+          "workflow_receipt_sha256",
+          "idempotency_key"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "terminal_receipt_ref": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1
+          },
+          "terminal_receipt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "workflow_receipt_ref": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1
+          },
+          "workflow_receipt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      },
       "ConfirmCommand": {
         "type": "object",
         "required": [
@@ -11566,6 +11822,162 @@
           },
           "tracker_instance_id": {
             "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftCompletionOperation": {
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "request_sha256",
+          "result"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/PmDraftCompletionReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftCompletionReadback": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "current"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PmDraftCompletionReceipt"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmDraftCompletionReceipt": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "completion_id",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "fence",
+          "owner_version",
+          "lease_id",
+          "lease_version",
+          "requirement_revision",
+          "content_hash",
+          "terminal_receipt_ref",
+          "terminal_receipt_sha256",
+          "workflow_receipt_ref",
+          "workflow_receipt_sha256",
+          "previous_pm_admission_state",
+          "next_pm_admission_state",
+          "idempotency_key",
+          "created_at"
+        ],
+        "properties": {
+          "completion_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "next_pm_admission_state": {
+            "type": "string"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "owner_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "previous_pm_admission_state": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "terminal_receipt_ref": {
+            "type": "string"
+          },
+          "terminal_receipt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "workflow_receipt_ref": {
+            "type": "string"
+          },
+          "workflow_receipt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
           }
         },
         "additionalProperties": false

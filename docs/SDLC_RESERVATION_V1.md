@@ -8,7 +8,9 @@ intent: `admission_state: awaiting_admission`, `dispatch_allowed: false`.
 Stage остаётся Analysis, статус задачи — Ready/todo. Нет dispatch, InProgress,
 session/run binding, release, ACK, stop proof или фонового второго scheduler.
 Fresh Fleet native admission, Workflow acceptance и trusted verified-stop остаются
-обязательными следующими counterpart interfaces, а не результатом reserve.
+обязательными следующими counterpart interfaces, а не результатом reserve. Для
+старого PM draft добавлен отдельный trusted completion handoff: scheduler пишет
+exact terminal receipts по текущему PM fence/lease/revision/hash, не по expiry.
 
 Terminal result фиксируется отдельным Tracker-authoritative endpoint
 `POST /api/v1/issues/{id}/sdlc/analysis-result`: caller передаёт exact assignment,
@@ -55,12 +57,20 @@ GET требует существующий Central human/project ACL либо m
 | GET `/operations/{idempotency_key}` | original result и `request_sha256`; 404 при отсутствии операции |
 | POST `/../analysis-result` | exact assignment identity, current lease version, terminal receipt ref/hash, Architecture input hash, summary, `idempotency_key`; 201 accepted result, 200 replay |
 | GET `/../analysis-result/operations/{idempotency_key}` | original accepted result и `request_sha256`; 404 при отсутствии операции |
+| POST `/../pm-draft-completion` | exact PM fence, retained lease ID/version, requirement revision/hash, terminal Fleet receipt ref/hash, Workflow receipt ref/hash, `idempotency_key`; 201 completion, 200 replay |
+| GET `/../pm-draft-completion` | current completion receipt или null |
+| GET `/../pm-draft-completion/operations/{idempotency_key}` | original completion receipt и `request_sha256`; 404 при отсутствии операции |
 
 Unknown поля запрещены. UUID канонические, ненулевые; версии положительные safe
 JSON integers до 9007199254740991, initial reservation CAS только integer 0.
 Agent, config, роль, workflow, TTL, флаги readiness/stop caller не передаёт.
 Stale intent/snapshot/revision/hash, занятый root/agent/pool, другое содержимое
 прежнего key и новый key уже reserved задачи дают 409 без writes.
+PM completion принимает только scheduler subject с exact `task-tracker:write`.
+PM grant, owner и read PAT не могут закрыть PM. Completion разрешает только
+`pm_admission_state reserved -> completed`, сохраняет PM assignment projection и
+не удаляет PM history; последующий Analysis result использует собственный
+Analysis terminal gate.
 
 ## Immutable envelope
 
@@ -154,6 +164,10 @@ predicates; accepted result удаляет hold в той же транзакц�
 deferred FK требуют lease и current operation receipt в той же транзакции.
 Lease mutation gate запрещает delete, identity rewrite, version jump и expired
 renewal. Исторические data не backfill-ятся и не enrolled автоматически.
+Additive 000095 добавляет immutable `sdlc_pm_completions` и
+`sdlc_pm_completion_operations`, расширяет PM control constraint на `completed`
+и меняет reservation gates так, чтобы только exact completed PM переставал
+блокировать root/agent Analysis capacity.
 
 Scoped проверки находятся в `app::sdlc_reservation`, `api::routes::sdlc_reservation`
 и isolated PG/HTTP `support/analysis_reservation.rs`. Fixtures — только disposable
