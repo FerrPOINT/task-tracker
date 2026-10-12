@@ -140,6 +140,7 @@ pub trait ProjectRepository: Send + Sync {
     }
     async fn namespace_available_resources(
         &self,
+        _accessible_projects: &[ProjectId],
         _limit: i64,
         _offset: i64,
     ) -> Result<Vec<shared::resource_context::ResourceCatalogItem>, AppError> {

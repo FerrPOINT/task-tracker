@@ -610,6 +610,70 @@ async fn issue_creation_with_initial_data_advances_counter_after_purge() {
 #[tokio::test]
 #[ignore = "requires docker test stack"]
 #[serial_test::serial]
+async fn namespace_projection_loss_cannot_offer_or_rebind_managed_project() {
+    use shared::resource_context::{NamespaceRef, OwnerCommand, ResourceKind, ResourceRef};
+
+    let repos = setup().await;
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    repos.projects.save(&project).await.unwrap();
+    let command = OwnerCommand {
+        schema_version: 1,
+        namespace: NamespaceRef {
+            registry_instance_id: std::env::var("TT_NAMESPACE__REGISTRY_INSTANCE_ID")
+                .unwrap()
+                .parse()
+                .unwrap(),
+            namespace_id: Uuid::new_v4(),
+        },
+        resource: ResourceRef {
+            kind: ResourceKind::TrackerProject,
+            instance_id: std::env::var("TT_NAMESPACE__INSTANCE_ID")
+                .unwrap()
+                .parse()
+                .unwrap(),
+            resource_id: project.id.as_uuid(),
+        },
+        operation_id: Uuid::new_v4(),
+        generation: 1,
+        state: "active".into(),
+        create_spec: None,
+    };
+    repos.projects.apply_namespace(&command).await.unwrap();
+    let db = Database::connect(infra_test_db_url()).await.unwrap();
+    db.execute(sea_orm::Statement::from_sql_and_values(
+        sea_orm::DatabaseBackend::Postgres,
+        "DELETE FROM tracker_namespace_bindings WHERE resource_id=$1",
+        vec![project.id.as_uuid().into()],
+    ))
+    .await
+    .unwrap();
+
+    let available = repos
+        .projects
+        .namespace_available_resources(&[project.id], 50, 0)
+        .await
+        .unwrap();
+    let mut foreign = command.clone();
+    foreign.namespace.namespace_id = Uuid::new_v4();
+    foreign.operation_id = Uuid::new_v4();
+    let rebind = repos.projects.apply_namespace(&foreign).await;
+    assert!(
+        available.is_empty(),
+        "managed project must not become available"
+    );
+    assert!(
+        matches!(rebind, Err(shared::AppError::Unavailable(ref reason))
+        if reason == "namespace_projection_missing")
+    );
+    assert!(matches!(repos.projects.namespace_binding(project.id).await,
+        Err(shared::AppError::Unavailable(ref reason)) if reason == "namespace_projection_missing"));
+}
+
+#[tokio::test]
+#[ignore = "requires docker test stack"]
+#[serial_test::serial]
 async fn archived_namespace_context_is_not_drained_while_assignment_exists() {
     use shared::resource_context::{NamespaceRef, OwnerCommand, ResourceKind, ResourceRef};
 

@@ -208,24 +208,15 @@ pub async fn available_resources(
     Query(page): Query<Page>,
 ) -> Result<Json<Vec<ResourceCatalogItem>>, AppError> {
     let user = shared::UserId::from_uuid(claims.sub.parse().map_err(|_| AppError::Unauthorized)?);
-    let mut result = Vec::new();
-    for item in ctx
-        .repos
-        .projects
-        .namespace_available_resources(page.limit.unwrap_or(50), page.offset.unwrap_or(0))
-        .await?
-    {
-        match ctx
-            .authz
-            .require_project_access(ProjectId::from_uuid(item.resource.resource_id), user)
-            .await
-        {
-            Ok(()) => result.push(item),
-            Err(AppError::Forbidden) => {}
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(Json(result))
+    let limit = page.limit.unwrap_or(50).clamp(1, 100);
+    let offset = page.offset.unwrap_or(0).max(0);
+    let accessible_projects = ctx.authz.accessible_project_ids(user).await?;
+    Ok(Json(
+        ctx.repos
+            .projects
+            .namespace_available_resources(&accessible_projects, limit, offset)
+            .await?,
+    ))
 }
 #[utoipa::path(get,operation_id="tracker_namespace_stats",path="/api/v1/namespace-stats/{registry}/{namespace}",tag="namespaces",params(("registry"=Uuid,Path),("namespace"=Uuid,Path)),responses((status=200,body=ResourceStats)))]
 pub async fn stats(

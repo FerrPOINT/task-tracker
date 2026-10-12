@@ -80,10 +80,12 @@ pnpm build
 ## 9. Backup
 
 ```bash
-./scripts/backup.sh backups/$(date +%F-%H%M)
+./scripts/backup.sh /protected/backups/workspace-2026-10-08.tar.gz
 ```
 
-См. [BACKUP_RESTORE](BACKUP_RESTORE.md).
+До запуска задайте владельца, профиль workspace, логический проект,
+Docker context и путь к сохранённому signing key. Команда делегирует полный
+workspace backup в Base; см. [BACKUP_RESTORE](BACKUP_RESTORE.md).
 
 ## 10. Update
 
