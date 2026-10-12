@@ -296,7 +296,7 @@ impl PostgresSdlcRepository {
 fn invalid() -> AppError {
     AppError::conflict("execution lease source inconsistent; reconcile before continuing")
 }
-async fn clock(tx: &DatabaseTransaction) -> Result<DateTime<Utc>, AppError> {
+pub(super) async fn clock(tx: &DatabaseTransaction) -> Result<DateTime<Utc>, AppError> {
     tx.query_one(statement("SELECT clock_timestamp() AS observed_at", vec![]))
         .await
         .map_err(map_db)?
