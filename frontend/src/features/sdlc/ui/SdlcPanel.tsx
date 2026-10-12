@@ -38,6 +38,7 @@ const eventLabels = {
   'requirements.confirmed': 'requirementsConfirmed',
   'analysis.intent_created': 'intentQueued',
   'analysis.assignment_reserved': 'assignmentPrepared',
+  'analysis.result_accepted': 'analysisResultAccepted',
 } satisfies Record<MetadataEvent['event_type'], string>
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

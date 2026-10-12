@@ -592,6 +592,39 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     ).toBeInTheDocument()
     expect(screen.queryByText(/InProgress|dispatch accepted|run started/)).not.toBeInTheDocument()
   })
+  it('renders the accepted analyst result as its own translated history event', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
+    vi.mocked(getSdlcMetadata).mockResolvedValue({
+      contract_version: 1,
+      projection: 'metadata_v1',
+      after: '0',
+      next_after: '19',
+      has_more: false,
+      events: [
+        {
+          ...event,
+          event_type: 'analysis.result_accepted',
+          payload: {
+            ...event.payload,
+            stage: 'Architecture',
+            resource: {
+              architecture_input_sha256: hash,
+              assignment_id: confirmationId,
+              execution_id: intentId,
+              result_id: task,
+              terminal_receipt_ref: 'qa://analysis/receipt',
+              terminal_receipt_sha256: hash,
+              workflow_task_ref: 'SDLC-3',
+            },
+          },
+        },
+      ],
+    })
+    mount()
+    const history = await screen.findByRole('region', { name: 'SDLC events' })
+    expect(await within(history).findByText('Analysis result accepted')).toBeInTheDocument()
+    expect(within(history).queryByText('Analysis intent queued')).not.toBeInTheDocument()
+  })
   it('keeps owner permissions server-derived and missing intent unverified', async () => {
     vi.mocked(getSdlcSnapshot).mockResolvedValue({
       ...initial,
