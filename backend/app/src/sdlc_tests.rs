@@ -322,6 +322,19 @@ fn stale_question_revision_fence_and_human_machine_spoof_are_denied() {
 fn owner_confirmation_requires_new_document_and_exact_trusted_evidence() {
     let (mut state, config, owner, pm, verifier, fence) = fixture();
     publish(&mut state, &config, &pm, &fence);
+    // Evidence for the old revision must not make it ready after a clarification
+    // answer; the PM still has to publish a new full requirements revision.
+    for check in ["review", "contract"] {
+        let command = SdlcCommand::Evidence(EvidenceCommand {
+            fence: fence.clone(),
+            requirement_revision: 1,
+            content_hash: state.revisions.last().unwrap().content_hash.clone(),
+            check_id: check.into(),
+            evidence_reference: "workflow://verified/old-revision".into(),
+            idempotency_key: format!("old-revision-{check}"),
+        });
+        apply(&mut state, &verifier, &config, &command).unwrap();
+    }
     let input = question(&fence, QuestionMode::Single);
     apply(
         &mut state,
