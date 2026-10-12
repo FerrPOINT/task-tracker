@@ -145,7 +145,7 @@ Reserved resource имеет ровно восемь полей: `assignment_id`
 
 ## SQL и проверка
 
-Расширена pending 000034 плюс additive 000093: singleton capacity lock,
+Расширена pending 000034 плюс additive 000094: singleton capacity lock,
 ограниченная sequence fence, append-only `sdlc_analysis_reservations`,
 `sdlc_analysis_reservation_operations`, `sdlc_analysis_results`,
 `sdlc_analysis_result_operations`, mutable `sdlc_analysis_capacity_holds` и CAS head

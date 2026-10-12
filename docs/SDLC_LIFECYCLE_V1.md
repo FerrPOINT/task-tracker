@@ -208,7 +208,7 @@ missing root возвращает 422 без state/history/idempotency/outbox wr
 
 `TaskState::require_root` и repository load отвергают retained non-root/nil task
 identity с 409; application reads/commands и consent readiness также fail-closed.
-Pending 000034 получает root-only CHECK и `sdlc_analysis_gate`; additive 000093
+Pending 000034 получает root-only CHECK и `sdlc_analysis_gate`; additive 000094
 ослабляет gate только для одного transaction-permitted перехода
 Analysis -> Architecture после append-only `sdlc_analysis_results`.
 Нельзя откатить stage к Backlog/Draft, подменить revision/hash/assignment либо

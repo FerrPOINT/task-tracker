@@ -16,7 +16,7 @@ changing migration 000091. Downgrade refuses while any v2 admission exists.
 Pending 000034 хранит append-only `sdlc_analysis_reservations` и
 `sdlc_analysis_reservation_operations`, lockable `sdlc_reservation_capacity`,
 bounded monotonic fence sequence и mutable CAS `sdlc_analysis_reservation_leases`.
-Additive 000093 добавляет `sdlc_analysis_capacity_holds` как текущий mutable
+Additive 000094 добавляет `sdlc_analysis_capacity_holds` как текущий mutable
 capacity ledger, append-only `sdlc_analysis_results` и
 `sdlc_analysis_result_operations`, а также transaction-scoped
 `sdlc_analysis_state_write_permits`. Принятый terminal result удаляет hold в той
