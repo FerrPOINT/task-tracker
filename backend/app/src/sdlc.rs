@@ -140,6 +140,33 @@ impl SdlcService {
             .analysis_result_operation(task, actor, key)
             .await
     }
+    pub async fn complete_pm_draft(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::CompletePmDraft,
+    ) -> Result<(domain::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError> {
+        self.repository
+            .complete_pm_draft(task, actor, command)
+            .await
+    }
+    pub async fn pm_draft_completion(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::sdlc_reservation::PmDraftCompletionReadback, AppError> {
+        self.repository.pm_draft_completion(task, actor).await
+    }
+    pub async fn pm_draft_completion_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_reservation::PmDraftCompletionOperation, AppError> {
+        self.repository
+            .pm_draft_completion_operation(task, actor, key)
+            .await
+    }
     pub async fn set_routing_policy(
         &self,
         project: Uuid,

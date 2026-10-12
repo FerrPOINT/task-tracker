@@ -42,6 +42,17 @@ records the result, releases Analysis capacity and advances the root task to
 `/analysis-result/operations/{idempotency_key}` and never creates a second
 transition. Fleet/Hermes still do not mutate Tracker business state directly.
 
+`POST /api/v1/issues/{id}/sdlc/pm-draft-completion` is the bounded trusted
+handoff for a reserved PM execution. The configured scheduler, not the PM token,
+submits the exact current PM fence, retained execution lease ID/version, current
+requirement revision/hash, terminal Fleet receipt and Workflow receipt. Tracker
+does not require an active lease TTL and never infers completion from expiry.
+The write atomically records immutable completion history, flips only
+`pm_admission_state: completed`, emits `pm.completed`, and lets the same root
+enter prepared Analysis while preserving the PM assignment in SDLC context.
+GET `/pm-draft-completion` and `/pm-draft-completion/operations/{idempotency_key}`
+return no-store readbacks for reconciliation.
+
 ## SDLC Clarification API
 
 Маршрутизация SDLC проекта реализована как prerequisite под управлением владельца:
