@@ -5,7 +5,10 @@ and tied to assignment version, fence and exact owner observation. Additive
 000092 adds transaction-scoped `sdlc_pm_state_write_permits`; a reserved task's
 trigger consumes one permit for the exact next JSON state. Historical admission
 alone never authorizes later database writes. The accepted command, first
-observation and its state change commit together; populated downgrade is refused.
+observation and its state change can commit together for legacy admitted history;
+populated downgrade is refused. Current PM producer writes rely on exact machine
+scope/fence plus `sdlc_pm_execution_leases`, and still use the one-use state
+write permit for the state change.
 Additive 000093 extends the existing admission constraint to accept the closed
 Fleet MCP v2 profile alongside native v1 without rewriting historical rows or
 changing migration 000091. Downgrade refuses while any v2 admission exists.
