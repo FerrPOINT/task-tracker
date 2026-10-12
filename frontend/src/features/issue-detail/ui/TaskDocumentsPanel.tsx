@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
+import { useLocation } from 'react-router'
 import { usePlatformServices } from '@sdlc/ui/ui'
 import { withNamespaceLocation } from '@sdlc/ui/lib'
 import { api } from '@/api/client'
 import { useNamespaceContext } from '@/widgets/namespace-context'
 
 export function TaskDocumentsPanel({ taskId, projectKey }: { taskId: string; projectKey: string }) {
+  const { search } = useLocation()
   const { ref, query: context } = useNamespaceContext()
   const { services } = usePlatformServices()
   const matching = context.data?.resource_key === projectKey
@@ -47,6 +49,7 @@ export function TaskDocumentsPanel({ taskId, projectKey }: { taskId: string; pro
                   href={withNamespaceLocation(
                     `${wiki}/documents/${link.document_id}/revisions/${link.revision_id}`,
                     ref,
+                    search,
                   )}
                 >
                   {link.title} · ревизия {link.version}
@@ -69,6 +72,7 @@ export function TaskDocumentsPanel({ taskId, projectKey }: { taskId: string; pro
           href={withNamespaceLocation(
             `${wiki}/namespace?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
             ref,
+            search,
           )}
         >
           Открыть документы проекта и связать ревизию

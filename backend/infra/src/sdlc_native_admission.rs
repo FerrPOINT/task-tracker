@@ -36,11 +36,37 @@ impl PostgresSdlcRepository {
             ) {
                 CommandAdmission::History(reservation)
             } else {
-                CommandAdmission::Native(reservation)
+                CommandAdmission::MachineLease(reservation)
             }
         };
         tx.commit().await.map_err(map_db)?;
         Ok(result)
+    }
+
+    async fn require_active_pm_machine_lease(
+        tx: &DatabaseTransaction,
+        reservation: &PmDraftReservation,
+        assignment: &PmAssignment,
+    ) -> Result<(), AppError> {
+        let lease = Self::lease_current(tx, reservation)
+            .await?
+            .ok_or_else(|| AppError::conflict("PM execution lease missing"))?;
+        let now = super::execution_lease::clock(tx).await?;
+        if lease.lease.holder_subject != assignment.machine_subject
+            || lease.lease.expires_at <= now
+        {
+            return Err(AppError::conflict("PM execution lease expired or foreign"));
+        }
+        Ok(())
+    }
+
+    fn producer_machine_write(command: &SdlcCommand) -> bool {
+        matches!(
+            command,
+            SdlcCommand::PublishQuestion(_)
+                | SdlcCommand::PublishRevision(_)
+                | SdlcCommand::Cancel { .. }
+        )
     }
 
     pub(super) async fn verify_native_command(
@@ -123,24 +149,15 @@ impl PostgresSdlcRepository {
                       vec![assignment.execution_id.into(),observed.session_run_id().into(),observed.observation_ref().into(),
                         assignment.assignment_id.into(),assignment.version.into(),observed.fence().into(),json_value(observed)?]).await?;
             }
-        } else {
-            if !matches!(
-                command,
-                SdlcCommand::Answer { .. } | SdlcCommand::Confirm { .. } | SdlcCommand::Evidence(_)
-            ) {
-                return Err(AppError::conflict(
-                    "Current native observation is required for a PM machine write",
-                ));
-            }
-            let row=tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_pm_native_admissions
-                  WHERE execution_id=$1 AND assignment_id=$2 AND assignment_version=$3) AS admitted",
-                  vec![assignment.execution_id.into(),assignment.assignment_id.into(),assignment.version.into()]))
-                  .await.map_err(map_db)?.ok_or_else(||AppError::internal("Native admission history missing"))?;
-            if !row.try_get::<bool>("", "admitted").map_err(map_db)? {
-                return Err(AppError::conflict(
-                    "PM execution has no verified native admission history",
-                ));
-            }
+        } else if Self::producer_machine_write(command) {
+            Self::require_active_pm_machine_lease(tx, &current, assignment).await?;
+        } else if !matches!(
+            command,
+            SdlcCommand::Answer { .. } | SdlcCommand::Confirm { .. } | SdlcCommand::Evidence(_)
+        ) {
+            return Err(AppError::conflict(
+                "Reserved PM command is not supported by local lease verification",
+            ));
         }
         Ok(())
     }
@@ -236,11 +253,7 @@ mod owned_history_tests {
             .verify_native_command(&tx, &state, &reservation, None, &command)
             .await
             .unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("Current native observation is required")
-        );
+        assert!(error.to_string().contains("PM execution lease"));
         let owner = SdlcCommand::Confirm {
             revision: state.current_revision().unwrap(),
             command: ConfirmCommand {
