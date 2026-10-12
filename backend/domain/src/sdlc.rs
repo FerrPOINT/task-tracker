@@ -506,7 +506,7 @@ impl TaskState {
             task_id: self.task_id,
             root_task_id: self.root_task_id,
             owner_subject: self.owner_subject.clone(),
-            stage: self.stage.clone(),
+            stage: self.stage,
             requirement_revision: self.current_revision(),
             waiting_reason: match self.stage {
                 Stage::Draft => Some("waiting_for_pm".into()),
