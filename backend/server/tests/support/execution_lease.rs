@@ -363,6 +363,7 @@ pub async fn verify(
     )
     .await;
     assert_eq!(context["stage"], "Analysis");
+    assert_eq!(context["waiting_reason"], "queued_for_analysis");
     assert_eq!(count(f.db, "sdlc_pm_native_admissions").await, 0);
     let state = get_json(f.client, &url, &token, 200).await;
     assert_eq!(state["current"], live["current"]);
