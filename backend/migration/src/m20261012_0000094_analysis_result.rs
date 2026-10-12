@@ -4,8 +4,8 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 const UP_SQL: &str = r#"
-INSERT INTO statuses (name)
-SELECT name
+INSERT INTO statuses (id, name, category, position, is_default, is_closed)
+SELECT gen_random_uuid(), name, 'todo', 0, false, false
 FROM (VALUES ('SDLC Architecture')) AS names(name)
 WHERE NOT EXISTS (SELECT 1 FROM statuses s WHERE s.name = names.name);
 
