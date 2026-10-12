@@ -257,6 +257,8 @@ pub async fn verify(
     assert_eq!(won, 1);
     let live = get_json(f.client, &url, &token, 200).await;
     assert_eq!(live["current"]["version"], 4);
+    assert_eq!(lease_count(f.db, task).await, 1);
+    assert_eq!(lease_operation_count(f.db, task).await, 4);
     assert_eq!(
         count(f.db, "sdlc_pm_execution_leases").await,
         leases_before + 1
@@ -273,6 +275,7 @@ pub async fn verify(
         .await
         .is_err()
     );
+    assert_eq!(lease_count(f.db, task).await, 1);
     assert_eq!(
         count(f.db, "sdlc_pm_execution_leases").await,
         leases_before + 1
@@ -588,6 +591,7 @@ pub async fn verify(
     lock.commit().await.unwrap();
     let (status, result) = waiting.await.unwrap();
     assert_eq!(status, 409, "{result}");
+    assert_eq!(lease_operation_count(f.db, task).await, 4);
     assert_eq!(
         count(f.db, "sdlc_pm_lease_operations").await,
         lease_operations_before + 4
@@ -752,4 +756,34 @@ async fn assignment_ledger_denials(
 
 fn statement(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
+}
+
+async fn lease_count(db: &DatabaseConnection, task: Uuid) -> i64 {
+    db.query_one(statement(
+        "SELECT count(*) AS n
+         FROM sdlc_pm_execution_leases lease
+         JOIN sdlc_pm_executions execution USING(execution_id)
+         WHERE execution.task_id=$1",
+        vec![task.into()],
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "n")
+    .unwrap()
+}
+
+async fn lease_operation_count(db: &DatabaseConnection, task: Uuid) -> i64 {
+    db.query_one(statement(
+        "SELECT count(*) AS n
+         FROM sdlc_pm_lease_operations operation
+         JOIN sdlc_pm_executions execution USING(execution_id)
+         WHERE execution.task_id=$1",
+        vec![task.into()],
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "n")
+    .unwrap()
 }

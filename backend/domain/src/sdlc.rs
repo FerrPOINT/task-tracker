@@ -472,6 +472,12 @@ impl TaskState {
         let Some(revision) = self.revisions.last() else {
             return false;
         };
+        let latest_answered_clarification_at = self
+            .questions
+            .iter()
+            .filter(|q| q.requirement_revision == revision.revision)
+            .filter_map(|q| q.answer.as_ref().map(|answer| answer.created_at))
+            .max();
         self.require_root().is_ok()
             && matches!(self.stage, Stage::Clarification)
             && self.confirmation_revision == Some(revision.revision)
@@ -489,6 +495,8 @@ impl TaskState {
                         e.requirement_revision == revision.revision
                             && e.content_hash == revision.content_hash
                             && &e.check_id == check
+                            && latest_answered_clarification_at
+                                .is_none_or(|answered_at| e.created_at >= answered_at)
                     })
                 })
     }
