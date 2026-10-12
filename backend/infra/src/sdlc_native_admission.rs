@@ -2,6 +2,15 @@ use super::*;
 use domain::sdlc_native_admission::{AdmissionObservation, CommandAdmission};
 
 impl PostgresSdlcRepository {
+    async fn has_active_reserved_lease(
+        tx: &DatabaseTransaction,
+        reservation: &PmDraftReservation,
+    ) -> Result<bool, AppError> {
+        Ok(Self::lease_current(tx, reservation)
+            .await?
+            .is_some_and(|lease| lease.lease.expires_at > chrono::Utc::now()))
+    }
+
     pub(super) async fn native_command_preflight(
         &self,
         task: Uuid,
@@ -33,7 +42,8 @@ impl PostgresSdlcRepository {
             if matches!(
                 command,
                 SdlcCommand::Answer { .. } | SdlcCommand::Confirm { .. } | SdlcCommand::Evidence(_)
-            ) {
+            ) || Self::has_active_reserved_lease(&tx, &reservation).await?
+            {
                 CommandAdmission::History(reservation)
             } else {
                 CommandAdmission::Native(reservation)
@@ -123,7 +133,7 @@ impl PostgresSdlcRepository {
                       vec![assignment.execution_id.into(),observed.session_run_id().into(),observed.observation_ref().into(),
                         assignment.assignment_id.into(),assignment.version.into(),observed.fence().into(),json_value(observed)?]).await?;
             }
-        } else {
+        } else if !Self::has_active_reserved_lease(tx, &current).await? {
             if !matches!(
                 command,
                 SdlcCommand::Answer { .. } | SdlcCommand::Confirm { .. } | SdlcCommand::Evidence(_)
