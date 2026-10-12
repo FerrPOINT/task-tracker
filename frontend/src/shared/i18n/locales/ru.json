@@ -103,7 +103,8 @@
       "evidenceRecorded": "Readiness evidence сохранён",
       "requirementsConfirmed": "Требования подтверждены",
       "intentQueued": "Analysis intent поставлен в очередь",
-      "assignmentPrepared": "Analysis assignment подготовлен, admission ожидается"
+      "assignmentPrepared": "Analysis assignment подготовлен, admission ожидается",
+      "resultAccepted": "Analysis result принят"
     }
   },
   "navigation": {

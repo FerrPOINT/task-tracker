@@ -103,7 +103,8 @@
       "evidenceRecorded": "Readiness evidence recorded",
       "requirementsConfirmed": "Requirements confirmed",
       "intentQueued": "Analysis intent queued",
-      "assignmentPrepared": "Analysis assignment prepared, awaiting admission"
+      "assignmentPrepared": "Analysis assignment prepared, awaiting admission",
+      "resultAccepted": "Analysis result accepted"
     }
   },
   "navigation": {
