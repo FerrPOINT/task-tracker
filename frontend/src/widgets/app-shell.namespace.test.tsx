@@ -173,22 +173,27 @@ describe('project sidebar and Namespace selection', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Ресурс не подтверждён')
   })
 
-  it('keeps an unavailable binding selected without showing a different project', async () => {
+  it('keeps an unavailable binding selected until an explicit healthy project choice', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(
         async (url: string) =>
-          new Response(JSON.stringify(url.includes('/namespace-contexts/') ? {} : contexts), {
-            status: url.includes('/namespace-contexts/') ? 404 : 200,
+          new Response(JSON.stringify(url.endsWith(refs[0]!) ? {} : url.endsWith(refs[1]!) ? contexts[1] : contexts), {
+            status: url.endsWith(refs[0]!) ? 404 : 200,
           }),
       ),
     )
     mount(`/projects/A/board${search(0)}`)
     await screen.findByRole('alert')
     expect(screen.getByRole('button', { name: 'Namespace' })).toHaveValue(selected(0))
-    expect(screen.getByRole('button', { name: 'Namespace' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Namespace' })).toBeEnabled()
     expect(screen.queryByRole('navigation', { name: 'Навигация проекта' })).not.toBeInTheDocument()
     expect(screen.queryByText('Wrong fallback')).not.toBeInTheDocument()
+    const user=userEvent.setup()
+    await user.click(screen.getByRole('button',{name:'Namespace'}))
+    await user.click(screen.getByRole('menuitemradio',{name:'Одинаковый проект · B'}))
+    await screen.findByRole('button',{name:'Одинаковый проект · B'})
+    expect(screen.getByRole('button',{name:'Namespace'})).toHaveValue(selected(1))
   })
 
   it('keeps project controls in the mobile drawer and closes after navigation', async () => {

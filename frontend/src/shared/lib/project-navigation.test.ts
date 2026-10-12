@@ -3,9 +3,12 @@ import { isAllProjects, projectNavigationTarget } from './project-navigation'
 
 describe('project catalog filter transport', () => {
   it('distinguishes the catalog filter from the open resource context', () => {
+    const valid =
+      '?namespace_id=22222222-2222-4222-8222-222222222222&registry_instance_id=11111111-1111-4111-8111-111111111111'
     expect(isAllProjects('')).toBe(true)
     expect(isAllProjects('?namespace_id=n&registry_instance_id=r')).toBe(false)
-    expect(isAllProjects('?namespace_id=n&registry_instance_id=r&project_scope=all')).toBe(true)
+    expect(isAllProjects(valid + '&project_scope=all')).toBe(true)
+    expect(isAllProjects('?namespace_id=n&registry_instance_id=r&project_scope=all')).toBe(false)
     expect(isAllProjects('?namespace_id=broken')).toBe(false)
     expect(isAllProjects('?namespace_id=n&project_scope=all&project_scope=selected')).toBe(false)
   })
