@@ -52,8 +52,7 @@ impl PostgresSdlcRepository {
             .await?
             .ok_or_else(|| AppError::conflict("PM execution lease missing"))?;
         let now = super::execution_lease::clock(tx).await?;
-        if lease.lease.holder_subject != assignment.machine_subject
-            || lease.lease.expires_at <= now
+        if lease.lease.holder_subject != assignment.machine_subject || lease.lease.expires_at <= now
         {
             return Err(AppError::conflict("PM execution lease expired or foreign"));
         }

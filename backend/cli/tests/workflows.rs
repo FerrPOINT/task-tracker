@@ -186,6 +186,15 @@ impl Server {
     }
     async fn run(&self, args: &[&str], input: Option<&str>) -> std::process::Output {
         let url = format!("{}/api/v1", self.url);
+        self.run_with_api_url(&url, args, input).await
+    }
+    async fn run_with_api_url(
+        &self,
+        api_url: &str,
+        args: &[&str],
+        input: Option<&str>,
+    ) -> std::process::Output {
+        let url = api_url.to_string();
         let args = args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let input = input.map(str::to_string);
         tokio::task::spawn_blocking(move || {
@@ -319,6 +328,381 @@ async fn task_input_pagination_restore_and_json_success() {
     );
     assert!(req[0].key.is_none());
 }
+
+#[tokio::test]
+async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![
+        (200, json!({"context":true})),
+        (200, json!({"input":true})),
+        (200, json!({"questions":[]})),
+        (200, json!({"revision":1})),
+        (200, json!({"role":"Analyst"})),
+        (200, json!({"runtime_ready":false})),
+        (200, json!({"lease_state":"active"})),
+        (200, json!({"operation":"reservation"})),
+        (200, json!({"operation":"result"})),
+        (200, json!({"context":"plain-base"})),
+    ])
+    .await;
+
+    for (args, path) in [
+        (
+            vec!["sdlc", "context", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/context"),
+        ),
+        (
+            vec!["sdlc", "input", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-input"),
+        ),
+        (
+            vec!["sdlc", "questions", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/clarifications"),
+        ),
+        (
+            vec!["sdlc", "requirements", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/requirements"),
+        ),
+        (
+            vec!["sdlc", "intent", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-intent"),
+        ),
+        (
+            vec!["sdlc", "analysis", "preflight", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/configuration-preflight"),
+        ),
+        (
+            vec!["sdlc", "analysis", "reservation", "read", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "analysis",
+                "reservation",
+                "operation",
+                "--task",
+                TASK,
+                "--key",
+                "lease key/1",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/operations/lease%20key%2F1"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "analysis",
+                "result",
+                "operation",
+                "--task",
+                TASK,
+                "--key",
+                "result key/1",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-result/operations/result%20key%2F1"),
+        ),
+    ] {
+        success(&server.run(&args, None).await);
+        let last = server.requests().last().unwrap().clone();
+        assert_eq!(last.method, "GET");
+        assert_eq!(last.path, path);
+    }
+
+    success(
+        &server
+            .run_with_api_url(&server.url, &["sdlc", "context", "--task", TASK], None)
+            .await,
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 10);
+    assert_eq!(
+        requests[9].path,
+        format!("/api/v1/issues/{TASK}/sdlc/context")
+    );
+    assert!(requests.iter().all(|request| request.key.is_none()));
+
+    let invalid = server
+        .run(&["sdlc", "context", "--task", "PROJ-1"], None)
+        .await;
+    assert_eq!(invalid.status.code(), Some(2));
+    assert_eq!(server.requests().len(), 10);
+}
+
+#[tokio::test]
+async fn sdlc_publish_commands_forward_json_payloads_without_extra_contracts() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let question = json!({
+        "fence": {
+            "assignment_id": "22222222-2222-2222-2222-222222222222",
+            "execution_id": "33333333-3333-3333-3333-333333333333",
+            "agent_id": "44444444-4444-4444-4444-444444444444",
+            "assignment_version": 7
+        },
+        "request_id": "55555555-5555-5555-5555-555555555555",
+        "question_id": "66666666-6666-6666-6666-666666666666",
+        "expected_question_version": null,
+        "requirement_revision": 3,
+        "checkpoint_id": "77777777-7777-7777-7777-777777777777",
+        "requirement_reference": null,
+        "text": "Choose one",
+        "rationale": "blocks scope",
+        "required": true,
+        "mode": "single",
+        "options": [
+            {
+                "id": "88888888-8888-8888-8888-888888888888",
+                "label": "A",
+                "consequences": "do A",
+                "is_custom": false
+            }
+        ],
+        "recommended_option_id": null,
+        "idempotency_key": "question-key"
+    });
+    let revision = json!({
+        "fence": {
+            "assignment_id": "22222222-2222-2222-2222-222222222222",
+            "execution_id": "33333333-3333-3333-3333-333333333333",
+            "agent_id": "44444444-4444-4444-4444-444444444444",
+            "assignment_version": 7
+        },
+        "expected_requirement_revision": null,
+        "document": {
+            "goal": "Ship CLI",
+            "scope": ["thin wrapper"],
+            "exclusions": [],
+            "scenarios": ["PM publishes"],
+            "acceptance_criteria": ["server validates"],
+            "constraints": [],
+            "dependencies": [],
+            "assumptions": [],
+            "checklist": ["c1"],
+            "prerequisites": ["p1"]
+        },
+        "idempotency_key": "revision-key"
+    });
+    let server = Server::start(vec![
+        (200, json!({"id":"question"})),
+        (200, json!({"revision":4})),
+    ])
+    .await;
+
+    success(
+        &server
+            .run(
+                &[
+                    "sdlc",
+                    "question",
+                    "publish",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&question.to_string()),
+            )
+            .await,
+    );
+    success(
+        &server
+            .run(
+                &[
+                    "sdlc",
+                    "revision",
+                    "publish",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&revision.to_string()),
+            )
+            .await,
+    );
+
+    let requests = server.requests();
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(
+        requests[0].path,
+        format!("/api/v1/issues/{TASK}/sdlc/clarifications")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+        question
+    );
+    assert!(requests[0].key.is_none());
+
+    assert_eq!(requests[1].method, "POST");
+    assert_eq!(
+        requests[1].path,
+        format!("/api/v1/issues/{TASK}/sdlc/requirements")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[1].body).unwrap(),
+        revision
+    );
+    assert!(requests[1].key.is_none());
+}
+
+#[tokio::test]
+async fn sdlc_analysis_commands_forward_json_payloads_without_extra_contracts() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let reserve = json!({
+        "intent_id": "22222222-2222-2222-2222-222222222222",
+        "expected_requirement_revision": 2,
+        "content_hash": "a".repeat(64),
+        "expected_routing_snapshot_id": "33333333-3333-3333-3333-333333333333",
+        "idempotency_key": "reserve-key"
+    });
+    let heartbeat = json!({
+        "assignment_id": "44444444-4444-4444-4444-444444444444",
+        "execution_id": "55555555-5555-5555-5555-555555555555",
+        "expected_lease_version": 1,
+        "idempotency_key": "heartbeat-key"
+    });
+    let result = json!({
+        "assignment_id": "44444444-4444-4444-4444-444444444444",
+        "execution_id": "55555555-5555-5555-5555-555555555555",
+        "fencing_token": "66666666-6666-6666-6666-666666666666",
+        "requirement_revision": 2,
+        "content_hash": "a".repeat(64),
+        "terminal_receipt_ref": "workflow://terminal/1",
+        "terminal_receipt_sha256": "b".repeat(64),
+        "architecture_input_sha256": "c".repeat(64),
+        "idempotency_key": "result-key"
+    });
+    let server = Server::start(vec![
+        (
+            201,
+            json!({"assignment":{"assignment_id":"44444444-4444-4444-4444-444444444444"}}),
+        ),
+        (
+            200,
+            json!({"assignment":{"assignment_id":"44444444-4444-4444-4444-444444444444"}}),
+        ),
+        (201, json!({"next_stage":"Architecture"})),
+    ])
+    .await;
+
+    success(
+        &server
+            .run(
+                &[
+                    "sdlc",
+                    "analysis",
+                    "reservation",
+                    "reserve",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&reserve.to_string()),
+            )
+            .await,
+    );
+    success(
+        &server
+            .run(
+                &[
+                    "sdlc",
+                    "analysis",
+                    "reservation",
+                    "heartbeat",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&heartbeat.to_string()),
+            )
+            .await,
+    );
+    success(
+        &server
+            .run(
+                &[
+                    "sdlc",
+                    "analysis",
+                    "result",
+                    "submit",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&result.to_string()),
+            )
+            .await,
+    );
+
+    let requests = server.requests();
+    for request in &requests {
+        assert_eq!(request.method, "POST");
+        assert!(request.key.is_none());
+    }
+    assert_eq!(
+        requests[0].path,
+        format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+        reserve
+    );
+    assert_eq!(
+        requests[1].path,
+        format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/heartbeat")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[1].body).unwrap(),
+        heartbeat
+    );
+    assert_eq!(
+        requests[2].path,
+        format!("/api/v1/issues/{TASK}/sdlc/analysis-result")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[2].body).unwrap(),
+        result
+    );
+}
+
+#[tokio::test]
+async fn sdlc_publish_errors_do_not_echo_request_documents_or_retry() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![(
+        409,
+        json!({"error":{"code":"CONFLICT","message":"same idempotency key changed payload"}}),
+    )])
+    .await;
+
+    let failed = server
+        .run(
+            &[
+                "--error-format",
+                "json",
+                "sdlc",
+                "question",
+                "publish",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            Some(r#"{"idempotency_key":"same-key","secret_body":"do-not-echo"}"#),
+        )
+        .await;
+
+    assert_eq!(failed.status.code(), Some(1));
+    assert!(failed.stdout.is_empty());
+    assert_eq!(server.requests().len(), 1);
+    let stderr = String::from_utf8_lossy(&failed.stderr);
+    assert!(!stderr.contains("do-not-echo"));
+    let value: Value = serde_json::from_slice(&failed.stderr).unwrap();
+    assert_eq!(value["error"]["status"], 409);
+    assert_eq!(value["error"]["code"], "CONFLICT");
+}
+
 #[tokio::test]
 async fn child_commands_resolve_keys_and_filter_transitions() {
     let server=Server::start(vec![(200,json!({"id":"uuid","status_id":"open"})),(200,json!({"comments":[]})),(200,json!({"id":"uuid","status_id":"open"})),(200,json!([{"from_status_id":"open","to_status_id":"done"},{"from_status_id":"done","to_status_id":"open"}]))]).await;
