@@ -21,6 +21,7 @@ pub mod m20261001_0000034_sdlc_clarification;
 mod m20261008_0000090_namespace;
 mod m20261010_0000091_pm_native_admission;
 mod m20261010_0000092_pm_state_write_permits;
+mod m20261012_0000093_fleet_mcp_admission;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -53,6 +54,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261008_0000090_namespace::Migration),
             Box::new(m20261010_0000091_pm_native_admission::Migration),
             Box::new(m20261010_0000092_pm_state_write_permits::Migration),
+            Box::new(m20261012_0000093_fleet_mcp_admission::Migration),
         ]
     }
 }
