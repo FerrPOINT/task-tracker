@@ -1303,7 +1303,7 @@ impl SdlcRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: SdlcCommand,
         expected: PmDraftReservation,
-        observed: Option<domain::sdlc_native_admission::NativeAdmission>,
+        observed: Option<domain::sdlc_native_admission::AdmissionObservation>,
     ) -> Result<Json, AppError> {
         self.execute_with_native(task, actor, command, Some(expected), observed)
             .await

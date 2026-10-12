@@ -9,16 +9,29 @@ reservation under the task lock. It releases that transaction before requesting
 the configured Fleet owner.
 
 `GET /internal/runtime/v1/pm/executions/{execution_id}/admission` is private Fleet
-readback. Fleet selects one current native run and freshly verifies intake
-identity, Workflow enrollment, process/configuration, actual tool/model inventory
-and execution lease. Its observation binds assignment, agent, run/session/fence
-and configuration hash; it is not caller-provided readiness.
+readback. Tracker accepts strictly versioned closed responses:
+
+- `contract_version=1` is the original native custody proof. Its DTO and
+  validator remain unchanged.
+- `contract_version=2`, `profile=fleet_mcp_custody_v1` is the Fleet MCP custody
+  proof for the PM-first Fleet integration. It proves the effective Fleet
+  configuration, accepted Hermes run/session/binding, immutable dispatch request
+  hash and the configured/advertised Fleet MCP surface. It does not claim live
+  provider inventory, model output, pre-model hooks or fabricated tool names.
+
+Both profiles bind assignment, agent, execution, task/root/project/instance,
+run/session/fence and configuration hash; neither is caller-provided readiness.
+Unknown versions, unknown profiles and unknown DTO fields are rejected.
 
 Tracker uses deployment-only `TASKTRACKER_SDLC__FLEET_NATIVE_URL` and
 `TASKTRACKER_SDLC__FLEET_NATIVE_READ_TOKEN`. Redirects are disabled and the response
 is bounded. Tracker then reauthorizes, compares reservation, validates freshness
 and lease and checks the monotonic run fence before committing. Additive migration
-000091 stores immutable observation history with the command transaction.
+000091 stores immutable versioned observation history with the command
+transaction. Repeated history for the same execution/run may refresh
+`observation_ref` and `observed_at`, but cannot change the profile, identity,
+fence, accepted run/session/binding, configuration revision/hash or dispatch
+request hash.
 
 Historical admission is not a standing database write grant. When an authorized
 command changes a reserved task, the same transaction records its exact next state

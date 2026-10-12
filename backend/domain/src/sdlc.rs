@@ -700,7 +700,7 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         command: SdlcCommand,
         expected: crate::sdlc_pm_draft::PmDraftReservation,
-        observed: Option<crate::sdlc_native_admission::NativeAdmission>,
+        observed: Option<crate::sdlc_native_admission::AdmissionObservation>,
     ) -> Result<serde_json::Value, AppError>;
     async fn outbox(
         &self,
