@@ -226,6 +226,16 @@ pub enum SdlcCommand {
         #[arg(long)]
         task: Uuid,
     },
+    /// Read frozen Analysis intent by canonical issue UUID
+    Intent {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// Use Tracker-authoritative Analysis producer/readback endpoints
+    Analysis {
+        #[command(subcommand)]
+        command: SdlcAnalysisCommand,
+    },
     /// Publish PM clarification questions
     Question {
         #[command(subcommand)]
@@ -235,6 +245,73 @@ pub enum SdlcCommand {
     Revision {
         #[command(subcommand)]
         command: SdlcRevisionCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SdlcAnalysisCommand {
+    /// Read Fleet configuration preflight for the prepared Analysis assignment
+    Preflight {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// Claim, heartbeat or read the prepared Analysis reservation
+    Reservation {
+        #[command(subcommand)]
+        command: SdlcAnalysisReservationCommand,
+    },
+    /// Submit or read the Tracker-authoritative Analysis terminal result
+    Result {
+        #[command(subcommand)]
+        command: SdlcAnalysisResultCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SdlcAnalysisReservationCommand {
+    /// Read current Analysis reservation state
+    Read {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// Reserve Analysis capacity with a strict JSON payload from a file or stdin
+    Reserve {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_name = "PATH|-")]
+        from_file: String,
+    },
+    /// Renew Analysis reservation with a strict JSON payload from a file or stdin
+    Heartbeat {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_name = "PATH|-")]
+        from_file: String,
+    },
+    /// Read a retained Analysis reservation operation by idempotency key
+    Operation {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long)]
+        key: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SdlcAnalysisResultCommand {
+    /// Submit an Analysis terminal result JSON payload from a file or stdin
+    Submit {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_name = "PATH|-")]
+        from_file: String,
+    },
+    /// Read a retained Analysis result operation by idempotency key
+    Operation {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long)]
+        key: String,
     },
 }
 
@@ -286,6 +363,58 @@ pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
         SdlcCommand::Input { task } => api.get(&sdlc_path(task, "/pm-draft-input")).await,
         SdlcCommand::Questions { task } => api.get(&sdlc_path(task, "/clarifications")).await,
         SdlcCommand::Requirements { task } => api.get(&sdlc_path(task, "/requirements")).await,
+        SdlcCommand::Intent { task } => api.get(&sdlc_path(task, "/analysis-intent")).await,
+        SdlcCommand::Analysis { command } => match command {
+            SdlcAnalysisCommand::Preflight { task } => {
+                api.get(&sdlc_path(
+                    task,
+                    "/analysis-reservation/configuration-preflight",
+                ))
+                .await
+            }
+            SdlcAnalysisCommand::Reservation { command } => match command {
+                SdlcAnalysisReservationCommand::Read { task } => {
+                    api.get(&sdlc_path(task, "/analysis-reservation")).await
+                }
+                SdlcAnalysisReservationCommand::Reserve { task, from_file } => {
+                    api.post(
+                        &sdlc_path(task, "/analysis-reservation"),
+                        json_input(&from_file)?,
+                    )
+                    .await
+                }
+                SdlcAnalysisReservationCommand::Heartbeat { task, from_file } => {
+                    api.post(
+                        &sdlc_path(task, "/analysis-reservation/heartbeat"),
+                        json_input(&from_file)?,
+                    )
+                    .await
+                }
+                SdlcAnalysisReservationCommand::Operation { task, key } => {
+                    api.get(&sdlc_path(
+                        task,
+                        &format!("/analysis-reservation/operations/{}", enc(&key)),
+                    ))
+                    .await
+                }
+            },
+            SdlcAnalysisCommand::Result { command } => match command {
+                SdlcAnalysisResultCommand::Submit { task, from_file } => {
+                    api.post(
+                        &sdlc_path(task, "/analysis-result"),
+                        json_input(&from_file)?,
+                    )
+                    .await
+                }
+                SdlcAnalysisResultCommand::Operation { task, key } => {
+                    api.get(&sdlc_path(
+                        task,
+                        &format!("/analysis-result/operations/{}", enc(&key)),
+                    ))
+                    .await
+                }
+            },
+        },
         SdlcCommand::Question { command } => match command {
             SdlcQuestionCommand::Publish { task, from_file } => {
                 api.post(&sdlc_path(task, "/clarifications"), json_input(&from_file)?)
