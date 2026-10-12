@@ -348,16 +348,6 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
             ),
         ],
     );
-    let evidence = machine(
-        f.secret,
-        f.issuer,
-        &verifier,
-        vec![
-            "task-tracker:read".into(),
-            "task-tracker:write".into(),
-            format!("task-tracker:sdlc:evidence:{task}:1"),
-        ],
-    );
     let scheduler = machine(
         f.secret,
         f.issuer,
@@ -411,8 +401,36 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     )
     .await;
     assert_eq!(answer["question_id"], question_id.to_string());
+    // An answer does not publish the PM's final requirements or approve them.
+    expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/1/confirm"),
+        f.owner,
+        &json!({"content_hash":revision["content_hash"],"idempotency_key":"draft-reservation-premature-confirm"}),
+        409,
+    )
+    .await;
+    let revision = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
+        &pm,
+        &json!({"fence":fence,"expected_requirement_revision":1,"document":{"goal":"goal with confirmed Standard choice","scope":["scope"],"exclusions":[],"scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["pre"]},"idempotency_key":"draft-reservation-final-revision"}),
+        200,
+    )
+    .await;
+    assert_eq!(revision["revision"], 2);
+    let evidence = machine(
+        f.secret,
+        f.issuer,
+        &verifier,
+        vec![
+            "task-tracker:read".into(),
+            "task-tracker:write".into(),
+            format!("task-tracker:sdlc:evidence:{task}:1"),
+        ],
+    );
     for check in ["check", "pre"] {
-        let evidence_body = json!({"fence":fence,"requirement_revision":1,"content_hash":revision["content_hash"],"check_id":check,"evidence_reference":format!("workflow://verified/{check}"),"idempotency_key":format!("draft-reservation-evidence-{check}")});
+        let evidence_body = json!({"fence":fence,"requirement_revision":2,"content_hash":revision["content_hash"],"check_id":check,"evidence_reference":format!("workflow://verified/{check}"),"idempotency_key":format!("draft-reservation-evidence-{check}")});
         expect(
             f.client,
             &format!("{base}/api/v1/issues/{task}/sdlc/evidence"),
@@ -432,7 +450,7 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     }
     let confirmation = expect(
         f.client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/1/confirm"),
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/2/confirm"),
         f.owner,
         &json!({"content_hash":revision["content_hash"],"idempotency_key":"draft-reservation-confirm"}),
         200,
@@ -479,7 +497,7 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     metadata::verify(&page, &legacy);
     let completion_url = format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-completion");
     let completion_command = json!({"contract_version":1,"fence":fence,"lease_id":lease["lease"]["lease_id"],
-        "lease_version":lease["lease"]["version"],"requirement_revision":1,"content_hash":revision["content_hash"],
+        "lease_version":lease["lease"]["version"],"requirement_revision":2,"content_hash":revision["content_hash"],
         "terminal_receipt_ref":"fleet/pm/draft-reservation/terminal.json","terminal_receipt_sha256":"c".repeat(64),
         "workflow_receipt_ref":"workflow/pm/draft-reservation/terminal.json","workflow_receipt_sha256":"d".repeat(64),
         "idempotency_key":"draft-reservation-completion"});
@@ -499,7 +517,7 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     )
     .await;
     assert_eq!(completion["next_pm_admission_state"], "completed");
-    assert_eq!(completion["requirement_revision"], 1);
+    assert_eq!(completion["requirement_revision"], 2);
     assert_eq!(
         expect(
             f.client,

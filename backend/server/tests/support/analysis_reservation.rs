@@ -95,15 +95,6 @@ fn terminal_result(reservation: &Value, key: &str) -> Value {
     })
 }
 
-fn pm_fence(assignment: &Value) -> Value {
-    json!({
-        "assignment_id": assignment["assignment_id"],
-        "execution_id": assignment["execution_id"],
-        "agent_id": assignment["agent_id"],
-        "assignment_version": assignment["version"],
-    })
-}
-
 pub async fn check(
     db: &DatabaseConnection,
     client: &Client,
@@ -175,20 +166,33 @@ pub async fn check(
         200,
     )
     .await;
-    let pm_fence = pm_fence(&pm_context["assignment"]);
+    // This task came through legacy assignment/native admission, not a Tracker
+    // reservation. A confirmed document cannot manufacture reservation authority.
+    let assignment = &pm_context["assignment"];
+    let fence = json!({"assignment_id":assignment["assignment_id"],
+        "execution_id":assignment["execution_id"],"agent_id":assignment["agent_id"],
+        "assignment_version":assignment["version"]});
     let lease_url = format!("{base}/api/v1/issues/{pm_task}/sdlc/pm-draft-execution-lease");
-    post(
-        client,
-        &lease_url,
-        "sdlc_pat_pm",
-        &json!({"expected_owner_version":1,"fence":pm_fence.clone(),"idempotency_key":"pm-completion-lease"}),
-        409,
-    )
-    .await;
+    let rejected = post(client, &lease_url, "sdlc_pat_pm",
+        &json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"legacy-cannot-claim-reserved-lease"}),409).await;
     assert_eq!(
-        read(client, &path(pm_task), reader, 200).await["reason"],
-        "pm_quiescence_unverified"
+        rejected["error"]["message"],
+        "PM reservation is not current"
     );
+    assert_eq!(count(db, "sdlc_pm_execution_leases").await, 0);
+    assert_eq!(count(db, "sdlc_pm_completions").await, 0);
+    let mut after_rejected_claim = read(client, &path(pm_task), reader, 200).await;
+    let mut before_rejected_claim = pm_readback.clone();
+    // Readback observation time advances even when business state is unchanged.
+    after_rejected_claim
+        .as_object_mut()
+        .unwrap()
+        .remove("observed_at");
+    before_rejected_claim
+        .as_object_mut()
+        .unwrap()
+        .remove("observed_at");
+    assert_eq!(after_rejected_claim, before_rejected_claim);
     let (legacy, legacy_command) =
         publication(db, client, base, owner, ready, "SDLC-1000", None).await;
     post(client, &path(legacy), scheduler, &legacy_command, 409).await;

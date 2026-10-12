@@ -6,6 +6,8 @@ pub async fn verify(
     subject: &str,
     verifier: &str,
 ) {
+    let leases_before = count(f.db, "sdlc_pm_execution_leases").await;
+    let lease_operations_before = count(f.db, "sdlc_pm_lease_operations").await;
     let (base, stop, handle) = start(config.clone()).await;
     let task = create(f, &base, "execution-lease-source").await;
     let assignment = expect(
@@ -257,6 +259,14 @@ pub async fn verify(
     assert_eq!(live["current"]["version"], 4);
     assert_eq!(lease_count(f.db, task).await, 1);
     assert_eq!(lease_operation_count(f.db, task).await, 4);
+    assert_eq!(
+        count(f.db, "sdlc_pm_execution_leases").await,
+        leases_before + 1
+    );
+    assert_eq!(
+        count(f.db, "sdlc_pm_lease_operations").await,
+        lease_operations_before + 4
+    );
     assert!(
         migration::MigrationTrait::down(
             &migration::m20261001_0000034_sdlc_clarification::Migration,
@@ -266,6 +276,10 @@ pub async fn verify(
         .is_err()
     );
     assert_eq!(lease_count(f.db, task).await, 1);
+    assert_eq!(
+        count(f.db, "sdlc_pm_execution_leases").await,
+        leases_before + 1
+    );
     let saved = get_json(
         f.client,
         &format!("{url}?idempotency_key=lease-claim"),
@@ -280,6 +294,15 @@ pub async fn verify(
         assignment
     );
     let pm_write = json!({"fence":fence,"document":{"goal":"goal","scope":["scope"],"exclusions":[],"scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]},"expected_requirement_revision":null,"idempotency_key":"lease-is-not-admission"});
+    let requirements_url = format!("{base}/api/v1/issues/{task}/sdlc/requirements");
+    let before_denials = lease_snapshot(f, task).await;
+    for denied in [f.owner, f.operator, &no_grant, &foreign] {
+        expect(f.client, &requirements_url, denied, &pm_write, 403).await;
+    }
+    let mut stale_write = pm_write.clone();
+    stale_write["fence"]["assignment_version"] = json!(2);
+    expect(f.client, &requirements_url, &token, &stale_write, 409).await;
+    assert_eq!(lease_snapshot(f, task).await, before_denials);
     let revision = expect(
         f.client,
         &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
@@ -290,6 +313,15 @@ pub async fn verify(
     .await;
     assert_eq!(revision["revision"], 1);
     assert_eq!(revision["author_subject"], subject);
+    assert_eq!(
+        expect(f.client, &requirements_url, &token, &pm_write, 200).await,
+        revision
+    );
+    let before_conflict = lease_snapshot(f, task).await;
+    let mut changed_write = pm_write.clone();
+    changed_write["document"]["goal"] = json!("changed payload");
+    expect(f.client, &requirements_url, &token, &changed_write, 409).await;
+    assert_eq!(lease_snapshot(f, task).await, before_conflict);
     assert_eq!(count(f.db, "sdlc_pm_native_admissions").await, 0);
     let question_id = Uuid::new_v4();
     let question = expect(
@@ -560,6 +592,10 @@ pub async fn verify(
     let (status, result) = waiting.await.unwrap();
     assert_eq!(status, 409, "{result}");
     assert_eq!(lease_operation_count(f.db, task).await, 4);
+    assert_eq!(
+        count(f.db, "sdlc_pm_lease_operations").await,
+        lease_operations_before + 4
+    );
     let expired = get_json(
         f.client,
         &format!("{url}?idempotency_key=heartbeat-1"),
@@ -570,6 +606,22 @@ pub async fn verify(
     assert_eq!(expired["state"], "expired");
     assert_eq!(expired["current"], live["current"]);
     assert_eq!(expired["operation"]["result"], second);
+    let requirements_url = format!("{base}/api/v1/issues/{task}/sdlc/requirements");
+    let before_expired_write = lease_snapshot(f, task).await;
+    let mut expired_write = pm_write.clone();
+    expired_write["idempotency_key"] = json!("expired-pm-producer-write");
+    let denied = expect(f.client, &requirements_url, &token, &expired_write, 409).await;
+    assert_eq!(
+        denied["error"]["message"],
+        "PM execution lease expired or foreign"
+    );
+    assert_eq!(lease_snapshot(f, task).await, before_expired_write);
+    // Original acceptance remains readable after lease expiry without another write.
+    assert_eq!(
+        expect(f.client, &requirements_url, &token, &pm_write, 200).await,
+        revision
+    );
+    assert_eq!(lease_snapshot(f, task).await, before_expired_write);
     assert_eq!(expect(f.client, &url, &token, &claim, 200).await, first);
     assert_eq!(
         expect(
