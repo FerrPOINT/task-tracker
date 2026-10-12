@@ -1687,6 +1687,142 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/analysis-result": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "submit_analysis_result",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitAnalysisResult"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay; no duplicate transition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResultReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResultReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": "Stale lease/fence, released capacity or payload conflict"
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_analysis_result_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResultOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/assignment": {
       "post": {
         "tags": [
@@ -7527,6 +7663,172 @@
         },
         "additionalProperties": false
       },
+      "AnalysisResultOperation": {
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "request_sha256",
+          "result"
+        ],
+        "properties": {
+          "idempotency_key": {
+            "type": "string"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/AnalysisResultReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AnalysisResultReceipt": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "result_id",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "assignment_id",
+          "execution_id",
+          "agent_id",
+          "intent_id",
+          "routing_snapshot_id",
+          "requirement_revision",
+          "content_hash",
+          "workflow_task_ref",
+          "fencing_token",
+          "lease_id",
+          "lease_version",
+          "previous_stage",
+          "next_stage",
+          "previous_status",
+          "next_status",
+          "terminal_receipt_ref",
+          "terminal_receipt_sha256",
+          "architecture_input_sha256",
+          "summary",
+          "idempotency_key",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "architecture_input_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "intent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "next_stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "next_status": {
+            "type": "string"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "previous_stage": {
+            "$ref": "#/components/schemas/Stage"
+          },
+          "previous_status": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "result_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "terminal_receipt_ref": {
+            "type": "string"
+          },
+          "terminal_receipt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "workflow_task_ref": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "AnalysisStage": {
         "type": "string",
         "enum": [
@@ -10680,6 +10982,129 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "analysis.result_accepted"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "result_id",
+                      "assignment_id",
+                      "execution_id",
+                      "workflow_task_ref",
+                      "terminal_receipt_ref",
+                      "terminal_receipt_sha256",
+                      "architecture_input_sha256"
+                    ],
+                    "properties": {
+                      "architecture_input_sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "assignment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "terminal_receipt_ref": {
+                        "type": "string"
+                      },
+                      "terminal_receipt_sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "workflow_task_ref": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -12772,7 +13197,8 @@
           "Draft",
           "Clarification",
           "Backlog",
-          "Analysis"
+          "Analysis",
+          "Architecture"
         ]
       },
       "StatusResponse": {
@@ -12806,6 +13232,110 @@
             "format": "int32"
           }
         }
+      },
+      "SubmitAnalysisResult": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "assignment_id",
+          "execution_id",
+          "agent_id",
+          "intent_id",
+          "routing_snapshot_id",
+          "requirement_revision",
+          "content_hash",
+          "fencing_token",
+          "lease_id",
+          "expected_lease_version",
+          "assignment_hash",
+          "terminal_receipt_ref",
+          "terminal_receipt_sha256",
+          "architecture_input_sha256",
+          "summary",
+          "idempotency_key"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "architecture_input_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "assignment_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "intent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 100000,
+            "minLength": 1
+          },
+          "terminal_receipt_ref": {
+            "type": "string",
+            "maxLength": 512,
+            "minLength": 1
+          },
+          "terminal_receipt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
       },
       "SystemSettingListResponse": {
         "type": "object",
