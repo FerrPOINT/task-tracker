@@ -1,5 +1,5 @@
 //! Read the configured Fleet owner without holding a Tracker transaction.
-use domain::sdlc_native_admission::NativeAdmission;
+use domain::sdlc_native_admission::AdmissionObservation;
 use domain::sdlc_pm_draft::PmDraftReservation;
 use reqwest::{Client, Url, header};
 use shared::AppError;
@@ -51,7 +51,7 @@ impl FleetNativeReader {
     pub async fn read(
         &self,
         reservation: &PmDraftReservation,
-    ) -> Result<NativeAdmission, AppError> {
+    ) -> Result<AdmissionObservation, AppError> {
         let mut url = self.origin.clone();
         url.set_path(&format!(
             "/internal/runtime/v1/pm/executions/{}/admission",
@@ -75,7 +75,7 @@ impl FleetNativeReader {
             }
             bytes.extend_from_slice(&chunk);
         }
-        let observed: NativeAdmission =
+        let observed: AdmissionObservation =
             serde_json::from_slice(&bytes).map_err(|_| unavailable())?;
         observed.validate(reservation)?;
         Ok(observed)

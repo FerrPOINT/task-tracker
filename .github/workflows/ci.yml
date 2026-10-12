@@ -108,6 +108,12 @@ jobs:
           TT_NAMESPACE__INSTANCE_ID: 11111111-1111-4111-8111-111111111111
           TT_NAMESPACE__REGISTRY_INSTANCE_ID: 22222222-2222-4222-8222-222222222222
         run: cargo test --locked -p infra --test repos namespace_projection_loss_cannot_offer_or_rebind_managed_project -- --ignored --test-threads=1
+      - name: Fleet MCP admission upgrade (isolated PostgreSQL)
+        env:
+          TRACKER_MCP_ADMISSION_TEST_URL: postgres://tasktracker@127.0.0.1:5432/tracker_mcp_qa_upgrade
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_mcp_qa_upgrade
+          cargo test --locked -p migration existing_v1_schema_upgrades_without_rewriting_history -- --ignored --test-threads=1
       - name: Isolated PostgreSQL HTTP clarification and ownership lease
         env:
           TT_SDLC_DRAFT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_drafts

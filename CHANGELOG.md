@@ -1,5 +1,9 @@
 # Changelog
 
+- Fleet MCP admission v2 обновляет существующую схему новой миграцией 000093.
+  Миграция 000091 и прежняя история сохраняются; downgrade с v2 history
+  блокируется до reconciliation. Проверка перехода v1→v2 включена в backend CI.
+
 Все значимые изменения проекта документируются здесь.
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/),
 версионирование — [SemVer](https://semver.org/lang/ru/).

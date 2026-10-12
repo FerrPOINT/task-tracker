@@ -1,5 +1,5 @@
 use super::*;
-use domain::sdlc_native_admission::{CommandAdmission, NativeAdmission};
+use domain::sdlc_native_admission::{AdmissionObservation, CommandAdmission};
 
 impl PostgresSdlcRepository {
     pub(super) async fn native_command_preflight(
@@ -48,7 +48,7 @@ impl PostgresSdlcRepository {
         tx: &DatabaseTransaction,
         state: &TaskState,
         expected: &PmDraftReservation,
-        observation: Option<&NativeAdmission>,
+        observation: Option<&AdmissionObservation>,
         command: &SdlcCommand,
     ) -> Result<(), AppError> {
         let assignment = state
@@ -65,7 +65,7 @@ impl PostgresSdlcRepository {
             observed.validate(&current)?;
             let latest = tx
                 .query_one(statement(
-                    "SELECT session_run_id,fence FROM sdlc_pm_native_admissions
+                    "SELECT session_run_id,fence,proof FROM sdlc_pm_native_admissions
                   WHERE execution_id=$1 ORDER BY fence DESC LIMIT 1",
                     vec![assignment.execution_id.into()],
                 ))
@@ -74,17 +74,25 @@ impl PostgresSdlcRepository {
             if let Some(latest) = latest {
                 let fence: i64 = latest.try_get("", "fence").map_err(map_db)?;
                 let run: Uuid = latest.try_get("", "session_run_id").map_err(map_db)?;
+                let latest_observation: AdmissionObservation =
+                    serde_json::from_value(latest.try_get("", "proof").map_err(map_db)?)
+                        .map_err(AppError::internal)?;
                 if observed
-                    .fence
+                    .fence()
                     .checked_sub(fence)
                     .is_none_or(|delta| !(0..=1).contains(&delta))
-                    || observed.fence == fence && observed.session_run_id != run
+                    || observed.fence() == fence && observed.session_run_id() != run
                 {
                     return Err(AppError::conflict(
                         "Native admission fence is stale or discontinuous",
                     ));
                 }
-            } else if observed.fence != 1 {
+                if observed.session_run_id() != run && !observed.same_profile(&latest_observation) {
+                    return Err(AppError::conflict(
+                        "Native admission profile switch requires a new PM lifecycle",
+                    ));
+                }
+            } else if observed.fence() != 1 {
                 return Err(AppError::conflict(
                     "Initial native admission fence must be one",
                 ));
@@ -99,21 +107,12 @@ impl PostgresSdlcRepository {
             }
             let previous=tx.query_one(statement(
                 "SELECT proof FROM sdlc_pm_native_admissions WHERE execution_id=$1 AND session_run_id=$2",
-                vec![assignment.execution_id.into(),observed.session_run_id.into()])).await.map_err(map_db)?;
+                vec![assignment.execution_id.into(),observed.session_run_id().into()])).await.map_err(map_db)?;
             if let Some(previous) = previous {
-                let original: NativeAdmission =
+                let original: AdmissionObservation =
                     serde_json::from_value(previous.try_get("", "proof").map_err(map_db)?)
                         .map_err(AppError::internal)?;
-                if json_value(&original.identity)? != json_value(&observed.identity)?
-                    || original.fence != observed.fence
-                    || original.native_run_ref != observed.native_run_ref
-                    || original.native_session_ref != observed.native_session_ref
-                    || original.binding_ref != observed.binding_ref
-                    || original.effective_config_revision != observed.effective_config_revision
-                    || original.configuration_sha256 != observed.configuration_sha256
-                    || json_value(&original.native_configuration)?
-                        != json_value(&observed.native_configuration)?
-                {
+                if !observed.same_immutable_run(&original) {
                     return Err(AppError::conflict(
                         "Native PM run/configuration identity changed",
                     ));
@@ -121,8 +120,8 @@ impl PostgresSdlcRepository {
             } else {
                 exec(tx,"INSERT INTO sdlc_pm_native_admissions(execution_id,session_run_id,observation_ref,
                       assignment_id,assignment_version,fence,proof) VALUES($1,$2,$3,$4,$5,$6,$7)",
-                      vec![assignment.execution_id.into(),observed.session_run_id.into(),observed.observation_ref.into(),
-                        assignment.assignment_id.into(),assignment.version.into(),observed.fence.into(),json_value(observed)?]).await?;
+                      vec![assignment.execution_id.into(),observed.session_run_id().into(),observed.observation_ref().into(),
+                        assignment.assignment_id.into(),assignment.version.into(),observed.fence().into(),json_value(observed)?]).await?;
             }
         } else {
             if !matches!(
@@ -151,7 +150,7 @@ impl PostgresSdlcRepository {
         actor: &Principal,
         command: SdlcCommand,
         expected: Option<PmDraftReservation>,
-        observed: Option<domain::sdlc_native_admission::NativeAdmission>,
+        observed: Option<AdmissionObservation>,
     ) -> Result<Json, AppError> {
         app::sdlc::validate_key(command.key())?;
         let tx = self.db.begin().await.map_err(map_db)?;
