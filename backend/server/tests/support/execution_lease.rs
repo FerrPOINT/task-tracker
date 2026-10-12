@@ -51,6 +51,22 @@ pub async fn verify(
             grant,
         ],
     );
+    let verifier_token = machine(
+        f.secret,
+        f.issuer,
+        verifier,
+        vec![
+            "task-tracker:read".into(),
+            "task-tracker:write".into(),
+            format!("task-tracker:sdlc:evidence:{task}:1"),
+        ],
+    );
+    let verifier_no_scope = machine(
+        f.secret,
+        f.issuer,
+        verifier,
+        vec!["task-tracker:read".into(), "task-tracker:write".into()],
+    );
     let url = format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-execution-lease");
     let claim = json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"lease-claim"});
     let empty = get_json(f.client, &url, &token, 200).await;
@@ -274,6 +290,79 @@ pub async fn verify(
     .await;
     assert_eq!(revision["revision"], 1);
     assert_eq!(revision["author_subject"], subject);
+    assert_eq!(count(f.db, "sdlc_pm_native_admissions").await, 0);
+    let question_id = Uuid::new_v4();
+    let question = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),
+        &token,
+        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":question_id,
+            "expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),
+            "requirement_reference":"scope","text":"Confirm scope?","rationale":"Needed for exact consent",
+            "required":true,"mode":"text","options":[],"recommended_option_id":null,
+            "idempotency_key":"lease-question-no-native-history"}),
+        200,
+    )
+    .await;
+    assert_eq!(question["id"].as_str().unwrap(), question_id.to_string());
+    let answer_url =
+        format!("{base}/api/v1/issues/{task}/sdlc/clarifications/{question_id}/answers");
+    let answer = json!({"expected_question_version":1,"requirement_revision":1,
+        "selected_option_ids":[],"text":"Confirmed","comment":null,
+        "idempotency_key":"owner-answer-no-native-history"});
+    expect(f.client, &answer_url, f.operator, &answer, 403).await;
+    let mut stale_answer = answer.clone();
+    stale_answer["expected_question_version"] = json!(2);
+    expect(f.client, &answer_url, f.owner, &stale_answer, 409).await;
+    assert_eq!(
+        expect(f.client, &answer_url, f.owner, &answer, 200).await["text"],
+        "Confirmed"
+    );
+    expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/1/confirm"),
+        f.owner,
+        &json!({"content_hash":revision["content_hash"],"idempotency_key":"premature-confirm"}),
+        409,
+    )
+    .await;
+    let final_revision = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
+        &token,
+        &json!({"fence":fence,"document":{"goal":"goal","scope":["scope"],"exclusions":[],
+            "scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],
+            "dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]},
+            "expected_requirement_revision":1,"idempotency_key":"lease-final-revision-no-native-history"}),
+        200,
+    )
+    .await;
+    assert_eq!(final_revision["revision"], 2);
+    let evidence_url = format!("{base}/api/v1/issues/{task}/sdlc/evidence");
+    let mut evidence = json!({"fence":fence,"requirement_revision":2,
+        "content_hash":final_revision["content_hash"],"check_id":"check",
+        "evidence_reference":"workflow://verified/check",
+        "idempotency_key":"verifier-check-no-native-history"});
+    expect(f.client, &evidence_url, &verifier_no_scope, &evidence, 403).await;
+    expect(f.client, &evidence_url, &verifier_token, &evidence, 200).await;
+    evidence["check_id"] = json!("prerequisite");
+    evidence["evidence_reference"] = json!("workflow://verified/prerequisite");
+    evidence["idempotency_key"] = json!("verifier-prerequisite-no-native-history");
+    expect(f.client, &evidence_url, &verifier_token, &evidence, 200).await;
+    let confirm_url = format!("{base}/api/v1/issues/{task}/sdlc/requirements/2/confirm");
+    let confirm = json!({"content_hash":final_revision["content_hash"],"idempotency_key":"confirm-no-native-history"});
+    expect(f.client, &confirm_url, f.operator, &confirm, 403).await;
+    let confirmation = expect(f.client, &confirm_url, f.owner, &confirm, 200).await;
+    assert_eq!(confirmation["revision"], 2);
+    assert_eq!(confirmation["stage"], "Backlog");
+    let context = get_json(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/context"),
+        f.owner,
+        200,
+    )
+    .await;
+    assert_eq!(context["stage"], "Analysis");
     assert_eq!(count(f.db, "sdlc_pm_native_admissions").await, 0);
     let state = get_json(f.client, &url, &token, 200).await;
     assert_eq!(state["current"], live["current"]);

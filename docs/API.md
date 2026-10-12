@@ -3,7 +3,7 @@
 Reserved PM requirement/question writes require the exact machine scope/fence and
 a current Tracker execution lease; the command schema does not accept a readiness
 claim. Owner answers and separate verifier evidence use admitted history when
-present. [Contract](PM_NATIVE_ADMISSION.md).
+available but do not require it. [Contract](PM_NATIVE_ADMISSION.md).
 
 ## Каталог сквозных проектов для серверных consumers
 

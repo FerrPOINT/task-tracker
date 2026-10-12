@@ -1,7 +1,7 @@
 # PM producer lease and historical admission
 
-Source, owned PostgreSQL history checks and PM producer lease checks are
-qualified. Final coordinated immutable artifacts remain pending.
+PM producer writes are lease-gated; legacy admission history remains readable and
+auditable but is no longer a prerequisite for new human or verifier actions.
 
 The registered PM actor cannot supply readiness in its command. For a reserved
 execution, the service authorizes the command and reads the original receipt or
@@ -40,8 +40,9 @@ permit while applying the state update. A failed command rolls back both permit
 and state, and an unscoped update remains rejected.
 
 PM producer writes need a current Tracker execution lease held by the assigned
-machine. Owner answer/confirmation and the separate verifier still use existing
-history when present, allowing the original owner response while PM waits.
+machine. Owner answer/confirmation and the separate verifier use the current
+reservation plus domain authorization/state checks; legacy admission history may
+exist but is not mandatory.
 Generic assignment replacement, missing/expired/foreign leases and stale/foreign
 fences remain refused. Original idempotent receipts remain readable without Fleet
 native readback.

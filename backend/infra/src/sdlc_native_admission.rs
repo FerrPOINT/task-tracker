@@ -150,20 +150,10 @@ impl PostgresSdlcRepository {
             }
         } else if Self::producer_machine_write(command) {
             Self::require_active_pm_machine_lease(tx, &current, assignment).await?;
-        } else if matches!(
+        } else if !matches!(
             command,
             SdlcCommand::Answer { .. } | SdlcCommand::Confirm { .. } | SdlcCommand::Evidence(_)
         ) {
-            let row=tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_pm_native_admissions
-                  WHERE execution_id=$1 AND assignment_id=$2 AND assignment_version=$3) AS admitted",
-                  vec![assignment.execution_id.into(),assignment.assignment_id.into(),assignment.version.into()]))
-                  .await.map_err(map_db)?.ok_or_else(||AppError::internal("Native admission history missing"))?;
-            if !row.try_get::<bool>("", "admitted").map_err(map_db)? {
-                return Err(AppError::conflict(
-                    "PM execution has no verified native admission history",
-                ));
-            }
-        } else {
             return Err(AppError::conflict(
                 "Reserved PM command is not supported by local lease verification",
             ));
