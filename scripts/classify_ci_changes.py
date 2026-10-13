@@ -16,7 +16,7 @@ SHARED_PATHS = (
     "scripts/classify_ci_changes.py",
 )
 BACKEND_PATHS = ("backend/",) + SHARED_PATHS
-FRONTEND_PATHS = ("frontend/",) + SHARED_PATHS
+FRONTEND_PATHS = ("frontend/", ".base-ui-revision") + SHARED_PATHS
 
 
 def classify(event_name: str, base_sha: str, head_sha: str, *, repo: Path = ROOT) -> dict[str, str]:

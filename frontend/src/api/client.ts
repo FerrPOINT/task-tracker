@@ -9,7 +9,10 @@ export const api = createClient<paths>({ baseUrl: apiBaseUrl, credentials: 'incl
 
 export async function refreshAccessToken(): Promise<boolean> {
   const product = getPlatformProduct()
-  if (product) { product.recheckAuthorization(); return false }
+  if (product) {
+    product.recheckAuthorization()
+    return false
+  }
   useAuthStore.getState().logout()
   window.location.assign('/login')
   return false

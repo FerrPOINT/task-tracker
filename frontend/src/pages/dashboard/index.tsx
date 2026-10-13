@@ -25,7 +25,10 @@ export function DashboardPage() {
     refetch: refetchProjects,
   } = useProjects()
   const userId = useAuthStore((state) => state.userId)
-  usePlatformReadiness({ pending: dashboardLoading || projectsLoading, error: dashboardError || projectsError ? 'Не удалось загрузить дашборд Tracker.' : null })
+  usePlatformReadiness({
+    pending: dashboardLoading || projectsLoading,
+    error: dashboardError || projectsError ? 'Не удалось загрузить дашборд Tracker.' : null,
+  })
 
   const assigned = dashboard?.assigned_issues ?? []
   const assignedSearch = userId ? `/search?assignee_id=${encodeURIComponent(userId)}` : '/search'

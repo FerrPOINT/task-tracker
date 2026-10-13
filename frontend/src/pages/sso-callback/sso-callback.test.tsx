@@ -7,7 +7,10 @@ import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
 
 const completeSso = vi.hoisted(() => vi.fn())
-vi.mock('@sdlc/ui/sso', async importOriginal => ({ ...await importOriginal<typeof import('@sdlc/ui/sso')>(), completeSso }))
+vi.mock('@sdlc/ui/sso', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@sdlc/ui/sso')>()),
+  completeSso,
+}))
 
 function ReturnLocation() {
   const location = useLocation()

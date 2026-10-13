@@ -31,9 +31,13 @@ export function SsoCallbackPage() {
     void completion()
       .then(async (session) => {
         if (!active) return
-        const applied = await loadSsoSession(session, () => active && useAuthStore.getState().authVersion === version)
+        const applied = await loadSsoSession(
+          session,
+          () => active && useAuthStore.getState().authVersion === version,
+        )
         if (!active || !applied) return
-        if (!finishPlatformLogin(import.meta.env.VITE_PLATFORM_ORIGIN)) navigate(session.returnTo, { replace: true })
+        if (!finishPlatformLogin(import.meta.env.VITE_PLATFORM_ORIGIN))
+          navigate(session.returnTo, { replace: true })
       })
       .catch(() => {
         if (active) setFailed(true)

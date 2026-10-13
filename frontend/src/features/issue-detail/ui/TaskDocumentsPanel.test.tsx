@@ -8,7 +8,7 @@ const ref = {
   namespace_id: '22222222-2222-4222-8222-222222222222',
 }
 vi.mock('@sdlc/ui/ui', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@sdlc/ui/ui')>(),
+  ...(await importOriginal<typeof import('@sdlc/ui/ui')>()),
   usePlatformServices: () => ({ services: [{ key: 'wiki', ui_url: 'http://wiki.test' }] }),
 }))
 vi.mock('@/widgets/namespace-context', () => ({

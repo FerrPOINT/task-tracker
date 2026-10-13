@@ -43,41 +43,51 @@ const NotificationsPage = lazy(() =>
 const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })))
 const AdminPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.AdminPage })))
 
-function PageLoader() { return <LoadingState /> }
+function PageLoader() {
+  return <LoadingState />
+}
 
 const withSuspense = (element: React.ReactElement) => (
-  <Suspense fallback={<PageLoader />}><PlatformRoute>{element}</PlatformRoute></Suspense>
+  <Suspense fallback={<PageLoader />}>
+    <PlatformRoute>{element}</PlatformRoute>
+  </Suspense>
 )
 
-export const router = createProductRouter([
-  {
-    element: <RequireAuth />,
-    children: [
-      {
-        element: <AppShell />,
-        children: [
-          { path: '/namespace', element: withSuspense(<NamespacePage />) },
-          { path: '/', element: withSuspense(<DashboardPage />) },
-          { path: '/projects', element: withSuspense(<ProjectsPage />) },
-          { path: '/projects/:projectKey/board', element: withSuspense(<ProjectBoardPage />) },
-          { path: '/projects/:projectKey/backlog', element: withSuspense(<ProjectBacklogPage />) },
-          { path: '/projects/:projectKey/trash', element: withSuspense(<ProjectTrashPage />) },
-          {
-            path: '/projects/:projectKey/settings/custom-fields',
-            element: withSuspense(<ProjectCustomFieldsPage />),
-          },
-          { path: '/search', element: withSuspense(<SearchPage />) },
-          { path: '/notifications', element: withSuspense(<NotificationsPage />) },
-          { path: '/reports', element: withSuspense(<ReportsPage />) },
-          { path: '/admin', element: withSuspense(<AdminPage />) },
-          { path: '/issues/create', element: withSuspense(<IssueCreatePage />) },
-          { path: '/issues/:id', element: withSuspense(<IssueDetailPage />) },
-        ],
-      },
-    ],
-  },
-  { path: '/login', element: withSuspense(<LoginPage />) },
-  { path: '/sso/callback', element: withSuspense(<SsoCallbackPage />) },
-  { path: '/register', element: <Navigate to="/login" replace /> },
-  { path: '*', element: <Navigate to="/" replace /> },
-], { serviceKey: 'task-tracker', portalOrigin: import.meta.env.VITE_PLATFORM_ORIGIN })
+export const router = createProductRouter(
+  [
+    {
+      element: <RequireAuth />,
+      children: [
+        {
+          element: <AppShell />,
+          children: [
+            { path: '/namespace', element: withSuspense(<NamespacePage />) },
+            { path: '/', element: withSuspense(<DashboardPage />) },
+            { path: '/projects', element: withSuspense(<ProjectsPage />) },
+            { path: '/projects/:projectKey/board', element: withSuspense(<ProjectBoardPage />) },
+            {
+              path: '/projects/:projectKey/backlog',
+              element: withSuspense(<ProjectBacklogPage />),
+            },
+            { path: '/projects/:projectKey/trash', element: withSuspense(<ProjectTrashPage />) },
+            {
+              path: '/projects/:projectKey/settings/custom-fields',
+              element: withSuspense(<ProjectCustomFieldsPage />),
+            },
+            { path: '/search', element: withSuspense(<SearchPage />) },
+            { path: '/notifications', element: withSuspense(<NotificationsPage />) },
+            { path: '/reports', element: withSuspense(<ReportsPage />) },
+            { path: '/admin', element: withSuspense(<AdminPage />) },
+            { path: '/issues/create', element: withSuspense(<IssueCreatePage />) },
+            { path: '/issues/:id', element: withSuspense(<IssueDetailPage />) },
+          ],
+        },
+      ],
+    },
+    { path: '/login', element: withSuspense(<LoginPage />) },
+    { path: '/sso/callback', element: withSuspense(<SsoCallbackPage />) },
+    { path: '/register', element: <Navigate to="/login" replace /> },
+    { path: '*', element: <Navigate to="/" replace /> },
+  ],
+  { serviceKey: 'task-tracker', portalOrigin: import.meta.env.VITE_PLATFORM_ORIGIN },
+)
