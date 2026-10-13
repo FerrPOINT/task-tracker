@@ -853,13 +853,6 @@ pub fn apply(
             };
             q.answer = Some(answer.clone());
             q.state = QuestionState::Answered;
-            if !state.questions.iter().any(|q| {
-                q.requirement_revision == c.requirement_revision
-                    && q.required
-                    && q.state == QuestionState::Open
-            }) {
-                state.confirmation_revision = Some(c.requirement_revision);
-            }
             serde_json::to_value(answer)
         }
         SdlcCommand::Confirm {

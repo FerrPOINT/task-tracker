@@ -220,7 +220,7 @@ fn question(fence: &MachineFence, mode: QuestionMode) -> PublishQuestion {
 }
 
 #[test]
-fn answered_revision_uses_only_post_answer_evidence_for_readiness() {
+fn answered_clarification_requires_republication_even_with_fresh_evidence() {
     let (mut state, config, owner, pm, verifier, fence) = fixture();
     publish(&mut state, &config, &pm, &fence);
     let input = question(&fence, QuestionMode::Single);
@@ -267,6 +267,35 @@ fn answered_revision_uses_only_post_answer_evidence_for_readiness() {
             &fence,
             check,
             &format!("post-answer-{check}"),
+        );
+    }
+    assert!(!state.context(&owner).permissions.can_confirm);
+    let old_confirmation = SdlcCommand::Confirm {
+        revision: 1,
+        command: ConfirmCommand {
+            content_hash: state.revisions[0].content_hash.clone(),
+            idempotency_key: "old-revision-after-post-answer-evidence".into(),
+            expected_routing_policy_version: None,
+        },
+    };
+    assert!(matches!(
+        apply(&mut state, &owner, &config, &old_confirmation),
+        Err(AppError::Conflict(_))
+    ));
+    assert!(state.confirmations.is_empty());
+    assert_eq!(state.stage, Stage::Clarification);
+
+    publish(&mut state, &config, &pm, &fence);
+    assert_eq!(state.current_revision(), Some(2));
+    assert!(!state.ready());
+    for check in ["review", "contract"] {
+        record_evidence(
+            &mut state,
+            &config,
+            &verifier,
+            &fence,
+            check,
+            &format!("republished-{check}"),
         );
     }
     assert!(state.context(&owner).permissions.can_confirm);
