@@ -418,7 +418,7 @@ export function AppShell() {
               className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:flex"
               aria-label={t('app.name')}
             >
-              <PlatformMark size="sm" withName={false} />
+              <PlatformMark size="shell" withName={false} />
             </Link>
           </>
         }
@@ -616,7 +616,7 @@ export function AppShell() {
 
       <div className="flex min-h-[calc(100dvh-var(--shell-header-height))]">
         <aside
-          className={`sticky top-[var(--shell-header-height)] hidden h-[calc(100dvh-var(--shell-header-height))] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-surface p-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)]' : 'w-[var(--shell-sidebar-expanded)]'}`}
+          className={`sticky top-[var(--shell-header-height)] hidden h-[calc(100dvh-var(--shell-header-height))] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-surface py-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)] px-2' : 'w-[var(--shell-sidebar-expanded)] px-3'}`}
         >
           <div
             className={`flex min-h-9 items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}

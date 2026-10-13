@@ -384,9 +384,9 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
                 "--task",
                 TASK,
                 "--key",
-                "lease key/1",
+                "lease key 1",
             ],
-            format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/operations/lease%20key%2F1"),
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-reservation/operations/lease%20key%201"),
         ),
         (
             vec![
@@ -397,9 +397,9 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
                 "--task",
                 TASK,
                 "--key",
-                "result key/1",
+                "result key 1",
             ],
-            format!("/api/v1/issues/{TASK}/sdlc/analysis-result/operations/result%20key%2F1"),
+            format!("/api/v1/issues/{TASK}/sdlc/analysis-result/operations/result%20key%201"),
         ),
     ] {
         success(&server.run(&args, None).await);
@@ -426,6 +426,34 @@ async fn sdlc_commands_map_to_existing_task_uuid_endpoints() {
         .await;
     assert_eq!(invalid.status.code(), Some(2));
     assert_eq!(server.requests().len(), 10);
+
+    // Base rejects encoded path separators before credentials can be sent.
+    for args in [
+        vec![
+            "sdlc",
+            "analysis",
+            "reservation",
+            "operation",
+            "--task",
+            TASK,
+            "--key",
+            "lease key/1",
+        ],
+        vec![
+            "sdlc",
+            "analysis",
+            "result",
+            "operation",
+            "--task",
+            TASK,
+            "--key",
+            "result key/1",
+        ],
+    ] {
+        let invalid = server.run(&args, None).await;
+        assert_eq!(invalid.status.code(), Some(1));
+        assert_eq!(server.requests().len(), 10);
+    }
 }
 
 #[tokio::test]

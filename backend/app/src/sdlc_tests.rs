@@ -160,6 +160,33 @@ fn publish(state: &mut TaskState, config: &SdlcConfig, pm: &Principal, fence: &M
     .unwrap();
 }
 
+fn record_evidence(
+    state: &mut TaskState,
+    config: &SdlcConfig,
+    verifier: &Principal,
+    fence: &MachineFence,
+    check: &str,
+    key: &str,
+) {
+    let revision = state.revisions.last().unwrap();
+    let revision_number = revision.revision;
+    let content_hash = revision.content_hash.clone();
+    apply(
+        state,
+        verifier,
+        config,
+        &SdlcCommand::Evidence(EvidenceCommand {
+            fence: fence.clone(),
+            requirement_revision: revision_number,
+            content_hash,
+            check_id: check.into(),
+            evidence_reference: format!("workflow://verified/{key}"),
+            idempotency_key: key.into(),
+        }),
+    )
+    .unwrap();
+}
+
 fn question(fence: &MachineFence, mode: QuestionMode) -> PublishQuestion {
     PublishQuestion {
         fence: fence.clone(),
@@ -190,6 +217,105 @@ fn question(fence: &MachineFence, mode: QuestionMode) -> PublishQuestion {
         recommended_option_id: None,
         idempotency_key: "question".into(),
     }
+}
+
+#[test]
+fn answered_clarification_requires_republication_even_with_fresh_evidence() {
+    let (mut state, config, owner, pm, verifier, fence) = fixture();
+    publish(&mut state, &config, &pm, &fence);
+    let input = question(&fence, QuestionMode::Single);
+    apply(
+        &mut state,
+        &pm,
+        &config,
+        &SdlcCommand::PublishQuestion(input.clone()),
+    )
+    .unwrap();
+    for check in ["review", "contract"] {
+        record_evidence(
+            &mut state,
+            &config,
+            &verifier,
+            &fence,
+            check,
+            &format!("pre-answer-{check}"),
+        );
+    }
+    apply(
+        &mut state,
+        &owner,
+        &config,
+        &SdlcCommand::Answer {
+            question_id: input.question_id,
+            command: AnswerCommand {
+                expected_question_version: 1,
+                requirement_revision: 1,
+                selected_option_ids: vec![input.options[0].id],
+                text: None,
+                comment: None,
+                idempotency_key: "answer-before-ready".into(),
+            },
+        },
+    )
+    .unwrap();
+    assert!(!state.ready());
+    for check in ["review", "contract"] {
+        record_evidence(
+            &mut state,
+            &config,
+            &verifier,
+            &fence,
+            check,
+            &format!("post-answer-{check}"),
+        );
+    }
+    assert!(!state.context(&owner).permissions.can_confirm);
+    let old_confirmation = SdlcCommand::Confirm {
+        revision: 1,
+        command: ConfirmCommand {
+            content_hash: state.revisions[0].content_hash.clone(),
+            idempotency_key: "old-revision-after-post-answer-evidence".into(),
+            expected_routing_policy_version: None,
+        },
+    };
+    assert!(matches!(
+        apply(&mut state, &owner, &config, &old_confirmation),
+        Err(AppError::Conflict(_))
+    ));
+    assert!(state.confirmations.is_empty());
+    assert_eq!(state.stage, Stage::Clarification);
+
+    publish(&mut state, &config, &pm, &fence);
+    assert_eq!(state.current_revision(), Some(2));
+    assert!(!state.ready());
+    for check in ["review", "contract"] {
+        record_evidence(
+            &mut state,
+            &config,
+            &verifier,
+            &fence,
+            check,
+            &format!("republished-{check}"),
+        );
+    }
+    assert!(state.context(&owner).permissions.can_confirm);
+    let revision = state.revisions.last().unwrap();
+    let revision_number = revision.revision;
+    let content_hash = revision.content_hash.clone();
+    apply(
+        &mut state,
+        &owner,
+        &config,
+        &SdlcCommand::Confirm {
+            revision: revision_number,
+            command: ConfirmCommand {
+                content_hash,
+                idempotency_key: "confirm-after-post-answer-evidence".into(),
+                expected_routing_policy_version: None,
+            },
+        },
+    )
+    .unwrap();
 }
 
 #[test]
