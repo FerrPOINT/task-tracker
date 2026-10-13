@@ -3583,6 +3583,69 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/requirements/{revision}/confirmation": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "confirmation_read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Confirmation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/requirements/{revision}/diff": {
       "get": {
         "tags": [
@@ -10131,6 +10194,14 @@
           "Draft"
         ]
       },
+      "DraftSubmode": {
+        "type": "string",
+        "enum": [
+          "brainstorming",
+          "clarification",
+          "awaiting_confirmation"
+        ]
+      },
       "EventsSuccess": {
         "oneOf": [
           {
@@ -10753,6 +10824,36 @@
           {
             "type": "object",
             "required": [
+              "fence",
+              "terminal",
+              "recovery",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "reconcile"
+                ]
+              },
+              "recovery": {
+                "$ref": "#/components/schemas/RecoveryDisposition"
+              },
+              "terminal": {
+                "$ref": "#/components/schemas/RuntimeTerminalObservation"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
               "idempotency_key",
               "operation"
             ],
@@ -10875,7 +10976,8 @@
         "type": "object",
         "required": [
           "observed_at",
-          "receipt"
+          "receipt",
+          "runtime_state"
         ],
         "properties": {
           "observed_at": {
@@ -10884,6 +10986,9 @@
           },
           "receipt": {
             "$ref": "#/components/schemas/LifecycleReceipt"
+          },
+          "runtime_state": {
+            "$ref": "#/components/schemas/RuntimeState"
           }
         },
         "additionalProperties": false
@@ -10985,6 +11090,13 @@
             "type": "string"
           },
           "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "resume_chat_id": {
             "type": [
               "string",
               "null"
@@ -11136,6 +11248,1375 @@
       },
       "MetadataEvent": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.queued"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.reconciled"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.assignment_reserved"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.lease_renewed"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.run_bound"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.result_accepted"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.proposal_submitted"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "proposal_id",
+                      "assignment_id",
+                      "execution_id",
+                      "agent_id",
+                      "output_sha256"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "assignment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "output_sha256": {
+                        "type": "string"
+                      },
+                      "proposal_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "pm.feedback_recorded"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "message_id",
+                      "fence",
+                      "content_hash"
+                    ],
+                    "properties": {
+                      "content_hash": {
+                        "type": "string"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "message_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "pm.completed"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "completion_id",
+                      "fence",
+                      "lease_id",
+                      "lease_version",
+                      "requirement_revision",
+                      "content_hash",
+                      "terminal_receipt_sha256",
+                      "workflow_receipt_sha256"
+                    ],
+                    "properties": {
+                      "completion_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "content_hash": {
+                        "type": "string"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "lease_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "terminal_receipt_sha256": {
+                        "type": "string"
+                      },
+                      "workflow_receipt_sha256": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
           {
             "type": "object",
             "required": [
@@ -14096,6 +15577,42 @@
           }
         }
       },
+      "RecoveryDisposition": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "disposition"
+            ],
+            "properties": {
+              "disposition": {
+                "type": "string",
+                "enum": [
+                  "stop"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "replay_safety_receipt",
+              "disposition"
+            ],
+            "properties": {
+              "disposition": {
+                "type": "string",
+                "enum": [
+                  "retry_transient"
+                ]
+              },
+              "replay_safety_receipt": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              }
+            }
+          }
+        ]
+      },
       "RefreshRequest": {
         "type": "object",
         "properties": {
@@ -14547,8 +16064,6 @@
         "required": [
           "agent_id",
           "fleet_config_revision",
-          "package_commit",
-          "package_manifest_sha256",
           "namespace_id",
           "namespace_name",
           "workflow_id",
@@ -14568,6 +16083,18 @@
             "maximum": 9007199254740991,
             "minimum": 1
           },
+          "instruction_manifest_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instruction_profile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "namespace_id": {
             "type": "string"
           },
@@ -14575,10 +16102,16 @@
             "type": "string"
           },
           "package_commit": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "package_manifest_sha256": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "profile": {
             "type": "string"
@@ -14737,6 +16270,44 @@
           "unknown"
         ]
       },
+      "RuntimeTerminalObservation": {
+        "type": "object",
+        "required": [
+          "assignment_hash",
+          "chat_id",
+          "run_id",
+          "state",
+          "receipt"
+        ],
+        "properties": {
+          "assignment_hash": {
+            "type": "string"
+          },
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeTerminalState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeTerminalState": {
+        "type": "string",
+        "enum": [
+          "succeeded",
+          "failed",
+          "cancelled"
+        ]
+      },
       "SdlcContext": {
         "type": "object",
         "required": [
@@ -14765,6 +16336,16 @@
             "format": "int32",
             "minimum": 0
           },
+          "draft_submode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DraftSubmode"
+              }
+            ]
+          },
           "owner_subject": {
             "type": "string"
           },
@@ -14788,6 +16369,16 @@
           },
           "stage": {
             "$ref": "#/components/schemas/Stage"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
           },
           "task_id": {
             "type": "string",
@@ -14918,7 +16509,12 @@
           "Clarification",
           "Backlog",
           "Analysis",
-          "Architecture"
+          "Architecture",
+          "Development",
+          "Review",
+          "Testing",
+          "Rework",
+          "Deployment"
         ]
       },
       "StatusResponse": {
