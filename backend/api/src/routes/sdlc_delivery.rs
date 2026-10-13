@@ -208,6 +208,18 @@ mod tests {
                 "/api/v1/issues/{id}/sdlc/pm-feedback/operations/{idempotency_key}",
                 "get",
             ),
+            (
+                "/api/v1/issues/{id}/sdlc/requirements/{revision}/confirmation",
+                "get",
+            ),
+            (
+                "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume",
+                "post",
+            ),
+            (
+                "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",
+                "get",
+            ),
         ] {
             assert!(spec["paths"][path][method]["security"].is_array(), "{path}");
             assert!(
@@ -217,6 +229,24 @@ mod tests {
         }
         let schemas = &spec["components"]["schemas"];
         assert_eq!(schemas["LifecycleReadback"]["additionalProperties"], false);
+        assert_eq!(
+            schemas["ResumePmExecutionLease"]["additionalProperties"],
+            false
+        );
+        for field in [
+            "input",
+            "checkpoint",
+            "previous_run_id",
+            "previous_run_terminal",
+            "expected_lease_version",
+        ] {
+            assert!(
+                schemas["ResumePmExecutionLease"]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&serde_json::json!(field))
+            );
+        }
         for field in ["observed_at", "receipt", "runtime_state"] {
             assert!(
                 schemas["LifecycleReadback"]["required"]
