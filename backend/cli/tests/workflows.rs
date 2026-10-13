@@ -898,11 +898,7 @@ async fn sdlc_confirmation_read_returns_actual_retained_owner_receipt_without_po
     const CONSENT: &str = "22222222-2222-2222-2222-222222222222";
     let receipt = json!({"id":CONSENT,"task_id":TASK,"revision":7,"content_hash":"a".repeat(64),
         "owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"});
-    let server = Server::start(vec![
-        (200,json!({"task_id":TASK,"confirmation_id":CONSENT,"requirement_revision":7,"content_hash":"a".repeat(64)})),
-        (200,json!({"events":[{"task_id":TASK,"sequence":21,"event_type":"requirements.published","payload":{}}]})),
-        (200,json!({"events":[{"task_id":TASK,"sequence":25,"event_type":"requirements.confirmed","payload":{"result":receipt}}]})),
-    ]).await;
+    let server = Server::start(vec![(200, receipt.clone())]).await;
     let output = server
         .run(
             &[
@@ -923,19 +919,11 @@ async fn sdlc_confirmation_read_returns_actual_retained_owner_receipt_without_po
         receipt
     );
     let requests = server.requests();
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 1);
     assert!(requests.iter().all(|r| r.method == "GET"));
     assert_eq!(
         requests[0].path,
-        format!("/api/v1/issues/{TASK}/sdlc/analysis-intent")
-    );
-    assert_eq!(
-        requests[1].path,
-        format!("/api/v1/issues/{TASK}/sdlc/events?after=0")
-    );
-    assert_eq!(
-        requests[2].path,
-        format!("/api/v1/issues/{TASK}/sdlc/events?after=21")
+        format!("/api/v1/issues/{TASK}/sdlc/requirements/7/confirmation")
     );
 }
 
@@ -943,11 +931,12 @@ async fn sdlc_confirmation_read_returns_actual_retained_owner_receipt_without_po
 async fn sdlc_confirmation_read_rejects_mismatched_receipt_without_publishing() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
     const CONSENT: &str = "22222222-2222-2222-2222-222222222222";
-    let server = Server::start(vec![
-        (200,json!({"task_id":TASK,"confirmation_id":CONSENT,"requirement_revision":7,"content_hash":"a".repeat(64)})),
-        (200,json!({"events":[{"task_id":TASK,"sequence":1,"event_type":"requirements.confirmed",
-            "payload":{"result":{"id":CONSENT,"task_id":TASK,"revision":7,"content_hash":"b".repeat(64),"owner_subject":"owner","stage":"Backlog"}}}]})),
-    ]).await;
+    let server = Server::start(vec![(
+        200,
+        json!({"id":CONSENT,"task_id":TASK,"revision":8,"content_hash":"a".repeat(64),
+        "owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"}),
+    )])
+    .await;
     let output = server
         .run(
             &[
@@ -964,7 +953,102 @@ async fn sdlc_confirmation_read_rejects_mismatched_receipt_without_publishing() 
         .await;
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
+    assert_eq!(server.requests().len(), 1);
     assert!(server.requests().iter().all(|r| r.method == "GET"));
+}
+
+#[tokio::test]
+async fn sdlc_confirmation_read_denials_do_not_fallback_to_intent_outbox_or_post() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    for status in [403, 404, 409] {
+        let server = Server::start(vec![(status, json!({"error":"unavailable receipt"}))]).await;
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "confirmation",
+                    "read",
+                    "--task",
+                    TASK,
+                    "--revision",
+                    "7",
+                ],
+                None,
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let requests = server.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "GET");
+        assert_eq!(
+            requests[0].path,
+            format!("/api/v1/issues/{TASK}/sdlc/requirements/7/confirmation")
+        );
+    }
+}
+
+#[tokio::test]
+async fn sdlc_confirmation_read_rejects_malformed_receipt_without_fallback() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let valid = json!({"id":"22222222-2222-2222-2222-222222222222","task_id":TASK,"revision":7,
+        "content_hash":"a".repeat(64),"owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"});
+    for (field, value) in [
+        ("id", json!("00000000-0000-0000-0000-000000000000")),
+        ("task_id", json!("33333333-3333-3333-3333-333333333333")),
+        ("revision", json!("7")),
+        ("content_hash", json!("not-a-sha256")),
+        ("owner_subject", json!(" ")),
+        ("created_at", Value::Null),
+        ("stage", json!("Analysis")),
+    ] {
+        let mut receipt = valid.clone();
+        receipt[field] = value;
+        let server = Server::start(vec![(200, receipt)]).await;
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "confirmation",
+                    "read",
+                    "--task",
+                    TASK,
+                    "--revision",
+                    "7",
+                ],
+                None,
+            )
+            .await;
+        assert!(!output.status.success(), "accepted invalid {field}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(server.requests().len(), 1);
+        assert_eq!(server.requests()[0].method, "GET");
+    }
+}
+
+#[tokio::test]
+async fn sdlc_confirmation_read_rejects_invalid_revision_before_http() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![]).await;
+    for revision in ["0", "-1", "9007199254740992", "1.0", "not-a-revision"] {
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "confirmation",
+                    "read",
+                    "--task",
+                    TASK,
+                    "--revision",
+                    revision,
+                ],
+                None,
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+    assert!(server.requests().is_empty());
 }
 
 #[tokio::test]

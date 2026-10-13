@@ -150,6 +150,171 @@ fn document() -> RequirementsDocument {
 }
 
 #[test]
+fn sdlc_confirmation_read_uses_exact_saved_owner_history_without_current_stage_rewrite() {
+    use crate::sdlc_confirmation::exact_receipt;
+    let (mut state, config, owner, pm, verifier, fence) = fixture();
+    publish(&mut state, &config, &pm, &fence);
+    for check in ["review", "contract"] {
+        record_evidence(&mut state, &config, &verifier, &fence, check, check);
+    }
+    let hash = state.revisions[0].content_hash.clone();
+    let result = apply(
+        &mut state,
+        &owner,
+        &config,
+        &SdlcCommand::Confirm {
+            revision: 1,
+            command: ConfirmCommand {
+                content_hash: hash.clone(),
+                idempotency_key: "direct-confirmation".into(),
+                expected_routing_policy_version: None,
+            },
+        },
+    )
+    .unwrap();
+    let receipt: Confirmation = serde_json::from_value(result.clone()).unwrap();
+    assert_eq!(state.stage, Stage::Analysis);
+    let before = canonical_hash(&state).unwrap();
+    assert_eq!(
+        serde_json::to_value(exact_receipt(&state, 1, Some(&receipt), Some(&hash)).unwrap())
+            .unwrap(),
+        result
+    );
+    assert_eq!(canonical_hash(&state).unwrap(), before);
+    assert!(matches!(
+        exact_receipt(&state, 2, None, None),
+        Err(AppError::NotFound(_))
+    ));
+    assert!(matches!(
+        exact_receipt(&state, 1, None, Some(&hash)),
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        exact_receipt(&state, 1, Some(&receipt), None),
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        exact_receipt(&state, 1, Some(&receipt), Some("wrong-hash")),
+        Err(AppError::Conflict(_))
+    ));
+    let mut inconsistent_history = state.clone();
+    inconsistent_history.confirmations[0].created_at += chrono::Duration::seconds(1);
+    assert!(matches!(
+        exact_receipt(&inconsistent_history, 1, Some(&receipt), Some(&hash)),
+        Err(AppError::Conflict(_))
+    ));
+    let mut duplicate = state.clone();
+    duplicate.confirmations.push(receipt.clone());
+    assert!(matches!(
+        exact_receipt(&duplicate, 1, Some(&receipt), Some(&hash)),
+        Err(AppError::Conflict(_))
+    ));
+    for field in ["owner", "task", "stage", "hash"] {
+        let mut forged = receipt.clone();
+        match field {
+            "owner" => forged.owner_subject = "foreign".into(),
+            "task" => forged.task_id = Uuid::new_v4(),
+            "stage" => forged.stage = Stage::Analysis,
+            _ => forged.content_hash = "b".repeat(64),
+        }
+        let mut forged_state = state.clone();
+        forged_state.confirmations[0] = forged.clone();
+        assert!(matches!(
+            exact_receipt(&forged_state, 1, Some(&forged), Some(&hash)),
+            Err(AppError::Conflict(_))
+        ));
+    }
+    let mut later_revision = state.revisions[0].clone();
+    later_revision.revision = 2;
+    state.revisions.push(later_revision);
+    assert_eq!(
+        exact_receipt(&state, 1, Some(&receipt), Some(&hash)).unwrap(),
+        receipt
+    );
+}
+
+#[test]
+fn sdlc_confirmation_read_grant_does_not_grant_owner_confirmation_or_foreign_task_access() {
+    use crate::sdlc_confirmation::authorize_read;
+    let (state, config, owner, mut pm, _, _) = fixture();
+    assert!(matches!(
+        authorize_read(&state, &pm),
+        Err(AppError::Forbidden)
+    ));
+    pm.scopes.insert("task-tracker:read".into());
+    authorize_read(&state, &pm).unwrap();
+    authorize_read(&state, &owner).unwrap();
+    let mut foreign = pm.clone();
+    foreign.subject = "foreign".into();
+    assert!(matches!(
+        authorize_read(&state, &foreign),
+        Err(AppError::Forbidden)
+    ));
+    let mut foreign_state = state.clone();
+    foreign_state.task_id = Uuid::new_v4();
+    foreign_state.root_task_id = foreign_state.task_id;
+    assert!(matches!(
+        authorize_read(&foreign_state, &pm),
+        Err(AppError::Forbidden)
+    ));
+    let mut stale = state.clone();
+    stale.assignment.as_mut().unwrap().version += 1;
+    assert!(matches!(
+        authorize_read(&stale, &pm),
+        Err(AppError::Forbidden)
+    ));
+    let mut child = state.clone();
+    child.root_task_id = Uuid::new_v4();
+    assert!(authorize_read(&child, &pm).is_err());
+    let command = SdlcCommand::Confirm {
+        revision: 1,
+        command: ConfirmCommand {
+            content_hash: "a".repeat(64),
+            idempotency_key: "forbidden".into(),
+            expected_routing_policy_version: None,
+        },
+    };
+    assert!(matches!(
+        authorize(&state, &pm, &config, &command),
+        Err(AppError::Forbidden)
+    ));
+}
+
+#[test]
+fn sdlc_confirmation_read_allowlist_adds_only_exact_get_with_safe_revision() {
+    use crate::sdlc_confirmation::{is_confirmation_read, validate_revision};
+    for revision in ["1", "9007199254740991"] {
+        assert!(is_confirmation_read(
+            "GET",
+            &["requirements", revision, "confirmation"]
+        ));
+    }
+    for revision in ["0", "01", "+1", "-1", "1.0", "9007199254740992"] {
+        assert!(!is_confirmation_read(
+            "GET",
+            &["requirements", revision, "confirmation"]
+        ));
+    }
+    for method in ["POST", "HEAD", "PATCH", "DELETE"] {
+        assert!(!is_confirmation_read(
+            method,
+            &["requirements", "1", "confirmation"]
+        ));
+    }
+    for resource in [
+        vec!["analysis-intent"],
+        vec!["events"],
+        vec!["requirements", "1", "confirm"],
+        vec!["requirements", "1", "confirmation", "extra"],
+    ] {
+        assert!(!is_confirmation_read("GET", &resource));
+    }
+    for revision in [0, -1, MAX_SAFE_VERSION + 1] {
+        assert!(validate_revision(revision).is_err());
+    }
+}
+
+#[test]
 fn canonical_status_and_extensions_survive_aggregate_roundtrip_without_legacy_defaults() {
     use domain::sdlc_lifecycle::LifecycleStatus;
     let (state, _, owner, _, _, _) = fixture();

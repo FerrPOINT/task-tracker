@@ -1375,6 +1375,58 @@ impl SdlcRepository for PostgresSdlcRepository {
         tx.commit().await.map_err(map_db)?;
         Ok(state)
     }
+    async fn confirmation_read(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        revision: i64,
+    ) -> Result<Confirmation, AppError> {
+        app::sdlc_confirmation::validate_revision(revision)?;
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load_read(&tx, task, actor).await?;
+        app::sdlc_confirmation::authorize_read(&state, actor)?;
+        let row = tx
+            .query_one(statement(
+                "SELECT c.id,c.revision,c.content_hash,c.payload,r.content_hash AS requirement_hash
+             FROM sdlc_confirmations c LEFT JOIN sdlc_requirements r
+                ON r.task_id=c.task_id AND r.revision=c.revision
+             WHERE c.task_id=$1 AND c.revision=$2",
+                vec![task.into(), revision.into()],
+            ))
+            .await
+            .map_err(map_db)?;
+        let (persisted, requirement_hash) = match row {
+            None => (None, None),
+            Some(row) => {
+                let payload: Json = row.try_get("", "payload").map_err(map_db)?;
+                let receipt: Confirmation = serde_json::from_value(payload.clone())
+                    .map_err(|_| AppError::conflict("owner_confirmation_history_inconsistent"))?;
+                if receipt.id != row.try_get::<Uuid>("", "id").map_err(map_db)?
+                    || receipt.revision != row.try_get::<i64>("", "revision").map_err(map_db)?
+                    || receipt.content_hash
+                        != row.try_get::<String>("", "content_hash").map_err(map_db)?
+                    || serde_json::to_value(&receipt).map_err(AppError::internal)? != payload
+                {
+                    return Err(AppError::conflict(
+                        "owner_confirmation_history_inconsistent",
+                    ));
+                }
+                (
+                    Some(receipt),
+                    row.try_get::<Option<String>>("", "requirement_hash")
+                        .map_err(map_db)?,
+                )
+            }
+        };
+        let receipt = app::sdlc_confirmation::exact_receipt(
+            &state,
+            revision,
+            persisted.as_ref(),
+            requirement_hash.as_deref(),
+        )?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(receipt)
+    }
     async fn pm_draft_input(
         &self,
         task: Uuid,

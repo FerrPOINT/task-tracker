@@ -443,7 +443,7 @@ pub struct Question {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq)]
 pub struct Confirmation {
     pub id: Uuid,
     pub task_id: Uuid,
@@ -815,6 +815,12 @@ pub trait SdlcRepository: Send + Sync {
         key: &str,
     ) -> Result<CreatedDraft, AppError>;
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError>;
+    async fn confirmation_read(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        revision: i64,
+    ) -> Result<Confirmation, AppError>;
     async fn pm_draft_input(
         &self,
         task: Uuid,

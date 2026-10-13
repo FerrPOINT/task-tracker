@@ -5,6 +5,19 @@
 статус квалификации и открытые gates:
 [single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
 
+## Direct Confirmation Readback (Producer Source)
+
+Parent registration: `GET /api/v1/issues/{task}/sdlc/requirements/{revision}/confirmation`
+returns the existing exact `Confirmation`, without a wrapper or new schema fields.
+The current PM assignment grant with `task-tracker:read` is supported after parent
+adds the narrowly scoped allowlist predicate from `app::sdlc_confirmation`. Fresh
+active-user/project ACL and assignment checks precede exact revision/hash/owner
+history verification. A live execution lease is not required for this read.
+404 means consent has not been recorded, 409 means inconsistent saved history,
+403 means denied access, and invalid revision is 422. Receipt stage remains the
+historical Backlog value. CLI `sdlc confirmation read --task UUID --revision N`
+uses one direct GET, with no analysis-intent/outbox fallback and no mutation.
+
 Reserved PM requirement/question writes require the exact machine scope/fence and
 a current Tracker execution lease; the command schema does not accept a readiness
 claim. Owner answers and separate verifier evidence use admitted history when

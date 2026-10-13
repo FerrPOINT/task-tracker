@@ -241,6 +241,64 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .await
         .unwrap();
     }
+    assert!(matches!(
+        repo.confirmation_read(task, &pm, 1).await,
+        Err(AppError::NotFound(_))
+    ));
+    let confirmation = repo
+        .execute_verified(
+            task,
+            &owner,
+            SdlcCommand::Confirm {
+                revision: 1,
+                command: ConfirmCommand {
+                    content_hash: hash.clone(),
+                    idempotency_key: "confirm".into(),
+                    expected_routing_policy_version: Some(1),
+                },
+            },
+            reservation.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+    let before_receipt_reads = [
+        count(&db, "sdlc_confirmations").await,
+        count(&db, "sdlc_outbox").await,
+        count(&db, "sdlc_pm_lease_operations").await,
+        count(&db, "sdlc_idempotency").await,
+    ];
+    let mut pm_reader = pm.clone();
+    pm_reader.scopes.remove("task-tracker:write");
+    let read_confirmation = repo.confirmation_read(task, &pm_reader, 1).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&read_confirmation).unwrap(),
+        confirmation
+    );
+    assert_eq!(read_confirmation.stage, Stage::Backlog);
+    assert_eq!(
+        repo.read(task, &owner).await.unwrap().stage,
+        Stage::Analysis
+    );
+    assert!(matches!(
+        repo.confirmation_read(task, &pm_reader, 2).await,
+        Err(AppError::NotFound(_))
+    ));
+    exec(&db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='pm')",vec![project.into()]).await.unwrap();
+    assert!(matches!(
+        repo.confirmation_read(task, &pm_reader, 1).await,
+        Err(AppError::Forbidden)
+    ));
+    exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='pm'",vec![project.into()]).await.unwrap();
+    assert_eq!(
+        [
+            count(&db, "sdlc_confirmations").await,
+            count(&db, "sdlc_outbox").await,
+            count(&db, "sdlc_pm_lease_operations").await,
+            count(&db, "sdlc_idempotency").await
+        ],
+        before_receipt_reads
+    );
     repo.complete_pm_draft(
         task,
         &scheduler,
@@ -257,22 +315,6 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             workflow_receipt_sha256: "b".repeat(64),
             idempotency_key: "pm-complete".into(),
         },
-    )
-    .await
-    .unwrap();
-    repo.execute_verified(
-        task,
-        &owner,
-        SdlcCommand::Confirm {
-            revision: 1,
-            command: ConfirmCommand {
-                content_hash: hash,
-                idempotency_key: "confirm".into(),
-                expected_routing_policy_version: Some(1),
-            },
-        },
-        reservation,
-        None,
     )
     .await
     .unwrap();
@@ -516,6 +558,17 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     );
     // Exercise actual server-clock expiry without disabling guards or mutating protected ledgers.
     db.execute_unprepared("SELECT pg_sleep(31)").await.unwrap();
+    let lease_operations_before_receipt = count(&db, "sdlc_pm_lease_operations").await;
+    let outbox_before_receipt = count(&db, "sdlc_outbox").await;
+    assert_eq!(
+        repo.confirmation_read(task, &pm_reader, 1).await.unwrap(),
+        read_confirmation
+    );
+    assert_eq!(
+        count(&db, "sdlc_pm_lease_operations").await,
+        lease_operations_before_receipt
+    );
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_receipt);
     let fresh = repo.lifecycle_read(task, &reader).await.unwrap();
     assert_eq!(fresh.runtime_state, RuntimeState::Unknown);
     assert_eq!(fresh.receipt.task.runtime, RuntimeState::Running);

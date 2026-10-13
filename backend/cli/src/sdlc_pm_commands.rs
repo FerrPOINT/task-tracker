@@ -16,7 +16,7 @@ pub enum RoutingCommand {
 
 #[derive(Subcommand)]
 pub enum ConfirmationCommand {
-    /// Read the retained owner receipt matching the authoritative Analysis intent
+    /// Read the exact retained owner confirmation receipt directly
     Read {
         #[arg(long)]
         task: Uuid,
@@ -74,61 +74,37 @@ pub async fn routing(api: &Api, command: RoutingCommand) -> Result<Value> {
 
 pub async fn confirmation(api: &Api, command: ConfirmationCommand) -> Result<Value> {
     let ConfirmationCommand::Read { task, revision } = command;
-    let intent = api.get(&sdlc_path(task, "/analysis-intent")).await?;
+    let receipt = api
+        .get(&sdlc_path(
+            task,
+            &format!("/requirements/{revision}/confirmation"),
+        ))
+        .await?;
     let task_text = task.to_string();
-    let confirmation_id = intent
-        .get("confirmation_id")
-        .and_then(Value::as_str)
-        .filter(|id| {
-            Uuid::parse_str(id).is_ok_and(|value| !value.is_nil() && value.to_string() == *id)
-        })
-        .ok_or_else(|| anyhow::anyhow!("Analysis intent has no canonical confirmation UUID"))?;
-    if intent["task_id"].as_str() != Some(task_text.as_str())
-        || intent["requirement_revision"].as_i64() != Some(revision)
-        || intent["content_hash"].as_str().is_none()
+    let canonical_id = receipt.get("id").and_then(Value::as_str).is_some_and(|id| {
+        Uuid::parse_str(id).is_ok_and(|value| !value.is_nil() && value.to_string() == id)
+    });
+    let canonical_hash = receipt["content_hash"].as_str().is_some_and(|hash| {
+        hash.len() == 64
+            && hash
+                .bytes()
+                .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+    });
+    if !canonical_id
+        || !canonical_hash
+        || receipt["task_id"].as_str() != Some(task_text.as_str())
+        || receipt["revision"].as_i64() != Some(revision)
+        || receipt["owner_subject"]
+            .as_str()
+            .is_none_or(|owner| owner.trim().is_empty())
+        || receipt["created_at"]
+            .as_str()
+            .is_none_or(|time| time.trim().is_empty())
+        || receipt["stage"] != "Backlog"
     {
-        anyhow::bail!("Analysis intent does not match requested task/revision");
+        anyhow::bail!("owner confirmation receipt does not match requested task/revision");
     }
-    let mut after = 0i64;
-    // Bounded reconciliation of the existing durable outbox, with no POST replay.
-    for _ in 0..100 {
-        let page = api
-            .get(&sdlc_path(task, &format!("/events?after={after}")))
-            .await?;
-        let events = page["events"]
-            .as_array()
-            .ok_or_else(|| anyhow::anyhow!("invalid Tracker outbox response"))?;
-        if events.is_empty() {
-            anyhow::bail!("owner confirmation receipt not found");
-        }
-        for event in events {
-            let sequence = event["sequence"]
-                .as_i64()
-                .filter(|n| *n > after)
-                .ok_or_else(|| anyhow::anyhow!("Tracker outbox cursor did not advance"))?;
-            if event["task_id"].as_str() != Some(task_text.as_str()) {
-                anyhow::bail!("Tracker outbox task mismatch");
-            }
-            after = sequence;
-            if event["event_type"] != "requirements.confirmed" {
-                continue;
-            }
-            let receipt = &event["payload"]["result"];
-            if receipt["id"].as_str() != Some(confirmation_id) {
-                continue;
-            }
-            if receipt["task_id"].as_str() != Some(task_text.as_str())
-                || receipt["revision"].as_i64() != Some(revision)
-                || receipt["content_hash"] != intent["content_hash"]
-                || receipt["owner_subject"].as_str().is_none_or(str::is_empty)
-                || receipt["stage"] != "Backlog"
-            {
-                anyhow::bail!("owner confirmation receipt does not match intent");
-            }
-            return Ok(receipt.clone());
-        }
-    }
-    anyhow::bail!("confirmation readback exceeded 100 outbox pages")
+    Ok(receipt)
 }
 
 #[derive(Subcommand)]

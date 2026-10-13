@@ -99,11 +99,24 @@ task-tracker sdlc confirmation read --task UUID --revision N
 `revision confirm` is owner-session only. Payload: `content_hash`,
 `idempotency_key`, optional `expected_routing_policy_version`.
 Output is the original `Confirmation` with `stage:Backlog`, even though the
-transaction queues aggregate Analysis. `confirmation read` performs GET
-`analysis-intent`, then bounded legacy `events?after=...` pagination. It returns
-the actual `requirements.confirmed.payload.result` only when confirmation UUID,
-task UUID, revision and hash match the intent. It never POSTs or fabricates consent.
-Workflow uses an ordinarily authorized read credential, not a PM assignment PAT.
+transaction queues aggregate Analysis. `confirmation read` performs one GET
+`P/requirements/{revision}/confirmation` and returns the exact saved `Confirmation`.
+It never reads analysis-intent/outbox, POSTs or fabricates consent. The direct
+repository reader accepts the current PM assignment grant plus service read scope,
+with fresh active-user/project ACL, assignment/subject and exact revision/hash/owner
+history checks, but no live lease requirement. Missing consent is 404 (WAIT), ledger
+inconsistency is 409; invalid revision is 422 and unauthorized access is 403.
+Historical receipt stage stays Backlog even when the task has advanced.
+
+Parent must register this GET/OpenAPI and add its PM allowlist case. Producer source
+provides `SdlcService::confirmation_read(task,actor,revision) -> Confirmation` and the
+API-independent predicate `app::sdlc_confirmation::is_confirmation_read(method,parts)`.
+In the existing `pm_request_policy`, AFTER grant and own-task-prefix validation,
+replace the default `false` arm with that predicate on `parts.as_slice()`. No other
+PM route is opened, particularly analysis-intent, owner confirmation POST or resume.
+No new DTO/migration is required. The old CLI scan is removed, not retained as fallback.
+Workflow waits for the real owner receipt before ending its PM Workflow/runtime;
+only the trusted scheduler accepts PM Complete after actual terminal.
 
 ## Internal lifecycle contract for parent
 
