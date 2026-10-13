@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,7 +14,7 @@ WORKFLOW = ROOT / ".github/workflows/ci.yml"
 class CiContractChecksTest(unittest.TestCase):
     def test_frontend_uses_ui_pin_and_backend_retains_sdk_pin(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
-        frontend = workflow.split("\n  frontend:\n", 1)[1]
+        frontend = re.split(r"\n  [a-zA-Z0-9_-]+:\n", workflow.split("\n  frontend:\n", 1)[1], 1)[0]
         backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
         self.assertIn("pin=.base-ui-revision", frontend)
         self.assertNotIn("pin=.namespace-base-revision", frontend)
