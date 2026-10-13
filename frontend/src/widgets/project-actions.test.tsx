@@ -7,7 +7,7 @@ const catalog = vi.hoisted(() => vi.fn())
 vi.mock('./namespace-context', () => ({ useNamespaceCatalog: catalog }))
 
 afterEach(() => vi.unstubAllEnvs())
-it('opens actions for the exact project without losing the all-projects scope', async () => {
+it('opens settings for the exact project without losing the all-projects scope', async () => {
   vi.stubEnv('VITE_NAMESPACE_ENABLED', 'true')
   const namespace = {
     registry_instance_id: '11111111-1111-4111-8111-111111111111',
@@ -18,10 +18,11 @@ it('opens actions for the exact project without losing the all-projects scope', 
       <ProjectActions project={{ key: 'SECOND', name: 'Same name', namespace }} />
     </MemoryRouter>,
   )
-  await userEvent.click(screen.getByRole('button', { name: 'Действия проекта Same name · SECOND' }))
-  const href = screen.getByRole('menuitem', { name: 'Корзина' }).getAttribute('href')!
+  const href = screen
+    .getByRole('link', { name: 'Настройки проекта: Same name · SECOND' })
+    .getAttribute('href')!
   const url = new URL(href, 'https://test.invalid')
-  expect(url.pathname).toBe('/projects/SECOND/trash')
+  expect(url.pathname).toBe('/projects/SECOND/settings')
   expect(url.searchParams.get('namespace_id')).toBe(namespace.namespace_id)
   expect(url.searchParams.get('project_scope')).toBe('all')
 })

@@ -195,13 +195,13 @@ describe('AppShell notifications', () => {
       'aria-current',
     )
     expect(within(navigation).queryByRole('link', { name: 'Корзина' })).not.toBeInTheDocument()
-    await userEvent
-      .setup()
-      .click(within(navigation).getByRole('button', { name: /Действия проекта/ }))
-    expect(screen.getByRole('menuitem', { name: 'Корзина' })).not.toHaveAttribute('aria-current')
-    expect(screen.getByRole('menuitem', { name: 'Настройки проекта' })).not.toHaveAttribute(
-      'aria-current',
+    expect(within(navigation).getByRole('link', { name: /Настройки проекта:/ })).toHaveAttribute(
+      'href',
+      '/projects/XP/settings',
     )
+    expect(
+      within(navigation).getByRole('link', { name: /Настройки проекта:/ }),
+    ).not.toHaveAttribute('aria-current')
   })
 
   it('retains project navigation and selects project reports for filtered reports', () => {

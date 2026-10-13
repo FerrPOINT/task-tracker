@@ -146,7 +146,7 @@ test.describe('smoke', () => {
         },
       ]),
     )
-    await page.route('**/api/v1/projects', (route) =>
+    await page.route(/\/api\/v1\/projects(?:\?.*)?$/, (route) =>
       routeJson(route, {
         projects: [
           {
@@ -162,6 +162,26 @@ test.describe('smoke', () => {
         ],
       }),
     )
+    let projectDetails = {
+      id: '00000000-0000-0000-0000-000000000010',
+      key: mockUser.key,
+      name: mockUser.name,
+      description: 'Smoke test project',
+      owner_id: mockUser.id,
+      todo_count: 1,
+      in_progress_count: 0,
+      done_count: 0,
+    }
+    let failSave = true
+    await page.route(`**/api/v1/projects/${mockUser.key}`, (route) => {
+      if (route.request().method() === 'PATCH') {
+        if (failSave) return routeJson(route, { error: 'unavailable' }, 500)
+        const values = route.request().postDataJSON()
+        expect(values).toEqual({ name: mockUser.name, description: 'Updated description' })
+        projectDetails = { ...projectDetails, ...values }
+      }
+      return routeJson(route, projectDetails)
+    })
     await page.route('**/api/v1/projects/**/members**', (route) =>
       routeJson(route, {
         members: [
@@ -365,6 +385,23 @@ test.describe('smoke', () => {
     await page.goto(`${appBaseURL}/projects`)
     await expect(page.getByText(mockUser.name)).toBeVisible()
 
+    await page.getByRole('link', { name: /(?:settings|настройки проекта):/i }).click()
+    await expect(page).toHaveURL(`${appBaseURL}/projects/${mockUser.key}/settings`)
+    const description = page.getByLabel(/^(description|описание)$/i)
+    await description.fill('Updated description')
+    await page.getByRole('button', { name: /^(save|сохранить)$/i }).click()
+    await expect(page.getByRole('alert')).toContainText(/save|сохранить/i)
+    await expect(description).toHaveValue('Updated description')
+    failSave = false
+    await page.getByRole('button', { name: /^(save|сохранить)$/i }).click()
+    await expect(page.getByRole('button', { name: /^(save|сохранить)$/i })).toBeDisabled()
+    await page.getByRole('link', { name: /custom fields|кастомные поля/i }).click()
+    await expect(page.getByRole('textbox', { name: /field name|название поля/i })).toHaveCount(0)
+    await page.getByRole('button', { name: /add field|добавить поле/i }).click()
+    await expect(page.getByRole('textbox', { name: /field name|название поля/i })).toBeVisible()
+    await page.getByRole('button', { name: /cancel|отмена/i }).click()
+    await expect(page.getByRole('textbox', { name: /field name|название поля/i })).toHaveCount(0)
+
     await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
 
@@ -396,12 +433,19 @@ test.describe('smoke', () => {
 
       for (const [path, mode] of [
         ['/projects', 'wide'],
+        [`/projects/${mockUser.key}/settings`, 'reading'],
+        [`/projects/${mockUser.key}/settings/custom-fields`, 'reading'],
         [`/issues/create?project_key=${mockUser.key}`, 'reading'],
         [`/issues/${mockUser.issueId}`, 'detail-with-aside'],
       ] as const) {
         await page.goto(`${appBaseURL}${path}`)
-        if (mode === 'wide') await expect(page.getByText(mockUser.name).first()).toBeVisible()
-        if (mode === 'reading') {
+        if (mode === 'wide')
+          await expect(
+            page.getByRole('main').getByText(mockUser.name, { exact: true }),
+          ).toBeVisible()
+        if (path.startsWith('/projects/') && mode === 'reading')
+          await expect(page.getByRole('heading', { name: new RegExp(mockUser.name) })).toBeVisible()
+        if (path.startsWith('/issues/create')) {
           await expect(
             page.getByRole('heading', { name: /create issue|создать задачу/i }),
           ).toBeVisible()
@@ -467,6 +511,21 @@ test.describe('smoke', () => {
           }
         }
 
+        if (viewport.width >= 1440 && path.endsWith('/settings')) {
+          const header = page
+            .getByRole('region', { name: `${mockUser.name} · ${mockUser.key}`, exact: true })
+            .locator('.base-sidebar-group-header')
+          const action = await header
+            .getByRole('link', { name: /settings|настройки/i })
+            .boundingBox()
+          const caret = await header.locator('.base-sidebar-group-chevron').boundingBox()
+          const row = await header.boundingBox()
+          expect(action).not.toBeNull()
+          expect(caret).not.toBeNull()
+          expect(action!.x).toBeGreaterThan(row!.x)
+          expect(action!.x + action!.width).toBeLessThanOrEqual(caret!.x)
+          expect(caret!.x + caret!.width).toBeLessThanOrEqual(row!.x + row!.width)
+        }
         const layout = page.locator('[data-page-layout]')
         await expect(layout).toHaveAttribute('data-page-layout', mode)
         const geometry = await layout.evaluate((element) => {

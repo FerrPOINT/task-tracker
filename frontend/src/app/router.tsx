@@ -26,6 +26,12 @@ const ProjectTrashPage = lazy(() =>
 const ProjectCustomFieldsPage = lazy(() =>
   import('@/pages/project-custom-fields').then((m) => ({ default: m.ProjectCustomFieldsPage })),
 )
+const ProjectSettingsPage = lazy(() =>
+  import('@/pages/project-settings').then((m) => ({ default: m.ProjectSettingsPage })),
+)
+const ProjectGeneralSettingsPage = lazy(() =>
+  import('@/pages/project-settings').then((m) => ({ default: m.ProjectGeneralSettingsPage })),
+)
 const SearchPage = lazy(() => import('@/pages/search'))
 const IssueCreatePage = lazy(() =>
   import('@/pages/issue-create').then((m) => ({ default: m.IssueCreatePage })),
@@ -71,8 +77,12 @@ export const router = createProductRouter(
             },
             { path: '/projects/:projectKey/trash', element: withSuspense(<ProjectTrashPage />) },
             {
-              path: '/projects/:projectKey/settings/custom-fields',
-              element: withSuspense(<ProjectCustomFieldsPage />),
+              path: '/projects/:projectKey/settings',
+              element: withSuspense(<ProjectSettingsPage />),
+              children: [
+                { index: true, element: withSuspense(<ProjectGeneralSettingsPage />) },
+                { path: 'custom-fields', element: withSuspense(<ProjectCustomFieldsPage />) },
+              ],
             },
             { path: '/search', element: withSuspense(<SearchPage />) },
             { path: '/notifications', element: withSuspense(<NotificationsPage />) },

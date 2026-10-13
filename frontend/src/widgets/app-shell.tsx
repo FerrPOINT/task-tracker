@@ -179,6 +179,7 @@ function ProjectNavigation({
             active={[
               ...items,
               { to: `/projects/${key}/trash` },
+              { to: `/projects/${key}/settings` },
               { to: `/projects/${key}/settings/custom-fields` },
             ].some((item) =>
               isActive(
@@ -283,7 +284,8 @@ export function AppShell() {
   const notifications = notificationList?.notifications ?? []
   const unreadCount = notificationList?.unread_count ?? 0
   const pageLayout =
-    location.pathname === '/issues/create' || location.pathname.endsWith('/settings/custom-fields')
+    location.pathname === '/issues/create' ||
+    /\/projects\/[^/]+\/settings(?:\/|$)/.test(location.pathname)
       ? 'reading'
       : /^\/issues\/[^/]+$/.test(location.pathname)
         ? 'detail-with-aside'

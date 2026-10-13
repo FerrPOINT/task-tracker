@@ -1,15 +1,9 @@
-import { MoreHorizontal, Settings2, Trash2 } from 'lucide-react'
+import { Settings, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router'
 import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@sdlc/ui/ui'
+import { Button, DropdownMenuItem } from '@sdlc/ui/ui'
 import { useNamespaceCatalog } from './namespace-context'
 
 type Project = { key: string; name: string; namespace?: NamespaceLocation }
@@ -26,9 +20,9 @@ export function ProjectActionItems({
   const actions = [
     { to: `/projects/${key}/trash`, label: t('trash.title'), icon: Trash2 },
     {
-      to: `/projects/${key}/settings/custom-fields`,
+      to: `/projects/${key}/settings`,
       label: t('navigation.settings'),
-      icon: Settings2,
+      icon: Settings,
     },
   ]
   return (
@@ -136,21 +130,24 @@ export function ProjectActions({
   project: Project
   onNavigate?: () => void
 }) {
+  const { t } = useTranslation()
+  const { pathname, search } = useLocation()
+  const to = `/projects/${encodeURIComponent(project.key)}/settings`
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11"
-          aria-label={`Действия проекта ${project.name} · ${project.key}`}
-        >
-          <MoreHorizontal aria-hidden className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <ProjectActionItems project={project} onNavigate={onNavigate} />
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button asChild variant="ghost" size="icon" className="h-11 w-11">
+      <Link
+        to={
+          import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
+            ? withNamespaceLocation(to, project.namespace ?? null, search)
+            : to
+        }
+        onClick={onNavigate}
+        aria-current={pathname === to || pathname.startsWith(`${to}/`) ? 'page' : undefined}
+        aria-label={`${t('navigation.settings')}: ${project.name} · ${project.key}`}
+        title={t('navigation.settings')}
+      >
+        <Settings aria-hidden className="h-4 w-4" />
+      </Link>
+    </Button>
   )
 }
