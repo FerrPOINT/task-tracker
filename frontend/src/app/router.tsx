@@ -1,3 +1,4 @@
+import { LoadingState } from '@sdlc/ui/ui'
 import { NamespacePage } from '@/pages/namespace'
 import { lazy, Suspense } from 'react'
 import { Navigate } from 'react-router'
@@ -42,15 +43,7 @@ const NotificationsPage = lazy(() =>
 const ReportsPage = lazy(() => import('@/pages/reports').then((m) => ({ default: m.ReportsPage })))
 const AdminPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.AdminPage })))
 
-function PageLoader() {
-  return (
-    <div className="space-y-4 py-3" role="status" aria-label="Загрузка страницы">
-      <div className="h-7 w-48 animate-pulse rounded bg-surface-raised" />
-      <div className="h-24 animate-pulse rounded-md bg-surface-raised" />
-      <div className="h-40 animate-pulse rounded-md bg-surface-raised" />
-    </div>
-  )
-}
+function PageLoader() { return <LoadingState /> }
 
 const withSuspense = (element: React.ReactElement) => (
   <Suspense fallback={<PageLoader />}><PlatformRoute>{element}</PlatformRoute></Suspense>

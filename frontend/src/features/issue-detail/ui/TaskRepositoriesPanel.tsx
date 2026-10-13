@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, usePlatformServices } from '@sdlc/ui/ui'
+import { LoadingState, Button, usePlatformServices } from '@sdlc/ui/ui'
 import { withNamespaceLocation } from '@sdlc/ui/lib'
 import { api } from '@/api/client'
 import { useNamespaceContext } from '@/widgets/namespace-context'
@@ -101,7 +101,7 @@ export function TaskRepositoriesPanel({
         </p>
       )}
       {linked.isPending ? (
-        <p role="status">Загружаем связи…</p>
+        <LoadingState message="Загружаем связи…" />
       ) : linked.isError ? (
         <p role="alert" className="text-danger">
           Связи репозиториев недоступны.
