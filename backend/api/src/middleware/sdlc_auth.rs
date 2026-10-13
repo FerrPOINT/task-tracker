@@ -152,7 +152,7 @@ fn pm_request_policy(
         ("POST", ["clarifications", question, "cancel"]) => {
             app::sdlc::canonical_pm_uuid(question).is_some()
         }
-        _ => false,
+        _ => app::sdlc_confirmation::is_confirmation_read(method, parts.as_slice()),
     };
     if allowed {
         Ok(())
@@ -201,6 +201,7 @@ mod tests {
             "requirements/revisions",
             "requirements/1",
             "requirements/1/diff",
+            "requirements/1/confirmation",
             "events",
             "pm-draft-execution-lease",
         ] {
@@ -232,6 +233,9 @@ mod tests {
             "requirements/01",
             "requirements/0",
             "requirements/9007199254740992",
+            "requirements/01/confirmation",
+            "requirements/0/confirmation",
+            "requirements/9007199254740992/confirmation",
             "context/",
         ] {
             for method in ["GET", "POST"] {

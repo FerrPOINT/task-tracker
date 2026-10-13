@@ -181,6 +181,10 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route("/issues/{id}/sdlc/requirements/{revision}", get(revision))
         .route("/issues/{id}/sdlc/requirements/{revision}/diff", get(diff))
         .route(
+            "/issues/{id}/sdlc/requirements/{revision}/confirmation",
+            get(confirmation_read),
+        )
+        .route(
             "/issues/{id}/sdlc/requirements/{revision}/confirm",
             post(confirm),
         )
@@ -628,6 +632,25 @@ pub async fn confirm(
             .execute(id, &actor, SdlcCommand::Confirm { revision, command })
             .await?,
     ))
+}
+
+#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/requirements/{revision}/confirmation", tag="sdlc",
+    params(("id"=Uuid,Path),("revision"=i64,Path)),
+    responses((status=200,body=Confirmation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),
+    security(("bearer"=[])))]
+pub async fn confirmation_read(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((id, revision)): Path<(Uuid, i64)>,
+) -> Result<Response, AppError> {
+    let receipt = service(&ctx)?
+        .confirmation_read(id, &actor, revision)
+        .await?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
+    )
+        .into_response())
 }
 
 #[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/evidence", params(("id"=Uuid, Path)), request_body=EvidenceCommand, responses((status=200,body=Evidence)), security(("bearer"=[])))]

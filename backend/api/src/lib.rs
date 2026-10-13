@@ -127,6 +127,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::revision,
         routes::sdlc::diff,
         routes::sdlc::confirm,
+        routes::sdlc::confirmation_read,
         routes::sdlc::evidence,
         routes::sdlc::events,
         routes::namespace::apply,
