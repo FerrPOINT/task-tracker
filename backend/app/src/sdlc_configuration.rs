@@ -183,13 +183,10 @@ fn compare(
         || w.schema != "base-sdlc/workflow-binding/v1"
         || w.namespace_id != route.namespace_id
         || w.namespace_name != route.namespace_name
-        || w.namespace_name != format!("single-task-{suffix}")
         || w.workflow_id != route.workflow_id
         || w.workflow_key != route.workflow_key
-        || w.workflow_key != format!("single-task-v1:{role}")
         || w.role_key != role
         || w.profile != route.profile
-        || w.profile != format!("single-task-v1-{suffix}")
         || w.catalog_version != route.workflow_catalog_version
         || w.catalog_sha256 != route.workflow_catalog_sha256
         || route.package_commit.as_deref() != Some(w.skills_revision.as_str())
@@ -318,11 +315,14 @@ fn compare_profile(
         || !sha256(&w.role_instructions_sha256)
         || w.namespace_id != route.namespace_id
         || w.namespace_name != route.namespace_name
+        || w.namespace_name != format!("single-task-{suffix}")
         || w.namespace_cli_command != format!("workflow-single-task-{suffix}")
         || w.workflow_id != route.workflow_id
         || w.workflow_key != route.workflow_key
+        || w.workflow_key != format!("single-task-v1:{role}")
         || w.role_key != role
         || w.profile != route.profile
+        || w.profile != format!("single-task-v1-{suffix}")
         || w.workflow_catalog_version != 1
         || w.workflow_catalog_version != route.workflow_catalog_version
         || w.workflow_catalog_sha256 != route.workflow_catalog_sha256
