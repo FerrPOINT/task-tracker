@@ -217,7 +217,7 @@ mod tests {
         }
         let schemas = &spec["components"]["schemas"];
         assert_eq!(schemas["LifecycleReadback"]["additionalProperties"], false);
-        for field in ["observed_at", "receipt"] {
+        for field in ["observed_at", "receipt", "runtime_state"] {
             assert!(
                 schemas["LifecycleReadback"]["required"]
                     .as_array()

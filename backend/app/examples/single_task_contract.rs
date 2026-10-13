@@ -117,6 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         readbacks.push(LifecycleReadback {
             observed_at: now + Duration::seconds(1),
+            runtime_state: RuntimeState::Reserved,
             receipt: LifecycleReceipt {
                 task: LifecycleTask {
                     task_id: task,
@@ -130,6 +131,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     runtime: RuntimeState::Reserved,
                     routing: routing.clone(),
                     previous_result_id,
+                    resume_chat_id: None,
                 },
                 assignment: Some(assignment),
                 lease: Some(lease),

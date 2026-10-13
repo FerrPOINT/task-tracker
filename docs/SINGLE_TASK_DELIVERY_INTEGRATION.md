@@ -17,7 +17,7 @@ Tracker владеет задачей, requirements/confirmation, очередь
 
 | Метод / путь | Назначение |
 | --- | --- |
-| GET `lifecycle` | Fresh `{observed_at,receipt}` с серверными часами |
+| GET `lifecycle` | Fresh `{observed_at,runtime_state,receipt}` с серверными часами |
 | POST `lifecycle` | Scheduler-only команда; точный replay не продлевает lease |
 | GET `lifecycle/operations/{key}` | Исходный сохранённый результат команды |
 | GET `lifecycle/results/{result_id}` | Входной результат предшествующей профессии |
