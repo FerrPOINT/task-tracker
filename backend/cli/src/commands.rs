@@ -6,6 +6,9 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+#[path = "sdlc_pm_commands.rs"]
+mod pm_commands;
+
 #[derive(Debug, Args)]
 pub struct Page {
     #[arg(long)]
@@ -206,6 +209,31 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Propose a typed role result; only Fleet accepts it after runtime terminal
+    Result {
+        #[command(subcommand)]
+        command: pm_commands::DeliveryResultCommand,
+    },
+    /// Read existing project defaults or immutable task routing
+    Routing {
+        #[command(subcommand)]
+        command: pm_commands::RoutingCommand,
+    },
+    /// Read the actual owner confirmation receipt without owner write authority
+    Confirmation {
+        #[command(subcommand)]
+        command: pm_commands::ConfirmationCommand,
+    },
+    /// Create or reconcile the first-message owner Draft
+    Draft {
+        #[command(subcommand)]
+        command: pm_commands::DraftCommand,
+    },
+    /// Use existing Tracker PM reservation, lease and completion contracts
+    Pm {
+        #[command(subcommand)]
+        command: pm_commands::PmCommand,
+    },
     /// Read server-derived SDLC task context by canonical issue UUID
     Context {
         #[arg(long)]
@@ -335,6 +363,15 @@ pub enum SdlcRevisionCommand {
         #[arg(long, value_name = "PATH|-")]
         from_file: String,
     },
+    /// Confirm an exact revision using the existing owner-only endpoint
+    Confirm {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_parser = clap::value_parser!(i64).range(1..=9_007_199_254_740_991))]
+        revision: i64,
+        #[arg(long, value_name = "PATH|-")]
+        from_file: String,
+    },
 }
 
 pub async fn issue_id(api: &Api, identifier: &str) -> Result<String> {
@@ -359,6 +396,11 @@ fn json_input(path: &str) -> Result<Value> {
 
 pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
     match command {
+        SdlcCommand::Result { command } => pm_commands::delivery_result(api, command).await,
+        SdlcCommand::Routing { command } => pm_commands::routing(api, command).await,
+        SdlcCommand::Confirmation { command } => pm_commands::confirmation(api, command).await,
+        SdlcCommand::Draft { command } => pm_commands::draft(api, command).await,
+        SdlcCommand::Pm { command } => pm_commands::pm(api, command).await,
         SdlcCommand::Context { task } => api.get(&sdlc_path(task, "/context")).await,
         SdlcCommand::Input { task } => api.get(&sdlc_path(task, "/pm-draft-input")).await,
         SdlcCommand::Questions { task } => api.get(&sdlc_path(task, "/clarifications")).await,
@@ -422,6 +464,17 @@ pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
             }
         },
         SdlcCommand::Revision { command } => match command {
+            SdlcRevisionCommand::Confirm {
+                task,
+                revision,
+                from_file,
+            } => {
+                api.post(
+                    &sdlc_path(task, &format!("/requirements/{revision}/confirm")),
+                    json_input(&from_file)?,
+                )
+                .await
+            }
             SdlcRevisionCommand::Publish { task, from_file } => {
                 api.post(&sdlc_path(task, "/requirements"), json_input(&from_file)?)
                     .await

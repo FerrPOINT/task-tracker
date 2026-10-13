@@ -3,6 +3,27 @@ use domain::sdlc_routing::{PACKAGE_COMMIT, RoleRoutes};
 use shared::AppError;
 use std::collections::HashSet;
 
+pub fn validate_project_pm_default(
+    policy: &domain::sdlc_routing::RoutingPolicy,
+    project: uuid::Uuid,
+    instance: &str,
+    requested_agent: uuid::Uuid,
+) -> Result<(), AppError> {
+    if policy.project_id != project
+        || policy.tracker_instance_id != instance
+        || policy.routes.project_manager.agent_id.is_nil()
+        || policy.routing_hash != crate::sdlc::canonical_hash(&policy.routes)?
+    {
+        return Err(AppError::conflict("project PM default is inconsistent"));
+    }
+    if requested_agent != policy.routes.project_manager.agent_id {
+        return Err(AppError::conflict(
+            "requested agent differs from authoritative project PM default",
+        ));
+    }
+    Ok(())
+}
+
 pub fn validate_routes(routes: &RoleRoutes) -> Result<(), AppError> {
     fn hash(value: &str) -> bool {
         value.len() == 64

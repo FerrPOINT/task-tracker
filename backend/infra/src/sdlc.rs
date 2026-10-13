@@ -12,6 +12,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
+#[path = "sdlc_lifecycle.rs"]
+mod lifecycle;
 #[path = "sdlc_native_admission.rs"]
 mod native_admission;
 #[path = "sdlc_reservation.rs"]
@@ -579,6 +581,9 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    fn lifecycle_repository(&self) -> Option<&dyn domain::sdlc_lifecycle::LifecycleRepository> {
+        Some(self)
+    }
     async fn reserve_analysis(
         &self,
         task: Uuid,
@@ -791,6 +796,28 @@ impl SdlcRepository for PostgresSdlcRepository {
             return Err(AppError::Unavailable(
                 "PM machine identity is not configured".into(),
             ));
+        }
+        // A configured project default is authoritative for new reservations.
+        // Replay above keeps its original agent even after the default changes.
+        let default = tx
+            .query_one(statement(
+                "SELECT r.payload FROM sdlc_project_routing_heads h
+             JOIN sdlc_project_routing_revisions r USING(project_id,version)
+             WHERE h.project_id=$1",
+                vec![state.project_id.into()],
+            ))
+            .await
+            .map_err(map_db)?;
+        if let Some(row) = default {
+            let policy: domain::sdlc_routing::RoutingPolicy =
+                serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
+                    .map_err(|_| AppError::conflict("project PM default is inconsistent"))?;
+            app::sdlc_routing::validate_project_pm_default(
+                &policy,
+                state.project_id,
+                &state.tracker_instance_id,
+                command.requested_agent_id,
+            )?;
         }
         if self.config.orchestrator_subject == state.owner_subject
             || self.config.orchestrator_subject == self.config.verifier_subject

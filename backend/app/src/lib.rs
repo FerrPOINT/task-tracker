@@ -6,6 +6,7 @@ pub mod dto;
 pub mod oidc;
 pub mod sdlc;
 pub mod sdlc_configuration;
+pub mod sdlc_lifecycle;
 pub mod sdlc_metadata;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;
