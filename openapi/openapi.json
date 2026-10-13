@@ -3183,6 +3183,142 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "resume_execution_lease",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumePmExecutionLease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "resume_execution_lease_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/pm-draft-input": {
       "get": {
         "tags": [
@@ -14945,6 +15081,112 @@
         },
         "additionalProperties": false
       },
+      "PmResumeCheckpoint": {
+        "type": "object",
+        "required": [
+          "checkpoint_id",
+          "checkpoint_revision",
+          "checkpoint_sha256",
+          "fence",
+          "requirement_revision",
+          "content_hash"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkpoint_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "checkpoint_sha256": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "requirement_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmResumeInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "input_id",
+              "input_kind"
+            ],
+            "properties": {
+              "input_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "input_kind": {
+                "type": "string",
+                "enum": [
+                  "answer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "input_id",
+              "input_kind"
+            ],
+            "properties": {
+              "input_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "input_kind": {
+                "type": "string",
+                "enum": [
+                  "feedback"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "input_id",
+              "input_kind"
+            ],
+            "properties": {
+              "input_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "input_kind": {
+                "type": "string",
+                "enum": [
+                  "confirmation"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "PreparedAnalysisAssignment": {
         "type": "object",
         "required": [
@@ -16022,6 +16264,55 @@
             }
           }
         }
+      },
+      "ResumePmExecutionLease": {
+        "type": "object",
+        "description": "Trusted scheduler observation; artifact alone is not independently verified runtime proof.",
+        "required": [
+          "expected_owner_version",
+          "lease_id",
+          "expected_lease_version",
+          "input",
+          "checkpoint",
+          "previous_run_id",
+          "previous_run_terminal",
+          "idempotency_key"
+        ],
+        "properties": {
+          "checkpoint": {
+            "$ref": "#/components/schemas/PmResumeCheckpoint"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "input": {
+            "$ref": "#/components/schemas/PmResumeInput"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previous_run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previous_run_terminal": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
       },
       "ReviewVerdict": {
         "type": "string",
