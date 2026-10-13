@@ -525,6 +525,17 @@ test.describe('smoke', () => {
           expect(action!.x).toBeGreaterThan(row!.x)
           expect(action!.x + action!.width).toBeLessThanOrEqual(caret!.x)
           expect(caret!.x + caret!.width).toBeLessThanOrEqual(row!.x + row!.width)
+          await page
+            .getByRole('button', { name: /collapse sidebar|свернуть боковую панель/i })
+            .click()
+          const logo = await page.getByRole('banner').locator('.base-shell-mark').boundingBox()
+          const rail = await page.getByRole('complementary').boundingBox()
+          expect(
+            Math.abs(logo!.x + logo!.width / 2 - (rail!.x + rail!.width / 2)),
+          ).toBeLessThanOrEqual(1)
+          await page
+            .getByRole('button', { name: /expand sidebar|развернуть боковую панель/i })
+            .click()
         }
         const layout = page.locator('[data-page-layout]')
         await expect(layout).toHaveAttribute('data-page-layout', mode)
