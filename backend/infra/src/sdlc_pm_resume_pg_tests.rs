@@ -556,20 +556,40 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     let verifier = actor(
         "verifier",
         false,
-        vec![format!("task-tracker:sdlc:evidence:{task}:2")],
+        vec![format!(
+            "task-tracker:sdlc:evidence:{task}:{}",
+            fence.assignment_version
+        )],
     );
     for check in ["check", "prerequisite"] {
+        let evidence = EvidenceCommand {
+            fence: fence.clone(),
+            requirement_revision: 2,
+            content_hash: hash2.clone(),
+            check_id: check.into(),
+            evidence_reference: format!("fixture://{check}"),
+            idempotency_key: check.into(),
+        };
+        let wrong_revision_scope = actor(
+            "verifier",
+            false,
+            vec![format!("task-tracker:sdlc:evidence:{task}:2")],
+        );
+        assert!(matches!(
+            repo.execute_verified(
+                task,
+                &wrong_revision_scope,
+                SdlcCommand::Evidence(evidence.clone()),
+                reservation.clone(),
+                None,
+            )
+            .await,
+            Err(AppError::Forbidden)
+        ));
         repo.execute_verified(
             task,
             &verifier,
-            SdlcCommand::Evidence(EvidenceCommand {
-                fence: fence.clone(),
-                requirement_revision: 2,
-                content_hash: hash2.clone(),
-                check_id: check.into(),
-                evidence_reference: format!("fixture://{check}"),
-                idempotency_key: check.into(),
-            }),
+            SdlcCommand::Evidence(evidence),
             reservation.clone(),
             None,
         )
