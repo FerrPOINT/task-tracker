@@ -1,5 +1,11 @@
 import { useProjectDisclosures } from '@sdlc/ui/lib'
-import { ProjectAvatar, ProjectNavigationGroup } from '@sdlc/ui/ui'
+import {
+  ProjectAvatar,
+  ProjectNavigationGroup,
+  SidebarNavigationGroup,
+  useSidebarDisclosure,
+} from '@sdlc/ui/ui'
+import { ProjectActions } from './project-actions'
 import {
   NamespaceShellContext,
   useNamespaceCatalog,
@@ -18,7 +24,6 @@ import {
   Search,
   List,
   Columns2,
-  Trash2,
   Bell,
   User,
   Plus,
@@ -28,7 +33,6 @@ import {
   LogOut,
   BarChart3,
   ShieldCheck,
-  Settings2,
   PanelLeftClose,
   PanelLeftOpen,
   Check,
@@ -166,19 +170,17 @@ function ProjectNavigation({
             icon: BarChart3,
             labelKey: 'navigation.projectReports',
           },
-          { to: `/projects/${key}/trash`, icon: Trash2, labelKey: 'trash.title' },
-          {
-            to: `/projects/${key}/settings/custom-fields`,
-            icon: Settings2,
-            labelKey: 'navigation.settings',
-          },
         ]
         return (
           <ProjectNavigationGroup
             key={project.id}
             name={project.name}
             projectKey={project.key}
-            active={items.some((item) =>
+            active={[
+              ...items,
+              { to: `/projects/${key}/trash` },
+              { to: `/projects/${key}/settings/custom-fields` },
+            ].some((item) =>
               isActive(
                 project.namespace ? withNamespaceLocation(item.to, project.namespace) : item.to,
               ),
@@ -186,6 +188,7 @@ function ProjectNavigation({
             compact={compact}
             open={open}
             onToggle={() => onToggle(project.id)}
+            actions={<ProjectActions project={project} onNavigate={onNavigate} />}
           >
             {items.map((item) => {
               const target = project.namespace
@@ -290,9 +293,28 @@ export function AppShell() {
     { to: '/', icon: LayoutDashboard, labelKey: 'navigation.dashboard' },
     { to: '/projects', icon: FolderKanban, labelKey: 'navigation.projects' },
     { to: '/search', icon: Search, labelKey: 'navigation.search' },
-    { to: '/reports', icon: BarChart3, labelKey: 'navigation.reports' },
-    { to: '/admin', icon: ShieldCheck, labelKey: 'navigation.admin' },
   ]
+
+  const utilities = useSidebarDisclosure(location.pathname === '/admin' ? location.pathname : null)
+  function utilityNavigation(compact = false, onNavigate?: () => void) {
+    return (
+      <SidebarNavigationGroup
+        label="Служебное"
+        compact={compact}
+        active={location.pathname === '/admin'}
+        {...utilities}
+      >
+        <SidebarLink
+          to="/admin"
+          icon={ShieldCheck}
+          label={t('navigation.admin')}
+          active={location.pathname === '/admin'}
+          compact={compact}
+          onClick={onNavigate}
+        />
+      </SidebarNavigationGroup>
+    )
+  }
 
   function isActive(path: string) {
     const [pathname, query] = path.split('?')
@@ -387,6 +409,7 @@ export function AppShell() {
                     isActive={isActive}
                     onNavigate={closeMobileMenu}
                   />
+                  {utilityNavigation(false, closeMobileMenu)}
                 </DialogPrimitive.Content>
               </DialogPrimitive.Portal>
             </DialogPrimitive.Root>
@@ -652,6 +675,7 @@ export function AppShell() {
             isActive={isActive}
             compact={sidebarCollapsed}
           />
+          {utilityNavigation(sidebarCollapsed)}
         </aside>
 
         <main className="shell-main flex-1">

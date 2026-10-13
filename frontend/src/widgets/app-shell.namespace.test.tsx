@@ -127,7 +127,9 @@ describe('project sidebar and Namespace selection', () => {
     expect(screen.getByLabelText('Current URL')).toHaveTextContent(
       '/projects/B/backlog?project_scope=all',
     )
-    expect(screen.getAllByRole('region')).toHaveLength(2)
+    expect(
+      within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole('region'),
+    ).toHaveLength(2)
   })
 
   it('updates navigation and task creation on top selection, restores all and preserves a selected collapsed group', async () => {
@@ -214,7 +216,9 @@ describe('project sidebar and Namespace selection', () => {
     await user.click(within(b).getByRole('link', { name: 'Бэклог' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Namespace' })).toHaveValue('')
-    expect(screen.getAllByRole('region')).toHaveLength(2)
+    expect(
+      within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole('region'),
+    ).toHaveLength(2)
   })
 
   it('restores the filter through history and a copied all-project resource URL', async () => {
@@ -225,12 +229,30 @@ describe('project sidebar and Namespace selection', () => {
     expect(picker).toHaveValue('')
     await user.click(picker)
     await user.click(screen.getByRole('menuitemradio', { name: 'Одинаковый проект · A' }))
-    await waitFor(() => expect(screen.getAllByRole('region')).toHaveLength(1))
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole(
+          'region',
+        ),
+      ).toHaveLength(1),
+    )
     await user.click(screen.getByRole('button', { name: 'Back' }))
-    await waitFor(() => expect(screen.getAllByRole('region')).toHaveLength(2))
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole(
+          'region',
+        ),
+      ).toHaveLength(2),
+    )
     expect(picker).toHaveValue('')
     await user.click(screen.getByRole('button', { name: 'Forward' }))
-    await waitFor(() => expect(screen.getAllByRole('region')).toHaveLength(1))
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole(
+          'region',
+        ),
+      ).toHaveLength(1),
+    )
     expect(picker).toHaveValue(selected(0))
   })
 
@@ -362,7 +384,9 @@ describe('project sidebar and Namespace selection', () => {
     )
     mount()
     await screen.findByRole('button', { name: 'Одинаковый проект · B' })
-    expect(screen.getAllByRole('region')).toHaveLength(101)
+    expect(
+      within(screen.getByRole('navigation', { name: 'Навигация проекта' })).getAllByRole('region'),
+    ).toHaveLength(101)
     await userEvent.setup().click(screen.getByRole('button', { name: 'Namespace' }))
     expect(screen.getAllByRole('menuitemradio')).toHaveLength(102)
   })

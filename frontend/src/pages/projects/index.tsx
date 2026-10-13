@@ -1,5 +1,5 @@
+import { ProjectCardActionItems, ProjectCardLink } from '@/widgets/project-actions'
 import { ProjectAvatar } from '@sdlc/ui/ui'
-import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { Plus, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -172,8 +172,8 @@ export function ProjectsPage() {
               key={project.id}
               className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-1 px-3 py-2 hover:bg-surface-raised sm:grid-cols-[minmax(0,1fr)_16rem_2.5rem]"
             >
-              <Link
-                to={`/projects/${project.key}/board`}
+              <ProjectCardLink
+                project={project}
                 className="row-start-1 flex min-h-10 min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               >
                 <ProjectAvatar projectKey={project.key} size="md" />
@@ -188,7 +188,7 @@ export function ProjectsPage() {
                     {project.key} · {t('projects.lead')}: {project.owner_name || project.owner_id}
                   </span>
                 </span>
-              </Link>
+              </ProjectCardLink>
               <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
                 <div className="min-w-0">
                   <span className="block truncate text-text-muted">{t('projects.todo')}</span>
@@ -216,6 +216,7 @@ export function ProjectsPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <ProjectCardActionItems project={project} />
                     <DropdownMenuItem
                       onClick={() => {
                         setEditingProject(project)
