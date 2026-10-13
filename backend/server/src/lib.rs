@@ -70,6 +70,10 @@ pub async fn run(
         let repository = infra::sdlc::PostgresSdlcRepository::connect(
             &config.database.url,
             domain::sdlc::SdlcConfig {
+                single_task_project_ids: domain::sdlc::parse_single_task_projects(
+                    &std::env::var("TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS").unwrap_or_default(),
+                )
+                .expect("invalid single-task project allowlist"),
                 reservation_scheduler_subject: std::env::var(
                     "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
                 )

@@ -23,6 +23,7 @@ pub mod links;
 pub mod notifications;
 pub mod reports;
 pub mod sdlc;
+pub mod sdlc_delivery;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;
 pub mod users;

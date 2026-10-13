@@ -43,10 +43,53 @@ pub struct Principal {
 
 #[derive(Clone, Debug)]
 pub struct SdlcConfig {
+    pub single_task_project_ids: HashSet<Uuid>,
     pub reservation_scheduler_subject: String,
     pub instance_id: String,
     pub orchestrator_subject: String,
     pub verifier_subject: String,
+}
+
+pub fn parse_single_task_projects(raw: &str) -> Result<HashSet<Uuid>, AppError> {
+    let mut projects = HashSet::new();
+    if raw.trim().is_empty() {
+        return Ok(projects);
+    }
+    for part in raw.split(',') {
+        let part = part.trim();
+        let id = Uuid::parse_str(part)
+            .map_err(|_| AppError::validation("invalid single-task project allowlist"))?;
+        if id.is_nil() || id.to_string() != part || !projects.insert(id) {
+            return Err(AppError::validation(
+                "invalid single-task project allowlist",
+            ));
+        }
+    }
+    Ok(projects)
+}
+
+#[cfg(test)]
+mod rollout_tests {
+    use super::*;
+
+    #[test]
+    fn single_task_rollout_is_empty_by_default_and_requires_exact_projects() {
+        assert!(parse_single_task_projects("").unwrap().is_empty());
+        let id = Uuid::from_u128(1);
+        assert_eq!(
+            parse_single_task_projects(&format!(" {id} ")).unwrap(),
+            HashSet::from([id])
+        );
+        for invalid in [
+            "all".into(),
+            Uuid::nil().to_string(),
+            format!("{id},"),
+            format!("{id},{id}"),
+            "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA".into(),
+        ] {
+            assert!(parse_single_task_projects(&invalid).is_err());
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq)]

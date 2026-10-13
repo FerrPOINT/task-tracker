@@ -1026,6 +1026,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let mismatch = infra::sdlc::PostgresSdlcRepository::connect(
         &database_url,
         SdlcConfig {
+            single_task_project_ids: std::collections::HashSet::new(),
             reservation_scheduler_subject: "scheduler".into(),
             instance_id: "changed-instance".into(),
             orchestrator_subject: "fleet".into(),

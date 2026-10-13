@@ -80,6 +80,14 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::sdlc_delivery::current,
+        routes::sdlc_delivery::command,
+        routes::sdlc_delivery::operation,
+        routes::sdlc_delivery::result,
+        routes::sdlc_delivery::propose,
+        routes::sdlc_delivery::proposal_operation,
+        routes::sdlc_delivery::feedback,
+        routes::sdlc_delivery::feedback_operation,
         routes::sdlc_routing::set,
         routes::sdlc_routing::current,
         routes::sdlc_routing::version,

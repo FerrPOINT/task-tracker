@@ -13,7 +13,7 @@ pub const HEARTBEAT_SECONDS: i64 = 10;
 pub const MAX_TRANSIENT_RETRIES: u8 = 3;
 pub const MAX_REWORK_CYCLES: u8 = 3;
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 pub enum LifecycleStage {
     Draft,
     Backlog,
@@ -49,14 +49,14 @@ impl LifecycleStage {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 pub enum LifecycleStatus {
     Ready,
     InProgress,
     Completed,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveryRole {
     Analyst,
@@ -81,7 +81,7 @@ impl DeliveryRole {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeState {
     Queued,
@@ -91,14 +91,14 @@ pub enum RuntimeState {
     Unknown,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactReceipt {
     pub reference: String,
     pub sha256: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(tag = "role", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DeliveryResult {
     Analyst {
@@ -127,14 +127,14 @@ pub enum DeliveryResult {
     },
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ReviewVerdict {
     Approved,
     Rework,
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TestVerdict {
     Passed,
@@ -169,7 +169,7 @@ impl DeliveryResult {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LifecycleTask {
     pub task_id: Uuid,
@@ -186,7 +186,7 @@ pub struct LifecycleTask {
     pub previous_result_id: Option<Uuid>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeliveryAssignment {
     pub assignment_id: Uuid,
@@ -205,7 +205,7 @@ pub struct DeliveryAssignment {
     pub assignment_hash: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeliveryFence {
     pub assignment_id: Uuid,
@@ -215,7 +215,7 @@ pub struct DeliveryFence {
     pub expected_lease_version: i64,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RunBinding {
     pub chat_id: Uuid,
@@ -224,7 +224,7 @@ pub struct RunBinding {
     pub dispatch_receipt: ArtifactReceipt,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SubmitDeliveryProposal {
     pub fence: DeliveryFence,
@@ -233,7 +233,7 @@ pub struct SubmitDeliveryProposal {
     pub idempotency_key: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DeliveryProposalReceipt {
     pub proposal_id: Uuid,
@@ -248,7 +248,7 @@ pub struct DeliveryProposalReceipt {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SubmitPmFeedback {
     pub message_id: Uuid,
@@ -257,7 +257,7 @@ pub struct SubmitPmFeedback {
     pub idempotency_key: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PmFeedbackReceipt {
     pub message_id: Uuid,
@@ -273,7 +273,7 @@ pub struct PmFeedbackReceipt {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalReceipt {
     pub chat_id: Uuid,
@@ -283,7 +283,7 @@ pub struct TerminalReceipt {
     pub output_sha256: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LifecycleCommand {
     EnsureQueued {
@@ -330,7 +330,7 @@ impl LifecycleCommand {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AcceptedDeliveryResult {
     pub result_id: Uuid,
@@ -345,14 +345,14 @@ pub struct AcceptedDeliveryResult {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "source", content = "receipt", rename_all = "snake_case")]
 pub enum DeliveryInput {
     Delivery(AcceptedDeliveryResult),
     LegacyAnalysis(crate::sdlc_reservation::AnalysisResultReceipt),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LifecycleReceipt {
     pub task: LifecycleTask,
@@ -362,7 +362,7 @@ pub struct LifecycleReceipt {
     pub result: Option<AcceptedDeliveryResult>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LifecycleReadback {
     #[serde(serialize_with = "crate::sdlc_execution_lease::utc_nanos")]

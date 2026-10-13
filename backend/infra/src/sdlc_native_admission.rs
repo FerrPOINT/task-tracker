@@ -228,6 +228,7 @@ mod owned_history_tests {
         let repo = PostgresSdlcRepository {
             db,
             config: SdlcConfig {
+                single_task_project_ids: std::collections::HashSet::new(),
                 instance_id: state.tracker_instance_id.clone(),
                 orchestrator_subject: String::new(),
                 verifier_subject: String::new(),
