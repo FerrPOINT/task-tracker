@@ -1,5 +1,10 @@
 # API v1 Specification — Task Tracker
 
+Новый opt-in single-task пакет добавляет lifecycle/readback, agent proposals
+и PM feedback в существующий strict SDLC router. Registered paths, DTO,
+статус квалификации и открытые gates:
+[single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+
 Reserved PM requirement/question writes require the exact machine scope/fence and
 a current Tracker execution lease; the command schema does not accept a readiness
 claim. Owner answers and separate verifier evidence use admitted history when

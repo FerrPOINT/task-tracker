@@ -1,5 +1,9 @@
 # Дата-модель Task Tracker
 
+Текущая additive `000096` и single-task delivery/feedback history находятся
+в интеграции; legacy история сохраняется. Это не подтверждение проверки
+миграций на заполненной БД. [Модель и gates](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+
 Additive 000091 adds immutable `sdlc_pm_native_admissions`, keyed by execution/run
 and tied to assignment version, fence and exact owner observation. Additive
 000092 adds transaction-scoped `sdlc_pm_state_write_permits`; a reserved task's

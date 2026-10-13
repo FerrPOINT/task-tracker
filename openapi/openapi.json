@@ -2144,6 +2144,139 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/delivery-proposals": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "submit_single_task_delivery_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitDeliveryProposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryProposalReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryProposalReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/delivery-proposals/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_delivery_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryProposalReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/events": {
       "get": {
         "tags": [
@@ -2276,6 +2409,248 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/lifecycle": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_lifecycle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "single_task_lifecycle_command",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/lifecycle/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_lifecycle_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/lifecycle/results/{result_id}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_delivery_result",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryInput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -2850,6 +3225,139 @@
           },
           "503": {
             "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-feedback": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "submit_single_task_pm_feedback",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitPmFeedback"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmFeedbackReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmFeedbackReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-feedback/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_pm_feedback",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmFeedbackReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -7511,6 +8019,60 @@
   },
   "components": {
     "schemas": {
+      "AcceptedDeliveryResult": {
+        "type": "object",
+        "required": [
+          "result_id",
+          "assignment_id",
+          "task_id",
+          "terminal",
+          "output",
+          "previous_stage",
+          "next_stage",
+          "next_status",
+          "cycle",
+          "created_at"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "next_status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "output": {
+            "$ref": "#/components/schemas/DeliveryResult"
+          },
+          "previous_stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "result_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/TerminalReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
       "AddProjectMemberRequest": {
         "type": "object",
         "required": [
@@ -8120,6 +8682,22 @@
               "string",
               "null"
             ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ArtifactReceipt": {
+        "type": "object",
+        "required": [
+          "reference",
+          "sha256"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -9178,6 +9756,356 @@
           }
         }
       },
+      "DeliveryAssignment": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "task_id",
+          "owner_subject",
+          "role",
+          "stage",
+          "cycle",
+          "attempt",
+          "agent_id",
+          "routing",
+          "fencing_token",
+          "lease_id",
+          "assignment_hash"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/DeliveryRole"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/TaskRoutingSnapshot"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryFence": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "fencing_token",
+          "lease_id",
+          "expected_lease_version"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "receipt",
+              "source"
+            ],
+            "properties": {
+              "receipt": {
+                "$ref": "#/components/schemas/AcceptedDeliveryResult"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "delivery"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "receipt",
+              "source"
+            ],
+            "properties": {
+              "receipt": {
+                "$ref": "#/components/schemas/AnalysisResultReceipt"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "legacy_analysis"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "DeliveryProposalReceipt": {
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "task_id",
+          "assignment_id",
+          "execution_id",
+          "agent_id",
+          "producer_subject",
+          "workflow_receipt",
+          "result",
+          "output_sha256",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "output_sha256": {
+            "type": "string"
+          },
+          "producer_subject": {
+            "type": "string"
+          },
+          "proposal_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "result": {
+            "$ref": "#/components/schemas/DeliveryResult"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "analysis",
+              "role"
+            ],
+            "properties": {
+              "analysis": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "analyst"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "design",
+              "role"
+            ],
+            "properties": {
+              "design": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "architect"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commit_sha",
+              "changes",
+              "checks",
+              "role"
+            ],
+            "properties": {
+              "changes": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ArtifactReceipt"
+                }
+              },
+              "commit_sha": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "developer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "verdict",
+              "report",
+              "role"
+            ],
+            "properties": {
+              "report": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "reviewer"
+                ]
+              },
+              "verdict": {
+                "$ref": "#/components/schemas/ReviewVerdict"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "verdict",
+              "report",
+              "role"
+            ],
+            "properties": {
+              "report": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "tester"
+                ]
+              },
+              "verdict": {
+                "$ref": "#/components/schemas/TestVerdict"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "deployment",
+              "verification",
+              "role"
+            ],
+            "properties": {
+              "deployment": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "devops"
+                ]
+              },
+              "verification": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              }
+            }
+          }
+        ]
+      },
+      "DeliveryRole": {
+        "type": "string",
+        "enum": [
+          "analyst",
+          "architect",
+          "developer",
+          "reviewer",
+          "tester",
+          "devops"
+        ]
+      },
       "DirectoryUserResponse": {
         "type": "object",
         "required": [
@@ -9819,6 +10747,283 @@
             "type": "string"
           }
         }
+      },
+      "LifecycleCommand": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "ensure_queued"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "expected_task_version",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "expected_task_version": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "reserve"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "heartbeat"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "binding",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "binding": {
+                "$ref": "#/components/schemas/RunBinding"
+              },
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "bind_run"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "terminal",
+              "result",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "complete"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/DeliveryResult"
+              },
+              "terminal": {
+                "$ref": "#/components/schemas/TerminalReceipt"
+              }
+            }
+          }
+        ]
+      },
+      "LifecycleReadback": {
+        "type": "object",
+        "required": [
+          "observed_at",
+          "receipt"
+        ],
+        "properties": {
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/LifecycleReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LifecycleReceipt": {
+        "type": "object",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "assignment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeliveryAssignment"
+              }
+            ]
+          },
+          "binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RunBinding"
+              }
+            ]
+          },
+          "lease": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionLease"
+              }
+            ]
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AcceptedDeliveryResult"
+              }
+            ]
+          },
+          "task": {
+            "$ref": "#/components/schemas/LifecycleTask"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LifecycleStage": {
+        "type": "string",
+        "enum": [
+          "Draft",
+          "Backlog",
+          "Analysis",
+          "Architecture",
+          "Development",
+          "Review",
+          "Testing",
+          "Rework",
+          "Deployment"
+        ]
+      },
+      "LifecycleStatus": {
+        "type": "string",
+        "enum": [
+          "Ready",
+          "InProgress",
+          "Completed"
+        ]
+      },
+      "LifecycleTask": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "owner_subject",
+          "version",
+          "stage",
+          "status",
+          "cycle",
+          "transient_retries",
+          "runtime",
+          "routing"
+        ],
+        "properties": {
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/TaskRoutingSnapshot"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeState"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transient_retries": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "waiting_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
       },
       "LoginRequest": {
         "type": "object",
@@ -12199,6 +13404,66 @@
           "pm_draft_reserved"
         ]
       },
+      "PmFeedbackReceipt": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "fence",
+          "text",
+          "content_hash",
+          "created_at"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "PreparedAnalysisAssignment": {
         "type": "object",
         "required": [
@@ -13241,6 +14506,13 @@
           }
         }
       },
+      "ReviewVerdict": {
+        "type": "string",
+        "enum": [
+          "approved",
+          "rework"
+        ]
+      },
       "RevisionDiff": {
         "type": "object",
         "required": [
@@ -13427,6 +14699,42 @@
         "type": "string",
         "enum": [
           "declared"
+        ]
+      },
+      "RunBinding": {
+        "type": "object",
+        "required": [
+          "chat_id",
+          "run_id",
+          "machine_subject",
+          "dispatch_receipt"
+        ],
+        "properties": {
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dispatch_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          },
+          "machine_subject": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "reserved",
+          "running",
+          "terminal",
+          "unknown"
         ]
       },
       "SdlcContext": {
@@ -13749,6 +15057,55 @@
         },
         "additionalProperties": false
       },
+      "SubmitDeliveryProposal": {
+        "type": "object",
+        "required": [
+          "fence",
+          "workflow_receipt",
+          "result",
+          "idempotency_key"
+        ],
+        "properties": {
+          "fence": {
+            "$ref": "#/components/schemas/DeliveryFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/DeliveryResult"
+          },
+          "workflow_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SubmitPmFeedback": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "fence",
+          "text",
+          "idempotency_key"
+        ],
+        "properties": {
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "SystemSettingListResponse": {
         "type": "object",
         "required": [
@@ -13995,6 +15352,43 @@
           }
         },
         "additionalProperties": false
+      },
+      "TerminalReceipt": {
+        "type": "object",
+        "required": [
+          "chat_id",
+          "run_id",
+          "fleet_receipt",
+          "workflow_receipt",
+          "output_sha256"
+        ],
+        "properties": {
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fleet_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          },
+          "output_sha256": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TestVerdict": {
+        "type": "string",
+        "enum": [
+          "passed",
+          "rework"
+        ]
       },
       "TotpCodeRequest": {
         "type": "object",

@@ -1,5 +1,10 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+Текущая доработка: одна задача проходит семь конкретных профессий, без дочерних
+карточек и integration barriers. Stage и Ready/InProgress/Completed раздельны;
+PM feedback не подтверждает требования за владельца. Старые режимы/история
+не удаляются. [Реализация и оставшаяся приёмка](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+
 PM producer writes close the reserved-execution write boundary through exact
 machine scope/fence plus the Tracker execution lease; they do not activate
 Analysis dispatch or allow PM to self-certify readiness.

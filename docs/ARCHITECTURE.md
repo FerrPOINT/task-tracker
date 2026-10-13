@@ -1,5 +1,10 @@
 # Архитектура Task Tracker
 
+Новая opt-in вертикаль одной задачи сохраняет цепочку controller/service/repository.
+Agent proposal не равен stage completion: Fleet после actual terminal передаёт
+guarded Complete, а Tracker владеет переходом и capacity. Второй планировщик
+не добавляется. [Single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+
 Reserved PM producer commands use Tracker reservation/lease recheck and atomic
 command/history write. No Fleet admission HTTP call is made on the producer
 path. [PM producer lease](PM_NATIVE_ADMISSION.md).
