@@ -156,6 +156,14 @@ pub fn router() -> Router<Arc<app::AppContext>> {
             post(heartbeat_execution_lease),
         )
         .route(
+            "/issues/{id}/sdlc/pm-draft-execution-lease/resume",
+            post(resume_execution_lease),
+        )
+        .route(
+            "/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",
+            get(resume_execution_lease_operation),
+        )
+        .route(
             "/issues/{id}/sdlc/pm-draft-assignment",
             get(pm_draft_assignment).post(reserve_pm_draft),
         )
@@ -433,6 +441,48 @@ pub async fn execution_lease(
             .execution_lease(id, &actor, query.idempotency_key.as_deref())
             .await?,
     ))
+}
+
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume",tag="sdlc",
+    params(("id"=Uuid,Path)),request_body=ResumePmExecutionLease,
+    responses((status=201,body=ExecutionLeaseReceipt),(status=200,body=ExecutionLeaseReceipt),
+        (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn resume_execution_lease(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Json(command): Json<ResumePmExecutionLease>,
+) -> Result<Response, AppError> {
+    let (receipt, replayed) = service(&ctx)?
+        .resume_pm_execution_lease(id, &actor, command)
+        .await?;
+    let status = if replayed {
+        axum::http::StatusCode::OK
+    } else {
+        axum::http::StatusCode::CREATED
+    };
+    Ok((
+        status,
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
+    )
+        .into_response())
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",tag="sdlc",
+    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
+    responses((status=200,body=ExecutionLeaseOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn resume_execution_lease_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((id, key)): Path<(Uuid, String)>,
+) -> Result<Response, AppError> {
+    let receipt = service(&ctx)?.pm_resume_operation(id, &actor, &key).await?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
+    )
+        .into_response())
 }
 
 #[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/binding", params(("id"=Uuid, Path)), request_body=BindCommand, responses((status=200,body=SdlcContext), (status=422,description="root_task_id must equal task_id; children require accepted Architect decomposition")), security(("bearer"=[])))]

@@ -229,6 +229,8 @@ mod tests {
             "pm-draft-assignment",
             "evidence",
             "requirements/1/confirm",
+            "pm-draft-execution-lease/resume",
+            "pm-draft-execution-lease/resume/operations/original",
             "clarifications/00000000-0000-0000-0000-000000000000/cancel",
             "requirements/01",
             "requirements/0",

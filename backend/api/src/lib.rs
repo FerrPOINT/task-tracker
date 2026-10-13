@@ -115,6 +115,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::claim_execution_lease,
         routes::sdlc::heartbeat_execution_lease,
         routes::sdlc::execution_lease,
+        routes::sdlc::resume_execution_lease,
+        routes::sdlc::resume_execution_lease_operation,
         routes::sdlc::bind,
         routes::sdlc::assign,
         routes::sdlc::questions,
