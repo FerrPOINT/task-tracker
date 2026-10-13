@@ -275,19 +275,62 @@ POST `P/pm-feedback` and GET `P/pm-feedback/operations/{key}`, owner-session onl
 CLI source calls them through `sdlc pm feedback submit --task UUID --from-file feedback.json`
 and `sdlc pm feedback operation --task UUID --key KEY`. They are not live before registration.
 
-The application exposes `pm_feedback_resume_contract(state,feedback,checkpoint,lease)`:
+The legacy application helper `pm_feedback_resume_contract(state,feedback,checkpoint,lease)` remains unchanged:
 exact task/project/root/owner/instance, assignment fence, actual prior terminal,
 checkpoint UUID/version and server-observed live lease produce the existing resume
 identity `pm-feedback:{message_id}`. It does not dispatch or renew a lease.
-Tracker has no generic checkpoint/rebind API, and its expired PM lease cannot currently
-be reclaimed. Fleet must reuse
-its actual checkpoint/rebind after confirming old runtime terminal, retaining
-task/chat/execution/checkpoint and creating only a new runtime run. Replay must
-use the feedback UUID as the stable operation identity. A live lease can use
-the existing heartbeat; an expired one needs a narrowly guarded resume CAS and
-new fence generation coordinated with Fleet. Do not change the ordinary expired
-heartbeat rule or reopen accepted PM business completion. Post-publication
-dialogue must retain the existing PM business-write freeze.
+Its old checkpoint/feedback wire and stable `pm-feedback:{message_id}` identity are
+preserved for compatibility. It does not grant expired-lease renewal or generic rebind.
+
+New typed source methods are `SdlcService::resume_pm_execution_lease(task,actor,command)`
+returning `(ExecutionLeaseReceipt,replayed)` and `pm_resume_operation(task,actor,key)`
+returning `ExecutionLeaseOperation`. Parent registers POST
+`P/pm-draft-execution-lease/resume` and GET `.../resume/operations/{key}` in the
+existing controller/OpenAPI. POST requires only configured scheduler subject with
+exactly `task-tracker:write`; GET uses its separate exactly-read child token.
+Human/PM/other machine callers cannot resume. Both enforce fresh local project ACL;
+new effects additionally enforce the holder's current active local project ACL.
+
+`ResumePmExecutionLease` is strict snake_case:
+`{expected_owner_version,lease_id,expected_lease_version,input,checkpoint,previous_run_id,previous_run_terminal,idempotency_key}`.
+`input` has exactly `{input_kind:answer|feedback|confirmation,input_id:UUID}`,
+referencing real Answer.id / PmFeedbackReceipt.message_id / Confirmation.id.
+`checkpoint` has exactly `{checkpoint_id,checkpoint_revision,checkpoint_sha256,fence:MachineFence,requirement_revision,content_hash}`;
+revision/hash are REQUIRED null/null before publication and exact current values
+after publication. Shortnames are frozen for Locke/main coordination. Existing
+`PmFeedbackCheckpoint` / resume helper DTOs are not changed.
+
+Before POST, the trusted Fleet consumer reads actual current Workflow checkpoint
+and actual old-run terminal via its existing separately credentialed runtime GET
+`/internal/runtime/v1/pm/runs/{run}` / callback receipt, validating identity pairs.
+Tracker rechecks configured producer, current reserved assignment/execution/fence,
+owner/lease CAS, task/project/root/instance/owner and current requirements, then
+loads the real input from its own immutable ledger. Answer also matches its exact
+question checkpoint/version/fence; confirmation is exact current owner consent.
+`previous_run_terminal:ArtifactReceipt` alone is NOT independently verified proof;
+Tracker makes no new outbound Fleet call and accepts no caller terminal boolean.
+
+The same lease UUID, claimed_at, holder, execution/assignment/fence survive;
+server-clock TTL30 and version+1 commit atomically with input consumption and any
+canonical Draft status/issue projection. The existing SQL fragment adds immutable
+`sdlc_pm_resume_inputs`; no second migration. Each input, old run and checkpoint
+revision is consumed once, and older checkpoint revisions cannot replay as new work.
+Only an exact same-transaction journal entry permits expired lease CAS. Ordinary
+expired claim/heartbeat still fail. No new outbox/input event, question or answer is
+fabricated. Answer/feedback stay Draft (legacy Clarification); confirmation only
+closes PM Workflow in Backlog/Analysis, never reopens business writes or completed PM.
+
+Fleet reuses its existing checkpoint/rebind and the same task/chat/execution, with
+only a new runtime run after actual old-run terminal. Original operation replay/GET
+returns the original receipt and hash, including after completion; fresh clock/current
+is the separate existing PM lease GET. Request hash is canonical
+`{"operation":"resume_pm_execution_lease","payload":<entire command>}` SHA256.
+On 409 CAS, no input is consumed: read fresh lease and actual checkpoint/run before
+retrying an unaccepted command. Unknown acceptance first reads the original key's
+operation; never blindly change an accepted payload or start a duplicate run.
+Existing PM lease GET stays holder/PM-grant scoped: Fleet uses its existing
+delegated holder reader for fresh CAS. Scheduler read-only authorizes the new
+resume operation GET only; it is not a new generic PM read privilege.
 
 ## Canonical projection and optional Context fields
 
@@ -329,7 +372,9 @@ authorization is unchanged except denial of the new assignment-scoped machine gr
 1. Register the SQL fragment `backend/migration/src/single_task_lifecycle.sql`
    once, after 000095, in the migration/order owned by parent. It creates delivery
    heads, immutable assignments/proposals/results/operations, run bindings and
-   holds, plus immutable PM feedback. It does not rewrite historical PM rows.
+   holds, plus immutable PM feedback and typed PM resume consumption. It does not
+   rewrite historical PM rows. Apply the updated fragment before the new lease
+   reader (which also validates scheduler resume receipts) is deployed.
    It also fixes the baseline routing snapshot gate's `pm_execution_id IS NULL`
    restriction: exact reserved/completed PM executions can now publish the
    owner-confirmed routing snapshot. Keep the explicit consent/current-policy
@@ -348,7 +393,8 @@ authorization is unchanged except denial of the new assignment-scoped machine gr
    acceptance readbacks. Retry policy permits at most three safely replayable
    transient retries. Tracker exposes guarded reconciliation, not a second scheduler.
    Unknown runtime acceptance must never produce another run.
-6. Wire PM feedback, guarded lease resume and actual checkpoint/rebind. Keep
+6. Register the two PM resume methods above and wire typed input, guarded lease
+   resume and actual checkpoint/rebind in Fleet/Workflow. Keep
    can_send disabled until durable acceptance and the runtime resume path exist.
 
 Requested single parent QA run, after integration:
@@ -356,8 +402,11 @@ Requested single parent QA run, after integration:
 ```text
 cargo test --locked -p app sdlc_lifecycle
 cargo test --locked -p app sdlc::tests
+cargo test --locked -p app sdlc_pm_resume
+cargo test --locked -p domain resume_inputs_are_closed_short_names_and_checkpoint_nulls_are_required
 cargo test --locked -p task-tracker-cli --test workflows sdlc_
 cargo test --locked -p infra canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay -- --ignored --nocapture
+cargo test --locked -p infra pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history -- --ignored --nocapture
 cargo test --locked -p server --test drafts -- --ignored --nocapture
 cargo test --locked -p server --test sdlc -- --ignored --nocapture
 ```
@@ -369,6 +418,16 @@ Source covers all six roles on one UUID, same Ready ID across Development/Review
 outbox-failure rollback, concurrent heartbeat/proposal, expired terminal rejection,
 reconciliation/retry, stale assignment rejection and disable/replay. All receipts there
 are explicitly synthetic fixtures, not live runtime evidence.
+
+The PM resume PG source test requires a separate fresh disposable
+`TT_PM_RESUME_TEST_DATABASE_URL` ending `_pm_resume_test`. It covers real saved
+feedback/answer/confirmation IDs, strict scheduler auth and ACL revocation, actual
+server-time expiry, ordinary heartbeat/reclaim denial, rollback on lease update
+failure, original historical replay, no input/outbox fabrication, consumed input/run/
+checkpoint denial, heartbeat-CAS readback/retry, concurrent same-key dedup, live
+heartbeat after resume, requirement supersession, owner-confirmation close without
+reopening PM writes, and immutable journal. Runtime artifacts there are synthetic
+trusted-scheduler fixtures only, not evidence of live Fleet verification.
 
 Remaining parent acceptance coverage includes:
 concurrent reserve pool2/agent1/task1; duplicate/different-key races; fresh ACL

@@ -16,6 +16,8 @@ mod execution_lease;
 mod lifecycle;
 #[path = "sdlc_native_admission.rs"]
 mod native_admission;
+#[path = "sdlc_pm_resume.rs"]
+mod pm_resume;
 #[path = "sdlc_reservation.rs"]
 mod reservation;
 #[path = "sdlc_routing.rs"]
@@ -814,6 +816,22 @@ impl SdlcRepository for PostgresSdlcRepository {
         key: Option<&str>,
     ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseReadback, AppError> {
         self.read_pm_lease(task, actor, key).await
+    }
+    async fn resume_pm_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_execution_lease::ResumePmExecutionLease,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.resume_pm_lease(task, actor, command).await
+    }
+    async fn pm_resume_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
+        self.read_pm_resume_operation(task, actor, key).await
     }
     async fn reserve_pm_draft(
         &self,

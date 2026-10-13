@@ -11,7 +11,19 @@ agent proposals. SDLC project access always requires active local ownership or
 explicit membership; global human hints do not expand the SDLC directory. New
 queue/reserve is project-opt-in after original-operation replay. Tracker adds no
 runtime scheduler or Hermes proof protocol; parent integrates existing routes.
-[Integration boundary and remaining resume blocker](TRACKER_SINGLE_TASK_HANDOFF.md).
+[Integration boundary and trusted PM resume](TRACKER_SINGLE_TASK_HANDOFF.md).
+
+PM resume reuses the current execution/assignment/checkpoint and lease generation,
+with a new runtime run owned by Fleet, not a new Tracker scheduler. Only the configured
+reservation scheduler's separate write-only child credential can consume a real
+owner answer/feedback/confirmation and CAS-renew that retained lease after expiry.
+Before command submission, Fleet reads actual Workflow checkpoint and old runtime
+terminal through its existing credentialed readback/callback path. Tracker trusts
+that configured producer boundary (as Lifecycle Complete), checks local identity,
+ACL, current requirements and immutable input/dedup, and never treats an artifact
+reference/hash alone as independently verified terminal proof. No new outbound
+Fleet client/token or agent terminal/admission protocol is introduced. Ordinary
+claim/heartbeat, historical replay semantics and PM business-write freeze remain.
 
 Reserved PM producer commands use Tracker reservation/lease recheck and atomic
 command/history write. No Fleet admission HTTP call is made on the producer

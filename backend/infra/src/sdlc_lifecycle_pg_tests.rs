@@ -6,6 +6,9 @@ use domain::sdlc_routing::{RoleRoutes, SetRoutingPolicy};
 use sea_orm_migration::MigratorTrait;
 use serde::de::DeserializeOwned;
 
+#[path = "sdlc_pm_resume_pg_tests.rs"]
+mod pm_resume_tests;
+
 fn parse<T: DeserializeOwned>(value: Json) -> T {
     serde_json::from_value(value).unwrap()
 }

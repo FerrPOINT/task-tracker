@@ -13,6 +13,22 @@ Draft submode are omitted on historical rows without them. Parent owns migration
 registration/order for the additive SQL fragment.
 [Schema and wire details](TRACKER_SINGLE_TASK_HANDOFF.md).
 
+The same additive `single_task_lifecycle.sql` fragment also adds immutable
+`sdlc_pm_resume_inputs` (not another migration): task/scheduler/key plus canonical
+command hash, typed real input UUID, execution/checkpoint/revision, old runtime run,
+original lease receipt/version and exact transaction ID. Uniqueness consumes each
+task/input once, each execution/old-run once and each checkpoint revision once;
+older consumed checkpoint revisions fail as well. Lease current-source validation
+reads the disjoint union of holder-authored `sdlc_pm_lease_operations` and this
+scheduler ledger; neither historical ledger is rewritten. The existing lease
+trigger permits expired renewal only with the exact matching resume journal row
+inserted in that same transaction. Ordinary claim/heartbeat cannot use historical
+resume rows as an expiry bypass. New resume checks own answer/question, feedback or
+exact owner-confirmation ledgers, retained assignment, active holder/project ACL,
+current requirements and no overlapping delivery hold. Canonical PM status/issue
+projection (when present), consumption and lease CAS commit or roll back together.
+No new business-outbox event or task/execution generation is created by resume.
+
 Additive 000091 adds immutable `sdlc_pm_native_admissions`, keyed by execution/run
 and tied to assignment version, fence and exact owner observation. Additive
 000092 adds transaction-scoped `sdlc_pm_state_write_permits`; a reserved task's

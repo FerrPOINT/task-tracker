@@ -10,8 +10,11 @@ Architect, Developer, Reviewer, Tester and DevOps. Stage, Ready/InProgress/Compl
 waiting reason and runtime remain separate. Rework returns to Developer, then
 Review/Testing, bounded to three cycles. An agent submits a typed proposal while
 its run is alive; Fleet accepts completion only after actual runtime terminal.
-No live acceptance is claimed before parent registration and QA; expired PM
-feedback resume remains fail-closed pending guarded checkpoint/lease integration.
+No live acceptance is claimed before parent registration and QA. Producer source
+supports scheduler-only retained-lease PM resume from real owner answer, feedback
+or confirmation. Fleet must verify actual current checkpoint/old-run terminal
+before that command and resume the same execution without a duplicate runtime run.
+Agents cannot self-certify terminal; ordinary expired claim/heartbeat stay denied.
 [Producer contract and tests](TRACKER_SINGLE_TASK_HANDOFF.md).
 
 PM producer writes close the reserved-execution write boundary through exact

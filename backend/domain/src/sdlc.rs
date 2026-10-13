@@ -783,6 +783,18 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         key: Option<&str>,
     ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseReadback, AppError>;
+    async fn resume_pm_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_execution_lease::ResumePmExecutionLease,
+    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
+    async fn pm_resume_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
     async fn reserve_pm_draft(
         &self,
         task: Uuid,

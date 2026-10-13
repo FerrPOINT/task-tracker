@@ -516,3 +516,147 @@ BEGIN
     END IF;
     RETURN NEW;
 END $$;
+
+-- Scheduler audit/consumption is separate from holder-authored heartbeat history.
+CREATE TABLE sdlc_pm_resume_inputs (
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
+    execution_id uuid NOT NULL REFERENCES sdlc_pm_execution_leases(execution_id) ON DELETE RESTRICT,
+    actor_subject text NOT NULL CHECK(length(actor_subject)>0),
+    idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
+    payload_hash text NOT NULL CHECK(payload_hash ~ '^[0-9a-f]{64}$'),
+    input_kind text NOT NULL CHECK(input_kind IN ('answer','feedback','confirmation')),
+    input_id uuid NOT NULL CHECK(input_id<>'00000000-0000-0000-0000-000000000000'),
+    checkpoint_id uuid NOT NULL CHECK(checkpoint_id<>'00000000-0000-0000-0000-000000000000'),
+    checkpoint_revision bigint NOT NULL CHECK(checkpoint_revision BETWEEN 1 AND 9007199254740991),
+    previous_run_id uuid NOT NULL CHECK(previous_run_id<>'00000000-0000-0000-0000-000000000000'),
+    lease_version bigint NOT NULL CHECK(lease_version BETWEEN 2 AND 9007199254740991),
+    transaction_id xid8 NOT NULL,
+    command jsonb NOT NULL, result jsonb NOT NULL,
+    PRIMARY KEY(task_id,actor_subject,idempotency_key),
+    UNIQUE(task_id,input_kind,input_id),
+    UNIQUE(execution_id,previous_run_id),
+    UNIQUE(execution_id,checkpoint_id,checkpoint_revision),
+    UNIQUE(execution_id,lease_version),
+    CHECK ((command->>'idempotency_key'=idempotency_key
+        AND command->'input'->>'input_kind'=input_kind AND command->'input'->>'input_id'=input_id::text
+        AND command->'checkpoint'->>'checkpoint_id'=checkpoint_id::text
+        AND command->'checkpoint'->'checkpoint_revision'=to_jsonb(checkpoint_revision)
+        AND command->'checkpoint'->>'checkpoint_sha256' ~ '^[0-9a-f]{64}$'
+        AND command->>'previous_run_id'=previous_run_id::text
+        AND command->'previous_run_terminal'->>'sha256' ~ '^[0-9a-f]{64}$'
+        AND octet_length(command->'previous_run_terminal'->>'reference') BETWEEN 1 AND 512
+        AND result->'fence'->>'execution_id'=execution_id::text
+        AND result->'fence'=command->'checkpoint'->'fence'
+        AND result->'owner_version'=command->'expected_owner_version'
+        AND result->'lease'->'lease_id'=command->'lease_id'
+        AND result->'lease'->'version'=to_jsonb(lease_version)
+        AND lease_version=(command->>'expected_lease_version')::bigint+1
+        AND result->'binding'->>'task_id'=task_id::text
+        AND result->'binding'->>'root_task_id'=task_id::text
+        AND result->'dispatch_allowed'='false'::jsonb) IS TRUE)
+);
+CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON sdlc_pm_resume_inputs
+FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
+
+CREATE FUNCTION sdlc_pm_resume_input_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE t sdlc_tasks%ROWTYPE; l sdlc_pm_execution_leases%ROWTYPE; p jsonb; f jsonb; input jsonb;
+BEGIN
+    SELECT * INTO t FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
+    SELECT * INTO l FROM sdlc_pm_execution_leases WHERE execution_id=NEW.execution_id FOR UPDATE;
+    p:=NEW.command->'checkpoint'; f:=p->'fence';
+    IF (NEW.transaction_id=pg_current_xact_id() AND t.root_task_id=t.task_id
+        AND t.pm_execution_id=NEW.execution_id AND t.pm_admission_state='reserved'
+        AND t.pm_owner_version=(NEW.command->>'expected_owner_version')::bigint
+        AND t.state->'assignment'->>'assignment_id'=f->>'assignment_id'
+        AND t.state->'assignment'->>'execution_id'=NEW.execution_id::text
+        AND t.state->'assignment'->'version'=f->'assignment_version'
+        AND t.state->'assignment'->'agent_id'=f->'agent_id'
+        AND l.result->'fence'=f AND l.lease_id::text=NEW.command->>'lease_id'
+        AND l.version=(NEW.command->>'expected_lease_version')::bigint
+        AND NEW.lease_version=l.version+1 AND NEW.result-'lease'=l.result-'lease'
+        AND NEW.result->'lease'->>'holder_subject'=l.holder_subject
+        AND (NEW.result->'lease'->>'claimed_at')::timestamptz=l.claimed_at
+        AND p->'requirement_revision'=COALESCE(t.state->'revisions'->-1->'revision','null'::jsonb)
+        AND p->'content_hash'=COALESCE(t.state->'revisions'->-1->'content_hash','null'::jsonb)) IS NOT TRUE
+        OR EXISTS(SELECT 1 FROM sdlc_delivery_heads WHERE task_id=NEW.task_id)
+        OR EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=NEW.task_id)
+        OR NOT EXISTS(SELECT 1 FROM users u JOIN projects pr ON pr.id=t.project_id
+            WHERE u.central_sub=l.holder_subject AND u.is_active
+                AND (pr.owner_id=u.id OR EXISTS(SELECT 1 FROM project_members m WHERE m.project_id=pr.id AND m.user_id=u.id))) THEN
+        RAISE EXCEPTION 'SDLC resume requires exact reserved PM identity/CAS/current checkpoint' USING ERRCODE='23514';
+    END IF;
+    IF p->'requirement_revision'<>'null'::jsonb AND NOT EXISTS(SELECT 1 FROM sdlc_requirements r
+        WHERE r.task_id=NEW.task_id AND r.revision=(p->>'requirement_revision')::bigint AND r.content_hash=p->>'content_hash') THEN
+        RAISE EXCEPTION 'SDLC resume requires current stored requirements hash' USING ERRCODE='23514';
+    END IF;
+    IF NEW.input_kind='answer' THEN
+        SELECT a.payload INTO input FROM sdlc_answers a JOIN sdlc_question_versions q
+            ON q.task_id=a.task_id AND q.question_id=a.question_id AND q.version=a.question_version
+            WHERE a.task_id=NEW.task_id AND a.id=NEW.input_id
+                AND a.payload->>'id'=a.id::text AND a.payload->>'question_id'=a.question_id::text
+                AND a.payload->'question_version'=to_jsonb(a.question_version)
+                AND a.payload->'requirement_revision'=p->'requirement_revision'
+                AND q.payload->'checkpoint_id'=p->'checkpoint_id'
+                AND q.payload->'assignment_id'=f->'assignment_id' AND q.payload->'execution_id'=f->'execution_id'
+                AND q.payload->'agent_id'=f->'agent_id' AND q.payload->'assignment_version'=f->'assignment_version';
+        IF input IS NULL OR input->>'author_subject' IS DISTINCT FROM t.owner_subject
+            OR t.state->>'stage' NOT IN ('Draft','Clarification') OR NOT EXISTS (
+                SELECT 1 FROM jsonb_array_elements(t.state->'questions') q WHERE q->'answer'=input
+                    AND q->'id'=input->'question_id' AND q->'version'=input->'question_version'
+                    AND q->>'state'='answered' AND q->>'task_id'=NEW.task_id::text AND q->>'root_task_id'=NEW.task_id::text
+                    AND q->'requirement_revision'=p->'requirement_revision' AND q->'checkpoint_id'=p->'checkpoint_id'
+                    AND q->'assignment_id'=f->'assignment_id' AND q->'execution_id'=f->'execution_id'
+                    AND q->'agent_id'=f->'agent_id' AND q->'assignment_version'=f->'assignment_version') THEN
+            RAISE EXCEPTION 'SDLC resume requires current owner answer and exact question checkpoint' USING ERRCODE='23514';
+        END IF;
+    ELSIF NEW.input_kind='feedback' THEN
+        SELECT payload INTO input FROM sdlc_pm_feedback WHERE task_id=NEW.task_id AND message_id=NEW.input_id AND actor_subject=t.owner_subject;
+        IF (input->>'message_id'=NEW.input_id::text AND input->>'owner_subject'=t.owner_subject
+            AND input->>'task_id'=NEW.task_id::text AND input->>'root_task_id'=NEW.task_id::text
+            AND input->>'project_id'=t.project_id::text AND input->>'tracker_instance_id'=t.tracker_instance_id
+            AND input->'fence'=f AND input->'requirement_revision'=p->'requirement_revision'
+            AND t.state->>'stage' IN ('Draft','Clarification')) IS NOT TRUE THEN
+            RAISE EXCEPTION 'SDLC resume requires exact owner feedback ledger' USING ERRCODE='23514';
+        END IF;
+    ELSE
+        SELECT payload INTO input FROM sdlc_confirmations WHERE task_id=NEW.task_id AND id=NEW.input_id
+            AND revision=(p->>'requirement_revision')::bigint AND content_hash=p->>'content_hash';
+        IF (input->>'id'=NEW.input_id::text AND input->>'task_id'=NEW.task_id::text
+            AND input->>'owner_subject'=t.owner_subject AND input->>'stage'='Backlog'
+            AND t.state->>'stage' IN ('Backlog','Analysis') AND t.state->'confirmations' @> jsonb_build_array(input)) IS NOT TRUE THEN
+            RAISE EXCEPTION 'SDLC confirmation resume only closes current owner-approved PM continuation' USING ERRCODE='23514';
+        END IF;
+    END IF;
+    IF EXISTS(SELECT 1 FROM sdlc_pm_resume_inputs WHERE execution_id=NEW.execution_id
+        AND checkpoint_id=NEW.checkpoint_id AND checkpoint_revision>=NEW.checkpoint_revision) THEN
+        RAISE EXCEPTION 'SDLC checkpoint resume revision already consumed/stale' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_pm_resume_input_gate BEFORE INSERT ON sdlc_pm_resume_inputs
+FOR EACH ROW EXECUTE FUNCTION sdlc_pm_resume_input_gate();
+
+CREATE OR REPLACE FUNCTION sdlc_pm_lease_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_OP='DELETE' THEN
+        RAISE EXCEPTION 'SDLC ownership lease cannot be deleted/reacquired' USING ERRCODE='23514';
+    END IF;
+    IF TG_OP='INSERT' THEN
+        IF NEW.version!=1 THEN RAISE EXCEPTION 'SDLC initial ownership lease version invalid' USING ERRCODE='23514'; END IF;
+        RETURN NEW;
+    END IF;
+    IF NEW.execution_id IS DISTINCT FROM OLD.execution_id OR NEW.lease_id IS DISTINCT FROM OLD.lease_id
+        OR NEW.holder_subject IS DISTINCT FROM OLD.holder_subject OR NEW.claimed_at IS DISTINCT FROM OLD.claimed_at
+        OR NEW.version!=OLD.version+1 OR NEW.heartbeat_at<OLD.heartbeat_at
+        OR (NEW.result-'lease') IS DISTINCT FROM (OLD.result-'lease') THEN
+        RAISE EXCEPTION 'SDLC inconsistent ownership lease CAS' USING ERRCODE='23514';
+    END IF;
+    IF OLD.expires_at<=clock_timestamp() AND NOT EXISTS(SELECT 1 FROM sdlc_pm_resume_inputs r
+        WHERE r.execution_id=OLD.execution_id AND r.lease_version=NEW.version
+            AND r.transaction_id=pg_current_xact_id() AND r.result=NEW.result
+            AND r.command->'lease_id'=to_jsonb(OLD.lease_id::text)
+            AND r.command->'expected_lease_version'=to_jsonb(OLD.version)) THEN
+        RAISE EXCEPTION 'SDLC expired ownership lease requires exact trusted resume transaction' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;

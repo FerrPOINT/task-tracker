@@ -5,6 +5,67 @@
 статус квалификации и открытые gates:
 [single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
 
+## Trusted PM Resume (Producer Source)
+
+Parent registration in the existing SDLC controller:
+`POST /api/v1/issues/{task}/sdlc/pm-draft-execution-lease/resume` takes
+`ResumePmExecutionLease`, returns existing `ExecutionLeaseReceipt` (original on replay).
+`GET .../resume/operations/{key}` returns existing `ExecutionLeaseOperation`.
+Service methods are `resume_pm_execution_lease(task,actor,command)` and
+`pm_resume_operation(task,actor,key)`; POST returns `(receipt,replayed)` internally.
+POST requires exactly configured `reservation_scheduler_subject` with the sole
+`task-tracker:write` scope, non-human session. GET requires the same configured
+subject with the sole `task-tracker:read` scope. Separate delegated child tokens
+stay in Fleet, never an agent. Both recheck active user/project membership/ownership.
+The PM holder's current ACL is also rechecked before a new resume effect.
+
+Strict snake_case DTO (all fields required; canonical nonnil lowercase UUIDs):
+
+```text
+{expected_owner_version,lease_id,expected_lease_version,
+ input:{input_kind:answer|feedback|confirmation,input_id},
+ checkpoint:{checkpoint_id,checkpoint_revision,checkpoint_sha256,fence:MachineFence,
+             requirement_revision,content_hash},
+ previous_run_id,previous_run_terminal:{reference,sha256},idempotency_key}
+```
+
+`checkpoint.requirement_revision` and `content_hash` are required nullable fields:
+both null before publication, otherwise the exact current revision/hash. They are
+never omitted. Versions are positive safe integers, SHA256 lowercase 64hex.
+Input IDs reference real `Answer.id`, `PmFeedbackReceipt.message_id`, `Confirmation.id`
+in this task's own immutable ledger, not a generated event/request/question ID.
+Request hash is canonical SHA256 of
+`{"operation":"resume_pm_execution_lease","payload":<entire command>}`.
+
+Trust boundary is the existing Lifecycle Complete boundary: before POST, the trusted
+Fleet consumer reads the actual current Workflow checkpoint and actual old-run
+terminal using its existing separately credentialed Fleet runtime readback
+`GET /internal/runtime/v1/pm/runs/{run}` / callback receipt. It validates their
+execution/checkpoint/run/assignment relationships. Tracker validates the configured
+trusted producer, stored reservation/binding/fence, exact owner and lease CAS,
+current requirement hash and own input ledger, then immutable consumption/dedup.
+`ArtifactReceipt` alone is NOT independently verified proof of runtime terminal.
+Tracker adds no outbound Fleet client/token, caller boolean or self-certification.
+
+The same lease UUID/holder/claimed_at and assignment/execution/fence survive;
+version increments by one and TTL30 starts from the locked server clock. Ordinary
+expired claim/heartbeat still fail. Answer/feedback resume only Draft (legacy
+Clarification compatible); confirmation resume only closes Backlog/Analysis PM
+Workflow after exact owner consent, without reopening business writes. No new
+assignment, task, chat, business scheduler, question or answer is fabricated.
+409 on stale lease CAS consumes nothing: read fresh existing PM lease GET, reconcile
+the actual checkpoint/run and retry the unaccepted command with current CAS. If
+acceptance is unknown, first read the resume operation by the original key; do not
+change an already accepted payload/key or launch another runtime run. Operation
+GET/replay returns the original receipt; existing PM lease GET remains separate
+fresh `observed_at/current` readback. Input/run/checkpoint consumption is atomic
+with lease update and any canonical issue projection; it emits no duplicate input
+or heartbeat business-outbox message. Old feedback/checkpoint wire is unchanged.
+The existing PM lease GET retains its PM assignment-scoped reader authorization;
+the scheduler's read-only child token authorizes resume operation GET, not that
+holder-only endpoint. Fleet must use its existing delegated holder reader for the
+fresh lease cursor; no scheduler read privilege is silently added here.
+
 ## Direct Confirmation Readback (Producer Source)
 
 Parent registration: `GET /api/v1/issues/{task}/sdlc/requirements/{revision}/confirmation`
