@@ -984,23 +984,26 @@ impl LifecycleRepository for PostgresSdlcRepository {
         if before.as_ref().is_some_and(|previous| previous != &receipt) {
             Self::save_delivery_projection(&tx, actor, &receipt, false).await?;
         }
-        let event_id = (before.as_ref() != Some(&receipt)).then(Uuid::now_v7);
+        let event = match &command {
+            LifecycleCommand::Reconcile { .. } => Some("delivery.reconciled"),
+            LifecycleCommand::EnsureQueued { .. } => Some("delivery.queued"),
+            LifecycleCommand::Reserve { .. } => Some("delivery.assignment_reserved"),
+            // Lease renewals are audited in operations, not mirrored into business chat.
+            LifecycleCommand::Heartbeat { .. } => None,
+            LifecycleCommand::BindRun { .. } => Some("delivery.run_bound"),
+            LifecycleCommand::Complete { .. } => Some("delivery.result_accepted"),
+        };
+        let event_id = event
+            .filter(|_| before.as_ref() != Some(&receipt))
+            .map(|_| Uuid::now_v7());
         exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id)
             VALUES($1,$2,$3,$4,$5,$6)", vec![task.into(),actor.subject.clone().into(),command.key().into(),
                 hash.into(),json_value(&receipt)?,event_id.into()]).await?;
-        let event = match &command {
-            LifecycleCommand::Reconcile { .. } => "delivery.reconciled",
-            LifecycleCommand::EnsureQueued { .. } => "delivery.queued",
-            LifecycleCommand::Reserve { .. } => "delivery.assignment_reserved",
-            LifecycleCommand::Heartbeat { .. } => "delivery.lease_renewed",
-            LifecycleCommand::BindRun { .. } => "delivery.run_bound",
-            LifecycleCommand::Complete { .. } => "delivery.result_accepted",
-        };
-        let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
-            "project_id":state.project_id,"task_id":task,"root_task_id":task,
-            "owner_subject":state.owner_subject,"stage":receipt.task.stage,
-            "requirement_revision":receipt.task.routing.requirement_revision,"result":&receipt});
-        if let Some(event_id) = event_id {
+        if let (Some(event_id), Some(event)) = (event_id, event) {
+            let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+                "project_id":state.project_id,"task_id":task,"root_task_id":task,
+                "owner_subject":state.owner_subject,"stage":receipt.task.stage,
+                "requirement_revision":receipt.task.routing.requirement_revision,"result":&receipt});
             exec(
                 &tx,
                 "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,$3,$4)",

@@ -353,11 +353,57 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         fence: stale.clone(),
         idempotency_key: "heartbeat-0".into(),
     };
+    let outbox_before_heartbeat = count(&db, "sdlc_outbox").await;
+    let operations_before_heartbeat = count(&db, "sdlc_delivery_operations").await;
+    let mirror_source_before_heartbeat: Vec<Json> = repo
+        .metadata_outbox(task, &owner, 0, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap())
+        .collect();
     let (renewed, _) = repo
         .lifecycle_command(task, &scheduler, heartbeat.clone())
         .await
         .unwrap();
     assert_eq!(renewed.lease.as_ref().unwrap().version, 2);
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat);
+    assert_eq!(
+        count(&db, "sdlc_delivery_operations").await,
+        operations_before_heartbeat + 1
+    );
+    let mirror_source_after_heartbeat: Vec<Json> = repo
+        .metadata_outbox(task, &owner, 0, 100)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|candidate| serde_json::to_value(candidate.event.unwrap()).unwrap())
+        .collect();
+    assert_eq!(
+        mirror_source_after_heartbeat,
+        mirror_source_before_heartbeat
+    );
+    let heartbeat_audit = db.query_one(statement(
+        "SELECT event_id,result FROM sdlc_delivery_operations WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key='heartbeat-0'",
+        vec![task.into(),scheduler.subject.clone().into()],
+    )).await.unwrap().unwrap();
+    assert!(
+        heartbeat_audit
+            .try_get::<Option<Uuid>>("", "event_id")
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        heartbeat_audit.try_get::<Json>("", "result").unwrap(),
+        serde_json::to_value(&renewed).unwrap()
+    );
+    let fresh_after_heartbeat = repo.lifecycle_read(task, &reader).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(&fresh_after_heartbeat.receipt).unwrap(),
+        serde_json::to_value(&renewed).unwrap()
+    );
+    assert!(fresh_after_heartbeat.observed_at >= renewed.lease.as_ref().unwrap().heartbeat_at);
+    assert!(fresh_after_heartbeat.observed_at < renewed.lease.as_ref().unwrap().expires_at);
     assert!(
         repo.lifecycle_command(
             task,
@@ -409,12 +455,24 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         3
     );
     let (proposal, _) = concurrent_proposal.unwrap();
+    // The concurrent proposal remains a business event; the second heartbeat does not.
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat + 1);
+    let operations_after_race = count(&db, "sdlc_delivery_operations").await;
     let original_heartbeat = repo
         .lifecycle_command(task, &scheduler, heartbeat)
         .await
         .unwrap();
     assert!(original_heartbeat.1);
     assert_eq!(original_heartbeat.0.lease.as_ref().unwrap().version, 2);
+    assert_eq!(
+        serde_json::to_value(&original_heartbeat.0).unwrap(),
+        serde_json::to_value(&renewed).unwrap()
+    );
+    assert_eq!(
+        count(&db, "sdlc_delivery_operations").await,
+        operations_after_race
+    );
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox_before_heartbeat + 1);
     assert_eq!(
         repo.lifecycle_operation(task, &reader, "heartbeat-0")
             .await

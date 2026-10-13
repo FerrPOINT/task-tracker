@@ -200,6 +200,14 @@ call. Complete still rejects expiry. On 409, reconcile the ORIGINAL operation fi
 then GET fresh lifecycle readback with the read-only child token; never change a payload
 under a previously accepted key or redispatch an unknown-acceptance run.
 
+Heartbeat renews the authoritative lease head and appends its immutable operation,
+but emits NO business outbox event (`event_id` is null on that operation). Fresh
+readback still advances its server clock/current lease; replay retains the original
+receipt. Fleet's metadata-to-chat mirror therefore receives no renewal message.
+Existing historical `delivery.lease_renewed` metadata remains readable; stage/run,
+proposal, result, feedback and reconciliation events are unchanged. No new message
+field, schema or migration is needed to suppress heartbeat chatter.
+
 Proposal does not change stage/status or release capacity. Existing Fleet
 consumer observes actual runtime terminal and then invokes scheduler-only
 Complete with matching proposal output/hash/Workflow receipt plus the actual
