@@ -4,8 +4,9 @@ import { useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { completeSso } from '@sdlc/ui/sso'
 import { Button } from '@sdlc/ui/ui'
-import { apiBaseUrl } from '@/api/client'
 import { ssoConfig, useAuthStore } from '@/shared/auth/store'
+import { loadSsoSession } from '@/shared/auth/session'
+import { finishPlatformLogin } from '@sdlc/ui/platform'
 
 let pending: ReturnType<typeof completeSso> | null = null
 function completion() {
@@ -26,27 +27,17 @@ export function SsoCallbackPage() {
   const [failed, setFailed] = useState(false)
   useEffect(() => {
     let active = true
+    const version = useAuthStore.getState().authVersion
     void completion()
       .then(async (session) => {
-        const response = await fetch(`${apiBaseUrl}/api/v1/users/me`, {
-          headers: { Authorization: `Bearer ${session.accessToken}` },
-        })
-        if (!response.ok) throw new Error('profile request failed')
-        const user = (await response.json()) as {
-          id: string
-          email: string
-          username: string
-          display_name: string
-        }
         if (!active) return
-        useAuthStore.getState().setAuth({
-          token: session.accessToken,
-          userId: user.id,
-          email: user.email,
-          username: user.username,
-          displayName: user.display_name,
-        })
-        navigate(session.returnTo, { replace: true })
+        const applied = await loadSsoSession(
+          session,
+          () => active && useAuthStore.getState().authVersion === version,
+        )
+        if (!active || !applied) return
+        if (!finishPlatformLogin(import.meta.env.VITE_PLATFORM_ORIGIN))
+          navigate(session.returnTo, { replace: true })
       })
       .catch(() => {
         if (active) setFailed(true)

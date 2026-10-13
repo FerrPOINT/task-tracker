@@ -72,6 +72,14 @@ class CiChangeClassifierTest(unittest.TestCase):
         self.assertEqual(classify("push", "", "", repo=self.repo),
                          {"backend": "true", "frontend": "true"})
 
+    def test_ui_pin_selects_frontend_without_rebuilding_the_sdk(self) -> None:
+        (self.repo / ".base-ui-revision").write_text("a" * 40 + "\n", encoding="utf-8")
+        self.git("add", ".base-ui-revision")
+        self.git("commit", "-m", "independent UI update")
+        head = self.git("rev-parse", "HEAD")
+        self.assertEqual(classify("pull_request", self.base, head, repo=self.repo),
+                         {"backend": "false", "frontend": "true"})
+
     def test_namespace_sdk_and_ci_changes_keep_both_gates_enabled(self) -> None:
         for name in [
             ".namespace-base-revision",

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
-import { usePlatformServices } from '@sdlc/ui/ui'
+import { LoadingState, usePlatformServices } from '@sdlc/ui/ui'
 import { withNamespaceLocation } from '@sdlc/ui/lib'
 import { api } from '@/api/client'
 import { useNamespaceContext } from '@/widgets/namespace-context'
@@ -34,7 +34,7 @@ export function TaskDocumentsPanel({ taskId, projectKey }: { taskId: string; pro
           Задача не подтверждена в выбранном проекте.
         </p>
       ) : links.isPending ? (
-        <p role="status">Загружаем связи Wiki…</p>
+        <LoadingState message="Загружаем связи Wiki…" />
       ) : links.isError ? (
         <p role="alert" className="text-danger">
           Wiki недоступна. Список документов не получен.

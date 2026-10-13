@@ -245,7 +245,7 @@ describe('IssueDetailPage', () => {
   it('renders loading state while the issue itself loads', () => {
     mockUseIssue.mockReturnValue({ data: undefined, isLoading: true, error: null })
     render(wrapper(<IssueDetailPage />))
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument()
+    expect(screen.getByRole('status', { busy: true })).toBeVisible()
   })
 
   it('opens the real SDLC panel boundary with a shareable tab URL', async () => {
