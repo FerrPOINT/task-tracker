@@ -46,7 +46,7 @@ const AdminPage = lazy(() => import('@/pages/admin').then((m) => ({ default: m.A
 function PageLoader() { return <LoadingState /> }
 
 const withSuspense = (element: React.ReactElement) => (
-  <Suspense fallback={<PageLoader />}>{element}</Suspense>
+  <Suspense fallback={<PageLoader />}><PlatformRoute>{element}</PlatformRoute></Suspense>
 )
 
 export const router = createProductRouter([
@@ -54,9 +54,9 @@ export const router = createProductRouter([
     element: <RequireAuth />,
     children: [
       {
-        element: <PlatformRoute><AppShell /></PlatformRoute>,
+        element: <AppShell />,
         children: [
-          { path: '/namespace', element: <NamespacePage /> },
+          { path: '/namespace', element: withSuspense(<NamespacePage />) },
           { path: '/', element: withSuspense(<DashboardPage />) },
           { path: '/projects', element: withSuspense(<ProjectsPage />) },
           { path: '/projects/:projectKey/board', element: withSuspense(<ProjectBoardPage />) },
