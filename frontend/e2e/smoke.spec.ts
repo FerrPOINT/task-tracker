@@ -374,7 +374,7 @@ test.describe('smoke', () => {
     await expect(createLinks).toHaveCount(2)
     await createLinks.last().click()
     await expect(page).toHaveURL(`${appBaseURL}/issues/create?project_key=${mockUser.key}`)
-    await expect(page.locator('#issue-project')).toHaveValue(mockUser.key)
+    await expect(page.locator('#issue-project')).toHaveAttribute('value', mockUser.key)
 
     await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()

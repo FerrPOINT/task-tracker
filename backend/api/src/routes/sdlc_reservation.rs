@@ -28,6 +28,19 @@ pub(super) fn router() -> Router<Arc<app::AppContext>> {
             "/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
             get(operation),
         )
+        .route("/issues/{id}/sdlc/analysis-result", post(submit_result))
+        .route(
+            "/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",
+            get(result_operation),
+        )
+        .route(
+            "/issues/{id}/sdlc/pm-draft-completion",
+            get(pm_completion).post(complete_pm_draft),
+        )
+        .route(
+            "/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}",
+            get(pm_completion_operation),
+        )
 }
 fn no_store() -> HeaderMap {
     let mut h = HeaderMap::new();
@@ -123,6 +136,93 @@ pub async fn operation(
         ),
     ))
 }
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/analysis-result",operation_id="submit_analysis_result",tag="sdlc",params(("id"=Uuid,Path)),request_body=SubmitAnalysisResult,
+    responses((status=201,body=AnalysisResultReceipt),(status=200,body=AnalysisResultReceipt,description="Original durable replay; no duplicate transition"),(status=401),(status=403),(status=404),(status=409,description="Stale lease/fence, released capacity or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn submit_result(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(task): Path<Uuid>,
+    Json(command): Json<SubmitAnalysisResult>,
+) -> Result<(StatusCode, HeaderMap, Json<AnalysisResultReceipt>), AppError> {
+    let (receipt, replay) = service(&ctx)?
+        .submit_analysis_result(task, &actor, command)
+        .await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(receipt),
+    ))
+}
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",operation_id="read_analysis_result_operation",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=AnalysisResultOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn result_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((task, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<AnalysisResultOperation>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .analysis_result_operation(task, &actor, &key)
+                .await?,
+        ),
+    ))
+}
+
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-completion",operation_id="complete_pm_draft",tag="sdlc",params(("id"=Uuid,Path)),request_body=CompletePmDraft,
+    responses((status=201,body=PmDraftCompletionReceipt),(status=200,body=PmDraftCompletionReceipt,description="Original durable replay; no duplicate completion"),(status=401),(status=403),(status=404),(status=409,description="Stale PM fence/lease, missing lease or payload conflict"),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn complete_pm_draft(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(task): Path<Uuid>,
+    Json(command): Json<CompletePmDraft>,
+) -> Result<(StatusCode, HeaderMap, Json<PmDraftCompletionReceipt>), AppError> {
+    let (receipt, replay) = service(&ctx)?
+        .complete_pm_draft(task, &actor, command)
+        .await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(receipt),
+    ))
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-completion",operation_id="read_pm_draft_completion",tag="sdlc",params(("id"=Uuid,Path)),responses((status=200,body=PmDraftCompletionReadback),(status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
+pub async fn pm_completion(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(task): Path<Uuid>,
+) -> Result<(HeaderMap, Json<PmDraftCompletionReadback>), AppError> {
+    Ok((
+        no_store(),
+        Json(service(&ctx)?.pm_draft_completion(task, &actor).await?),
+    ))
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}",operation_id="read_pm_draft_completion_operation",tag="sdlc",params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=PmDraftCompletionOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn pm_completion_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((task, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<PmDraftCompletionOperation>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .pm_draft_completion_operation(task, &actor, &key)
+                .await?,
+        ),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use utoipa::OpenApi;
@@ -144,6 +244,13 @@ mod tests {
             "PreparedAnalysisAssignment",
             "AnalysisReservationReceipt",
             "AnalysisReservationReadback",
+            "SubmitAnalysisResult",
+            "AnalysisResultReceipt",
+            "AnalysisResultOperation",
+            "CompletePmDraft",
+            "PmDraftCompletionReceipt",
+            "PmDraftCompletionOperation",
+            "PmDraftCompletionReadback",
         ] {
             assert_eq!(
                 s["components"]["schemas"][name]["additionalProperties"], false,
@@ -153,9 +260,27 @@ mod tests {
         for path in [
             "/api/v1/issues/{id}/sdlc/analysis-reservation",
             "/api/v1/issues/{id}/sdlc/analysis-reservation/operations/{idempotency_key}",
+            "/api/v1/issues/{id}/sdlc/analysis-result/operations/{idempotency_key}",
+            "/api/v1/issues/{id}/sdlc/pm-draft-completion",
+            "/api/v1/issues/{id}/sdlc/pm-draft-completion/operations/{idempotency_key}",
         ] {
             assert!(s["paths"][path]["get"]["security"].is_array());
         }
+        assert!(
+            s["paths"]["/api/v1/issues/{id}/sdlc/analysis-result"]["post"]["security"].is_array()
+        );
+        assert!(
+            s["paths"]["/api/v1/issues/{id}/sdlc/pm-draft-completion"]["post"]["security"]
+                .is_array()
+        );
+        assert_eq!(
+            s["components"]["schemas"]["SubmitAnalysisResult"]["properties"]["contract_version"]["maximum"],
+            serde_json::json!(1)
+        );
+        assert_eq!(
+            s["components"]["schemas"]["AnalysisResultReceipt"]["properties"]["next_stage"]["$ref"],
+            "#/components/schemas/Stage"
+        );
         assert!(
             s["components"]["schemas"]["PreparedAnalysisAssignment"]["properties"]
                 .get("run_id")
@@ -172,5 +297,9 @@ mod tests {
         );
         assert!(s["paths"]["/api/v1/issues/{id}/sdlc/analysis-reservation/configuration-preflight"]["get"]["security"].is_array());
         assert!(s["components"]["schemas"]["AnalysisReservationReadback"]["properties"]["reconciliation_needed"].is_object());
+        assert_eq!(
+            s["components"]["schemas"]["CompletePmDraft"]["properties"]["contract_version"]["maximum"],
+            serde_json::json!(1)
+        );
     }
 }

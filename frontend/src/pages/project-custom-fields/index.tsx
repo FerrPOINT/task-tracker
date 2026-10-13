@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
@@ -31,7 +32,10 @@ export function ProjectCustomFieldsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold">{t('customFields.title')}</h1>
+        <h1 className="flex min-w-0 items-center gap-2 text-2xl font-semibold">
+          <ProjectAvatar projectKey={projectKey ?? ''} />
+          {t('customFields.title')}
+        </h1>
         <p className="text-sm text-text-muted">{t('customFields.description', { projectKey })}</p>
       </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start">

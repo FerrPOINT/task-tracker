@@ -7,7 +7,7 @@ use axum::{
     response::Response,
 };
 use shared::{AppError, IssueId, ProjectId, resource_context::*};
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use uuid::Uuid;
 
 fn subjects(key: &str) -> Vec<String> {
@@ -144,6 +144,63 @@ pub struct Page {
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
+const NAMESPACE_CONTEXT_RAW_PAGE_SIZE: i64 = 100;
+
+struct NamespaceContextPager {
+    // API offsets count authorized entries; this cursor only counts raw bindings.
+    raw_offset: i64,
+    visible_offset: usize,
+    limit: usize,
+    items: Vec<ResourceContextSummary>,
+}
+
+impl NamespaceContextPager {
+    fn new(limit: i64, visible_offset: i64) -> Self {
+        Self {
+            raw_offset: 0,
+            visible_offset: visible_offset as usize,
+            limit: limit as usize,
+            items: Vec::with_capacity(limit as usize + 1),
+        }
+    }
+
+    fn push_authorized(&mut self, item: ResourceContextSummary) {
+        if self.visible_offset > 0 {
+            self.visible_offset -= 1;
+        } else if self.items.len() <= self.limit {
+            self.items.push(item);
+        }
+    }
+
+    fn push_if_accessible(
+        &mut self,
+        item: ResourceContextSummary,
+        accessible_projects: &HashSet<ProjectId>,
+    ) {
+        let project = ProjectId::from_uuid(item.binding.resource.resource_id);
+        if accessible_projects.contains(&project) {
+            self.push_authorized(item);
+        }
+    }
+
+    fn has_lookahead(&self) -> bool {
+        self.items.len() > self.limit
+    }
+
+    fn advance_raw_page(&mut self, raw_count: usize) -> bool {
+        if self.has_lookahead() || raw_count < NAMESPACE_CONTEXT_RAW_PAGE_SIZE as usize {
+            return false;
+        }
+        self.raw_offset += raw_count as i64;
+        true
+    }
+
+    fn finish(mut self) -> Vec<ResourceContextSummary> {
+        self.items.truncate(self.limit);
+        self.items
+    }
+}
+
 #[utoipa::path(get,operation_id="tracker_namespace_available_resources",path="/api/v1/namespace-available-resources",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceCatalogItem>)))]
 pub async fn available_resources(
     State(ctx): State<Arc<app::AppContext>>,
@@ -151,24 +208,15 @@ pub async fn available_resources(
     Query(page): Query<Page>,
 ) -> Result<Json<Vec<ResourceCatalogItem>>, AppError> {
     let user = shared::UserId::from_uuid(claims.sub.parse().map_err(|_| AppError::Unauthorized)?);
-    let mut result = Vec::new();
-    for item in ctx
-        .repos
-        .projects
-        .namespace_available_resources(page.limit.unwrap_or(50), page.offset.unwrap_or(0))
-        .await?
-    {
-        match ctx
-            .authz
-            .require_project_access(ProjectId::from_uuid(item.resource.resource_id), user)
-            .await
-        {
-            Ok(()) => result.push(item),
-            Err(AppError::Forbidden) => {}
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(Json(result))
+    let limit = page.limit.unwrap_or(50).clamp(1, 100);
+    let offset = page.offset.unwrap_or(0).max(0);
+    let accessible_projects = ctx.authz.accessible_project_ids(user).await?;
+    Ok(Json(
+        ctx.repos
+            .projects
+            .namespace_available_resources(&accessible_projects, limit, offset)
+            .await?,
+    ))
 }
 #[utoipa::path(get,operation_id="tracker_namespace_stats",path="/api/v1/namespace-stats/{registry}/{namespace}",tag="namespaces",params(("registry"=Uuid,Path),("namespace"=Uuid,Path)),responses((status=200,body=ResourceStats)))]
 pub async fn stats(
@@ -203,28 +251,52 @@ pub async fn contexts(
     Query(page): Query<Page>,
 ) -> Result<Json<Vec<ResourceContextSummary>>, AppError> {
     let user = shared::UserId::from_uuid(claims.sub.parse().map_err(|_| AppError::Unauthorized)?);
-    let resources = ctx
-        .repos
-        .projects
-        .namespace_contexts(None, page.limit.unwrap_or(50), page.offset.unwrap_or(0))
-        .await?;
-    let mut visible = Vec::new();
-    for resource in resources {
-        match ctx
-            .authz
-            .require_project_access(
-                ProjectId::from_uuid(resource.binding.resource.resource_id),
-                user,
-            )
-            .await
-        {
-            Ok(()) => visible.push(resource),
-            Err(AppError::Forbidden) => {}
-            Err(error) => return Err(error),
+    let limit = page.limit.unwrap_or(50).clamp(1, 100);
+    let offset = page.offset.unwrap_or(0).max(0);
+    let accessible_projects: HashSet<_> = ctx
+        .authz
+        .accessible_project_ids(user)
+        .await?
+        .into_iter()
+        .collect();
+    let mut pager = NamespaceContextPager::new(limit, offset);
+    loop {
+        let resources = ctx
+            .repos
+            .projects
+            .namespace_contexts(None, NAMESPACE_CONTEXT_RAW_PAGE_SIZE, pager.raw_offset)
+            .await?;
+        let raw_count = resources.len();
+        for resource in resources {
+            pager.push_if_accessible(resource, &accessible_projects);
+            if pager.has_lookahead() {
+                break;
+            }
+        }
+        if !pager.advance_raw_page(raw_count) {
+            break;
         }
     }
-    Ok(Json(visible))
+    Ok(Json(pager.finish()))
 }
+/// Machine reader exposes verified navigation metadata, never human mutations.
+#[utoipa::path(get,operation_id="tracker_namespace_project_catalog",path="/api/v1/namespace-projects",tag="namespaces",params(Page),responses((status=200,body=Vec<ResourceContextSummary>)))]
+pub async fn project_catalog(
+    State(ctx): State<Arc<app::AppContext>>,
+    Query(page): Query<Page>,
+) -> Result<Json<Vec<ResourceContextSummary>>, AppError> {
+    Ok(Json(
+        ctx.repos
+            .projects
+            .namespace_contexts(
+                None,
+                page.limit.unwrap_or(50).clamp(1, 100),
+                page.offset.unwrap_or(0).max(0),
+            )
+            .await?,
+    ))
+}
+
 #[utoipa::path(get,operation_id="tracker_namespace_context",path="/api/v1/namespace-contexts/{registry}/{namespace}",tag="namespaces",params(("registry"=Uuid,Path),("namespace"=Uuid,Path)),responses((status=200,body=ResourceContextSummary),(status=404,description="No confirmed local binding")))]
 pub async fn context(
     State(ctx): State<Arc<app::AppContext>>,
@@ -277,6 +349,127 @@ pub async fn task_context(
     Ok(Json(
         serde_json::json!({"schema_version":1,"namespace":binding.namespace,"tracker_instance_id":binding.resource.instance_id,"project_id":task.project_id.as_uuid(),"task_id":id,"task_key":task.key.to_string(),"state":binding.state,"generation":binding.generation}),
     ))
+}
+
+#[cfg(test)]
+mod namespace_context_page_tests {
+    use super::*;
+
+    fn item() -> ResourceContextSummary {
+        let id = Uuid::new_v4();
+        ResourceContextSummary {
+            binding: OwnerReadback {
+                schema_version: 1,
+                namespace: NamespaceRef {
+                    registry_instance_id: Uuid::new_v4(),
+                    namespace_id: Uuid::new_v4(),
+                },
+                resource: ResourceRef {
+                    kind: ResourceKind::TrackerProject,
+                    instance_id: Uuid::new_v4(),
+                    resource_id: id,
+                },
+                operation_id: Uuid::new_v4(),
+                generation: 1,
+                state: "active".into(),
+                drained: true,
+            },
+            label: format!("Project {id}"),
+            resource_key: format!("P{}", &id.to_string()[..8]),
+        }
+    }
+
+    #[test]
+    fn namespace_page_includes_only_projects_in_the_prefetched_access_set() {
+        let accessible = item();
+        let inaccessible = item();
+        let accessible_ids = HashSet::from([ProjectId::from_uuid(
+            accessible.binding.resource.resource_id,
+        )]);
+        let mut pager = NamespaceContextPager::new(2, 0);
+
+        pager.push_if_accessible(inaccessible, &accessible_ids);
+        pager.push_if_accessible(accessible.clone(), &accessible_ids);
+
+        let page = pager.finish();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].resource_key, accessible.resource_key);
+    }
+
+    #[test]
+    fn sparse_authorized_projects_fill_visible_pages_across_raw_pages() {
+        let one = item();
+        let two = item();
+        let three = item();
+        let four = item();
+        let mut first = NamespaceContextPager::new(2, 0);
+        first.push_authorized(one.clone());
+        assert!(first.advance_raw_page(100));
+        first.push_authorized(two.clone());
+        first.push_authorized(three.clone());
+        first.push_authorized(four.clone());
+        assert!(first.has_lookahead());
+        let page = first.finish();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.resource_key.as_str())
+                .collect::<Vec<_>>(),
+            [one.resource_key.as_str(), two.resource_key.as_str()]
+        );
+
+        let mut second = NamespaceContextPager::new(2, 2);
+        second.push_authorized(one);
+        assert!(second.advance_raw_page(100));
+        second.push_authorized(two);
+        second.push_authorized(three.clone());
+        second.push_authorized(four.clone());
+        assert!(!second.has_lookahead());
+        assert!(!second.advance_raw_page(38));
+        let page = second.finish();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.resource_key.as_str())
+                .collect::<Vec<_>>(),
+            [three.resource_key.as_str(), four.resource_key.as_str()]
+        );
+    }
+
+    #[test]
+    fn fully_accessible_page_uses_visible_offset_and_limit_plus_one_lookahead() {
+        let one = item();
+        let two = item();
+        let three = item();
+        let four = item();
+        let five = item();
+        let mut first = NamespaceContextPager::new(2, 0);
+        first.push_authorized(one.clone());
+        first.push_authorized(two.clone());
+        first.push_authorized(three.clone());
+        assert!(first.has_lookahead());
+        assert!(!first.advance_raw_page(100));
+        let page = first.finish();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.resource_key.as_str())
+                .collect::<Vec<_>>(),
+            [one.resource_key.as_str(), two.resource_key.as_str()]
+        );
+
+        let mut second = NamespaceContextPager::new(2, 2);
+        second.push_authorized(one);
+        second.push_authorized(two);
+        second.push_authorized(three.clone());
+        second.push_authorized(four.clone());
+        second.push_authorized(five);
+        assert!(second.has_lookahead());
+        let page = second.finish();
+        assert_eq!(
+            page.iter()
+                .map(|item| item.resource_key.as_str())
+                .collect::<Vec<_>>(),
+            [three.resource_key.as_str(), four.resource_key.as_str()]
+        );
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize, utoipa::ToSchema)]

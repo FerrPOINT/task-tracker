@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useLocation } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { LoadingState, Button, usePlatformServices } from '@sdlc/ui/ui'
 import { withNamespaceLocation } from '@sdlc/ui/lib'
@@ -13,6 +14,7 @@ export function TaskRepositoriesPanel({
   projectKey: string
 }) {
   const { ref, query: context } = useNamespaceContext()
+  const { search } = useLocation()
   const { services } = usePlatformServices()
   const cache = useQueryClient()
   const [offset, setOffset] = useState(0)
@@ -116,6 +118,7 @@ export function TaskRepositoriesPanel({
                   href={withNamespaceLocation(
                     `${forge}/catalog/repositories/${repository.repository_id}?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
                     ref,
+                    search,
                   )}
                 >
                   {repository.public_name}
@@ -215,6 +218,7 @@ export function TaskRepositoriesPanel({
                     href={withNamespaceLocation(
                       `${forge}/catalog/repositories/${item.repository.repository_id}/pulls/${item.number}`,
                       ref,
+                      search,
                     )}
                   >
                     #{item.number} {item.title}
@@ -233,7 +237,11 @@ export function TaskRepositoriesPanel({
                     {forge ? (
                       <a
                         className="text-accent"
-                        href={withNamespaceLocation(`${forge}/pipelines/${check.pipeline_id}`, ref)}
+                        href={withNamespaceLocation(
+                          `${forge}/pipelines/${check.pipeline_id}`,
+                          ref,
+                          search,
+                        )}
                       >
                         CI · {check.status}
                       </a>

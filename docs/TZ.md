@@ -1,5 +1,16 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+PM producer writes close the reserved-execution write boundary through exact
+machine scope/fence plus the Tracker execution lease; they do not activate
+Analysis dispatch or allow PM to self-certify readiness.
+[Implementation and gates](PM_NATIVE_ADMISSION.md).
+
+Сквозной проект сохраняет Tracker identity, имя, ключ и общий Base avatar.
+Forge получает их через ограниченный server-side каталог подтверждённых
+Namespace bindings, без передачи пользовательского PAT и без проектного ACL.
+Общие раскрываемые секции навигации используют primitive Base; состояния
+секций сохраняются продуктом по стабильным refs.
+
 Prepared Analysis has a protected fresh Fleet configuration preflight, matching
 concrete agent/effective config/package/Workflow refs and rechecking lease/ACL
 after HTTP. This prerequisite does not activate native dispatch or change tasks.
@@ -44,13 +55,13 @@ readback supports reconciliation after restart. Dispatch/admission, other stage
 transitions, decomposition/barrier/Rework and end-to-end PDLC remain incomplete:
 [implemented slice and next interfaces](SDLC_LIFECYCLE_V1.md).
 
-The next bounded B-SDLC-01 slice cannot safely accept Architect materialization:
-Architecture/non-PM admitted assignment and trusted terminal authority do not yet
-exist. Its concrete fallback closes root-binding/queued-state bypasses instead:
-root-only strict binding, non-root PM lifecycle/read denial and a DB freeze of
-queued Analysis. Real parent/root/dependencies, revisioned coverage, dependency
-cycle validation and the active-decomposition root barrier remain unimplemented.
-No operator/fixture assignment or receipt enables them.
+The next bounded B-SDLC-01 slices separate responsibilities: Tracker now accepts
+an exact Analyst terminal result and moves the root to Architecture, but Architect
+materialization and trusted Architect terminal authority still do not exist.
+Root-only strict binding, non-root PM lifecycle/read denial and guarded Analysis
+state writes remain the fallback until real parent/root/dependencies, revisioned
+coverage, dependency cycle validation and active-decomposition root barrier are
+implemented.
 
 Opt-in Draft -> assigned PM questions -> owner answers -> new full requirements
 revision -> trusted readiness evidence -> exact owner confirmation -> Backlog.

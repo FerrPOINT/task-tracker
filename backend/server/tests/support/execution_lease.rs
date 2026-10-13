@@ -6,6 +6,8 @@ pub async fn verify(
     subject: &str,
     verifier: &str,
 ) {
+    let leases_before = count(f.db, "sdlc_pm_execution_leases").await;
+    let lease_operations_before = count(f.db, "sdlc_pm_lease_operations").await;
     let (base, stop, handle) = start(config.clone()).await;
     let task = create(f, &base, "execution-lease-source").await;
     let assignment = expect(
@@ -50,6 +52,22 @@ pub async fn verify(
             "task-tracker:write".into(),
             grant,
         ],
+    );
+    let verifier_token = machine(
+        f.secret,
+        f.issuer,
+        verifier,
+        vec![
+            "task-tracker:read".into(),
+            "task-tracker:write".into(),
+            format!("task-tracker:sdlc:evidence:{task}:1"),
+        ],
+    );
+    let verifier_no_scope = machine(
+        f.secret,
+        f.issuer,
+        verifier,
+        vec!["task-tracker:read".into(), "task-tracker:write".into()],
     );
     let url = format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-execution-lease");
     let claim = json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"lease-claim"});
@@ -239,8 +257,16 @@ pub async fn verify(
     assert_eq!(won, 1);
     let live = get_json(f.client, &url, &token, 200).await;
     assert_eq!(live["current"]["version"], 4);
-    assert_eq!(count(f.db, "sdlc_pm_execution_leases").await, 1);
-    assert_eq!(count(f.db, "sdlc_pm_lease_operations").await, 4);
+    assert_eq!(lease_count(f.db, task).await, 1);
+    assert_eq!(lease_operation_count(f.db, task).await, 4);
+    assert_eq!(
+        count(f.db, "sdlc_pm_execution_leases").await,
+        leases_before + 1
+    );
+    assert_eq!(
+        count(f.db, "sdlc_pm_lease_operations").await,
+        lease_operations_before + 4
+    );
     assert!(
         migration::MigrationTrait::down(
             &migration::m20261001_0000034_sdlc_clarification::Migration,
@@ -249,7 +275,11 @@ pub async fn verify(
         .await
         .is_err()
     );
-    assert_eq!(count(f.db, "sdlc_pm_execution_leases").await, 1);
+    assert_eq!(lease_count(f.db, task).await, 1);
+    assert_eq!(
+        count(f.db, "sdlc_pm_execution_leases").await,
+        leases_before + 1
+    );
     let saved = get_json(
         f.client,
         &format!("{url}?idempotency_key=lease-claim"),
@@ -264,14 +294,122 @@ pub async fn verify(
         assignment
     );
     let pm_write = json!({"fence":fence,"document":{"goal":"goal","scope":["scope"],"exclusions":[],"scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]},"expected_requirement_revision":null,"idempotency_key":"lease-is-not-admission"});
-    expect(
+    let requirements_url = format!("{base}/api/v1/issues/{task}/sdlc/requirements");
+    let before_denials = lease_snapshot(f, task).await;
+    for denied in [f.owner, f.operator, &no_grant, &foreign] {
+        expect(f.client, &requirements_url, denied, &pm_write, 403).await;
+    }
+    let mut stale_write = pm_write.clone();
+    stale_write["fence"]["assignment_version"] = json!(2);
+    expect(f.client, &requirements_url, &token, &stale_write, 409).await;
+    assert_eq!(lease_snapshot(f, task).await, before_denials);
+    let revision = expect(
         f.client,
         &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
         &token,
         &pm_write,
+        200,
+    )
+    .await;
+    assert_eq!(revision["revision"], 1);
+    assert_eq!(revision["author_subject"], subject);
+    assert_eq!(
+        expect(f.client, &requirements_url, &token, &pm_write, 200).await,
+        revision
+    );
+    let before_conflict = lease_snapshot(f, task).await;
+    let mut changed_write = pm_write.clone();
+    changed_write["document"]["goal"] = json!("changed payload");
+    expect(f.client, &requirements_url, &token, &changed_write, 409).await;
+    assert_eq!(lease_snapshot(f, task).await, before_conflict);
+    assert_eq!(count(f.db, "sdlc_pm_native_admissions").await, 0);
+    let question_id = Uuid::new_v4();
+    let question = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),
+        &token,
+        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":question_id,
+            "expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),
+            "requirement_reference":"scope","text":"Confirm scope?","rationale":"Needed for exact consent",
+            "required":true,"mode":"text","options":[],"recommended_option_id":null,
+            "idempotency_key":"lease-question-no-native-history"}),
+        200,
+    )
+    .await;
+    assert_eq!(question["id"].as_str().unwrap(), question_id.to_string());
+    let answer_url =
+        format!("{base}/api/v1/issues/{task}/sdlc/clarifications/{question_id}/answers");
+    let answer = json!({"expected_question_version":1,"requirement_revision":1,
+        "selected_option_ids":[],"text":"Confirmed","comment":null,
+        "idempotency_key":"owner-answer-no-native-history"});
+    expect(f.client, &answer_url, f.operator, &answer, 403).await;
+    let mut stale_answer = answer.clone();
+    stale_answer["expected_question_version"] = json!(2);
+    expect(f.client, &answer_url, f.owner, &stale_answer, 409).await;
+    assert_eq!(
+        expect(f.client, &answer_url, f.owner, &answer, 200).await["text"],
+        "Confirmed"
+    );
+    expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/1/confirm"),
+        f.owner,
+        &json!({"content_hash":revision["content_hash"],"idempotency_key":"premature-confirm"}),
         409,
     )
     .await;
+    let final_revision = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
+        &token,
+        &json!({"fence":fence,"document":{"goal":"goal","scope":["scope"],"exclusions":[],
+            "scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],
+            "dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["prerequisite"]},
+            "expected_requirement_revision":1,"idempotency_key":"lease-final-revision-no-native-history"}),
+        200,
+    )
+    .await;
+    assert_eq!(final_revision["revision"], 2);
+    let evidence_url = format!("{base}/api/v1/issues/{task}/sdlc/evidence");
+    let mut evidence = json!({"fence":fence,"requirement_revision":2,
+        "content_hash":final_revision["content_hash"],"check_id":"check",
+        "evidence_reference":"workflow://verified/check",
+        "idempotency_key":"verifier-check-no-native-history"});
+    expect(f.client, &evidence_url, &verifier_no_scope, &evidence, 403).await;
+    expect(f.client, &evidence_url, &verifier_token, &evidence, 200).await;
+    evidence["check_id"] = json!("prerequisite");
+    evidence["evidence_reference"] = json!("workflow://verified/prerequisite");
+    evidence["idempotency_key"] = json!("verifier-prerequisite-no-native-history");
+    expect(f.client, &evidence_url, &verifier_token, &evidence, 200).await;
+    let before_confirm = get_json(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/context"),
+        f.owner,
+        200,
+    )
+    .await;
+    assert_eq!(
+        before_confirm["waiting_reason"], "waiting_for_owner_confirmation",
+        "{before_confirm}"
+    );
+    let confirm_url = format!("{base}/api/v1/issues/{task}/sdlc/requirements/2/confirm");
+    let confirm = json!({"content_hash":final_revision["content_hash"],"idempotency_key":"confirm-no-native-history"});
+    expect(f.client, &confirm_url, f.operator, &confirm, 403).await;
+    let confirmation = expect(f.client, &confirm_url, f.owner, &confirm, 200).await;
+    assert_eq!(confirmation["revision"], 2);
+    assert_eq!(confirmation["stage"], "Backlog");
+    let context = get_json(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/context"),
+        f.owner,
+        200,
+    )
+    .await;
+    assert_eq!(context["stage"], "Analysis");
+    assert_eq!(context["waiting_reason"], "queued_for_analysis");
+    assert_eq!(count(f.db, "sdlc_pm_native_admissions").await, 0);
+    let state = get_json(f.client, &url, &token, 200).await;
+    assert_eq!(state["current"], live["current"]);
     let execution_id = Uuid::parse_str(a["execution_id"].as_str().unwrap()).unwrap();
     assert!(
         f.db.execute(statement(
@@ -453,7 +591,11 @@ pub async fn verify(
     lock.commit().await.unwrap();
     let (status, result) = waiting.await.unwrap();
     assert_eq!(status, 409, "{result}");
-    assert_eq!(count(f.db, "sdlc_pm_lease_operations").await, 4);
+    assert_eq!(lease_operation_count(f.db, task).await, 4);
+    assert_eq!(
+        count(f.db, "sdlc_pm_lease_operations").await,
+        lease_operations_before + 4
+    );
     let expired = get_json(
         f.client,
         &format!("{url}?idempotency_key=heartbeat-1"),
@@ -464,6 +606,22 @@ pub async fn verify(
     assert_eq!(expired["state"], "expired");
     assert_eq!(expired["current"], live["current"]);
     assert_eq!(expired["operation"]["result"], second);
+    let requirements_url = format!("{base}/api/v1/issues/{task}/sdlc/requirements");
+    let before_expired_write = lease_snapshot(f, task).await;
+    let mut expired_write = pm_write.clone();
+    expired_write["idempotency_key"] = json!("expired-pm-producer-write");
+    let denied = expect(f.client, &requirements_url, &token, &expired_write, 409).await;
+    assert_eq!(
+        denied["error"]["message"],
+        "PM execution lease expired or foreign"
+    );
+    assert_eq!(lease_snapshot(f, task).await, before_expired_write);
+    // Original acceptance remains readable after lease expiry without another write.
+    assert_eq!(
+        expect(f.client, &requirements_url, &token, &pm_write, 200).await,
+        revision
+    );
+    assert_eq!(lease_snapshot(f, task).await, before_expired_write);
     assert_eq!(expect(f.client, &url, &token, &claim, 200).await, first);
     assert_eq!(
         expect(
@@ -598,4 +756,34 @@ async fn assignment_ledger_denials(
 
 fn statement(sql: &str, values: Vec<sea_orm::Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
+}
+
+async fn lease_count(db: &DatabaseConnection, task: Uuid) -> i64 {
+    db.query_one(statement(
+        "SELECT count(*) AS n
+         FROM sdlc_pm_execution_leases lease
+         JOIN sdlc_pm_executions execution USING(execution_id)
+         WHERE execution.task_id=$1",
+        vec![task.into()],
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "n")
+    .unwrap()
+}
+
+async fn lease_operation_count(db: &DatabaseConnection, task: Uuid) -> i64 {
+    db.query_one(statement(
+        "SELECT count(*) AS n
+         FROM sdlc_pm_lease_operations operation
+         JOIN sdlc_pm_executions execution USING(execution_id)
+         WHERE execution.task_id=$1",
+        vec![task.into()],
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "n")
+    .unwrap()
 }

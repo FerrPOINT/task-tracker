@@ -179,8 +179,9 @@ function setLoadedProject() {
 }
 
 async function selectProject(user: ReturnType<typeof userEvent.setup>) {
-  const select = screen.getByRole('combobox', { name: /проект|project/i })
-  await user.selectOptions(select, 'proj-1')
+  const select = screen.getByRole('button', { name: /проект|project/i })
+  await user.click(select)
+  await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker' }))
 }
 
 async function selectSprint(user: ReturnType<typeof userEvent.setup>) {
@@ -208,7 +209,7 @@ describe('ReportsPage', () => {
     setLoadedProject()
     renderPage()
     expect(screen.getByRole('heading', { name: /отчёты|reports/i })).toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: /проект|project/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /проект|project/i })).toBeInTheDocument()
   })
 
   it('shows velocity loading state on the default tab', async () => {
@@ -369,8 +370,9 @@ describe('ReportsPage', () => {
 
     renderPage()
 
-    const select = screen.getByRole('combobox', { name: /проект|project/i })
-    await user.selectOptions(select, 'proj-1')
+    const select = screen.getByRole('button', { name: /проект|project/i })
+    await user.click(select)
+    await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker' }))
 
     expect(useVelocityReport).toHaveBeenCalled()
   })
@@ -379,7 +381,7 @@ describe('ReportsPage', () => {
     const user = userEvent.setup()
     renderPage('/reports?project_key=TT')
 
-    expect(screen.getByRole('combobox', { name: /проект|project/i })).toHaveValue('proj-1')
+    expect(screen.getByRole('button', { name: /проект|project/i })).toHaveValue('proj-1')
     expect(useVelocityReport).toHaveBeenLastCalledWith('proj-1')
     expect(useCumulativeFlowReport).toHaveBeenLastCalledWith(undefined)
     expect(useControlChartReport).toHaveBeenLastCalledWith(undefined)
@@ -443,14 +445,15 @@ describe('ReportsPage', () => {
     const user = userEvent.setup()
     renderPage('/reports?source=qa')
 
-    await user.selectOptions(screen.getByRole('combobox', { name: /проект|project/i }), 'proj-1')
+    await user.click(screen.getByRole('button', { name: /проект|project/i }))
+    await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker' }))
     expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
       '/reports?source=qa&project_key=TT',
     )
 
     await user.click(screen.getByRole('button', { name: 'Back in history' }))
     await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: /проект|project/i })).toHaveValue(''),
+      expect(screen.getByRole('button', { name: /проект|project/i })).toHaveValue(''),
     )
     expect(screen.getByRole('status', { name: /current location/i })).toHaveTextContent(
       '/reports?source=qa',
@@ -460,9 +463,8 @@ describe('ReportsPage', () => {
   it('keeps primary report controls at 44 px on mobile and 40 px on larger screens', () => {
     renderPage('/reports?project_key=TT')
 
-    expect(screen.getByRole('combobox', { name: /проект|project/i })).toHaveClass(
-      'min-h-11',
-      'sm:min-h-10',
+    expect(screen.getByRole('button', { name: /проект|project/i })).toHaveClass(
+      'base-project-picker',
     )
     for (const tab of screen.getAllByRole('tab')) {
       expect(tab).toHaveClass('min-h-11', 'sm:min-h-10')

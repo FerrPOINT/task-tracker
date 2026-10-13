@@ -8,7 +8,16 @@ intent: `admission_state: awaiting_admission`, `dispatch_allowed: false`.
 Stage остаётся Analysis, статус задачи — Ready/todo. Нет dispatch, InProgress,
 session/run binding, release, ACK, stop proof или фонового второго scheduler.
 Fresh Fleet native admission, Workflow acceptance и trusted verified-stop остаются
-обязательными следующими counterpart interfaces, а не результатом reserve.
+обязательными следующими counterpart interfaces, а не результатом reserve. Для
+старого PM draft добавлен отдельный trusted completion handoff: scheduler пишет
+exact terminal receipts по текущему PM fence/lease/revision/hash, не по expiry.
+
+Terminal result фиксируется отдельным Tracker-authoritative endpoint
+`POST /api/v1/issues/{id}/sdlc/analysis-result`: caller передаёт exact assignment,
+lease/fence, Workflow terminal receipt ref/hash и `architecture_input_sha256`.
+Backend проверяет активный hold/lease и атомарно пишет append-only result,
+освобождает capacity и переводит root в `stage: Architecture` /
+`SDLC Architecture`. Fleet/Hermes не получают права прямой мутации business state.
 
 Нужен snapshot явной публикации из [SDLC_ROUTING_V1](SDLC_ROUTING_V1.md).
 UI confirmation включает routing только отдельным явным выбором опубликованной
@@ -46,12 +55,22 @@ GET требует существующий Central human/project ACL либо m
 | GET | текущий receipt или null, observed time, lease state, reconciliation reason и retained capacity |
 | POST `/heartbeat` | `assignment_id`, `execution_id`, `fencing_token`, `lease_id`, `expected_lease_version`, `idempotency_key`; 201 новая версия, 200 первоначальный replay |
 | GET `/operations/{idempotency_key}` | original result и `request_sha256`; 404 при отсутствии операции |
+| POST `/../analysis-result` | exact assignment identity, current lease version, terminal receipt ref/hash, Architecture input hash, summary, `idempotency_key`; 201 accepted result, 200 replay |
+| GET `/../analysis-result/operations/{idempotency_key}` | original accepted result и `request_sha256`; 404 при отсутствии операции |
+| POST `/../pm-draft-completion` | exact PM fence, retained lease ID/version, requirement revision/hash, terminal Fleet receipt ref/hash, Workflow receipt ref/hash, `idempotency_key`; 201 completion, 200 replay |
+| GET `/../pm-draft-completion` | current completion receipt или null |
+| GET `/../pm-draft-completion/operations/{idempotency_key}` | original completion receipt и `request_sha256`; 404 при отсутствии операции |
 
 Unknown поля запрещены. UUID канонические, ненулевые; версии положительные safe
 JSON integers до 9007199254740991, initial reservation CAS только integer 0.
 Agent, config, роль, workflow, TTL, флаги readiness/stop caller не передаёт.
 Stale intent/snapshot/revision/hash, занятый root/agent/pool, другое содержимое
 прежнего key и новый key уже reserved задачи дают 409 без writes.
+PM completion принимает только scheduler subject с exact `task-tracker:write`.
+PM grant, owner и read PAT не могут закрыть PM. Completion разрешает только
+`pm_admission_state reserved -> completed`, сохраняет PM assignment projection и
+не удаляет PM history; последующий Analysis result использует собственный
+Analysis terminal gate.
 
 ## Immutable envelope
 
@@ -111,10 +130,11 @@ GET не делает renewal или reconciliation writes. `lease_state`:
 `unreserved|active|expired`. Expiry явно возвращает `reconciliation_needed:true`,
 `reason:lease_expired_stop_unverified` и `capacity_held:true`; прежний receipt
 остаётся неизменным. Неизвестный PM даёт reason `pm_quiescence_unverified`.
-Без trusted stop не существует release/reacquire/replace endpoint.
+Без accepted terminal result не существует release/reacquire/replace endpoint.
+Expired lease cannot submit a result; stale fence/lease/version returns 409.
 
 Одна транзакция проверяет task/ACL/current publication, резервирует root1/agent1/
-technical pool2, сохраняет assignment, lease, operation receipt и outbox
+technical pool2, сохраняет assignment, lease, mutable capacity hold, operation receipt и outbox
 `analysis.assignment_reserved` (`event_id=assignment_id`). Все holds, включая
 expired/unknown, занимают capacity. PM не занимает technical slot, но его
 неподтверждённые root/agent bindings блокируют пересечение; новые PM assignment
@@ -135,21 +155,26 @@ Reserved resource имеет ровно восемь полей: `assignment_id`
 
 ## SQL и проверка
 
-Расширена только pending 000034: singleton capacity lock, ограниченная sequence
-fence, append-only `sdlc_analysis_reservations`,
-`sdlc_analysis_reservation_operations` и CAS head
-`sdlc_analysis_reservation_leases`. Unique root/agent/pool slot удерживают capacity
-без expiry predicates. FK/insert gates сверяют exact intent/snapshot/route;
+Расширена pending 000034 плюс additive 000094: singleton capacity lock,
+ограниченная sequence fence, append-only `sdlc_analysis_reservations`,
+`sdlc_analysis_reservation_operations`, `sdlc_analysis_results`,
+`sdlc_analysis_result_operations`, mutable `sdlc_analysis_capacity_holds` и CAS head
+`sdlc_analysis_reservation_leases`. Capacity удерживается hold-таблицей без expiry
+predicates; accepted result удаляет hold в той же транзакции. FK/insert gates сверяют exact intent/snapshot/route;
 deferred FK требуют lease и current operation receipt в той же транзакции.
 Lease mutation gate запрещает delete, identity rewrite, version jump и expired
 renewal. Исторические data не backfill-ятся и не enrolled автоматически.
+Additive 000095 добавляет immutable `sdlc_pm_completions` и
+`sdlc_pm_completion_operations`, расширяет PM control constraint на `completed`
+и меняет reservation gates так, чтобы только exact completed PM переставал
+блокировать root/agent Analysis capacity.
 
 Scoped проверки находятся в `app::sdlc_reservation`, `api::routes::sdlc_reservation`
 и isolated PG/HTTP `support/analysis_reservation.rs`. Fixtures — только disposable
 PG, без native admission/stop evidence. Полный build/CI/deploy/native acceptance
 не являются частью проверки этого source-среза.
 
-### Проверенный source-срез
+### Проверенный prepared-reservation source-срез
 
 Scoped app command/authority test, Rust API reservation schema test (включая
 уникальность operation IDs), metadata schema test и один PostgreSQL/HTTP lifecycle
@@ -158,9 +183,10 @@ project ACL и отзыв membership, CAS/replay, rollback outbox, immutable rou
 workflow task ref, реальный TTL expiry и durable readback после restart.
 Deferred FK и SQL mutation gates проверены отрицательными транзакциями.
 
-OpenAPI заново экспортирован штатным Rust `api --bin gen-openapi`, а не правкой
-frozen JSON. Экспорт содержит Stage `Draft|Clarification|Backlog|Analysis` и
-11 strict metadata event types. Generated TypeScript consistency и scoped
+OpenAPI source-аннотации расширены под штатный Rust `api --bin gen-openapi`, а не
+ручные schema edits. После экспорта frozen JSON должен содержать Stage
+`Draft|Clarification|Backlog|Analysis|Architecture` и 12 strict metadata event types.
+Generated TypeScript consistency и scoped
 B05 typecheck прошли. Exhaustive B05 event-label map дополнен только нейтральной
 подписью prepared/awaiting admission; отдельный history component test прошёл.
 В reservation срезе policy/opt-in UI не добавлялись. Последующий

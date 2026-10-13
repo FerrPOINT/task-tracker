@@ -191,7 +191,8 @@ describe('IssueCreatePage', () => {
     expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
     expect(listCustomFields).not.toHaveBeenCalled()
 
-    await user.selectOptions(screen.getByLabelText(/Проект/), 'TT')
+    await user.click(screen.getByLabelText(/Проект/))
+    await user.click(screen.getByRole('menuitemradio', { name: 'Task Tracker (TT)' }))
     await user.type(await screen.findByLabelText(/Required text/), 'ready')
     await user.click(screen.getByRole('button', { name: /^создать$/i }))
     await waitFor(() => expect(createIssue).toHaveBeenCalled())
@@ -200,7 +201,7 @@ describe('IssueCreatePage', () => {
 
   it('does not select a legacy default when a Namespace URL is malformed', async () => {
     render(wrapper(<IssueCreatePage />, '/issues/create?namespace_id=broken&source=wiki'))
-    await screen.findByRole('option', { name: /Task Tracker/ })
+    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toBeEnabled())
     expect(screen.getByLabelText(/Проект/)).toHaveValue('')
     expect(screen.getByText('Некорректная ссылка на проект Namespace')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
@@ -271,8 +272,9 @@ describe('IssueCreatePage', () => {
     const user = userEvent.setup()
     render(wrapper(<IssueCreatePage />, '/issues/create?project_key=TT&source=board'))
 
-    await screen.findByRole('option', { name: /Operations/ })
-    await user.selectOptions(screen.getByLabelText(/Проект/), 'OPS')
+    await waitFor(() => expect(screen.getByLabelText(/Проект/)).toBeEnabled())
+    await user.click(screen.getByLabelText(/Проект/))
+    await user.click(screen.getByRole('menuitemradio', { name: /\(OPS\)/ }))
     expect(screen.getByRole('status', { name: 'current location' })).toHaveTextContent(
       '/issues/create?project_key=OPS&source=board',
     )

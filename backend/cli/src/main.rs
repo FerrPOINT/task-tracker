@@ -91,6 +91,11 @@ enum Commands {
         #[command(subcommand)]
         command: ReportCommands,
     },
+    /// SDLC PM task context, questions and requirements
+    Sdlc {
+        #[command(subcommand)]
+        command: commands::SdlcCommand,
+    },
     /// Admin (system admin only)
     Admin {
         #[command(subcommand)]
@@ -1269,6 +1274,12 @@ async fn run(cli: Cli) -> Result<()> {
                 print_output(out, &body);
             }
         },
+
+        // ── SDLC ──
+        Commands::Sdlc { command } => {
+            let value = commands::execute_sdlc(&api, command).await?;
+            print_output(out, &value);
+        }
 
         // ── Admin ──
         Commands::Admin { command } => match command {

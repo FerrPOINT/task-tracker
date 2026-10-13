@@ -1,3 +1,4 @@
+import { ProjectAvatar } from '@sdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
@@ -89,7 +90,8 @@ export function ProjectTrashPage() {
           </Link>
         </Button>
         <Trash2 className="h-5 w-5 text-text-muted" />
-        <h1 className="text-xl font-semibold">
+        <h1 className="flex min-w-0 items-center gap-2 text-xl font-semibold">
+          <ProjectAvatar projectKey={projectKey ?? ''} />
           {t('trash.title', 'Trash')} · {projectKey}
         </h1>
       </div>

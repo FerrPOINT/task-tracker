@@ -72,6 +72,29 @@ fn heartbeat(r: &Value, key: &str) -> Value {
     json!({"assignment_id":r["assignment"]["assignment_id"],"execution_id":r["assignment"]["execution_id"],"fencing_token":r["assignment"]["fencing_token"],"lease_id":r["lease"]["lease_id"],"expected_lease_version":r["lease"]["version"],"idempotency_key":key})
 }
 
+fn terminal_result(reservation: &Value, key: &str) -> Value {
+    let assignment = &reservation["assignment"];
+    json!({
+        "contract_version": 1,
+        "assignment_id": assignment["assignment_id"],
+        "execution_id": assignment["execution_id"],
+        "agent_id": assignment["agent_id"],
+        "intent_id": assignment["intent_id"],
+        "routing_snapshot_id": assignment["routing_snapshot_id"],
+        "requirement_revision": assignment["requirement_revision"],
+        "content_hash": assignment["content_hash"],
+        "fencing_token": assignment["fencing_token"],
+        "lease_id": assignment["lease_id"],
+        "expected_lease_version": reservation["lease"]["version"],
+        "assignment_hash": assignment["assignment_hash"],
+        "terminal_receipt_ref": format!("workflow/{key}/terminal.json"),
+        "terminal_receipt_sha256": "a".repeat(64),
+        "architecture_input_sha256": "b".repeat(64),
+        "summary": "Analysis produced a versioned architecture input.",
+        "idempotency_key": key,
+    })
+}
+
 pub async fn check(
     db: &DatabaseConnection,
     client: &Client,
@@ -136,6 +159,40 @@ pub async fn check(
         .contains("pm_quiescence_unverified")
     );
     assert_eq!(count(db, "sdlc_analysis_reservations").await, 0);
+    let pm_context = read(
+        client,
+        &format!("{base}/api/v1/issues/{pm_task}/sdlc/context"),
+        owner,
+        200,
+    )
+    .await;
+    // This task came through legacy assignment/native admission, not a Tracker
+    // reservation. A confirmed document cannot manufacture reservation authority.
+    let assignment = &pm_context["assignment"];
+    let fence = json!({"assignment_id":assignment["assignment_id"],
+        "execution_id":assignment["execution_id"],"agent_id":assignment["agent_id"],
+        "assignment_version":assignment["version"]});
+    let lease_url = format!("{base}/api/v1/issues/{pm_task}/sdlc/pm-draft-execution-lease");
+    let rejected = post(client, &lease_url, "sdlc_pat_pm",
+        &json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"legacy-cannot-claim-reserved-lease"}),409).await;
+    assert_eq!(
+        rejected["error"]["message"],
+        "PM reservation is not current"
+    );
+    assert_eq!(count(db, "sdlc_pm_execution_leases").await, 0);
+    assert_eq!(count(db, "sdlc_pm_completions").await, 0);
+    let mut after_rejected_claim = read(client, &path(pm_task), reader, 200).await;
+    let mut before_rejected_claim = pm_readback.clone();
+    // Readback observation time advances even when business state is unchanged.
+    after_rejected_claim
+        .as_object_mut()
+        .unwrap()
+        .remove("observed_at");
+    before_rejected_claim
+        .as_object_mut()
+        .unwrap()
+        .remove("observed_at");
+    assert_eq!(after_rejected_claim, before_rejected_claim);
     let (legacy, legacy_command) =
         publication(db, client, base, owner, ready, "SDLC-1000", None).await;
     post(client, &path(legacy), scheduler, &legacy_command, 409).await;
@@ -305,6 +362,91 @@ pub async fn check(
         (rc.status().as_u16(), rd.status().as_u16()),
         (201, 409) | (409, 201)
     ));
+    let (result_task, result_reservation, rejected_task, rejected_command) =
+        if rc.status().as_u16() == 201 {
+            (c, rc.json::<Value>().await.unwrap(), d, cd)
+        } else {
+            (d, rd.json::<Value>().await.unwrap(), c, cc)
+        };
+    let mut full_pool_retry = rejected_command;
+    full_pool_retry["idempotency_key"] = json!("replacement-before-result");
+    post(
+        client,
+        &path(rejected_task),
+        scheduler,
+        &full_pool_retry,
+        409,
+    )
+    .await;
+    let result_url = format!("{base}/api/v1/issues/{result_task}/sdlc/analysis-result");
+    let result_command = terminal_result(&result_reservation, "accept-analysis-result");
+    let response = client
+        .post(&result_url)
+        .bearer_auth(scheduler)
+        .json(&result_command)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status().as_u16(), 201);
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let accepted: Value = response.json().await.unwrap();
+    assert_eq!(accepted["previous_stage"], "Analysis");
+    assert_eq!(accepted["next_stage"], "Architecture");
+    assert_eq!(accepted["terminal_receipt_sha256"], "a".repeat(64));
+    assert_eq!(
+        post(client, &result_url, scheduler, &result_command, 200).await,
+        accepted,
+        "an exact retry must return the original receipt without another transition"
+    );
+    let mut conflicting_result = result_command.clone();
+    conflicting_result["summary"] = json!("different result under the same key");
+    post(client, &result_url, scheduler, &conflicting_result, 409).await;
+    let mut late_result = result_command.clone();
+    late_result["idempotency_key"] = json!("second-transition");
+    post(client, &result_url, scheduler, &late_result, 409).await;
+    let operation_url = format!("{result_url}/operations/accept-analysis-result");
+    read(client, &operation_url, "sdlc_pat_reservation_foreign", 403).await;
+    let operation_response = client
+        .get(&operation_url)
+        .bearer_auth(reader)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(operation_response.status().as_u16(), 200);
+    assert_eq!(operation_response.headers()["cache-control"], "no-store");
+    let operation: Value = operation_response.json().await.unwrap();
+    assert_eq!(operation["result"], accepted);
+    let task_state = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT t.state->>'stage' AS stage, s.name AS status FROM sdlc_tasks t JOIN issues i ON i.id=t.task_id JOIN statuses s ON s.id=i.status_id WHERE t.task_id=$1",
+            [result_task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        task_state.try_get::<String>("", "stage").unwrap(),
+        "Architecture"
+    );
+    assert_eq!(
+        task_state.try_get::<String>("", "status").unwrap(),
+        "SDLC Architecture"
+    );
+    let event = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT payload FROM sdlc_outbox WHERE task_id=$1 AND event_type='analysis.result_accepted'",
+            [result_task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let event_payload: Value = event.try_get("", "payload").unwrap();
+    assert_eq!(event_payload["result"]["result_id"], accepted["result_id"]);
+    assert_eq!(count(db, "sdlc_analysis_results").await, 1);
+    assert_eq!(count(db, "sdlc_analysis_result_operations").await, 1);
+    assert_eq!(count(db, "sdlc_analysis_capacity_holds").await, 1);
     assert_eq!(count(db, "sdlc_analysis_reservations").await, 2);
     assert_eq!(
         read(client, &path(winner), reader, 200).await["current"]["assignment"],
@@ -486,9 +628,6 @@ pub async fn check(
     )
     .await;
     post(client, &path(loser), scheduler, &loser_command, 409).await;
-    let mut replacement = cc.clone();
-    replacement["idempotency_key"] = json!("replacement");
-    post(client, &path(c), scheduler, &replacement, 409).await;
     assert_eq!(count(db, "sdlc_analysis_reservations").await, 2);
     println!(
         "ANALYSIS_RESERVATION real expiry/read-only GET/unknown capacity hold/no release/no replay rewind passed"

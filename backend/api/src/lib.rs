@@ -90,6 +90,11 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc_reservation::current,
         routes::sdlc_reservation::configuration_preflight,
         routes::sdlc_reservation::operation,
+        routes::sdlc_reservation::submit_result,
+        routes::sdlc_reservation::result_operation,
+        routes::sdlc_reservation::complete_pm_draft,
+        routes::sdlc_reservation::pm_completion,
+        routes::sdlc_reservation::pm_completion_operation,
         routes::sdlc::project_access,
         routes::sdlc::project_directory,
         routes::sdlc::create_draft,
@@ -120,6 +125,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::namespace::available_resources,
         routes::namespace::stats,
         routes::namespace::contexts,
+        routes::namespace::project_catalog,
         routes::namespace::context,
         routes::namespace::documents,
         routes::namespace::repositories,
@@ -693,6 +699,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
                     get(routes::namespace::task_context),
                 )
                 .route("/namespace-tasks", get(routes::namespace::task_catalog))
+                .route(
+                    "/namespace-projects",
+                    get(routes::namespace::project_catalog),
+                )
                 .route_layer(axum::middleware::from_fn(routes::namespace::reader_auth)),
         );
     let api = public
@@ -1002,7 +1012,7 @@ mod tests {
             serde_json::json!(["events"])
         );
         let variants = schemas["MetadataEvent"]["oneOf"].as_array().unwrap();
-        assert_eq!(variants.len(), 11);
+        assert_eq!(variants.len(), 12);
         for variant in variants {
             assert_eq!(variant["additionalProperties"], false);
             assert_eq!(variant["required"].as_array().unwrap().len(), 7);

@@ -47,7 +47,7 @@ pub async fn binding(
 /// Foundation v1 has no verified stop/release protocol. Reserved ownership is
 /// never inferred quiescent from an expired lease or dispatch_allowed=false.
 async fn drained(db: &DatabaseConnection, project: Uuid) -> Result<bool, AppError> {
-    let row=db.query_one(statement("SELECT NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_reservations r JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AS drained",vec![id(project)])).await.map_err(AppError::database)?.ok_or_else(|| AppError::Unavailable("namespace_drain_readback_missing".into()))?;
+    let row=db.query_one(statement("SELECT NOT EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id) WHERE t.project_id=$1) AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds h JOIN sdlc_tasks t ON t.task_id=h.root_task_id WHERE t.project_id=$1) AS drained",vec![id(project)])).await.map_err(AppError::database)?.ok_or_else(|| AppError::Unavailable("namespace_drain_readback_missing".into()))?;
     row.try_get("", "drained").map_err(AppError::database)
 }
 
@@ -109,14 +109,22 @@ pub async fn apply(
         if command.state != "active" {
             return Err(AppError::conflict("binding_required_before_lifecycle"));
         }
-        let exists = tx
+        let existing = tx
             .query_one(statement(
-                "SELECT id FROM projects WHERE id=$1 FOR UPDATE",
+                "SELECT namespace_managed FROM projects WHERE id=$1 FOR UPDATE",
                 vec![id(command.resource.resource_id)],
             ))
             .await
-            .map_err(AppError::database)?
-            .is_some();
+            .map_err(AppError::database)?;
+        if let Some(row) = &existing {
+            if row
+                .try_get::<bool>("", "namespace_managed")
+                .map_err(AppError::database)?
+            {
+                return Err(AppError::Unavailable("namespace_projection_missing".into()));
+            }
+        }
+        let exists = existing.is_some();
         if exists && command.create_spec.is_some() {
             return Err(AppError::conflict("existing_resource_requires_attach"));
         }

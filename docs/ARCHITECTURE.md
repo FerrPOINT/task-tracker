@@ -1,5 +1,11 @@
 # Архитектура Task Tracker
 
+Reserved PM producer commands use Tracker reservation/lease recheck and atomic
+command/history write. No Fleet admission HTTP call is made on the producer
+path. [PM producer lease](PM_NATIVE_ADMISSION.md).
+
+[Reader проектов для Forge](NAMESPACE_PROJECT_READER.md) возвращает только подтверждённые Namespace-проекты через отдельную machine-only границу. Reader не создаёт human identity и не пересылает пользовательский PAT.
+
 [Namespace context](NAMESPACE.md) разрешает Project по confirmed local binding.
 Counter и lifecycle guards принадлежат Tracker; каталог людей следует общей
 trusted policy, а machine scopes и owner-only SDLC confirmations сохраняются.

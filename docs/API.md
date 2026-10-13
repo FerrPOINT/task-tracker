@@ -1,5 +1,17 @@
 # API v1 Specification — Task Tracker
 
+Reserved PM requirement/question writes require the exact machine scope/fence and
+a current Tracker execution lease; the command schema does not accept a readiness
+claim. Owner answers and separate verifier evidence use admitted history when
+available but do not require it. [Contract](PM_NATIVE_ADMISSION.md).
+
+## Каталог сквозных проектов для серверных consumers
+
+`GET /api/v1/namespace-projects` — пагинированный machine-only reader
+подтверждённых Tracker bindings, имени и ключа проекта. Требует отдельного
+reader subject и `task-tracker:read`; human routes не открываются.
+[Контракт и доступ](NAMESPACE_PROJECT_READER.md).
+
 ## UI Opt-In Публикации
 
 Owner consent UI читает существующую project routing policy и передаёт
@@ -20,6 +32,26 @@ Receipt awaiting_admission/dispatch_allowed=false; GET явно показыва
 и reconciliation_needed. PM unknown, stale CAS/fence и capacity conflict fail-closed.
 Replay не продлевает lease. Release/ACK/run endpoints отсутствуют.
 Полные DTO и hash semantics: [SDLC_RESERVATION_V1](SDLC_RESERVATION_V1.md).
+
+`POST /api/v1/issues/{id}/sdlc/analysis-result` is the first Tracker-authoritative
+terminal producer endpoint for Analyst work. It accepts the exact prepared
+assignment identity, active lease/fence, Workflow terminal receipt ref/hash and
+Architecture input hash; Tracker validates the current reservation and atomically
+records the result, releases Analysis capacity and advances the root task to
+`stage: Architecture` / `SDLC Architecture`. Same-key replay is retained at
+`/analysis-result/operations/{idempotency_key}` and never creates a second
+transition. Fleet/Hermes still do not mutate Tracker business state directly.
+
+`POST /api/v1/issues/{id}/sdlc/pm-draft-completion` is the bounded trusted
+handoff for a reserved PM execution. The configured scheduler, not the PM token,
+submits the exact current PM fence, retained execution lease ID/version, current
+requirement revision/hash, terminal Fleet receipt and Workflow receipt. Tracker
+does not require an active lease TTL and never infers completion from expiry.
+The write atomically records immutable completion history, flips only
+`pm_admission_state: completed`, emits `pm.completed`, and lets the same root
+enter prepared Analysis while preserving the PM assignment in SDLC context.
+GET `/pm-draft-completion` and `/pm-draft-completion/operations/{idempotency_key}`
+return no-store readbacks for reconciliation.
 
 ## SDLC Clarification API
 

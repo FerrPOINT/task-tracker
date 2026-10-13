@@ -12,6 +12,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
+#[path = "sdlc_native_admission.rs"]
+mod native_admission;
 #[path = "sdlc_reservation.rs"]
 mod reservation;
 #[path = "sdlc_routing.rs"]
@@ -317,10 +319,19 @@ impl PostgresSdlcRepository {
         event_type: &str,
         state: &TaskState,
     ) -> Result<(), AppError> {
+        let next_state = json_value(state)?;
+        exec(
+            tx,
+            "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
+             SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks
+             WHERE task_id=$1 AND pm_execution_id IS NOT NULL AND state IS DISTINCT FROM $2",
+            vec![task.into(), next_state.clone()],
+        )
+        .await?;
         exec(
             tx,
             "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
-            vec![task.into(), json_value(state)?],
+            vec![task.into(), next_state],
         )
         .await?;
         let status_name = match state.stage {
@@ -328,6 +339,7 @@ impl PostgresSdlcRepository {
             Stage::Clarification => "SDLC Clarification",
             Stage::Backlog => "Backlog",
             Stage::Analysis => "SDLC Analysis",
+            Stage::Architecture => "SDLC Architecture",
         };
         if !matches!(state.stage, Stage::Backlog) || event_type == "requirements.confirmed" {
             exec(tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at) SELECT $1,i.id,i.status_id,s.id,u.id,now() FROM issues i JOIN statuses s ON s.id=(SELECT id FROM statuses WHERE name=$3 ORDER BY id LIMIT 1) JOIN users u ON u.central_sub=$4 WHERE i.id=$2 AND i.status_id<>s.id", vec![Uuid::new_v4().into(), task.into(), status_name.into(), actor.subject.clone().into()]).await?;
@@ -337,7 +349,7 @@ impl PostgresSdlcRepository {
         let event_stage = if event_type == "requirements.confirmed" {
             Stage::Backlog
         } else {
-            state.stage.clone()
+            state.stage
         };
         let payload = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,"project_id":state.project_id,"task_id":task,"root_task_id":state.root_task_id,"owner_subject":state.owner_subject,"stage":event_stage,"requirement_revision":state.current_revision(),"result":result});
         exec(
@@ -509,6 +521,12 @@ impl PostgresSdlcRepository {
                 return Ok(None);
             }
         }
+        if event.event_type == "analysis.result_accepted" {
+            let row = tx.query_one(statement("SELECT result FROM sdlc_analysis_result_operations WHERE result_id=$1 AND task_id=$2",vec![event.event_id.into(),event.task_id.into()])).await.map_err(map_db)?;
+            if row.is_none_or(|r| r.try_get::<Json>("", "result").ok().as_ref() != Some(result)) {
+                return Ok(None);
+            }
+        }
         if event.event_type == "clarification.answered" {
             let Some(id) = result["question_id"]
                 .as_str()
@@ -536,6 +554,7 @@ impl PostgresSdlcRepository {
             "requirements.published" | "requirements.confirmed" => result["revision"].as_i64(),
             "analysis.intent_created" => result["requirement_revision"].as_i64(),
             "analysis.assignment_reserved" => result["assignment"]["requirement_revision"].as_i64(),
+            "analysis.result_accepted" => result["requirement_revision"].as_i64(),
             "clarification.published"
             | "clarification.cancelled"
             | "clarification.answered"
@@ -591,6 +610,47 @@ impl SdlcRepository for PostgresSdlcRepository {
         key: &str,
     ) -> Result<domain::sdlc_reservation::AnalysisReservationOperation, AppError> {
         self.read_analysis_reservation_operation(task, actor, key)
+            .await
+    }
+    async fn submit_analysis_result(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::SubmitAnalysisResult,
+    ) -> Result<(domain::sdlc_reservation::AnalysisResultReceipt, bool), AppError> {
+        self.submit_analysis_terminal_result(task, actor, command)
+            .await
+    }
+    async fn analysis_result_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_reservation::AnalysisResultOperation, AppError> {
+        self.read_analysis_result_operation(task, actor, key).await
+    }
+    async fn complete_pm_draft(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_reservation::CompletePmDraft,
+    ) -> Result<(domain::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError> {
+        self.complete_pm_draft_execution(task, actor, command).await
+    }
+    async fn pm_draft_completion(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<domain::sdlc_reservation::PmDraftCompletionReadback, AppError> {
+        self.read_pm_draft_completion(task, actor).await
+    }
+    async fn pm_draft_completion_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_reservation::PmDraftCompletionOperation, AppError> {
+        self.read_pm_draft_completion_operation(task, actor, key)
             .await
     }
     async fn set_routing_policy(
@@ -1275,37 +1335,27 @@ impl SdlcRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: SdlcCommand,
     ) -> Result<Json, AppError> {
-        app::sdlc::validate_key(command.key())?;
-        let tx = self.db.begin().await.map_err(map_db)?;
-        let mut state = self.load(&tx, task, actor).await?;
-        app::sdlc::authorize(&state, actor, &self.config, &command)?;
-        let hash = app::sdlc::command_hash(&command)?;
-        if let Some(result) = Self::replay(&tx, task, actor, command.key(), &hash).await? {
-            tx.commit().await.map_err(map_db)?;
-            return Ok(result);
-        }
-        if Self::enrolled(&tx, task).await? {
-            return Err(AppError::conflict(
-                "reserved PM execution requires verified admission",
-            ));
-        }
-        let result = app::sdlc::apply(&mut state, actor, &self.config, &command)?;
-        let event = self
-            .persist_result(&tx, task, &command, &result, &state)
-            .await?;
-        Self::finish(
-            &tx,
-            task,
-            actor,
-            command.key(),
-            &hash,
-            &result,
-            event,
-            &state,
-        )
-        .await?;
-        tx.commit().await.map_err(map_db)?;
-        Ok(result)
+        self.execute_with_native(task, actor, command, None, None)
+            .await
+    }
+    async fn prepare_native_command(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &SdlcCommand,
+    ) -> Result<domain::sdlc_native_admission::CommandAdmission, AppError> {
+        self.native_command_preflight(task, actor, command).await
+    }
+    async fn execute_verified(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: SdlcCommand,
+        expected: PmDraftReservation,
+        observed: Option<domain::sdlc_native_admission::AdmissionObservation>,
+    ) -> Result<Json, AppError> {
+        self.execute_with_native(task, actor, command, Some(expected), observed)
+            .await
     }
     async fn outbox(
         &self,

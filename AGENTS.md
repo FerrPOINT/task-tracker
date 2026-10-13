@@ -83,3 +83,11 @@
 См. [BASE_INTEGRATION](docs/BASE_INTEGRATION.md). Обязательны pinned Base SHA,
 locked/frozen зависимости и проверка актуальных checkout до сборки.
 Rust build toolchain 1.88.0, Node 22.20.0, pnpm 10.28.1; MSRV отдельно.
+
+## Local Docker ownership
+
+Every local container uses real Compose. Permanent projects are sdlc1, sdlc2
+and sdlc-common. Temporary sdlc-qa-/sdlc-build- projects require task/purpose,
+explicit endpoint and scoped cleanup in finally. Direct docker run/create,
+fake Compose labels and global prune are forbidden. Runtime data, snapshots,
+keys and shared caches are preserved. Base owns tools and LOCAL_GROUPS rules.

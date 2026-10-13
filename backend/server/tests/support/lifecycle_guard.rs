@@ -112,7 +112,8 @@ pub async fn queued_analysis(db: &DatabaseConnection, task: Uuid) {
             .unwrap_err()
             .to_string();
         assert!(
-            error.contains("guarded admission before lifecycle mutation"),
+            error.contains("guarded admission before lifecycle mutation")
+                || error.contains("authorized state write"),
             "{error}"
         );
     }

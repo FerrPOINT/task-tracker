@@ -1,9 +1,12 @@
+import { useProjectDisclosures } from '@sdlc/ui/lib'
+import { ProjectAvatar, ProjectNavigationGroup } from '@sdlc/ui/ui'
 import {
   NamespaceShellContext,
   useNamespaceCatalog,
   useNamespaceContext,
 } from './namespace-context'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { SidebarItem } from '@sdlc/ui/ui'
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
 import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
 import { useLocation, Outlet } from 'react-router'
@@ -94,21 +97,18 @@ function SidebarLink({
   compact?: boolean
 }) {
   return (
-    <Link
-      to={to}
-      onClick={onClick}
-      title={compact ? label : undefined}
-      aria-label={compact ? label : undefined}
-      aria-current={active ? 'page' : undefined}
-      className={`flex min-h-11 items-center rounded-md px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:min-h-10 ${compact ? 'justify-center' : 'gap-3'} ${
-        active
-          ? 'bg-surface-raised text-text-primary'
-          : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
-      }`}
-    >
-      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-      {!compact && <span className="truncate">{label}</span>}
-    </Link>
+    <SidebarItem asChild active={active} compact={compact}>
+      <Link
+        to={to}
+        onClick={onClick}
+        title={compact ? label : undefined}
+        aria-label={compact ? label : undefined}
+        aria-current={active ? 'page' : undefined}
+      >
+        <Icon aria-hidden="true" />
+        {!compact && <span className="base-sidebar-item-label">{label}</span>}
+      </Link>
+    </SidebarItem>
   )
 }
 
@@ -126,6 +126,7 @@ function ProjectNavigation({
   isActive,
   compact = false,
   onNavigate,
+  catalogStatus,
 }: {
   groups: ProjectNavigationGroup[]
   collapsed: Set<string>
@@ -133,18 +134,28 @@ function ProjectNavigation({
   isActive: (path: string) => boolean
   compact?: boolean
   onNavigate?: () => void
+  catalogStatus?: 'loading' | 'error'
 }) {
   const { t } = useTranslation()
-  const prefix = useId()
-  if (!groups.length) return null
+  if (catalogStatus === 'error')
+    return (
+      <p role="alert" className="p-3 text-sm text-warning">
+        Проекты недоступны
+      </p>
+    )
+  if (catalogStatus === 'loading')
+    return (
+      <p role="status" className="p-3 text-sm text-text-muted">
+        Загружаем проекты…
+      </p>
+    )
+  if (!groups.length) return <p className="p-3 text-sm text-text-muted">Нет доступных проектов</p>
   return (
     <nav
       aria-label={t('navigation.projectNav')}
-      className="mt-3 space-y-2 border-t border-border pt-3"
+      className="base-sidebar-list mt-3 border-t border-border pt-3"
     >
-      {groups.map((project, index) => {
-        const contentId = `${prefix}-project-${index}`
-        const label = `${project.name} · ${project.key}`
+      {groups.map((project) => {
         const open = !collapsed.has(project.id)
         const key = encodeURIComponent(project.key)
         const items = [
@@ -163,47 +174,36 @@ function ProjectNavigation({
           },
         ]
         return (
-          <section key={project.id} aria-label={label}>
-            <button
-              type="button"
-              aria-label={label}
-              aria-expanded={open}
-              aria-controls={contentId}
-              title={label}
-              onClick={() => onToggle(project.id)}
-              className={`flex min-h-11 w-full min-w-0 items-center rounded-md px-3 text-left text-xs font-medium text-text-muted hover:bg-surface-raised hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:min-h-10 ${compact ? 'justify-center' : 'gap-2'}`}
-            >
-              {compact ? (
-                <FolderKanban className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <>
-                  <span className="min-w-0 flex-1 truncate">{label}</span>
-                  <ChevronDown
-                    className={`h-4 w-4 shrink-0 ${open ? '' : '-rotate-90'}`}
-                    aria-hidden="true"
-                  />
-                </>
-              )}
-            </button>
-            <div id={contentId} hidden={!open}>
-              {items.map((item) => {
-                const target = project.namespace
-                  ? withNamespaceLocation(item.to, project.namespace)
-                  : item.to
-                return (
-                  <SidebarLink
-                    key={item.to}
-                    to={target}
-                    icon={item.icon}
-                    label={t(item.labelKey)}
-                    active={isActive(target)}
-                    compact={compact}
-                    onClick={onNavigate}
-                  />
-                )
-              })}
-            </div>
-          </section>
+          <ProjectNavigationGroup
+            key={project.id}
+            name={project.name}
+            projectKey={project.key}
+            active={items.some((item) =>
+              isActive(
+                project.namespace ? withNamespaceLocation(item.to, project.namespace) : item.to,
+              ),
+            )}
+            compact={compact}
+            open={open}
+            onToggle={() => onToggle(project.id)}
+          >
+            {items.map((item) => {
+              const target = project.namespace
+                ? withNamespaceLocation(item.to, project.namespace)
+                : item.to
+              return (
+                <SidebarLink
+                  key={item.to}
+                  to={target}
+                  icon={item.icon}
+                  label={t(item.labelKey)}
+                  active={isActive(target)}
+                  compact={compact}
+                  onClick={onNavigate}
+                />
+              )
+            })}
+          </ProjectNavigationGroup>
         )
       })}
     </nav>
@@ -223,28 +223,8 @@ export function AppShell() {
       ? undefined
       : namespace.query.data?.resource_key
     : routeProjectKey
-  const [collapsedProjects, setCollapsedProjects] = useState<Set<string>>(() => {
-    try {
-      const stored: unknown = JSON.parse(
-        window.localStorage.getItem(collapsedProjectsStorageKey) ?? '[]',
-      )
-      return new Set(
-        Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : [],
-      )
-    } catch {
-      return new Set()
-    }
-  })
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        collapsedProjectsStorageKey,
-        JSON.stringify([...collapsedProjects]),
-      )
-    } catch {
-      // Keep navigation usable when browser preference storage is unavailable.
-    }
-  }, [collapsedProjects])
+  const projectDisclosures = useProjectDisclosures(collapsedProjectsStorageKey)
+  const collapsedProjects = new Set(projectDisclosures.collapsed)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () =>
@@ -289,12 +269,7 @@ export function AppShell() {
         ]
       : projects.map((project) => ({ id: project.id, key: project.key, name: project.name }))
   function toggleProject(id: string) {
-    setCollapsedProjects((current) => {
-      const next = new Set(current)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    projectDisclosures.toggle(id)
   }
   const { data: user } = useCurrentUser()
   const { data: notificationList } = useNotifications()
@@ -384,7 +359,7 @@ export function AppShell() {
                       {t('navigation.create')}
                     </Link>
                   </Button>
-                  <nav aria-label={t('navigation.mainNav')}>
+                  <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
                     {navItems.map((item) => (
                       <SidebarLink
                         key={item.to}
@@ -398,6 +373,15 @@ export function AppShell() {
                   </nav>
                   <ProjectNavigation
                     groups={projectGroups}
+                    catalogStatus={
+                      namespaceEnabled
+                        ? catalog.isPending
+                          ? 'loading'
+                          : catalog.isError
+                            ? 'error'
+                            : undefined
+                        : undefined
+                    }
                     collapsed={collapsedProjects}
                     onToggle={toggleProject}
                     isActive={isActive}
@@ -411,7 +395,7 @@ export function AppShell() {
               className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:flex"
               aria-label={t('app.name')}
             >
-              <PlatformMark size="sm" withName={false} />
+              <PlatformMark size="shell" withName={false} />
             </Link>
           </>
         }
@@ -427,6 +411,7 @@ export function AppShell() {
                   title={currentProject?.name ?? t('navigation.projects')}
                   className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
                 >
+                  {currentProject && <ProjectAvatar projectKey={currentProject.key} size="xs" />}
                   <span className="truncate">
                     {currentProject?.name ?? t('navigation.projects')}
                   </span>
@@ -446,7 +431,8 @@ export function AppShell() {
                 {projects.map((project) => (
                   <DropdownMenuItem key={project.key} asChild>
                     <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
-                      <span className="truncate">{project.name}</span>
+                      <ProjectAvatar projectKey={project.key} size="xs" />
+                      <span className="min-w-0 flex-1 truncate">{project.name}</span>
                       <span className="text-xs text-text-muted">{project.key}</span>
                     </Link>
                   </DropdownMenuItem>
@@ -607,7 +593,7 @@ export function AppShell() {
 
       <div className="flex min-h-[calc(100dvh-var(--shell-header-height))]">
         <aside
-          className={`sticky top-[var(--shell-header-height)] hidden h-[calc(100dvh-var(--shell-header-height))] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-surface p-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)]' : 'w-[var(--shell-sidebar-expanded)]'}`}
+          className={`sticky top-[var(--shell-header-height)] hidden h-[calc(100dvh-var(--shell-header-height))] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-surface py-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)] px-2' : 'w-[var(--shell-sidebar-expanded)] px-3'}`}
         >
           <div
             className={`flex min-h-9 items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}
@@ -638,7 +624,7 @@ export function AppShell() {
               )}
             </Button>
           </div>
-          <nav aria-label={t('navigation.mainNav')}>
+          <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
             {navItems.map((item) => (
               <SidebarLink
                 key={item.to}
@@ -652,6 +638,15 @@ export function AppShell() {
           </nav>
           <ProjectNavigation
             groups={projectGroups}
+            catalogStatus={
+              namespaceEnabled
+                ? catalog.isPending
+                  ? 'loading'
+                  : catalog.isError
+                    ? 'error'
+                    : undefined
+                : undefined
+            }
             collapsed={collapsedProjects}
             onToggle={toggleProject}
             isActive={isActive}

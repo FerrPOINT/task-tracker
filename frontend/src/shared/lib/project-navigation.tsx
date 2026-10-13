@@ -6,14 +6,11 @@ import {
   type NavigateOptions,
   type To,
 } from 'react-router'
+import { projectNavigationScope } from '@sdlc/ui/lib'
 import { NamespaceLink, useNamespaceNavigate } from '@sdlc/ui/ui'
 
 export function isAllProjects(search: string) {
-  const params = new URLSearchParams(search)
-  return (
-    (params.getAll('project_scope').length === 1 && params.get('project_scope') === 'all') ||
-    (!params.has('namespace_id') && !params.has('registry_instance_id'))
-  )
+  return projectNavigationScope(search).all
 }
 
 export function projectNavigationTarget(to: To, search: string): To {

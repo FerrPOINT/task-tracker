@@ -1,7 +1,12 @@
 import { useLocation, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import { NamespacePicker } from '@sdlc/ui/ui'
-import { parseNamespaceLocation, withNamespaceLocation } from '@sdlc/ui/lib'
+import {
+  projectNavigationScope,
+  projectIdentity,
+  sortProjectNavigation,
+  withNamespaceLocation,
+} from '@sdlc/ui/lib'
 import type { components } from '@/api/generated'
 import { apiBaseUrl } from '@/api/client'
 import { useAuthStore } from '@/shared/auth/store'
@@ -18,15 +23,10 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 }
 export function useNamespaceContext() {
   const location = useLocation()
-  const ref = parseNamespaceLocation(location.search)
-  const malformed =
-    !ref &&
-    ['namespace_id', 'registry_instance_id'].some((key) =>
-      new URLSearchParams(location.search).has(key),
-    )
+  const { ref, malformed } = projectNavigationScope(location.search)
   const query = useQuery({
     queryKey: ['namespace-context', ref?.registry_instance_id, ref?.namespace_id],
-    enabled: Boolean(ref),
+    enabled: Boolean(ref) && !malformed,
     queryFn: ({ signal }) =>
       get<ResourceContext>(
         `/api/v1/namespace-contexts/${ref!.registry_instance_id}/${ref!.namespace_id}`,
@@ -47,7 +47,12 @@ export function useNamespaceCatalog(enabled = true) {
           signal,
         )
         items.push(...page)
-        if (page.length < 100) return items
+        if (page.length < 100)
+          return sortProjectNavigation(
+            items,
+            (item) => item.label,
+            (item) => projectIdentity(item.binding.namespace),
+          )
       }
     },
   })
@@ -78,18 +83,20 @@ export function NamespaceShellContext() {
         : ''
   return (
     <NamespacePicker
+      projectIcons
       value={value}
       loading={catalog.isPending}
-      unavailable={malformed || catalog.isError || Boolean(!allProjects && ref && query.isError)}
+      unavailable={catalog.isError}
       options={items.map((item) => ({
         value: `${item.binding.namespace.registry_instance_id}/${item.binding.namespace.namespace_id}`,
         label: `${item.label} · ${item.resource_key ?? item.binding.namespace.namespace_id}`,
+        projectKey: item.resource_key,
       }))}
       onChange={(next) => {
         const [registry_instance_id = '', namespace_id = ''] = next.split('/')
         navigate(
           withNamespaceLocation(
-            next ? '/namespace' : '/namespace?project_scope=all',
+            next ? '/namespace' : '/projects?project_scope=all',
             next ? { registry_instance_id, namespace_id } : null,
           ),
         )

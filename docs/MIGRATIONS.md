@@ -179,3 +179,11 @@ to discard business history. Disable new provisioning to stop rollout and keep
 history/configured instance ID unchanged. Use a backup and restore process for
 an operational rollback; do not manually drop SDLC tables or rewrite subjects.
 Details: [data model](DATA_MODEL.md), [contract](CHAT_CLARIFICATION_CONTRACT.md).
+
+## Fleet MCP Admission 000093
+
+Migration 000093 replaces only the admission proof CHECK constraint to accept
+the closed Fleet MCP v2 profile alongside v1. Migration 000091 remains unchanged;
+existing admission rows and immutable-history triggers are preserved. Downgrade
+refuses while v2 history exists, without deleting or rewriting that history.
+The isolated PostgreSQL upgrade regression is mandatory in backend CI.

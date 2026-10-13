@@ -140,6 +140,7 @@ pub trait ProjectRepository: Send + Sync {
     }
     async fn namespace_available_resources(
         &self,
+        _accessible_projects: &[ProjectId],
         _limit: i64,
         _offset: i64,
     ) -> Result<Vec<shared::resource_context::ResourceCatalogItem>, AppError> {
@@ -173,6 +174,19 @@ pub trait ProjectRepository: Send + Sync {
         _payload: &serde_json::Value,
         _allocate: bool,
     ) -> Result<Option<IssueCreationTicket>, AppError> {
+        Err(AppError::Unavailable(
+            "issue_idempotency_not_supported".into(),
+        ))
+    }
+    async fn advance_issue_creation_ticket(
+        &self,
+        _project: ProjectId,
+        _actor: UserId,
+        _operation: uuid::Uuid,
+        _payload: &serde_json::Value,
+        _issue_id: IssueId,
+        _expected_number: u32,
+    ) -> Result<IssueCreationTicket, AppError> {
         Err(AppError::Unavailable(
             "issue_idempotency_not_supported".into(),
         ))

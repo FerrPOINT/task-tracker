@@ -3,6 +3,12 @@ use super::*;
 #[path = "execution_lease.rs"]
 mod execution_lease;
 
+async fn require_execution_lease(client: &Client, url: &str, token: &str, body: &Value) {
+    let error = expect(client, url, token, body, 409).await;
+    assert_eq!(error["error"]["code"], "CONFLICT");
+    assert_eq!(error["error"]["message"], "PM execution lease missing");
+}
+
 pub struct Fixture<'a> {
     pub db: &'a DatabaseConnection,
     pub client: &'a Client,
@@ -95,12 +101,13 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     let subject = Uuid::new_v4().to_string();
     let verifier = Uuid::new_v4().to_string();
     for (sub, name) in [
-        (&subject, "reservation-machine"),
-        (&verifier, "reservation-verifier"),
+        (subject.as_str(), "reservation-machine"),
+        (verifier.as_str(), "reservation-verifier"),
+        ("scheduler", "reservation-scheduler"),
     ] {
         let id = Uuid::new_v4();
         sql(f.db,"INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active) VALUES($1,$2,$3,$3,'!',$4,true)",
-            vec![id.into(),format!("{name}@example.test").into(),name.into(),sub.clone().into()]).await;
+            vec![id.into(),format!("{name}@example.test").into(),name.into(),sub.into()]).await;
         sql(
             f.db,
             "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
@@ -111,6 +118,10 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     unsafe {
         std::env::set_var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT", &subject);
         std::env::set_var("TASKTRACKER_SDLC__VERIFIER_SUBJECT", &verifier);
+        std::env::set_var(
+            "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+            "scheduler",
+        );
     }
     let orch = machine(
         f.secret,
@@ -337,6 +348,77 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
             ),
         ],
     );
+    let scheduler = machine(
+        f.secret,
+        f.issuer,
+        "scheduler",
+        vec!["task-tracker:write".into()],
+    );
+    // This fixture deliberately has no Fleet native reader. A real PM draft
+    // reservation owns its producer writes through the exact execution lease.
+    let native_count_before = count(f.db, "sdlc_pm_native_admissions").await;
+    let mut next = result["assignment"].clone();
+    next["version"] = json!(2);
+    next["execution_id"] = json!(Uuid::new_v4());
+    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/assignment"),&orch,
+        &json!({"assignment":next,"expected_assignment_version":1,"idempotency_key":"legacy-bypass"}),409).await;
+    require_execution_lease(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/requirements"),&pm,
+        &json!({"fence":fence,"expected_requirement_revision":null,"document":{"goal":"goal","scope":[],"exclusions":[],"scenarios":[],"acceptance_criteria":[],"constraints":[],"dependencies":[],"assumptions":[],"checklist":[],"prerequisites":[]},"idempotency_key":"denied-revision"})).await;
+    require_execution_lease(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),&pm,
+        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":Uuid::new_v4(),"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":null,"text":"text","rationale":"rationale","required":true,"mode":"text","options":[],"recommended_option_id":null,"idempotency_key":"denied-question"})).await;
+    let lease = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-execution-lease"),
+        &pm,
+        &json!({"expected_owner_version":1,"fence":fence,"idempotency_key":"draft-reservation-lease"}),
+        201,
+    )
+    .await;
+    let revision = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
+        &pm,
+        &json!({"fence":fence,"expected_requirement_revision":null,"document":{"goal":"goal","scope":["scope"],"exclusions":[],"scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["pre"]},"idempotency_key":"draft-reservation-revision"}),
+        200,
+    )
+    .await;
+    let question_id = Uuid::new_v4();
+    let option_id = Uuid::new_v4();
+    expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),
+        &pm,
+        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":question_id,"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":null,"text":"Choose one","rationale":"Needed before owner confirmation","required":true,"mode":"single","options":[{"id":option_id,"label":"Standard","consequences":"Proceed","is_custom":false}],"recommended_option_id":option_id,"idempotency_key":"draft-reservation-question"}),
+        200,
+    )
+    .await;
+    let answer = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/clarifications/{question_id}/answers"),
+        f.owner,
+        &json!({"expected_question_version":1,"requirement_revision":1,"selected_option_ids":[option_id],"text":null,"comment":"Owner accepted","idempotency_key":"draft-reservation-answer"}),
+        200,
+    )
+    .await;
+    assert_eq!(answer["question_id"], question_id.to_string());
+    // An answer does not publish the PM's final requirements or approve them.
+    expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/1/confirm"),
+        f.owner,
+        &json!({"content_hash":revision["content_hash"],"idempotency_key":"draft-reservation-premature-confirm"}),
+        409,
+    )
+    .await;
+    let revision = expect(
+        f.client,
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements"),
+        &pm,
+        &json!({"fence":fence,"expected_requirement_revision":1,"document":{"goal":"goal with confirmed Standard choice","scope":["scope"],"exclusions":[],"scenarios":["scenario"],"acceptance_criteria":["criterion"],"constraints":[],"dependencies":[],"assumptions":[],"checklist":["check"],"prerequisites":["pre"]},"idempotency_key":"draft-reservation-final-revision"}),
+        200,
+    )
+    .await;
+    assert_eq!(revision["revision"], 2);
     let evidence = machine(
         f.secret,
         f.issuer,
@@ -347,38 +429,38 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
             format!("task-tracker:sdlc:evidence:{task}:1"),
         ],
     );
-    let mut next = result["assignment"].clone();
-    next["version"] = json!(2);
-    next["execution_id"] = json!(Uuid::new_v4());
-    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/assignment"),&orch,
-        &json!({"assignment":next,"expected_assignment_version":1,"idempotency_key":"legacy-bypass"}),409).await;
-    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/requirements"),&pm,
-        &json!({"fence":fence,"expected_requirement_revision":null,"document":{"goal":"goal","scope":[],"exclusions":[],"scenarios":[],"acceptance_criteria":[],"constraints":[],"dependencies":[],"assumptions":[],"checklist":[],"prerequisites":[]},"idempotency_key":"denied-revision"}),409).await;
-    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/clarifications"),&pm,
-        &json!({"fence":fence,"request_id":Uuid::new_v4(),"question_id":Uuid::new_v4(),"expected_question_version":null,"requirement_revision":1,"checkpoint_id":Uuid::new_v4(),"requirement_reference":null,"text":"text","rationale":"rationale","required":true,"mode":"text","options":[],"recommended_option_id":null,"idempotency_key":"denied-question"}),409).await;
-    expect(
+    for check in ["check", "pre"] {
+        let evidence_body = json!({"fence":fence,"requirement_revision":2,"content_hash":revision["content_hash"],"check_id":check,"evidence_reference":format!("workflow://verified/{check}"),"idempotency_key":format!("draft-reservation-evidence-{check}")});
+        expect(
+            f.client,
+            &format!("{base}/api/v1/issues/{task}/sdlc/evidence"),
+            &pm,
+            &evidence_body,
+            403,
+        )
+        .await;
+        expect(
+            f.client,
+            &format!("{base}/api/v1/issues/{task}/sdlc/evidence"),
+            &evidence,
+            &evidence_body,
+            200,
+        )
+        .await;
+    }
+    let confirmation = expect(
         f.client,
-        &format!(
-            "{base}/api/v1/issues/{task}/sdlc/clarifications/{}/cancel",
-            Uuid::new_v4()
-        ),
-        &pm,
-        &json!({"fence":fence,"expected_question_version":1,"idempotency_key":"denied-cancel"}),
-        409,
-    )
-    .await;
-    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/evidence"),&evidence,
-        &json!({"fence":fence,"requirement_revision":1,"content_hash":"a".repeat(64),"check_id":"check","evidence_reference":"ref","idempotency_key":"denied-evidence"}),409).await;
-    expect(f.client,&format!("{base}/api/v1/issues/{task}/sdlc/clarifications/{}/answers",Uuid::new_v4()),f.owner,
-        &json!({"expected_question_version":1,"requirement_revision":1,"selected_option_ids":[],"text":"reply","comment":null,"idempotency_key":"denied-answer"}),409).await;
-    expect(
-        f.client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/1/confirm"),
+        &format!("{base}/api/v1/issues/{task}/sdlc/requirements/2/confirm"),
         f.owner,
-        &json!({"content_hash":"a".repeat(64),"idempotency_key":"not-admission"}),
-        409,
+        &json!({"content_hash":revision["content_hash"],"idempotency_key":"draft-reservation-confirm"}),
+        200,
     )
     .await;
+    assert_eq!(confirmation["stage"], "Backlog");
+    assert_eq!(
+        count(f.db, "sdlc_pm_native_admissions").await,
+        native_count_before
+    );
     assert!(f.db.execute_unprepared(&format!("UPDATE sdlc_tasks SET state=jsonb_set(state,'{{assignment,version}}','2') WHERE task_id='{task}'")).await.is_err());
     assert!(f.db.execute_unprepared(&format!("UPDATE sdlc_tasks SET pm_owner_version=0,pm_execution_id=NULL,pm_admission_state=NULL WHERE task_id='{task}'")).await.is_err());
     assert!(
@@ -393,11 +475,17 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
         200,
     )
     .await;
-    assert_eq!(legacy["events"].as_array().unwrap().len(), 2);
-    assert_eq!(legacy["events"][1]["event_type"], "pm.assigned");
-    assert_eq!(
-        legacy["events"][1]["payload"]["result"],
-        result["assignment"]
+    let legacy_events = legacy["events"].as_array().unwrap();
+    assert!(
+        legacy_events
+            .iter()
+            .any(|event| event["event_type"] == "pm.assigned"
+                && event["payload"]["result"] == result["assignment"])
+    );
+    assert!(
+        legacy_events
+            .iter()
+            .any(|event| event["event_type"] == "requirements.confirmed")
     );
     let (_, page) = metadata::get(
         f.client,
@@ -407,6 +495,50 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
     )
     .await;
     metadata::verify(&page, &legacy);
+    let completion_url = format!("{base}/api/v1/issues/{task}/sdlc/pm-draft-completion");
+    let completion_command = json!({"contract_version":1,"fence":fence,"lease_id":lease["lease"]["lease_id"],
+        "lease_version":lease["lease"]["version"],"requirement_revision":2,"content_hash":revision["content_hash"],
+        "terminal_receipt_ref":"fleet/pm/draft-reservation/terminal.json","terminal_receipt_sha256":"c".repeat(64),
+        "workflow_receipt_ref":"workflow/pm/draft-reservation/terminal.json","workflow_receipt_sha256":"d".repeat(64),
+        "idempotency_key":"draft-reservation-completion"});
+    expect(f.client, &completion_url, &pm, &completion_command, 403).await;
+    let mut stale_lease = completion_command.clone();
+    stale_lease["lease_version"] = json!(lease["lease"]["version"].as_i64().unwrap() + 1);
+    expect(f.client, &completion_url, &scheduler, &stale_lease, 409).await;
+    let mut stale_fence = completion_command.clone();
+    stale_fence["fence"]["assignment_version"] = json!(2);
+    expect(f.client, &completion_url, &scheduler, &stale_fence, 409).await;
+    let completion = expect(
+        f.client,
+        &completion_url,
+        &scheduler,
+        &completion_command,
+        201,
+    )
+    .await;
+    assert_eq!(completion["next_pm_admission_state"], "completed");
+    assert_eq!(completion["requirement_revision"], 2);
+    assert_eq!(
+        expect(
+            f.client,
+            &completion_url,
+            &scheduler,
+            &completion_command,
+            200
+        )
+        .await,
+        completion
+    );
+    let mut conflicting_completion = completion_command.clone();
+    conflicting_completion["workflow_receipt_sha256"] = json!("e".repeat(64));
+    expect(
+        f.client,
+        &completion_url,
+        &scheduler,
+        &conflicting_completion,
+        409,
+    )
+    .await;
     // A forced failure after UUID/ordinal allocation rolls every business row back.
     let rollback = create(&f, &base, "reservation-rollback").await;
     sql(f.db,"CREATE FUNCTION reservation_test_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.event_type='pm.assigned' THEN RAISE EXCEPTION 'forced reservation rollback'; END IF; RETURN NEW; END $$",vec![]).await;

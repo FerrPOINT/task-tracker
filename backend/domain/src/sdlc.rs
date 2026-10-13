@@ -86,12 +86,13 @@ pub enum QuestionState {
     Cancelled,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
 pub enum Stage {
     Draft,
     Clarification,
     Backlog,
     Analysis,
+    Architecture,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
@@ -224,7 +225,7 @@ pub struct ConfirmCommand {
     pub expected_routing_policy_version: Option<i64>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct MachineFence {
     pub assignment_id: Uuid,
@@ -471,6 +472,12 @@ impl TaskState {
         let Some(revision) = self.revisions.last() else {
             return false;
         };
+        let latest_answered_clarification_at = self
+            .questions
+            .iter()
+            .filter(|q| q.requirement_revision == revision.revision)
+            .filter_map(|q| q.answer.as_ref().map(|answer| answer.created_at))
+            .max();
         self.require_root().is_ok()
             && matches!(self.stage, Stage::Clarification)
             && self.confirmation_revision == Some(revision.revision)
@@ -488,6 +495,8 @@ impl TaskState {
                         e.requirement_revision == revision.revision
                             && e.content_hash == revision.content_hash
                             && &e.check_id == check
+                            && latest_answered_clarification_at
+                                .is_none_or(|answered_at| e.created_at >= answered_at)
                     })
                 })
     }
@@ -505,12 +514,13 @@ impl TaskState {
             task_id: self.task_id,
             root_task_id: self.root_task_id,
             owner_subject: self.owner_subject.clone(),
-            stage: self.stage.clone(),
+            stage: self.stage,
             requirement_revision: self.current_revision(),
             waiting_reason: match self.stage {
                 Stage::Draft => Some("waiting_for_pm".into()),
                 Stage::Backlog => None,
                 Stage::Analysis => Some("queued_for_analysis".into()),
+                Stage::Architecture => Some("queued_for_architecture".into()),
                 Stage::Clarification
                     if self
                         .questions
@@ -593,6 +603,35 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         key: &str,
     ) -> Result<crate::sdlc_reservation::AnalysisReservationOperation, AppError>;
+    async fn submit_analysis_result(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_reservation::SubmitAnalysisResult,
+    ) -> Result<(crate::sdlc_reservation::AnalysisResultReceipt, bool), AppError>;
+    async fn analysis_result_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_reservation::AnalysisResultOperation, AppError>;
+    async fn complete_pm_draft(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_reservation::CompletePmDraft,
+    ) -> Result<(crate::sdlc_reservation::PmDraftCompletionReceipt, bool), AppError>;
+    async fn pm_draft_completion(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<crate::sdlc_reservation::PmDraftCompletionReadback, AppError>;
+    async fn pm_draft_completion_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_reservation::PmDraftCompletionOperation, AppError>;
     async fn set_routing_policy(
         &self,
         project: Uuid,
@@ -687,6 +726,20 @@ pub trait SdlcRepository: Send + Sync {
         task: Uuid,
         actor: &Principal,
         command: SdlcCommand,
+    ) -> Result<serde_json::Value, AppError>;
+    async fn prepare_native_command(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &SdlcCommand,
+    ) -> Result<crate::sdlc_native_admission::CommandAdmission, AppError>;
+    async fn execute_verified(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: SdlcCommand,
+        expected: crate::sdlc_pm_draft::PmDraftReservation,
+        observed: Option<crate::sdlc_native_admission::AdmissionObservation>,
     ) -> Result<serde_json::Value, AppError>;
     async fn outbox(
         &self,

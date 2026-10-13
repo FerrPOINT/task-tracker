@@ -1,15 +1,38 @@
 # Дата-модель Task Tracker
 
+Additive 000091 adds immutable `sdlc_pm_native_admissions`, keyed by execution/run
+and tied to assignment version, fence and exact owner observation. Additive
+000092 adds transaction-scoped `sdlc_pm_state_write_permits`; a reserved task's
+trigger consumes one permit for the exact next JSON state. Historical admission
+alone never authorizes later database writes. The accepted command, first
+observation and its state change can commit together for legacy admitted history;
+populated downgrade is refused. Current PM producer writes rely on exact machine
+scope/fence plus `sdlc_pm_execution_leases`, and still use the one-use state
+write permit for the state change.
+Additive 000093 extends the existing admission constraint to accept the closed
+Fleet MCP v2 profile alongside native v1 without rewriting historical rows or
+changing migration 000091. Downgrade refuses while any v2 admission exists.
+Additive 000095 records immutable `sdlc_pm_completions` and
+`sdlc_pm_completion_operations` for exact trusted PM terminal handoff. It allows
+only `reserved -> completed` on the current PM pointer after matching fence,
+lease version and requirement hash, preserves PM assignment history, and lets
+prepared Analysis reserve only when that current completion matches the task
+state.
+[Admission contract](PM_NATIVE_ADMISSION.md).
+
 ## Ledger подготовленного Analysis assignment
 
-Только pending 000034: append-only `sdlc_analysis_reservations` и
+Pending 000034 хранит append-only `sdlc_analysis_reservations` и
 `sdlc_analysis_reservation_operations`, lockable `sdlc_reservation_capacity`,
 bounded monotonic fence sequence и mutable CAS `sdlc_analysis_reservation_leases`.
-Unique task/root/agent/pool slot сохраняют holds после expiry. Exact routed intent
-и immutable route проверяют SQL gates; deferred FK требуют lease/current receipt
-в той же транзакции. Heartbeat +1, TTL30; expired renewal/delete запрещены.
-История PM неизменна и без trusted stop блокирует root/agent reservation.
-[Модель, индексы и API](SDLC_RESERVATION_V1.md). Новая миграция не добавлена.
+Additive 000094 добавляет `sdlc_analysis_capacity_holds` как текущий mutable
+capacity ledger, append-only `sdlc_analysis_results` и
+`sdlc_analysis_result_operations`, а также transaction-scoped
+`sdlc_analysis_state_write_permits`. Принятый terminal result удаляет hold в той
+же транзакции, но reservation/result history остаётся append-only. Exact routed
+intent, active lease и immutable route проверяют SQL gates; heartbeat +1, TTL30;
+expired renewal/delete запрещены. История PM неизменна и без trusted stop
+блокирует root/agent reservation. [Модель, индексы и API](SDLC_RESERVATION_V1.md).
 
 ## SDLC: Additive Migration 000034
 
