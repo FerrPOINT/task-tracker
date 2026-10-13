@@ -480,10 +480,17 @@ impl PostgresSdlcRepository {
                 let confirmation: Confirmation =
                     serde_json::from_value(result.clone()).map_err(AppError::internal)?;
                 exec(tx, "INSERT INTO sdlc_confirmations(id,task_id,revision,content_hash,payload) VALUES($1,$2,$3,$4,$5)", vec![confirmation.id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(), payload]).await?;
-                let routing_snapshot = if let Some(version) = c.expected_routing_policy_version {
+                let routing_snapshot = if state.draft_flow()?.is_some()
+                    || c.expected_routing_policy_version.is_some()
+                {
                     Some(
-                        self.freeze_routing(tx, state, &confirmation, version)
-                            .await?,
+                        self.freeze_routing(
+                            tx,
+                            state,
+                            &confirmation,
+                            c.expected_routing_policy_version,
+                        )
+                        .await?,
                     )
                 } else {
                     None
@@ -902,6 +909,24 @@ impl SdlcRepository for PostgresSdlcRepository {
         }
         // A configured project default is authoritative for new reservations.
         // Replay above keeps its original agent even after the default changes.
+        if state.draft_flow()?.is_some() {
+            if !self
+                .config
+                .single_task_project_ids
+                .contains(&state.project_id)
+            {
+                return Err(AppError::Unavailable(
+                    "single_task_draft_project_not_enabled".into(),
+                ));
+            }
+            let policy = self.single_task_policy(&tx, state.project_id).await?;
+            app::sdlc_routing::validate_project_pm_default(
+                &policy,
+                state.project_id,
+                &state.tracker_instance_id,
+                command.requested_agent_id,
+            )?;
+        }
         let default = tx
             .query_one(statement(
                 "SELECT r.payload FROM sdlc_project_routing_heads h
@@ -1183,6 +1208,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                     || state.root_task_id != task
                     || state.task_id != task
                     || state.project_id != project
+                    || state.draft_flow()? != command.flow
                     || result.task_id != task
                     || result.root_task_id != task
                     || result.project_id != project
@@ -1195,6 +1221,15 @@ impl SdlcRepository for PostgresSdlcRepository {
                 }
                 tx.commit().await.map_err(map_db)?;
                 return Ok((result, true));
+            }
+            let single_task = command.flow.is_some();
+            if single_task {
+                if !self.config.single_task_project_ids.contains(&project) {
+                    return Err(AppError::Unavailable(
+                        "single_task_draft_project_not_enabled".into(),
+                    ));
+                }
+                self.single_task_policy(&tx, project).await?;
             }
             let row = tx
                 .query_one(statement(
@@ -1212,7 +1247,6 @@ impl SdlcRepository for PostgresSdlcRepository {
                 .ok_or_else(|| AppError::validation("issue number overflow"))?;
             let task = Uuid::now_v7();
             let key = format!("{project_key}-{number}");
-            let single_task = self.config.single_task_project_ids.contains(&project);
             let status = single_task.then_some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
             let initial_status: Uuid = match status {
                 Some(status) => lifecycle::mapped_issue_status(&tx, Stage::Draft, status).await?,
@@ -1258,9 +1292,16 @@ impl SdlcRepository for PostgresSdlcRepository {
                 }
                 return Err(map_db(error));
             }
+            let mut retained_fields = serde_json::Map::new();
+            if let Some(flow) = command.flow {
+                retained_fields.insert(
+                    "flow".into(),
+                    serde_json::to_value(flow).map_err(AppError::internal)?,
+                );
+            }
             let state = TaskState {
                 status,
-                retained_fields: Default::default(),
+                retained_fields,
                 draft_submode: single_task.then_some(DraftSubmode::Brainstorming),
                 tracker_instance_id: self.config.instance_id.clone(),
                 project_id: project,
@@ -1377,6 +1418,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             title: input.title,
             description: input.description,
             idempotency_key: key.into(),
+            flow: state.draft_flow()?,
         };
         let hash =
             app::sdlc::canonical_hash(&json!({"operation":"create_draft","payload":original}))?;

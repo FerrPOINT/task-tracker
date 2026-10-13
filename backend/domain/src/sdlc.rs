@@ -339,6 +339,23 @@ pub struct CreateDraftCommand {
     pub description: String,
     #[schema(min_length = 1, max_length = 128)]
     pub idempotency_key: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "draft_flow"
+    )]
+    #[schema(nullable = false)]
+    pub flow: Option<DraftFlow>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+pub enum DraftFlow {
+    #[serde(rename = "single-task-v1")]
+    SingleTaskV1,
+}
+
+fn draft_flow<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<DraftFlow>, D::Error> {
+    DraftFlow::deserialize(d).map(Some)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
@@ -521,6 +538,15 @@ pub struct TaskState {
 }
 
 impl TaskState {
+    pub fn draft_flow(&self) -> Result<Option<DraftFlow>, AppError> {
+        self.retained_fields
+            .get("flow")
+            .map(|value| {
+                serde_json::from_value(value.clone())
+                    .map_err(|_| AppError::conflict("invalid immutable Draft flow marker"))
+            })
+            .transpose()
+    }
     pub fn clarifying(&self) -> bool {
         self.stage == Stage::Clarification
             || (self.stage == Stage::Draft

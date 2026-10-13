@@ -49,6 +49,7 @@ fn non_root_cannot_use_pm_lifecycle_or_issue_confirmation_permission() {
 fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
     let human = actor("central-human", true, vec![]);
     let mut command = CreateDraftCommand {
+        flow: None,
         title: "\u{43f}".repeat(500),
         description: "x".repeat(100_000),
         idempotency_key: "\u{43a}".repeat(64),
@@ -70,6 +71,76 @@ fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
     assert!(validate_draft(&actor("", true, vec![]), &command).is_err());
     command.description = "nul\0".into();
     assert!(validate_draft(&human, &command).is_err());
+}
+
+#[test]
+fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
+    let legacy = json!({"title":"Draft","description":"Input","idempotency_key":"create"});
+    let command: CreateDraftCommand = serde_json::from_value(legacy.clone()).unwrap();
+    assert_eq!(command.flow, None);
+    assert_eq!(serde_json::to_value(&command).unwrap(), legacy);
+    let hash = canonical_hash(&json!({"operation":"create_draft","payload":command})).unwrap();
+    assert_eq!(
+        hash,
+        canonical_hash(&json!({"operation":"create_draft","payload":legacy})).unwrap()
+    );
+    for value in [
+        json!(null),
+        json!(false),
+        json!(true),
+        json!("single-task-v2"),
+        json!({}),
+    ] {
+        let mut bad = legacy.clone();
+        bad["flow"] = value;
+        assert!(serde_json::from_value::<CreateDraftCommand>(bad).is_err());
+    }
+    let mut opted = legacy;
+    opted["flow"] = json!("single-task-v1");
+    let command: CreateDraftCommand = serde_json::from_value(opted.clone()).unwrap();
+    assert_eq!(command.flow, Some(DraftFlow::SingleTaskV1));
+    assert_eq!(serde_json::to_value(&command).unwrap(), opted);
+    assert_ne!(
+        hash,
+        canonical_hash(&json!({"operation":"create_draft","payload":command})).unwrap()
+    );
+    let (mut state, config, owner, pm, verifier, fence) = fixture();
+    state
+        .retained_fields
+        .insert("flow".into(), json!("single-task-v1"));
+    publish(&mut state, &config, &pm, &fence);
+    for check in ["review", "contract"] {
+        record_evidence(&mut state, &config, &verifier, &fence, check, check);
+    }
+    let hash = state.revisions.last().unwrap().content_hash.clone();
+    apply(
+        &mut state,
+        &owner,
+        &config,
+        &SdlcCommand::Confirm {
+            revision: 1,
+            command: ConfirmCommand {
+                content_hash: hash,
+                idempotency_key: "confirm-flow".into(),
+                expected_routing_policy_version: None,
+            },
+        },
+    )
+    .unwrap();
+    let state: TaskState = serde_json::from_value(serde_json::to_value(state).unwrap()).unwrap();
+    assert_eq!(state.stage, Stage::Analysis);
+    assert_eq!(state.draft_flow().unwrap(), Some(DraftFlow::SingleTaskV1));
+    assert!(
+        serde_json::to_value(state.context(&owner))
+            .unwrap()
+            .get("flow")
+            .is_none()
+    );
+    let mut invalid = state.clone();
+    invalid.retained_fields.insert("flow".into(), json!(null));
+    assert!(invalid.draft_flow().is_err());
+    invalid.retained_fields.remove("flow");
+    assert_eq!(invalid.draft_flow().unwrap(), None);
 }
 
 fn fixture() -> (

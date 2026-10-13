@@ -1,5 +1,22 @@
 # Архитектура Task Tracker
 
+New single-task enrollment is explicit at Draft creation, not inferred from a
+project flag or an existing PM reservation. The immutable `flow:"single-task-v1"`
+marker stays in canonical TaskState's retained JSON; Context/CreatedDraft do not
+grow new fields. Creation checks current declared v2 policy under the existing
+project lock only after original replay. Actual PM readiness belongs to Fleet's
+existing Draft SDK path, outside Tracker's transaction; Tracker never forces
+configuration or treats policy declarations as actual readiness.
+
+Owner confirmation freezes current project routing under the same project lock
+as consent/persistence. Optional caller version is an extra CAS, not the opt-in
+switch. The original confirmation command hash is unchanged when it is omitted;
+the selected policy is retained in the immutable snapshot, never retroactively
+substituted on replay. SQL protects marker shape/origin/immutability and requires
+the exact v2 snapshot before a marked task leaves Draft. Existing initial delivery
+projection and new assignment inserts reject absent marker without rewriting
+historical executions or interfering with their terminal/readback paths.
+
 Новая opt-in вертикаль одной задачи сохраняет цепочку controller/service/repository.
 Agent proposal не равен stage completion: Fleet после actual terminal передаёт
 guarded Complete, а Tracker владеет переходом и capacity. Второй планировщик

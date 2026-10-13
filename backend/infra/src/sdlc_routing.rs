@@ -192,19 +192,40 @@ impl PostgresSdlcRepository {
         Ok(result)
     }
 
+    pub(super) async fn single_task_policy(
+        &self,
+        tx: &DatabaseTransaction,
+        project: Uuid,
+    ) -> Result<RoutingPolicy, AppError> {
+        // Caller holds the project ACL share lock; policy writers lock it exclusively.
+        let policy = Self::policy(tx, project, None).await?;
+        app::sdlc_draft_flow::validate_policy(&policy, project, &self.config.instance_id)?;
+        Ok(policy)
+    }
+
     pub(super) async fn freeze_routing(
         &self,
         tx: &DatabaseTransaction,
         state: &TaskState,
         confirmation: &Confirmation,
-        expected: i64,
+        expected: Option<i64>,
     ) -> Result<TaskRoutingSnapshot, AppError> {
         let policy = Self::policy(tx, state.project_id, None).await?;
-        if policy.version != expected || policy.tracker_instance_id != state.tracker_instance_id {
+        if state.draft_flow()?.is_some() {
+            app::sdlc_draft_flow::validate_policy(
+                &policy,
+                state.project_id,
+                &state.tracker_instance_id,
+            )?;
+        }
+        if expected.is_some_and(|version| policy.version != version)
+            || policy.tracker_instance_id != state.tracker_instance_id
+        {
             return Err(AppError::conflict(
                 "stale publication routing policy version",
             ));
         }
+        let policy_version = policy.version;
         let snapshot = TaskRoutingSnapshot {
             contract_version: policy.contract_version,
             snapshot_id: Uuid::new_v4(),
@@ -219,7 +240,7 @@ impl PostgresSdlcRepository {
             created_at: confirmation.created_at,
         };
         exec(tx, "INSERT INTO sdlc_task_routing_snapshots(snapshot_id,task_id,project_id,policy_version,confirmation_id,requirement_revision,content_hash,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-            vec![snapshot.snapshot_id.into(), state.task_id.into(), state.project_id.into(), expected.into(), confirmation.id.into(), confirmation.revision.into(), confirmation.content_hash.clone().into(), json_value(&snapshot)?]).await?;
+            vec![snapshot.snapshot_id.into(), state.task_id.into(), state.project_id.into(), policy_version.into(), confirmation.id.into(), confirmation.revision.into(), confirmation.content_hash.clone().into(), json_value(&snapshot)?]).await?;
         Ok(snapshot)
     }
 

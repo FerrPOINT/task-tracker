@@ -1,5 +1,31 @@
 # API v1 Specification — Task Tracker
 
+## Explicit New Draft Flow
+
+The existing Draft creation request adds optional `flow:"single-task-v1"`.
+Omission keeps legacy JSON/hash and creation behavior, even in an enabled project.
+Explicit null, booleans and other values are invalid; no default flow is inferred.
+`CreatedDraft` and Context wire are unchanged. Only new marked creations receive
+Ready/brainstorming; legacy bindings/reservations are never retrofitted.
+
+For new marked effects, Tracker requires project opt-in and a present, valid,
+authoritative seven-role policy v2. Missing policy is 404, incompatible policy is
+409, disabled project is 503. Fleet's existing Draft saga must check actual PM
+readiness through its existing SDK before mutation; declared routing is not runtime
+proof, and no caller-ready flag or force-config is introduced. Fresh ACL precedes
+original creation replay; current policy/rollout checks follow replay. Changed
+payload/flow with the same key is 409. Existing operation GET reconstructs the
+original command/hash using immutable input plus the retained flow marker.
+
+Exact owner confirmation of a marked task always freezes the current v2 policy in
+the existing transaction, even if `expected_routing_policy_version` is omitted.
+When supplied, that version remains an additional CAS. No command field is added
+or mutated server-side for hashing. Confirmation, frozen seven-role snapshot,
+route-derived Analysis intent, canonical issue projection, operation and outbox
+commit together or roll back. Replay keeps its original consent/snapshot after
+policy changes or disable. Existing PM assignment is not rebound. Unmarked legacy
+confirmation retains its original explicit-version snapshot semantics.
+
 Новый opt-in single-task пакет добавляет lifecycle/readback, agent proposals
 и PM feedback в существующий strict SDLC router. Registered paths, DTO,
 статус квалификации и открытые gates:

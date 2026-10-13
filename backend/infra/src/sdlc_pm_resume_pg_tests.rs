@@ -106,7 +106,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     let scheduler = actor("scheduler", false, vec![]);
     let mut reader = scheduler.clone();
     reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
-    let routes = routes();
+    let routes = super::draft_flow_tests::single_task_routes();
     repo.set_routing_policy(
         project,
         &owner,
@@ -123,6 +123,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
             project,
             &owner,
             CreateDraftCommand {
+                flow: Some(DraftFlow::SingleTaskV1),
                 title: "PM resume fixture".into(),
                 description: "Not live runtime evidence".into(),
                 idempotency_key: "draft".into(),

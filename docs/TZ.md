@@ -1,5 +1,14 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+New single-task Draft opts in with `flow:"single-task-v1"`; project enablement
+alone never converts legacy tasks. Tracker requires authoritative v2 routing for
+new marked creation and automatically freezes current seven-role routing during
+exact owner confirmation, even when UI omits routing version. Optional provided
+version remains CAS; legacy omission hashes and replay histories are preserved.
+Fleet's existing SDK saga supplies actual PM readiness before mutation, without
+force-config or fabricated proof. Delivery execution-key allocation is a separate
+bounded package and is not implemented by this Draft marker change.
+
 Текущая доработка: одна задача проходит семь конкретных профессий, без дочерних
 карточек и integration barriers. Stage и Ready/InProgress/Completed раздельны;
 PM feedback не подтверждает требования за владельца. Старые режимы/история

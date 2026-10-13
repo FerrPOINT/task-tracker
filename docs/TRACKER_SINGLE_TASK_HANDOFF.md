@@ -352,7 +352,7 @@ Context adds two optional, omitted-if-None fields (not emitted as null):
 Canonical TaskState has the same optional fields and retains other canonical JSON
 through serde round trips. Rows without fields remain without fields. Legacy
 Clarification history stays serialized as Clarification; Context normalizes stage to Draft.
-Enabled projects' new PM Draft starts Ready/brainstorming, lease claim is InProgress,
+Only explicitly marked new PM Draft in an enabled project starts Ready/brainstorming; lease claim is InProgress,
 published questions/requirements wait in Ready, owner answer returns PM to InProgress,
 and confirmation queues Analysis/Ready. Waiting reason is not a status or runtime proof.
 
@@ -360,7 +360,56 @@ Rollout depends on parent's `SdlcConfig.single_task_project_ids` HashSet, empty 
 from canonical CSV `TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS`. New EnsureQueued/Reserve
 checks it AFTER original replay and BEFORE effects, returning explicit Unavailable when
 disabled. Replay, reads/history, heartbeat/proposal/Complete of existing execution remain
-available after disable. New canonical PM Draft fields are enabled only for listed projects.
+available after disable. New canonical PM Draft fields additionally require explicit
+creation `flow:"single-task-v1"`; omission never auto-enrolls a legacy task.
+
+### Explicit Draft marker and automatic confirmation snapshot
+
+`CreateDraftCommand.flow:Option<DraftFlow>` accepts only omitted or the exact
+`single-task-v1` string. Omission is skipped on serialization, preserving original
+create command hashes; explicit null/booleans/unknown strings fail. Marker persists
+in `TaskState.retained_fields` / canonical `sdlc_tasks.state`, with immutable/root/
+creation-ledger SQL guards in the same existing fragment. It cannot be added later
+to an existing Draft, bound task or PM reservation. CreatedDraft/Context are unchanged.
+
+Creation rechecks active ACL, then original key/hash before any new rollout or policy
+prerequisite. A new marked effect requires enabled project and real stored seven-role
+policy v2 validated by main's existing routing functions. It neither allocates PM
+assignment nor freezes policy yet. Initial PM reservation rechecks the current
+authoritative v2 PM default for a marked task, without changing old reservations.
+Existing Fleet Draft saga owns actual runtime readiness checks via existing SDK
+credentials before mutation; no new proof flag/client/force-config is added here.
+
+On marked owner confirmation, existing `freeze_routing` takes current policy in the
+same consent transaction regardless of omitted `expected_routing_policy_version`.
+Provided version remains an additional CAS. Frozen snapshot/intent/canonical issue
+projection/operation/outbox all commit or roll back together under existing project
+locking. Replay does not reselect policy. Legacy explicit-version behavior is unchanged;
+historical PM assignment is never silently rebound to the snapshot's newer PM route.
+SQL additionally denies first delivery enrollment or fresh delivery assignments
+without marker; existing historical terminal/readback paths stay available.
+
+Parent integrates the creation DTO schema and Fleet mutation/readiness gate. No API
+registration/OpenAPI generated output/CLI changes are included here. Missing policy
+returns NotFound, incompatible policy Conflict, disabled new creation Unavailable.
+Separate delivery `SDLC-<ordinal>` allocator remains the next package: no consumer
+may invent an execution key from task/chat UUID while that source gap is open.
+
+Focused checks requested after integration (Cargo/PG not run by this worker):
+
+```text
+cargo test --locked -p app draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions
+cargo test --locked -p app marked_draft_requires_bound_seven_role_v2_policy_not_runtime_claims
+cargo test --locked -p infra draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_replay -- --ignored --nocapture
+```
+
+The new ignored PG source test requires fresh disposable
+`TT_DRAFT_FLOW_TEST_DATABASE_URL` ending `_draft_flow_test`. It covers legacy hashes,
+explicit flow conflicts, missing/v1/disabled prerequisites, origin/no-retrofit guards,
+PM-default binding, exact owner/revision/hash/CAS failures, outbox-failure atomic
+rollback, concurrent policy update, snapshot-derived intent and original readbacks
+after policy change/disable/ACL revocation. Existing lifecycle/resume PG fixtures now
+explicitly opt in with v2 routes; parent's `4e3a527` evidence-scope fix is retained.
 
 Scoped SDLC project authorization always requires an active local user and project owner
 or explicit membership. Verified human/global-admin hints do not expand access or directory.

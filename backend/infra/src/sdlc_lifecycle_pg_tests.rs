@@ -6,6 +6,8 @@ use domain::sdlc_routing::{RoleRoutes, SetRoutingPolicy};
 use sea_orm_migration::MigratorTrait;
 use serde::de::DeserializeOwned;
 
+#[path = "sdlc_draft_flow_pg_tests.rs"]
+mod draft_flow_tests;
 #[path = "sdlc_pm_resume_pg_tests.rs"]
 mod pm_resume_tests;
 
@@ -147,7 +149,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     let scheduler = actor("scheduler", false, vec![]);
     let mut reader = scheduler.clone();
     reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
-    let routes = routes();
+    let routes = draft_flow_tests::single_task_routes();
     repo.set_routing_policy(
         project,
         &owner,
@@ -164,6 +166,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             project,
             &owner,
             CreateDraftCommand {
+                flow: Some(DraftFlow::SingleTaskV1),
                 title: "Lifecycle fixture".into(),
                 description: "Synthetic acceptance fixture".into(),
                 idempotency_key: "draft".into(),

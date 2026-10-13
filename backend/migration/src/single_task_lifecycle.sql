@@ -1,4 +1,48 @@
 -- Parent owns migration version/order/registration and legacy stage projection.
+ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_draft_flow_shape CHECK (
+    NOT state ? 'flow' OR (state->'flow'='"single-task-v1"'::jsonb
+        AND root_task_id=task_id AND state->>'root_task_id'=task_id::text) IS TRUE
+);
+
+CREATE FUNCTION sdlc_draft_flow_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.state->'flow' IS DISTINCT FROM NEW.state->'flow' THEN
+        RAISE EXCEPTION 'SDLC Draft flow marker is immutable; no legacy retrofit' USING ERRCODE='23514';
+    END IF;
+    IF NOT OLD.state ? 'lifecycle' AND NEW.state ? 'lifecycle' AND NOT NEW.state ? 'flow' THEN
+        RAISE EXCEPTION 'SDLC single_task_draft_marker_required' USING ERRCODE='23514';
+    END IF;
+    IF NEW.state ? 'flow' AND NEW.state->>'stage' NOT IN ('Draft','Clarification')
+        AND NOT EXISTS(SELECT 1 FROM sdlc_task_routing_snapshots s JOIN sdlc_confirmations c
+            ON c.task_id=s.task_id AND c.id=s.confirmation_id
+            WHERE s.task_id=NEW.task_id AND s.project_id=NEW.project_id
+                AND s.requirement_revision=(NEW.state->'revisions'->-1->>'revision')::bigint
+                AND s.content_hash=NEW.state->'revisions'->-1->>'content_hash'
+                AND c.payload->>'owner_subject'=NEW.owner_subject
+                AND s.payload->'contract_version'='2'::jsonb
+                AND s.payload->'policy'->'contract_version'='2'::jsonb) THEN
+        RAISE EXCEPTION 'marked Draft confirmation requires exact v2 routing snapshot' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_draft_flow_gate BEFORE UPDATE ON sdlc_tasks
+FOR EACH ROW EXECUTE FUNCTION sdlc_draft_flow_gate();
+
+-- Deferred because the immutable creation ledger is inserted after its task row.
+CREATE FUNCTION sdlc_draft_flow_origin_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.state ? 'flow' AND ((NEW.state->>'stage'='Draft' AND NEW.state->>'status'='Ready'
+        AND NEW.state->>'draft_submode'='brainstorming') IS NOT TRUE OR NOT EXISTS(
+            SELECT 1 FROM sdlc_draft_creations c WHERE c.task_id=NEW.task_id
+                AND c.project_id=NEW.project_id AND c.actor_subject=NEW.owner_subject
+                AND c.input_snapshot_ref IS NOT NULL)) THEN
+        RAISE EXCEPTION 'SDLC marked Draft requires original creation ledger' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE CONSTRAINT TRIGGER sdlc_draft_flow_origin_gate AFTER INSERT ON sdlc_tasks
+DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION sdlc_draft_flow_origin_gate();
+
 CREATE OR REPLACE FUNCTION sdlc_routing_snapshot_gate() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM sdlc_tasks t JOIN sdlc_confirmations c ON c.task_id=t.task_id
@@ -95,6 +139,17 @@ CREATE TABLE sdlc_delivery_assignments (
         AND (payload->>'attempt')::integer BETWEEN 1 AND 4) IS TRUE)
 );
 CREATE INDEX sdlc_delivery_assignment_task ON sdlc_delivery_assignments(task_id);
+
+CREATE FUNCTION sdlc_delivery_draft_flow_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=NEW.task_id
+        AND t.state->'flow'='"single-task-v1"'::jsonb) THEN
+        RAISE EXCEPTION 'SDLC single_task_draft_marker_required' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_delivery_draft_flow_gate BEFORE INSERT ON sdlc_delivery_assignments
+FOR EACH ROW EXECUTE FUNCTION sdlc_delivery_draft_flow_gate();
 
 CREATE TABLE sdlc_delivery_holds (
     assignment_id uuid PRIMARY KEY,

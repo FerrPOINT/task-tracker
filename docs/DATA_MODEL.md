@@ -1,5 +1,17 @@
 # Дата-модель Task Tracker
 
+Canonical `sdlc_tasks.state.flow` is absent for legacy tasks and exactly the string
+`single-task-v1` for explicitly opted-in new Drafts. It is retained through legacy
+serde round trips, not duplicated in another mutable table. The existing additive
+SQL fragment adds shape/root and immutable/no-retrofit guards; a deferred insertion
+guard requires the original immutable Draft creation/input ledger at commit.
+Creation operation readback reconstructs its hash from that immutable marker and
+input, so opted-in and legacy requests cannot share a key as the same payload.
+No backfill, old status/history rewrite or second migration is introduced.
+Marked confirmation requires the exact current v2 routing snapshot in the same
+transaction. Initial canonical delivery enrollment and new delivery assignments
+require marker; existing operation/assignment history remains untouched.
+
 Текущая additive `000096` и single-task delivery/feedback history находятся
 в интеграции; legacy история сохраняется. Это не подтверждение проверки
 миграций на заполненной БД. [Модель и gates](SINGLE_TASK_DELIVERY_INTEGRATION.md).
