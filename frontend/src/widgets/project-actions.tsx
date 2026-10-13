@@ -134,7 +134,7 @@ export function ProjectActions({
   const { pathname, search } = useLocation()
   const to = `/projects/${encodeURIComponent(project.key)}/settings`
   return (
-    <Button asChild variant="ghost" size="icon" className="h-11 w-11">
+    <Button asChild variant="ghost" size="icon" className="h-11 w-11 hover:bg-transparent">
       <Link
         to={
           import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
