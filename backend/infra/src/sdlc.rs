@@ -297,13 +297,35 @@ impl PostgresSdlcRepository {
             .last()
             .ok_or_else(|| AppError::conflict("Analysis confirmation unavailable"))?;
         let row = tx.query_one(statement(
-            "SELECT payload FROM sdlc_analysis_intents WHERE task_id=$1 AND requirement_revision=$2",
+            "SELECT i.payload,s.payload AS routing_payload FROM sdlc_analysis_intents i LEFT JOIN sdlc_task_routing_snapshots s ON s.snapshot_id=i.routing_snapshot_id WHERE i.task_id=$1 AND i.requirement_revision=$2",
             vec![state.task_id.into(), confirmation.revision.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("Analysis intent unavailable"))?;
         let intent: AnalysisIntent =
             serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
                 .map_err(|_| AppError::conflict("Analysis intent invalid"))?;
-        if app::sdlc::analysis_intent(state, confirmation, intent.intent_id)? != intent {
+        let mut expected = app::sdlc::analysis_intent(state, confirmation, intent.intent_id)?;
+        if let Some(raw) = row
+            .try_get::<Option<Json>>("", "routing_payload")
+            .map_err(map_db)?
+        {
+            let snapshot: domain::sdlc_routing::TaskRoutingSnapshot =
+                serde_json::from_value(raw)
+                    .map_err(|_| AppError::conflict("Analysis routing invalid"))?;
+            app::sdlc_routing::validate_routes(&snapshot.policy.routes)?;
+            if snapshot.contract_version != snapshot.policy.routes.contract_version()
+                || snapshot.policy.contract_version != snapshot.contract_version
+                || snapshot.task_id != state.task_id
+                || snapshot.confirmation_id != confirmation.id
+                || snapshot.requirement_revision != confirmation.revision
+                || snapshot.content_hash != confirmation.content_hash
+                || snapshot.policy.routing_hash
+                    != app::sdlc::canonical_hash(&snapshot.policy.routes)?
+            {
+                return Err(AppError::conflict("Analysis routing inconsistent"));
+            }
+            expected.workflow = snapshot.policy.routes.analyst.workflow_key;
+        }
+        if expected != intent {
             return Err(AppError::conflict("Analysis intent inconsistent"));
         }
         Ok(intent)
@@ -464,7 +486,10 @@ impl PostgresSdlcRepository {
                 } else {
                     None
                 };
-                let intent = app::sdlc::analysis_intent(state, &confirmation, Uuid::new_v4())?;
+                let mut intent = app::sdlc::analysis_intent(state, &confirmation, Uuid::new_v4())?;
+                if let Some(snapshot) = &routing_snapshot {
+                    intent.workflow = snapshot.policy.routes.analyst.workflow_key.clone();
+                }
                 exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
                     vec![intent.intent_id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(),
                         confirmation.id.into(), intent.operation_key.clone().into(), json_value(&intent)?, routing_snapshot.map(|s| s.snapshot_id).into()]).await?;

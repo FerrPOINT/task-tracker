@@ -65,6 +65,7 @@ impl PostgresSdlcRepository {
         let policy: RoutingPolicy = decode(&row)?;
         app::sdlc_routing::validate_routes(&policy.routes)?;
         if policy.project_id != project
+            || policy.contract_version != policy.routes.contract_version()
             || policy.native_ready
             || policy.dispatch_allowed
             || policy.routing_hash != app::sdlc::canonical_hash(&policy.routes)?
@@ -126,7 +127,7 @@ impl PostgresSdlcRepository {
             .filter(|v| bounded_policy_version(*v))
             .ok_or_else(|| AppError::conflict("routing version exhausted"))?;
         let policy = RoutingPolicy {
-            contract_version: 1,
+            contract_version: command.routes.contract_version(),
             tracker_instance_id: self.config.instance_id.clone(),
             project_id: project,
             version,
@@ -205,7 +206,7 @@ impl PostgresSdlcRepository {
             ));
         }
         let snapshot = TaskRoutingSnapshot {
-            contract_version: 1,
+            contract_version: policy.contract_version,
             snapshot_id: Uuid::new_v4(),
             tracker_instance_id: state.tracker_instance_id.clone(),
             project_id: state.project_id,

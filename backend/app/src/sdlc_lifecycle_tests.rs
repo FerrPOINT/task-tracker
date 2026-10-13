@@ -16,8 +16,10 @@ fn task() -> LifecycleTask {
     let route = RoleRoute {
         agent_id: Uuid::new_v4(),
         fleet_config_revision: 1,
-        package_commit: "b".repeat(40),
-        package_manifest_sha256: "c".repeat(64),
+        package_commit: Some("b".repeat(40)),
+        package_manifest_sha256: Some("c".repeat(64)),
+        instruction_profile: None,
+        instruction_manifest_sha256: None,
         namespace_id: "1".into(),
         namespace_name: "test".into(),
         workflow_id: "1".into(),

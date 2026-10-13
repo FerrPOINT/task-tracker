@@ -27,7 +27,8 @@ impl PostgresSdlcRepository {
                 .map_err(|_| inconsistent())?;
         app::sdlc_routing::validate_routes(&snapshot.policy.routes)?;
         let policy_row = tx.query_one(statement("SELECT payload FROM sdlc_project_routing_revisions WHERE project_id=$1 AND version=$2", vec![state.project_id.into(), snapshot.policy.version.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
-        if snapshot.contract_version != 1
+        if snapshot.contract_version != snapshot.policy.routes.contract_version()
+            || snapshot.policy.contract_version != snapshot.contract_version
             || snapshot.tracker_instance_id != state.tracker_instance_id
             || snapshot.project_id != state.project_id
             || snapshot.task_id != state.task_id
@@ -318,10 +319,10 @@ impl PostgresSdlcRepository {
             reservation_version: 1,
             workflow_task_ref: format!("SDLC-{workflow_ordinal}"),
             agent_id: agent,
-            route: snapshot.policy.routes.analyst,
+            route: snapshot.policy.routes.analyst.clone(),
             stage: AnalysisStage::Analysis,
             role_key: "analyst".into(),
-            workflow_key: "hermes-sdlc:analyst".into(),
+            workflow_key: snapshot.policy.routes.analyst.workflow_key,
             mode_key: "analysis".into(),
             scope: "business".into(),
             cycle_number: 0,

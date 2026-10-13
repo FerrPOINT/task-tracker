@@ -123,8 +123,10 @@ fn compare(
         })
         || p.schema != "base-sdlc/package-proof/v1"
         || p.repository != "https://github.com/FerrPOINT/services-base.git"
-        || p.commit != route.package_commit
-        || p.manifest_sha256 != route.package_manifest_sha256
+        || route.instruction_profile.is_some()
+        || route.instruction_manifest_sha256.is_some()
+        || route.package_commit.as_deref() != Some(p.commit.as_str())
+        || route.package_manifest_sha256.as_deref() != Some(p.manifest_sha256.as_str())
         || p.role != role
         || p.namespace != route.namespace_name
         || p.profile != route.profile
@@ -141,7 +143,7 @@ fn compare(
         || w.profile != route.profile
         || w.catalog_version != route.workflow_catalog_version
         || w.catalog_sha256 != route.workflow_catalog_sha256
-        || w.skills_revision != route.package_commit
+        || route.package_commit.as_deref() != Some(w.skills_revision.as_str())
     {
         return Err(mismatch());
     }

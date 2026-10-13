@@ -475,7 +475,10 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
                     && source.requirement_revision == Some(intent.requirement_revision)
                     && matches!(source.stage, Stage::Analysis)
                     && intent.role == "Analyst"
-                    && intent.workflow == "hermes-sdlc:analyst"
+                    && matches!(
+                        intent.workflow.as_str(),
+                        "hermes-sdlc:analyst" | "single-task-v1:analyst"
+                    )
                     && intent.mode == "analysis"
                     && intent.scope == "business"
                     && intent.cycle == 0

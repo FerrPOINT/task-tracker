@@ -5,6 +5,28 @@ This is source implementation for parent integration, not live acceptance.
 No Cargo, PostgreSQL, Docker, Fleet run or Workflow run was executed here.
 No terminal receipt has been invented. New API registration is deliberately absent.
 
+Parent integration adds API registrations and the single additive migration in
+Draft [PR152](https://github.com/FerrPOINT/task-tracker/pull/152). The no-registration
+statement above describes the original worker handoff, not the integrated branch.
+
+### Profile-aware routing source extension
+
+Routing policy/snapshot v1 retains the Base package fields and canonical JSON.
+The new v2 family uses optional omitted `instruction_profile=single-task-v1` and
+`instruction_manifest_sha256`, omitting both Base package fields. All seven
+routes require the same source family/manifest/catalog, distinct agents and IDs,
+namespace `single-task-<hyphenated-role>`, workflow `single-task-v1:<role>`,
+profile `single-task-v1-<hyphenated-role>` and catalog1. Mixed families and a
+Workflow profile impersonating a Base package are rejected. Analysis intent uses
+the frozen Analyst workflow key. This does not bypass configuration preflight;
+the profile-specific Fleet configuration observation remains to be integrated.
+Synthetic DTO fixtures can be emitted with example `single_task_contract
+--single-task`; its default still emits retained v1 contracts.
+
+Delivery heartbeats update lease head and immutable operation/replay history,
+not the business outbox mirrored into chat. Existing historical heartbeat events
+remain readable. Source implementation and qualification are tracked separately.
+
 ## Existing producers
 
 `P = /api/v1/issues/{task_uuid}/sdlc`.

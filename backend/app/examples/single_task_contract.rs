@@ -5,6 +5,11 @@ use serde_json::json;
 use uuid::Uuid;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let single_task = match std::env::args().skip(1).collect::<Vec<_>>().as_slice() {
+        [] => false,
+        [flag] if flag == "--single-task" => true,
+        _ => return Err("expected no arguments or --single-task".into()),
+    };
     let now = Utc.with_ymd_and_hms(2026, 10, 13, 10, 0, 0).unwrap();
     let mut route_json = json!({});
     for (index, role) in [
@@ -30,6 +35,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "namespace_id":(index+1).to_string(),"namespace_name":format!("hermes-{suffix}"),
             "workflow_id":(index+1).to_string(),"workflow_key":format!("hermes-sdlc:{role}"),
             "profile":format!("hermes-sdlc-{profile}"),"workflow_catalog_version":3,"workflow_catalog_sha256":"b".repeat(64)});
+        if single_task {
+            let route = route_json[role].as_object_mut().unwrap();
+            route.remove("package_commit");
+            route.remove("package_manifest_sha256");
+            route.insert("instruction_profile".into(), json!("single-task-v1"));
+            route.insert("instruction_manifest_sha256".into(), json!("d".repeat(64)));
+            route.insert(
+                "namespace_name".into(),
+                json!(format!("single-task-{suffix}")),
+            );
+            route.insert(
+                "workflow_key".into(),
+                json!(format!("single-task-v1:{role}")),
+            );
+            route.insert("profile".into(), json!(format!("single-task-v1-{suffix}")));
+            route.insert("workflow_catalog_version".into(), json!(1));
+        }
     }
     let routes: RoleRoutes = serde_json::from_value(route_json)?;
     app::sdlc_routing::validate_routes(&routes)?;
@@ -38,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let task = Uuid::from_u128(20);
     let project = Uuid::from_u128(30);
     let routing = TaskRoutingSnapshot {
-        contract_version: 1,
+        contract_version: routes.contract_version(),
         snapshot_id: Uuid::from_u128(40),
         tracker_instance_id: "tracker".into(),
         project_id: project,
@@ -48,7 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         requirement_revision: 1,
         content_hash: "c".repeat(64),
         policy: RoutingPolicy {
-            contract_version: 1,
+            contract_version: routes.contract_version(),
             tracker_instance_id: "tracker".into(),
             project_id: project,
             version: 1,

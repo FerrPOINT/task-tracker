@@ -13,8 +13,14 @@ pub struct RoleRoute {
     #[serde(deserialize_with = "safe_version")]
     #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub fleet_config_revision: i64,
-    pub package_commit: String,
-    pub package_manifest_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_manifest_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instruction_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instruction_manifest_sha256: Option<String>,
     pub namespace_id: String,
     pub namespace_name: String,
     pub workflow_id: String,
@@ -37,6 +43,14 @@ pub struct RoleRoutes {
 }
 
 impl RoleRoutes {
+    pub fn contract_version(&self) -> u8 {
+        if self.project_manager.instruction_profile.as_deref() == Some("single-task-v1") {
+            2
+        } else {
+            1
+        }
+    }
+
     pub fn entries(&self) -> [(&'static str, &RoleRoute); 7] {
         [
             ("project_manager", &self.project_manager),

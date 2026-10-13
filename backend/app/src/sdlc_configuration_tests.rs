@@ -6,8 +6,10 @@ pub(super) fn fixture() -> (RoleRoute, Value) {
     let route = RoleRoute {
         agent_id: Uuid::new_v4(),
         fleet_config_revision: 2,
-        package_commit: domain::sdlc_routing::PACKAGE_COMMIT.into(),
-        package_manifest_sha256: "a".repeat(64),
+        package_commit: Some(domain::sdlc_routing::PACKAGE_COMMIT.into()),
+        package_manifest_sha256: Some("a".repeat(64)),
+        instruction_profile: None,
+        instruction_manifest_sha256: None,
         namespace_id: "2".into(),
         namespace_name: "hermes-analyst".into(),
         workflow_id: "2".into(),

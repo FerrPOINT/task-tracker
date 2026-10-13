@@ -180,6 +180,8 @@ fn exact_revision(state: &TaskState, receipt: &LifecycleReceipt) -> Result<(), A
         || snapshot.content_hash != revision.content_hash
         || snapshot.policy.project_id != state.project_id
         || snapshot.policy.tracker_instance_id != state.tracker_instance_id
+        || snapshot.contract_version != snapshot.policy.routes.contract_version()
+        || snapshot.policy.contract_version != snapshot.contract_version
         || snapshot.policy.routing_hash != app::sdlc::canonical_hash(&snapshot.policy.routes)?
         || !state.confirmations.iter().any(|c| {
             c.id == snapshot.confirmation_id
