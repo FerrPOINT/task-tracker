@@ -59,6 +59,7 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
         return Err(AppError::Forbidden);
     }
     pm_request_policy(&actor, request.method().as_str(), path)?;
+    app::sdlc_lifecycle::delivery_request_policy(&actor, request.method().as_str(), path)?;
     request.extensions_mut().insert(actor);
     Ok(next.run(request).await)
 }
@@ -78,6 +79,7 @@ fn is_trusted_human(central: &sdlc_auth_core::AuthContext, configured_machine: b
             || central.token.starts_with("sdlc_pat_")
             || matches!(central.role.as_deref(), Some("admin" | "member" | "user")))
         && !app::sdlc::has_pm_grant(&central.scopes)
+        && !app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
 }
 
 #[cfg(test)]

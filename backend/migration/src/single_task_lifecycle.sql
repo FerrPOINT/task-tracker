@@ -34,25 +34,54 @@ CREATE INDEX sdlc_pm_feedback_task ON sdlc_pm_feedback(task_id);
 CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON sdlc_pm_feedback
 FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
 
-CREATE TABLE sdlc_delivery_tasks (
+CREATE TABLE sdlc_delivery_heads (
     task_id uuid PRIMARY KEY REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
-    receipt jsonb NOT NULL,
-    CHECK ((receipt->'task'->>'task_id'=task_id::text
-        AND receipt->'task'->'version'=to_jsonb((receipt->'task'->>'version')::bigint)
-        AND (receipt->'task'->>'version')::bigint BETWEEN 1 AND 9007199254740991
-        AND receipt->'task'->>'stage' IN ('Analysis','Architecture','Development','Review','Testing','Rework','Deployment')
-        AND receipt->'task'->>'status' IN ('Ready','InProgress','Completed')
-        AND receipt->'task'->>'runtime' IN ('queued','reserved','running','terminal','unknown')
-        AND (receipt->'task'->>'cycle')::integer BETWEEN 0 AND 3
-        AND (receipt->'task'->>'transient_retries')::integer BETWEEN 0 AND 3
-        AND receipt->'task'->'routing'->>'task_id'=task_id::text
-        AND receipt->'task'->'routing'->>'root_task_id'=task_id::text) IS TRUE)
+    execution jsonb NOT NULL CHECK (jsonb_typeof(execution)='object' AND NOT execution ? 'task')
 );
+CREATE VIEW sdlc_delivery_tasks AS SELECT t.task_id,
+    jsonb_build_object('task',t.state->'lifecycle') || h.execution AS receipt
+    FROM sdlc_tasks t JOIN sdlc_delivery_heads h USING(task_id);
+CREATE TABLE sdlc_delivery_projection_permits (
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
+    transaction_id xid8 NOT NULL, next_state jsonb NOT NULL, next_execution jsonb NOT NULL,
+    PRIMARY KEY(task_id,transaction_id)
+);
+ALTER TABLE sdlc_tasks DROP CONSTRAINT sdlc_tasks_stage_known;
+ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_tasks_stage_known CHECK
+    (state->>'stage' IN ('Draft','Clarification','Backlog','Analysis','Architecture','Development','Review','Testing','Rework','Deployment'));
+ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_status_known CHECK
+    (NOT state ? 'status' OR (state->>'status' IN ('Ready','InProgress','Completed')) IS TRUE);
+ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_canonical_lifecycle CHECK (NOT state ? 'lifecycle' OR
+    (state->'lifecycle'->>'task_id'=task_id::text AND state->'lifecycle'->>'owner_subject'=owner_subject
+        AND state->'lifecycle'->'stage'=state->'stage' AND state->'lifecycle'->'status'=state->'status'
+        AND state->'lifecycle'->'waiting_reason'=state->'waiting_reason'
+        AND state->'lifecycle'->'runtime'=state->'runtime_state'
+        AND state->>'status' IN ('Ready','InProgress','Completed')
+        AND (state->'lifecycle'->>'version')::bigint BETWEEN 1 AND 9007199254740991
+        AND (state->'lifecycle'->>'cycle')::integer BETWEEN 0 AND 3
+        AND (state->'lifecycle'->>'transient_retries')::integer BETWEEN 0 AND 3
+        AND state->'lifecycle'->'routing'->>'root_task_id'=task_id::text
+        AND state->'lifecycle'->'routing'->>'project_id'=project_id::text) IS TRUE);
+INSERT INTO statuses(id,name,category,position,is_default,is_closed)
+SELECT gen_random_uuid(),'SDLC '||status,category,0,false,status='Completed'
+FROM (VALUES('Ready','todo'),('InProgress','in_progress'),('Completed','done')) phases(status,category)
+WHERE NOT EXISTS(SELECT 1 FROM statuses s WHERE s.name='SDLC '||status);
+CREATE TABLE sdlc_issue_status_mapping (
+    stage text NOT NULL CHECK(stage IN ('Draft','Backlog','Analysis','Architecture','Development','Review','Testing','Rework','Deployment')),
+    status text NOT NULL CHECK(status IN ('Ready','InProgress','Completed')),
+    status_id uuid NOT NULL REFERENCES statuses(id) ON DELETE RESTRICT,
+    PRIMARY KEY(stage,status)
+);
+INSERT INTO sdlc_issue_status_mapping(stage,status,status_id)
+SELECT stage,status,s.id
+FROM (VALUES('Draft'),('Backlog'),('Analysis'),('Architecture'),('Development'),('Review'),('Testing'),('Rework'),('Deployment')) stages(stage)
+CROSS JOIN (VALUES('Ready','todo'),('InProgress','in_progress'),('Completed','done')) phases(status,category)
+JOIN statuses s ON s.name='SDLC '||status AND s.category=phases.category AND s.is_closed=(status='Completed');
 
 CREATE TABLE sdlc_delivery_assignments (
     assignment_id uuid PRIMARY KEY CHECK(assignment_id<>'00000000-0000-0000-0000-000000000000'),
     execution_id uuid NOT NULL UNIQUE CHECK(execution_id<>'00000000-0000-0000-0000-000000000000'),
-    task_id uuid NOT NULL REFERENCES sdlc_delivery_tasks(task_id) ON DELETE RESTRICT,
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
     agent_id uuid NOT NULL CHECK(agent_id<>'00000000-0000-0000-0000-000000000000'),
     payload jsonb NOT NULL,
     UNIQUE(assignment_id,task_id,agent_id),
@@ -75,6 +104,8 @@ CREATE TABLE sdlc_delivery_holds (
     FOREIGN KEY(assignment_id,task_id,agent_id)
         REFERENCES sdlc_delivery_assignments(assignment_id,task_id,agent_id) ON DELETE RESTRICT
 );
+CREATE VIEW sdlc_shared_capacity AS SELECT root_task_id AS task_id,agent_id,pool_slot
+    FROM sdlc_analysis_capacity_holds UNION ALL SELECT task_id,agent_id,pool_slot FROM sdlc_delivery_holds;
 
 CREATE TABLE sdlc_delivery_run_bindings (
     assignment_id uuid PRIMARY KEY REFERENCES sdlc_delivery_assignments(assignment_id) ON DELETE RESTRICT,
@@ -87,13 +118,13 @@ CREATE TABLE sdlc_delivery_run_bindings (
 );
 CREATE TRIGGER sdlc_delivery_hold_no_update BEFORE UPDATE ON sdlc_delivery_holds
 FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
-CREATE TRIGGER sdlc_delivery_head_no_delete BEFORE DELETE ON sdlc_delivery_tasks
+CREATE TRIGGER sdlc_delivery_head_no_delete BEFORE DELETE ON sdlc_delivery_heads
 FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable();
 
 CREATE TABLE sdlc_delivery_proposals (
     proposal_id uuid PRIMARY KEY,
     assignment_id uuid NOT NULL UNIQUE REFERENCES sdlc_delivery_run_bindings(assignment_id) ON DELETE RESTRICT,
-    task_id uuid NOT NULL REFERENCES sdlc_delivery_tasks(task_id) ON DELETE RESTRICT,
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
     payload jsonb NOT NULL,
     CHECK ((payload->>'proposal_id'=proposal_id::text AND payload->>'assignment_id'=assignment_id::text
         AND payload->>'task_id'=task_id::text AND payload->>'output_sha256' ~ '^[0-9a-f]{64}$'
@@ -102,7 +133,7 @@ CREATE TABLE sdlc_delivery_proposals (
 CREATE INDEX sdlc_delivery_proposal_task ON sdlc_delivery_proposals(task_id);
 
 CREATE TABLE sdlc_delivery_proposal_operations (
-    task_id uuid NOT NULL REFERENCES sdlc_delivery_tasks(task_id) ON DELETE RESTRICT,
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
     actor_subject text NOT NULL CHECK(length(actor_subject)>0),
     idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
     payload_hash text NOT NULL CHECK(payload_hash ~ '^[0-9a-f]{64}$'),
@@ -114,7 +145,7 @@ CREATE TABLE sdlc_delivery_proposal_operations (
 CREATE TABLE sdlc_delivery_results (
     result_id uuid PRIMARY KEY,
     assignment_id uuid NOT NULL UNIQUE REFERENCES sdlc_delivery_run_bindings(assignment_id) ON DELETE RESTRICT,
-    task_id uuid NOT NULL REFERENCES sdlc_delivery_tasks(task_id) ON DELETE RESTRICT,
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
     payload jsonb NOT NULL,
     CHECK ((payload->>'result_id'=result_id::text AND payload->>'assignment_id'=assignment_id::text
         AND payload->>'task_id'=task_id::text
@@ -123,19 +154,30 @@ CREATE TABLE sdlc_delivery_results (
 CREATE INDEX sdlc_delivery_result_task ON sdlc_delivery_results(task_id);
 
 CREATE TABLE sdlc_delivery_operations (
-    task_id uuid NOT NULL REFERENCES sdlc_delivery_tasks(task_id) ON DELETE RESTRICT,
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
     actor_subject text NOT NULL CHECK(length(actor_subject)>0),
     idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
     payload_hash text NOT NULL CHECK(payload_hash ~ '^[0-9a-f]{64}$'),
+    event_id uuid UNIQUE,
     result jsonb NOT NULL,
     PRIMARY KEY(task_id,actor_subject,idempotency_key),
     CHECK ((result->'task'->>'task_id'=task_id::text) IS TRUE)
 );
 
+CREATE TABLE sdlc_delivery_reconciliations (
+    assignment_id uuid PRIMARY KEY REFERENCES sdlc_delivery_assignments(assignment_id) ON DELETE RESTRICT,
+    task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
+    payload jsonb NOT NULL,
+    CHECK ((payload->>'operation'='reconcile' AND payload->'fence'->>'assignment_id'=assignment_id::text
+        AND payload->'terminal'->>'state' IN ('succeeded','failed','cancelled')
+        AND payload->'terminal'->'receipt'->>'sha256' ~ '^[0-9a-f]{64}$') IS TRUE)
+);
+CREATE INDEX sdlc_delivery_reconciliation_task ON sdlc_delivery_reconciliations(task_id);
+
 DO $$ DECLARE name text; BEGIN
     FOREACH name IN ARRAY ARRAY['sdlc_delivery_assignments','sdlc_delivery_run_bindings',
         'sdlc_delivery_results','sdlc_delivery_operations','sdlc_delivery_proposals',
-        'sdlc_delivery_proposal_operations'] LOOP
+        'sdlc_delivery_proposal_operations','sdlc_delivery_reconciliations'] LOOP
         EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I
             FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()', name);
     END LOOP;
@@ -188,7 +230,8 @@ FOR EACH ROW EXECUTE FUNCTION sdlc_delivery_legacy_slot_exclusion();
 
 CREATE FUNCTION sdlc_delivery_hold_release_gate() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM sdlc_delivery_results WHERE assignment_id=OLD.assignment_id) THEN
+    IF NOT EXISTS(SELECT 1 FROM sdlc_delivery_results WHERE assignment_id=OLD.assignment_id)
+        AND NOT EXISTS(SELECT 1 FROM sdlc_delivery_reconciliations WHERE assignment_id=OLD.assignment_id) THEN
         RAISE EXCEPTION 'SDLC terminal receipt required before capacity release' USING ERRCODE='23514';
     END IF;
     RETURN OLD;
@@ -307,53 +350,22 @@ CREATE FUNCTION sdlc_delivery_head_gate() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE task sdlc_tasks%ROWTYPE; previous_lease jsonb; next_lease jsonb;
 BEGIN
     SELECT * INTO task FROM sdlc_tasks WHERE task_id=NEW.task_id FOR UPDATE;
-    IF NOT EXISTS(SELECT 1 FROM sdlc_task_routing_snapshots s
-        JOIN sdlc_confirmations c ON c.id=s.confirmation_id AND c.task_id=s.task_id
-        WHERE s.task_id=NEW.task_id AND s.payload=NEW.receipt->'task'->'routing'
-        AND s.requirement_revision=(task.state->'revisions'->-1->>'revision')::bigint
-        AND s.content_hash=task.state->'revisions'->-1->>'content_hash'
-        AND task.root_task_id=task.task_id
-        AND c.payload->>'owner_subject'=task.owner_subject
-        AND NEW.receipt->'task'->>'owner_subject'=task.owner_subject) THEN
-        RAISE EXCEPTION 'SDLC exact owner consent and routing required' USING ERRCODE='23514';
-    END IF;
-    IF TG_OP='INSERT' THEN
-        IF (NEW.receipt->'task'->>'status'='Ready'
-            AND NEW.receipt->'task'->>'runtime'='queued'
-            AND NEW.receipt->'task'->'version'='1'::jsonb
-            AND NEW.receipt->'task'->'cycle'='0'::jsonb
-            AND NEW.receipt->'assignment'='null'::jsonb
-            AND NEW.receipt->'lease'='null'::jsonb AND NEW.receipt->'binding'='null'::jsonb
-            AND ((task.state->>'stage'='Analysis' AND NEW.receipt->'task'->>'stage'='Analysis')
-                OR (task.state->>'stage'='Architecture' AND NEW.receipt->'task'->>'stage'='Architecture'
-                    AND EXISTS(SELECT 1 FROM sdlc_analysis_results r WHERE r.task_id=NEW.task_id
-                        AND r.result_id::text=NEW.receipt->'task'->>'previous_result_id')))) IS NOT TRUE THEN
-            RAISE EXCEPTION 'SDLC delivery requires exact initial queue or retained Analysis terminal' USING ERRCODE='23514';
-        END IF;
+    IF NOT EXISTS(SELECT 1 FROM sdlc_delivery_projection_permits p WHERE p.task_id=NEW.task_id
+        AND p.transaction_id=pg_current_xact_id() AND p.next_state=task.state AND p.next_execution=NEW.execution) THEN
+        RAISE EXCEPTION 'SDLC execution cursor requires canonical transaction permit' USING ERRCODE='23514';
     END IF;
     IF TG_OP='UPDATE' THEN
-        IF NEW.task_id<>OLD.task_id OR NEW.receipt->'task'->'routing'<>OLD.receipt->'task'->'routing' THEN
-            RAISE EXCEPTION 'SDLC delivery identity and routing immutable' USING ERRCODE='23514';
-        END IF;
-        IF (NEW.receipt->'task'->>'version')::bigint NOT BETWEEN
-            (OLD.receipt->'task'->>'version')::bigint AND (OLD.receipt->'task'->>'version')::bigint+1 THEN
-            RAISE EXCEPTION 'SDLC delivery version CAS' USING ERRCODE='23514';
-        END IF;
-        IF NEW.receipt->'task'->'stage' IS DISTINCT FROM OLD.receipt->'task'->'stage'
-            OR NEW.receipt->'task'->'cycle' IS DISTINCT FROM OLD.receipt->'task'->'cycle'
-            OR (NEW.receipt->'assignment'='null'::jsonb AND OLD.receipt->'assignment'<>'null'::jsonb)
-            OR (NEW.receipt->'task'->>'status'='Completed'
-                AND NEW.receipt->'task'->'status' IS DISTINCT FROM OLD.receipt->'task'->'status') THEN
+        IF NEW.task_id<>OLD.task_id THEN RAISE EXCEPTION 'SDLC immutable task identity' USING ERRCODE='23514'; END IF;
+        IF NEW.execution->'assignment'='null'::jsonb AND OLD.execution->'assignment'<>'null'::jsonb THEN
             IF NOT EXISTS(SELECT 1 FROM sdlc_delivery_results r WHERE r.task_id=NEW.task_id
-                AND r.result_id::text=NEW.receipt->'task'->>'previous_result_id'
-                AND r.assignment_id::text=OLD.receipt->'assignment'->>'assignment_id'
-                AND r.payload->'next_stage'=NEW.receipt->'task'->'stage'
-                AND r.payload->'next_status'=NEW.receipt->'task'->'status'
-                AND r.payload->'cycle'=NEW.receipt->'task'->'cycle') THEN
+                AND r.result_id::text=task.state->'lifecycle'->>'previous_result_id'
+                AND r.assignment_id::text=OLD.execution->'assignment'->>'assignment_id')
+                AND NOT EXISTS(SELECT 1 FROM sdlc_delivery_reconciliations r WHERE r.task_id=NEW.task_id
+                    AND r.assignment_id::text=OLD.execution->'assignment'->>'assignment_id') THEN
                 RAISE EXCEPTION 'SDLC lifecycle transition requires accepted typed result' USING ERRCODE='23514';
             END IF;
         END IF;
-        previous_lease := OLD.receipt->'lease'; next_lease := NEW.receipt->'lease';
+        previous_lease := OLD.execution->'lease'; next_lease := NEW.execution->'lease';
         IF previous_lease<>'null'::jsonb AND next_lease<>'null'::jsonb
             AND previous_lease IS DISTINCT FROM next_lease THEN
             IF ((next_lease->>'version')::bigint=(previous_lease->>'version')::bigint+1
@@ -367,7 +379,140 @@ BEGIN
             END IF;
         END IF;
     END IF;
+    DELETE FROM sdlc_delivery_projection_permits WHERE task_id=NEW.task_id AND transaction_id=pg_current_xact_id();
     RETURN NEW;
 END $$;
-CREATE TRIGGER sdlc_delivery_head_gate BEFORE INSERT OR UPDATE ON sdlc_delivery_tasks
+CREATE TRIGGER sdlc_delivery_head_gate BEFORE INSERT OR UPDATE ON sdlc_delivery_heads
 FOR EACH ROW EXECUTE FUNCTION sdlc_delivery_head_gate();
+
+CREATE FUNCTION sdlc_delivery_canonical_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE old_task jsonb; next_task jsonb;
+BEGIN
+    IF OLD.state ? 'status' AND NOT NEW.state ? 'status' THEN
+        RAISE EXCEPTION 'SDLC canonical status cannot be dropped by legacy serialization' USING ERRCODE='23514';
+    END IF;
+    IF (OLD.state ? 'lifecycle' OR NEW.state ? 'lifecycle') AND OLD.state IS DISTINCT FROM NEW.state THEN
+        IF NOT EXISTS(SELECT 1 FROM sdlc_delivery_projection_permits p WHERE p.task_id=OLD.task_id
+            AND p.transaction_id=pg_current_xact_id() AND p.next_state=NEW.state) THEN
+            RAISE EXCEPTION 'SDLC canonical lifecycle requires exact transaction permit' USING ERRCODE='23514';
+        END IF;
+        next_task := NEW.state->'lifecycle'; old_task := OLD.state->'lifecycle';
+        IF NOT EXISTS(SELECT 1 FROM sdlc_task_routing_snapshots s JOIN sdlc_confirmations c
+            ON c.id=s.confirmation_id AND c.task_id=s.task_id
+            WHERE s.task_id=OLD.task_id AND s.payload=next_task->'routing'
+                AND s.requirement_revision=(NEW.state->'revisions'->-1->>'revision')::bigint
+                AND s.content_hash=NEW.state->'revisions'->-1->>'content_hash'
+                AND c.payload->>'owner_subject'=NEW.owner_subject AND NEW.root_task_id=NEW.task_id) THEN
+            RAISE EXCEPTION 'SDLC exact frozen owner consent required' USING ERRCODE='23514';
+        END IF;
+        IF old_task IS NULL THEN
+            IF (next_task->'version'='1'::jsonb AND next_task->>'status'='Ready'
+                AND next_task->>'runtime'='queued' AND next_task->'cycle'='0'::jsonb
+                AND NEW.state->'stage'=OLD.state->'stage'
+                AND (OLD.state->>'stage'='Analysis' OR (OLD.state->>'stage'='Architecture'
+                    AND EXISTS(SELECT 1 FROM sdlc_analysis_results r WHERE r.task_id=OLD.task_id
+                        AND r.result_id::text=next_task->>'previous_result_id')))) IS NOT TRUE THEN
+                RAISE EXCEPTION 'SDLC initial canonical queue mismatch' USING ERRCODE='23514';
+            END IF;
+        ELSE
+            IF next_task->'routing' IS DISTINCT FROM old_task->'routing'
+                OR (next_task->>'version')::bigint NOT BETWEEN (old_task->>'version')::bigint AND (old_task->>'version')::bigint+1 THEN
+                RAISE EXCEPTION 'SDLC immutable routing or stale canonical version' USING ERRCODE='23514';
+            END IF;
+            IF next_task->'stage' IS DISTINCT FROM old_task->'stage'
+                OR next_task->'cycle' IS DISTINCT FROM old_task->'cycle'
+                OR next_task->'previous_result_id' IS DISTINCT FROM old_task->'previous_result_id' THEN
+                IF NOT EXISTS(SELECT 1 FROM sdlc_delivery_results r WHERE r.task_id=OLD.task_id
+                    AND r.result_id::text=next_task->>'previous_result_id'
+                    AND r.payload->'next_stage'=next_task->'stage' AND r.payload->'next_status'=next_task->'status'
+                    AND r.payload->'cycle'=next_task->'cycle') THEN
+                    RAISE EXCEPTION 'SDLC canonical transition requires accepted result' USING ERRCODE='23514';
+                END IF;
+            END IF;
+        END IF;
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_delivery_canonical_gate BEFORE UPDATE ON sdlc_tasks
+FOR EACH ROW EXECUTE FUNCTION sdlc_delivery_canonical_gate();
+
+CREATE FUNCTION sdlc_delivery_reconciliation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE head jsonb;
+BEGIN
+    SELECT receipt INTO head FROM sdlc_delivery_tasks WHERE task_id=NEW.task_id FOR UPDATE;
+    IF (head->'assignment'->>'assignment_id'=NEW.assignment_id::text
+        AND head->'assignment'->'execution_id'=NEW.payload->'fence'->'execution_id'
+        AND head->'assignment'->'fencing_token'=NEW.payload->'fence'->'fencing_token'
+        AND head->'assignment'->'lease_id'=NEW.payload->'fence'->'lease_id'
+        AND (NEW.payload->'fence'->>'expected_lease_version')::bigint BETWEEN 1 AND (head->'lease'->>'version')::bigint
+        AND head->'assignment'->'assignment_hash'=NEW.payload->'terminal'->'assignment_hash'
+        AND (head->'binding'='null'::jsonb OR
+            (head->'binding'->'run_id'=NEW.payload->'terminal'->'run_id'
+                AND head->'binding'->'chat_id'=NEW.payload->'terminal'->'chat_id'))) IS NOT TRUE THEN
+        RAISE EXCEPTION 'SDLC reconciliation requires exact actual terminal assignment/run' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_delivery_reconciliation_gate BEFORE INSERT ON sdlc_delivery_reconciliations
+FOR EACH ROW EXECUTE FUNCTION sdlc_delivery_reconciliation_gate();
+
+CREATE OR REPLACE FUNCTION sdlc_analysis_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.state ? 'lifecycle' OR NEW.state ? 'lifecycle' THEN
+        IF OLD.state IS DISTINCT FROM NEW.state AND NOT EXISTS(SELECT 1 FROM sdlc_delivery_projection_permits p
+            WHERE p.task_id=OLD.task_id AND p.transaction_id=pg_current_xact_id() AND p.next_state=NEW.state) THEN
+            RAISE EXCEPTION 'SDLC Analysis requires canonical lifecycle permit' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF OLD.state->>'stage'='Analysis' AND NEW.state IS DISTINCT FROM OLD.state THEN
+        IF NEW.state->>'stage'!='Architecture' OR NOT EXISTS(SELECT 1 FROM sdlc_analysis_state_write_permits p
+            WHERE p.task_id=OLD.task_id AND p.transaction_id=pg_current_xact_id() AND p.next_state=NEW.state)
+            OR NOT EXISTS(SELECT 1 FROM sdlc_analysis_results r WHERE r.task_id=OLD.task_id
+                AND r.payload->>'requirement_revision'=OLD.state->'revisions'->-1->>'revision'
+                AND r.payload->>'content_hash'=OLD.state->'revisions'->-1->>'content_hash') THEN
+            RAISE EXCEPTION 'SDLC legacy Analysis requires exact accepted result and permit' USING ERRCODE='23514';
+        END IF;
+        DELETE FROM sdlc_analysis_state_write_permits WHERE task_id=OLD.task_id AND transaction_id=pg_current_xact_id();
+    END IF;
+    RETURN NEW;
+END $$;
+
+CREATE OR REPLACE FUNCTION sdlc_issue_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE binding sdlc_tasks%ROWTYPE; target_name text;
+BEGIN
+    SELECT * INTO binding FROM sdlc_tasks WHERE task_id=NEW.id;
+    IF NOT FOUND THEN RETURN NEW; END IF;
+    IF NEW.project_id<>binding.project_id THEN RAISE EXCEPTION 'SDLC immutable project binding' USING ERRCODE='23514'; END IF;
+    SELECT name INTO target_name FROM statuses WHERE id=NEW.status_id;
+    IF binding.state ? 'status' THEN
+        IF NOT EXISTS(SELECT 1 FROM sdlc_issue_status_mapping m WHERE m.stage=binding.state->>'stage'
+                AND m.status=binding.state->>'status' AND m.status_id=NEW.status_id)
+            OR NEW.sprint_id IS NOT NULL OR (binding.state->>'stage' NOT IN ('Draft','Clarification') AND NOT EXISTS(SELECT 1 FROM sdlc_confirmations c WHERE c.task_id=NEW.id
+                AND c.revision=(binding.state->'revisions'->-1->>'revision')::bigint
+                AND c.content_hash=binding.state->'revisions'->-1->>'content_hash')) THEN
+            RAISE EXCEPTION 'SDLC issue stage/status must match canonical confirmed lifecycle' USING ERRCODE='23514';
+        END IF;
+        RETURN NEW;
+    END IF;
+    IF binding.state->>'stage' IN ('Draft','Clarification') THEN
+        IF target_name IS DISTINCT FROM 'SDLC '||(binding.state->>'stage') OR NEW.sprint_id IS NOT NULL THEN
+            RAISE EXCEPTION 'SDLC confirmation gate blocks transition/sprint' USING ERRCODE='23514'; END IF;
+    ELSIF NOT EXISTS(SELECT 1 FROM sdlc_confirmations c WHERE c.task_id=NEW.id
+        AND c.revision=(binding.state->'revisions'->-1->>'revision')::bigint
+        AND c.content_hash=binding.state->'revisions'->-1->>'content_hash') THEN
+        RAISE EXCEPTION 'SDLC exact revision confirmation absent' USING ERRCODE='23514';
+    END IF;
+    IF binding.state->>'stage'='Analysis' AND (target_name IS DISTINCT FROM 'SDLC Analysis' OR NEW.sprint_id IS NOT NULL
+        OR NOT EXISTS(SELECT 1 FROM sdlc_analysis_intents q WHERE q.task_id=NEW.id
+            AND q.requirement_revision=(binding.state->'revisions'->-1->>'revision')::bigint
+            AND q.content_hash=binding.state->'revisions'->-1->>'content_hash')) THEN
+        RAISE EXCEPTION 'SDLC legacy Analysis intent required' USING ERRCODE='23514';
+    ELSIF binding.state->>'stage'='Architecture' AND (target_name IS DISTINCT FROM 'SDLC Architecture' OR NEW.sprint_id IS NOT NULL
+        OR NOT EXISTS(SELECT 1 FROM sdlc_analysis_results r WHERE r.task_id=NEW.id
+            AND r.payload->>'requirement_revision'=binding.state->'revisions'->-1->>'revision'
+            AND r.payload->>'content_hash'=binding.state->'revisions'->-1->>'content_hash')) THEN
+        RAISE EXCEPTION 'SDLC legacy Architecture terminal required' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;

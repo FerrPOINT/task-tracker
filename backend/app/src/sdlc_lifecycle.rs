@@ -120,6 +120,34 @@ fn sha256(value: &str) -> bool {
 pub fn validate_command(command: &LifecycleCommand) -> Result<(), AppError> {
     crate::sdlc::validate_key(command.key())?;
     let fence = match command {
+        LifecycleCommand::Reconcile {
+            fence,
+            terminal,
+            recovery,
+            ..
+        } => {
+            if terminal.chat_id.is_nil()
+                || terminal.run_id.is_nil()
+                || !sha256(&terminal.assignment_hash)
+            {
+                return Err(AppError::validation(
+                    "exact actual terminal readback required",
+                ));
+            }
+            validate_artifact(&terminal.receipt)?;
+            if let RecoveryDisposition::RetryTransient {
+                replay_safety_receipt,
+            } = recovery
+            {
+                if terminal.state != RuntimeTerminalState::Failed {
+                    return Err(AppError::conflict(
+                        "only replayable transient failure can retry",
+                    ));
+                }
+                validate_artifact(replay_safety_receipt)?;
+            }
+            fence
+        }
         LifecycleCommand::EnsureQueued { .. } => return Ok(()),
         LifecycleCommand::Reserve {
             expected_task_version,
@@ -201,18 +229,120 @@ pub fn validate_result(result: &DeliveryResult) -> Result<(), AppError> {
     Ok(())
 }
 
-pub fn producer(actor: &Principal, write: bool) -> Result<(), AppError> {
+pub fn has_delivery_grant(scopes: &std::collections::HashSet<String>) -> bool {
+    let prefix = DELIVERY_GRANT_PREFIX.trim_end_matches(':');
+    scopes.iter().any(|scope| {
+        scope
+            .get(..prefix.len())
+            .is_some_and(|raw| raw.eq_ignore_ascii_case(prefix))
+    })
+}
+
+pub fn delivery_grant(actor: &Principal) -> Result<Option<DeliveryGrant>, AppError> {
+    if !has_delivery_grant(&actor.scopes) {
+        return Ok(None);
+    }
+    let mut grants = actor
+        .scopes
+        .iter()
+        .filter(|scope| scope.starts_with("task-tracker:sdlc:delivery"));
+    let raw = grants.next().ok_or(AppError::Forbidden)?;
+    if grants.next().is_some()
+        || actor.human_session
+        || actor.scopes.iter().any(|scope| {
+            scope != raw && scope != "task-tracker:read" && scope != "task-tracker:write"
+        })
+    {
+        return Err(AppError::Forbidden);
+    }
+    let parts: Vec<_> = raw
+        .strip_prefix(DELIVERY_GRANT_PREFIX)
+        .ok_or(AppError::Forbidden)?
+        .split(':')
+        .collect();
+    if parts.len() != 5
+        || parts[..4]
+            .iter()
+            .any(|part| crate::sdlc::canonical_pm_uuid(part).is_none())
+        || !crate::sdlc::canonical_pm_version(parts[4])
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(Some(DeliveryGrant {
+        task_id: parts[0].parse().map_err(|_| AppError::Forbidden)?,
+        assignment_id: parts[1].parse().map_err(|_| AppError::Forbidden)?,
+        execution_id: parts[2].parse().map_err(|_| AppError::Forbidden)?,
+        agent_id: parts[3].parse().map_err(|_| AppError::Forbidden)?,
+        fencing_token: parts[4].parse().map_err(|_| AppError::Forbidden)?,
+    }))
+}
+
+pub fn authorize_delivery_assignment(
+    grant: &DeliveryGrant,
+    assignment: &DeliveryAssignment,
+) -> Result<(), AppError> {
+    if grant.task_id != assignment.task_id
+        || grant.assignment_id != assignment.assignment_id
+        || grant.execution_id != assignment.execution_id
+        || grant.agent_id != assignment.agent_id
+        || grant.fencing_token != assignment.fencing_token
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
+pub fn delivery_request_policy(
+    actor: &Principal,
+    method: &str,
+    path: &str,
+) -> Result<(), AppError> {
+    let Some(grant) = delivery_grant(actor)? else {
+        return Ok(());
+    };
+    let prefix = format!("/api/v1/issues/{}/sdlc/", grant.task_id);
+    let resource = path.strip_prefix(&prefix).ok_or(AppError::Forbidden)?;
+    let parts: Vec<_> = resource.split('/').collect();
+    let allowed = match (method, parts.as_slice()) {
+        ("GET", ["lifecycle" | "context" | "requirements" | "events"]) => true,
+        ("GET", ["requirements", revision]) => crate::sdlc::canonical_pm_version(revision),
+        ("GET", ["delivery-proposals", "operations", key]) => !key.is_empty(),
+        ("POST", ["delivery-proposals"]) => true,
+        _ => false,
+    };
+    if allowed {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden)
+    }
+}
+
+pub fn producer(actor: &Principal, write: bool) -> Result<DeliveryGrant, AppError> {
     let required = if write {
         "task-tracker:write"
     } else {
         "task-tracker:read"
     };
+    if !actor.scopes.contains(required) {
+        return Err(AppError::Forbidden);
+    }
+    delivery_grant(actor)?.ok_or(AppError::Forbidden)
+}
+
+pub fn scheduler_read(
+    actor: &Principal,
+    config: &domain::sdlc::SdlcConfig,
+) -> Result<(), AppError> {
+    crate::sdlc_reservation::reader(actor)?;
+    if config.reservation_scheduler_subject.trim().is_empty() {
+        return Err(AppError::Unavailable(
+            "reservation scheduler identity not configured".into(),
+        ));
+    }
     if actor.human_session
-        || !actor.scopes.contains(required)
-        || actor
-            .scopes
-            .iter()
-            .any(|scope| scope != "task-tracker:read" && scope != "task-tracker:write")
+        || actor.subject != config.reservation_scheduler_subject
+        || actor.subject == config.orchestrator_subject
+        || actor.subject == config.verifier_subject
     {
         return Err(AppError::Forbidden);
     }
@@ -226,6 +356,52 @@ pub fn assignment_hash(assignment: &DeliveryAssignment) -> Result<String, AppErr
         .ok_or_else(|| AppError::internal("assignment object absent"))?
         .remove("assignment_hash");
     crate::sdlc::canonical_hash(&value)
+}
+
+pub fn canonical_projection(
+    state: &serde_json::Value,
+    task: &LifecycleTask,
+) -> Result<serde_json::Value, AppError> {
+    let mut next = state.clone();
+    let object = next
+        .as_object_mut()
+        .ok_or_else(|| AppError::internal("canonical task object absent"))?;
+    object.insert(
+        "stage".into(),
+        serde_json::to_value(task.stage.canonical()).map_err(AppError::internal)?,
+    );
+    object.insert(
+        "status".into(),
+        serde_json::to_value(task.status).map_err(AppError::internal)?,
+    );
+    object.insert(
+        "waiting_reason".into(),
+        serde_json::to_value(&task.waiting_reason).map_err(AppError::internal)?,
+    );
+    object.insert(
+        "runtime_state".into(),
+        serde_json::to_value(task.runtime).map_err(AppError::internal)?,
+    );
+    object.insert(
+        "lifecycle".into(),
+        serde_json::to_value(task).map_err(AppError::internal)?,
+    );
+    Ok(next)
+}
+
+pub fn issue_mapping_keys(task: &LifecycleTask) -> Result<(String, String), AppError> {
+    let stage = serde_json::to_value(task.stage).map_err(AppError::internal)?;
+    let status = serde_json::to_value(task.status).map_err(AppError::internal)?;
+    Ok((
+        stage
+            .as_str()
+            .ok_or_else(|| AppError::internal("stage key absent"))?
+            .into(),
+        status
+            .as_str()
+            .ok_or_else(|| AppError::internal("status key absent"))?
+            .into(),
+    ))
 }
 
 /// Apply only after the repository accepts the exact live fence and terminal run.
@@ -269,6 +445,7 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
     task.version = version;
     task.runtime = RuntimeState::Terminal;
     task.transient_retries = 0;
+    task.resume_chat_id = None;
     if next == LifecycleStage::Rework && task.cycle == MAX_REWORK_CYCLES {
         // Keep the rejected stage; never silently mark a failed task completed.
         task.status = LifecycleStatus::Ready;
@@ -293,6 +470,118 @@ pub fn accept_result(task: &mut LifecycleTask, result: &DeliveryResult) -> Resul
 /// A transport error after dispatch is unknown acceptance, never a retry permit.
 pub fn transient_retry_allowed(retries: u8, safely_replayable: bool) -> bool {
     safely_replayable && retries < MAX_TRANSIENT_RETRIES
+}
+
+pub fn reconcile_terminal(
+    task: &mut LifecycleTask,
+    terminal: &RuntimeTerminalObservation,
+    recovery: &RecoveryDisposition,
+) -> Result<(), AppError> {
+    if !matches!(
+        task.runtime,
+        RuntimeState::Running | RuntimeState::Reserved | RuntimeState::Unknown
+    ) {
+        return Err(AppError::conflict("current unresolved execution required"));
+    }
+    let version = task
+        .version
+        .checked_add(1)
+        .filter(|v| *v <= MAX_SAFE_VERSION)
+        .ok_or_else(|| AppError::conflict("task version exhausted"))?;
+    if let RecoveryDisposition::RetryTransient { .. } = recovery {
+        if terminal.state != RuntimeTerminalState::Failed {
+            return Err(AppError::conflict("transient failure readback required"));
+        }
+    }
+    task.version = version;
+    task.status = LifecycleStatus::Ready;
+    task.resume_chat_id = Some(terminal.chat_id);
+    if matches!(recovery, RecoveryDisposition::RetryTransient { .. })
+        && task.transient_retries < MAX_TRANSIENT_RETRIES
+    {
+        task.transient_retries += 1;
+        task.runtime = RuntimeState::Queued;
+        task.waiting_reason = Some("transient_retry_queued".into());
+    } else {
+        task.runtime = RuntimeState::Terminal;
+        task.waiting_reason = Some(
+            if matches!(recovery, RecoveryDisposition::RetryTransient { .. }) {
+                "transient_retry_limit_reached"
+            } else {
+                "runtime_terminal_requires_intervention"
+            }
+            .into(),
+        );
+    }
+    Ok(())
+}
+
+pub fn pm_feedback_resume_contract(
+    state: &domain::sdlc::TaskState,
+    feedback: &PmFeedbackReceipt,
+    checkpoint: &PmFeedbackCheckpoint,
+    lease: &domain::sdlc_execution_lease::ExecutionLeaseReadback,
+) -> Result<PmFeedbackResumeContract, AppError> {
+    state.require_root()?;
+    let assignment = state
+        .assignment
+        .as_ref()
+        .ok_or_else(|| AppError::conflict("current PM assignment required"))?;
+    if !matches!(
+        state.stage,
+        domain::sdlc::Stage::Draft | domain::sdlc::Stage::Clarification
+    ) || feedback.task_id != state.task_id
+        || feedback.project_id != state.project_id
+        || feedback.root_task_id != state.task_id
+        || feedback.owner_subject != state.owner_subject
+        || feedback.tracker_instance_id != state.tracker_instance_id
+        || feedback.fence != checkpoint.fence
+        || lease.fence != checkpoint.fence
+        || lease.binding.task_id != state.task_id
+        || lease.binding.root_task_id != state.task_id
+        || lease.binding.project_id != state.project_id
+        || lease.binding.tracker_instance_id != state.tracker_instance_id
+        || lease.binding.owner_subject != state.owner_subject
+        || checkpoint.fence.assignment_id != assignment.assignment_id
+        || checkpoint.fence.execution_id != assignment.execution_id
+        || checkpoint.fence.agent_id != assignment.agent_id
+        || checkpoint.fence.assignment_version != assignment.version
+        || checkpoint.checkpoint_id.is_nil()
+        || checkpoint.previous_run_id.is_nil()
+        || !(1..=MAX_SAFE_VERSION).contains(&checkpoint.checkpoint_version)
+    {
+        return Err(AppError::conflict(
+            "PM feedback checkpoint/current execution mismatch or business lifecycle frozen",
+        ));
+    }
+    validate_artifact(&checkpoint.previous_run_terminal)?;
+    let current = lease
+        .current
+        .as_ref()
+        .ok_or_else(|| AppError::conflict("PM feedback lease readback absent"))?;
+    if current.holder_subject != assignment.machine_subject {
+        return Err(AppError::Forbidden);
+    }
+    if current.expires_at <= lease.observed_at
+        || !matches!(
+            lease.state,
+            domain::sdlc_execution_lease::ExecutionLeaseState::Active
+        )
+    {
+        return Err(AppError::conflict(
+            "pm_feedback_expired_lease_requires_guarded_resume_reconciliation",
+        ));
+    }
+    Ok(PmFeedbackResumeContract {
+        feedback_message_id: feedback.message_id,
+        fence: checkpoint.fence.clone(),
+        checkpoint_id: checkpoint.checkpoint_id,
+        checkpoint_version: checkpoint.checkpoint_version,
+        previous_run_id: checkpoint.previous_run_id,
+        lease_id: current.lease_id,
+        lease_version: current.version,
+        resume_operation_key: format!("pm-feedback:{}", feedback.message_id),
+    })
 }
 
 #[cfg(test)]

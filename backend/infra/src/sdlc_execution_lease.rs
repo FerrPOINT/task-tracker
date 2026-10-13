@@ -191,6 +191,32 @@ impl PostgresSdlcRepository {
             &receipt,
         )
         .await?;
+        let mut state = self.load(&tx, task, actor).await?;
+        if state.status.is_some() {
+            state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress);
+            let next = json_value(&state)?;
+            exec(
+                &tx,
+                "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
+                SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks
+                WHERE task_id=$1 AND state IS DISTINCT FROM $2",
+                vec![task.into(), next.clone()],
+            )
+            .await?;
+            exec(
+                &tx,
+                "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+                vec![task.into(), next],
+            )
+            .await?;
+            let status_id = lifecycle::mapped_issue_status(
+                &tx,
+                state.stage,
+                domain::sdlc_lifecycle::LifecycleStatus::InProgress,
+            )
+            .await?;
+            lifecycle::project_issue_status(&tx, task, actor, status_id).await?;
+        }
         tx.commit().await.map_err(map_db)?;
         Ok((receipt, false))
     }

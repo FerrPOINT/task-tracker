@@ -65,7 +65,7 @@ pub(super) async fn verify(
     directories(client, base, actors.owner, vec![project, other]).await;
     directories(client, base, actors.operator, vec![project]).await;
     directories(client, base, actors.foreign, vec![]).await;
-    directories(client, base, "sdlc_pat_reservation_reader", vec![project]).await;
+    directories(client, base, "sdlc_pat_wrong_scope", vec![project]).await;
     directories(client, base, "sdlc_pat_reservation_foreign", vec![]).await;
 
     let tables = [

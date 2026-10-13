@@ -4,8 +4,106 @@ use domain::sdlc_execution_lease::ExecutionLease;
 use domain::sdlc_lifecycle::*;
 use domain::sdlc_routing::TaskRoutingSnapshot;
 
+#[cfg(test)]
+#[path = "sdlc_lifecycle_pg_tests.rs"]
+mod regression_tests;
+
 fn corrupt() -> AppError {
     AppError::conflict("delivery ledger inconsistent")
+}
+
+pub(super) async fn mapped_issue_status(
+    tx: &DatabaseTransaction,
+    stage: Stage,
+    status: LifecycleStatus,
+) -> Result<Uuid, AppError> {
+    let stage = serde_json::to_value(stage).map_err(AppError::internal)?;
+    let status = serde_json::to_value(status).map_err(AppError::internal)?;
+    let stage = stage.as_str().ok_or_else(corrupt)?;
+    let status = status.as_str().ok_or_else(corrupt)?;
+    tx.query_one(statement(
+        "SELECT m.status_id FROM sdlc_issue_status_mapping m JOIN statuses s ON s.id=m.status_id
+         WHERE m.stage=$1 AND m.status=$2 FOR SHARE OF m,s",
+        vec![stage.into(), status.into()],
+    ))
+    .await
+    .map_err(map_db)?
+    .ok_or_else(|| {
+        AppError::conflict(format!(
+            "lifecycle_issue_status_mapping_missing:{stage}:{status}"
+        ))
+    })?
+    .try_get("", "status_id")
+    .map_err(map_db)
+}
+
+pub(super) async fn project_issue_status(
+    tx: &DatabaseTransaction,
+    task: Uuid,
+    actor: &Principal,
+    status_id: Uuid,
+) -> Result<(), AppError> {
+    exec(tx,"INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at)
+        SELECT $1,i.id,i.status_id,s.id,u.id,clock_timestamp() FROM issues i
+        JOIN statuses s ON s.id=$3
+        JOIN users u ON u.central_sub=$4 AND u.is_active
+        WHERE i.id=$2 AND i.status_id<>s.id",
+        vec![Uuid::now_v7().into(),task.into(),status_id.into(),actor.subject.clone().into()]).await?;
+    exec(
+        tx,
+        "UPDATE issues SET status_id=$2,sprint_id=NULL,updated_at=clock_timestamp() WHERE id=$1",
+        vec![task.into(), status_id.into()],
+    )
+    .await
+}
+
+pub(super) async fn authorize_read(
+    tx: &DatabaseTransaction,
+    state: &TaskState,
+    actor: &Principal,
+) -> Result<(), AppError> {
+    let Some(grant) = app::sdlc_lifecycle::delivery_grant(actor)? else {
+        return Ok(());
+    };
+    if !actor.scopes.contains("task-tracker:read") {
+        return Err(AppError::Forbidden);
+    }
+    let receipt = current(tx, state.task_id)
+        .await?
+        .ok_or(AppError::Forbidden)?;
+    let assignment = receipt.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    app::sdlc_lifecycle::authorize_delivery_assignment(&grant, assignment)?;
+    if receipt
+        .binding
+        .as_ref()
+        .is_none_or(|binding| binding.machine_subject != actor.subject)
+    {
+        return Err(AppError::Forbidden);
+    }
+    exact_revision(state, &receipt)
+}
+
+async fn authorize_proposal_grant(
+    tx: &DatabaseTransaction,
+    grant: &DeliveryGrant,
+    receipt: &DeliveryProposalReceipt,
+    actor: &Principal,
+) -> Result<(), AppError> {
+    if receipt.producer_subject != actor.subject || receipt.task_id != grant.task_id {
+        return Err(AppError::Forbidden);
+    }
+    let row = tx
+        .query_one(statement(
+            "SELECT payload FROM sdlc_delivery_assignments WHERE assignment_id=$1 AND task_id=$2",
+            vec![receipt.assignment_id.into(), receipt.task_id.into()],
+        ))
+        .await
+        .map_err(map_db)?
+        .ok_or(AppError::Forbidden)?;
+    let assignment: DeliveryAssignment =
+        serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
+            .map_err(|_| corrupt())?;
+    app::sdlc_lifecycle::authorize_delivery_assignment(grant, &assignment)
 }
 
 async fn now(tx: &DatabaseTransaction) -> Result<DateTime<Utc>, AppError> {
@@ -23,16 +121,26 @@ async fn current(
 ) -> Result<Option<LifecycleReceipt>, AppError> {
     let row = tx
         .query_one(statement(
-            "SELECT receipt FROM sdlc_delivery_tasks WHERE task_id=$1 FOR UPDATE",
+            "SELECT d.receipt,i.status_id FROM sdlc_delivery_tasks d JOIN issues i ON i.id=d.task_id
+             WHERE d.task_id=$1 FOR UPDATE",
             vec![task.into()],
         ))
         .await
         .map_err(map_db)?;
-    row.map(|row| {
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let receipt: LifecycleReceipt =
         serde_json::from_value(row.try_get::<Json>("", "receipt").map_err(map_db)?)
-            .map_err(|_| corrupt())
-    })
-    .transpose()
+            .map_err(|_| corrupt())?;
+    let mapped =
+        mapped_issue_status(tx, receipt.task.stage.canonical(), receipt.task.status).await?;
+    if row.try_get::<Uuid>("", "status_id").map_err(map_db)? != mapped {
+        return Err(AppError::conflict(
+            "lifecycle_issue_status_projection_inconsistent",
+        ));
+    }
+    Ok(Some(receipt))
 }
 
 async fn operation(
@@ -90,23 +198,27 @@ fn fence(
     expected: &DeliveryFence,
     actor: &Principal,
     observed_at: DateTime<Utc>,
+    renewing: bool,
 ) -> Result<(), AppError> {
     let lease = receipt.lease.as_ref().ok_or_else(corrupt)?;
     if lease.holder_subject != actor.subject {
         return Err(AppError::Forbidden);
     }
-    exact_fence(receipt, expected, observed_at)
+    exact_fence(receipt, expected, observed_at, renewing)
 }
 
 fn exact_fence(
     receipt: &LifecycleReceipt,
     expected: &DeliveryFence,
     observed_at: DateTime<Utc>,
+    renewing: bool,
 ) -> Result<(), AppError> {
     let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
     let lease = receipt.lease.as_ref().ok_or_else(corrupt)?;
     if lease.expires_at <= observed_at
-        || lease.version != expected.expected_lease_version
+        || expected.expected_lease_version > lease.version
+        || expected.expected_lease_version < 1
+        || (renewing && lease.version != expected.expected_lease_version)
         || assignment.assignment_id != expected.assignment_id
         || assignment.execution_id != expected.execution_id
         || assignment.fencing_token != expected.fencing_token
@@ -125,10 +237,67 @@ fn exact_fence(
 }
 
 impl PostgresSdlcRepository {
+    async fn save_delivery_projection(
+        tx: &DatabaseTransaction,
+        actor: &Principal,
+        receipt: &LifecycleReceipt,
+        insert: bool,
+    ) -> Result<(), AppError> {
+        let task = receipt.task.task_id;
+        let status_id =
+            mapped_issue_status(tx, receipt.task.stage.canonical(), receipt.task.status).await?;
+        let row = tx
+            .query_one(statement(
+                "SELECT state,pm_execution_id FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
+                vec![task.into()],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(corrupt)?;
+        let raw = row.try_get::<Json>("", "state").map_err(map_db)?;
+        let next = app::sdlc_lifecycle::canonical_projection(&raw, &receipt.task)?;
+        let mut execution = serde_json::to_value(receipt).map_err(AppError::internal)?;
+        execution
+            .as_object_mut()
+            .ok_or_else(corrupt)?
+            .remove("task");
+        exec(tx,"INSERT INTO sdlc_delivery_projection_permits(task_id,transaction_id,next_state,next_execution)
+            VALUES($1,pg_current_xact_id(),$2,$3)",vec![task.into(),next.clone().into(),execution.clone().into()]).await?;
+        if row
+            .try_get::<Option<Uuid>>("", "pm_execution_id")
+            .map_err(map_db)?
+            .is_some()
+        {
+            exec(
+                tx,
+                "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
+                SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks
+                WHERE task_id=$1 AND state IS DISTINCT FROM $2",
+                vec![task.into(), next.clone().into()],
+            )
+            .await?;
+        }
+        exec(
+            tx,
+            "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+            vec![task.into(), next.into()],
+        )
+        .await?;
+        let sql = if insert {
+            "INSERT INTO sdlc_delivery_heads(task_id,execution) VALUES($1,$2)"
+        } else {
+            "UPDATE sdlc_delivery_heads SET execution=$2 WHERE task_id=$1"
+        };
+        exec(tx, sql, vec![task.into(), execution.into()]).await?;
+        project_issue_status(tx, task, actor, status_id).await?;
+        Ok(())
+    }
+
     async fn delivery_seed(
         &self,
         tx: &DatabaseTransaction,
         state: &TaskState,
+        actor: &Principal,
     ) -> Result<LifecycleReceipt, AppError> {
         let stage = LifecycleStage::from_legacy(state.stage);
         if !matches!(
@@ -179,6 +348,7 @@ impl PostgresSdlcRepository {
                 runtime: RuntimeState::Queued,
                 routing,
                 previous_result_id,
+                resume_chat_id: None,
             },
             assignment: None,
             lease: None,
@@ -203,12 +373,7 @@ impl PostgresSdlcRepository {
         if row.try_get::<bool>("", "busy").map_err(map_db)? {
             return Err(AppError::conflict("previous execution quiescence unknown"));
         }
-        exec(
-            tx,
-            "INSERT INTO sdlc_delivery_tasks(task_id,receipt) VALUES($1,$2)",
-            vec![state.task_id.into(), json_value(&receipt)?],
-        )
-        .await?;
+        Self::save_delivery_projection(tx, actor, &receipt, true).await?;
         Ok(receipt)
     }
 
@@ -450,7 +615,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         command: SubmitDeliveryProposal,
     ) -> Result<(DeliveryProposalReceipt, bool), AppError> {
-        app::sdlc_lifecycle::producer(actor, true)?;
+        let grant = app::sdlc_lifecycle::producer(actor, true)?;
         app::sdlc::validate_key(&command.idempotency_key)?;
         app::sdlc_lifecycle::validate_fence(&command.fence)?;
         app::sdlc_lifecycle::validate_result(&command.result)?;
@@ -476,9 +641,10 @@ impl LifecycleRepository for PostgresSdlcRepository {
             if row.try_get::<String>("", "payload_hash").map_err(map_db)? != hash {
                 return Err(AppError::conflict("proposal key payload conflict"));
             }
-            let receipt =
+            let receipt: DeliveryProposalReceipt =
                 serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
                     .map_err(|_| corrupt())?;
+            authorize_proposal_grant(&tx, &grant, &receipt, actor).await?;
             tx.commit().await.map_err(map_db)?;
             return Ok((receipt, true));
         }
@@ -492,7 +658,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         let observed_at = now(&tx).await?;
-        exact_fence(&receipt, &command.fence, observed_at)?;
+        exact_fence(&receipt, &command.fence, observed_at, false)?;
         if receipt.task.runtime != RuntimeState::Running
             || receipt.task.status != LifecycleStatus::InProgress
             || receipt.task.stage.role() != Some(command.result.role())
@@ -500,6 +666,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             return Err(AppError::conflict("proposal does not match running role"));
         }
         let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
+        app::sdlc_lifecycle::authorize_delivery_assignment(&grant, assignment)?;
         let duplicate = tx
             .query_one(statement(
                 "SELECT proposal_id FROM sdlc_delivery_proposals WHERE assignment_id=$1",
@@ -551,7 +718,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         key: &str,
     ) -> Result<DeliveryProposalReceipt, AppError> {
-        app::sdlc_lifecycle::producer(actor, false)?;
+        let grant = app::sdlc_lifecycle::producer(actor, false)?;
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         self.load(&tx, task, actor).await?;
@@ -559,8 +726,10 @@ impl LifecycleRepository for PostgresSdlcRepository {
             "SELECT result FROM sdlc_delivery_proposal_operations WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
             vec![task.into(),actor.subject.clone().into(),key.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("delivery proposal operation", key))?;
-        let receipt = serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
-            .map_err(|_| corrupt())?;
+        let receipt: DeliveryProposalReceipt =
+            serde_json::from_value(row.try_get::<Json>("", "result").map_err(map_db)?)
+                .map_err(|_| corrupt())?;
+        authorize_proposal_grant(&tx, &grant, &receipt, actor).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(receipt)
     }
@@ -607,16 +776,75 @@ impl LifecycleRepository for PostgresSdlcRepository {
             tx.commit().await.map_err(map_db)?;
             return Ok((result, true));
         }
+        if matches!(
+            command,
+            LifecycleCommand::EnsureQueued { .. } | LifecycleCommand::Reserve { .. }
+        ) && !self
+            .config
+            .single_task_project_ids
+            .contains(&state.project_id)
+        {
+            return Err(AppError::Unavailable(
+                "single_task_lifecycle_project_not_enabled".into(),
+            ));
+        }
         let before = current(&tx, task).await?;
         let mut receipt = match before.clone() {
             Some(receipt) => receipt,
             None if matches!(command, LifecycleCommand::EnsureQueued { .. }) => {
-                self.delivery_seed(&tx, &state).await?
+                self.delivery_seed(&tx, &state, actor).await?
             }
             None => return Err(AppError::conflict("delivery queue absent")),
         };
         exact_revision(&state, &receipt)?;
         match &command {
+            LifecycleCommand::Reconcile {
+                fence: expected,
+                terminal,
+                recovery,
+                ..
+            } => {
+                let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
+                let lease = receipt.lease.as_ref().ok_or_else(corrupt)?;
+                if lease.holder_subject != actor.subject {
+                    return Err(AppError::Forbidden);
+                }
+                if assignment.assignment_id != expected.assignment_id
+                    || assignment.execution_id != expected.execution_id
+                    || assignment.fencing_token != expected.fencing_token
+                    || assignment.lease_id != expected.lease_id
+                    || lease.lease_id != expected.lease_id
+                    || expected.expected_lease_version > lease.version
+                    || assignment.assignment_hash != terminal.assignment_hash
+                    || assignment.assignment_hash
+                        != app::sdlc_lifecycle::assignment_hash(assignment)?
+                {
+                    return Err(AppError::conflict(
+                        "reconciliation immutable identity mismatch",
+                    ));
+                }
+                if receipt
+                    .binding
+                    .as_ref()
+                    .is_some_and(|b| b.run_id != terminal.run_id || b.chat_id != terminal.chat_id)
+                {
+                    return Err(AppError::conflict("actual terminal differs from bound run"));
+                }
+                let old_assignment = assignment.assignment_id;
+                exec(&tx,"INSERT INTO sdlc_delivery_reconciliations(assignment_id,task_id,payload) VALUES($1,$2,$3)",
+                    vec![old_assignment.into(),task.into(),json_value(&command)?]).await?;
+                app::sdlc_lifecycle::reconcile_terminal(&mut receipt.task, terminal, recovery)?;
+                exec(
+                    &tx,
+                    "DELETE FROM sdlc_delivery_holds WHERE assignment_id=$1",
+                    vec![old_assignment.into()],
+                )
+                .await?;
+                receipt.assignment = None;
+                receipt.lease = None;
+                receipt.binding = None;
+                receipt.result = None;
+            }
             LifecycleCommand::EnsureQueued { .. } => {}
             LifecycleCommand::Reserve {
                 expected_task_version,
@@ -642,7 +870,13 @@ impl LifecycleRepository for PostgresSdlcRepository {
                     return Err(AppError::conflict("delivery capacity released"));
                 }
                 let observed_at = now(&tx).await?;
-                fence(&receipt, expected, actor, observed_at)?;
+                fence(
+                    &receipt,
+                    expected,
+                    actor,
+                    observed_at,
+                    matches!(command, LifecycleCommand::Heartbeat { .. }),
+                )?;
                 match &command {
                     LifecycleCommand::Heartbeat { .. } => {
                         let lease = receipt.lease.as_mut().ok_or_else(corrupt)?;
@@ -654,6 +888,13 @@ impl LifecycleRepository for PostgresSdlcRepository {
                         lease.expires_at = observed_at + Duration::seconds(LEASE_TTL_SECONDS);
                     }
                     LifecycleCommand::BindRun { binding, .. } => {
+                        if receipt
+                            .task
+                            .resume_chat_id
+                            .is_some_and(|chat| chat != binding.chat_id)
+                        {
+                            return Err(AppError::conflict("retry must reuse the previous chat"));
+                        }
                         if binding.machine_subject == self.config.reservation_scheduler_subject
                             || binding.machine_subject == receipt.task.owner_subject
                             || binding.machine_subject == self.config.verifier_subject
@@ -740,16 +981,15 @@ impl LifecycleRepository for PostgresSdlcRepository {
         if receipt.task.version > MAX_SAFE_VERSION {
             return Err(AppError::conflict("task version exhausted"));
         }
-        exec(
-            &tx,
-            "UPDATE sdlc_delivery_tasks SET receipt=$2 WHERE task_id=$1",
-            vec![task.into(), json_value(&receipt)?],
-        )
-        .await?;
-        exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result)
-            VALUES($1,$2,$3,$4,$5)", vec![task.into(),actor.subject.clone().into(),command.key().into(),
-                hash.into(),json_value(&receipt)?]).await?;
+        if before.as_ref().is_some_and(|previous| previous != &receipt) {
+            Self::save_delivery_projection(&tx, actor, &receipt, false).await?;
+        }
+        let event_id = (before.as_ref() != Some(&receipt)).then(Uuid::now_v7);
+        exec(&tx, "INSERT INTO sdlc_delivery_operations(task_id,actor_subject,idempotency_key,payload_hash,result,event_id)
+            VALUES($1,$2,$3,$4,$5,$6)", vec![task.into(),actor.subject.clone().into(),command.key().into(),
+                hash.into(),json_value(&receipt)?,event_id.into()]).await?;
         let event = match &command {
+            LifecycleCommand::Reconcile { .. } => "delivery.reconciled",
             LifecycleCommand::EnsureQueued { .. } => "delivery.queued",
             LifecycleCommand::Reserve { .. } => "delivery.assignment_reserved",
             LifecycleCommand::Heartbeat { .. } => "delivery.lease_renewed",
@@ -760,16 +1000,11 @@ impl LifecycleRepository for PostgresSdlcRepository {
             "project_id":state.project_id,"task_id":task,"root_task_id":task,
             "owner_subject":state.owner_subject,"stage":receipt.task.stage,
             "requirement_revision":receipt.task.routing.requirement_revision,"result":&receipt});
-        if before.as_ref() != Some(&receipt) {
+        if let Some(event_id) = event_id {
             exec(
                 &tx,
                 "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload) VALUES($1,$2,$3,$4)",
-                vec![
-                    Uuid::now_v7().into(),
-                    task.into(),
-                    event.into(),
-                    payload.into(),
-                ],
+                vec![event_id.into(), task.into(), event.into(), payload.into()],
             )
             .await?;
         }
@@ -782,17 +1017,31 @@ impl LifecycleRepository for PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<LifecycleReadback, AppError> {
-        app::sdlc_reservation::reader(actor)?;
+        if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
+            app::sdlc_lifecycle::producer(actor, false)?;
+        } else {
+            app::sdlc_reservation::reader(actor)?;
+        }
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
         let receipt = current(&tx, task)
             .await?
             .ok_or_else(|| AppError::not_found("delivery queue", task))?;
         exact_revision(&state, &receipt)?;
+        authorize_read(&tx, &state, actor).await?;
         let observed_at = now(&tx).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(LifecycleReadback {
             observed_at,
+            runtime_state: if receipt
+                .lease
+                .as_ref()
+                .is_some_and(|l| l.expires_at <= observed_at)
+            {
+                RuntimeState::Unknown
+            } else {
+                receipt.task.runtime
+            },
             receipt,
         })
     }
@@ -803,7 +1052,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         key: &str,
     ) -> Result<LifecycleReceipt, AppError> {
-        app::sdlc_reservation::scheduler(actor, &self.config)?;
+        app::sdlc_lifecycle::scheduler_read(actor, &self.config)?;
         app::sdlc::validate_key(key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         self.load(&tx, task, actor).await?;

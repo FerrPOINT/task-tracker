@@ -5,6 +5,15 @@
 PM feedback не подтверждает требования за владельца. Старые режимы/история
 не удаляются. [Реализация и оставшаяся приёмка](SINGLE_TASK_DELIVERY_INTEGRATION.md).
 
+TRACKER LIFECYCLE producer source supports one task through PM, Analyst,
+Architect, Developer, Reviewer, Tester and DevOps. Stage, Ready/InProgress/Completed,
+waiting reason and runtime remain separate. Rework returns to Developer, then
+Review/Testing, bounded to three cycles. An agent submits a typed proposal while
+its run is alive; Fleet accepts completion only after actual runtime terminal.
+No live acceptance is claimed before parent registration and QA; expired PM
+feedback resume remains fail-closed pending guarded checkpoint/lease integration.
+[Producer contract and tests](TRACKER_SINGLE_TASK_HANDOFF.md).
+
 PM producer writes close the reserved-execution write boundary through exact
 machine scope/fence plus the Tracker execution lease; they do not activate
 Analysis dispatch or allow PM to self-certify readiness.

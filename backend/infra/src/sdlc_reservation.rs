@@ -268,14 +268,14 @@ impl PostgresSdlcRepository {
             return Err(AppError::conflict("pm_quiescence_unverified"));
         }
         let agent = snapshot.policy.routes.analyst.agent_id;
-        let blocked = tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=$1 OR agent_id=$2) AS busy, EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t ON t.task_id=a.task_id AND t.pm_execution_id=(a.payload->>'execution_id')::uuid WHERE a.payload->>'agent_id'=$2::text AND t.pm_admission_state IS DISTINCT FROM 'completed') AS pm",vec![state.root_task_id.into(),agent.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
+        let blocked = tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_shared_capacity WHERE task_id=$1 OR agent_id=$2) AS busy, EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t ON t.task_id=a.task_id AND t.pm_execution_id=(a.payload->>'execution_id')::uuid WHERE a.payload->>'agent_id'=$2::text AND t.pm_admission_state IS DISTINCT FROM 'completed') AS pm",vec![state.root_task_id.into(),agent.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
         if blocked.try_get::<bool>("", "pm").map_err(map_db)? {
             return Err(AppError::conflict("pm_quiescence_unverified"));
         }
         if blocked.try_get::<bool>("", "busy").map_err(map_db)? {
             return Err(AppError::conflict("root_or_agent_capacity_held"));
         }
-        let slot = tx.query_one(statement("SELECT s::smallint AS slot FROM generate_series(1,2) s WHERE NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE pool_slot=s) ORDER BY s LIMIT 1",vec![])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("technical_pool_capacity_held"))?.try_get::<i16>("","slot").map_err(map_db)?;
+        let slot = tx.query_one(statement("SELECT s::smallint AS slot FROM generate_series(1,2) s WHERE NOT EXISTS(SELECT 1 FROM sdlc_shared_capacity WHERE pool_slot=s) ORDER BY s LIMIT 1",vec![])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("technical_pool_capacity_held"))?.try_get::<i16>("","slot").map_err(map_db)?;
         let fence = tx
             .query_one(statement(
                 "SELECT nextval('sdlc_analysis_reservation_fence') AS n",

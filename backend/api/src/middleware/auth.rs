@@ -28,6 +28,7 @@ pub async fn bearer_auth(
         super::central_auth::CentralCheck::Validated(central, display_name) => {
             // Preserve task-scoped PM grants and machine identity before human mapping.
             if app::sdlc::has_pm_grant(&central.scopes)
+                || app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
                 || crate::routes::namespace::human_route_machine(&central.user_id)
                 || central.role.as_deref() == Some("service_account")
             {

@@ -136,6 +136,11 @@ pub enum Stage {
     Backlog,
     Analysis,
     Architecture,
+    Development,
+    Review,
+    Testing,
+    Rework,
+    Deployment,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
@@ -474,10 +479,22 @@ pub struct SdlcContext {
     pub root_task_id: Uuid,
     pub owner_subject: String,
     pub stage: Stage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::sdlc_lifecycle::LifecycleStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_submode: Option<DraftSubmode>,
     pub requirement_revision: Option<i64>,
     pub waiting_reason: Option<String>,
     pub permissions: Permissions,
     pub assignment: Option<PmAssignment>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DraftSubmode {
+    Brainstorming,
+    Clarification,
+    AwaitingConfirmation,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -488,15 +505,30 @@ pub struct TaskState {
     pub root_task_id: Uuid,
     pub owner_subject: String,
     pub stage: Stage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::sdlc_lifecycle::LifecycleStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_submode: Option<DraftSubmode>,
     pub confirmation_revision: Option<i64>,
     pub assignment: Option<PmAssignment>,
     pub questions: Vec<Question>,
     pub revisions: Vec<RequirementsRevision>,
     pub confirmations: Vec<Confirmation>,
     pub evidence: Vec<Evidence>,
+    // Retain canonical delivery fields through legacy aggregate load/save paths.
+    #[serde(flatten)]
+    pub retained_fields: serde_json::Map<String, serde_json::Value>,
 }
 
 impl TaskState {
+    pub fn clarifying(&self) -> bool {
+        self.stage == Stage::Clarification
+            || (self.stage == Stage::Draft
+                && matches!(
+                    self.draft_submode,
+                    Some(DraftSubmode::Clarification | DraftSubmode::AwaitingConfirmation)
+                ))
+    }
     pub fn require_root(&self) -> Result<(), AppError> {
         if self.task_id.is_nil() || self.root_task_id != self.task_id {
             return Err(AppError::conflict(
@@ -522,7 +554,7 @@ impl TaskState {
             .filter_map(|q| q.answer.as_ref().map(|answer| answer.created_at))
             .max();
         self.require_root().is_ok()
-            && matches!(self.stage, Stage::Clarification)
+            && self.clarifying()
             && self.confirmation_revision == Some(revision.revision)
             && !self
                 .questions
@@ -545,7 +577,7 @@ impl TaskState {
     }
     pub fn context(&self, actor: &Principal) -> SdlcContext {
         let can_answer = self.owner(actor)
-            && matches!(self.stage, Stage::Clarification)
+            && self.clarifying()
             && self
                 .questions
                 .iter()
@@ -557,25 +589,52 @@ impl TaskState {
             task_id: self.task_id,
             root_task_id: self.root_task_id,
             owner_subject: self.owner_subject.clone(),
-            stage: self.stage,
+            stage: if self.stage == Stage::Clarification {
+                Stage::Draft
+            } else {
+                self.stage
+            },
+            status: self.status,
+            draft_submode: self.draft_submode,
             requirement_revision: self.current_revision(),
-            waiting_reason: match self.stage {
-                Stage::Draft => Some("waiting_for_pm".into()),
-                Stage::Backlog => None,
-                Stage::Analysis => Some("queued_for_analysis".into()),
-                Stage::Architecture => Some("queued_for_architecture".into()),
-                Stage::Clarification
-                    if self
-                        .questions
-                        .iter()
-                        .any(|q| q.state == QuestionState::Open) =>
-                {
-                    Some("waiting_for_owner_answers".into())
+            waiting_reason: if let Some(reason) = self.retained_fields.get("waiting_reason") {
+                reason.as_str().map(str::to_owned)
+            } else {
+                match self.stage {
+                    Stage::Draft if !self.clarifying() => Some("waiting_for_pm".into()),
+                    Stage::Draft
+                        if self
+                            .questions
+                            .iter()
+                            .any(|q| q.state == QuestionState::Open) =>
+                    {
+                        Some("waiting_for_owner_answers".into())
+                    }
+                    Stage::Draft if !self.ready() => {
+                        Some("waiting_for_requirements_or_evidence".into())
+                    }
+                    Stage::Draft => Some("waiting_for_owner_confirmation".into()),
+                    Stage::Backlog => None,
+                    Stage::Analysis => Some("queued_for_analysis".into()),
+                    Stage::Architecture => Some("queued_for_architecture".into()),
+                    Stage::Development
+                    | Stage::Review
+                    | Stage::Testing
+                    | Stage::Rework
+                    | Stage::Deployment => None,
+                    Stage::Clarification
+                        if self
+                            .questions
+                            .iter()
+                            .any(|q| q.state == QuestionState::Open) =>
+                    {
+                        Some("waiting_for_owner_answers".into())
+                    }
+                    Stage::Clarification if !self.ready() => {
+                        Some("waiting_for_requirements_or_evidence".into())
+                    }
+                    Stage::Clarification => Some("waiting_for_owner_confirmation".into()),
                 }
-                Stage::Clarification if !self.ready() => {
-                    Some("waiting_for_requirements_or_evidence".into())
-                }
-                Stage::Clarification => Some("waiting_for_owner_confirmation".into()),
             },
             permissions: Permissions {
                 can_answer,

@@ -96,6 +96,9 @@ fn fixture() -> (
         assignment_version: 1,
     };
     let state = TaskState {
+        status: None,
+        retained_fields: Default::default(),
+        draft_submode: None,
         tracker_instance_id: "test-instance".into(),
         project_id: Uuid::new_v4(),
         task_id,
@@ -144,6 +147,164 @@ fn document() -> RequirementsDocument {
         checklist: vec!["review".into()],
         prerequisites: vec!["contract".into()],
     }
+}
+
+#[test]
+fn canonical_status_and_extensions_survive_aggregate_roundtrip_without_legacy_defaults() {
+    use domain::sdlc_lifecycle::LifecycleStatus;
+    let (state, _, owner, _, _, _) = fixture();
+    let legacy = serde_json::to_value(&state).unwrap();
+    let legacy_context = serde_json::to_value(state.context(&owner)).unwrap();
+    for wire in [&legacy, &legacy_context] {
+        assert!(wire.get("status").is_none());
+        assert!(wire.get("draft_submode").is_none());
+    }
+    let mut canonical = legacy.clone();
+    canonical["status"] = json!("InProgress");
+    canonical["draft_submode"] = json!("brainstorming");
+    canonical["runtime_state"] = json!("running");
+    canonical["waiting_reason"] = serde_json::Value::Null;
+    canonical["lifecycle"] = json!({"preserved":"execution-cursor"});
+    let decoded: TaskState = serde_json::from_value(canonical.clone()).unwrap();
+    assert_eq!(decoded.status, Some(LifecycleStatus::InProgress));
+    assert_eq!(serde_json::to_value(&decoded).unwrap(), canonical);
+    let context = serde_json::to_value(decoded.context(&owner)).unwrap();
+    assert_eq!(context["status"], "InProgress");
+    assert_eq!(context["draft_submode"], "brainstorming");
+    assert!(context["waiting_reason"].is_null());
+}
+
+#[test]
+fn pm_waiting_does_not_become_a_stage_or_runtime_status() {
+    use domain::sdlc_lifecycle::LifecycleStatus;
+    let (mut state, config, owner, pm, _, fence) = fixture();
+    state.status = Some(LifecycleStatus::InProgress);
+    state.draft_submode = Some(DraftSubmode::Brainstorming);
+    publish(&mut state, &config, &pm, &fence);
+    assert_eq!(state.stage, Stage::Draft);
+    assert_eq!(state.status, Some(LifecycleStatus::Ready));
+    assert_eq!(
+        state.draft_submode,
+        Some(DraftSubmode::AwaitingConfirmation)
+    );
+    let q = question(&fence, QuestionMode::Single);
+    apply(
+        &mut state,
+        &pm,
+        &config,
+        &SdlcCommand::PublishQuestion(q.clone()),
+    )
+    .unwrap();
+    assert_eq!(state.stage, Stage::Draft);
+    assert_eq!(
+        state.context(&owner).waiting_reason.as_deref(),
+        Some("waiting_for_owner_answers")
+    );
+    apply(
+        &mut state,
+        &owner,
+        &config,
+        &SdlcCommand::Answer {
+            question_id: q.question_id,
+            command: AnswerCommand {
+                expected_question_version: 1,
+                requirement_revision: 1,
+                selected_option_ids: vec![q.options[0].id],
+                text: None,
+                comment: None,
+                idempotency_key: "resume-pm".into(),
+            },
+        },
+    )
+    .unwrap();
+    assert_eq!(state.stage, Stage::Draft);
+    assert_eq!(state.status, Some(LifecycleStatus::InProgress));
+    assert_eq!(
+        state.context(&owner).waiting_reason.as_deref(),
+        Some("waiting_for_requirements_or_evidence")
+    );
+    assert!(!state.context(&owner).permissions.can_confirm);
+}
+
+#[test]
+fn pm_feedback_resume_uses_server_clock_exact_binding_and_never_reopens_published_analysis() {
+    use domain::sdlc_lifecycle::*;
+    let (mut state, _, _, _, _, fence) = fixture();
+    let observed = chrono::Utc::now();
+    let feedback = PmFeedbackReceipt {
+        message_id: Uuid::new_v4(),
+        tracker_instance_id: state.tracker_instance_id.clone(),
+        project_id: state.project_id,
+        task_id: state.task_id,
+        root_task_id: state.root_task_id,
+        owner_subject: state.owner_subject.clone(),
+        fence: fence.clone(),
+        text: "Additional thought".into(),
+        content_hash: canonical_hash(&json!({"text":"Additional thought"})).unwrap(),
+        requirement_revision: None,
+        created_at: observed,
+    };
+    let checkpoint = PmFeedbackCheckpoint {
+        fence: fence.clone(),
+        checkpoint_id: Uuid::new_v4(),
+        checkpoint_version: 1,
+        previous_run_id: Uuid::new_v4(),
+        previous_run_terminal: ArtifactReceipt {
+            reference: "fixture://terminal".into(),
+            sha256: "a".repeat(64),
+        },
+    };
+    let mut lease = domain::sdlc_execution_lease::ExecutionLeaseReadback {
+        contract_version: 1,
+        binding: domain::sdlc_pm_draft::PmDraftBinding {
+            tracker_instance_id: state.tracker_instance_id.clone(),
+            project_id: state.project_id,
+            task_id: state.task_id,
+            root_task_id: state.root_task_id,
+            owner_subject: state.owner_subject.clone(),
+        },
+        owner_version: 1,
+        fence: fence.clone(),
+        observed_at: observed,
+        state: domain::sdlc_execution_lease::ExecutionLeaseState::Active,
+        current: Some(domain::sdlc_execution_lease::ExecutionLease {
+            lease_id: Uuid::new_v4(),
+            version: 2,
+            holder_subject: "pm".into(),
+            claimed_at: observed,
+            heartbeat_at: observed,
+            expires_at: observed + chrono::Duration::seconds(30),
+        }),
+        operation: None,
+        dispatch_allowed: false,
+    };
+    let resume =
+        crate::sdlc_lifecycle::pm_feedback_resume_contract(&state, &feedback, &checkpoint, &lease)
+            .unwrap();
+    assert_eq!(resume.fence, checkpoint.fence);
+    assert_eq!(
+        resume.resume_operation_key,
+        format!("pm-feedback:{}", feedback.message_id)
+    );
+    lease.binding.project_id = Uuid::new_v4();
+    assert!(
+        crate::sdlc_lifecycle::pm_feedback_resume_contract(&state, &feedback, &checkpoint, &lease)
+            .is_err()
+    );
+    lease.binding.project_id = state.project_id;
+    lease.observed_at += chrono::Duration::seconds(30);
+    assert!(
+        crate::sdlc_lifecycle::pm_feedback_resume_contract(&state, &feedback, &checkpoint, &lease)
+            .is_err()
+    );
+    lease.observed_at = observed;
+    state.stage = Stage::Analysis;
+    assert!(
+        crate::sdlc_lifecycle::pm_feedback_resume_contract(&state, &feedback, &checkpoint, &lease)
+            .is_err()
+    );
+    assert!(state.questions.is_empty());
+    assert!(state.confirmations.is_empty());
 }
 
 fn publish(state: &mut TaskState, config: &SdlcConfig, pm: &Principal, fence: &MachineFence) {

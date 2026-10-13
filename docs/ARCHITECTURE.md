@@ -5,6 +5,14 @@ Agent proposal не равен stage completion: Fleet после actual termina
 guarded Complete, а Tracker владеет переходом и capacity. Второй планировщик
 не добавляется. [Single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
 
+Single-task producer source retains one task UUID through all roles, with
+scheduler-only terminal acceptance/reconciliation and ordinary assignment-scoped
+agent proposals. SDLC project access always requires active local ownership or
+explicit membership; global human hints do not expand the SDLC directory. New
+queue/reserve is project-opt-in after original-operation replay. Tracker adds no
+runtime scheduler or Hermes proof protocol; parent integrates existing routes.
+[Integration boundary and remaining resume blocker](TRACKER_SINGLE_TASK_HANDOFF.md).
+
 Reserved PM producer commands use Tracker reservation/lease recheck and atomic
 command/history write. No Fleet admission HTTP call is made on the producer
 path. [PM producer lease](PM_NATIVE_ADMISSION.md).

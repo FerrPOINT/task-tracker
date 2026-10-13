@@ -4,6 +4,15 @@
 в интеграции; legacy история сохраняется. Это не подтверждение проверки
 миграций на заполненной БД. [Модель и gates](SINGLE_TASK_DELIVERY_INTEGRATION.md).
 
+Single-task lifecycle stores canonical stage/status in `sdlc_tasks.state`; its
+delivery head stores execution only. Explicit many-to-one stage/status mapping
+uses three dedicated issue status IDs, preserving legacy board statuses/history.
+Immutable assignments, proposals, results, reconciliation and operations share
+one transactional projection/outbox boundary. Optional canonical PM status and
+Draft submode are omitted on historical rows without them. Parent owns migration
+registration/order for the additive SQL fragment.
+[Schema and wire details](TRACKER_SINGLE_TASK_HANDOFF.md).
+
 Additive 000091 adds immutable `sdlc_pm_native_admissions`, keyed by execution/run
 and tied to assignment version, fence and exact owner observation. Additive
 000092 adds transaction-scoped `sdlc_pm_state_write_permits`; a reserved task's

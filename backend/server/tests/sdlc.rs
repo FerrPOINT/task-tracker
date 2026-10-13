@@ -1398,6 +1398,9 @@ async fn metadata_pagination_and_blockers(
         SELECT $1,project_id,'SDLC-999999','task',status_id,'metadata-size',$2,'medium','[]',0,0 FROM issues WHERE id=$3",
         vec![huge_task.into(), huge_user.into(), task.into()]).await;
     let state = TaskState {
+        status: None,
+        retained_fields: Default::default(),
+        draft_submode: None,
         tracker_instance_id: valid_payload["tracker_instance_id"]
             .as_str()
             .unwrap()

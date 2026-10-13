@@ -185,6 +185,55 @@ macro_rules! metadata_events {
     };
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct LifecycleResource {
+    pub task_version: i64,
+    pub status: String,
+    pub runtime: String,
+    pub assignment_id: Option<Uuid>,
+    pub execution_id: Option<Uuid>,
+    pub agent_id: Option<Uuid>,
+    pub fencing_token: Option<i64>,
+    pub lease_id: Option<Uuid>,
+    pub lease_version: Option<i64>,
+    pub assignment_hash: Option<String>,
+    pub result_id: Option<Uuid>,
+    pub previous_result_id: Option<Uuid>,
+    pub result_sha256: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DeliveryProposalResource {
+    pub proposal_id: Uuid,
+    pub assignment_id: Uuid,
+    pub execution_id: Uuid,
+    pub agent_id: Uuid,
+    pub output_sha256: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PmFeedbackResource {
+    pub message_id: Uuid,
+    pub fence: MachineFence,
+    pub content_hash: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PmCompletionResource {
+    pub completion_id: Uuid,
+    pub fence: MachineFence,
+    pub lease_id: Uuid,
+    pub lease_version: i64,
+    pub requirement_revision: i64,
+    pub content_hash: String,
+    pub terminal_receipt_sha256: String,
+    pub workflow_receipt_sha256: String,
+}
+
 // Enum derive does not preserve strict keys or macro variant wire names in OpenAPI.
 #[derive(utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
@@ -203,6 +252,15 @@ struct MetadataEventFields<R> {
 }
 
 metadata_events! {
+    DeliveryQueued, "delivery.queued", LifecycleResource;
+    DeliveryReconciled, "delivery.reconciled", LifecycleResource;
+    DeliveryAssignmentReserved, "delivery.assignment_reserved", LifecycleResource;
+    DeliveryLeaseRenewed, "delivery.lease_renewed", LifecycleResource;
+    DeliveryRunBound, "delivery.run_bound", LifecycleResource;
+    DeliveryResultAccepted, "delivery.result_accepted", LifecycleResource;
+    DeliveryProposalSubmitted, "delivery.proposal_submitted", DeliveryProposalResource;
+    PmFeedbackRecorded, "pm.feedback_recorded", PmFeedbackResource;
+    PmCompleted, "pm.completed", PmCompletionResource;
     TaskCreated, "task.created", CreatedResource;
     TaskBound, "task.bound", BoundResource;
     PmAssigned, "pm.assigned", MachineFence;

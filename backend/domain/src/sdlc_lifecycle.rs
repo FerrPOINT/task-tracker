@@ -12,6 +12,16 @@ pub const LEASE_TTL_SECONDS: i64 = 30;
 pub const HEARTBEAT_SECONDS: i64 = 10;
 pub const MAX_TRANSIENT_RETRIES: u8 = 3;
 pub const MAX_REWORK_CYCLES: u8 = 3;
+pub const DELIVERY_GRANT_PREFIX: &str = "task-tracker:sdlc:delivery:";
+
+#[derive(Clone, Debug, PartialEq, Eq, utoipa::ToSchema)]
+pub struct DeliveryGrant {
+    pub task_id: Uuid,
+    pub assignment_id: Uuid,
+    pub execution_id: Uuid,
+    pub agent_id: Uuid,
+    pub fencing_token: i64,
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 pub enum LifecycleStage {
@@ -33,6 +43,11 @@ impl LifecycleStage {
             Stage::Backlog => Self::Backlog,
             Stage::Analysis => Self::Analysis,
             Stage::Architecture => Self::Architecture,
+            Stage::Development => Self::Development,
+            Stage::Review => Self::Review,
+            Stage::Testing => Self::Testing,
+            Stage::Rework => Self::Rework,
+            Stage::Deployment => Self::Deployment,
         }
     }
 
@@ -47,9 +62,23 @@ impl LifecycleStage {
             Self::Deployment => Some(DeliveryRole::DevOps),
         }
     }
+
+    pub fn canonical(self) -> Stage {
+        match self {
+            Self::Draft => Stage::Draft,
+            Self::Backlog => Stage::Backlog,
+            Self::Analysis => Stage::Analysis,
+            Self::Architecture => Stage::Architecture,
+            Self::Development => Stage::Development,
+            Self::Review => Stage::Review,
+            Self::Testing => Stage::Testing,
+            Self::Rework => Stage::Rework,
+            Self::Deployment => Stage::Deployment,
+        }
+    }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
 pub enum LifecycleStatus {
     Ready,
     InProgress,
@@ -184,6 +213,35 @@ pub struct LifecycleTask {
     pub runtime: RuntimeState,
     pub routing: TaskRoutingSnapshot,
     pub previous_result_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_chat_id: Option<Uuid>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeTerminalState {
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(tag = "disposition", rename_all = "snake_case", deny_unknown_fields)]
+pub enum RecoveryDisposition {
+    Stop,
+    RetryTransient {
+        replay_safety_receipt: ArtifactReceipt,
+    },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeTerminalObservation {
+    pub assignment_hash: String,
+    pub chat_id: Uuid,
+    pub run_id: Uuid,
+    pub state: RuntimeTerminalState,
+    pub receipt: ArtifactReceipt,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
@@ -203,6 +261,15 @@ pub struct DeliveryAssignment {
     pub fencing_token: i64,
     pub lease_id: Uuid,
     pub assignment_hash: String,
+}
+
+impl DeliveryAssignment {
+    pub fn scope(&self) -> String {
+        format!(
+            "{DELIVERY_GRANT_PREFIX}{}:{}:{}:{}:{}",
+            self.task_id, self.assignment_id, self.execution_id, self.agent_id, self.fencing_token
+        )
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
@@ -273,6 +340,30 @@ pub struct PmFeedbackReceipt {
     pub created_at: DateTime<Utc>,
 }
 
+/// Supplied only by the existing Fleet consumer after its actual checkpoint/readback.
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PmFeedbackCheckpoint {
+    pub fence: MachineFence,
+    pub checkpoint_id: Uuid,
+    pub checkpoint_version: i64,
+    pub previous_run_id: Uuid,
+    pub previous_run_terminal: ArtifactReceipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PmFeedbackResumeContract {
+    pub feedback_message_id: Uuid,
+    pub fence: MachineFence,
+    pub checkpoint_id: Uuid,
+    pub checkpoint_version: i64,
+    pub previous_run_id: Uuid,
+    pub lease_id: Uuid,
+    pub lease_version: i64,
+    pub resume_operation_key: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TerminalReceipt {
@@ -286,6 +377,12 @@ pub struct TerminalReceipt {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LifecycleCommand {
+    Reconcile {
+        fence: DeliveryFence,
+        terminal: RuntimeTerminalObservation,
+        recovery: RecoveryDisposition,
+        idempotency_key: String,
+    },
     EnsureQueued {
         idempotency_key: String,
     },
@@ -313,6 +410,9 @@ pub enum LifecycleCommand {
 impl LifecycleCommand {
     pub fn key(&self) -> &str {
         match self {
+            Self::Reconcile {
+                idempotency_key, ..
+            } => idempotency_key,
             Self::EnsureQueued { idempotency_key }
             | Self::Reserve {
                 idempotency_key, ..
@@ -368,6 +468,7 @@ pub struct LifecycleReadback {
     #[serde(serialize_with = "crate::sdlc_execution_lease::utc_nanos")]
     pub observed_at: DateTime<Utc>,
     pub receipt: LifecycleReceipt,
+    pub runtime_state: RuntimeState,
 }
 
 #[async_trait::async_trait]

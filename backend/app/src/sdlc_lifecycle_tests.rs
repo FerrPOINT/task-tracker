@@ -48,6 +48,7 @@ fn task() -> LifecycleTask {
         waiting_reason: None,
         runtime: RuntimeState::Running,
         previous_result_id: None,
+        resume_chat_id: None,
         routing: TaskRoutingSnapshot {
             contract_version: 1,
             snapshot_id: Uuid::new_v4(),
@@ -346,6 +347,14 @@ fn producer_has_no_scheduler_or_owner_powers_and_cannot_submit_fleet_terminal_pr
         trusted_human: false,
         scopes: ["task-tracker:read".into(), "task-tracker:write".into()].into(),
     };
+    assert!(producer(&actor, true).is_err());
+    actor.scopes.insert(format!(
+        "{DELIVERY_GRANT_PREFIX}{}:{}:{}:{}:1",
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4(),
+        Uuid::new_v4()
+    ));
     producer(&actor, true).unwrap();
     producer(&actor, false).unwrap();
     actor.human_session = true;
@@ -370,6 +379,143 @@ fn producer_has_no_scheduler_or_owner_powers_and_cannot_submit_fleet_terminal_pr
 }
 
 #[test]
+fn delivery_grants_are_canonical_single_task_capabilities_not_generic_permissions() {
+    let task_id = Uuid::new_v4();
+    let assignment = Uuid::new_v4();
+    let execution = Uuid::new_v4();
+    let agent = Uuid::new_v4();
+    let valid = format!("{DELIVERY_GRANT_PREFIX}{task_id}:{assignment}:{execution}:{agent}:7");
+    let principal = |grant: String| Principal {
+        subject: "machine".into(),
+        human_session: false,
+        trusted_human: false,
+        scopes: [
+            "task-tracker:read".into(),
+            "task-tracker:write".into(),
+            grant,
+        ]
+        .into(),
+    };
+    let actor = principal(valid.clone());
+    assert_eq!(delivery_grant(&actor).unwrap().unwrap().task_id, task_id);
+    let prefix = format!("/api/v1/issues/{task_id}/sdlc/");
+    for (method, resource) in [
+        ("GET", "lifecycle"),
+        ("GET", "requirements"),
+        ("GET", "events"),
+        ("POST", "delivery-proposals"),
+        ("GET", "delivery-proposals/operations/key"),
+    ] {
+        delivery_request_policy(&actor, method, &format!("{prefix}{resource}")).unwrap();
+    }
+    for (method, path) in [
+        ("GET", "/api/v1/issues/foreign".to_owned()),
+        ("GET", "/api/v1/sdlc/project-directory".into()),
+        ("POST", format!("{prefix}lifecycle")),
+        ("POST", format!("{prefix}requirements/1/confirm")),
+        ("POST", format!("{prefix}pm-feedback")),
+        ("POST", format!("{prefix}assignment")),
+        (
+            "GET",
+            format!("/api/v1/issues/{}/sdlc/lifecycle", Uuid::new_v4()),
+        ),
+    ] {
+        assert!(delivery_request_policy(&actor, method, &path).is_err());
+    }
+    for malformed in [
+        valid.to_uppercase(),
+        valid.replace(":7", ":07"),
+        valid.replace(":7", ":9007199254740992"),
+        format!("{DELIVERY_GRANT_PREFIX}garbage"),
+        "task-tracker:sdlc:delivery".into(),
+    ] {
+        assert!(delivery_grant(&principal(malformed)).is_err());
+    }
+    let mut ambiguous = actor.clone();
+    ambiguous.scopes.insert(valid.replace(":7", ":8"));
+    assert!(delivery_grant(&ambiguous).is_err());
+    let mut mixed = actor;
+    mixed.scopes.insert(format!(
+        "{}{}:{}:{}:{}:1",
+        crate::sdlc::PM_GRANT_PREFIX,
+        task_id,
+        assignment,
+        execution,
+        agent
+    ));
+    assert!(delivery_grant(&mixed).is_err());
+}
+
+#[test]
+fn verified_terminal_recovery_keeps_stage_and_bounds_retries_without_business_result() {
+    let mut state = task();
+    let stage = state.stage;
+    let task_id = state.task_id;
+    let terminal = RuntimeTerminalObservation {
+        assignment_hash: "a".repeat(64),
+        chat_id: Uuid::new_v4(),
+        run_id: Uuid::new_v4(),
+        state: RuntimeTerminalState::Failed,
+        receipt: artifact("actual-runtime-terminal"),
+    };
+    let recovery = RecoveryDisposition::RetryTransient {
+        replay_safety_receipt: artifact("safe-operation-readback"),
+    };
+    for retry in 1..=3 {
+        state.runtime = RuntimeState::Unknown;
+        reconcile_terminal(&mut state, &terminal, &recovery).unwrap();
+        assert_eq!(state.stage, stage);
+        assert_eq!(state.task_id, task_id);
+        assert_eq!(state.transient_retries, retry);
+        assert_eq!(state.runtime, RuntimeState::Queued);
+        assert_eq!(state.resume_chat_id, Some(terminal.chat_id));
+        assert_eq!(state.previous_result_id, None);
+    }
+    state.runtime = RuntimeState::Unknown;
+    reconcile_terminal(&mut state, &terminal, &recovery).unwrap();
+    assert_eq!(state.runtime, RuntimeState::Terminal);
+    assert_eq!(state.status, LifecycleStatus::Ready);
+    assert_eq!(
+        state.waiting_reason.as_deref(),
+        Some("transient_retry_limit_reached")
+    );
+}
+
+#[test]
+fn canonical_projection_preserves_original_history_and_exact_status_keys() {
+    let original = serde_json::json!({"stage":"Analysis","questions":[{"historical":"Clarification"}],
+        "confirmations":[{"id":"original-consent"}],"assignment":{"original":"pm"},"extra":"preserve"});
+    let state = task();
+    let projected = canonical_projection(&original, &state).unwrap();
+    for field in ["questions", "confirmations", "assignment", "extra"] {
+        assert_eq!(projected[field], original[field]);
+    }
+    assert_eq!(projected["stage"], "Analysis");
+    assert_eq!(projected["status"], "InProgress");
+    assert_eq!(
+        issue_mapping_keys(&state).unwrap(),
+        ("Analysis".into(), "InProgress".into())
+    );
+    assert_eq!(
+        projected["lifecycle"]["task_id"],
+        serde_json::json!(state.task_id)
+    );
+}
+
+#[test]
+fn stage_changes_independently_of_ready_status() {
+    let mut state = task();
+    state.status = LifecycleStatus::Ready;
+    state.stage = LifecycleStage::Development;
+    let development = canonical_projection(&serde_json::json!({}), &state).unwrap();
+    state.stage = LifecycleStage::Review;
+    let review = canonical_projection(&development, &state).unwrap();
+    assert_ne!(development["stage"], review["stage"]);
+    assert_eq!(development["status"], review["status"]);
+    assert_eq!(review["status"], "Ready");
+}
+
+#[test]
 fn fresh_server_clock_is_separate_from_retained_receipt_and_nullable_fields_are_explicit() {
     let receipt = LifecycleReceipt {
         task: task(),
@@ -381,6 +527,7 @@ fn fresh_server_clock_is_separate_from_retained_receipt_and_nullable_fields_are_
     let original = serde_json::to_value(&receipt).unwrap();
     let readback = LifecycleReadback {
         observed_at: Utc::now(),
+        runtime_state: receipt.task.runtime,
         receipt: receipt.clone(),
     };
     let wire = serde_json::to_value(readback).unwrap();

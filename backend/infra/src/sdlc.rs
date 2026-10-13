@@ -163,6 +163,7 @@ impl PostgresSdlcRepository {
     ) -> Result<TaskState, AppError> {
         let state = self.load(tx, task, actor).await?;
         app::sdlc::authorize_pm_read(&state, actor)?;
+        lifecycle::authorize_read(tx, &state, actor).await?;
         if app::sdlc::has_pm_grant(&actor.scopes) {
             let row = tx.query_one(statement(
                 "SELECT version,payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version DESC LIMIT 1",
@@ -334,16 +335,30 @@ impl PostgresSdlcRepository {
             vec![task.into(), next_state],
         )
         .await?;
-        let status_name = match state.stage {
-            Stage::Draft => "SDLC Draft",
-            Stage::Clarification => "SDLC Clarification",
-            Stage::Backlog => "Backlog",
-            Stage::Analysis => "SDLC Analysis",
-            Stage::Architecture => "SDLC Architecture",
-        };
-        if !matches!(state.stage, Stage::Backlog) || event_type == "requirements.confirmed" {
-            exec(tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at) SELECT $1,i.id,i.status_id,s.id,u.id,now() FROM issues i JOIN statuses s ON s.id=(SELECT id FROM statuses WHERE name=$3 ORDER BY id LIMIT 1) JOIN users u ON u.central_sub=$4 WHERE i.id=$2 AND i.status_id<>s.id", vec![Uuid::new_v4().into(), task.into(), status_name.into(), actor.subject.clone().into()]).await?;
-            exec(tx, "UPDATE issues SET status_id=(SELECT id FROM statuses WHERE name=$2 ORDER BY id LIMIT 1), sprint_id=NULL, updated_at=now() WHERE id=$1", vec![task.into(), status_name.into()]).await?;
+        if let Some(status) = state.status {
+            let status_id = lifecycle::mapped_issue_status(tx, state.stage, status).await?;
+            lifecycle::project_issue_status(tx, task, actor, status_id).await?;
+        } else {
+            let status_name = match state.stage {
+                Stage::Draft => "SDLC Draft",
+                Stage::Clarification => "SDLC Clarification",
+                Stage::Backlog => "Backlog",
+                Stage::Analysis => "SDLC Analysis",
+                Stage::Architecture => "SDLC Architecture",
+                Stage::Development
+                | Stage::Review
+                | Stage::Testing
+                | Stage::Rework
+                | Stage::Deployment => {
+                    return Err(AppError::conflict(
+                        "delivery lifecycle owns canonical projection",
+                    ));
+                }
+            };
+            if !matches!(state.stage, Stage::Backlog) || event_type == "requirements.confirmed" {
+                exec(tx, "INSERT INTO issue_status_history(id,issue_id,from_status_id,to_status_id,changed_by_id,created_at) SELECT $1,i.id,i.status_id,s.id,u.id,now() FROM issues i JOIN statuses s ON s.id=(SELECT id FROM statuses WHERE name=$3 ORDER BY id LIMIT 1) JOIN users u ON u.central_sub=$4 WHERE i.id=$2 AND i.status_id<>s.id", vec![Uuid::new_v4().into(), task.into(), status_name.into(), actor.subject.clone().into()]).await?;
+                exec(tx, "UPDATE issues SET status_id=(SELECT id FROM statuses WHERE name=$2 ORDER BY id LIMIT 1), sprint_id=NULL, updated_at=now() WHERE id=$1", vec![task.into(), status_name.into()]).await?;
+            }
         }
         exec(tx, "INSERT INTO sdlc_idempotency(task_id,actor_subject,idempotency_key,payload_hash,result) VALUES($1,$2,$3,$4,$5)", vec![task.into(), actor.subject.clone().into(), key.into(), hash.into(), result.clone().into()]).await?;
         let event_stage = if event_type == "requirements.confirmed" {
@@ -550,7 +565,54 @@ impl PostgresSdlcRepository {
             };
             refs.question = Some(question);
         }
+        if event.event_type.starts_with("delivery.")
+            || matches!(
+                event.event_type.as_str(),
+                "pm.feedback_recorded" | "pm.completed"
+            )
+        {
+            let sql = match event.event_type.as_str() {
+                "delivery.proposal_submitted" => {
+                    "SELECT EXISTS(SELECT 1 FROM sdlc_delivery_proposals WHERE task_id=$1 AND proposal_id=$2 AND payload=$3) AS valid"
+                }
+                "pm.feedback_recorded" => {
+                    "SELECT EXISTS(SELECT 1 FROM sdlc_pm_feedback WHERE task_id=$1 AND message_id=$2 AND payload=$3) AS valid"
+                }
+                "pm.completed" => {
+                    "SELECT EXISTS(SELECT 1 FROM sdlc_pm_completions WHERE task_id=$1 AND completion_id=$2 AND result=$3) AS valid"
+                }
+                _ => {
+                    "SELECT EXISTS(SELECT 1 FROM sdlc_delivery_operations WHERE task_id=$1 AND event_id=$2 AND result=$3) AS valid"
+                }
+            };
+            let row = tx
+                .query_one(statement(
+                    sql,
+                    vec![
+                        event.task_id.into(),
+                        event.event_id.into(),
+                        result.clone().into(),
+                    ],
+                ))
+                .await
+                .map_err(map_db)?
+                .ok_or_else(|| AppError::conflict("delivery metadata ledger absent"))?;
+            if !row.try_get::<bool>("", "valid").map_err(map_db)? {
+                return Ok(None);
+            }
+        }
         let number = match event.event_type.as_str() {
+            "delivery.reconciled"
+            | "delivery.queued"
+            | "delivery.assignment_reserved"
+            | "delivery.lease_renewed"
+            | "delivery.run_bound"
+            | "delivery.result_accepted" => {
+                result["task"]["routing"]["requirement_revision"].as_i64()
+            }
+            "delivery.proposal_submitted" | "pm.feedback_recorded" | "pm.completed" => {
+                payload["requirement_revision"].as_i64()
+            }
             "requirements.published" | "requirements.confirmed" => result["revision"].as_i64(),
             "analysis.intent_created" => result["requirement_revision"].as_i64(),
             "analysis.assignment_reserved" => result["assignment"]["requirement_revision"].as_i64(),
@@ -1107,13 +1169,28 @@ impl SdlcRepository for PostgresSdlcRepository {
                 .ok_or_else(|| AppError::validation("issue number overflow"))?;
             let task = Uuid::now_v7();
             let key = format!("{project_key}-{number}");
+            let single_task = self.config.single_task_project_ids.contains(&project);
+            let status = single_task.then_some(domain::sdlc_lifecycle::LifecycleStatus::Ready);
+            let initial_status: Uuid = match status {
+                Some(status) => lifecycle::mapped_issue_status(&tx, Stage::Draft, status).await?,
+                None => tx
+                    .query_one(statement(
+                        "SELECT id FROM statuses WHERE name='SDLC Draft' ORDER BY id LIMIT 1",
+                        vec![],
+                    ))
+                    .await
+                    .map_err(map_db)?
+                    .ok_or_else(|| AppError::conflict("legacy Draft status missing"))?
+                    .try_get("", "id")
+                    .map_err(map_db)?,
+            };
             let inserted = tx.execute(statement(
                 "INSERT INTO issues(id,project_id,key,issue_type,status_id,summary,description,reporter_id,
                  priority,labels,position,time_spent_seconds)
-                 VALUES($1,$2,$3,'task',(SELECT id FROM statuses WHERE name='SDLC Draft' ORDER BY id LIMIT 1),
+                 VALUES($1,$2,$3,'task',$7,
                  $4,$5,$6,'medium','[]',0,0)",
                 vec![task.into(), project.into(), key.clone().into(), command.title.clone().into(),
-                    command.description.clone().into(), user.into()],
+                    command.description.clone().into(), user.into(), initial_status.into()],
             )).await;
             if let Err(error) = inserted {
                 let key_conflict = matches!(error.sql_err(),
@@ -1139,6 +1216,9 @@ impl SdlcRepository for PostgresSdlcRepository {
                 return Err(map_db(error));
             }
             let state = TaskState {
+                status,
+                retained_fields: Default::default(),
+                draft_submode: single_task.then_some(DraftSubmode::Brainstorming),
                 tracker_instance_id: self.config.instance_id.clone(),
                 project_id: project,
                 task_id: task,
@@ -1326,6 +1406,9 @@ impl SdlcRepository for PostgresSdlcRepository {
             return Err(AppError::conflict("task already bound"));
         }
         let state = TaskState {
+            status: None,
+            retained_fields: Default::default(),
+            draft_submode: None,
             tracker_instance_id: self.config.instance_id.clone(),
             project_id: project,
             task_id: task,
