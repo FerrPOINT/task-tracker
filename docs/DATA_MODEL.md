@@ -1,5 +1,17 @@
 # Дата-модель Task Tracker
 
+New immutable delivery assignment JSON includes `execution:{ordinal,key}`;
+the canonical positive bigint ordinal is encoded as a decimal string and paired
+exactly with `SDLC-<ordinal>`. It is part of assignment hash and original receipts.
+The existing SQL fragment adds optional-history shape checks, delivery ordinal
+uniqueness and a present-reference requirement for fresh inserts. Existing missing
+fields remain missing, with no backfill/hash rewrite. No separate counter/table or
+ordinal column is added: fresh Delivery (including Analyst) consumes the existing
+PM identity sequence. Legacy Analysis retains its own ordinal sequence/namespace.
+Display keys are not globally unique historical identities: Tracker instance plus
+execution UUID is canonical. Rollback gaps are intentional; sequence state is never
+rewound or rebased, and historical Analysis allocation is not changed.
+
 Canonical `sdlc_tasks.state.flow` is absent for legacy tasks and exactly the string
 `single-task-v1` for explicitly opted-in new Drafts. It is retained through legacy
 serde round trips, not duplicated in another mutable table. The existing additive

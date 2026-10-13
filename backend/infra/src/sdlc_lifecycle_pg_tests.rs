@@ -87,6 +87,44 @@ async fn count(db: &DatabaseConnection, table: &str) -> i64 {
     .unwrap()
 }
 
+async fn pm_ordinal_head(db: &DatabaseConnection) -> i64 {
+    let name: String = db
+        .query_one(statement(
+            "SELECT pg_get_serial_sequence('sdlc_pm_executions','ordinal') AS name",
+            vec![],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "name")
+        .unwrap();
+    // PostgreSQL returns a qualified/quoted identifier, never request-supplied SQL.
+    db.query_one(statement(
+        &format!("SELECT last_value AS n FROM {name}"),
+        vec![],
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "n")
+    .unwrap()
+}
+
+async fn legacy_analysis_ordinal_head(db: &DatabaseConnection) -> (i64, bool) {
+    let row = db
+        .query_one(statement(
+            "SELECT last_value,is_called FROM sdlc_analysis_workflow_task_ordinal",
+            vec![],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    (
+        row.try_get("", "last_value").unwrap(),
+        row.try_get("", "is_called").unwrap(),
+    )
+}
+
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_LIFECYCLE_TEST_DATABASE_URL ending in _lifecycle_test"]
 async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay() {
@@ -346,10 +384,162 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         expected_task_version: queued.task.version,
         idempotency_key: "reserve-0".into(),
     };
-    let (reserved, _) = repo
-        .lifecycle_command(task, &scheduler, reserve.clone())
+    let legacy_ordinal = legacy_analysis_ordinal_head(&db).await;
+    let pm_ordinal = pm_ordinal_head(&db).await;
+    assert_eq!(reservation.execution.ordinal, pm_ordinal.to_string());
+    let invalid = LifecycleCommand::Reserve {
+        expected_task_version: queued.task.version + 1,
+        idempotency_key: "invalid-cas".into(),
+    };
+    assert!(
+        repo.lifecycle_command(task, &scheduler, invalid)
+            .await
+            .is_err()
+    );
+    assert!(matches!(
+        repo.lifecycle_command(task, &owner, reserve.clone()).await,
+        Err(AppError::Forbidden)
+    ));
+    assert_eq!(pm_ordinal_head(&db).await, pm_ordinal);
+    let operations = count(&db, "sdlc_delivery_operations").await;
+    let outbox = count(&db, "sdlc_outbox").await;
+    db.execute_unprepared("CREATE FUNCTION fixture_fail_reserve_outbox() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+        IF NEW.event_type='delivery.assignment_reserved' THEN RAISE EXCEPTION 'fixture reserve outbox failure'; END IF; RETURN NEW; END $$;
+        CREATE TRIGGER fixture_fail_reserve_outbox BEFORE INSERT ON sdlc_outbox FOR EACH ROW EXECUTE FUNCTION fixture_fail_reserve_outbox();").await.unwrap();
+    assert!(
+        repo.lifecycle_command(task, &scheduler, reserve.clone())
+            .await
+            .is_err()
+    );
+    let gap = pm_ordinal_head(&db).await;
+    assert_eq!(gap, pm_ordinal + 1);
+    assert_eq!(count(&db, "sdlc_delivery_assignments").await, 0);
+    assert_eq!(count(&db, "sdlc_delivery_holds").await, 0);
+    assert_eq!(count(&db, "sdlc_delivery_operations").await, operations);
+    assert_eq!(count(&db, "sdlc_outbox").await, outbox);
+    assert!(
+        repo.lifecycle_read(task, &reader)
+            .await
+            .unwrap()
+            .receipt
+            .assignment
+            .is_none()
+    );
+    db.execute_unprepared("DROP TRIGGER fixture_fail_reserve_outbox ON sdlc_outbox; DROP FUNCTION fixture_fail_reserve_outbox();").await.unwrap();
+    let (other_draft, _) = repo
+        .create_draft(
+            project,
+            &owner,
+            CreateDraftCommand {
+                title: "Concurrent PM allocator fixture".into(),
+                description: "Synthetic owner input".into(),
+                idempotency_key: "other-pm-draft".into(),
+                flow: Some(DraftFlow::SingleTaskV1),
+            },
+        )
         .await
         .unwrap();
+    let pm_request: domain::sdlc_pm_draft::ReservePmDraft = parse(json!({
+        "requested_agent_id":routes.project_manager.agent_id,"expected_owner_version":0,
+        "expected_assignment_version":null,"idempotency_key":"other-pm-reserve"}));
+    assert_eq!(pm_ordinal_head(&db).await, gap);
+    let (left, right, other_pm) = tokio::join!(
+        repo.lifecycle_command(task, &scheduler, reserve.clone()),
+        repo.lifecycle_command(task, &scheduler, reserve.clone()),
+        repo.reserve_pm_draft(other_draft.task_id, &owner, pm_request.clone())
+    );
+    let left = left.unwrap();
+    let right = right.unwrap();
+    assert_ne!(left.1, right.1);
+    assert_eq!(left.0, right.0);
+    let reserved = left.0;
+    let (other_pm, replayed) = other_pm.unwrap();
+    assert!(!replayed);
+    let allocated = reserved
+        .assignment
+        .as_ref()
+        .unwrap()
+        .execution
+        .as_ref()
+        .unwrap();
+    assert_eq!(allocated.key, format!("SDLC-{}", allocated.ordinal));
+    let allocated_ordinals: std::collections::HashSet<i64> = [
+        allocated.ordinal.parse().unwrap(),
+        other_pm.execution.ordinal.parse().unwrap(),
+    ]
+    .into_iter()
+    .collect();
+    let expected_ordinals: std::collections::HashSet<_> = [gap + 1, gap + 2].into_iter().collect();
+    assert_eq!(allocated_ordinals, expected_ordinals);
+    assert_ne!(allocated.key, other_pm.execution.key);
+    let allocation_head = gap + 2;
+    assert_eq!(pm_ordinal_head(&db).await, allocation_head);
+    let changed = LifecycleCommand::Reserve {
+        expected_task_version: queued.task.version + 1,
+        idempotency_key: "reserve-0".into(),
+    };
+    assert!(matches!(
+        repo.lifecycle_command(task, &scheduler, changed).await,
+        Err(AppError::Conflict(_))
+    ));
+    exec(
+        &db,
+        "UPDATE users SET is_active=false WHERE central_sub='scheduler'",
+        vec![],
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        repo.lifecycle_command(task, &scheduler, reserve.clone())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        repo.lifecycle_operation(task, &reader, "reserve-0").await,
+        Err(AppError::Forbidden)
+    ));
+    exec(
+        &db,
+        "UPDATE users SET is_active=true WHERE central_sub='scheduler'",
+        vec![],
+    )
+    .await
+    .unwrap();
+    assert_eq!(pm_ordinal_head(&db).await, allocation_head);
+    assert_eq!(legacy_analysis_ordinal_head(&db).await, legacy_ordinal);
+    let saved: Json = db
+        .query_one(statement(
+            "SELECT payload FROM sdlc_delivery_assignments WHERE assignment_id=$1",
+            vec![reserved.assignment.as_ref().unwrap().assignment_id.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get("", "payload")
+        .unwrap();
+    assert_eq!(
+        saved,
+        serde_json::to_value(reserved.assignment.as_ref().unwrap()).unwrap()
+    );
+    assert_eq!(
+        repo.lifecycle_operation(task, &reader, "reserve-0")
+            .await
+            .unwrap(),
+        reserved
+    );
+    assert!(
+        repo.lifecycle_command(task, &scheduler, reserve.clone())
+            .await
+            .unwrap()
+            .1
+    );
+    assert!(
+        repo.reserve_pm_draft(other_draft.task_id, &owner, pm_request)
+            .await
+            .unwrap()
+            .1
+    );
+    assert_eq!(pm_ordinal_head(&db).await, allocation_head);
     let stale = delivery_fence(&reserved);
     let binding = RunBinding {
         chat_id: Uuid::new_v4(),
@@ -644,6 +834,14 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .await
         .unwrap();
     assert_eq!(retry.assignment.as_ref().unwrap().attempt, 2);
+    assert_ne!(
+        retry.assignment.as_ref().unwrap().execution,
+        reserved.assignment.as_ref().unwrap().execution
+    );
+    assert_ne!(
+        retry.assignment.as_ref().unwrap().execution_id,
+        reserved.assignment.as_ref().unwrap().execution_id
+    );
     assert!(
         retry.assignment.as_ref().unwrap().fencing_token
             > reserved.assignment.as_ref().unwrap().fencing_token
@@ -667,6 +865,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .is_err()
     );
     repo.config.single_task_project_ids.clear();
+    let before_replay = pm_ordinal_head(&db).await;
     assert!(
         repo.lifecycle_command(task, &scheduler, ensure)
             .await
@@ -683,6 +882,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         .unwrap(),
         serde_json::to_value(reserved).unwrap()
     );
+    assert_eq!(pm_ordinal_head(&db).await, before_replay);
     assert!(matches!(
         repo.lifecycle_command(
             task,
@@ -707,6 +907,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     .unwrap();
     let mut cursor = repo.lifecycle_read(task, &reader).await.unwrap().receipt;
     let mut ready_ids = Vec::new();
+    let mut execution_keys = std::collections::HashSet::new();
     let outputs = [
         DeliveryResult::Analyst {
             analysis: artifact("retry-analysis"),
@@ -752,6 +953,11 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
                 .unwrap()
                 .0;
         }
+        let assignment = cursor.assignment.as_ref().unwrap();
+        let execution = assignment.execution.as_ref().unwrap();
+        execution.validate().unwrap();
+        assert!(execution_keys.insert(execution.key.clone()));
+        assert!(execution.ordinal.parse::<i64>().unwrap() > pm_ordinal);
         let fence = delivery_fence(&cursor);
         let role_binding = RunBinding {
             chat_id: cursor.task.resume_chat_id.unwrap_or_else(Uuid::new_v4),
@@ -830,6 +1036,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         }
     }
     assert_eq!(ready_ids.len(), 2);
+    assert_eq!(execution_keys.len(), 6);
+    assert_eq!(legacy_analysis_ordinal_head(&db).await, legacy_ordinal);
     assert_ne!(ready_ids[0].0, ready_ids[1].0);
     assert_eq!(ready_ids[0].1, ready_ids[1].1);
     assert_eq!(cursor.task.status, LifecycleStatus::Completed);

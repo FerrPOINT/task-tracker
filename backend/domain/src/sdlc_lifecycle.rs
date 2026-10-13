@@ -249,6 +249,8 @@ pub struct RuntimeTerminalObservation {
 pub struct DeliveryAssignment {
     pub assignment_id: Uuid,
     pub execution_id: Uuid,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<DeliveryExecution>,
     pub task_id: Uuid,
     pub owner_subject: String,
     pub role: DeliveryRole,
@@ -261,6 +263,57 @@ pub struct DeliveryAssignment {
     pub fencing_token: i64,
     pub lease_id: Uuid,
     pub assignment_hash: String,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct DeliveryExecution {
+    #[schema(pattern = "^[1-9][0-9]{0,18}$")]
+    pub ordinal: String,
+    #[schema(pattern = "^SDLC-[1-9][0-9]{0,18}$")]
+    pub key: String,
+}
+
+impl DeliveryExecution {
+    pub fn from_ordinal(ordinal: i64) -> Result<Self, AppError> {
+        let execution = Self {
+            ordinal: ordinal.to_string(),
+            key: format!("SDLC-{ordinal}"),
+        };
+        execution.validate()?;
+        Ok(execution)
+    }
+
+    pub fn validate(&self) -> Result<(), AppError> {
+        if !self
+            .ordinal
+            .parse::<i64>()
+            .is_ok_and(|n| n > 0 && n.to_string() == self.ordinal)
+            || self.key != format!("SDLC-{}", self.ordinal)
+        {
+            return Err(AppError::validation(
+                "invalid Tracker delivery execution reference",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl<'de> Deserialize<'de> for DeliveryExecution {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Wire {
+            ordinal: String,
+            key: String,
+        }
+        let Wire { ordinal, key } = Wire::deserialize(d)?;
+        let execution = Self { ordinal, key };
+        execution
+            .validate()
+            .map_err(<D::Error as serde::de::Error>::custom)?;
+        Ok(execution)
+    }
 }
 
 impl DeliveryAssignment {

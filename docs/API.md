@@ -1,5 +1,37 @@
 # API v1 Specification — Task Tracker
 
+## Authoritative Delivery Execution Reference
+
+Fresh scheduler-only lifecycle Reserve returns
+`assignment.execution:{ordinal:"123",key:"SDLC-123"}` in the existing receipt.
+The same value is returned by GET lifecycle (`receipt.assignment.execution`) and
+GET lifecycle operations (`assignment.execution`). Ordinal is a canonical positive
+decimal PostgreSQL bigint string, never a JSON number; key must match exactly.
+Unknown fields, noncanonical/overflow ordinal or mismatched key in a present value
+are rejected by the producer DTO. Caller Reserve fields/auth are unchanged:
+the consumer cannot submit/select an ordinal, taskkey or chat-derived key.
+
+Tracker allocates from the SAME existing identity sequence as PM executions:
+`nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal'))`, after fresh ACL,
+original-operation replay and normal Reserve capacity/CAS checks. Execution ref,
+UUID, assignment hash, immutable assignment, hold, canonical projection, operation
+and outbox persist in the same transaction. Rollback may leave a sequence gap,
+never an accepted partial assignment; replay returns the original execution/key.
+New retry assignment/execution receives a new ordinal, retained PM resume does not.
+
+The optional field is omitted for old assignments; omission preserves old wire and
+hash. Old receipts are not backfilled. A technical Workflow dispatch requires a
+present authoritative reference and must fail closed when absent. Historical
+compatibility fixtures intentionally remain non-dispatchable without a fresh Reserve.
+
+Uniqueness is within the new single-task profile flow (PM plus general Delivery,
+including Analyst). Legacy Analysis keeps its separate
+`sdlc_analysis_workflow_task_ordinal` and original receipts/Workflow namespace.
+Display `SDLC-N` may coincide across legacy families; canonical identity is
+Tracker instance + execution UUID, and Workflow refs are namespace/profile scoped.
+No stopped writers, setval/high-water repair, new sequence or legacy allocator
+change is required or included. Parent owns Fleet DTO/generated registrations.
+
 ## Explicit New Draft Flow
 
 The existing Draft creation request adds optional `flow:"single-task-v1"`.

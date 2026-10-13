@@ -448,10 +448,22 @@ impl PostgresSdlcRepository {
             .ok_or_else(corrupt)?
             .try_get::<i64>("", "n")
             .map_err(map_db)?;
+        let ordinal = tx
+            .query_one(statement(
+                "SELECT nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal')) AS ordinal",
+                vec![],
+            ))
+            .await
+            .map_err(map_db)?
+            .ok_or_else(corrupt)?
+            .try_get::<i64>("", "ordinal")
+            .map_err(map_db)?;
+        let execution = DeliveryExecution::from_ordinal(ordinal)?;
         let observed_at = now(tx).await?;
         let mut assignment = DeliveryAssignment {
             assignment_id: Uuid::now_v7(),
             execution_id: Uuid::now_v7(),
+            execution: Some(execution),
             task_id: receipt.task.task_id,
             owner_subject: receipt.task.owner_subject.clone(),
             role,

@@ -1,5 +1,16 @@
 # Архитектура Task Tracker
 
+General Delivery Reserve owns execution display-key allocation using PM's existing
+identity sequence. All new-profile roles, including Analyst, receive immutable
+`execution:{ordinal,key}` in assignment/hash and lifecycle readback. Allocation is
+after replay/CAS/capacity checks and before the one transactional persistence/outbox
+boundary; failed transactions may consume unused ordinals. Fleet never synthesizes
+an execution key from task/chat identity. Missing execution on a historical receipt
+is a technical dispatch blocker, not authority to invent one. Legacy Analysis's
+separate sequence and Workflow namespace remain unchanged; no global historical
+display-key uniqueness, stopped-writer cutover or high-water repair is attempted.
+Stable canonical execution identity is Tracker instance plus execution UUID.
+
 New single-task enrollment is explicit at Draft creation, not inferred from a
 project flag or an existing PM reservation. The immutable `flow:"single-task-v1"`
 marker stays in canonical TaskState's retained JSON; Context/CreatedDraft do not

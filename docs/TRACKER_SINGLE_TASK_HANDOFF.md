@@ -392,8 +392,52 @@ without marker; existing historical terminal/readback paths stay available.
 Parent integrates the creation DTO schema and Fleet mutation/readiness gate. No API
 registration/OpenAPI generated output/CLI changes are included here. Missing policy
 returns NotFound, incompatible policy Conflict, disabled new creation Unavailable.
-Separate delivery `SDLC-<ordinal>` allocator remains the next package: no consumer
-may invent an execution key from task/chat UUID while that source gap is open.
+The following execution-reference package closes the fresh Delivery allocator gap;
+historical missing references still block technical dispatch and are never invented.
+
+### Delivery execution reference
+
+`DeliveryAssignment.execution:Option<DeliveryExecution>` has exactly
+`{ordinal:String,key:String}`. Fresh Reserve always fills it from
+`nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal'))`: the same existing
+sequence PM already uses. It is allocated after fresh ACL/original command replay
+and existing task CAS/capacity guards, then included in immutable assignment JSON
+and assignment hash. Existing lifecycle GET and operation readbacks return it without
+a new endpoint or wrapper. Ordinal is positive canonical bigint decimal, key exactly
+`SDLC-<ordinal>`; malformed present values fail strict decode/hash validation.
+
+Omission preserves old assignment wire/hash/materialization, including existing
+compatibility examples. No historical row/operation is backfilled. New inserts
+require a reference, with a JSON shape/range constraint and unique delivery ordinal
+index in the same SQL fragment. Caller cannot select a display key. Assignment,
+hold, canonical state/issue projection, operation and outbox commit or roll back
+together; PostgreSQL sequence gaps on rollback are expected. Original replay does
+not allocate again. A new retry execution/fence gets a new key; same PM execution
+resume keeps its previous PM key.
+
+Uniqueness is scoped to new-profile PM + general Delivery, including Analyst.
+Legacy Analysis still consumes `sdlc_analysis_workflow_task_ordinal` in its old
+Workflow namespace; that allocator and old receipts are untouched. Historical
+display strings may coincide across families without an execution identity
+collision: canonical identity is Tracker instance + execution UUID, and Workflow
+key use is namespace/profile scoped. No stopped writers/high-water/setval/cutover
+or new sequence is added. Parent owns Fleet DTO/generated registration. Its
+technical Workflow builder requires Some execution; absent means blocked, never
+taskkey/chatUUID-derived fallback.
+
+Requested execution-reference checks (source tests only, not run here):
+
+```text
+cargo test --locked -p app delivery_execution_reference_is_canonical_and_closed
+cargo test --locked -p app optional_delivery_execution_preserves_legacy_wire_and_binds_new_hash
+cargo test --locked -p infra canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay -- --ignored --nocapture
+```
+
+The existing fresh `_lifecycle_test` PG fixture now checks shared PM/Delivery ordinal
+allocation, rejected CAS/auth and replay ACL revocation before allocation, rollback gaps without partial
+assignment/hold/operation/outbox, concurrent PM plus same-key Delivery Reserve and original replay,
+persisted receipt/readback, new retry key, six role-key uniqueness and unchanged
+legacy Analysis sequence. All runtime observations remain synthetic fixtures.
 
 Focused checks requested after integration (Cargo/PG not run by this worker):
 

@@ -115,6 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut assignment = DeliveryAssignment {
             assignment_id: Uuid::from_u128(200 + index as u128),
             execution_id: Uuid::from_u128(300 + index as u128),
+            execution: None, // Historical wire fixture, not a dispatchable runtime reservation.
             task_id: task,
             owner_subject: owner_subject.clone(),
             role,

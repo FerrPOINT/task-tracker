@@ -12,6 +12,83 @@ fn artifact(name: &str) -> ArtifactReceipt {
     }
 }
 
+#[test]
+fn delivery_execution_reference_is_canonical_and_closed() {
+    for ordinal in [1, 9_007_199_254_740_992, i64::MAX] {
+        let execution = DeliveryExecution::from_ordinal(ordinal).unwrap();
+        let raw = serde_json::to_value(&execution).unwrap();
+        assert_eq!(
+            raw,
+            serde_json::json!({"ordinal":ordinal.to_string(),"key":format!("SDLC-{ordinal}")})
+        );
+        assert_eq!(
+            serde_json::from_value::<DeliveryExecution>(raw).unwrap(),
+            execution
+        );
+    }
+    for ordinal in [
+        "0",
+        "-1",
+        "01",
+        "+1",
+        " 1",
+        "1.0",
+        "9223372036854775808",
+        "",
+    ] {
+        assert!(
+            serde_json::from_value::<DeliveryExecution>(
+                serde_json::json!({"ordinal":ordinal,"key":format!("SDLC-{ordinal}")})
+            )
+            .is_err()
+        );
+    }
+    for raw in [
+        serde_json::json!({"ordinal":"1","key":"TASK-1"}),
+        serde_json::json!({"ordinal":"1","key":"SDLC-2"}),
+        serde_json::json!({"ordinal":1,"key":"SDLC-1"}),
+        serde_json::json!({"ordinal":"1"}),
+        serde_json::json!({"ordinal":"1","key":"SDLC-1","ready":true}),
+    ] {
+        assert!(serde_json::from_value::<DeliveryExecution>(raw).is_err());
+    }
+    assert!(DeliveryExecution::from_ordinal(0).is_err());
+    assert!(DeliveryExecution::from_ordinal(-1).is_err());
+}
+
+#[test]
+fn optional_delivery_execution_preserves_legacy_wire_and_binds_new_hash() {
+    let task = task();
+    let raw = serde_json::json!({"assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),
+        "task_id":task.task_id,"owner_subject":task.owner_subject,"role":"analyst","stage":"Analysis","cycle":0,"attempt":1,
+        "agent_id":task.routing.policy.routes.analyst.agent_id,"routing":task.routing,"previous_result_id":null,
+        "fencing_token":1,"lease_id":Uuid::new_v4(),"assignment_hash":""});
+    let mut assignment: DeliveryAssignment = serde_json::from_value(raw.clone()).unwrap();
+    assert_eq!(assignment.execution, None);
+    assert_eq!(serde_json::to_value(&assignment).unwrap(), raw);
+    let legacy_hash = assignment_hash(&assignment).unwrap();
+    let mut original = raw;
+    original.as_object_mut().unwrap().remove("assignment_hash");
+    assert_eq!(legacy_hash, crate::sdlc::canonical_hash(&original).unwrap());
+    assignment.execution = Some(DeliveryExecution::from_ordinal(123).unwrap());
+    let hash = assignment_hash(&assignment).unwrap();
+    assert_ne!(hash, legacy_hash);
+    assignment.assignment_hash = hash.clone();
+    let wire = serde_json::to_value(&assignment).unwrap();
+    assert_eq!(
+        wire["execution"],
+        serde_json::json!({"ordinal":"123","key":"SDLC-123"})
+    );
+    let decoded: DeliveryAssignment = serde_json::from_value(wire.clone()).unwrap();
+    assert_eq!(assignment_hash(&decoded).unwrap(), hash);
+    assert_eq!(decoded, assignment);
+    let mut bad = wire;
+    bad["execution"]["key"] = serde_json::json!("SDLC-999");
+    assert!(serde_json::from_value::<DeliveryAssignment>(bad).is_err());
+    assignment.execution.as_mut().unwrap().key = "SDLC-999".into();
+    assert!(assignment_hash(&assignment).is_err());
+}
+
 fn task() -> LifecycleTask {
     let route = RoleRoute {
         agent_id: Uuid::new_v4(),

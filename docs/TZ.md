@@ -6,8 +6,10 @@ new marked creation and automatically freezes current seven-role routing during
 exact owner confirmation, even when UI omits routing version. Optional provided
 version remains CAS; legacy omission hashes and replay histories are preserved.
 Fleet's existing SDK saga supplies actual PM readiness before mutation, without
-force-config or fabricated proof. Delivery execution-key allocation is a separate
-bounded package and is not implemented by this Draft marker change.
+force-config or fabricated proof. The subsequent bounded producer package now
+allocates authoritative Delivery execution refs from PM's existing sequence;
+legacy Analysis allocation/namespaces and historical missing refs stay unchanged.
+No consumer may invent a Workflow taskkey when authoritative execution is absent.
 
 Текущая доработка: одна задача проходит семь конкретных профессий, без дочерних
 карточек и integration barriers. Stage и Ready/InProgress/Completed раздельны;

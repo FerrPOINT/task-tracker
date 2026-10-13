@@ -136,12 +136,25 @@ CREATE TABLE sdlc_delivery_assignments (
         AND (payload->>'fencing_token')::bigint BETWEEN 1 AND 9007199254740991
         AND payload->'fencing_token'=to_jsonb((payload->>'fencing_token')::bigint)
         AND (payload->>'cycle')::integer BETWEEN 0 AND 3
-        AND (payload->>'attempt')::integer BETWEEN 1 AND 4) IS TRUE)
+        AND (payload->>'attempt')::integer BETWEEN 1 AND 4) IS TRUE),
+    CHECK (NOT payload ? 'execution' OR (
+        jsonb_typeof(payload->'execution')='object'
+        AND payload->'execution'-ARRAY['ordinal','key']='{}'::jsonb
+        AND jsonb_typeof(payload->'execution'->'ordinal')='string'
+        AND jsonb_typeof(payload->'execution'->'key')='string'
+        AND payload->'execution'->>'ordinal' ~ '^[1-9][0-9]{0,18}$'
+        AND (payload->'execution'->>'ordinal')::numeric BETWEEN 1 AND 9223372036854775807
+        AND payload->'execution'->>'key'='SDLC-'||(payload->'execution'->>'ordinal')) IS TRUE)
 );
 CREATE INDEX sdlc_delivery_assignment_task ON sdlc_delivery_assignments(task_id);
+CREATE UNIQUE INDEX sdlc_delivery_execution_ordinal ON sdlc_delivery_assignments((payload->'execution'->>'ordinal'))
+WHERE payload ? 'execution';
 
 CREATE FUNCTION sdlc_delivery_draft_flow_gate() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+    IF NOT NEW.payload ? 'execution' THEN
+        RAISE EXCEPTION 'SDLC authoritative delivery execution reference required' USING ERRCODE='23514';
+    END IF;
     IF NOT EXISTS(SELECT 1 FROM sdlc_tasks t WHERE t.task_id=NEW.task_id
         AND t.state->'flow'='"single-task-v1"'::jsonb) THEN
         RAISE EXCEPTION 'SDLC single_task_draft_marker_required' USING ERRCODE='23514';

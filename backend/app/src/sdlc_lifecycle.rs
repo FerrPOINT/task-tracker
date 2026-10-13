@@ -350,6 +350,9 @@ pub fn scheduler_read(
 }
 
 pub fn assignment_hash(assignment: &DeliveryAssignment) -> Result<String, AppError> {
+    if let Some(execution) = &assignment.execution {
+        execution.validate()?;
+    }
     let mut value = serde_json::to_value(assignment).map_err(AppError::internal)?;
     value
         .as_object_mut()
