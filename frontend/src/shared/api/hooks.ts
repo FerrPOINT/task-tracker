@@ -3,7 +3,13 @@ import { parseNamespaceLocation } from '@sdlc/ui/lib'
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { endSso } from '@sdlc/ui/sso'
-import { listProjects, createProject, updateProject, deleteProject } from '@/api/project'
+import {
+  listProjects,
+  getProject,
+  createProject,
+  updateProject,
+  deleteProject,
+} from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
 import { searchIssues, SearchRequestError, type SearchFilters } from '@/api/search'
 import { login, register, getCurrentUser, listUsers } from '@/api/auth'
@@ -225,6 +231,7 @@ export function useDeleteAttachment(issueId: string) {
 const projectKeys = {
   all: ['projects'] as const,
   detail: (key: string) => ['project', key] as const,
+  info: (key: string) => ['project-info', key] as const,
   sprints: (key: string) => ['sprints', key] as const,
 }
 
@@ -329,6 +336,16 @@ export function useProjects(offset = 0, limit = 100) {
   return useQuery({
     queryKey: [...projectKeys.all, offset, limit],
     queryFn: ({ signal }) => listProjects(offset, limit, signal),
+  })
+}
+
+export function useProjectDetails(key: string) {
+  const { search } = useLocation()
+  const namespace = parseNamespaceLocation(search)
+  return useQuery({
+    queryKey: [...projectKeys.info(key), namespace?.registry_instance_id, namespace?.namespace_id],
+    queryFn: ({ signal }) => getProject(key, signal),
+    enabled: !!key,
   })
 }
 
@@ -489,6 +506,9 @@ export function useUpdateProject(key: string) {
   return useMutation({
     mutationFn: (input: Parameters<typeof updateProject>[1]) => updateProject(key, input),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.info(key) })
+      qc.invalidateQueries({ queryKey: ['namespace-contexts', 'task-tracker'] })
+      qc.invalidateQueries({ queryKey: ['namespace-context'] })
       qc.invalidateQueries({ queryKey: projectKeys.all })
       qc.invalidateQueries({ queryKey: projectKeys.detail(key) })
     },

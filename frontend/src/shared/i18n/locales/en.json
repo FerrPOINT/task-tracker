@@ -758,5 +758,13 @@
     "in_progress": "In Progress",
     "review": "Review",
     "done": "Done"
+  },
+  "projectSettings": {
+    "title": "Project settings",
+    "general": "General",
+    "loadError": "Could not load the project.",
+    "keyHelp": "The project key is used in issue identifiers and cannot be changed.",
+    "saved": "Project settings saved.",
+    "saveError": "Could not save settings. Check the values and try again."
   }
 }

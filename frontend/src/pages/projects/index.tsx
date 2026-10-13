@@ -1,18 +1,13 @@
 import { ProjectCardActionItems, ProjectCardLink } from '@/widgets/project-actions'
 import { ProjectAvatar } from '@sdlc/ui/ui'
 
-import { Plus, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react'
+import { Plus, Search, Trash2, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { Button } from '@sdlc/ui/ui'
 import { ErrorState, LoadingState } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
-import {
-  useProjects,
-  useCreateProject,
-  useUpdateProject,
-  useDeleteProject,
-} from '@/shared/api/hooks'
+import { useProjects, useCreateProject, useDeleteProject } from '@/shared/api/hooks'
 import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
 import {
   AlertDialog,
@@ -36,19 +31,15 @@ export function ProjectsPage() {
   const [offset, setOffset] = useState(0)
   const { data: projects, isLoading, error, refetch } = useProjects(offset, 50)
   const [formOpen, setFormOpen] = useState(false)
-  const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [deletingProject, setDeletingProject] = useState<Project | null>(null)
   const [search, setSearch] = useState('')
 
   const create = useCreateProject()
-  const update = useUpdateProject(editingProject?.key ?? '')
   const remove = useDeleteProject()
 
   if (isLoading) return <LoadingState message={t('issue.loading')} />
   if (error) return <ErrorState message={error.message} onRetry={() => void refetch()} />
 
-  const isFormPending = create.isPending || update.isPending
-  const formError = create.error ?? update.error
   const normalizedSearch = search.trim().toLocaleLowerCase()
   const filteredProjects = projects?.filter((project) =>
     `${project.name} ${project.key}`.toLocaleLowerCase().includes(normalizedSearch),
@@ -74,24 +65,16 @@ export function ProjectsPage() {
       </div>
       <ProjectFormDialog
         open={formOpen}
-        project={editingProject}
         onOpenChange={(open) => {
           setFormOpen(open)
-          if (!open) setEditingProject(null)
         }}
         onSubmit={(values) => {
-          if (editingProject) {
-            update.mutate(values as import('@/api/project').UpdateProjectRequest, {
-              onSuccess: () => setFormOpen(false),
-            })
-          } else {
-            create.mutate(values as import('@/api/project').CreateProjectRequest, {
-              onSuccess: () => setFormOpen(false),
-            })
-          }
+          create.mutate(values as import('@/api/project').CreateProjectRequest, {
+            onSuccess: () => setFormOpen(false),
+          })
         }}
-        isPending={isFormPending}
-        error={formError as Error | null}
+        isPending={create.isPending}
+        error={create.error}
       />
 
       <AlertDialog
@@ -217,16 +200,6 @@ export function ProjectsPage() {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <ProjectCardActionItems project={project} />
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setEditingProject(project)
-                        setFormOpen(true)
-                      }}
-                      className="gap-2"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      {t('common.edit')}
-                    </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => {
                         remove.reset()

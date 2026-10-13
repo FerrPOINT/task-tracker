@@ -98,6 +98,7 @@ describe('ProjectCustomFieldsPage', () => {
 
   it('creates a field', async () => {
     render(wrapper(<ProjectCustomFieldsPage />))
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить поле' }))
     const nameInput = screen.getByLabelText(/название/i)
     await userEvent.type(nameInput, 'New Field')
     const submit = screen.getByRole('button', { name: /добавить поле/i })
@@ -113,6 +114,7 @@ describe('ProjectCustomFieldsPage', () => {
   it('keeps commas while typing and submits multiple select options', async () => {
     const user = userEvent.setup()
     render(wrapper(<ProjectCustomFieldsPage />))
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить поле' }))
 
     await user.type(screen.getByRole('textbox', { name: 'Название поля' }), '  Team  ')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Тип поля' }), 'select')
@@ -132,7 +134,7 @@ describe('ProjectCustomFieldsPage', () => {
     )
   })
 
-  it('explains a create failure without exposing the API error', () => {
+  it('explains a create failure without exposing the API error', async () => {
     mockCreateState.mockReturnValue({
       mutate: mockCreate,
       reset: vi.fn(),
@@ -140,6 +142,7 @@ describe('ProjectCustomFieldsPage', () => {
       error: new Error('500: failed to create'),
     })
     render(wrapper(<ProjectCustomFieldsPage />))
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить поле' }))
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Не удалось добавить поле. Проверьте данные и повторите попытку.',
     )

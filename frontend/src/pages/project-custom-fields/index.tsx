@@ -1,4 +1,3 @@
-import { ProjectAvatar } from '@sdlc/ui/ui'
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
@@ -18,6 +17,7 @@ const initial: CustomFieldInput = { name: '', field_type: 'text', options: [], i
 export function ProjectCustomFieldsPage() {
   const { t } = useTranslation()
   const { projectKey = '' } = useParams()
+  const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState<CustomFieldInput>(initial)
   const [optionsText, setOptionsText] = useState('')
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null)
@@ -31,107 +31,124 @@ export function ProjectCustomFieldsPage() {
     .filter(Boolean)
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="flex min-w-0 items-center gap-2 text-2xl font-semibold">
-          <ProjectAvatar projectKey={projectKey ?? ''} />
-          {t('customFields.title')}
-        </h1>
-        <p className="text-sm text-text-muted">{t('customFields.description', { projectKey })}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-base font-semibold">{t('customFields.title')}</h2>
+        {!adding && <Button onClick={() => setAdding(true)}>{t('customFields.addButton')}</Button>}
       </div>
-      <div className="grid gap-6 lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('customFields.addTitle')}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form
-              className="grid gap-3"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (!draft.name.trim()) return
-                if (needsOptions && options.length === 0) return
-                create.mutate(
-                  { ...draft, name: draft.name.trim(), options: needsOptions ? options : [] },
-                  {
-                    onSuccess: () => {
+      <div className="space-y-5">
+        {adding && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">{t('customFields.addTitle')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form
+                className="grid gap-3"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (!draft.name.trim()) return
+                  if (needsOptions && options.length === 0) return
+                  create.mutate(
+                    { ...draft, name: draft.name.trim(), options: needsOptions ? options : [] },
+                    {
+                      onSuccess: () => {
+                        setAdding(false)
+                        setDraft(initial)
+                        setOptionsText('')
+                        toast.success(t('customFields.created'))
+                      },
+                    },
+                  )
+                }}
+              >
+                {create.error && (
+                  <p role="alert" className="text-sm text-danger">
+                    {t('customFields.createError')}
+                  </p>
+                )}
+                <input
+                  aria-label={t('customFields.fieldName')}
+                  className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
+                  placeholder={t('customFields.fieldName')}
+                  required
+                  value={draft.name}
+                  onChange={(e) => {
+                    create.reset()
+                    setDraft({ ...draft, name: e.target.value })
+                  }}
+                />
+                <select
+                  aria-label={t('customFields.fieldType')}
+                  className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
+                  value={draft.field_type}
+                  onChange={(e) => {
+                    create.reset()
+                    setDraft({ ...draft, field_type: e.target.value as CustomFieldType })
+                  }}
+                >
+                  {types.map((type) => (
+                    <option key={type} value={type}>
+                      {t(`customFields.types.${type}`)}
+                    </option>
+                  ))}
+                </select>
+                {needsOptions && (
+                  <input
+                    aria-label={t('customFields.options')}
+                    className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
+                    placeholder={t('customFields.options')}
+                    value={optionsText}
+                    onChange={(e) => {
+                      create.reset()
+                      setOptionsText(e.target.value)
+                    }}
+                  />
+                )}
+                <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-10">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4"
+                    checked={draft.is_required}
+                    onChange={(e) => {
+                      create.reset()
+                      setDraft({ ...draft, is_required: e.target.checked })
+                    }}
+                  />
+                  {t('customFields.required')}
+                </label>
+                {needsOptions && options.length === 0 && (
+                  <p className="text-xs text-danger">{t('customFields.optionsRequired')}</p>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    type="submit"
+                    className="min-h-11 justify-self-start sm:min-h-10"
+                    disabled={
+                      create.isPending ||
+                      !draft.name.trim() ||
+                      (needsOptions && options.length === 0)
+                    }
+                  >
+                    {create.isPending ? t('customFields.adding') : t('customFields.addButton')}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={create.isPending}
+                    onClick={() => {
+                      setAdding(false)
                       setDraft(initial)
                       setOptionsText('')
-                      toast.success(t('customFields.created'))
-                    },
-                  },
-                )
-              }}
-            >
-              {create.error && (
-                <p role="alert" className="text-sm text-danger">
-                  {t('customFields.createError')}
-                </p>
-              )}
-              <input
-                aria-label={t('customFields.fieldName')}
-                className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
-                placeholder={t('customFields.fieldName')}
-                required
-                value={draft.name}
-                onChange={(e) => {
-                  create.reset()
-                  setDraft({ ...draft, name: e.target.value })
-                }}
-              />
-              <select
-                aria-label={t('customFields.fieldType')}
-                className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
-                value={draft.field_type}
-                onChange={(e) => {
-                  create.reset()
-                  setDraft({ ...draft, field_type: e.target.value as CustomFieldType })
-                }}
-              >
-                {types.map((type) => (
-                  <option key={type} value={type}>
-                    {t(`customFields.types.${type}`)}
-                  </option>
-                ))}
-              </select>
-              {needsOptions && (
-                <input
-                  aria-label={t('customFields.options')}
-                  className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
-                  placeholder={t('customFields.options')}
-                  value={optionsText}
-                  onChange={(e) => {
-                    create.reset()
-                    setOptionsText(e.target.value)
-                  }}
-                />
-              )}
-              <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-10">
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={draft.is_required}
-                  onChange={(e) => {
-                    create.reset()
-                    setDraft({ ...draft, is_required: e.target.checked })
-                  }}
-                />
-                {t('customFields.required')}
-              </label>
-              {needsOptions && options.length === 0 && (
-                <p className="text-xs text-danger">{t('customFields.optionsRequired')}</p>
-              )}
-              <Button
-                type="submit"
-                className="min-h-11 justify-self-start sm:min-h-10"
-                disabled={
-                  create.isPending || !draft.name.trim() || (needsOptions && options.length === 0)
-                }
-              >
-                {create.isPending ? t('customFields.adding') : t('customFields.addButton')}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                      create.reset()
+                    }}
+                  >
+                    {t('common.cancel')}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        )}
         <section className="min-w-0" aria-labelledby="configured-fields-title">
           <h2 id="configured-fields-title" className="mb-3 text-base font-semibold">
             {t('customFields.configuredTitle')}
