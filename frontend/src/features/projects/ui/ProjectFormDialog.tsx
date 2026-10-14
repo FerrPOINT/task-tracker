@@ -2,7 +2,7 @@ import { ProjectAvatar } from '@sdlc/ui/ui'
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@sdlc/ui/ui'
-import { Input } from '@sdlc/ui/ui'
+import { Input, ErrorState, Textarea } from '@sdlc/ui/ui'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@sdlc/ui/ui'
 import type { Project, CreateProjectRequest, UpdateProjectRequest } from '@/api/project'
 
@@ -39,6 +39,8 @@ export function ProjectFormDialog({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    e.stopPropagation()
+    if (isPending) return
     const payload = isEdit
       ? ({ name, description: description || null } as UpdateProjectRequest)
       : ({ key, name, description: description || null } as CreateProjectRequest)
@@ -46,7 +48,12 @@ export function ProjectFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!isPending) onOpenChange(next)
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -57,54 +64,60 @@ export function ProjectFormDialog({
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {error && <div className="text-sm text-rose-500">{error.message}</div>}
-          <div className="space-y-2">
-            <label htmlFor="project-form-key" className="text-sm font-medium">
-              {t('projects.key')} *
-            </label>
-            <Input
-              id="project-form-key"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              pattern="[A-Za-z0-9\x2D]{1,10}"
-              maxLength={10}
-              placeholder={t('projects.keyPlaceholder')}
-              disabled={isEdit}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="project-form-name" className="text-sm font-medium">
-              {t('projects.name')} *
-            </label>
-            <Input
-              id="project-form-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('projects.namePlaceholder')}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="project-form-description" className="text-sm font-medium">
-              {t('projects.description')}
-            </label>
-            <textarea
-              id="project-form-description"
-              className="min-h-[100px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={t('projects.descriptionPlaceholder')}
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? t('common.saving') : isEdit ? t('common.save') : t('projects.create')}
-            </Button>
-          </div>
+          <fieldset
+            disabled={isPending}
+            className="min-w-0 space-y-4 border-0 p-0"
+            aria-busy={isPending || undefined}
+          >
+            {error && <ErrorState message={error.message} />}
+            <div className="space-y-2">
+              <label htmlFor="project-form-key" className="text-sm font-medium">
+                {t('projects.key')} *
+              </label>
+              <Input
+                id="project-form-key"
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                pattern="[A-Za-z0-9\x2D]{1,10}"
+                maxLength={10}
+                placeholder={t('projects.keyPlaceholder')}
+                disabled={isEdit}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="project-form-name" className="text-sm font-medium">
+                {t('projects.name')} *
+              </label>
+              <Input
+                id="project-form-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('projects.namePlaceholder')}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="project-form-description" className="text-sm font-medium">
+                {t('projects.description')}
+              </label>
+              <Textarea
+                id="project-form-description"
+                className="min-h-[100px]"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder={t('projects.descriptionPlaceholder')}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="secondary" onClick={() => onOpenChange(false)}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={isPending}>
+                {isPending ? t('common.saving') : isEdit ? t('common.save') : t('projects.create')}
+              </Button>
+            </div>
+          </fieldset>
         </form>
       </DialogContent>
     </Dialog>

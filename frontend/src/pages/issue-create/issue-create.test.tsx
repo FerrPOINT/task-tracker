@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
@@ -9,6 +9,7 @@ import { IssueCreatePage } from './'
 import { ThemeProvider } from '@sdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
 
+const createProject = vi.hoisted(() => vi.fn())
 const createIssue = vi.hoisted(() =>
   vi.fn((input: Record<string, unknown>) => {
     void input
@@ -76,7 +77,7 @@ vi.mock('@/api/issue-create', () => ({
 }))
 vi.mock('@/api/project', () => ({
   listProjects,
-  createProject: vi.fn(),
+  createProject,
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
 }))
@@ -295,5 +296,52 @@ describe('IssueCreatePage', () => {
         '/issues/create?source=navigation&project_key=TT',
       ),
     )
+  })
+  it('creates the prerequisite project without navigating away or submitting the issue draft', async () => {
+    listProjects.mockResolvedValueOnce([])
+    createProject.mockResolvedValueOnce({
+      id: 'new-project',
+      key: 'NEW',
+      name: 'First Project',
+      description: '',
+      owner_id: 'u1',
+      owner_name: 'Alice',
+      created_at: '2026-10-14T00:00:00Z',
+      todo_count: 0,
+      in_progress_count: 0,
+      done_count: 0,
+    })
+    render(wrapper(<IssueCreatePage />))
+    const user = userEvent.setup()
+    await screen.findByRole('button', { name: 'Создать проект' })
+    await user.type(screen.getByLabelText(/Заголовок/), 'Draft before project')
+    await user.click(screen.getByRole('button', { name: 'Создать проект' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await user.type(dialog.getByLabelText(/Ключ/), 'NEW')
+    await user.type(dialog.getByLabelText(/Название/), 'First Project')
+    await user.click(dialog.getByRole('button', { name: 'Создать проект' }))
+    await waitFor(() => expect(createProject).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft before project')
+    expect(screen.getByLabelText(/Проект/)).toHaveTextContent('First Project')
+    expect(createIssue).not.toHaveBeenCalled()
+  })
+
+  it('retains the issue and project input after project creation is denied', async () => {
+    listProjects.mockResolvedValueOnce([])
+    createProject.mockRejectedValueOnce(new Error('Нет прав на создание проекта'))
+    render(wrapper(<IssueCreatePage />))
+    const user = userEvent.setup()
+    await screen.findByRole('button', { name: 'Создать проект' })
+    await user.type(screen.getByLabelText(/Заголовок/), 'Draft stays')
+    await user.click(screen.getByRole('button', { name: 'Создать проект' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await user.type(dialog.getByLabelText(/Ключ/), 'NEW')
+    await user.type(dialog.getByLabelText(/Название/), 'Denied Project')
+    await user.click(dialog.getByRole('button', { name: 'Создать проект' }))
+    await screen.findByText('Нет прав на создание проекта')
+    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft stays')
+    expect(dialog.getByLabelText(/Название/)).toHaveValue('Denied Project')
+    expect(createIssue).not.toHaveBeenCalled()
   })
 })

@@ -489,14 +489,14 @@ export function useLogout() {
   })
 }
 
-export function useCreateProject() {
+export function useCreateProject(options: { navigateOnSuccess?: boolean } = {}) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   return useMutation({
     mutationFn: createProject,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: projectKeys.all })
-      navigate(`/projects/${data.key}/board`)
+      if (options.navigateOnSuccess !== false) navigate(`/projects/${data.key}/board`)
     },
   })
 }

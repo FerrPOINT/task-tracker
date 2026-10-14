@@ -1,4 +1,5 @@
-import { ProjectAvatar, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
+import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
+import { ProjectAvatar, ResourceList, ResourceListRow, EmptyState } from '@sdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
@@ -110,7 +111,7 @@ export function DashboardPage() {
               onRetry={() => void refetchProjects()}
             />
           ) : !projects?.length ? (
-            <p className="text-sm text-text-muted">{t('dashboard.noProjects')}</p>
+            <EmptyState message={t('dashboard.noProjects')} action={<CreateProjectAction />} />
           ) : (
             <ResourceList asChild variant="bordered">
               <div>
