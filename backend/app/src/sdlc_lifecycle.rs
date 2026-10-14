@@ -320,6 +320,9 @@ pub fn delivery_request_policy(
     let parts: Vec<_> = resource.split('/').collect();
     let allowed = match (method, parts.as_slice()) {
         ("GET", ["lifecycle" | "context" | "requirements" | "events"]) => true,
+        ("GET", ["lifecycle", "results", id]) => {
+            Uuid::parse_str(id).is_ok_and(|value| !value.is_nil() && value.to_string() == *id)
+        }
         ("GET", ["requirements", revision]) => crate::sdlc::canonical_pm_version(revision),
         ("GET", ["delivery-proposals", "operations", key]) => !key.is_empty(),
         ("POST", ["delivery-proposals"]) => true,

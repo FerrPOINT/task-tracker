@@ -487,6 +487,36 @@ fn delivery_grants_are_canonical_single_task_capabilities_not_generic_permission
     ] {
         delivery_request_policy(&actor, method, &format!("{prefix}{resource}")).unwrap();
     }
+    let result_id = Uuid::parse_str("abcdef12-1234-5678-9abc-abcdef123456").unwrap();
+    let result_path = format!("{prefix}lifecycle/results/{result_id}");
+    delivery_request_policy(&actor, "GET", &result_path).unwrap();
+    for id in [
+        result_id.to_string().to_uppercase(),
+        result_id.simple().to_string(),
+        Uuid::nil().to_string(),
+        "not-a-uuid".into(),
+        format!("{result_id}/extra"),
+        String::new(),
+    ] {
+        assert!(
+            delivery_request_policy(&actor, "GET", &format!("{prefix}lifecycle/results/{id}"))
+                .is_err()
+        );
+    }
+    for method in ["POST", "PUT", "PATCH", "DELETE"] {
+        assert!(delivery_request_policy(&actor, method, &result_path).is_err());
+    }
+    assert!(
+        delivery_request_policy(
+            &actor,
+            "GET",
+            &format!(
+                "/api/v1/issues/{}/sdlc/lifecycle/results/{result_id}",
+                Uuid::new_v4()
+            )
+        )
+        .is_err()
+    );
     for (method, path) in [
         ("GET", "/api/v1/issues/foreign".to_owned()),
         ("GET", "/api/v1/sdlc/project-directory".into()),

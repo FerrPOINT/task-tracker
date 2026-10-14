@@ -805,9 +805,14 @@ impl LifecycleRepository for PostgresSdlcRepository {
         actor: &Principal,
         result_id: Uuid,
     ) -> Result<DeliveryInput, AppError> {
-        app::sdlc_reservation::reader(actor)?;
+        if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
+            app::sdlc_lifecycle::producer(actor, false)?;
+        } else {
+            app::sdlc_reservation::reader(actor)?;
+        }
         let tx = self.db.begin().await.map_err(map_db)?;
-        self.load(&tx, task, actor).await?;
+        let state = self.load(&tx, task, actor).await?;
+        authorize_read(&tx, &state, actor).await?;
         let row = tx.query_one(statement(
             "SELECT payload,false AS legacy FROM sdlc_delivery_results WHERE task_id=$1 AND result_id=$2
              UNION ALL SELECT payload,true AS legacy FROM sdlc_analysis_results WHERE task_id=$1 AND result_id=$2",

@@ -933,6 +933,8 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             verification: artifact("verification"),
         },
     ];
+    let mut previous_accepted: Option<AcceptedDeliveryResult> = None;
+    let mut previous_producer: Option<Principal> = None;
     for (i, result) in outputs.into_iter().enumerate() {
         if cursor.assignment.is_none() {
             let command = LifecycleCommand::Reserve {
@@ -984,6 +986,94 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
                 cursor.assignment.as_ref().unwrap().scope(),
             ],
         );
+        if let Some(expected) = &previous_accepted {
+            assert_eq!(assignment.previous_result_id, Some(expected.result_id));
+            assert!(
+                cursor.result.is_none(),
+                "Reserve must not expose a previous result as current"
+            );
+            let operations_before = count(&db, "sdlc_delivery_operations").await;
+            let outbox_before = count(&db, "sdlc_outbox").await;
+            let input = repo
+                .lifecycle_result(task, &role_producer, expected.result_id)
+                .await
+                .unwrap();
+            let DeliveryInput::Delivery(actual) = input else {
+                panic!("expected accepted delivery predecessor");
+            };
+            assert_eq!(actual, *expected);
+            assert_eq!(
+                serde_json::to_value(
+                    repo.lifecycle_result(task, &owner, expected.result_id)
+                        .await
+                        .unwrap()
+                )
+                .unwrap(),
+                serde_json::to_value(DeliveryInput::Delivery(expected.clone())).unwrap()
+            );
+            assert!(matches!(
+                repo.lifecycle_result(
+                    task,
+                    previous_producer.as_ref().unwrap(),
+                    expected.result_id
+                )
+                .await,
+                Err(AppError::Forbidden)
+            ));
+            for changed in 0..5 {
+                let mut foreign = assignment.clone();
+                match changed {
+                    0 => foreign.task_id = Uuid::new_v4(),
+                    1 => foreign.assignment_id = Uuid::new_v4(),
+                    2 => foreign.execution_id = Uuid::new_v4(),
+                    3 => foreign.agent_id = Uuid::new_v4(),
+                    _ => foreign.fencing_token += 1,
+                }
+                let denied = actor(
+                    "producer",
+                    false,
+                    vec!["task-tracker:read".into(), foreign.scope()],
+                );
+                assert!(matches!(
+                    repo.lifecycle_result(task, &denied, expected.result_id)
+                        .await,
+                    Err(AppError::Forbidden)
+                ));
+            }
+            let mut wrong_subject = role_producer.clone();
+            wrong_subject.subject = "scheduler".into();
+            assert!(matches!(
+                repo.lifecycle_result(task, &wrong_subject, expected.result_id)
+                    .await,
+                Err(AppError::Forbidden)
+            ));
+            let mut without_read = role_producer.clone();
+            without_read.scopes.remove("task-tracker:read");
+            assert!(matches!(
+                repo.lifecycle_result(task, &without_read, expected.result_id)
+                    .await,
+                Err(AppError::Forbidden)
+            ));
+            assert!(matches!(
+                repo.lifecycle_result(task, &pm, expected.result_id).await,
+                Err(AppError::Forbidden)
+            ));
+            assert!(
+                repo.lifecycle_result(Uuid::new_v4(), &role_producer, expected.result_id)
+                    .await
+                    .is_err()
+            );
+            assert!(matches!(
+                repo.lifecycle_result(task, &role_producer, Uuid::new_v4())
+                    .await,
+                Err(AppError::NotFound(_))
+            ));
+            assert_eq!(
+                count(&db, "sdlc_delivery_operations").await,
+                operations_before
+            );
+            assert_eq!(count(&db, "sdlc_outbox").await, outbox_before);
+        }
         let (proposal, _) = repo
             .submit_delivery_proposal(
                 task,
@@ -1017,6 +1107,9 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             .await
             .unwrap()
             .0;
+        previous_accepted = cursor.result.clone();
+        assert!(previous_accepted.is_some());
+        previous_producer = Some(role_producer);
         let canonical = repo.read(task, &owner).await.unwrap();
         assert_eq!(canonical.task_id, task);
         assert_eq!(canonical.stage, cursor.task.stage.canonical());
