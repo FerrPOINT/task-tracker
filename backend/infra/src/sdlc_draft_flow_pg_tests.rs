@@ -1,6 +1,9 @@
 //! Synthetic policy/owner ledger tests, not live Fleet runtime readiness evidence.
 use super::*;
 
+#[path = "sdlc_populated_upgrade_pg_tests.rs"]
+mod populated_upgrade_tests;
+
 pub(super) fn single_task_routes() -> RoleRoutes {
     let legacy = routes();
     let mut value = serde_json::to_value(&legacy).unwrap();
