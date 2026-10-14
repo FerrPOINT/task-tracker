@@ -3444,6 +3444,69 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_pm_feedback_message",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmFeedbackReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/pm-feedback/operations/{idempotency_key}": {
       "get": {
         "tags": [
@@ -9612,6 +9675,9 @@
             "type": "string",
             "maxLength": 100000
           },
+          "flow": {
+            "$ref": "#/components/schemas/DraftFlow"
+          },
           "idempotency_key": {
             "type": "string",
             "maxLength": 128,
@@ -9994,6 +10060,16 @@
             "format": "int32",
             "minimum": 0
           },
+          "execution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeliveryExecution"
+              }
+            ]
+          },
           "execution_id": {
             "type": "string",
             "format": "uuid"
@@ -10028,6 +10104,24 @@
           "task_id": {
             "type": "string",
             "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryExecution": {
+        "type": "object",
+        "required": [
+          "ordinal",
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^SDLC-[1-9][0-9]{0,18}$"
+          },
+          "ordinal": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$"
           }
         },
         "additionalProperties": false
@@ -10323,6 +10417,12 @@
             "type": "string"
           }
         }
+      },
+      "DraftFlow": {
+        "type": "string",
+        "enum": [
+          "single-task-v1"
+        ]
       },
       "DraftStage": {
         "type": "string",
