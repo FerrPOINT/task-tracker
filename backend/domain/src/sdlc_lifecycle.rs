@@ -526,6 +526,16 @@ pub struct LifecycleReadback {
 
 #[async_trait::async_trait]
 pub trait LifecycleRepository: Send + Sync {
+    async fn delivery_candidates(
+        &self,
+        _actor: &Principal,
+        _query: crate::sdlc_candidates::DeliveryCandidatesQuery,
+    ) -> Result<crate::sdlc_candidates::DeliveryCandidates, AppError> {
+        Err(AppError::Unavailable(
+            "delivery candidate discovery not configured".into(),
+        ))
+    }
+
     async fn submit_pm_feedback(
         &self,
         task: Uuid,

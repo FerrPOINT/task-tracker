@@ -167,12 +167,22 @@ async fn operation(
     .transpose()
 }
 
-fn exact_revision(state: &TaskState, receipt: &LifecycleReceipt) -> Result<(), AppError> {
-    let snapshot = &receipt.task.routing;
+pub(super) fn exact_revision(
+    state: &TaskState,
+    receipt: &LifecycleReceipt,
+) -> Result<(), AppError> {
+    if receipt.task.task_id != state.task_id || receipt.task.owner_subject != state.owner_subject {
+        return Err(corrupt());
+    }
+    exact_snapshot(state, &receipt.task.routing)
+}
+
+pub(super) fn exact_snapshot(
+    state: &TaskState,
+    snapshot: &TaskRoutingSnapshot,
+) -> Result<(), AppError> {
     let revision = state.revisions.last().ok_or_else(corrupt)?;
-    if receipt.task.task_id != state.task_id
-        || receipt.task.owner_subject != state.owner_subject
-        || snapshot.task_id != state.task_id
+    if snapshot.task_id != state.task_id
         || snapshot.root_task_id != state.task_id
         || snapshot.project_id != state.project_id
         || snapshot.tracker_instance_id != state.tracker_instance_id
@@ -514,6 +524,14 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl LifecycleRepository for PostgresSdlcRepository {
+    async fn delivery_candidates(
+        &self,
+        actor: &Principal,
+        query: domain::sdlc_candidates::DeliveryCandidatesQuery,
+    ) -> Result<domain::sdlc_candidates::DeliveryCandidates, AppError> {
+        self.read_delivery_candidates(actor, query).await
+    }
+
     async fn submit_pm_feedback(
         &self,
         task: Uuid,
