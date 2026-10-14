@@ -1,0 +1,234 @@
+diff --git a/backend/app/src/lib.rs b/backend/app/src/lib.rs
+--- a/backend/app/src/lib.rs
++++ b/backend/app/src/lib.rs
+@@ -10,6 +10,7 @@
+ pub mod sdlc_configuration;
+ pub mod sdlc_confirmation;
+ pub mod sdlc_critical_blockers;
++pub mod sdlc_critical_pm_reviews;
+ pub mod sdlc_draft_flow;
+ pub mod sdlc_lifecycle;
+ pub mod sdlc_metadata;
+diff --git a/backend/domain/src/sdlc_lifecycle.rs b/backend/domain/src/sdlc_lifecycle.rs
+--- a/backend/domain/src/sdlc_lifecycle.rs
++++ b/backend/domain/src/sdlc_lifecycle.rs
+@@ -526,6 +526,28 @@
+
+ #[async_trait::async_trait]
+ pub trait LifecycleRepository: Send + Sync {
++    async fn reserve_critical_pm_review(
++        &self,
++        _task: Uuid,
++        _actor: &Principal,
++        _command: crate::sdlc_critical_pm_reservation::ReserveCriticalPmReview,
++    ) -> Result<(crate::sdlc_critical_pm_reservation::CriticalPmReservationResult, bool), AppError> {
++        Err(AppError::Unavailable(
++            "critical PM review repository not configured".into(),
++        ))
++    }
++
++    async fn critical_pm_review_operation(
++        &self,
++        _task: Uuid,
++        _actor: &Principal,
++        _key: &str,
++    ) -> Result<crate::sdlc_critical_pm_reservation::CriticalPmReservationResult, AppError> {
++        Err(AppError::Unavailable(
++            "critical PM review repository not configured".into(),
++        ))
++    }
++
+     async fn return_critical_to_pm(
+         &self,
+         _task: Uuid,
+diff --git a/backend/infra/src/sdlc_lifecycle.rs b/backend/infra/src/sdlc_lifecycle.rs
+--- a/backend/infra/src/sdlc_lifecycle.rs
++++ b/backend/infra/src/sdlc_lifecycle.rs
+@@ -524,6 +524,24 @@
+
+ #[async_trait]
+ impl LifecycleRepository for PostgresSdlcRepository {
++    async fn reserve_critical_pm_review(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview,
++    ) -> Result<(domain::sdlc_critical_pm_reservation::CriticalPmReservationResult, bool), AppError> {
++        PostgresSdlcRepository::reserve_critical_pm_review(self, task, actor, command).await
++    }
++
++    async fn critical_pm_review_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<domain::sdlc_critical_pm_reservation::CriticalPmReservationResult, AppError> {
++        PostgresSdlcRepository::critical_pm_review_operation(self, task, actor, key).await
++    }
++
+     async fn return_critical_to_pm(
+         &self,
+         task: Uuid,
+diff --git a/backend/api/src/routes/mod.rs b/backend/api/src/routes/mod.rs
+--- a/backend/api/src/routes/mod.rs
++++ b/backend/api/src/routes/mod.rs
+@@ -25,6 +25,7 @@
+ pub mod sdlc;
+ pub mod sdlc_candidates;
+ pub mod sdlc_delivery;
++pub mod sdlc_critical_pm_reviews;
+ pub mod sdlc_reservation;
+ pub mod sdlc_routing;
+ pub mod users;
+diff --git a/backend/api/src/routes/sdlc.rs b/backend/api/src/routes/sdlc.rs
+--- a/backend/api/src/routes/sdlc.rs
++++ b/backend/api/src/routes/sdlc.rs
+@@ -208,6 +208,8 @@
+         .route_layer(middleware::from_fn(
+             crate::middleware::sdlc_auth::strict_central_auth,
+         ))
++        // This sibling wraps the same strict auth with no-store, including auth failures.
++        .merge(super::sdlc_critical_pm_reviews::router())
+ }
+
+ #[utoipa::path(
+diff --git a/backend/api/src/lib.rs b/backend/api/src/lib.rs
+--- a/backend/api/src/lib.rs
++++ b/backend/api/src/lib.rs
+@@ -92,6 +92,8 @@
+         routes::sdlc_delivery::critical_operation,
+         routes::sdlc_delivery::critical_return,
+         routes::sdlc_delivery::critical_return_operation,
++        routes::sdlc_critical_pm_reviews::reserve,
++        routes::sdlc_critical_pm_reviews::operation,
+         routes::sdlc_delivery::feedback,
+         routes::sdlc_delivery::feedback_operation,
+         routes::sdlc_delivery::feedback_message,
+@@ -264,6 +266,11 @@
+         domain::sdlc_critical_blockers::CriticalPolicyChange,
+         domain::sdlc_critical_blockers::ReturnCriticalToPm,
+         domain::sdlc_critical_blockers::CriticalPmReviewGuard,
++        domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview,
++        domain::sdlc_critical_pm_reservation::CriticalPmReservationResult,
++        domain::sdlc_critical_pm_reservation::CriticalPmReservationPurpose,
++        domain::sdlc_critical_pm_reservation::CriticalPmReviewContext,
++        domain::sdlc_critical_pm_reservation::CriticalPmRequirementsRef,
+         domain::sdlc_candidates::DeliveryCandidates,
+         domain::sdlc_candidates::DeliveryCandidate,
+         domain::sdlc_candidates::CandidateOperation,
+diff --git a/backend/cli/src/sdlc_critical_commands.rs b/backend/cli/src/sdlc_critical_commands.rs
+--- a/backend/cli/src/sdlc_critical_commands.rs
++++ b/backend/cli/src/sdlc_critical_commands.rs
+@@ -2,6 +2,9 @@
+ use clap::Subcommand;
+ use uuid::Uuid;
+
++#[path = "sdlc_critical_pm_reviews.rs"]
++mod pm_reviews;
++
+ fn readable_key(value: &str) -> bool {
+     !value.is_empty()
+         && value.len() <= 128
+@@ -13,6 +16,11 @@
+
+ #[derive(Subcommand)]
+ pub enum CriticalBlockerCommand {
++    /// Scheduler only: reserve or read a new PM review of the same task
++    PmReview {
++        #[command(subcommand)]
++        command: pm_reviews::CriticalPmReviewCommand,
++    },
+     /// Scheduler only: return a held task to PM after actual native terminal readback
+     ReturnToPm {
+         #[arg(long)]
+@@ -52,6 +60,7 @@
+
+ pub async fn critical_blocker(api: &Api, command: CriticalBlockerCommand) -> Result<Value> {
+     match command {
++        CriticalBlockerCommand::PmReview { command } => pm_reviews::pm_review(api, command).await,
+         CriticalBlockerCommand::ReturnToPm { task, from_file } => {
+             let payload = json_input(&from_file)?;
+             anyhow::ensure!(
+diff --git a/backend/cli/tests/workflows.rs b/backend/cli/tests/workflows.rs
+--- a/backend/cli/tests/workflows.rs
++++ b/backend/cli/tests/workflows.rs
+@@ -133,6 +133,9 @@
+         }
+     }
+ }
++#[path = "workflows/critical_pm_reviews.rs"]
++mod critical_pm_reviews;
++
+ #[derive(Debug, Clone)]
+ struct Recorded {
+     method: String,
+diff --git a/backend/domain/src/sdlc_critical_pm_reservation.rs b/backend/domain/src/sdlc_critical_pm_reservation.rs
+--- a/backend/domain/src/sdlc_critical_pm_reservation.rs
++++ b/backend/domain/src/sdlc_critical_pm_reservation.rs
+@@ -6,19 +6,25 @@
+ use shared::AppError;
+ use uuid::Uuid;
+
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(deny_unknown_fields)]
+ pub struct ReserveCriticalPmReview {
+     pub blocker_id: Uuid,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
+     pub blocker_sha256: String,
+     #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+     pub expected_blocker_version: i64,
+     #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+     pub expected_task_version: i64,
+     #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+     pub expected_pm_owner_version: i64,
+     #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+     pub expected_pm_assignment_version: i64,
++    #[schema(min_length = 1, max_length = 128)]
+     pub idempotency_key: String,
+ }
+
+@@ -44,31 +50,35 @@
+     }
+ }
+
++#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(rename_all = "snake_case")]
+ pub enum CriticalPmReservationPurpose {
+     CriticalBusinessReview,
+ }
+
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(deny_unknown_fields)]
+ pub struct CriticalPmRequirementsRef {
+     #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+     pub revision: i64,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
+     pub content_hash: String,
+ }
+
++#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
+-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+ #[serde(deny_unknown_fields)]
+ pub struct CriticalPmReviewContext {
+     pub blocker_id: Uuid,
++    #[schema(pattern = "^[0-9a-f]{64}$")]
+     pub blocker_sha256: String,
+     #[serde(deserialize_with = "safe_version")]
++    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+     pub blocker_version: i64,
+     pub requirements: CriticalPmRequirementsRef,
+ }
+
++#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+-#[derive(Clone, Debug, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct CriticalPmReservationResult {
+     pub purpose: CriticalPmReservationPurpose,
