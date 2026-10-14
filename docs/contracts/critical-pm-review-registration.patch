@@ -1,0 +1,38 @@
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -14,6 +14,8 @@
+ #[path = "sdlc_critical_blockers.rs"]
+ mod critical_blockers;
++#[path = "sdlc_critical_pm_reservation.rs"]
++mod critical_pm_reservation;
+ #[path = "sdlc_execution_lease.rs"]
+ mod execution_lease;
+ #[path = "sdlc_lifecycle.rs"]
+ mod lifecycle;
+diff --git a/backend/infra/src/sdlc_critical_blockers_pg_tests.rs b/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
+--- a/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
++++ b/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
+@@ -1,6 +1,8 @@
+ //! Child of the existing candidates fixture, not another DB runner.
+ //! Runtime/Workflow observations and business content below are explicitly synthetic.
+ use super::*;
++#[path = "sdlc_critical_pm_reservation_pg_tests.rs"]
++mod pm_review_tests;
+ use crate::sdlc::attachment_artifacts as artifacts;
+ use domain::attachment_artifact::{ArtifactUpload, Seal};
+ use domain::sdlc_critical_blockers::*;
+diff --git a/backend/migration/src/m20261013_0000096_single_task_delivery.rs b/backend/migration/src/m20261013_0000096_single_task_delivery.rs
+--- a/backend/migration/src/m20261013_0000096_single_task_delivery.rs
++++ b/backend/migration/src/m20261013_0000096_single_task_delivery.rs
+@@ -12,7 +12,9 @@
+             .execute_unprepared(concat!(
+                 include_str!("single_task_lifecycle.sql"),
+                 "\n",
+-                include_str!("critical_pm_return.sql")
++                include_str!("critical_pm_return.sql"),
++                "\n",
++                include_str!("critical_pm_review.sql")
+             ))
+             .await?;
+         Ok(())
