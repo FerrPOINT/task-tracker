@@ -60,10 +60,15 @@ export function ProjectGeneralSettingsPage() {
 function ProjectPropertiesForm({ project }: { project: Project }) {
   const { t } = useTranslation()
   const id = useId()
-  const [name, setName] = useState(project.name)
-  const [description, setDescription] = useState(project.description ?? '')
+  const [nameDraft, setName] = useState<string | null>(null)
+  const [descriptionDraft, setDescription] = useState<string | null>(null)
+  const name = nameDraft ?? project.name
+  const description = descriptionDraft ?? project.description ?? ''
   const update = useUpdateProject(project.key)
-  const dirty = name !== project.name || description !== (project.description ?? '')
+  const nameChanged = nameDraft !== null && name !== project.name
+  const descriptionChanged =
+    descriptionDraft !== null && description !== (project.description ?? '')
+  const dirty = nameChanged || descriptionChanged
   return (
     <form
       className="max-w-2xl space-y-5"
@@ -71,11 +76,14 @@ function ProjectPropertiesForm({ project }: { project: Project }) {
         event.preventDefault()
         if (!name.trim() || !dirty || update.isPending) return
         update.mutate(
-          { name: name.trim(), description: description.trim() || null },
           {
-            onSuccess: (saved) => {
-              setName(saved.name)
-              setDescription(saved.description ?? '')
+            ...(nameChanged ? { name: name.trim() } : {}),
+            ...(descriptionChanged ? { description: description.trim() || null } : {}),
+          },
+          {
+            onSuccess: () => {
+              setName(null)
+              setDescription(null)
               toast.success(t('projectSettings.saved'))
             },
           },
@@ -130,8 +138,8 @@ function ProjectPropertiesForm({ project }: { project: Project }) {
           variant="outline"
           disabled={!dirty || update.isPending}
           onClick={() => {
-            setName(project.name)
-            setDescription(project.description ?? '')
+            setName(null)
+            setDescription(null)
             update.reset()
           }}
         >

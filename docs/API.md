@@ -1,5 +1,16 @@
 # API v1 Specification — Task Tracker
 
+## Имена и частичное обновление проектов
+
+Создание и обновление проекта проверяют имя на сервере: после удаления пробелов
+по краям оно должно содержать от 1 до 200 Unicode-символов. Невалидное имя
+возвращает `400 VALIDATION_ERROR` без сохранения других полей запроса.
+В обновлении отсутствие `name`/`description` сохраняет прежнее значение;
+явный `description: null` очищает описание. Форма настроек отправляет только
+изменённые поля. Фоновое обновление подставляет свежие значения нетронутых полей
+и сохраняет локальный ввод изменённых, поэтому сохранение описания не откатывает
+новое серверное имя проекта.
+
 Reserved PM requirement/question writes require the exact machine scope/fence and
 a current Tracker execution lease; the command schema does not accept a readiness
 claim. Owner answers and separate verifier evidence use admitted history when

@@ -9,6 +9,16 @@ use domain::{
 };
 use shared::{AppError, BoardId, ProjectId, ProjectKey, UserId};
 
+fn normalize_project_name(name: &str) -> Result<String, AppError> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > 200 {
+        return Err(AppError::invalid_input(
+            "project name must contain 1–200 characters",
+        ));
+    }
+    Ok(name.to_owned())
+}
+
 pub struct ProjectServiceImpl {
     projects: Arc<dyn ProjectRepository>,
     issues: Arc<dyn IssueRepository>,
@@ -74,12 +84,13 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         &self,
         cmd: crate::commands::CreateProjectCommand,
     ) -> Result<ProjectDto, AppError> {
+        let name = normalize_project_name(&cmd.name)?;
         let owner = self.users.get_by_id(cmd.owner_id).await?;
         let board_id = BoardId::new();
         let project = domain::Project {
             id: ProjectId::new(),
             key: cmd.key,
-            name: cmd.name.into(),
+            name: name.into(),
             description: cmd.description.map(Into::into),
             owner_id: owner.id,
             default_board_id: board_id,
@@ -202,7 +213,7 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         self.authz.require_owner(project.id, requester_id).await?;
         let mut project = project;
         if let Some(name) = cmd.name {
-            project.name = name.into();
+            project.name = normalize_project_name(&name)?.into();
             project.updated_at = shared::now();
         }
         if let Some(description) = cmd.description {
@@ -265,5 +276,25 @@ impl crate::context::ProjectService for ProjectServiceImpl {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod name_validation_tests {
+    use super::normalize_project_name;
+
+    #[test]
+    fn project_names_are_nonempty_bounded_and_normalized() {
+        assert!(normalize_project_name("").is_err());
+        assert!(normalize_project_name(" \t\n").is_err());
+        assert!(normalize_project_name(&"я".repeat(201)).is_err());
+        assert_eq!(
+            normalize_project_name(&"я".repeat(200)).unwrap(),
+            "я".repeat(200)
+        );
+        assert_eq!(
+            normalize_project_name("  Проект QA  ").unwrap(),
+            "Проект QA"
+        );
     }
 }
