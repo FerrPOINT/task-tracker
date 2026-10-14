@@ -1,5 +1,27 @@
 # Critical Blocker Qualification
 
+## PM Review Reservation Qualification
+
+Tracker `8ac333aeb8c0a2d5adbf08aebece197d87ffa2cb` passes fmt, locked workspace
+all-target check and27 focused tests: domain4/app9 planner, app4/API4 transport,
+global route1, CLI HTTP3/parity1 and actual reservation PG1. The reservation
+aggregate verifies transaction/history, scopes, duplicate races and rollback.
+Generated Rust OpenAPI SHA256 is
+`28ec367cd3655bb0e4ae5ce3c1dd866dac08e89d60b8580254320636dcd7fa9e`;
+actual openapi-typescript7.13.0 client generation succeeds, SHA256
+`9f33311b538e4468189bae71ddd7a27939749aee780b1f280cb3fc6b48dcdb8f`.
+
+The combined batch is NOT wholly passing: its second, prior Hold/Return aggregate
+refuses the already-filled disposable database before entering its scenario.
+The runner now assigns two different databases; two input regressions PASS.
+The second aggregate on the changed096 and new-source strict Clippy still require
+the targeted follow-up. Tracker Clippy was not reached. Base v2 cleanup and owned
+input removal are verified; accepted services/data/secrets remain unchanged.
+
+This qualifies reservation, not PM lease/admission/continuation, revised consent,
+routing generations or live inference. New current-review read/lifecycle packages
+are separate source-only work and cannot inherit this result.
+
 ## Latest Qualified Return Transport
 
 Tracker `caf7ab3f9c93946fc149d61027bee72cafb536ac`, SDK
@@ -19,8 +41,9 @@ Rust-generated OpenAPI SHA256:
 `898c0c19efdf77a388e7ec3442e1ec4eeb4640a1481b5e87b7da1afec4a8712f`.
 Runner exit0; Base v2 journal `cleaned`, owned inputs and disposable volumes cleaned.
 No accepted stand, provider, model, runtime or secret was changed. Native proof in
-the PG fixture is synthetic. New critical PM reservation source is not covered by
-this run; its compile/PG and the actual PM re-entry/consent/routing flow remain open.
+the PG fixture is synthetic. New critical PM reservation is not covered by this
+earlier run; its later focused qualification is recorded above. Actual PM
+re-entry/consent/routing remain open.
 
 ## Historical Key-Fix Qualification
 

@@ -2289,6 +2289,142 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "reserve_critical_business_pm_review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveCriticalPmReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable reservation replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPmReservationResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPmReservationResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_critical_business_pm_review_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPmReservationResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/critical-blockers/returns": {
       "post": {
         "tags": [
@@ -10547,6 +10683,81 @@
           "resolved"
         ]
       },
+      "CriticalPmRequirementsRef": {
+        "type": "object",
+        "required": [
+          "revision",
+          "content_hash"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPmReservationPurpose": {
+        "type": "string",
+        "enum": [
+          "critical_business_review"
+        ]
+      },
+      "CriticalPmReservationResult": {
+        "type": "object",
+        "required": [
+          "purpose",
+          "reservation",
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/CriticalPmReviewContext"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/CriticalPmReservationPurpose"
+          },
+          "reservation": {
+            "$ref": "#/components/schemas/PmDraftReservation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPmReviewContext": {
+        "type": "object",
+        "required": [
+          "blocker_id",
+          "blocker_sha256",
+          "blocker_version",
+          "requirements"
+        ],
+        "properties": {
+          "blocker_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blocker_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "blocker_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/CriticalPmRequirementsRef"
+          }
+        },
+        "additionalProperties": false
+      },
       "CriticalPmReviewGuard": {
         "type": "object",
         "description": "CAS fields for the scheduler-only return, not a standalone public hold operation.",
@@ -17071,6 +17282,58 @@
           "routing_snapshot_id": {
             "type": "string",
             "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReserveCriticalPmReview": {
+        "type": "object",
+        "required": [
+          "blocker_id",
+          "blocker_sha256",
+          "expected_blocker_version",
+          "expected_task_version",
+          "expected_pm_owner_version",
+          "expected_pm_assignment_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "blocker_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blocker_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "expected_blocker_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_pm_assignment_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_pm_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_task_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
           }
         },
         "additionalProperties": false
