@@ -120,6 +120,10 @@ mod human_identity_tests {
     }
 }
 
+#[cfg(test)]
+#[path = "sdlc_critical_pm_read_tests.rs"]
+mod critical_pm_read_tests;
+
 fn pm_request_policy(
     actor: &domain::sdlc::Principal,
     method: &str,
@@ -154,6 +158,11 @@ fn pm_request_policy(
         }
         _ => {
             app::sdlc_confirmation::is_confirmation_read(method, parts.as_slice())
+                || (actor.scopes.contains("task-tracker:read")
+                    && app::sdlc_critical_blockers::is_pm_critical_blocker_read(
+                        method,
+                        parts.as_slice(),
+                    ))
                 || (actor.scopes.contains("task-tracker:read")
                     && app::sdlc_lifecycle::is_pm_feedback_message_read(method, parts.as_slice()))
         }

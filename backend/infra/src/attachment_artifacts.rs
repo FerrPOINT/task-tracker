@@ -234,11 +234,11 @@ async fn ensure_live(tx: &DatabaseTransaction, head: &LifecycleReceipt) -> Resul
     Ok(())
 }
 
-async fn provenance(
+pub(super) async fn provenance(
     tx: &DatabaseTransaction,
     attachment: &domain::Attachment,
     seal: &Seal,
-) -> Result<(), AppError> {
+) -> Result<(DeliveryAssignment, RunBinding), AppError> {
     seal.validate_attachment(attachment)?;
     let assignment: DeliveryAssignment = decode(
         &tx.query_one(statement(
@@ -276,13 +276,13 @@ async fn provenance(
         "SELECT id FROM users WHERE id=$1 AND central_sub=$2",
         vec![
             attachment.author_id.as_uuid().into(),
-            binding.machine_subject.into(),
+            binding.machine_subject.clone().into(),
         ],
     ))
     .await
     .map_err(map_db)?
     .ok_or_else(|| AppError::conflict("artifact author differs from actual producer"))?;
-    Ok(())
+    Ok((assignment, binding))
 }
 
 async fn allowed(
@@ -485,6 +485,10 @@ pub(crate) async fn download(
     id: AttachmentId,
     storage: &dyn domain::FileStorage,
 ) -> Result<(domain::Attachment, Vec<u8>), AppError> {
+    if app::sdlc::has_pm_grant(&actor.scopes) {
+        return super::critical_blockers::pm_evidence::download(db, config, actor, id, storage)
+            .await;
+    }
     let tx = db.begin().await.map_err(map_db)?;
     let model = attachment::Entity::find_by_id(id.as_uuid())
         .one(&tx)

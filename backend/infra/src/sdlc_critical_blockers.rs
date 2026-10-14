@@ -6,6 +6,9 @@ use domain::sdlc_critical_blockers::*;
 use domain::sdlc_lifecycle::*;
 use sea_orm::EntityTrait;
 
+#[path = "attachment_pm_review.rs"]
+pub(super) mod pm_evidence;
+
 fn invalid_history() -> AppError {
     AppError::conflict("critical blocker history inconsistent")
 }
@@ -74,6 +77,60 @@ async fn current_producer(
         .ok_or(AppError::Forbidden)?;
     super::lifecycle::exact_revision(state, &current)?;
     receipt_producer(&current, actor, saved, &grant)
+}
+
+// No separate connection/readback: task, current selector, journal and lease share this lock.
+async fn current_pm_reader(
+    tx: &DatabaseTransaction,
+    state: &TaskState,
+    actor: &Principal,
+    saved: &CriticalBlockerReceipt,
+) -> Result<(), AppError> {
+    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    let row = tx
+        .query_one(statement(
+            "SELECT result,after_blocker FROM sdlc_critical_pm_reviews
+         WHERE task_id=$1 AND blocker_id=$2 AND assignment_id=$3 AND execution_id=$4",
+            vec![
+                state.task_id.into(),
+                saved.blocker_id.into(),
+                assignment.assignment_id.into(),
+                assignment.execution_id.into(),
+            ],
+        ))
+        .await
+        .map_err(map_db)?
+        .ok_or(AppError::Forbidden)?;
+    let review: domain::sdlc_critical_pm_reservation::CriticalPmReservationResult =
+        decode(&row, "result")?;
+    let retained: CriticalBlockerReceipt = decode(&row, "after_blocker")?;
+    if retained != *saved {
+        return Err(invalid_history());
+    }
+    let cursor = tx.query_one(statement(
+        "SELECT pm_owner_version,pm_execution_id,pm_admission_state FROM sdlc_tasks WHERE task_id=$1",
+        vec![state.task_id.into()],
+    )).await.map_err(map_db)?.ok_or(AppError::Forbidden)?;
+    let execution: Option<Uuid> = cursor.try_get("", "pm_execution_id").map_err(map_db)?;
+    let admission: Option<String> = cursor.try_get("", "pm_admission_state").map_err(map_db)?;
+    let current = PostgresSdlcRepository::reservation(tx, state, assignment.execution_id).await?;
+    if execution != Some(assignment.execution_id)
+        || admission.as_deref() != Some("reserved")
+        || cursor
+            .try_get::<i64>("", "pm_owner_version")
+            .map_err(map_db)?
+            != current.owner_cas.version
+    {
+        return Err(AppError::Forbidden);
+    }
+    let lease = PostgresSdlcRepository::lease_current(tx, &current)
+        .await?
+        .ok_or(AppError::Forbidden)?;
+    // lease_current validates the retained operation/fence, row columns, holder and TTL.
+    let now = super::execution_lease::clock(tx).await?;
+    app::sdlc_critical_blockers::authorize_critical_pm_blocker_read(
+        state, actor, saved, &review, &current, &lease, now,
+    )
 }
 
 fn receipt_producer(
@@ -420,11 +477,13 @@ impl PostgresSdlcRepository {
         actor: &Principal,
         blocker_id: Uuid,
     ) -> Result<CriticalBlockerReceipt, AppError> {
-        if app::sdlc::has_pm_grant(&actor.scopes) {
-            return Err(AppError::Forbidden);
-        }
+        let pm = app::sdlc::has_pm_grant(&actor.scopes);
         let tx = self.db.begin().await.map_err(map_db)?;
-        let state = self.load(&tx, task, actor).await?;
+        let state = if pm {
+            self.load_read(&tx, task, actor).await?
+        } else {
+            self.load(&tx, task, actor).await?
+        };
         owner_access(&tx, &state).await?;
         let row = tx
             .query_one(statement(
@@ -440,7 +499,9 @@ impl PostgresSdlcRepository {
             .ok_or_else(|| AppError::not_found("critical blocker", blocker_id))?;
         let saved: CriticalBlockerReceipt = decode(&row, "payload")?;
         scope(&state, &saved)?;
-        if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
+        if pm {
+            current_pm_reader(&tx, &state, actor, &saved).await?;
+        } else if app::sdlc_lifecycle::has_delivery_grant(&actor.scopes) {
             current_producer(&tx, &state, actor, &saved, false).await?;
         } else if !(actor.human_session
             && actor.trusted_human

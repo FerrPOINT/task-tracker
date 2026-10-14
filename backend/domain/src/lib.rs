@@ -8,6 +8,7 @@ pub mod sdlc;
 pub mod sdlc_candidates;
 pub mod sdlc_configuration;
 pub mod sdlc_critical_blockers;
+pub mod sdlc_critical_pm_lifecycle;
 pub mod sdlc_critical_pm_reservation;
 pub mod sdlc_execution_lease;
 pub mod sdlc_lifecycle;

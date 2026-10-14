@@ -144,6 +144,9 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         path: &str,
     ) -> Result<(), AppError> {
         let config = self.artifact_config()?;
+        if crate::attachment_pm_review::route(actor, method, path)? {
+            return Ok(());
+        }
         if crate::attachment_artifacts::delivery_attachment_route(actor, method, path)? {
             return Ok(());
         }

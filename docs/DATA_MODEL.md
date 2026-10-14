@@ -1,5 +1,12 @@
 # Дата-модель Task Tracker
 
+Critical PM lifecycle planning has a source-only before/after model for owner
+commands and atomic completion/resolution/new-routing-generation. `Finalizing`
+uses a server-prepared completion from the same transaction, not a previously
+committed completion or the first PM's old receipt. No new lifecycle journal or
+generation storage is registered by this pure-planner package. Reader helpers
+reuse the existing review/seal/lease rows without changing data or creating proof.
+
 The same unreleased096 packet now includes `critical_pm_review.sql` after the
 terminal Return fragment. An immutable PM review journal preserves original
 Held/Return receipts, before/after canonical state and the completed PM selector;

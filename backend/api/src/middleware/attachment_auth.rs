@@ -3,7 +3,7 @@ use axum::{
     extract::{OriginalUri, Request, State},
     http::StatusCode,
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use shared::AppError;
 use std::sync::Arc;
@@ -25,7 +25,32 @@ pub async fn attachment_auth(
     match super::central_auth::check_token(token).await {
         super::central_auth::CentralCheck::Validated(central, _) => {
             if app::sdlc::has_pm_grant(&central.scopes) {
-                return Err(AppError::Forbidden);
+                let outcome: Result<Response, AppError> = async {
+                    if crate::routes::namespace::registered_machine(&central.user_id)
+                        || !central.allows_service("task-tracker", request.method().as_str())
+                    {
+                        return Err(AppError::Forbidden);
+                    }
+                    let actor = domain::sdlc::Principal {
+                        subject: central.user_id,
+                        human_session: central.session_id.is_some(),
+                        trusted_human: false,
+                        scopes: central.scopes,
+                    };
+                    let path = request
+                        .extensions()
+                        .get::<OriginalUri>()
+                        .map_or_else(|| request.uri().path(), |uri| uri.0.path());
+                    ctx.services.attachment.authorize_artifact_route(
+                        &actor,
+                        request.method().as_str(),
+                        path,
+                    )?;
+                    request.extensions_mut().insert(actor);
+                    Ok(next.run(request).await)
+                }
+                .await;
+                return Ok(pm_no_store(outcome));
             }
             let machine = app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
                 || central.role.as_deref() == Some("service_account")
@@ -73,3 +98,16 @@ pub async fn attachment_auth(
             _ => AppError::internal("attachment authentication failed"),
         })
 }
+
+fn pm_no_store(outcome: Result<Response, AppError>) -> Response {
+    let mut response = outcome.unwrap_or_else(|error| error.into_response());
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
+#[cfg(test)]
+#[path = "attachment_pm_review_tests.rs"]
+mod pm_review_tests;

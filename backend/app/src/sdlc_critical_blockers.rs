@@ -465,6 +465,81 @@ pub fn return_to_pm(
     Ok(next)
 }
 
+/// Route-shape allowance only; repository verifies the saved current review and fresh lease.
+pub fn is_pm_critical_blocker_read(method: &str, parts: &[&str]) -> bool {
+    matches!((method, parts), ("GET", ["critical-blockers", id])
+        if crate::sdlc::canonical_pm_uuid(id).is_some())
+}
+
+/// Inputs must come from the SAME task-locked transaction after fresh actor/owner/project ACL.
+/// A review receipt alone never authorizes reading another blocker or dispatch.
+pub fn authorize_critical_pm_blocker_read(
+    state: &domain::sdlc::TaskState,
+    actor: &Principal,
+    blocker: &CriticalBlockerReceipt,
+    review: &domain::sdlc_critical_pm_reservation::CriticalPmReservationResult,
+    current: &domain::sdlc_pm_draft::PmDraftReservation,
+    lease: &domain::sdlc_execution_lease::ExecutionLeaseReceipt,
+    observed_at: chrono::DateTime<chrono::Utc>,
+) -> Result<(), AppError> {
+    if crate::sdlc::pm_grant_task(actor)? != Some(state.task_id)
+        || !actor.scopes.contains("task-tracker:read")
+        || crate::sdlc_lifecycle::has_delivery_grant(&actor.scopes)
+    {
+        return Err(AppError::Forbidden);
+    }
+    crate::sdlc::authorize_pm_read(state, actor)?;
+    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    let binding = &current.binding;
+    if blocker.state != CriticalBlockerState::InPmReview
+        || blocker.resolution.is_some()
+        || blocker.pm_review.as_ref().is_none_or(|pm| {
+            pm.assignment_id != assignment.assignment_id
+                || pm.execution_id != assignment.execution_id
+        })
+        || blocker.task_id != state.task_id
+        || blocker.root_task_id != state.task_id
+        || blocker.project_id != state.project_id
+        || blocker.tracker_instance_id != state.tracker_instance_id
+        || blocker.owner_subject != state.owner_subject
+        || binding.task_id != state.task_id
+        || binding.root_task_id != state.task_id
+        || binding.project_id != state.project_id
+        || binding.tracker_instance_id != state.tracker_instance_id
+        || binding.owner_subject != state.owner_subject
+        || current.assignment != *assignment
+        || current.dispatch_allowed
+        || crate::sdlc::canonical_hash(&review.reservation)?
+            != crate::sdlc::canonical_hash(current)?
+        || review.context.blocker_id != blocker.blocker_id
+        || review.context.blocker_version != blocker.version
+        || review.context.blocker_sha256 != blocker.blocker_sha256
+        || review.context.requirements.revision != blocker.proposal.requirement_revision
+        || review.context.requirements.content_hash != blocker.proposal.content_hash
+        || lease.contract_version != 1
+        || lease.dispatch_allowed
+        || lease.binding != *binding
+        || lease.owner_version != current.owner_cas.version
+        || lease.fence.assignment_id != assignment.assignment_id
+        || lease.fence.execution_id != assignment.execution_id
+        || lease.fence.agent_id != assignment.agent_id
+        || lease.fence.assignment_version != assignment.version
+        || lease.lease.lease_id.is_nil()
+        || lease.lease.holder_subject != actor.subject
+        || !positive(lease.lease.version)
+        || lease.lease.claimed_at > lease.lease.heartbeat_at
+        || lease.lease.heartbeat_at > observed_at
+        || observed_at >= lease.lease.expires_at
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[path = "sdlc_critical_pm_blocker_read_tests.rs"]
+mod pm_blocker_read_tests;
+
 #[cfg(test)]
 #[path = "sdlc_critical_blockers_tests.rs"]
 mod tests;

@@ -1,4 +1,5 @@
 pub mod attachment_artifacts;
+pub mod attachment_pm_review;
 pub mod auth;
 pub mod authz;
 pub mod commands;
@@ -10,6 +11,7 @@ pub mod sdlc_candidates;
 pub mod sdlc_configuration;
 pub mod sdlc_confirmation;
 pub mod sdlc_critical_blockers;
+pub mod sdlc_critical_pm_lifecycle;
 pub mod sdlc_critical_pm_reservation;
 pub mod sdlc_critical_pm_reviews;
 pub mod sdlc_draft_flow;

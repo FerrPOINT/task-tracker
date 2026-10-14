@@ -2,6 +2,15 @@
 
 ## Critical Business Blocker Integration
 
+Current PM review source now permits only the existing blocker detail GET and
+`GET /api/v1/attachments/{id}/download` for an exact evidence item of that review.
+The same fresh owner/project/current-assignment/lease guard is checked before and
+after blob I/O; raw bytes/seal/provenance must match. Ordinary attachment
+list/upload/delete and old PM grants remain denied, without human impersonation.
+These readers and the pure atomic-finalization planner are registered source
+awaiting focused checks. Actual reader PG remains blocked on the separately owned
+PM lease/projection integration; registration does not establish executable review.
+
 Registered source also adds POST
 `/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews` and GET
 `/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}`.
