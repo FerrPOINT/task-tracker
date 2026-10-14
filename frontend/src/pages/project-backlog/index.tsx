@@ -1,3 +1,4 @@
+import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
 import { ProjectAvatar } from '@sdlc/ui/ui'
 import { useEffect, useState } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
@@ -24,34 +25,11 @@ import {
   useRemoveIssueFromSprint,
 } from '@/shared/api/hooks'
 import { SprintFormDialog } from '@/features/sprints/ui/SprintFormDialog'
-import { UserAvatar } from '@/shared/ui/user-avatar'
+import { UserAvatar } from '@sdlc/ui/ui'
 import type { components } from '@/api/generated'
 import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
 
 type Issue = components['schemas']['IssueResponse']
-
-function PriorityBadge({ priority }: { priority: string }) {
-  const normalizedPriority = priority.toLowerCase()
-  const color =
-    normalizedPriority === 'high' || normalizedPriority === 'highest'
-      ? 'bg-danger'
-      : normalizedPriority === 'medium'
-        ? 'bg-warning'
-        : 'bg-success'
-  const labels: Record<string, string> = {
-    highest: 'Наивысший',
-    high: 'Высокий',
-    medium: 'Средний',
-    low: 'Низкий',
-    lowest: 'Наинизший',
-  }
-  return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium text-text-primary">
-      <span aria-hidden className={`h-2 w-2 rounded-full ${color}`} />
-      {labels[normalizedPriority] ?? priority}
-    </span>
-  )
-}
 
 function IssueRow({ issue, action }: { issue: Issue; action?: React.ReactNode }) {
   return (

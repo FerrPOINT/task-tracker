@@ -191,7 +191,7 @@ test('real Task header preserves context, actions, SSO and accessible responsive
 
     await page.goto(`${appUrl}/projects/${key}/board`)
     await page.setViewportSize({ width: 375, height: 812 })
-    const drawerTrigger = page.getByRole('button', { name: 'Открыть меню' })
+    const drawerTrigger = page.getByRole('button', { name: 'Открыть навигацию' })
     await drawerTrigger.tap()
     const drawer = page.getByRole('dialog')
     await expect(drawer.getByRole('link', { name: 'Создать', exact: true })).toHaveAttribute(

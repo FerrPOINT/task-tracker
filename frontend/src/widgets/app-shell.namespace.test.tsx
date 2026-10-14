@@ -207,7 +207,7 @@ describe('project sidebar and Namespace selection', () => {
     const user = userEvent.setup()
     mount()
     await screen.findByRole('button', { name: 'Одинаковый проект · A' })
-    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
+    await user.click(screen.getByRole('button', { name: 'Открыть навигацию' }))
     const dialog = await screen.findByRole('dialog')
     const b = within(dialog).getByRole('region', { name: 'Одинаковый проект · B' })
     await user.click(within(b).getByRole('button', { name: 'Одинаковый проект · B' }))
@@ -329,7 +329,7 @@ describe('project sidebar and Namespace selection', () => {
       expect(link).toHaveClass('base-sidebar-item')
     await user.click(heading)
     expect(list).toHaveAttribute('hidden')
-    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
+    await user.click(screen.getByRole('button', { name: 'Открыть навигацию' }))
     const dialog = await screen.findByRole('dialog')
     const mobileHeading = within(dialog).getByRole('button', { name: 'Одинаковый проект · A' })
     const mobileList = document.getElementById(mobileHeading.getAttribute('aria-controls')!)!

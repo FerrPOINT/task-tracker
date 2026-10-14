@@ -9,7 +9,7 @@ import {
   useUnwatchIssue,
 } from '@/shared/api/hooks'
 import { Button } from '@sdlc/ui/ui'
-import { UserAvatar } from '@/shared/ui/user-avatar'
+import { UserAvatar } from '@sdlc/ui/ui'
 
 type IssueEngagementPanelProps = {
   issueId: string

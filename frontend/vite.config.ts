@@ -1,3 +1,4 @@
+import { createUiManualChunks } from '@sdlc/ui/build'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -24,20 +25,12 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       output: {
-        manualChunks: {
+        manualChunks: createUiManualChunks({
           recharts: ['recharts'],
           vendor: ['react', 'react-dom', 'react-router'],
           query: ['@tanstack/react-query'],
           forms: ['react-hook-form', '@hookform/resolvers'],
-          radix: [
-            '@radix-ui/react-alert-dialog',
-            '@radix-ui/react-dialog',
-            '@radix-ui/react-dropdown-menu',
-            '@radix-ui/react-label',
-            '@radix-ui/react-slot',
-            '@radix-ui/react-tabs',
-          ],
-        },
+        }),
       },
     },
   },

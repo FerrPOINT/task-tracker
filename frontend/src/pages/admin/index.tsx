@@ -9,7 +9,7 @@ import { Input } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@sdlc/ui/ui'
 import { Textarea } from '@sdlc/ui/ui'
-import { ErrorState, LoadingState, EmptyState } from '@sdlc/ui/ui'
+import { QueryState } from '@sdlc/ui/ui'
 type TabValue = 'settings' | 'audit'
 
 function formatJson(value: unknown) {
@@ -28,28 +28,6 @@ function ChangesSummary({ value }: { value: unknown }) {
       {summary}
     </span>
   )
-}
-
-function QueryState({
-  isLoading,
-  error,
-  empty,
-  errorMessage,
-  onRetry,
-  children,
-}: {
-  isLoading: boolean
-  error: unknown
-  empty: boolean
-  errorMessage: string
-  onRetry: () => void
-  children: React.ReactNode
-}) {
-  const { t } = useTranslation()
-  if (isLoading) return <LoadingState message={t('admin.loading')} />
-  if (error) return <ErrorState message={errorMessage} onRetry={onRetry} />
-  if (empty) return <EmptyState message={t('admin.empty')} />
-  return <>{children}</>
 }
 
 export function AdminPage() {
@@ -163,7 +141,8 @@ export function AdminPage() {
               <QueryState
                 isLoading={settings.isLoading}
                 error={settings.error}
-                empty={(settings.data?.length ?? 0) === 0}
+                data={settings.data}
+                isEmpty={(items) => items.length === 0}
                 errorMessage={t('admin.settings.loadError')}
                 onRetry={() => void settings.refetch()}
               >
@@ -282,7 +261,8 @@ export function AdminPage() {
             <QueryState
               isLoading={auditLog.isLoading}
               error={auditLog.error}
-              empty={(auditLog.data?.length ?? 0) === 0}
+              data={auditLog.data}
+              isEmpty={(items) => items.length === 0}
               errorMessage={t('admin.audit.loadError')}
               onRetry={() => void auditLog.refetch()}
             >
