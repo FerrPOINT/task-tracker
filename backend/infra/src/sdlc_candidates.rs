@@ -89,7 +89,8 @@ impl PostgresSdlcRepository {
                 &snapshot.policy,
                 query.project_id,
                 &self.config.instance_id,
-            )?;
+            )
+            .map_err(|_| AppError::conflict("delivery candidate routing incompatible"))?;
             super::lifecycle::exact_snapshot(&state, &snapshot)?;
             if let Some(receipt) = &current {
                 super::lifecycle::exact_revision(&state, receipt)?;
