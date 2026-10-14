@@ -1052,6 +1052,121 @@ async fn sdlc_confirmation_read_rejects_invalid_revision_before_http() {
 }
 
 #[tokio::test]
+async fn sdlc_lifecycle_and_accepted_result_reads_preserve_response_and_authorization() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const RESULT: &str = "22222222-2222-2222-2222-222222222222";
+    let cases = [
+        (
+            vec!["sdlc", "lifecycle", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/lifecycle"),
+            json!({"observed_at":"2026-10-14T12:00:00Z","runtime_state":"running",
+                "receipt":{"assignment":{"previous_result_id":RESULT},"result":null}}),
+        ),
+        (
+            vec!["sdlc", "result", "read", "--task", TASK, "--result", RESULT],
+            format!("/api/v1/issues/{TASK}/sdlc/lifecycle/results/{RESULT}"),
+            json!({"source":"delivery","receipt":{"result_id":RESULT,"task_id":TASK,
+                "output":{"role":"developer","commit_sha":"a".repeat(40),
+                    "changes":{"reference":"tracker-attachment:33333333-3333-3333-3333-333333333333","sha256":"b".repeat(64)},
+                    "checks":[]}}}),
+        ),
+    ];
+    for (args, path, receipt) in cases {
+        for versioned_base in [false, true] {
+            let server = Server::start(vec![(200, receipt.clone())]).await;
+            let base = if versioned_base {
+                format!("{}/api/v1", server.url)
+            } else {
+                server.url.clone()
+            };
+            let output = server.run_with_api_url(&base, &args, None).await;
+            assert_eq!(success(&output), receipt);
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].method, "GET");
+            assert_eq!(requests[0].path, path);
+            assert_eq!(
+                requests[0].authorization.as_deref(),
+                Some("Bearer fixture-token")
+            );
+            assert!(requests[0].body.is_empty());
+            assert!(requests[0].key.is_none());
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_lifecycle_and_accepted_result_read_errors_never_retry_or_mutate() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const RESULT: &str = "22222222-2222-2222-2222-222222222222";
+    let cases = [
+        (
+            vec!["sdlc", "lifecycle", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/lifecycle"),
+        ),
+        (
+            vec!["sdlc", "result", "read", "--task", TASK, "--result", RESULT],
+            format!("/api/v1/issues/{TASK}/sdlc/lifecycle/results/{RESULT}"),
+        ),
+    ];
+    for (args, path) in cases {
+        for status in [401, 403, 404, 409, 500] {
+            let server = Server::start(vec![(
+                status,
+                json!({"error":{"code":"DENIED","message":"fixture-token"}}),
+            )])
+            .await;
+            let mut cli = vec!["--error-format", "json"];
+            cli.extend_from_slice(&args);
+            let output = server.run(&cli, None).await;
+            assert_eq!(output.status.code(), Some(1));
+            assert!(output.stdout.is_empty());
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["status"],
+                status
+            );
+            assert!(!String::from_utf8_lossy(&output.stderr).contains("fixture-token"));
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].method, "GET");
+            assert_eq!(requests[0].path, path);
+            assert_eq!(
+                requests[0].authorization.as_deref(),
+                Some("Bearer fixture-token")
+            );
+            assert!(requests[0].body.is_empty());
+            assert!(requests[0].key.is_none());
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_lifecycle_and_accepted_result_reads_reject_invalid_uuids_before_http() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![]).await;
+    for args in [
+        vec!["sdlc", "lifecycle", "--task", "TASK-1"],
+        vec![
+            "sdlc", "result", "read", "--task", "TASK-1", "--result", TASK,
+        ],
+        vec![
+            "sdlc",
+            "result",
+            "read",
+            "--task",
+            TASK,
+            "--result",
+            "not-a-uuid",
+        ],
+    ] {
+        let output = server.run(&args, None).await;
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
 async fn sdlc_role_proposal_forwards_workflow_evidence_and_reconciles_its_original_operation() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";
     let proposal = json!({"fence":{"assignment_id":"22222222-2222-2222-2222-222222222222",

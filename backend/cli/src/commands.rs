@@ -209,6 +209,11 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Read the current authoritative single-task assignment and lifecycle
+    Lifecycle {
+        #[arg(long)]
+        task: Uuid,
+    },
     /// Propose a typed role result; only Fleet accepts it after runtime terminal
     Result {
         #[command(subcommand)]
@@ -409,6 +414,7 @@ fn json_input(path: &str) -> Result<Value> {
 
 pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
     match command {
+        SdlcCommand::Lifecycle { task } => api.get(&sdlc_path(task, "/lifecycle")).await,
         SdlcCommand::Result { command } => pm_commands::delivery_result(api, command).await,
         SdlcCommand::Routing { command } => pm_commands::routing(api, command).await,
         SdlcCommand::Confirmation { command } => pm_commands::confirmation(api, command).await,

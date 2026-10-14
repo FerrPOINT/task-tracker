@@ -27,6 +27,13 @@ pub enum ConfirmationCommand {
 
 #[derive(Subcommand)]
 pub enum DeliveryResultCommand {
+    /// Read an accepted typed result by its authoritative result UUID
+    Read {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long)]
+        result: Uuid,
+    },
     /// Persist Workflow terminal evidence while this runtime run is still alive
     Propose {
         #[arg(long)]
@@ -45,6 +52,10 @@ pub enum DeliveryResultCommand {
 
 pub async fn delivery_result(api: &Api, command: DeliveryResultCommand) -> Result<Value> {
     match command {
+        DeliveryResultCommand::Read { task, result } => {
+            api.get(&sdlc_path(task, &format!("/lifecycle/results/{result}")))
+                .await
+        }
         DeliveryResultCommand::Propose { task, from_file } => {
             api.post(
                 &sdlc_path(task, "/delivery-proposals"),
