@@ -99,6 +99,13 @@ or claimed available here; metadata detail read alone is not evidence-download p
 
 ## Dedicated authored regressions
 
+Known producer dependency (parent review after this packet): at `8ac333a`,
+`claim_pm_lease` changes top-level status without the lifecycle/head companion
+projection. Actual PG claim therefore rolls back BEFORE the new reader executes.
+Qualification is BLOCKED BY PRODUCER CLAIM PROJECTION until Locke/main supplies
+that existing lifecycle hook. Do not skip the claim, inject a lease or weaken SQL
+guards to make this fixture pass. Pure tests do not qualify this persisted path.
+
 Seven new test functions, not executed:
 
 - App (5): current review in all three Draft submodes, no mutation; old/foreign PM

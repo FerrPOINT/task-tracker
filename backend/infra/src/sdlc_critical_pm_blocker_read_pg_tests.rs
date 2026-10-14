@@ -3,6 +3,9 @@ use super::*;
 use domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview;
 use domain::sdlc_execution_lease::ClaimExecutionLease;
 
+#[path = "attachment_pm_review_pg_tests.rs"]
+mod sealed_evidence_tests;
+
 async fn read_snapshot(f: &Fixture, task: Uuid) -> Json {
     f.db.query_one(statement("SELECT jsonb_build_object(
         'state',(SELECT state FROM sdlc_tasks WHERE task_id=$1),
@@ -29,6 +32,7 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
     .unwrap();
     let storage = domain::InMemoryStorage::default();
     let r = Box::pin(start(&f, "pm-blocker-reader", false, &storage)).await;
+    let unlisted = Box::pin(sealed_evidence_tests::unlisted(&f, &r, &storage)).await;
     let (held, _) = Box::pin(f.repo.submit_critical_blocker_with_storage(
         r.task,
         &r.producer,
@@ -151,6 +155,11 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
         assignment.execution_id
     );
     assert_eq!(detail.proposal, held.proposal);
+    // Still reached only AFTER the actual producer claim succeeds; never inject/skip its lease.
+    Box::pin(sealed_evidence_tests::check(
+        &f, &r, &pm, &old_pm, unlisted, &storage,
+    ))
+    .await;
     assert_eq!(read_snapshot(&f, r.task).await, before);
     assert!(
         f.repo
