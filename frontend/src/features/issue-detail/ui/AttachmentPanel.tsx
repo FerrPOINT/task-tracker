@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-react'
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
-import { Button, ConfirmDialog } from '@sdlc/ui/ui'
+import { Button, ConfirmDialog, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 import { toast } from 'sonner'
 
 function formatSize(bytes: number): string {
@@ -132,50 +132,53 @@ export function AttachmentPanel({ issueId }: { issueId: string }) {
       )}
 
       {attachments.length > 0 && (
-        <ul className="divide-y divide-border rounded-md border">
-          {attachments.map((a) => (
-            <li
-              key={a.id}
-              className="flex items-center justify-between gap-2 px-3 py-2"
-              data-testid="attachment-row"
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                {a.content_type.startsWith('text/') ? (
-                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                ) : (
-                  <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                )}
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium" title={a.file_name}>
-                    {a.file_name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">{formatSize(a.size_bytes)}</p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('attachments.download', { name: a.file_name })}
-                  onClick={() => void downloadAttachment(a)}
+        <ResourceList asChild variant="bordered">
+          <ul>
+            {attachments.map((a) => (
+              <ResourceListRow asChild key={a.id}>
+                <li
+                  className="flex items-center justify-between gap-2"
+                  data-testid="attachment-row"
                 >
-                  <Download className="h-4 w-4" aria-hidden />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label={t('attachments.delete', { name: a.file_name })}
-                  onClick={() => setPendingDelete(a.id)}
-                  disabled={remove.isPending}
-                >
-                  <Trash2 className="h-4 w-4" aria-hidden />
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
+                  <div className="flex min-w-0 items-center gap-2">
+                    {a.content_type.startsWith('text/') ? (
+                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    ) : (
+                      <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium" title={a.file_name}>
+                        {a.file_name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{formatSize(a.size_bytes)}</p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t('attachments.download', { name: a.file_name })}
+                      onClick={() => void downloadAttachment(a)}
+                    >
+                      <Download className="h-4 w-4" aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t('attachments.delete', { name: a.file_name })}
+                      onClick={() => setPendingDelete(a.id)}
+                      disabled={remove.isPending}
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </Button>
+                  </div>
+                </li>
+              </ResourceListRow>
+            ))}
+          </ul>
+        </ResourceList>
       )}
 
       {uploadError && (

@@ -14,7 +14,7 @@ import {
   useNotifications,
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
-import { Button } from '@sdlc/ui/ui'
+import { Button, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import { ErrorState } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
@@ -82,35 +82,37 @@ const NotificationRow = memo(function NotificationRow({
     </>
   )
   return (
-    <li
-      className={`flex min-w-0 items-center gap-2 border-l-2 px-2 py-1.5 ${notification.is_read ? 'border-l-transparent' : 'border-l-accent'}`}
-    >
-      {notification.action_url ? (
-        <Link
-          to={notification.action_url}
-          className="block min-h-11 min-w-0 flex-1 py-1.5 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-          onClick={handleClick}
-        >
-          {content}
-        </Link>
-      ) : (
-        <div className="min-w-0 flex-1 py-1">{content}</div>
-      )}
-      {!notification.is_read && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-11 w-11 shrink-0 sm:h-10 sm:w-10"
-          aria-label={`${t('notifications.markRead')}: ${notification.title}`}
-          title={t('notifications.markRead')}
-          disabled={pendingRead}
-          onClick={() => onMarkRead(notification.id)}
-        >
-          <Check className="h-4 w-4" />
-        </Button>
-      )}
-    </li>
+    <ResourceListRow asChild>
+      <li
+        className={`flex min-w-0 items-center gap-2 border-l-2   ${notification.is_read ? 'border-l-transparent' : 'border-l-accent'}`}
+      >
+        {notification.action_url ? (
+          <Link
+            to={notification.action_url}
+            className="block min-h-11 min-w-0 flex-1 py-1.5 hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+            onClick={handleClick}
+          >
+            {content}
+          </Link>
+        ) : (
+          <div className="min-w-0 flex-1 py-1">{content}</div>
+        )}
+        {!notification.is_read && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-11 w-11 shrink-0 sm:h-10 sm:w-10"
+            aria-label={`${t('notifications.markRead')}: ${notification.title}`}
+            title={t('notifications.markRead')}
+            disabled={pendingRead}
+            onClick={() => onMarkRead(notification.id)}
+          >
+            <Check className="h-4 w-4" />
+          </Button>
+        )}
+      </li>
+    </ResourceListRow>
   )
 })
 
@@ -308,22 +310,24 @@ export function NotificationsPage() {
             </p>
           ) : (
             <>
-              <ul className="divide-y divide-border overflow-hidden rounded-md border border-border bg-surface">
-                {visibleNotifications.map((notification) => (
-                  <NotificationRow
-                    key={notification.id}
-                    notification={notification}
-                    pendingRead={
-                      markNotificationRead.isPending &&
-                      markNotificationRead.variables === notification.id
-                    }
-                    onMarkRead={(id) => {
-                      setReadAction('one')
-                      markNotificationRead.mutate(id)
-                    }}
-                  />
-                ))}
-              </ul>
+              <ResourceList asChild variant="bordered">
+                <ul className="overflow-hidden">
+                  {visibleNotifications.map((notification) => (
+                    <NotificationRow
+                      key={notification.id}
+                      notification={notification}
+                      pendingRead={
+                        markNotificationRead.isPending &&
+                        markNotificationRead.variables === notification.id
+                      }
+                      onMarkRead={(id) => {
+                        setReadAction('one')
+                        markNotificationRead.mutate(id)
+                      }}
+                    />
+                  ))}
+                </ul>
+              </ResourceList>
               {(page > 0 || hasNextPage) && (
                 <nav
                   aria-label={t('notifications.pagination')}

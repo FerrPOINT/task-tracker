@@ -1,3 +1,4 @@
+import { ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 import { useState } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -109,29 +110,38 @@ export function TaskRepositoriesPanel({
           Связи репозиториев недоступны.
         </p>
       ) : (
-        <ul className="space-y-2">
-          {linked.data?.map((repository) => (
-            <li key={`${repository.forge_instance_id}/${repository.repository_id}`}>
-              {forge ? (
-                <a
-                  className="text-accent"
-                  href={withNamespaceLocation(
-                    `${forge}/catalog/repositories/${repository.repository_id}?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
-                    ref,
-                    search,
+        <ResourceList asChild>
+          <ul>
+            {linked.data?.map((repository) => (
+              <ResourceListRow
+                asChild
+                key={`${repository.forge_instance_id}/${repository.repository_id}`}
+              >
+                <li>
+                  {forge ? (
+                    <a
+                      className="text-accent"
+                      href={withNamespaceLocation(
+                        `${forge}/catalog/repositories/${repository.repository_id}?task_id=${taskId}&tracker_instance_id=${context.data!.binding.resource.instance_id}`,
+                        ref,
+                        search,
+                      )}
+                    >
+                      {repository.public_name}
+                    </a>
+                  ) : (
+                    repository.public_name
                   )}
-                >
-                  {repository.public_name}
-                </a>
-              ) : (
-                repository.public_name
-              )}
-            </li>
-          ))}
-          {linked.data?.length === 0 && (
-            <li className="text-text-muted">Репозитории пока не указаны.</li>
-          )}
-        </ul>
+                </li>
+              </ResourceListRow>
+            ))}
+            {linked.data?.length === 0 && (
+              <ResourceListRow asChild>
+                <li className="text-text-muted">Репозитории пока не указаны.</li>
+              </ResourceListRow>
+            )}
+          </ul>
+        </ResourceList>
       )}
       {context.data?.binding.state === 'active' && (
         <div className="space-y-3">
