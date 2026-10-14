@@ -200,8 +200,17 @@
           "401": {
             "description": "Unauthorized"
           },
+          "403": {
+            "description": "Task or artifact access denied"
+          },
           "404": {
             "description": "Attachment not found"
+          },
+          "409": {
+            "description": "Artifact custody conflict"
+          },
+          "503": {
+            "description": "Authentication or artifact storage unavailable"
           }
         },
         "security": [
@@ -4068,8 +4077,17 @@
           "401": {
             "description": "Unauthorized"
           },
+          "403": {
+            "description": "Task or artifact access denied"
+          },
           "404": {
             "description": "Issue not found"
+          },
+          "409": {
+            "description": "Artifact custody conflict"
+          },
+          "503": {
+            "description": "Authentication or artifact storage unavailable"
           }
         },
         "security": [
@@ -4117,8 +4135,17 @@
           "401": {
             "description": "Unauthorized"
           },
+          "403": {
+            "description": "Task or artifact access denied"
+          },
           "404": {
             "description": "Issue not found"
+          },
+          "409": {
+            "description": "Artifact custody conflict"
+          },
+          "503": {
+            "description": "Authentication or artifact storage unavailable"
           }
         },
         "security": [
@@ -9026,6 +9053,28 @@
         },
         "additionalProperties": false
       },
+      "ArtifactBinding": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "role"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/DeliveryRole"
+          }
+        },
+        "additionalProperties": false
+      },
       "ArtifactReceipt": {
         "type": "object",
         "required": [
@@ -9076,6 +9125,22 @@
           }
         }
       },
+      "AttachmentArtifact": {
+        "type": "object",
+        "required": [
+          "receipt",
+          "binding"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/ArtifactBinding"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
       "AttachmentListResponse": {
         "type": "object",
         "required": [
@@ -9102,6 +9167,16 @@
           "created_at"
         ],
         "properties": {
+          "artifact": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AttachmentArtifact"
+              }
+            ]
+          },
           "author_id": {
             "type": "string"
           },

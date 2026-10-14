@@ -398,25 +398,6 @@ fn canonical_attachment_issue_id(identifier: &str) -> Option<String> {
     (!id.is_nil() && id.to_string() == identifier).then(|| id.to_string())
 }
 
-#[cfg(test)]
-mod attachment_tests {
-    use super::*;
-    #[test]
-    fn only_canonical_non_nil_uuid_bypasses_generic_issue_lookup() {
-        let id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
-        assert_eq!(canonical_attachment_issue_id(id), Some(id.into()));
-        for identifier in [
-            "SDLC-7",
-            "not-a-uuid",
-            "00000000-0000-0000-0000-000000000000",
-            "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
-            "aaaaaaaabbbb4ccc8dddeeeeeeeeeeee",
-        ] {
-            assert_eq!(canonical_attachment_issue_id(identifier), None);
-        }
-    }
-}
-
 fn sdlc_path(task: Uuid, suffix: &str) -> String {
     format!("/api/v1/issues/{task}/sdlc{suffix}")
 }
@@ -580,6 +561,25 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
                 api.patch(&format!("/api/v1/worklogs/{}",enc(&id)),body).await
             }
             WorklogCommand::Delete { id } => api.delete(&format!("/api/v1/worklogs/{}",enc(&id))).await,
+        }
+    }
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+    #[test]
+    fn only_canonical_non_nil_uuid_bypasses_generic_issue_lookup() {
+        let id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+        assert_eq!(canonical_attachment_issue_id(id), Some(id.into()));
+        for identifier in [
+            "SDLC-7",
+            "not-a-uuid",
+            "00000000-0000-0000-0000-000000000000",
+            "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
+            "aaaaaaaabbbb4ccc8dddeeeeeeeeeeee",
+        ] {
+            assert_eq!(canonical_attachment_issue_id(identifier), None);
         }
     }
 }

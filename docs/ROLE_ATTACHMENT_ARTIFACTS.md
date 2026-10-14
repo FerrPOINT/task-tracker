@@ -123,8 +123,17 @@ existing fixture connection for the final real AttachmentRepository delete check
 
 ## Focused QA Requests
 
-These are pending local QA, not claimed executed tests. From `backend`, first
-collect each selector using `-- --list` and assert nonzero, then execute:
+The ordinary selectors and Central-auth route harness passed on source
+`bc38833`; the actual artifact PostgreSQL selector passed on `10696ed` after
+fixing initial/replay timestamp parity using the inserted database model.
+Genuine Rust OpenAPI generation and generated-client parity also passed.
+Strict all-target Clippy rejected the placement of the CLI test module; moving
+it below production items is a source fix, not yet a passing repeat of that gate.
+The temporary Base ComposeHelper v2 QA reports cleanup and input cleanup verified.
+These fixture-backed results are not installed/live seven-role acceptance.
+
+For reproduction from `backend`, first collect each selector using `-- --list`
+and assert nonzero, then execute:
 
 ```text
 cargo test -p domain attachment_artifact::tests::
@@ -141,9 +150,9 @@ PG env: `TT_CANDIDATES_TEST_DATABASE_URL`, fresh disposable DB name ending
 tests together against one database. This artifact PG selector includes an actual
 31-second server-clock expiry check; no trigger or protected-ledger weakening.
 
-After registration, main should also run its existing Central-auth route harness
-for these three routes (delivery grants, PM denial, configured SchedulerRead,
-foreign-project and global-admin hints), source OpenAPI and all-target Clippy.
+The executed Central-auth route harness covers delivery grants, PM denial,
+configured SchedulerRead, foreign-project access and global-admin hints for
+these three routes. Final all-target Clippy qualification remains separate.
 
 ## Changed Source Paths
 
