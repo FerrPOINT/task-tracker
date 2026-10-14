@@ -1,3 +1,4 @@
+import { ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
 import { LoadingState, usePlatformServices } from '@sdlc/ui/ui'
@@ -40,31 +41,39 @@ export function TaskDocumentsPanel({ taskId, projectKey }: { taskId: string; pro
           Wiki недоступна. Список документов не получен.
         </p>
       ) : (
-        <ul className="space-y-2">
-          {links.data?.map((link) => (
-            <li key={link.revision_id}>
-              {wiki ? (
-                <a
-                  className="text-accent hover:underline"
-                  href={withNamespaceLocation(
-                    `${wiki}/documents/${link.document_id}/revisions/${link.revision_id}`,
-                    ref,
-                    search,
+        <ResourceList asChild>
+          <ul>
+            {links.data?.map((link) => (
+              <ResourceListRow asChild key={link.revision_id}>
+                <li>
+                  {wiki ? (
+                    <a
+                      className="text-accent hover:underline"
+                      href={withNamespaceLocation(
+                        `${wiki}/documents/${link.document_id}/revisions/${link.revision_id}`,
+                        ref,
+                        search,
+                      )}
+                    >
+                      {link.title} · ревизия {link.version}
+                    </a>
+                  ) : (
+                    <span>
+                      {link.title} · ревизия {link.version}
+                    </span>
                   )}
-                >
-                  {link.title} · ревизия {link.version}
-                </a>
-              ) : (
-                <span>
-                  {link.title} · ревизия {link.version}
-                </span>
-              )}
-            </li>
-          ))}
-          {links.data?.length === 0 && (
-            <li className="text-text-muted">Опубликованные ревизии пока не связаны с задачей.</li>
-          )}
-        </ul>
+                </li>
+              </ResourceListRow>
+            ))}
+            {links.data?.length === 0 && (
+              <ResourceListRow asChild>
+                <li className="text-text-muted">
+                  Опубликованные ревизии пока не связаны с задачей.
+                </li>
+              </ResourceListRow>
+            )}
+          </ul>
+        </ResourceList>
       )}
       {wiki && matching && (
         <a

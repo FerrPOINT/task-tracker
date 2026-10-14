@@ -1,4 +1,4 @@
-import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectAvatar, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
@@ -60,23 +60,30 @@ export function DashboardPage() {
           ) : assigned.length === 0 ? (
             <p className="text-sm text-text-muted">{t('dashboard.noAssigned')}</p>
           ) : (
-            <div className="divide-y divide-border rounded-md border border-border">
-              {assigned.slice(0, PREVIEW_LIMIT).map((item) => (
-                <Link
-                  key={item.id}
-                  to={`/issues/${item.id}`}
-                  className="grid min-h-11 gap-1.5 rounded-sm px-3 py-2 text-sm hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                >
-                  <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
-                    <span className="shrink-0 font-mono text-xs text-text-muted">{item.key}</span>
-                    <span className="line-clamp-2 break-words sm:line-clamp-1">{item.summary}</span>
-                  </span>
-                  <span className="w-fit rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
-                    {statusLabel(item.status, t)}
-                  </span>
-                </Link>
-              ))}
-            </div>
+            <ResourceList asChild variant="bordered">
+              <div>
+                {assigned.slice(0, PREVIEW_LIMIT).map((item) => (
+                  <ResourceListRow asChild interactive key={item.id}>
+                    <Link
+                      to={`/issues/${item.id}`}
+                      className="grid gap-1.5 rounded-sm text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    >
+                      <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                        <span className="shrink-0 font-mono text-xs text-text-muted">
+                          {item.key}
+                        </span>
+                        <span className="line-clamp-2 break-words sm:line-clamp-1">
+                          {item.summary}
+                        </span>
+                      </span>
+                      <span className="w-fit rounded bg-surface-raised px-2 py-0.5 text-xs text-text-secondary">
+                        {statusLabel(item.status, t)}
+                      </span>
+                    </Link>
+                  </ResourceListRow>
+                ))}
+              </div>
+            </ResourceList>
           )}
         </section>
 
@@ -105,33 +112,33 @@ export function DashboardPage() {
           ) : !projects?.length ? (
             <p className="text-sm text-text-muted">{t('dashboard.noProjects')}</p>
           ) : (
-            <div className="divide-y divide-border rounded-md border border-border">
-              {projects.slice(0, PREVIEW_LIMIT).map((project) => (
-                <Link
-                  key={project.id}
-                  to={`/projects/${project.key}/board`}
-                  className="block min-h-11 rounded-sm p-3 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                >
-                  <div className="mb-1 flex items-center gap-2 break-words text-sm font-medium text-text-primary">
-                    <ProjectAvatar projectKey={project.key} />
-                    <span className="min-w-0">
-                      {project.key} · {project.name}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 text-xs text-text-muted">
-                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
-                      {t('board.todo')}: {project.todo_count ?? 0}
-                    </span>
-                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
-                      {t('board.inProgress')}: {project.in_progress_count ?? 0}
-                    </span>
-                    <span className="rounded bg-surface-raised px-1.5 py-0.5">
-                      {t('board.done')}: {project.done_count ?? 0}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
+            <ResourceList asChild variant="bordered">
+              <div>
+                {projects.slice(0, PREVIEW_LIMIT).map((project) => (
+                  <ResourceListRow asChild interactive key={project.id}>
+                    <Link to={`/projects/${project.key}/board`} className="block rounded-sm">
+                      <div className="mb-1 flex items-center gap-2 break-words text-sm font-medium text-text-primary">
+                        <ProjectAvatar projectKey={project.key} />
+                        <span className="min-w-0">
+                          {project.key} · {project.name}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 text-xs text-text-muted">
+                        <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                          {t('board.todo')}: {project.todo_count ?? 0}
+                        </span>
+                        <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                          {t('board.inProgress')}: {project.in_progress_count ?? 0}
+                        </span>
+                        <span className="rounded bg-surface-raised px-1.5 py-0.5">
+                          {t('board.done')}: {project.done_count ?? 0}
+                        </span>
+                      </div>
+                    </Link>
+                  </ResourceListRow>
+                ))}
+              </div>
+            </ResourceList>
           )}
         </section>
       </div>

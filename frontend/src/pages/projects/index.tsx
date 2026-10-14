@@ -1,5 +1,5 @@
 import { ProjectCardActionItems, ProjectCardLink } from '@/widgets/project-actions'
-import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectAvatar, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 
 import { Plus, Search, Trash2, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -149,73 +149,77 @@ export function ProjectsPage() {
           {t('projects.noMatches')}
         </div>
       ) : (
-        <ul className="divide-y divide-border rounded-md border border-border bg-surface">
-          {filteredProjects?.map((project) => (
-            <li
-              key={project.id}
-              className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-1 px-3 py-2 hover:bg-surface-raised sm:grid-cols-[minmax(0,1fr)_16rem_2.5rem]"
-            >
-              <ProjectCardLink
-                project={project}
-                className="row-start-1 flex min-h-10 min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-              >
-                <ProjectAvatar projectKey={project.key} size="md" />
-                <span className="min-w-0">
-                  <span
-                    className="line-clamp-2 font-semibold hover:text-accent hover:underline sm:line-clamp-1"
-                    title={project.name}
+        <ResourceList asChild variant="bordered">
+          <ul>
+            {filteredProjects?.map((project) => (
+              <ResourceListRow asChild key={project.id}>
+                <li className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-center gap-x-3 gap-y-1 sm:grid-cols-[minmax(0,1fr)_16rem_2.5rem]">
+                  <ProjectCardLink
+                    project={project}
+                    className="row-start-1 flex min-h-10 min-w-0 items-center gap-3 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                   >
-                    {project.name}
-                  </span>
-                  <span className="block truncate text-xs text-text-muted">
-                    {project.key} · {t('projects.lead')}: {project.owner_name || project.owner_id}
-                  </span>
-                </span>
-              </ProjectCardLink>
-              <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
-                <div className="min-w-0">
-                  <span className="block truncate text-text-muted">{t('projects.todo')}</span>
-                  <span className="font-medium">{project.todo_count}</span>
-                </div>
-                <div className="min-w-0">
-                  <span className="block truncate text-text-muted">{t('projects.inProgress')}</span>
-                  <span className="font-medium">{project.in_progress_count}</span>
-                </div>
-                <div className="min-w-0">
-                  <span className="block truncate text-text-muted">{t('projects.done')}</span>
-                  <span className="font-medium">{project.done_count}</span>
-                </div>
-              </div>
-              <div className="col-start-2 row-start-1 sm:col-start-3">
-                <DropdownMenu modal={false}>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-10 w-10"
-                      aria-label={t('projects.moreActionsFor', { name: project.name })}
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <ProjectCardActionItems project={project} />
-                    <DropdownMenuItem
-                      onClick={() => {
-                        remove.reset()
-                        setDeletingProject(project)
-                      }}
-                      className="gap-2 text-danger"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {t('common.delete')}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            </li>
-          ))}
-        </ul>
+                    <ProjectAvatar projectKey={project.key} size="md" />
+                    <span className="min-w-0">
+                      <span
+                        className="line-clamp-2 font-semibold hover:text-accent hover:underline sm:line-clamp-1"
+                        title={project.name}
+                      >
+                        {project.name}
+                      </span>
+                      <span className="block truncate text-xs text-text-muted">
+                        {project.key} · {t('projects.lead')}:{' '}
+                        {project.owner_name || project.owner_id}
+                      </span>
+                    </span>
+                  </ProjectCardLink>
+                  <div className="col-span-2 col-start-1 row-start-2 grid grid-cols-3 gap-1 text-center text-xs sm:col-span-1 sm:col-start-2 sm:row-start-1">
+                    <div className="min-w-0">
+                      <span className="block truncate text-text-muted">{t('projects.todo')}</span>
+                      <span className="font-medium">{project.todo_count}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="block truncate text-text-muted">
+                        {t('projects.inProgress')}
+                      </span>
+                      <span className="font-medium">{project.in_progress_count}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="block truncate text-text-muted">{t('projects.done')}</span>
+                      <span className="font-medium">{project.done_count}</span>
+                    </div>
+                  </div>
+                  <div className="col-start-2 row-start-1 sm:col-start-3">
+                    <DropdownMenu modal={false}>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-10 w-10"
+                          aria-label={t('projects.moreActionsFor', { name: project.name })}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <ProjectCardActionItems project={project} />
+                        <DropdownMenuItem
+                          onClick={() => {
+                            remove.reset()
+                            setDeletingProject(project)
+                          }}
+                          className="gap-2 text-danger"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          {t('common.delete')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </li>
+              </ResourceListRow>
+            ))}
+          </ul>
+        </ResourceList>
       )}
     </div>
   )
