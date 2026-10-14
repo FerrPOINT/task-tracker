@@ -1,6 +1,6 @@
 //! Review purpose wraps the existing PM reservation without impersonating initial creation.
 use crate::sdlc::{MAX_SAFE_VERSION, safe_version};
-use crate::sdlc_critical_blockers::sha256;
+use crate::sdlc_critical_blockers::{sha256, valid_operation_key};
 use crate::sdlc_pm_draft::PmDraftReservation;
 use serde::{Deserialize, Serialize};
 use shared::AppError;
@@ -34,12 +34,7 @@ impl ReserveCriticalPmReview {
             ]
             .iter()
             .any(|version| !(1..=MAX_SAFE_VERSION).contains(version))
-            || self.idempotency_key.is_empty()
-            || self.idempotency_key.len() > 128
-            || self
-                .idempotency_key
-                .chars()
-                .any(|c| c.is_control() || c.is_whitespace())
+            || !valid_operation_key(&self.idempotency_key)
         {
             return Err(AppError::validation(
                 "invalid critical PM reservation guard",
@@ -150,5 +145,19 @@ mod tests {
             }
             assert!(bad.validate().is_err());
         }
+    }
+
+    #[test]
+    fn reservation_keys_use_shared_critical_original_key_policy() {
+        let mut typed: ReserveCriticalPmReview = serde_json::from_value(command()).unwrap();
+        for key in ["", ".", "..", "a/b", "a\\b", "a b", "a\n", "a\0"] {
+            typed.idempotency_key = key.into();
+            assert!(!valid_operation_key(key));
+            assert!(typed.validate().is_err());
+        }
+        typed.idempotency_key = "x".repeat(129);
+        assert!(typed.validate().is_err());
+        typed.idempotency_key = "critical:review-2.original".into();
+        typed.validate().unwrap();
     }
 }

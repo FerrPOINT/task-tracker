@@ -12,8 +12,10 @@ pub struct CriticalPmReservationSource<'a> {
     pub state: &'a TaskState,
     pub lifecycle: &'a LifecycleReceipt,
     pub blocker: &'a CriticalBlockerReceipt,
-    pub initial_reservation: &'a PmDraftReservation,
-    pub initial_completion: &'a PmDraftCompletionReceipt,
+    pub previous_reservation: &'a PmDraftReservation,
+    pub current_completed: &'a PmDraftCompletionReceipt,
+    /// Original persisted PM assignment, not a current project-default selection.
+    pub original_pm_assignment: &'a PmAssignment,
     pub original_input: &'a PmDraftInputResponse,
     pub pm_owner_version: i64,
     pub pm_admission_state: &'a str,
@@ -52,8 +54,8 @@ fn verify_source(
     let state = source.state;
     let current = source.lifecycle;
     let blocker = source.blocker;
-    let initial = source.initial_reservation;
-    let completion = source.initial_completion;
+    let previous = source.previous_reservation;
+    let completion = source.current_completed;
     let input = source.original_input;
     let routing = &current.task.routing;
     let revision = state.revisions.last().ok_or_else(conflict)?;
@@ -67,7 +69,7 @@ fn verify_source(
         || state.tracker_instance_id != config.instance_id
         || state.stage != Stage::Draft
         || state.status != Some(LifecycleStatus::Ready)
-        || state.assignment.as_ref() != Some(&initial.assignment)
+        || state.assignment.as_ref() != Some(&previous.assignment)
         || state.task_id != current.task.task_id
         || state.owner_subject != current.task.owner_subject
         || state.retained_fields.get("lifecycle")
@@ -108,7 +110,7 @@ fn verify_source(
                 && confirmation.content_hash == revision.content_hash
         })
         || blocker.state != CriticalBlockerState::AwaitingPmReview
-        || blocker.version != 2
+        || !(1..=MAX_SAFE_VERSION).contains(&blocker.version)
         || blocker.version != command.expected_blocker_version
         || blocker.blocker_id != command.blocker_id
         || blocker.blocker_sha256 != command.blocker_sha256
@@ -119,7 +121,7 @@ fn verify_source(
         || blocker.root_task_id != state.task_id
         || blocker.owner_subject != state.owner_subject
         || blocker.routing_snapshot_id != routing.snapshot_id
-        || blocker.routing_generation != 1
+        || !(1..=MAX_SAFE_VERSION).contains(&blocker.routing_generation)
         || blocker.proposal.requirement_revision != revision.revision
         || blocker.proposal.content_hash != revision.content_hash
         || blocker.pm_review.is_some()
@@ -140,35 +142,47 @@ fn verify_source(
         return Err(conflict());
     }
 
-    let ordinal = initial.execution.ordinal.parse::<i64>().ok();
-    if initial.contract_version != 1
-        || !matches!(initial.variant, PmDraftVariant::Reserved)
-        || !matches!(initial.admission_state, PmDraftAdmissionState::Reserved)
-        || initial.dispatch_allowed
-        || initial.binding.tracker_instance_id != state.tracker_instance_id
-        || initial.binding.project_id != state.project_id
-        || initial.binding.task_id != state.task_id
-        || initial.binding.root_task_id != state.task_id
-        || initial.binding.owner_subject != state.owner_subject
-        || initial.assignment.assignment_id.is_nil()
-        || initial.assignment.execution_id.is_nil()
-        || initial.assignment.agent_id.is_nil()
-        || initial.assignment.version != 1
-        || initial.assignment.version != command.expected_pm_assignment_version
-        || initial.assignment.machine_subject != config.orchestrator_subject
-        || initial.assignment.machine_subject.trim().is_empty()
-        || initial.assignment.machine_subject == state.owner_subject
-        || initial.assignment.machine_subject == config.verifier_subject
-        || initial.assignment.machine_subject == config.reservation_scheduler_subject
-        || initial.owner_cas.expected_version != 0
-        || initial.owner_cas.version != 1
-        || source.pm_owner_version != initial.owner_cas.version
+    let ordinal = previous.execution.ordinal.parse::<i64>().ok();
+    if previous.contract_version != 1
+        || !matches!(previous.variant, PmDraftVariant::Reserved)
+        || !matches!(previous.admission_state, PmDraftAdmissionState::Reserved)
+        || previous.dispatch_allowed
+        || previous.binding.tracker_instance_id != state.tracker_instance_id
+        || previous.binding.project_id != state.project_id
+        || previous.binding.task_id != state.task_id
+        || previous.binding.root_task_id != state.task_id
+        || previous.binding.owner_subject != state.owner_subject
+        || previous.assignment.assignment_id.is_nil()
+        || previous.assignment.execution_id.is_nil()
+        || previous.assignment.agent_id.is_nil()
+        || !(1..=MAX_SAFE_VERSION).contains(&previous.assignment.version)
+        || previous.assignment.version != command.expected_pm_assignment_version
+        || source.original_pm_assignment.assignment_id.is_nil()
+        || source.original_pm_assignment.execution_id.is_nil()
+        || source.original_pm_assignment.agent_id.is_nil()
+        || !(1..=MAX_SAFE_VERSION).contains(&source.original_pm_assignment.version)
+        || previous.assignment.agent_id != source.original_pm_assignment.agent_id
+        || previous.assignment.version < source.original_pm_assignment.version
+        || (previous.assignment.version == source.original_pm_assignment.version
+            && previous.assignment != *source.original_pm_assignment)
+        || (previous.assignment.version > source.original_pm_assignment.version
+            && (previous.assignment.assignment_id == source.original_pm_assignment.assignment_id
+                || previous.assignment.execution_id == source.original_pm_assignment.execution_id))
+        || previous.assignment.machine_subject != config.orchestrator_subject
+        || previous.assignment.machine_subject.trim().is_empty()
+        || previous.assignment.machine_subject == state.owner_subject
+        || previous.assignment.machine_subject == config.verifier_subject
+        || previous.assignment.machine_subject == config.reservation_scheduler_subject
+        || previous.owner_cas.expected_version < 0
+        || !(1..=MAX_SAFE_VERSION).contains(&previous.owner_cas.version)
+        || previous.owner_cas.expected_version.checked_add(1) != Some(previous.owner_cas.version)
+        || source.pm_owner_version != previous.owner_cas.version
         || source.pm_owner_version != command.expected_pm_owner_version
         || source.pm_admission_state != "completed"
-        || ordinal.is_none_or(|n| n <= 0 || n.to_string() != initial.execution.ordinal)
-        || initial.execution.key != format!("SDLC-{}", initial.execution.ordinal)
-        || initial.assignment_operation_key
-            != format!("pm-draft:{}", initial.assignment.assignment_id)
+        || ordinal.is_none_or(|n| n <= 0 || n.to_string() != previous.execution.ordinal)
+        || previous.execution.key != format!("SDLC-{}", previous.execution.ordinal)
+        || previous.assignment_operation_key
+            != format!("pm-draft:{}", previous.assignment.assignment_id)
         || input.contract_version != 1
         || input.tracker_instance_id != state.tracker_instance_id
         || input.project_id != state.project_id
@@ -176,8 +190,8 @@ fn verify_source(
         || input.root_task_id != state.task_id
         || input.owner_subject != state.owner_subject
         || input.input.snapshot_ref.is_nil()
-        || input.input.snapshot_ref != initial.input.snapshot_ref
-        || input.input.sha256 != initial.input.sha256
+        || input.input.snapshot_ref != previous.input.snapshot_ref
+        || input.input.sha256 != previous.input.sha256
         || input.input.sha256
             != crate::sdlc::pm_draft_input_hash(&input.input.title, &input.input.description)?
         || completion.contract_version != 1
@@ -189,10 +203,10 @@ fn verify_source(
         || completion.task_id != state.task_id
         || completion.root_task_id != state.task_id
         || completion.owner_subject != state.owner_subject
-        || completion.fence.assignment_id != initial.assignment.assignment_id
-        || completion.fence.execution_id != initial.assignment.execution_id
-        || completion.fence.agent_id != initial.assignment.agent_id
-        || completion.fence.assignment_version != initial.assignment.version
+        || completion.fence.assignment_id != previous.assignment.assignment_id
+        || completion.fence.execution_id != previous.assignment.execution_id
+        || completion.fence.agent_id != previous.assignment.agent_id
+        || completion.fence.assignment_version != previous.assignment.version
         || completion.owner_version != source.pm_owner_version
         || completion.requirement_revision != revision.revision
         || completion.content_hash != revision.content_hash
@@ -227,20 +241,22 @@ pub fn prepare_critical_pm_reservation(
     crate::sdlc_reservation::scheduler(actor, config)?;
     command.validate()?;
     verify_source(&source, config, command)?;
-    let initial = source.initial_reservation;
+    let previous = source.previous_reservation;
     if allocation.assignment_id.is_nil()
         || allocation.execution_id.is_nil()
         || allocation.assignment_id == allocation.execution_id
         || [
-            initial.assignment.assignment_id,
-            initial.assignment.execution_id,
+            previous.assignment.assignment_id,
+            previous.assignment.execution_id,
+            source.original_pm_assignment.assignment_id,
+            source.original_pm_assignment.execution_id,
             source.blocker.proposal.fence.assignment_id,
             source.blocker.proposal.fence.execution_id,
         ]
         .iter()
         .any(|id| *id == allocation.assignment_id || *id == allocation.execution_id)
         || allocation.ordinal
-            <= initial
+            <= previous
                 .execution
                 .ordinal
                 .parse::<i64>()
@@ -251,9 +267,9 @@ pub fn prepare_critical_pm_reservation(
     let assignment = PmAssignment {
         assignment_id: allocation.assignment_id,
         execution_id: allocation.execution_id,
-        agent_id: initial.assignment.agent_id,
-        version: next(initial.assignment.version)?,
-        machine_subject: initial.assignment.machine_subject.clone(),
+        agent_id: previous.assignment.agent_id,
+        version: next(previous.assignment.version)?,
+        machine_subject: previous.assignment.machine_subject.clone(),
     };
     let mut blocker = source.blocker.clone();
     blocker.version = next(blocker.version)?;
@@ -276,7 +292,7 @@ pub fn prepare_critical_pm_reservation(
     let reservation = PmDraftReservation {
         contract_version: 1,
         variant: PmDraftVariant::Reserved,
-        binding: initial.binding.clone(),
+        binding: previous.binding.clone(),
         owner_cas: OwnerCas {
             expected_version: source.pm_owner_version,
             version: next(source.pm_owner_version)?,
@@ -287,7 +303,7 @@ pub fn prepare_critical_pm_reservation(
             ordinal: allocation.ordinal.to_string(),
             key: format!("SDLC-{}", allocation.ordinal),
         },
-        input: initial.input.clone(),
+        input: previous.input.clone(),
         admission_state: PmDraftAdmissionState::Reserved,
         dispatch_allowed: false,
     };
@@ -326,8 +342,9 @@ mod tests {
         state: TaskState,
         lifecycle: LifecycleReceipt,
         blocker: CriticalBlockerReceipt,
-        initial: PmDraftReservation,
+        previous: PmDraftReservation,
         completion: PmDraftCompletionReceipt,
+        original_pm_assignment: PmAssignment,
         input: PmDraftInputResponse,
         config: SdlcConfig,
         scheduler: Principal,
@@ -414,7 +431,7 @@ mod tests {
                     .unwrap(),
                 },
             };
-            let initial = PmDraftReservation {
+            let previous = PmDraftReservation {
                 contract_version: 1,
                 variant: PmDraftVariant::Reserved,
                 binding: PmDraftBinding {
@@ -447,9 +464,9 @@ mod tests {
                 admission_state: PmDraftAdmissionState::Reserved,
                 dispatch_allowed: false,
             };
-            let mut initial = initial;
-            initial.assignment_operation_key =
-                format!("pm-draft:{}", initial.assignment.assignment_id);
+            let mut previous = previous;
+            previous.assignment_operation_key =
+                format!("pm-draft:{}", previous.assignment.assignment_id);
             let completion = PmDraftCompletionReceipt {
                 contract_version: 1,
                 completion_id: Uuid::new_v4(),
@@ -459,9 +476,9 @@ mod tests {
                 root_task_id: task,
                 owner_subject: "owner".into(),
                 fence: MachineFence {
-                    assignment_id: initial.assignment.assignment_id,
-                    execution_id: initial.assignment.execution_id,
-                    agent_id: initial.assignment.agent_id,
+                    assignment_id: previous.assignment.assignment_id,
+                    execution_id: previous.assignment.execution_id,
+                    agent_id: previous.assignment.agent_id,
                     assignment_version: 1,
                 },
                 owner_version: 1,
@@ -559,7 +576,7 @@ mod tests {
             let raw = json!({"tracker_instance_id":input.tracker_instance_id,"project_id":project,
                 "task_id":task,"root_task_id":task,"owner_subject":"owner","stage":"Draft",
                 "status":"Ready","draft_submode":"awaiting_confirmation","confirmation_revision":1,
-                "assignment":initial.assignment,"questions":[],"revisions":[{
+                "assignment":previous.assignment,"questions":[],"revisions":[{
                     "revision":1,"content_hash":completion.content_hash,"author_subject":"pm",
                     "created_at":now,"goal":document.goal,"scope":document.scope,
                     "exclusions":document.exclusions,"scenarios":document.scenarios,
@@ -587,12 +604,14 @@ mod tests {
                 expected_pm_assignment_version: 1,
                 idempotency_key: "original-critical-pm-reservation".into(),
             };
+            let original_pm_assignment = previous.assignment.clone();
             Self {
                 state,
                 lifecycle,
                 blocker,
-                initial,
+                previous,
                 completion,
+                original_pm_assignment,
                 input,
                 config,
                 command,
@@ -610,12 +629,42 @@ mod tests {
                 state: &self.state,
                 lifecycle: &self.lifecycle,
                 blocker: &self.blocker,
-                initial_reservation: &self.initial,
-                initial_completion: &self.completion,
+                previous_reservation: &self.previous,
+                current_completed: &self.completion,
+                original_pm_assignment: &self.original_pm_assignment,
                 original_input: &self.input,
-                pm_owner_version: 1,
+                pm_owner_version: self.previous.owner_cas.version,
                 pm_admission_state: "completed",
             }
+        }
+
+        fn completed_generation(&mut self, version: i64) {
+            assert!(version > 1);
+            self.previous.assignment.assignment_id = Uuid::new_v4();
+            self.previous.assignment.execution_id = Uuid::new_v4();
+            self.previous.assignment.version = version;
+            self.previous.assignment_operation_key =
+                format!("pm-draft:{}", self.previous.assignment.assignment_id);
+            self.previous.owner_cas = OwnerCas {
+                expected_version: version - 1,
+                version,
+            };
+            self.previous.execution = PmDraftExecution {
+                ordinal: "7".into(),
+                key: "SDLC-7".into(),
+            };
+            self.completion.completion_id = Uuid::new_v4();
+            self.completion.fence = MachineFence {
+                assignment_id: self.previous.assignment.assignment_id,
+                execution_id: self.previous.assignment.execution_id,
+                agent_id: self.previous.assignment.agent_id,
+                assignment_version: version,
+            };
+            self.completion.owner_version = version;
+            self.completion.idempotency_key = format!("completed-pm-generation-{version}");
+            self.state.assignment = Some(self.previous.assignment.clone());
+            self.command.expected_pm_owner_version = version;
+            self.command.expected_pm_assignment_version = version;
         }
 
         fn allocation() -> CriticalPmReservationAllocation {
@@ -640,7 +689,7 @@ mod tests {
     #[test]
     fn review_preserves_original_pm_task_input_and_history_without_dispatch_or_consent() {
         let f = Fixture::new();
-        let before = json!({"state":f.state,"initial":f.initial,"completion":f.completion,
+        let before = json!({"state":f.state,"previous":f.previous,"completion":f.completion,
             "blocker":f.blocker,"input":f.input,"lifecycle":f.lifecycle});
         let allocation = Fixture::allocation();
         let new_assignment = allocation.assignment_id;
@@ -658,10 +707,10 @@ mod tests {
             result.purpose,
             CriticalPmReservationPurpose::CriticalBusinessReview
         );
-        assert_eq!(result.reservation.binding, f.initial.binding);
+        assert_eq!(result.reservation.binding, f.previous.binding);
         assert_eq!(
             result.reservation.assignment.agent_id,
-            f.initial.assignment.agent_id
+            f.previous.assignment.agent_id
         );
         assert_eq!(result.reservation.assignment.assignment_id, new_assignment);
         assert_eq!(result.reservation.assignment.execution_id, new_execution);
@@ -671,7 +720,7 @@ mod tests {
         assert_eq!(result.reservation.execution.key, "SDLC-11");
         assert_eq!(
             serde_json::to_value(&result.reservation.input).unwrap(),
-            serde_json::to_value(&f.initial.input).unwrap()
+            serde_json::to_value(&f.previous.input).unwrap()
         );
         assert!(!result.reservation.dispatch_allowed);
         assert_eq!(
@@ -724,7 +773,7 @@ mod tests {
         assert!(serde_json::from_value::<PmDraftReservation>(json!(result)).is_err());
         assert_eq!(
             before,
-            json!({"state":f.state,"initial":f.initial,"completion":f.completion,
+            json!({"state":f.state,"previous":f.previous,"completion":f.completion,
             "blocker":f.blocker,"input":f.input,"lifecycle":f.lifecycle})
         );
     }
@@ -739,7 +788,7 @@ mod tests {
                 false,
                 vec![
                     "task-tracker:write".into(),
-                    f.initial.assignment.scope(f.state.task_id),
+                    f.previous.assignment.scope(f.state.task_id),
                 ],
             ),
             ("scheduler", false, vec!["task-tracker:read".into()]),
@@ -749,7 +798,7 @@ mod tests {
                 false,
                 vec![
                     "task-tracker:write".into(),
-                    f.initial.assignment.scope(f.state.task_id),
+                    f.previous.assignment.scope(f.state.task_id),
                 ],
             ),
         ] {
@@ -789,7 +838,7 @@ mod tests {
     }
 
     #[test]
-    fn forged_completed_or_foreign_initial_pm_context_is_rejected() {
+    fn forged_completed_or_foreign_previous_pm_context_is_rejected() {
         for changed in 0..9 {
             let mut f = Fixture::new();
             match changed {
@@ -798,10 +847,10 @@ mod tests {
                 2 => f.completion.fence.execution_id = Uuid::new_v4(),
                 3 => f.completion.owner_subject = "foreign".into(),
                 4 => f.completion.lease_id = Uuid::nil(),
-                5 => f.initial.assignment.agent_id = Uuid::new_v4(),
-                6 => f.initial.input.snapshot_ref = Uuid::new_v4(),
+                5 => f.previous.assignment.agent_id = Uuid::new_v4(),
+                6 => f.previous.input.snapshot_ref = Uuid::new_v4(),
                 7 => f.input.input.description.push_str("changed"),
-                _ => f.initial.owner_cas.version = 2,
+                _ => f.previous.owner_cas.version = 2,
             }
             assert!(f.plan().is_err());
         }
@@ -818,6 +867,121 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn subsequent_reviews_increment_actual_completed_generation_and_keep_frozen_pm_and_input() {
+        for version in [2, 17] {
+            let mut f = Fixture::new();
+            let original = json!({"assignment":f.original_pm_assignment,"input":f.input});
+            f.completed_generation(version);
+            f.blocker.version = 6;
+            f.blocker.routing_generation = 2;
+            f.command.expected_blocker_version = 6;
+            let previous = json!({"reservation":f.previous,"completion":f.completion});
+            let plan = f.plan().unwrap();
+            let reservation = &plan.result.reservation;
+            assert_eq!(reservation.assignment.version, version + 1);
+            assert_eq!(reservation.owner_cas.expected_version, version);
+            assert_eq!(reservation.owner_cas.version, version + 1);
+            assert_eq!(
+                reservation.assignment.agent_id,
+                f.original_pm_assignment.agent_id
+            );
+            assert_ne!(
+                reservation.assignment.assignment_id,
+                f.previous.assignment.assignment_id
+            );
+            assert_ne!(
+                reservation.assignment.execution_id,
+                f.previous.assignment.execution_id
+            );
+            assert_eq!(reservation.input.snapshot_ref, f.input.input.snapshot_ref);
+            assert_eq!(reservation.input.sha256, f.input.input.sha256);
+            assert_eq!(plan.blocker.version, 7);
+            assert_eq!(plan.blocker.routing_generation, 2);
+            assert!(!reservation.dispatch_allowed);
+            assert_eq!(plan.lifecycle.task.runtime, RuntimeState::Terminal);
+            assert_eq!(
+                original,
+                json!({"assignment":f.original_pm_assignment,"input":f.input})
+            );
+            assert_eq!(
+                previous,
+                json!({"reservation":f.previous,"completion":f.completion})
+            );
+        }
+    }
+
+    #[test]
+    fn older_completion_or_generation_cannot_stand_in_for_current_completed_pm() {
+        let mut f = Fixture::new();
+        let older_completion = f.completion.clone();
+        let older_reservation = f.previous.clone();
+        f.completed_generation(2);
+        let mut source = f.source();
+        source.current_completed = &older_completion;
+        assert!(
+            prepare_critical_pm_reservation(
+                source,
+                &f.scheduler,
+                &f.config,
+                &f.command,
+                Fixture::allocation()
+            )
+            .is_err()
+        );
+        let mut source = f.source();
+        source.previous_reservation = &older_reservation;
+        assert!(
+            prepare_critical_pm_reservation(
+                source,
+                &f.scheduler,
+                &f.config,
+                &f.command,
+                Fixture::allocation()
+            )
+            .is_err()
+        );
+        assert!(f.plan().is_ok());
+
+        let replacement = Uuid::new_v4();
+        f.previous.assignment.agent_id = replacement;
+        f.completion.fence.agent_id = replacement;
+        f.state.assignment = Some(f.previous.assignment.clone());
+        assert!(
+            f.plan().is_err(),
+            "even matching current records cannot replace the frozen PM"
+        );
+    }
+
+    #[test]
+    fn bounded_current_assignment_owner_and_blocker_versions_cannot_wrap() {
+        for overflow in 0..3 {
+            let mut f = Fixture::new();
+            f.completed_generation(2);
+            match overflow {
+                0 => {
+                    f.previous.assignment.version = MAX_SAFE_VERSION;
+                    f.completion.fence.assignment_version = MAX_SAFE_VERSION;
+                    f.state.assignment = Some(f.previous.assignment.clone());
+                    f.command.expected_pm_assignment_version = MAX_SAFE_VERSION;
+                }
+                1 => {
+                    f.previous.owner_cas = OwnerCas {
+                        expected_version: MAX_SAFE_VERSION - 1,
+                        version: MAX_SAFE_VERSION,
+                    };
+                    f.completion.owner_version = MAX_SAFE_VERSION;
+                    f.command.expected_pm_owner_version = MAX_SAFE_VERSION;
+                }
+                _ => {
+                    f.blocker.version = MAX_SAFE_VERSION;
+                    f.command.expected_blocker_version = MAX_SAFE_VERSION;
+                }
+            }
+            assert!(f.plan().is_err());
+        }
     }
 
     #[test]
@@ -858,7 +1022,7 @@ mod tests {
             let mut allocation = Fixture::allocation();
             match changed {
                 0 => allocation.assignment_id = Uuid::nil(),
-                1 => allocation.execution_id = f.initial.assignment.execution_id,
+                1 => allocation.execution_id = f.previous.assignment.execution_id,
                 2 => allocation.assignment_id = f.blocker.proposal.fence.assignment_id,
                 3 => allocation.ordinal = 1,
                 _ => allocation.ordinal = -1,
