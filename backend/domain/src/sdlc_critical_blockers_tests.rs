@@ -143,6 +143,11 @@ fn text_fence_key_and_revision_bounds_apply_to_typed_callers_too() {
             "case {change}"
         );
     }
+    for key in [".", ".."] {
+        let mut bad = p.clone();
+        bad.idempotency_key = key.into();
+        assert!(bad.validate(DeliveryRole::Analyst).is_err());
+    }
 }
 
 #[test]

@@ -150,6 +150,7 @@ impl SubmitCriticalBlocker {
             || !(1..=crate::sdlc::MAX_SAFE_VERSION).contains(&self.fence.expected_lease_version)
             || self.idempotency_key.is_empty()
             || self.idempotency_key.len() > 128
+            || matches!(self.idempotency_key.as_str(), "." | "..")
             || self
                 .idempotency_key
                 .chars()

@@ -6,6 +6,8 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+#[path = "sdlc_critical_commands.rs"]
+mod critical_commands;
 #[path = "sdlc_pm_commands.rs"]
 mod pm_commands;
 
@@ -209,6 +211,11 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Propose or reconcile a critical business question without advancing the task
+    CriticalBlocker {
+        #[command(subcommand)]
+        command: critical_commands::CriticalBlockerCommand,
+    },
     /// Read the current authoritative single-task assignment and lifecycle
     Lifecycle {
         #[arg(long)]
@@ -414,6 +421,9 @@ fn json_input(path: &str) -> Result<Value> {
 
 pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
     match command {
+        SdlcCommand::CriticalBlocker { command } => {
+            critical_commands::critical_blocker(api, command).await
+        }
         SdlcCommand::Lifecycle { task } => api.get(&sdlc_path(task, "/lifecycle")).await,
         SdlcCommand::Result { command } => pm_commands::delivery_result(api, command).await,
         SdlcCommand::Routing { command } => pm_commands::routing(api, command).await,

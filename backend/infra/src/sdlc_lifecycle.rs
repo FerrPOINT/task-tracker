@@ -524,6 +524,40 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl LifecycleRepository for PostgresSdlcRepository {
+    async fn submit_critical_blocker(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_critical_blockers::SubmitCriticalBlocker,
+    ) -> Result<(domain::sdlc_critical_blockers::CriticalBlockerReceipt, bool), AppError> {
+        app::sdlc_lifecycle::producer(actor, true)?;
+        let storage = self.file_storage.as_deref().ok_or_else(|| {
+            AppError::Unavailable("critical blocker artifact storage not configured".into())
+        })?;
+        PostgresSdlcRepository::submit_critical_blocker_with_storage(
+            self, task, actor, command, storage,
+        )
+        .await
+    }
+
+    async fn critical_blocker(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        blocker_id: Uuid,
+    ) -> Result<domain::sdlc_critical_blockers::CriticalBlockerReceipt, AppError> {
+        PostgresSdlcRepository::critical_blocker(self, task, actor, blocker_id).await
+    }
+
+    async fn critical_blocker_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_critical_blockers::CriticalBlockerReceipt, AppError> {
+        PostgresSdlcRepository::critical_blocker_operation(self, task, actor, key).await
+    }
+
     async fn delivery_candidates(
         &self,
         actor: &Principal,

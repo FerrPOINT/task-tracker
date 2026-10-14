@@ -8,8 +8,11 @@ use sea_orm::{
 };
 use serde_json::{Value as Json, json};
 use shared::AppError;
+use std::sync::Arc;
 use uuid::Uuid;
 
+#[path = "sdlc_critical_blockers.rs"]
+mod critical_blockers;
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
 #[path = "sdlc_lifecycle.rs"]
@@ -26,6 +29,7 @@ mod routing;
 pub struct PostgresSdlcRepository {
     db: DatabaseConnection,
     config: SdlcConfig,
+    file_storage: Option<Arc<dyn domain::FileStorage>>,
 }
 
 #[path = "attachment_artifacts.rs"]
@@ -60,6 +64,11 @@ fn state_from(row: QueryResult) -> Result<TaskState, AppError> {
 }
 
 impl PostgresSdlcRepository {
+    pub fn with_file_storage(mut self, storage: Arc<dyn domain::FileStorage>) -> Self {
+        self.file_storage = Some(storage);
+        self
+    }
+
     pub async fn connect(url: &str, config: SdlcConfig) -> Result<Self, AppError> {
         if config.instance_id.trim().is_empty() || config.instance_id.len() > 128 {
             return Err(AppError::validation("stable SDLC instance ID is required"));
@@ -79,7 +88,11 @@ impl PostgresSdlcRepository {
                 "configured SDLC instance differs from persisted identity",
             ));
         }
-        Ok(Self { db, config })
+        Ok(Self {
+            db,
+            config,
+            file_storage: None,
+        })
     }
 
     async fn project_access(

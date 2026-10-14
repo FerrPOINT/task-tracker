@@ -8,7 +8,11 @@ impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .get_connection()
-            .execute_unprepared(include_str!("single_task_lifecycle.sql"))
+            .execute_unprepared(concat!(
+                include_str!("single_task_lifecycle.sql"),
+                "\n",
+                include_str!("critical_pm_return.sql")
+            ))
             .await?;
         Ok(())
     }

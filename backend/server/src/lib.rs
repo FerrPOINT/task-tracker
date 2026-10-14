@@ -91,7 +91,8 @@ pub async fn run(
         let repository =
             infra::sdlc::PostgresSdlcRepository::connect(&config.database.url, sdlc_config.clone())
                 .await
-                .expect("failed to initialize stable SDLC storage");
+                .expect("failed to initialize stable SDLC storage")
+                .with_file_storage(storage.clone());
         ctx.services.attachment = Arc::new(
             app::services::AttachmentServiceImpl::new(
                 ctx.repos.attachments.clone(),

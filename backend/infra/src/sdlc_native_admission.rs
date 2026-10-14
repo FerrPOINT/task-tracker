@@ -227,6 +227,7 @@ mod owned_history_tests {
         )).await.unwrap().unwrap()).unwrap();
         let repo = PostgresSdlcRepository {
             db,
+            file_storage: None,
             config: SdlcConfig {
                 single_task_project_ids: std::collections::HashSet::new(),
                 instance_id: state.tracker_instance_id.clone(),

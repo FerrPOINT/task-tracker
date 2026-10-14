@@ -306,6 +306,11 @@ fn match_blocker(
     command: &CriticalPmReviewGuard,
 ) -> Result<(), AppError> {
     crate::sdlc::validate_key(&command.idempotency_key)?;
+    if matches!(command.idempotency_key.as_str(), "." | "..") {
+        return Err(AppError::validation(
+            "critical operation key cannot be a URL dot segment",
+        ));
+    }
     let assignment = current.assignment.as_ref().ok_or_else(conflict)?;
     let binding = current.binding.as_ref().ok_or_else(conflict)?;
     let source = &blocker.proposal.fence;
