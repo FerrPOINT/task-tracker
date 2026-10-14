@@ -5,6 +5,46 @@ use domain::sdlc_lifecycle::*;
 use shared::AppError;
 use uuid::Uuid;
 
+impl crate::sdlc::SdlcService {
+    pub async fn submit_critical_blocker(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: SubmitCriticalBlocker,
+    ) -> Result<(CriticalBlockerReceipt, bool), AppError> {
+        crate::sdlc::validate_key(&command.idempotency_key)?;
+        self.lifecycle_repository()?
+            .submit_critical_blocker(task, actor, command)
+            .await
+    }
+
+    pub async fn critical_blocker(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        blocker_id: Uuid,
+    ) -> Result<CriticalBlockerReceipt, AppError> {
+        if blocker_id.is_nil() {
+            return Err(AppError::validation("invalid critical blocker ID"));
+        }
+        self.lifecycle_repository()?
+            .critical_blocker(task, actor, blocker_id)
+            .await
+    }
+
+    pub async fn critical_blocker_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<CriticalBlockerReceipt, AppError> {
+        crate::sdlc::validate_key(key)?;
+        self.lifecycle_repository()?
+            .critical_blocker_operation(task, actor, key)
+            .await
+    }
+}
+
 /// Server allocation, never a request DTO. Generation comes from persisted current selection.
 pub struct BlockerAllocation {
     pub blocker_id: Uuid,

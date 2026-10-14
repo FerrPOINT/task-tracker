@@ -41,7 +41,7 @@ impl crate::sdlc::SdlcService {
             .await
     }
 
-    fn lifecycle_repository(&self) -> Result<&dyn LifecycleRepository, AppError> {
+    pub(crate) fn lifecycle_repository(&self) -> Result<&dyn LifecycleRepository, AppError> {
         self.repository.lifecycle_repository().ok_or_else(|| {
             AppError::Unavailable("single-task lifecycle repository not configured".into())
         })

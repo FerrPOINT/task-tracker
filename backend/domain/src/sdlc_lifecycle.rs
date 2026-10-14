@@ -526,6 +526,39 @@ pub struct LifecycleReadback {
 
 #[async_trait::async_trait]
 pub trait LifecycleRepository: Send + Sync {
+    async fn submit_critical_blocker(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: crate::sdlc_critical_blockers::SubmitCriticalBlocker,
+    ) -> Result<(crate::sdlc_critical_blockers::CriticalBlockerReceipt, bool), AppError> {
+        Err(AppError::Unavailable(
+            "critical blocker repository not configured".into(),
+        ))
+    }
+
+    async fn critical_blocker(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _blocker_id: Uuid,
+    ) -> Result<crate::sdlc_critical_blockers::CriticalBlockerReceipt, AppError> {
+        Err(AppError::Unavailable(
+            "critical blocker repository not configured".into(),
+        ))
+    }
+
+    async fn critical_blocker_operation(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _key: &str,
+    ) -> Result<crate::sdlc_critical_blockers::CriticalBlockerReceipt, AppError> {
+        Err(AppError::Unavailable(
+            "critical blocker repository not configured".into(),
+        ))
+    }
+
     async fn delivery_candidates(
         &self,
         _actor: &Principal,
