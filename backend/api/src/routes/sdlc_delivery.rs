@@ -378,7 +378,7 @@ mod tests {
             "review":{"blocker_id":Uuid::new_v4(),"blocker_sha256":"a".repeat(64),
                 "expected_blocker_version":1,"expected_task_version":7,
                 "fence":{"assignment_id":Uuid::new_v4(),"execution_id":Uuid::new_v4(),
-                    "fencing_token":1,"lease_id":Uuid::new_v4(),"expected_lease_version":3},"idempotency_key":"return:original/1"},
+                    "fencing_token":1,"lease_id":Uuid::new_v4(),"expected_lease_version":3},"idempotency_key":"return:original:1"},
             "terminal":{"assignment_hash":"b".repeat(64),"chat_id":Uuid::new_v4(),"run_id":Uuid::new_v4(),
                 "state":"cancelled","receipt":{"reference":"fixture://SYNTHETIC-native-readback","sha256":"c".repeat(64)}}
         });

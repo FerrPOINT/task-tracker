@@ -100,3 +100,29 @@ durable envelope integration, new same-task PM review purpose/reservation, scope
 evidence read, new revision/exact owner consent/routing generation, actual PM
 Workflow/native completion and fresh Analysis. Return success alone proves none
 of those subsequent effects.
+
+## Keyfix companion
+
+This successor requires main's NEW-critical-only keyfix providing
+`domain::sdlc_critical_blockers::valid_operation_key(&str) -> bool` and the matching
+pure guard/SQL changes. Return app preflight and archive GET reuse that actual
+domain helper. CLI production uses main's identical local `readable_key`: domain
+remains dev-dependency only. A new CLI unit test compares it with the domain helper
+(opaque punctuation, slash/backslash/dot rejection, UTF-8 byte bounds).
+
+CLI validates the supplied key BEFORE all critical POST/original-key GET requests,
+including Return. Valid fixtures use `critical:original:1?x=+%#` and
+`return:original:1?x=+%#`; no encoded path separator is required. Return no-HTTP
+negatives cover invalid keys in BOTH body and read selector. Base path security,
+legacy/global key validators, dependencies, SQL and all endpoint/receipt shapes
+are unchanged in this companion. Main's keyfix is a required source prerequisite,
+not a locally fabricated helper or an inherited QA PASS.
+
+Additional collection input (one authored CLI parity unit):
+
+```text
+cargo test --locked -p task-tracker-cli --bin task-tracker critical_readable_key_matches_domain -- --list
+```
+
+No Cargo/HTTP/PG/Docker was executed for this companion. Main owns the next
+Tracker-only immutable QA; unchanged Fleet does not need another build here.

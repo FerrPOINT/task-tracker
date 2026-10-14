@@ -1048,7 +1048,13 @@ async fn return_held_to_pm(
             Err(AppError::Forbidden)
         ));
     }
-    for key in [".", "..", "unknown-return-key"] {
+    for key in [
+        ".",
+        "..",
+        "return/original",
+        "return\\original",
+        "unknown-return-key",
+    ] {
         assert!(
             f.repo
                 .critical_pm_return_operation(r.task, &f.reader, key)

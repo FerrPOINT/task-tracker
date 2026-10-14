@@ -1258,7 +1258,7 @@ fn critical_return_command() -> Value {
             "fence":{"assignment_id":"22222222-2222-2222-2222-222222222222",
                 "execution_id":"33333333-3333-3333-3333-333333333333","fencing_token":1,
                 "lease_id":"44444444-4444-4444-4444-444444444444","expected_lease_version":3},
-            "idempotency_key":"return:original/1?x=+%#"},
+            "idempotency_key":"return:original:1?x=+%#"},
         "terminal":{"assignment_hash":"b".repeat(64),"chat_id":"77777777-7777-7777-7777-777777777777",
             "run_id":"88888888-8888-8888-8888-888888888888","state":"cancelled",
             "receipt":{"reference":"fixture://SYNTHETIC-native-terminal-readback","sha256":"c".repeat(64)}}
@@ -1421,7 +1421,7 @@ async fn sdlc_critical_return_errors_do_not_retry_mutate_or_leak_private_body() 
             args.extend_from_slice(if action == "return-to-pm" {
                 &["--from-file", "-"]
             } else {
-                &["--key", "return:original/1?x=+%#"]
+                &["--key", "return:original:1?x=+%#"]
             });
             let output = server
                 .run(
@@ -1502,7 +1502,14 @@ async fn sdlc_critical_return_invalid_cli_inputs_and_impersonation_flags_never_s
         assert_eq!(output.status.code(), Some(2));
         assert!(output.stdout.is_empty());
     }
-    for key in [".", "..", "space key", ""] {
+    for key in [
+        ".",
+        "..",
+        "space key",
+        "",
+        "return/original",
+        "return\\original",
+    ] {
         let output = server
             .run(
                 &[
@@ -1515,6 +1522,24 @@ async fn sdlc_critical_return_invalid_cli_inputs_and_impersonation_flags_never_s
                     key,
                 ],
                 None,
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let mut body = critical_return_command();
+        body["review"]["idempotency_key"] = json!(key);
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "critical-blocker",
+                    "return-to-pm",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&body.to_string()),
             )
             .await;
         assert!(!output.status.success());

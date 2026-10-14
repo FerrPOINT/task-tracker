@@ -101,7 +101,7 @@ fn return_actor_shape(actor: &Principal, write: bool) -> Result<(), AppError> {
 
 fn validate_return_key(task: Uuid, key: &str) -> Result<(), AppError> {
     crate::sdlc::validate_key(key)?;
-    if task.is_nil() || matches!(key, "." | "..") {
+    if task.is_nil() || !domain::sdlc_critical_blockers::valid_operation_key(key) {
         return Err(AppError::validation("invalid critical return task or key"));
     }
     Ok(())

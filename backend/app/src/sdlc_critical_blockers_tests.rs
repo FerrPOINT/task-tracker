@@ -368,13 +368,21 @@ fn return_transport_actor_shapes_and_keys_fail_closed_without_rewriting_input() 
     let held = f.hold();
     let command = f.handoff(&held);
     let original = command.clone();
-    for invalid in [".", "..", "", "space key", "line\nkey"] {
+    for invalid in [
+        ".",
+        "..",
+        "",
+        "space key",
+        "line\nkey",
+        "return/original",
+        "return\\original",
+    ] {
         let mut changed = command.clone();
         changed.review.idempotency_key = invalid.into();
         assert!(validate_return_request(f.current.task.task_id, &f.scheduler, &changed).is_err());
         assert!(validate_return_key(f.current.task.task_id, invalid).is_err());
     }
-    let key = "return:original/1?x=+%#";
+    let key = "return:original:1?x=+%#";
     validate_return_key(f.current.task.task_id, key).unwrap();
     assert!(validate_return_key(Uuid::nil(), key).is_err());
     let mut reader = f.scheduler.clone();

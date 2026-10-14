@@ -544,7 +544,7 @@ impl PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         app::sdlc::validate_key(key)?;
-        if task.is_nil() || matches!(key, "." | "..") {
+        if task.is_nil() || !valid_operation_key(key) {
             return Err(AppError::validation("invalid critical return task or key"));
         }
         let tx = self.db.begin().await.map_err(map_db)?;
