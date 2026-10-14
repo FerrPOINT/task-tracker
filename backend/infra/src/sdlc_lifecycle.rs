@@ -321,10 +321,10 @@ impl PostgresSdlcRepository {
             ));
         }
         let row = tx.query_one(statement(
-            "SELECT s.payload FROM sdlc_task_routing_snapshots s
+            "SELECT s.payload FROM sdlc_routing_snapshot_inventory s
              JOIN sdlc_confirmations c ON c.id=s.confirmation_id AND c.task_id=s.task_id
              JOIN sdlc_analysis_intents i ON i.routing_snapshot_id=s.snapshot_id AND i.task_id=s.task_id
-             WHERE s.task_id=$1", vec![state.task_id.into()],
+             WHERE s.task_id=$1 AND s.generation=1", vec![state.task_id.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("confirmed routing snapshot absent"))?;
         let routing: TaskRoutingSnapshot =
             serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
@@ -1187,7 +1187,9 @@ impl LifecycleRepository for PostgresSdlcRepository {
         let receipt = current(&tx, task)
             .await?
             .ok_or_else(|| AppError::not_found("delivery queue", task))?;
-        exact_revision(&state, &receipt)?;
+        if self.review_snapshot(&tx, &state, &receipt).await?.is_none() {
+            exact_revision(&state, &receipt)?;
+        }
         authorize_read(&tx, &state, actor).await?;
         let observed_at = now(&tx).await?;
         tx.commit().await.map_err(map_db)?;

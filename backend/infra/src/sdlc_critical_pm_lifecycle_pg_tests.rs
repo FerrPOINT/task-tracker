@@ -126,7 +126,7 @@ async fn setup() -> ReviewFixture {
         ],
     );
     let a = &review.reservation.assignment;
-    let (lease, replay) = Box::pin(f.repo.claim_pm_execution_lease(
+    let (lease, replay) = Box::pin(f.repo.claim_execution_lease(
         r.task,
         &pm,
         ClaimExecutionLease {

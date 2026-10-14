@@ -3,6 +3,8 @@
 use super::*;
 #[path = "sdlc_critical_pm_blocker_read_pg_tests.rs"]
 mod pm_blocker_read_tests;
+#[path = "sdlc_critical_pm_lifecycle_pg_tests.rs"]
+mod pm_lifecycle_tests;
 #[path = "sdlc_critical_pm_reservation_pg_tests.rs"]
 mod pm_review_tests;
 use crate::sdlc::attachment_artifacts as artifacts;

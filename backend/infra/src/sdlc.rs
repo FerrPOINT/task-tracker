@@ -13,6 +13,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_critical_blockers.rs"]
 mod critical_blockers;
+#[path = "sdlc_critical_pm_lifecycle.rs"]
+mod critical_pm_lifecycle;
 #[path = "sdlc_critical_pm_reservation.rs"]
 mod critical_pm_reservation;
 #[path = "sdlc_execution_lease.rs"]
@@ -335,13 +337,29 @@ impl PostgresSdlcRepository {
             .last()
             .ok_or_else(|| AppError::conflict("Analysis confirmation unavailable"))?;
         let row = tx.query_one(statement(
-            "SELECT i.payload,s.payload AS routing_payload FROM sdlc_analysis_intents i LEFT JOIN sdlc_task_routing_snapshots s ON s.snapshot_id=i.routing_snapshot_id WHERE i.task_id=$1 AND i.requirement_revision=$2",
+            "SELECT i.payload,s.payload AS routing_payload,
+             COALESCE(i.routing_snapshot_id,i.review_routing_snapshot_id) AS routing_id
+             FROM sdlc_analysis_intents i LEFT JOIN sdlc_routing_snapshot_inventory s
+             ON s.snapshot_id=COALESCE(i.routing_snapshot_id,i.review_routing_snapshot_id) AND s.task_id=i.task_id
+             WHERE i.task_id=$1 AND i.requirement_revision=$2",
             vec![state.task_id.into(), confirmation.revision.into()],
         )).await.map_err(map_db)?.ok_or_else(|| AppError::conflict("Analysis intent unavailable"))?;
         let intent: AnalysisIntent =
             serde_json::from_value(row.try_get::<Json>("", "payload").map_err(map_db)?)
                 .map_err(|_| AppError::conflict("Analysis intent invalid"))?;
         let mut expected = app::sdlc::analysis_intent(state, confirmation, intent.intent_id)?;
+        if row
+            .try_get::<Option<Json>>("", "routing_payload")
+            .map_err(map_db)?
+            .is_none()
+            && (state.draft_flow()?.is_some()
+                || row
+                    .try_get::<Option<Uuid>>("", "routing_id")
+                    .map_err(map_db)?
+                    .is_some())
+        {
+            return Err(AppError::conflict("Analysis routing history unavailable"));
+        }
         if let Some(raw) = row
             .try_get::<Option<Json>>("", "routing_payload")
             .map_err(map_db)?

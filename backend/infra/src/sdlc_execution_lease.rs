@@ -193,6 +193,14 @@ impl PostgresSdlcRepository {
         )
         .await?;
         let mut state = self.load(&tx, task, actor).await?;
+        if self
+            .project_critical_pm_claim(&tx, &state, actor, &command, &hash, &receipt)
+            .await?
+            .is_some()
+        {
+            tx.commit().await.map_err(map_db)?;
+            return Ok((receipt, false));
+        }
         if state.status.is_some() {
             state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress);
             let next = json_value(&state)?;

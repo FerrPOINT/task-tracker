@@ -10,9 +10,10 @@ SELECT t.state, s.payload AS routing, d.receipt,
        COALESCE(sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state),false) AS pm_completed
 FROM sdlc_tasks t
 JOIN issues issue ON issue.id=t.task_id AND issue.project_id=t.project_id AND issue.deleted_at IS NULL
-JOIN sdlc_task_routing_snapshots s ON s.task_id=t.task_id AND s.project_id=t.project_id
+JOIN sdlc_routing_snapshot_inventory s ON s.task_id=t.task_id AND s.project_id=t.project_id
 JOIN sdlc_confirmations c ON c.task_id=t.task_id AND c.id=s.confirmation_id
-JOIN sdlc_analysis_intents intent ON intent.task_id=t.task_id AND intent.routing_snapshot_id=s.snapshot_id
+JOIN sdlc_analysis_intents intent ON intent.task_id=t.task_id
+ AND COALESCE(intent.routing_snapshot_id,intent.review_routing_snapshot_id)=s.snapshot_id
 LEFT JOIN sdlc_delivery_tasks d ON d.task_id=t.task_id
 WHERE t.project_id=$1 AND t.tracker_instance_id=$2
   AND t.root_task_id=t.task_id AND t.state->>'root_task_id'=t.task_id::text
@@ -24,7 +25,7 @@ WHERE t.project_id=$1 AND t.tracker_instance_id=$2
   AND s.content_hash=t.state->'revisions'->-1->>'content_hash'
   AND c.revision=s.requirement_revision AND c.content_hash=s.content_hash
   AND c.payload->>'owner_subject'=t.owner_subject
-  AND (d.task_id IS NULL AND t.state->>'stage' IN ('Analysis','Architecture')
+  AND (d.task_id IS NULL AND s.generation=1 AND t.state->>'stage' IN ('Analysis','Architecture')
        AND sdlc_current_pm_completed(t.task_id,t.pm_execution_id,t.state,t.pm_admission_state)
        AND NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds h WHERE h.root_task_id=t.task_id)
        AND (t.state->>'stage'='Analysis' OR EXISTS(

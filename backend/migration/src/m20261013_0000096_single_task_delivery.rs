@@ -13,7 +13,9 @@ impl MigrationTrait for Migration {
                 "\n",
                 include_str!("critical_pm_return.sql"),
                 "\n",
-                include_str!("critical_pm_review.sql")
+                include_str!("critical_pm_review.sql"),
+                "\n",
+                include_str!("critical_pm_review_lifecycle.sql")
             ))
             .await?;
         Ok(())

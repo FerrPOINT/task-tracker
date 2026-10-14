@@ -582,6 +582,14 @@ impl PostgresSdlcRepository {
             idempotency_key: command.idempotency_key.clone(),
             created_at: now,
         };
+        if self
+            .finalize_critical_pm_review(&tx, &state, actor, &command, &hash, &result)
+            .await?
+            .is_some()
+        {
+            tx.commit().await.map_err(map_db)?;
+            return Ok((result, false));
+        }
         exec(&tx,"INSERT INTO sdlc_pm_completions(completion_id,task_id,execution_id,assignment_id,assignment_version,lease_id,lease_version,requirement_revision,content_hash,terminal_receipt_ref,terminal_receipt_sha256,workflow_receipt_ref,workflow_receipt_sha256,result) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
             vec![result.completion_id.into(),task.into(),assignment.execution_id.into(),assignment.assignment_id.into(),assignment.version.into(),result.lease_id.into(),result.lease_version.into(),result.requirement_revision.into(),result.content_hash.clone().into(),result.terminal_receipt_ref.clone().into(),result.terminal_receipt_sha256.clone().into(),result.workflow_receipt_ref.clone().into(),result.workflow_receipt_sha256.clone().into(),json_value(&result)?]).await?;
         exec(&tx,"INSERT INTO sdlc_pm_completion_operations(task_id,idempotency_key,actor_subject,payload_hash,completion_id,result) VALUES($1,$2,$3,$4,$5,$6)",

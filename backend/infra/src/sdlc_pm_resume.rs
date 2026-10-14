@@ -180,7 +180,12 @@ impl PostgresSdlcRepository {
             return Err(AppError::conflict("current reserved PM execution required"));
         }
         let reservation = Self::reservation(&tx, &state, f.execution_id).await?;
-        app::sdlc_pm_resume::validate_context(&state, &reservation, &command)?;
+        let review_resume = self
+            .allow_critical_pm_retained_head(&tx, &state, &command)
+            .await?;
+        if review_resume.is_none() {
+            app::sdlc_pm_resume::validate_context(&state, &reservation, &command)?;
+        }
         check_fence(&reservation, command.expected_owner_version, f)?;
         let holder = Principal {
             subject: reservation.assignment.machine_subject.clone(),
@@ -205,7 +210,7 @@ impl PostgresSdlcRepository {
             .await
             .map_err(map_db)?
             .ok_or_else(inconsistent)?;
-        if overlap.try_get::<bool>("", "busy").map_err(map_db)? {
+        if overlap.try_get::<bool>("", "busy").map_err(map_db)? && review_resume.is_none() {
             return Err(AppError::conflict("delivery already owns lifecycle"));
         }
         let mut current = Self::lease_current(&tx, &reservation)
@@ -236,11 +241,19 @@ impl PostgresSdlcRepository {
         exec(&tx,"INSERT INTO sdlc_pm_resume_inputs(task_id,execution_id,actor_subject,idempotency_key,payload_hash,input_kind,input_id,
             checkpoint_id,checkpoint_revision,previous_run_id,lease_version,transaction_id,command,result)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,pg_current_xact_id(),$12,$13)",
-            vec![task.into(),f.execution_id.into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.into(),command.input.kind().into(),
+            vec![task.into(),f.execution_id.into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.clone().into(),command.input.kind().into(),
                 command.input.input_id().into(),command.checkpoint.checkpoint_id.into(),command.checkpoint.checkpoint_revision.into(),command.previous_run_id.into(),
                 current.lease.version.into(),json_value(&command)?,json_value(&current)?]).await?;
         exec(&tx,"UPDATE sdlc_pm_execution_leases SET version=$2,heartbeat_at=$3,expires_at=$4,result=$5 WHERE execution_id=$1 AND version=$6",
             vec![f.execution_id.into(),current.lease.version.into(),now.into(),current.lease.expires_at.into(),json_value(&current)?,command.expected_lease_version.into()]).await?;
+        if self
+            .project_critical_pm_resume(&tx, &state, actor, &command, &hash, &current)
+            .await?
+            .is_some()
+        {
+            tx.commit().await.map_err(map_db)?;
+            return Ok((current, false));
+        }
         if state.status.is_some() && matches!(state.stage, Stage::Draft | Stage::Clarification) {
             state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress);
             let next = json_value(&state)?;

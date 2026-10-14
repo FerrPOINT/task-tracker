@@ -161,9 +161,8 @@ impl PostgresSdlcRepository {
             input: Self::original_input(&tx, &state).await?,
         };
         let blocker: CriticalBlockerReceipt = decode(&tx.query_one(statement(
-            "SELECT COALESCE(v.after_blocker,r.after_blocker) AS payload FROM sdlc_critical_blocker_heads h
+            "SELECT sdlc_critical_pm_detail(h.blocker_id) AS payload FROM sdlc_critical_blocker_heads h
              JOIN sdlc_critical_pm_returns r ON r.task_id=h.task_id AND r.blocker_id=h.blocker_id
-             LEFT JOIN sdlc_critical_pm_reviews v ON v.task_id=h.task_id AND v.blocker_id=h.blocker_id
              WHERE h.task_id=$1 AND h.blocker_id=$2 FOR SHARE OF h,r",
             vec![task.into(), command.blocker_id.into()],
         )).await.map_err(map_db)?.ok_or_else(inconsistent)?, "payload")?;

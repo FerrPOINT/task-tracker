@@ -252,15 +252,27 @@ impl PostgresSdlcRepository {
         reader(actor)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
+        let current = super::lifecycle::current(&tx, task).await?;
+        let active_snapshot = current.as_ref().map(|r| r.task.routing.snapshot_id);
         let row = tx
             .query_one(statement(
-                "SELECT payload FROM sdlc_task_routing_snapshots WHERE task_id=$1",
-                vec![task.into()],
+                "SELECT payload FROM sdlc_routing_snapshot_inventory
+                 WHERE task_id=$1 AND (($2::uuid IS NOT NULL AND snapshot_id=$2)
+                   OR ($2::uuid IS NULL AND generation=1))",
+                vec![task.into(), active_snapshot.into()],
             ))
             .await
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("task routing snapshot", task))?;
         let snapshot: TaskRoutingSnapshot = decode(&row)?;
+        if let Some(current) = &current {
+            if current.task.routing != snapshot {
+                return Err(AppError::conflict("active task routing snapshot differs"));
+            }
+            if self.review_snapshot(&tx, &state, current).await?.is_none() {
+                super::lifecycle::exact_revision(&state, current)?;
+            }
+        }
         let retained = Self::policy(&tx, state.project_id, Some(snapshot.policy.version)).await?;
         if snapshot.task_id != task
             || snapshot.root_task_id != state.root_task_id

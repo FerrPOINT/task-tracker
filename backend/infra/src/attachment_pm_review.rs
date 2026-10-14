@@ -25,8 +25,7 @@ async fn snapshot(
     }
     let row = tx
         .query_one(statement(
-            "SELECT v.after_blocker AS payload FROM sdlc_critical_blocker_heads h
-         JOIN sdlc_critical_pm_reviews v ON v.task_id=h.task_id AND v.blocker_id=h.blocker_id
+            "SELECT sdlc_critical_pm_detail(h.blocker_id) AS payload FROM sdlc_critical_blocker_heads h
          WHERE h.task_id=$1",
             vec![task.into()],
         ))

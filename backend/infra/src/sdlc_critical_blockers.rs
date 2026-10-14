@@ -170,7 +170,6 @@ async fn original_producer(
     let row = tx
         .query_one(statement(
             "SELECT r.before_receipt FROM sdlc_critical_pm_returns r
-         JOIN sdlc_critical_blocker_heads h ON h.task_id=r.task_id AND h.blocker_id=r.blocker_id
          WHERE r.task_id=$1 AND r.blocker_id=$2",
             vec![state.task_id.into(), saved.blocker_id.into()],
         ))
@@ -255,9 +254,8 @@ pub(super) async fn ensure_progress_allowed(
 ) -> Result<(), AppError> {
     let row = tx
         .query_one(statement(
-            "SELECT COALESCE(r.after_blocker,b.payload) AS payload FROM sdlc_critical_blocker_heads h
+            "SELECT sdlc_critical_pm_detail(h.blocker_id) AS payload FROM sdlc_critical_blocker_heads h
          JOIN sdlc_critical_blockers b ON b.blocker_id=h.blocker_id AND b.task_id=h.task_id
-         LEFT JOIN sdlc_critical_pm_returns r ON r.blocker_id=b.blocker_id AND r.task_id=b.task_id
          WHERE h.task_id=$1 FOR SHARE OF h,b",
             vec![current.task.task_id.into()],
         ))
@@ -272,7 +270,7 @@ pub(super) async fn ensure_progress_allowed(
 async fn exact_history(
     tx: &DatabaseTransaction,
     current: &LifecycleReceipt,
-) -> Result<(), AppError> {
+) -> Result<i64, AppError> {
     let assignment = current.assignment.as_ref().ok_or(AppError::Forbidden)?;
     let binding = current.binding.as_ref().ok_or(AppError::Forbidden)?;
     let saved: DeliveryAssignment = decode(&tx.query_one(statement(
@@ -286,20 +284,20 @@ async fn exact_history(
     if saved != *assignment || run != *binding {
         return Err(invalid_history());
     }
-    // This slice supports actual original snapshots only. Future generations need main's selector.
-    tx.query_one(statement(
-        "SELECT snapshot_id FROM sdlc_task_routing_snapshots
-         WHERE task_id=$1 AND snapshot_id=$2 AND payload=$3 FOR SHARE",
-        vec![
-            assignment.task_id.into(),
-            assignment.routing.snapshot_id.into(),
-            json_value(&assignment.routing)?,
-        ],
-    ))
-    .await
-    .map_err(map_db)?
-    .ok_or_else(invalid_history)?;
-    Ok(())
+    let row = tx
+        .query_one(statement(
+            "SELECT generation FROM sdlc_routing_snapshot_inventory
+         WHERE task_id=$1 AND snapshot_id=$2 AND payload=$3",
+            vec![
+                assignment.task_id.into(),
+                assignment.routing.snapshot_id.into(),
+                json_value(&assignment.routing)?,
+            ],
+        ))
+        .await
+        .map_err(map_db)?
+        .ok_or_else(invalid_history)?;
+    row.try_get("", "generation").map_err(map_db)
 }
 
 async fn verify_evidence(
@@ -379,7 +377,7 @@ impl PostgresSdlcRepository {
             .ok_or_else(invalid_history)?;
         super::lifecycle::exact_revision(&state, &current)?;
         ensure_progress_allowed(&tx, &current).await?;
-        exact_history(&tx, &current).await?;
+        let routing_generation = exact_history(&tx, &current).await?;
         // Keep the existing capacity row locked and retained. POST is not a release/dispatch.
         tx.query_one(statement(
             "SELECT assignment_id FROM sdlc_delivery_holds WHERE task_id=$1 AND assignment_id=$2 FOR UPDATE",
@@ -393,7 +391,7 @@ impl PostgresSdlcRepository {
             &command,
             app::sdlc_critical_blockers::BlockerAllocation {
                 blocker_id,
-                routing_generation: 1,
+                routing_generation,
                 observed_at: super::lifecycle::now(&tx).await?,
             },
         )?;
@@ -406,7 +404,7 @@ impl PostgresSdlcRepository {
             &command,
             app::sdlc_critical_blockers::BlockerAllocation {
                 blocker_id,
-                routing_generation: 1,
+                routing_generation,
                 observed_at: super::lifecycle::now(&tx).await?,
             },
         )?;
@@ -428,12 +426,17 @@ impl PostgresSdlcRepository {
             ],
         )
         .await?;
-        exec(
-            &tx,
-            "INSERT INTO sdlc_critical_blocker_heads(task_id,blocker_id) VALUES($1,$2)",
+        let changed = tx.execute(statement(
+            "INSERT INTO sdlc_critical_blocker_heads(task_id,blocker_id) VALUES($1,$2)
+             ON CONFLICT(task_id) DO UPDATE SET blocker_id=EXCLUDED.blocker_id
+             WHERE sdlc_critical_pm_detail(sdlc_critical_blocker_heads.blocker_id)->>'state'='resolved'",
             vec![task.into(), blocker_id.into()],
-        )
-        .await?;
+        )).await.map_err(map_db)?.rows_affected();
+        if changed != 1 {
+            return Err(AppError::conflict(
+                "current critical blocker is not resolved",
+            ));
+        }
         Self::save_delivery_projection(&tx, actor, &plan.lifecycle, false).await?;
         let event = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
             "project_id":state.project_id,"task_id":task,"root_task_id":task,"owner_subject":state.owner_subject,
@@ -487,10 +490,8 @@ impl PostgresSdlcRepository {
         owner_access(&tx, &state).await?;
         let row = tx
             .query_one(statement(
-                "SELECT COALESCE(v.after_blocker,r.after_blocker,b.payload) AS payload FROM sdlc_critical_blockers b
+                "SELECT sdlc_critical_pm_detail(b.blocker_id) AS payload FROM sdlc_critical_blockers b
              JOIN sdlc_critical_blocker_heads h ON h.blocker_id=b.blocker_id AND h.task_id=b.task_id
-             LEFT JOIN sdlc_critical_pm_returns r ON r.blocker_id=b.blocker_id AND r.task_id=b.task_id
-             LEFT JOIN sdlc_critical_pm_reviews v ON v.blocker_id=b.blocker_id AND v.task_id=b.task_id
              WHERE b.task_id=$1 AND b.blocker_id=$2 FOR SHARE OF h,b",
                 vec![task.into(), blocker_id.into()],
             ))
@@ -544,9 +545,8 @@ impl PostgresSdlcRepository {
             .ok_or_else(invalid_history)?;
         super::lifecycle::exact_revision(&state, &current)?;
         let row = tx.query_one(statement(
-            "SELECT COALESCE(r.after_blocker,b.payload) AS payload FROM sdlc_critical_blocker_heads h
+            "SELECT sdlc_critical_pm_detail(h.blocker_id) AS payload FROM sdlc_critical_blocker_heads h
              JOIN sdlc_critical_blockers b ON b.task_id=h.task_id AND b.blocker_id=h.blocker_id
-             LEFT JOIN sdlc_critical_pm_returns r ON r.task_id=b.task_id AND r.blocker_id=b.blocker_id
              WHERE h.task_id=$1 AND h.blocker_id=$2 FOR SHARE OF h,b",
             vec![task.into(), command.review.blocker_id.into()],
         )).await.map_err(map_db)?.ok_or_else(invalid_history)?;
