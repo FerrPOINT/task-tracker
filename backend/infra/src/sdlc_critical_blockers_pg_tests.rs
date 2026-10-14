@@ -4,6 +4,88 @@ use super::*;
 use crate::sdlc::attachment_artifacts as artifacts;
 use domain::attachment_artifact::{ArtifactUpload, Seal};
 use domain::sdlc_critical_blockers::*;
+use std::future::Future;
+
+fn future_size<F: Future>(_: fn() -> F) -> usize {
+    std::mem::size_of::<F>()
+}
+
+// Used only inside uncalled factories for type inference. No fixture/value/future is constructed.
+fn type_only<T>() -> T {
+    panic!("future-size factories must never be called")
+}
+
+#[test]
+fn critical_pg_future_size_probe() {
+    let sizes = [
+        ("scenario", future_size(critical_pg_scenario)),
+        ("fixture_new", future_size(Fixture::new)),
+        (
+            "fixture_confirmed",
+            future_size(|| Fixture::confirmed(type_only(), "type-only", true)),
+        ),
+        (
+            "start",
+            future_size(|| start(type_only(), "type-only", true, type_only())),
+        ),
+        ("bind", future_size(|| bind(type_only(), Uuid::nil()))),
+        (
+            "output",
+            future_size(|| output(type_only(), Uuid::nil(), type_only(), type_only())),
+        ),
+        (
+            "proposal",
+            future_size(|| proposal(type_only(), type_only())),
+        ),
+        (
+            "snapshot",
+            future_size(|| snapshot(type_only(), Uuid::nil())),
+        ),
+        (
+            "return_held_to_pm",
+            future_size(|| return_held_to_pm(type_only(), type_only(), type_only(), type_only())),
+        ),
+        (
+            "repo_submit_critical",
+            future_size(|| {
+                PostgresSdlcRepository::submit_critical_blocker_with_storage(
+                    type_only(),
+                    Uuid::nil(),
+                    type_only(),
+                    type_only(),
+                    type_only(),
+                )
+            }),
+        ),
+        (
+            "repo_return_critical",
+            future_size(|| {
+                PostgresSdlcRepository::return_critical_to_pm_with_terminal(
+                    type_only(),
+                    Uuid::nil(),
+                    type_only(),
+                    type_only(),
+                )
+            }),
+        ),
+        (
+            "artifact_publish",
+            future_size(|| {
+                artifacts::publish(
+                    type_only(),
+                    type_only(),
+                    type_only(),
+                    type_only(),
+                    type_only(),
+                    type_only(),
+                )
+            }),
+        ),
+    ];
+    for (name, bytes) in sizes {
+        eprintln!("critical_pg_future_bytes.{name}={bytes}");
+    }
+}
 
 struct Running {
     task: Uuid,
@@ -241,6 +323,10 @@ impl domain::FileStorage for CorruptBytes {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test; synthetic runtime only"]
 async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced() {
+    critical_pg_scenario().await;
+}
+
+async fn critical_pg_scenario() {
     let f = Fixture::new().await;
     if f.db
         .query_one(statement(
