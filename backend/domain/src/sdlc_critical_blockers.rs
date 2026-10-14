@@ -38,6 +38,7 @@ pub struct SubmitCriticalBlocker {
     pub kind: CriticalBlockerKind,
     pub question: String,
     pub rationale: String,
+    #[serde(default)]
     pub options: Vec<CriticalBlockerOption>,
     pub recommendation: Option<Uuid>,
     pub evidence: Vec<AttachmentArtifact>,
@@ -102,10 +103,10 @@ pub struct CriticalBlockerReceipt {
     pub created_at: DateTime<Utc>,
 }
 
-/// These payloads target new variants of the existing lifecycle command, not new services.
+/// CAS fields for the scheduler-only return, not a standalone public hold operation.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
-pub struct RequestCriticalPmReview {
+pub struct CriticalPmReviewGuard {
     pub blocker_id: Uuid,
     pub blocker_sha256: String,
     #[serde(deserialize_with = "safe_version")]
@@ -119,7 +120,7 @@ pub struct RequestCriticalPmReview {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReturnCriticalToPm {
-    pub review: RequestCriticalPmReview,
+    pub review: CriticalPmReviewGuard,
     pub terminal: RuntimeTerminalObservation,
 }
 
@@ -157,7 +158,7 @@ impl SubmitCriticalBlocker {
             || !sha256(&self.content_hash)
             || !text(&self.question, 4096)
             || !text(&self.rationale, 8192)
-            || !(2..=MAX_OPTIONS).contains(&self.options.len())
+            || self.options.len() > MAX_OPTIONS
             || !(1..=MAX_EVIDENCE).contains(&self.evidence.len())
         {
             return Err(invalid());

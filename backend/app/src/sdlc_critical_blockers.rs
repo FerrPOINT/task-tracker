@@ -71,8 +71,8 @@ fn configured(current: &LifecycleReceipt, config: &SdlcConfig) -> Result<(), App
     Ok(())
 }
 
-/// Expiry blocks new agent proposals. Holding an accepted blocker and reconciling terminal
-/// still need exact custody, but may happen after expiry; expiry never supplies terminal evidence.
+/// Expiry blocks new agent proposals/holds. Terminal reconciliation still needs exact custody,
+/// but may happen after expiry; expiry never supplies terminal evidence.
 fn current_custody<'a>(
     current: &'a LifecycleReceipt,
     fence: &DeliveryFence,
@@ -124,7 +124,7 @@ fn current_custody<'a>(
     Ok((assignment, binding))
 }
 
-pub fn prepare_blocker(
+fn prepare_blocker(
     current: &LifecycleReceipt,
     actor: &Principal,
     config: &SdlcConfig,
@@ -183,13 +183,44 @@ pub fn prepare_blocker(
     })
 }
 
+/// The current technical grant requests waiting, not scheduler impersonation or custody release.
+/// Persist the proposal, held projection and ORIGINAL held receipt in ONE task transaction.
+pub fn prepare_and_hold(
+    current: &LifecycleReceipt,
+    actor: &Principal,
+    config: &SdlcConfig,
+    proposal: &SubmitCriticalBlocker,
+    allocation: BlockerAllocation,
+) -> Result<CriticalPolicyChange, AppError> {
+    let blocker = prepare_blocker(current, actor, config, proposal, allocation)?;
+    hold_prepared(current, blocker)
+}
+
+fn hold_prepared(
+    current: &LifecycleReceipt,
+    mut blocker: CriticalBlockerReceipt,
+) -> Result<CriticalPolicyChange, AppError> {
+    let mut lifecycle = current.clone();
+    lifecycle.task.version = next_version(current.task.version)?;
+    lifecycle.task.waiting_reason = Some(HOLD_REASON.into());
+    // Proposed is an in-memory preparation only: the first persisted/returned state is Held v1.
+    blocker.state = CriticalBlockerState::Held;
+    Ok(CriticalPolicyChange { lifecycle, blocker })
+}
+
 /// Invoke only after fresh repository ACL/operation authorization, before fresh-write guards.
 /// `saved` is the immutable journal result, not the mutable detail projection.
 pub fn replay_blocker(
     saved: &CriticalBlockerReceipt,
     proposal: &SubmitCriticalBlocker,
 ) -> Result<CriticalBlockerReceipt, AppError> {
-    if saved.proposal != *proposal || saved.blocker_sha256 != crate::sdlc::canonical_hash(proposal)?
+    if saved.state != CriticalBlockerState::Held
+        || saved.version != 1
+        || saved.pm_review.is_some()
+        || saved.resolution.is_some()
+        || saved.technical_terminal.is_some()
+        || saved.proposal != *proposal
+        || saved.blocker_sha256 != crate::sdlc::canonical_hash(proposal)?
     {
         return Err(AppError::conflict(
             "critical blocker idempotency payload mismatch",
@@ -228,7 +259,7 @@ pub fn ensure_technical_progress_allowed(
 fn match_blocker(
     current: &LifecycleReceipt,
     blocker: &CriticalBlockerReceipt,
-    command: &RequestCriticalPmReview,
+    command: &CriticalPmReviewGuard,
 ) -> Result<(), AppError> {
     crate::sdlc::validate_key(&command.idempotency_key)?;
     let assignment = current.assignment.as_ref().ok_or_else(conflict)?;
@@ -271,33 +302,6 @@ fn match_blocker(
         return Err(conflict());
     }
     Ok(())
-}
-
-pub fn request_pm_review(
-    current: &LifecycleReceipt,
-    blocker: &CriticalBlockerReceipt,
-    actor: &Principal,
-    config: &SdlcConfig,
-    command: &RequestCriticalPmReview,
-    now: chrono::DateTime<chrono::Utc>,
-) -> Result<CriticalPolicyChange, AppError> {
-    crate::sdlc_reservation::scheduler(actor, config)?;
-    configured(current, config)?;
-    current_custody(current, &command.fence, &actor.subject, None)?;
-    match_blocker(current, blocker, command)?;
-    ensure_technical_progress_allowed(current, Some(blocker))?;
-    if blocker.state != CriticalBlockerState::Proposed || blocker.created_at > now {
-        return Err(conflict());
-    }
-    let mut next = CriticalPolicyChange {
-        lifecycle: current.clone(),
-        blocker: blocker.clone(),
-    };
-    next.lifecycle.task.version = next_version(current.task.version)?;
-    next.lifecycle.task.waiting_reason = Some(HOLD_REASON.into());
-    next.blocker.version = next_version(blocker.version)?;
-    next.blocker.state = CriticalBlockerState::Held;
-    Ok(next)
 }
 
 /// The existing trusted scheduler must first read actual native terminal bytes. This checks

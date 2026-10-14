@@ -64,7 +64,7 @@ fn structured_options_are_bounded_stable_and_never_preselected() {
     bad = p.clone();
     bad.options[0].option_id = Uuid::nil();
     assert!(bad.validate(DeliveryRole::Analyst).is_err());
-    for count in [0, 1, MAX_OPTIONS + 1] {
+    for count in [0, 1, MAX_OPTIONS] {
         bad = p.clone();
         bad.options = (0..count)
             .map(|_| CriticalBlockerOption {
@@ -72,8 +72,21 @@ fn structured_options_are_bounded_stable_and_never_preselected() {
                 ..p.options[0].clone()
             })
             .collect();
-        assert!(bad.validate(DeliveryRole::Analyst).is_err());
+        bad.validate(DeliveryRole::Analyst).unwrap();
     }
+    bad.options.push(CriticalBlockerOption {
+        option_id: Uuid::new_v4(),
+        ..p.options[0].clone()
+    });
+    assert!(bad.validate(DeliveryRole::Analyst).is_err());
+    bad.options.clear();
+    bad.recommendation = Some(p.options[0].option_id);
+    assert!(bad.validate(DeliveryRole::Analyst).is_err());
+    let mut omitted = serde_json::to_value(&p).unwrap();
+    omitted.as_object_mut().unwrap().remove("options");
+    let omitted: SubmitCriticalBlocker = serde_json::from_value(omitted).unwrap();
+    assert!(omitted.options.is_empty());
+    omitted.validate(DeliveryRole::Analyst).unwrap();
 }
 
 #[test]
@@ -173,7 +186,7 @@ fn only_business_kinds_are_public_and_no_actor_or_owner_claim_is_accepted() {
 #[test]
 fn scheduler_contract_rejects_stop_ack_unknown_and_fake_proof_fields() {
     let p = proposal();
-    let request = RequestCriticalPmReview {
+    let request = CriticalPmReviewGuard {
         blocker_id: Uuid::new_v4(),
         blocker_sha256: "c".repeat(64),
         expected_blocker_version: 1,

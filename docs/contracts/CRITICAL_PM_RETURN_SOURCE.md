@@ -21,20 +21,26 @@ Integration owns public DTO/API/OpenAPI registration and migration ordering.
   technical terminal; created_at UTC nanoseconds. Assignment/execution come from
   `proposal.fence`, not invented references.
 - `CriticalBlockerState`: `proposed | held | awaiting_pm_review | in_pm_review |
-  resolved`. This packet implements only the first three transitions.
+  resolved`. `proposed` is internal preparation only, never POST acknowledgement
+  or a persisted public effect. POST first returns `held`; return produces
+  `awaiting_pm_review`.
 - `CriticalPmReviewRef`: `{assignment_id, execution_id}`. Null until a real NEW PM
   allocation. `CriticalResolutionRef`: `{requirement_revision, content_hash,
   routing_generation}`. Null until real new revision/consent/completion effects.
-- `RequestCriticalPmReview`: `{blocker_id, blocker_sha256,
+- `CriticalPmReviewGuard`: `{blocker_id, blocker_sha256,
   expected_blocker_version, expected_task_version, fence, idempotency_key}`.
-- `ReturnCriticalToPm`: `{review: RequestCriticalPmReview,
+- `ReturnCriticalToPm`: `{review: CriticalPmReviewGuard,
   terminal: RuntimeTerminalObservation}`. The nested review identifies the held
   blocker/current CAS; its key is the return operation's own original key.
+  There is no standalone public hold command/API or `RequestCriticalPmReview`.
 
 All request objects are closed. Actor/owner identity is not accepted in requests.
-Question/rationale bounds are 4096/8192 UTF-8 bytes; 2..8 options with unique
+Question/rationale bounds are 4096/8192 UTF-8 bytes; optional 0..8 options with unique
 non-nil stable IDs, labels <=256 bytes and consequences <=4096 bytes; 1..16 unique
-sealed artifact references. Recommendation is optional, never an owner answer.
+sealed artifact references. Omitted options deserialize as an empty array; one
+option is valid. No fabricated alternatives are required for text-mode PM review.
+Recommendation is optional and must reference an existing option ID; it is never
+an owner answer, and is invalid when options are empty.
 Shape validation cannot decide whether free text is genuinely a business
 contradiction; it does reject infra/Rework/ordinary-engineering wire kinds.
 
@@ -43,18 +49,21 @@ contradiction; it does reject infra/Rework/ordinary-engineering wire kinds.
 `app::sdlc_critical_blockers` reuses existing strict delivery grant, scheduler auth,
 assignment hash, routing validation and canonical JSON SHA helpers. No new deps.
 
-- `prepare_blocker`: exact opted-in task/root, enabled project, current Running
+- `prepare_and_hold(current: &LifecycleReceipt, actor: &Principal,
+  config: &SdlcConfig, proposal: &SubmitCriticalBlocker,
+  allocation: BlockerAllocation) -> Result<CriticalPolicyChange, AppError>`:
+  exact opted-in task/root, enabled project, current Running
   assignment/grant/agent/run/owner/routing/revision, live lease held by configured
   scheduler; derives identity from server state and verified actor. Server-only
   `BlockerAllocation` supplies real blocker UUID, persisted current generation and
-  observed_at. It is not a wire object or allocator replacement.
+  observed_at. It is not a wire object or allocator replacement. The CURRENT
+  technical grant atomically requests waiting on its own assignment; no scheduler
+  principal is constructed or impersonated. Private fresh preparation and shared
+  hold logic produce one plan to persist under the SAME task lock. Stage, status,
+  runtime, assignment, lease, binding, routing and prior results are unchanged.
 - `replay_blocker`: compares canonical typed proposal and hash; returns ORIGINAL
   journal receipt, never replaces it with mutable detail. Caller must first
   perform fresh ACL and original-key authorization.
-- `request_pm_review`: configured scheduler + exact current task/blocker/fence CAS;
-  holds an accepted proposal, bumps versions, preserves stage/status/runtime and
-  all technical custody. An already accepted proposal may be held after lease
-  expiry under unchanged custody; expiry creates no terminal or PM dispatch.
 - `ensure_technical_progress_allowed`: deny progress while held/PM pending/review,
   including fail-closed waiting-reason checks. Call INSIDE existing transactions
   for Complete/Reserve/EnsureQueued and ordinary Reconcile (not just HTTP gates).
@@ -71,6 +80,16 @@ plan. Inputs are never mutated, including on overflow/failure. Actual Fleet
 readback is the existing trusted boundary: receipt-shaped JSON is not a separate
 runtime proof. Sealed artifact shape/provenance is not proof of uploaded bytes.
 
+Receipt versions describe persisted public effects, not internal preparation:
+POST returns/saves Held v1 and lifecycle version N+1. Scheduler terminal return
+produces AwaitingPmReview v2 and increments the current lifecycle version once
+(N+2 without intervening versioned operations). The original POST journal
+still returns exactly Held v1 after that return; replay rejects a mutable detail
+or internal Proposed candidate passed in place of the original Held v1 receipt.
+Failed validation/overflow returns
+no plan and mutates neither input. There is no acknowledged Proposed window in
+which Complete can win after a successful POST.
+
 ## Required persistence and integration
 
 No migration, repository trait, router or applied SQL has been changed. Existing
@@ -78,9 +97,12 @@ storage cannot safely accept this transition unmodified:
 
 1. Reuse `PostgresSdlcRepository::load` task/project/owner ACL, task lock, existing capacity
    singleton/hold locks, canonical projection permits, delivery operation journal
-   and SDLC outbox. Proposal acceptance/hold/Complete/Reserve must serialize on
-   the SAME task lock. If Complete wins before hold, stale hold fails; after hold
-   all technical progress fails. Native terminal must precede capacity release.
+   and SDLC outbox. POST validates CURRENT technical authority and atomically
+   persists proposal + held state + original Held v1 operation receipt under the
+   SAME task lock as Complete/Reserve. No ACK before that commit, no deferred
+   scheduler hold. If Complete wins the lock first, POST fails fresh validation
+   without accepting a proposal; if POST commits first, Complete/Reserve fail
+   the held guard. Native terminal must precede capacity release.
 2. Add bounded immutable blocker proposal/operation history and current selection
    (names/schema remain integration decisions). Original-key journal stores exact
    operation result; detail exposes current state separately. Do not put blockers
@@ -135,7 +157,7 @@ cargo test --locked -p domain --lib sdlc_critical_blockers::tests::
 cargo test --locked -p app --lib sdlc_critical_blockers::tests::
 ```
 
-Expected nonzero collection: domain 5 tests, app 13 tests. Source formatting and
+Expected nonzero collection: domain 5 tests, app 14 tests. Source formatting and
 registration patch applicability only are checked locally; Cargo/PG/Docker are
 not executed. Fixtures and native/artifact observations are explicitly synthetic.
 

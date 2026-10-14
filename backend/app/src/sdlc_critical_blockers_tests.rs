@@ -206,8 +206,8 @@ impl Fixture {
         }
     }
 
-    fn prepare(&self) -> Result<CriticalBlockerReceipt, AppError> {
-        prepare_blocker(
+    fn plan(&self) -> Result<CriticalPolicyChange, AppError> {
+        prepare_and_hold(
             &self.current,
             &self.producer,
             &self.config,
@@ -220,39 +220,28 @@ impl Fixture {
         )
     }
 
-    fn request(&self, blocker: &CriticalBlockerReceipt) -> RequestCriticalPmReview {
+    fn guard(&self, blocker: &CriticalBlockerReceipt) -> CriticalPmReviewGuard {
         let mut fence = self.proposal.fence.clone();
         fence.expected_lease_version = self.current.lease.as_ref().unwrap().version;
-        RequestCriticalPmReview {
+        CriticalPmReviewGuard {
             blocker_id: blocker.blocker_id,
             blocker_sha256: blocker.blocker_sha256.clone(),
             expected_blocker_version: blocker.version,
             expected_task_version: self.current.task.version,
             fence,
-            idempotency_key: "synthetic-hold".into(),
+            idempotency_key: "synthetic-return".into(),
         }
     }
 
     fn hold(&mut self) -> CriticalBlockerReceipt {
-        let blocker = self.prepare().unwrap();
-        let change = request_pm_review(
-            &self.current,
-            &blocker,
-            &self.scheduler,
-            &self.config,
-            &self.request(&blocker),
-            self.now,
-        )
-        .unwrap();
+        let change = self.plan().unwrap();
         self.current = change.lifecycle;
         change.blocker
     }
 
     fn handoff(&self, blocker: &CriticalBlockerReceipt) -> ReturnCriticalToPm {
-        let mut review = self.request(blocker);
-        review.idempotency_key = "synthetic-return".into();
         ReturnCriticalToPm {
-            review,
+            review: self.guard(blocker),
             terminal: RuntimeTerminalObservation {
                 assignment_hash: blocker.assignment_hash.clone(),
                 chat_id: blocker.chat_id,
@@ -278,7 +267,13 @@ fn every_technical_stage_can_hold_without_releasing_custody_or_completing_workfl
         let mut f = Fixture::new(stage);
         let before = f.current.clone();
         let blocker = f.hold();
+        let mut expected = before.clone();
+        expected.task.version += 1;
+        expected.task.waiting_reason = Some(HOLD_REASON.into());
+        assert_eq!(f.current, expected);
         assert_eq!(blocker.state, CriticalBlockerState::Held);
+        assert_eq!(blocker.version, 1);
+        assert_eq!(blocker.producer_subject, f.producer.subject);
         assert_eq!(f.current.assignment, before.assignment);
         assert_eq!(f.current.lease, before.lease);
         assert_eq!(f.current.binding, before.binding);
@@ -321,6 +316,7 @@ fn return_requires_terminal_and_preserves_generation_one_verbatim() {
     assert_eq!(change.lifecycle.task.previous_result_id, None);
     assert_eq!(change.lifecycle.task.resume_chat_id, None);
     assert_eq!(change.blocker.state, CriticalBlockerState::AwaitingPmReview);
+    assert_eq!(change.blocker.version, 2);
     assert_eq!(change.blocker.technical_terminal, Some(command.terminal));
     assert_eq!(change.blocker.pm_review, None); // No fabricated/reused initial PM assignment.
     assert_eq!(change.blocker.resolution, None); // No fabricated owner confirmation/new revision.
@@ -358,7 +354,7 @@ fn producer_cannot_impersonate_owner_scheduler_or_another_assignment() {
             }
             _ => f.proposal.fence.execution_id = Uuid::new_v4(),
         }
-        assert!(f.prepare().is_err(), "case {change}");
+        assert!(f.plan().is_err(), "case {change}");
     }
 }
 
@@ -379,27 +375,30 @@ fn new_proposals_deny_stale_revision_foreign_root_project_owner_and_unknown_runt
             9 => f.current.lease.as_mut().unwrap().holder_subject = "agent".into(),
             _ => f.current.task.routing.contract_version = 1,
         }
-        assert!(f.prepare().is_err(), "case {change}");
+        assert!(f.plan().is_err(), "case {change}");
     }
 }
 
 #[test]
 fn immutable_journal_replay_does_not_replace_proposal_with_current_detail() {
     let mut f = Fixture::new(LifecycleStage::Analysis);
-    let saved = f.prepare().unwrap();
+    let saved = f.hold();
     let original = serde_json::to_value(&saved).unwrap();
-    let change = request_pm_review(
+    let change = return_to_pm(
         &f.current,
         &saved,
         &f.scheduler,
         &f.config,
-        &f.request(&saved),
-        f.now,
+        &f.handoff(&saved),
     )
     .unwrap();
     f.current = change.lifecycle;
     assert_eq!(replay_blocker(&saved, &f.proposal).unwrap(), saved);
     assert_ne!(change.blocker, saved);
+    assert!(replay_blocker(&change.blocker, &f.proposal).is_err());
+    let mut proposed_only = saved.clone();
+    proposed_only.state = CriticalBlockerState::Proposed;
+    assert!(replay_blocker(&proposed_only, &f.proposal).is_err());
     assert_eq!(serde_json::to_value(&saved).unwrap(), original);
     for change in 0..4 {
         let mut changed = f.proposal.clone();
@@ -414,30 +413,26 @@ fn immutable_journal_replay_does_not_replace_proposal_with_current_detail() {
 }
 
 #[test]
-fn hold_checks_fresh_cas_scheduler_holder_and_saved_proposal_hash_without_partial_mutation() {
-    let f = Fixture::new(LifecycleStage::Analysis);
-    let saved = f.prepare().unwrap();
-    let before = f.current.clone();
+fn prepare_and_hold_validation_failure_has_no_partial_change_or_accepted_proposal() {
     for change in 0..8 {
-        let mut command = f.request(&saved);
-        let mut actor = f.scheduler.clone();
-        let mut blocker = saved.clone();
+        let mut f = Fixture::new(LifecycleStage::Analysis);
         match change {
-            0 => command.expected_task_version -= 1,
-            1 => command.expected_blocker_version += 1,
-            2 => command.blocker_sha256 = "f".repeat(64),
-            3 => actor.subject = "other-scheduler".into(),
-            4 => actor.human_session = true,
+            0 => f.proposal.requirement_revision += 1,
+            1 => f.proposal.question.clear(),
+            2 => f.proposal.evidence[0].receipt.sha256 = "invalid".into(),
+            3 => f.producer.subject = "other-agent".into(),
+            4 => f.producer.human_session = true,
             5 => {
-                actor.scopes.insert("admin".into());
+                f.producer.scopes.insert("admin".into());
             }
-            6 => blocker.proposal.question.push('?'),
-            _ => command.fence.expected_lease_version += 1,
+            6 => f.proposal.recommendation = Some(Uuid::new_v4()),
+            _ => f.proposal.fence.expected_lease_version += 1,
         }
-        assert!(
-            request_pm_review(&f.current, &blocker, &actor, &f.config, &command, f.now).is_err()
-        );
+        let before = f.current.clone();
+        let proposal = f.proposal.clone();
+        assert!(f.plan().is_err(), "case {change}");
         assert_eq!(f.current, before);
+        assert_eq!(f.proposal, proposal);
     }
 }
 
@@ -464,26 +459,27 @@ fn heartbeat_can_advance_while_held_but_commands_require_fresh_lease_version() {
 }
 
 #[test]
-fn accepted_blocker_can_be_held_after_expiry_without_treating_expiry_as_terminal() {
-    let mut f = Fixture::new(LifecycleStage::Architecture);
-    let accepted = f.prepare().unwrap();
-    f.now += Duration::seconds(60);
-    f.current.task.runtime = RuntimeState::Unknown;
-    assert!(f.prepare().is_err());
-    let change = request_pm_review(
-        &f.current,
-        &accepted,
-        &f.scheduler,
-        &f.config,
-        &f.request(&accepted),
-        f.now,
-    )
-    .unwrap();
-    assert_eq!(change.blocker.state, CriticalBlockerState::Held);
-    assert_eq!(change.blocker.technical_terminal, None);
-    assert_eq!(change.lifecycle.assignment, f.current.assignment);
-    assert_eq!(change.lifecycle.lease, f.current.lease);
-    assert_eq!(change.lifecycle.task.runtime, RuntimeState::Unknown);
+fn empty_and_single_options_hold_v1_with_own_grant_without_scheduler_impersonation() {
+    for count in [0, 1] {
+        let mut f = Fixture::new(LifecycleStage::Architecture);
+        f.proposal.options.truncate(count);
+        let change = f.plan().unwrap();
+        assert_eq!(change.blocker.state, CriticalBlockerState::Held);
+        assert_eq!(change.blocker.version, 1);
+        assert_eq!(change.blocker.proposal.options.len(), count);
+        assert_eq!(change.blocker.producer_subject, f.producer.subject);
+        assert_ne!(change.blocker.producer_subject, f.scheduler.subject);
+        assert!(crate::sdlc_reservation::scheduler(&f.producer, &f.config).is_err());
+        assert_eq!(change.lifecycle.lease, f.current.lease);
+        assert_eq!(change.lifecycle.binding, f.current.binding);
+        assert_eq!(change.blocker.technical_terminal, None);
+        if count == 1 {
+            f.proposal.recommendation = Some(f.proposal.options[0].option_id);
+            assert!(f.plan().is_ok());
+        }
+        f.proposal.recommendation = Some(Uuid::new_v4());
+        assert!(f.plan().is_err());
+    }
 }
 
 #[test]
@@ -500,6 +496,36 @@ fn matching_terminal_may_release_expired_custody_but_expiry_never_proves_termina
     assert!(return_to_pm(&f.current, &blocker, &f.scheduler, &f.config, &missing).is_err());
     assert!(f.current.assignment.is_some());
     assert!(f.current.lease.is_some());
+}
+
+#[test]
+fn held_receipt_and_actual_terminal_do_not_allow_agent_or_owner_to_return_to_pm() {
+    let mut f = Fixture::new(LifecycleStage::Analysis);
+    assert!(
+        prepare_and_hold(
+            &f.current,
+            &f.scheduler,
+            &f.config,
+            &f.proposal,
+            BlockerAllocation {
+                blocker_id: Uuid::new_v4(),
+                routing_generation: 1,
+                observed_at: f.now
+            },
+        )
+        .is_err()
+    );
+    let blocker = f.hold();
+    let command = f.handoff(&blocker);
+    let before = f.current.clone();
+    let mut owner = f.scheduler.clone();
+    owner.subject = "owner".into();
+    owner.human_session = true;
+    for actor in [&f.producer, &owner] {
+        assert!(return_to_pm(&f.current, &blocker, actor, &f.config, &command).is_err());
+        assert_eq!(f.current, before);
+    }
+    assert!(return_to_pm(&f.current, &blocker, &f.scheduler, &f.config, &command).is_ok());
 }
 
 #[test]
@@ -525,18 +551,26 @@ fn return_denies_wrong_terminal_run_assignment_chat_hash_and_unheld_state() {
 }
 
 #[test]
-fn complete_winning_before_hold_invalidates_stale_hold_and_hold_winning_blocks_progress() {
+fn atomic_post_losing_to_complete_fails_and_committed_hold_blocks_complete_and_reserve() {
     let mut f = Fixture::new(LifecycleStage::Analysis);
-    let saved = f.prepare().unwrap();
-    let stale = f.request(&saved);
     let complete = DeliveryResult::Analyst {
         analysis: artifact("synthetic-analysis"),
     };
     crate::sdlc_lifecycle::accept_result(&mut f.current.task, &complete).unwrap();
-    assert!(request_pm_review(&f.current, &saved, &f.scheduler, &f.config, &stale, f.now).is_err());
+    let completed = f.current.clone();
+    assert!(f.plan().is_err());
+    assert_eq!(f.current, completed);
     let mut f = Fixture::new(LifecycleStage::Analysis);
     let held = f.hold();
-    assert!(ensure_technical_progress_allowed(&f.current, Some(&held)).is_err());
+    let before = f.current.clone();
+    let mut after = before.clone();
+    let complete_attempt = ensure_technical_progress_allowed(&after, Some(&held))
+        .and_then(|()| crate::sdlc_lifecycle::accept_result(&mut after.task, &complete));
+    assert!(complete_attempt.is_err());
+    assert_eq!(after, before);
+    let reserve_gate = ensure_technical_progress_allowed(&f.current, Some(&held));
+    assert!(reserve_gate.is_err());
+    assert_eq!(f.current, before);
     // Existing accept_result does not read blocker state. Integration MUST call the guard
     // under the task lock before accept_result/Reserve/EnsureQueued, not just at HTTP admission.
 }
@@ -544,34 +578,16 @@ fn complete_winning_before_hold_invalidates_stale_hold_and_hold_winning_blocks_p
 #[test]
 fn version_exhaustion_is_atomic_and_repeated_hold_requires_original_journal_readback() {
     let mut f = Fixture::new(LifecycleStage::Analysis);
-    let saved = f.prepare().unwrap();
     f.current.task.version = MAX_SAFE_VERSION;
     let before = f.current.clone();
-    assert!(
-        request_pm_review(
-            &f.current,
-            &saved,
-            &f.scheduler,
-            &f.config,
-            &f.request(&saved),
-            f.now
-        )
-        .is_err()
-    );
+    assert!(f.plan().is_err());
     assert_eq!(f.current, before);
     let mut f = Fixture::new(LifecycleStage::Analysis);
     let held = f.hold();
-    assert!(
-        request_pm_review(
-            &f.current,
-            &held,
-            &f.scheduler,
-            &f.config,
-            &f.request(&held),
-            f.now
-        )
-        .is_err()
-    );
+    let held_before = f.current.clone();
+    assert!(f.plan().is_err());
+    assert_eq!(f.current, held_before);
+    assert_eq!(replay_blocker(&held, &f.proposal).unwrap(), held);
     let mut exhausted = held.clone();
     exhausted.version = MAX_SAFE_VERSION;
     assert!(
