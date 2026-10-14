@@ -191,6 +191,12 @@ history verification. A live execution lease is not required for this read.
 403 means denied access, and invalid revision is 422. Receipt stage remains the
 historical Backlog value. CLI `sdlc confirmation read --task UUID --revision N`
 uses one direct GET, with no analysis-intent/outbox fallback and no mutation.
+
+Reserved PM requirement/question writes require the exact machine scope/fence and
+a current Tracker execution lease; the command schema does not accept a readiness
+claim. Owner answers and separate verifier evidence use admitted history when
+available but do not require it. [Contract](PM_NATIVE_ADMISSION.md).
+
 ## Имена и частичное обновление проектов
 
 Создание и обновление проекта проверяют имя на сервере: после удаления пробелов
@@ -201,11 +207,6 @@ uses one direct GET, with no analysis-intent/outbox fallback and no mutation.
 изменённые поля. Фоновое обновление подставляет свежие значения нетронутых полей
 и сохраняет локальный ввод изменённых, поэтому сохранение описания не откатывает
 новое серверное имя проекта.
-
-Reserved PM requirement/question writes require the exact machine scope/fence and
-a current Tracker execution lease; the command schema does not accept a readiness
-claim. Owner answers and separate verifier evidence use admitted history when
-available but do not require it. [Contract](PM_NATIVE_ADMISSION.md).
 
 ## Каталог сквозных проектов для серверных consumers
 
