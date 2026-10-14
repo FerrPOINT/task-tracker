@@ -127,8 +127,9 @@ The ordinary selectors and Central-auth route harness passed on source
 `bc38833`; the actual artifact PostgreSQL selector passed on `10696ed` after
 fixing initial/replay timestamp parity using the inserted database model.
 Genuine Rust OpenAPI generation and generated-client parity also passed.
-Strict all-target Clippy rejected the placement of the CLI test module; moving
-it below production items is a source fix, not yet a passing repeat of that gate.
+Strict all-target Clippy and the focused CLI test pass on source `306592b`, after
+moving the test module below production items. The unchanged PostgreSQL/auth
+results above are reused only for their source boundary, not rerun here.
 The temporary Base ComposeHelper v2 QA reports cleanup and input cleanup verified.
 These fixture-backed results are not installed/live seven-role acceptance.
 
@@ -152,7 +153,7 @@ tests together against one database. This artifact PG selector includes an actua
 
 The executed Central-auth route harness covers delivery grants, PM denial,
 configured SchedulerRead, foreign-project access and global-admin hints for
-these three routes. Final all-target Clippy qualification remains separate.
+these three routes. This is source qualification, not installed/live acceptance.
 
 ## Changed Source Paths
 
