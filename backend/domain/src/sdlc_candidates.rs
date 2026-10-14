@@ -213,7 +213,7 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .split('.')
-                .last()
+                .next_back()
                 .unwrap()
                 .len(),
             10
