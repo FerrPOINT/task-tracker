@@ -1,4 +1,94 @@
 -- Parent owns migration version/order/registration and legacy stage projection.
+-- Keep the original v1 package validator and immutable history unchanged.
+CREATE FUNCTION sdlc_valid_single_task_role_routes(routes jsonb) RETURNS boolean IMMUTABLE LANGUAGE plpgsql AS $$
+DECLARE role text; route jsonb; suffix text; field text;
+    agents text[] := '{}'; namespaces text[] := '{}'; workflows text[] := '{}';
+BEGIN
+    IF (jsonb_typeof(routes)='object'
+        AND routes ?& ARRAY['project_manager','analyst','architect','developer','reviewer','tester','devops']
+        AND routes - ARRAY['project_manager','analyst','architect','developer','reviewer','tester','devops']='{}'::jsonb) IS NOT TRUE THEN RETURN false; END IF;
+    FOREACH role IN ARRAY ARRAY['project_manager','analyst','architect','developer','reviewer','tester','devops'] LOOP
+        route := routes->role;
+        IF (jsonb_typeof(route)='object'
+            AND route ?& ARRAY['agent_id','fleet_config_revision','instruction_profile','instruction_manifest_sha256','namespace_id','namespace_name','workflow_id','workflow_key','profile','workflow_catalog_version','workflow_catalog_sha256']
+            AND route - ARRAY['agent_id','fleet_config_revision','instruction_profile','instruction_manifest_sha256','namespace_id','namespace_name','workflow_id','workflow_key','profile','workflow_catalog_version','workflow_catalog_sha256']='{}'::jsonb) IS NOT TRUE THEN RETURN false; END IF;
+        FOREACH field IN ARRAY ARRAY['agent_id','instruction_profile','instruction_manifest_sha256','namespace_id','namespace_name','workflow_id','workflow_key','profile','workflow_catalog_sha256'] LOOP
+            IF jsonb_typeof(route->field) IS DISTINCT FROM 'string' THEN RETURN false; END IF;
+        END LOOP;
+        IF (route->>'agent_id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+            AND route->>'agent_id' != '00000000-0000-0000-0000-000000000000'
+            AND jsonb_typeof(route->'fleet_config_revision')='number'
+            AND route->>'fleet_config_revision' ~ '^[1-9][0-9]{0,15}$') IS NOT TRUE THEN RETURN false; END IF;
+        IF (route->>'fleet_config_revision')::bigint > 9007199254740991 THEN RETURN false; END IF;
+        FOREACH field IN ARRAY ARRAY['namespace_id','workflow_id'] LOOP
+            IF (route->>field ~ '^[1-9][0-9]{0,18}$') IS NOT TRUE THEN RETURN false; END IF;
+            IF length(route->>field)=19 AND (route->>field) COLLATE "C" > '9223372036854775807' COLLATE "C" THEN RETURN false; END IF;
+        END LOOP;
+        suffix := replace(role,'_','-');
+        IF (route->>'instruction_profile'='single-task-v1'
+            AND route->>'instruction_manifest_sha256' ~ '^[0-9a-f]{64}$'
+            AND route->>'instruction_manifest_sha256'=routes->'project_manager'->>'instruction_manifest_sha256'
+            AND route->>'namespace_name'='single-task-'||suffix
+            AND route->>'workflow_key'='single-task-v1:'||role
+            AND route->>'profile'='single-task-v1-'||suffix
+            AND route->'workflow_catalog_version'='1'::jsonb
+            AND route->>'workflow_catalog_sha256' ~ '^[0-9a-f]{64}$'
+            AND route->>'workflow_catalog_sha256'=routes->'project_manager'->>'workflow_catalog_sha256') IS NOT TRUE THEN RETURN false; END IF;
+        IF route->>'agent_id'=ANY(agents) OR route->>'namespace_id'=ANY(namespaces) OR route->>'workflow_id'=ANY(workflows) THEN RETURN false; END IF;
+        agents := array_append(agents,route->>'agent_id');
+        namespaces := array_append(namespaces,route->>'namespace_id');
+        workflows := array_append(workflows,route->>'workflow_id');
+    END LOOP;
+    RETURN true;
+END $$;
+
+ALTER TABLE sdlc_project_routing_revisions DROP CONSTRAINT sdlc_project_routing_revisions_check;
+ALTER TABLE sdlc_project_routing_revisions ADD CONSTRAINT sdlc_project_routing_revisions_check CHECK ((
+    ((payload->'contract_version'='1'::jsonb AND sdlc_valid_role_routes(payload->'routes'))
+        OR (payload->'contract_version'='2'::jsonb AND sdlc_valid_single_task_role_routes(payload->'routes')))
+    AND payload->>'project_id'=project_id::text
+    AND payload->>'tracker_instance_id'=tracker_instance_id
+    AND (payload->>'version')::bigint=version
+    AND payload->>'routing_hash'=routing_hash
+    AND payload->>'verification'='declared'
+    AND payload->'native_ready'='false'::jsonb AND payload->'dispatch_allowed'='false'::jsonb) IS TRUE);
+
+ALTER TABLE sdlc_task_routing_snapshots DROP CONSTRAINT sdlc_task_routing_snapshots_check;
+ALTER TABLE sdlc_task_routing_snapshots ADD CONSTRAINT sdlc_task_routing_snapshots_check CHECK ((
+    payload->'contract_version' IN ('1'::jsonb,'2'::jsonb)
+    AND payload->'contract_version'=payload->'policy'->'contract_version'
+    AND payload->>'snapshot_id'=snapshot_id::text
+    AND payload->>'task_id'=task_id::text AND payload->>'root_task_id'=task_id::text
+    AND payload->>'project_id'=project_id::text AND payload->>'confirmation_id'=confirmation_id::text
+    AND (payload->>'requirement_revision')::bigint=requirement_revision
+    AND payload->>'content_hash'=content_hash
+    AND (payload->'policy'->>'version')::bigint=policy_version
+    AND payload->'policy'->>'project_id'=project_id::text) IS TRUE);
+
+ALTER TABLE sdlc_analysis_intents DROP CONSTRAINT sdlc_analysis_intents_check;
+ALTER TABLE sdlc_analysis_intents ADD CONSTRAINT sdlc_analysis_intents_check CHECK ((
+    payload->>'intent_id'=intent_id::text AND payload->>'task_id'=task_id::text
+    AND payload->>'confirmation_id'=confirmation_id::text
+    AND (payload->>'requirement_revision')::bigint=requirement_revision
+    AND payload->>'content_hash'=content_hash AND payload->>'operation_key'=operation_key
+    AND operation_key='analysis:'||confirmation_id::text AND payload->'contract_version'='1'::jsonb
+    AND payload->>'stage'='Analysis' AND payload->>'status'='Ready' AND payload->>'role'='Analyst'
+    AND payload->>'workflow' IN ('hermes-sdlc:analyst','single-task-v1:analyst')
+    AND payload->>'mode'='analysis' AND payload->>'scope'='business'
+    AND payload->'cycle'='0'::jsonb AND payload->'attempt'='0'::jsonb) IS TRUE);
+
+CREATE OR REPLACE FUNCTION sdlc_analysis_routing_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE expected uuid; workflow text;
+BEGIN
+    SELECT snapshot_id,payload->'policy'->'routes'->'analyst'->>'workflow_key' INTO expected,workflow
+        FROM sdlc_task_routing_snapshots WHERE task_id=NEW.task_id;
+    IF NEW.routing_snapshot_id IS DISTINCT FROM expected
+        OR NEW.payload->>'workflow' IS DISTINCT FROM COALESCE(workflow,'hermes-sdlc:analyst') THEN
+        RAISE EXCEPTION 'SDLC Analysis routing snapshot/workflow mismatch' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+
 ALTER TABLE sdlc_tasks ADD CONSTRAINT sdlc_draft_flow_shape CHECK (
     NOT state ? 'flow' OR (state->'flow'='"single-task-v1"'::jsonb
         AND root_task_id=task_id AND state->>'root_task_id'=task_id::text) IS TRUE

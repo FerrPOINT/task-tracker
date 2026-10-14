@@ -79,6 +79,27 @@ async fn legacy_history_snapshot(db: &DatabaseConnection, task: Uuid) -> Json {
     )).await.unwrap().unwrap().try_get("", "snapshot").unwrap()
 }
 
+async fn assert_policy_constraint_rejects(
+    db: &DatabaseConnection,
+    policy: &domain::sdlc_routing::RoutingPolicy,
+    payload: Json,
+) {
+    let tx = db.begin().await.unwrap();
+    let inserted = tx.execute(statement(
+        "INSERT INTO sdlc_project_routing_revisions(project_id,version,tracker_instance_id,routing_hash,payload)
+         VALUES($1,$2,$3,$4,$5)",
+        vec![policy.project_id.into(), (policy.version+1).into(), policy.tracker_instance_id.clone().into(),
+            policy.routing_hash.clone().into(), payload.into()],
+    )).await;
+    tx.rollback().await.unwrap();
+    assert!(
+        inserted
+            .unwrap_err()
+            .to_string()
+            .contains("sdlc_project_routing_revisions_check")
+    );
+}
+
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_DRAFT_FLOW_TEST_DATABASE_URL ending in _draft_flow_test"]
 async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_replay() {
@@ -131,7 +152,34 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     assert!(!old_history["creation"].is_null());
     assert_eq!(old_history["history"].as_array().unwrap().len(), 1);
     assert_eq!(old_history["outbox"].as_array().unwrap().len(), 1);
+    let old_project = Uuid::new_v4();
+    exec(&db,"INSERT INTO projects(id,key,name,owner_id,default_board_id) VALUES($1,'OLD','Legacy routing',$2,$3)",
+        vec![old_project.into(),owner_id.into(),Uuid::new_v4().into()]).await.unwrap();
+    let old_policy_command = SetRoutingPolicy {
+        expected_version: None,
+        routes: routes(),
+        idempotency_key: "v1-before-migration".into(),
+    };
+    let (old_policy, _) = repo
+        .set_routing_policy(old_project, &owner, old_policy_command.clone())
+        .await
+        .unwrap();
+    let old_policy_row: Json = db.query_one(statement(
+        "SELECT to_jsonb(r) AS row FROM sdlc_project_routing_revisions r WHERE project_id=$1 AND version=1",
+        vec![old_project.into()],
+    )).await.unwrap().unwrap().try_get("", "row").unwrap();
     migration::Migrator::up(&db, None).await.unwrap();
+    let retained_policy_row: Json = db.query_one(statement(
+        "SELECT to_jsonb(r) AS row FROM sdlc_project_routing_revisions r WHERE project_id=$1 AND version=1",
+        vec![old_project.into()],
+    )).await.unwrap().unwrap().try_get("", "row").unwrap();
+    assert_eq!(retained_policy_row, old_policy_row);
+    let (retained_policy, replayed) = repo
+        .set_routing_policy(old_project, &owner, old_policy_command)
+        .await
+        .unwrap();
+    assert!(replayed);
+    assert_eq!(retained_policy, old_policy);
     assert_eq!(
         legacy_history_snapshot(&db, legacy.task_id).await,
         old_history
@@ -195,17 +243,71 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     ));
     assert_eq!(checkpoint_counts(&db).await, before);
     let roles = single_task_routes();
-    repo.set_routing_policy(
-        project,
-        &owner,
-        SetRoutingPolicy {
-            expected_version: Some(1),
-            routes: roles.clone(),
-            idempotency_key: "v2".into(),
-        },
-    )
-    .await
-    .unwrap();
+    let (policy2, replayed) = repo
+        .set_routing_policy(
+            project,
+            &owner,
+            SetRoutingPolicy {
+                expected_version: Some(1),
+                routes: roles.clone(),
+                idempotency_key: "v2".into(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(policy2.contract_version, 2);
+    assert_eq!(
+        repo.routing_policy(project, &owner, None).await.unwrap(),
+        policy2
+    );
+    let mut policy_payload = serde_json::to_value(&policy2).unwrap();
+    policy_payload["version"] = json!(policy2.version + 1);
+    for (field, value) in [
+        ("contract_version", json!(1)),
+        ("contract_version", json!(3)),
+        ("contract_version", json!("2")),
+        ("contract_version", json!(null)),
+        ("native_ready", json!(true)),
+        ("dispatch_allowed", json!(true)),
+        ("project_id", json!(Uuid::new_v4())),
+        ("tracker_instance_id", json!("foreign-instance")),
+        ("version", json!(99)),
+        ("routing_hash", json!("f".repeat(64))),
+    ] {
+        let mut wrong = policy_payload.clone();
+        wrong[field] = value;
+        assert_policy_constraint_rejects(&db, &policy2, wrong).await;
+    }
+    for (field, value) in [
+        ("instruction_profile", json!("single-task-v2")),
+        ("instruction_manifest_sha256", json!(null)),
+        ("instruction_manifest_sha256", json!("A".repeat(64))),
+        ("instruction_manifest_sha256", json!("d".repeat(64))),
+        (
+            "package_commit",
+            json!(domain::sdlc_routing::PACKAGE_COMMIT),
+        ),
+        ("agent_id", json!(roles.project_manager.agent_id)),
+        ("namespace_id", json!(roles.project_manager.namespace_id)),
+        ("workflow_id", json!(roles.project_manager.workflow_id)),
+        ("fleet_config_revision", json!(9007199254740992i64)),
+        ("workflow_key", json!("hermes-sdlc:analyst")),
+        ("profile", json!("single-task-v1-developer")),
+        ("workflow_catalog_version", json!(3)),
+        ("workflow_catalog_sha256", json!("f".repeat(64))),
+        ("unknown", json!(true)),
+    ] {
+        let mut wrong = policy_payload.clone();
+        wrong["routes"]["analyst"][field] = value;
+        assert_policy_constraint_rejects(&db, &policy2, wrong).await;
+    }
+    let mut mixed = policy_payload.clone();
+    mixed["routes"]["developer"] = serde_json::to_value(routes().developer).unwrap();
+    assert_policy_constraint_rejects(&db, &policy2, mixed).await;
+    let mut missing = policy_payload;
+    missing["routes"].as_object_mut().unwrap().remove("devops");
+    assert_policy_constraint_rejects(&db, &policy2, missing).await;
     let (draft, replayed) = repo
         .create_draft(project, &owner, marked.clone())
         .await
@@ -475,6 +577,44 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
     assert!(snapshot.policy == policy4 || snapshot.policy == policy5);
     let intent = repo.analysis_intent(task, &owner).await.unwrap();
     assert_eq!(intent.workflow, "single-task-v1:analyst");
+    for version in [json!(1), json!(3), json!("2"), json!(null)] {
+        let mut wrong = serde_json::to_value(&snapshot).unwrap();
+        wrong["contract_version"] = version;
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(
+            "CREATE TEMP TABLE fixture_routing_snapshot_shape
+            (LIKE sdlc_task_routing_snapshots INCLUDING CONSTRAINTS) ON COMMIT DROP",
+        )
+        .await
+        .unwrap();
+        tx.execute(statement("INSERT INTO fixture_routing_snapshot_shape SELECT * FROM sdlc_task_routing_snapshots WHERE task_id=$1",
+            vec![task.into()])).await.unwrap();
+        let inserted = tx.execute(statement("INSERT INTO fixture_routing_snapshot_shape
+            (snapshot_id,task_id,project_id,policy_version,confirmation_id,requirement_revision,content_hash,payload)
+            SELECT snapshot_id,task_id,project_id,policy_version,confirmation_id,requirement_revision,content_hash,$2
+            FROM sdlc_task_routing_snapshots WHERE task_id=$1",vec![task.into(),wrong.into()])).await;
+        tx.rollback().await.unwrap();
+        assert!(
+            inserted
+                .unwrap_err()
+                .to_string()
+                .contains("sdlc_task_routing_snapshots_check")
+        );
+    }
+    let mut wrong = serde_json::to_value(&intent).unwrap();
+    wrong["workflow"] = json!("hermes-sdlc:analyst");
+    let tx = db.begin().await.unwrap();
+    let inserted = tx.execute(statement("INSERT INTO sdlc_analysis_intents
+        (intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id)
+        SELECT intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,$2,routing_snapshot_id
+        FROM sdlc_analysis_intents WHERE task_id=$1",vec![task.into(),wrong.into()])).await;
+    tx.rollback().await.unwrap();
+    assert!(
+        inserted
+            .unwrap_err()
+            .to_string()
+            .contains("snapshot/workflow mismatch")
+    );
     let state = repo.read(task, &owner).await.unwrap();
     assert_eq!(state.stage, Stage::Analysis);
     assert_eq!(state.status, Some(LifecycleStatus::Ready));

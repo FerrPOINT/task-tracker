@@ -1,5 +1,17 @@
 # Дата-модель Task Tracker
 
+The existing additive lifecycle fragment aligns routing SQL with profile-aware
+application wire. Policy v1 still uses the unchanged strict package validator;
+policy v2 requires all seven exact single-task instruction routes, shared digests
+and distinct canonical agent/namespace/workflow IDs. Mixed/null/unknown routes,
+version/family mismatch and readiness flags remain rejected. Snapshot version must
+match its stored policy version family. Analysis intent retains contract v1, but
+its workflow must equal the Analyst route in its exact frozen snapshot (legacy
+without snapshot stays `hermes-sdlc:analyst`). No historical rows/hashes or migration
+registration/order are rewritten; no new migration is added. Focused populated
+legacy-policy/Draft migration, v2 constraint negatives and publication regressions
+are source-only pending parent PG QA.
+
 New immutable delivery assignment JSON includes `execution:{ordinal,key}`;
 the canonical positive bigint ordinal is encoded as a decimal string and paired
 exactly with `SDLC-<ordinal>`. It is part of assignment hash and original receipts.
