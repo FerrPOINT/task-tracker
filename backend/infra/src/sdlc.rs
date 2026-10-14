@@ -98,7 +98,6 @@ impl PostgresSdlcRepository {
     }
 
     async fn project_access(
-        &self,
         tx: &DatabaseTransaction,
         project: Uuid,
         actor: &Principal,
@@ -135,7 +134,6 @@ impl PostgresSdlcRepository {
     }
 
     async fn issue_access(
-        &self,
         tx: &DatabaseTransaction,
         task: Uuid,
         actor: &Principal,
@@ -146,7 +144,7 @@ impl PostgresSdlcRepository {
             vec![task.into()])).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("issue", task))?;
         let project: Uuid = row.try_get("", "project_id").map_err(map_db)?;
         // Lock authorization rows so membership/account revocation cannot race the commit.
-        self.project_access(tx, project, actor).await?;
+        Self::project_access(tx, project, actor).await?;
         let owner: Option<String> = row.try_get("", "owner_subject").map_err(map_db)?;
         Ok((project, owner.unwrap_or_default()))
     }
@@ -157,7 +155,16 @@ impl PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<TaskState, AppError> {
-        let (project, _) = self.issue_access(tx, task, actor).await?;
+        Self::load_with_config(tx, &self.config, task, actor).await
+    }
+
+    async fn load_with_config(
+        tx: &DatabaseTransaction,
+        config: &SdlcConfig,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<TaskState, AppError> {
+        let (project, _) = Self::issue_access(tx, task, actor).await?;
         let row = tx
             .query_one(statement(
                 "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
@@ -167,7 +174,7 @@ impl PostgresSdlcRepository {
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("SDLC binding", task))?;
         let state = state_from(row)?;
-        if state.tracker_instance_id != self.config.instance_id
+        if state.tracker_instance_id != config.instance_id
             || state.project_id != project
             || state.task_id != task
         {
@@ -183,7 +190,16 @@ impl PostgresSdlcRepository {
         task: Uuid,
         actor: &Principal,
     ) -> Result<TaskState, AppError> {
-        let state = self.load(tx, task, actor).await?;
+        Self::load_read_with_config(tx, &self.config, task, actor).await
+    }
+
+    async fn load_read_with_config(
+        tx: &DatabaseTransaction,
+        config: &SdlcConfig,
+        task: Uuid,
+        actor: &Principal,
+    ) -> Result<TaskState, AppError> {
+        let state = Self::load_with_config(tx, config, task, actor).await?;
         app::sdlc::authorize_pm_read(&state, actor)?;
         lifecycle::authorize_read(tx, &state, actor).await?;
         if app::sdlc::has_pm_grant(&actor.scopes) {
@@ -1193,7 +1209,7 @@ impl SdlcRepository for PostgresSdlcRepository {
                 vec![lock.clone().into()],
             )
             .await?;
-            let (user, project_key) = self.project_access(&tx, project, actor).await?;
+            let (user, project_key) = Self::project_access(&tx, project, actor).await?;
             let replay = tx
                 .query_one(statement(
                     "SELECT task_id,payload_hash,result FROM sdlc_draft_creations
@@ -1392,7 +1408,7 @@ impl SdlcRepository for PostgresSdlcRepository {
             vec![lock.into()],
         )
         .await?;
-        let (user, _) = self.project_access(&tx, project, actor).await?;
+        let (user, _) = Self::project_access(&tx, project, actor).await?;
         let row = tx.query_one(statement(
             "SELECT task_id,payload_hash,result FROM sdlc_draft_creations WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
             vec![project.into(), actor.subject.clone().into(), key.into()],
@@ -1535,7 +1551,7 @@ impl SdlcRepository for PostgresSdlcRepository {
     ) -> Result<TaskState, AppError> {
         app::sdlc::validate_key(&command.idempotency_key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        let (project, owner) = self.issue_access(&tx, task, actor).await?;
+        let (project, owner) = Self::issue_access(&tx, task, actor).await?;
         if !actor.human_session || owner.is_empty() || actor.subject != owner {
             return Err(AppError::Forbidden);
         }

@@ -9,19 +9,16 @@ struct Snapshot {
 }
 
 async fn snapshot(
-    repo: &PostgresSdlcRepository,
+    db: &DatabaseConnection,
+    config: &SdlcConfig,
     actor: &Principal,
     id: AttachmentId,
 ) -> Result<Snapshot, AppError> {
     let task = app::sdlc::pm_grant_task(actor)?.ok_or(AppError::Forbidden)?;
-    let tx = repo.db.begin().await.map_err(map_db)?;
-    let state = repo.load_read(&tx, task, actor).await?;
+    let tx = db.begin().await.map_err(map_db)?;
+    let state = PostgresSdlcRepository::load_read_with_config(&tx, config, task, actor).await?;
     owner_access(&tx, &state).await?;
-    if !repo
-        .config
-        .single_task_project_ids
-        .contains(&state.project_id)
-    {
+    if !config.single_task_project_ids.contains(&state.project_id) {
         return Err(AppError::Unavailable(
             "single-task artifact policy disabled".into(),
         ));
@@ -76,13 +73,7 @@ pub(crate) async fn download(
     id: AttachmentId,
     storage: &dyn domain::FileStorage,
 ) -> Result<(domain::Attachment, Vec<u8>), AppError> {
-    // Reuse the existing pool/config without connect(), writes, new credentials or a new port.
-    let repo = PostgresSdlcRepository {
-        db: db.clone(),
-        config: config.clone(),
-        file_storage: None,
-    };
-    let before = snapshot(&repo, actor, id).await?;
+    let before = snapshot(db, config, actor, id).await?;
     // No authorization/task/lease locks across storage I/O: revocation can commit meanwhile.
     let bytes = storage
         .get(
@@ -91,7 +82,7 @@ pub(crate) async fn download(
         )
         .await?;
     app::attachment_artifacts::verify_bytes(&before.item, &bytes)?;
-    let after = snapshot(&repo, actor, id).await?;
+    let after = snapshot(db, config, actor, id).await?;
     if before.blocker != after.blocker
         || before.seal != after.seal
         || app::sdlc::canonical_hash(&before.item)? != app::sdlc::canonical_hash(&after.item)?

@@ -49,7 +49,7 @@ impl PostgresSdlcRepository {
         app::sdlc_candidates::authorize(actor, &self.config)?;
         query.validate()?;
         let tx = self.db.begin().await.map_err(map_db)?;
-        self.project_access(&tx, query.project_id, actor).await?;
+        Self::project_access(&tx, query.project_id, actor).await?;
         if !self
             .config
             .single_task_project_ids

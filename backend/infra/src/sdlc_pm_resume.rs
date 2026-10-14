@@ -188,7 +188,7 @@ impl PostgresSdlcRepository {
             trusted_human: false,
             scopes: Default::default(),
         };
-        self.project_access(&tx, state.project_id, &holder).await?;
+        Self::project_access(&tx, state.project_id, &holder).await?;
         let row=tx.query_one(statement("SELECT payload FROM sdlc_assignments WHERE task_id=$1 ORDER BY version DESC LIMIT 1",vec![task.into()]))
             .await.map_err(map_db)?.ok_or_else(inconsistent)?;
         if row.try_get::<Json>("", "payload").map_err(map_db)?

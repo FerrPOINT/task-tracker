@@ -164,7 +164,7 @@ impl PostgresSdlcRepository {
             return Err(AppError::validation("invalid routing version"));
         }
         let tx = self.db.begin().await.map_err(map_db)?;
-        self.project_access(&tx, project, actor).await?;
+        Self::project_access(&tx, project, actor).await?;
         let result = Self::policy(&tx, project, version).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(result)
