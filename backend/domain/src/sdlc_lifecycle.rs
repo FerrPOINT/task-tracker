@@ -526,6 +526,34 @@ pub struct LifecycleReadback {
 
 #[async_trait::async_trait]
 pub trait LifecycleRepository: Send + Sync {
+    async fn reserve_critical_pm_review(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _command: crate::sdlc_critical_pm_reservation::ReserveCriticalPmReview,
+    ) -> Result<
+        (
+            crate::sdlc_critical_pm_reservation::CriticalPmReservationResult,
+            bool,
+        ),
+        AppError,
+    > {
+        Err(AppError::Unavailable(
+            "critical PM review repository not configured".into(),
+        ))
+    }
+
+    async fn critical_pm_review_operation(
+        &self,
+        _task: Uuid,
+        _actor: &Principal,
+        _key: &str,
+    ) -> Result<crate::sdlc_critical_pm_reservation::CriticalPmReservationResult, AppError> {
+        Err(AppError::Unavailable(
+            "critical PM review repository not configured".into(),
+        ))
+    }
+
     async fn return_critical_to_pm(
         &self,
         _task: Uuid,

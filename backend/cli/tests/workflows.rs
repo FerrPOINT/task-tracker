@@ -133,6 +133,9 @@ async fn empty_mutation_success_preserves_human_messages_and_json() {
         }
     }
 }
+#[path = "workflows/critical_pm_reviews.rs"]
+mod critical_pm_reviews;
+
 #[derive(Debug, Clone)]
 struct Recorded {
     method: String,

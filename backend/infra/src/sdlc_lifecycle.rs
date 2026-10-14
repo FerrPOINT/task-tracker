@@ -524,6 +524,30 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl LifecycleRepository for PostgresSdlcRepository {
+    async fn reserve_critical_pm_review(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_critical_pm_reservation::ReserveCriticalPmReview,
+    ) -> Result<
+        (
+            domain::sdlc_critical_pm_reservation::CriticalPmReservationResult,
+            bool,
+        ),
+        AppError,
+    > {
+        PostgresSdlcRepository::reserve_critical_pm_review(self, task, actor, command).await
+    }
+
+    async fn critical_pm_review_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_critical_pm_reservation::CriticalPmReservationResult, AppError> {
+        PostgresSdlcRepository::critical_pm_review_operation(self, task, actor, key).await
+    }
+
     async fn return_critical_to_pm(
         &self,
         task: Uuid,

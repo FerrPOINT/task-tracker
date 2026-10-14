@@ -2,6 +2,18 @@
 
 ## Critical Business Blocker Integration
 
+Registered source also adds POST
+`/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews` and GET
+`/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}`.
+The existing closed command requires exact blocker/task/current-PM owner and
+assignment versions. Only the configured scheduler's separate WRITE/READ child
+credentials apply. Fresh reservation returns201, original replay200; all replies,
+extractor errors and auth rejection are no-store. CLI uses
+`sdlc critical-blocker pm-review reserve|operation`, without automatic retry.
+Response preserves the original input and concrete PM but allocates new execution
+and assignment IDs; `dispatch_allowed=false`. These new routes, codegen and
+persistence still await their own qualification, not the earlier Return pass.
+
 The source also registers scheduler-only POST
 `/api/v1/issues/{id}/sdlc/critical-blockers/returns` and original-operation GET
 `/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}`.

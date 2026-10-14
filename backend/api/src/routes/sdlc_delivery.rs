@@ -455,6 +455,14 @@ mod tests {
             ("/api/v1/issues/{id}/sdlc/critical-blockers", "post"),
             ("/api/v1/issues/{id}/sdlc/critical-blockers/returns", "post"),
             (
+                "/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews",
+                "post",
+            ),
+            (
+                "/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}",
+                "get",
+            ),
+            (
                 "/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}",
                 "get",
             ),

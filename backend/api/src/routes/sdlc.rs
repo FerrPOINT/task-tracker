@@ -208,6 +208,7 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route_layer(middleware::from_fn(
             crate::middleware::sdlc_auth::strict_central_auth,
         ))
+        .merge(super::sdlc_critical_pm_reviews::router())
 }
 
 #[utoipa::path(

@@ -2,6 +2,9 @@ use super::{Api, Result, Value, enc, json_input, sdlc_path};
 use clap::Subcommand;
 use uuid::Uuid;
 
+#[path = "sdlc_critical_pm_reviews.rs"]
+mod pm_reviews;
+
 fn readable_key(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 128
@@ -13,6 +16,11 @@ fn readable_key(value: &str) -> bool {
 
 #[derive(Subcommand)]
 pub enum CriticalBlockerCommand {
+    /// Scheduler only: reserve or read a new PM review of the same task
+    PmReview {
+        #[command(subcommand)]
+        command: pm_reviews::CriticalPmReviewCommand,
+    },
     /// Scheduler only: return a held task to PM after actual native terminal readback
     ReturnToPm {
         #[arg(long)]
@@ -52,6 +60,7 @@ pub enum CriticalBlockerCommand {
 
 pub async fn critical_blocker(api: &Api, command: CriticalBlockerCommand) -> Result<Value> {
     match command {
+        CriticalBlockerCommand::PmReview { command } => pm_reviews::pm_review(api, command).await,
         CriticalBlockerCommand::ReturnToPm { task, from_file } => {
             let payload = json_input(&from_file)?;
             anyhow::ensure!(

@@ -24,6 +24,7 @@ pub mod notifications;
 pub mod reports;
 pub mod sdlc;
 pub mod sdlc_candidates;
+pub mod sdlc_critical_pm_reviews;
 pub mod sdlc_delivery;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;

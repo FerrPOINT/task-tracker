@@ -6,19 +6,25 @@ use serde::{Deserialize, Serialize};
 use shared::AppError;
 use uuid::Uuid;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReserveCriticalPmReview {
     pub blocker_id: Uuid,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
     pub blocker_sha256: String,
     #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub expected_blocker_version: i64,
     #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub expected_task_version: i64,
     #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub expected_pm_owner_version: i64,
     #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub expected_pm_assignment_version: i64,
+    #[schema(min_length = 1, max_length = 128)]
     pub idempotency_key: String,
 }
 
@@ -44,31 +50,35 @@ impl ReserveCriticalPmReview {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum CriticalPmReservationPurpose {
     CriticalBusinessReview,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CriticalPmRequirementsRef {
     #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub revision: i64,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
     pub content_hash: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CriticalPmReviewContext {
     pub blocker_id: Uuid,
+    #[schema(pattern = "^[0-9a-f]{64}$")]
     pub blocker_sha256: String,
     #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
     pub blocker_version: i64,
     pub requirements: CriticalPmRequirementsRef,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CriticalPmReservationResult {
     pub purpose: CriticalPmReservationPurpose,
