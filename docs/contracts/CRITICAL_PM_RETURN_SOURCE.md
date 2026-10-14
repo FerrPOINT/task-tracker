@@ -59,7 +59,11 @@ assignment hash, routing validation and canonical JSON SHA helpers. No new deps.
   allocation: BlockerAllocation) -> Result<CriticalPolicyChange, AppError>`:
   exact opted-in task/root, enabled project, current Running
   assignment/grant/agent/run/owner/routing/revision, live lease held by configured
-  scheduler; derives identity from server state and verified actor. Server-only
+  scheduler; derives identity from server state and verified actor. Nonrenewing
+  producer proposals retain an older version of the SAME live lease across
+  heartbeat, as existing delivery proposals do; future versions/foreign lease or
+  fencing identity remain denied. Scheduler handoff still requires fresh exact
+  lease-version CAS. Server-only
   `BlockerAllocation` supplies real blocker UUID, persisted current generation and
   observed_at. It is not a wire object or allocator replacement. The CURRENT
   technical grant atomically requests waiting on its own assignment; no scheduler
@@ -153,8 +157,10 @@ No live activation is implied by this source packet.
 ## Qualification handoff
 
 `critical-pm-return-registration.patch` preserves the original TWO module-export
-handoff. Main has applied those exports; a source-bound local qualification is
-now running on the registered modules. Later API/persistence changes cannot inherit
+handoff. Main applied those exports and completed source-bound local qualification
+at `c9cf19ea53223f4292093efbcaa383d23c782eed`:5 domain +14 app cases, altered-crate
+check/Clippy and Rust schema export pass. This was pure policy, not critical storage
+PostgreSQL or native acceptance. Later API/persistence/heartbeat changes cannot inherit
 that earlier snapshot's results. From `backend`:
 
 ```text
@@ -164,9 +170,10 @@ cargo test --locked -p domain --lib sdlc_critical_blockers::tests::
 cargo test --locked -p app --lib sdlc_critical_blockers::tests::
 ```
 
-Expected nonzero collection: domain 5 tests, app 14 tests. Source formatting and
-registration patch applicability only are checked locally; Cargo/PG/Docker are
-not executed. Fixtures and native/artifact observations are explicitly synthetic.
+Current expected nonzero collection: domain5, app15. The new heartbeat proposal
+regression in `83a71c4` and later API route/policy changes still need their affected
+gate. The old19-case pass is retained verbatim, not called a20-case pass. Fixtures
+and native/artifact observations are explicitly synthetic.
 
 Required DB/HTTP negatives still belong to the integration witness: concurrent
 hold vs Complete/Reserve; crash/replay during capacity release/PM reserve;
