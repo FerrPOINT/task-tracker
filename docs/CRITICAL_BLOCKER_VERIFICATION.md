@@ -2,6 +2,12 @@
 
 ## Source Follow-Up: 15 October
 
+The subsequent c17a538/3597a17 resumption invocation passes Tracker359 locked
+workspace/all-target strict Clippy. It then fails in a Fleet HTTP test fixture;
+Tracker unit/OpenAPI/PG steps are not reached. This is a compile/lint result,
+not a successful combined batch or populated migration. The later two-cycle
+fixture8b6da31 is source-only and is not covered by that Clippy result.
+
 Tracker544322c passes fmt and the previous borrowed-DB compilation point, but
 workspace all-target Clippy stops with E0599 in the new reader PG fixture. It
 called `claim_pm_execution_lease` instead of the actual `claim_execution_lease`.
