@@ -434,7 +434,7 @@ pub(crate) async fn publish(
     app::attachment_artifacts::verify_bytes(&item, &retained)?;
     // Locks retain assignment/ACL throughout I/O; check the actual clock again before metadata commit.
     ensure_live(&tx, &auth.head).await?;
-    attachment::ActiveModel {
+    let saved = attachment::ActiveModel {
         id: Set(item.id.as_uuid()),
         issue_id: Set(issue.as_uuid()),
         author_id: Set(auth.user),
@@ -449,7 +449,7 @@ pub(crate) async fn publish(
     .map_err(map_db)?;
     tx.commit().await.map_err(map_db)?;
     // Never delete a sealed blob on DB error: exact retry safely adopts the same bytes; no loser deletes a winner.
-    Ok(item)
+    Ok(crate::repos::map_attachment(saved))
 }
 
 pub(crate) async fn list(
