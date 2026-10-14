@@ -66,6 +66,19 @@ async fn checkpoint_counts(db: &DatabaseConnection) -> Vec<i64> {
     counts
 }
 
+async fn legacy_history_snapshot(db: &DatabaseConnection, task: Uuid) -> Json {
+    db.query_one(statement(
+        "SELECT jsonb_build_object('binding',to_jsonb(t),
+         'issue',(SELECT to_jsonb(i) FROM issues i WHERE i.id=t.task_id),
+         'status',(SELECT to_jsonb(s) FROM statuses s JOIN issues i ON i.status_id=s.id WHERE i.id=t.task_id),
+         'creation',(SELECT to_jsonb(c) FROM sdlc_draft_creations c WHERE c.task_id=t.task_id),
+         'history',(SELECT jsonb_agg(to_jsonb(h) ORDER BY h.id) FROM issue_status_history h WHERE h.issue_id=t.task_id),
+         'outbox',(SELECT jsonb_agg(to_jsonb(o) ORDER BY o.sequence) FROM sdlc_outbox o WHERE o.task_id=t.task_id)) AS snapshot
+         FROM sdlc_tasks t WHERE t.task_id=$1",
+        vec![task.into()],
+    )).await.unwrap().unwrap().try_get("", "snapshot").unwrap()
+}
+
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_DRAFT_FLOW_TEST_DATABASE_URL ending in _draft_flow_test"]
 async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_replay() {
@@ -79,7 +92,13 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
             .ends_with("_draft_flow_test")
     );
     assert!(row.try_get::<bool>("", "fresh").unwrap());
-    migration::Migrator::up(&db, None).await.unwrap();
+    let prior = migration::Migrator::migrations()
+        .iter()
+        .position(|m| m.name() == "m20261013_0000096_single_task_delivery")
+        .expect("registered single-task migration required");
+    migration::Migrator::up(&db, Some(prior.try_into().unwrap()))
+        .await
+        .unwrap();
     let project = Uuid::new_v4();
     let owner_id = Uuid::new_v4();
     for (subject, id) in [
@@ -102,6 +121,34 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         .unwrap();
     let owner = actor("owner", true, vec![]);
     let member = actor("member", true, vec![]);
+    // Exercise the actual additive migration with populated immutable legacy history.
+    let legacy_command = create("legacy", None);
+    let (legacy, _) = repo
+        .create_draft(project, &owner, legacy_command.clone())
+        .await
+        .unwrap();
+    let old_history = legacy_history_snapshot(&db, legacy.task_id).await;
+    assert!(!old_history["creation"].is_null());
+    assert_eq!(old_history["history"].as_array().unwrap().len(), 1);
+    assert_eq!(old_history["outbox"].as_array().unwrap().len(), 1);
+    migration::Migrator::up(&db, None).await.unwrap();
+    assert_eq!(
+        legacy_history_snapshot(&db, legacy.task_id).await,
+        old_history
+    );
+    let (replayed, was_replayed) = repo
+        .create_draft(project, &owner, legacy_command.clone())
+        .await
+        .unwrap();
+    assert!(was_replayed);
+    assert_eq!(
+        serde_json::to_value(replayed).unwrap(),
+        serde_json::to_value(&legacy).unwrap()
+    );
+    assert_eq!(
+        legacy_history_snapshot(&db, legacy.task_id).await,
+        old_history
+    );
     let marked = create("marked", Some(DraftFlow::SingleTaskV1));
     let before = checkpoint_counts(&db).await;
     assert!(matches!(
@@ -114,11 +161,6 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
             .is_err()
     );
     assert_eq!(checkpoint_counts(&db).await, before);
-    let legacy_command = create("legacy", None);
-    let (legacy, _) = repo
-        .create_draft(project, &owner, legacy_command.clone())
-        .await
-        .unwrap();
     let legacy_state = repo.read(legacy.task_id, &owner).await.unwrap();
     assert_eq!(legacy_state.draft_flow().unwrap(), None);
     assert_eq!(legacy_state.status, None);

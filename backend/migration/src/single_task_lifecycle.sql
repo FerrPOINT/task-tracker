@@ -139,7 +139,7 @@ CREATE TABLE sdlc_delivery_assignments (
         AND (payload->>'attempt')::integer BETWEEN 1 AND 4) IS TRUE),
     CHECK (NOT payload ? 'execution' OR (
         jsonb_typeof(payload->'execution')='object'
-        AND payload->'execution'-ARRAY['ordinal','key']='{}'::jsonb
+        AND (payload->'execution') - ARRAY['ordinal','key']='{}'::jsonb
         AND jsonb_typeof(payload->'execution'->'ordinal')='string'
         AND jsonb_typeof(payload->'execution'->'key')='string'
         AND payload->'execution'->>'ordinal' ~ '^[1-9][0-9]{0,18}$'
