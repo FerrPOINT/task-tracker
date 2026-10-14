@@ -65,7 +65,9 @@ Tracker. Только matching persisted completion открывает initial d
 
 ## Main Integration
 
-Main добавляет только существующие registrations:
+Registrations интегрированы в исходнике `21c04b4`; compile/PG/OpenAPI gate
+выполняется отдельно. Это не установка endpoint на постоянном стенде.
+Подключены существующие registrations:
 
 - `domain/src/lib.rs`: `pub mod sdlc_candidates;`
 - `app/src/lib.rs`: `pub mod sdlc_candidates;`

@@ -1,5 +1,16 @@
 # API v1 Specification — Task Tracker
 
+## Single-Task Delivery Discovery
+
+Source registers `GET /api/v1/sdlc/delivery-candidates` with required `project_id`,
+optional UUID `after` and `limit` 1..100 (default50). Only the configured scheduler's
+read-only credential with current project access can discover work. The response
+declares `ensure_queued` or `reserve`, not permission to dispatch; existing command
+CAS, capacity, root/agent lease and PM-terminal gates remain authoritative.
+Owner consent alone does not expose an initial candidate. Full wire and pending
+qualification: [delivery candidates](SDLC_DELIVERY_CANDIDATES.md). No new table,
+planner or runtime admission is introduced; source registration is not deployment.
+
 ## Authoritative Delivery Execution Reference
 
 Fresh scheduler-only lifecycle Reserve returns
