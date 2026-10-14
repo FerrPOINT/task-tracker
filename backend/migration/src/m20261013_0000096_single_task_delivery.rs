@@ -11,7 +11,9 @@ impl MigrationTrait for Migration {
             .execute_unprepared(concat!(
                 include_str!("single_task_lifecycle.sql"),
                 "\n",
-                include_str!("critical_pm_return.sql")
+                include_str!("critical_pm_return.sql"),
+                "\n",
+                include_str!("critical_pm_review.sql")
             ))
             .await?;
         Ok(())

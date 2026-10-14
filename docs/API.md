@@ -9,14 +9,14 @@ Both return the typed `{lifecycle, blocker}` plan and use no-store. The existing
 separate scheduler WRITE/READ credentials and authoritative fresh task/project
 checks remain unchanged. Return requires actual matching native terminal before
 the trusted caller sends it; the producer's Held acknowledgement is not terminal
-proof. These new registrations/CLI tests still need affected qualification and
-generated OpenAPI, not the earlier source's results.
+proof. These registrations and CLI tests pass on `caf7ab3`, together with the
+actual PG aggregate and Rust-generated OpenAPI. This is not live PM acceptance.
 
 Existing attachment storage is now connected through production DI. Critical
 operation keys are1..128 UTF-8 bytes without whitespace/control, literal
 slash/backslash or standalone `.`/`..`, so original-key CLI readback is possible.
 Legacy keys and the Base transport security contract are unchanged. Latest
-[qualification and the open PG failure](CRITICAL_BLOCKER_VERIFICATION.md) must not
+[source-bound qualification](CRITICAL_BLOCKER_VERIFICATION.md) must not
 be confused with live acceptance or a completed full gate.
 
 The existing strict SDLC router now registers typed POST
@@ -27,10 +27,11 @@ All responses are no-store. The technical capability allowlist permits only thes
 exact current-task resources; it does not grant scheduler transitions or owner
 confirmation. Domain/repository authorization remains authoritative.
 
-These are source integration targets, not a usable persisted flow yet: the default
-repository port fails503 until the atomic storage package is connected. New handler
-OpenAPI regeneration/tests are pending; no PM return, native stop, capacity release
-or re-confirmed revision is implied. See the exact
+The atomic repository implementation and existing attachment storage are connected
+through production DI. Local qualification covers persistence/terminal Return and
+generated public routes; it does not establish a live native stop, resumed PM,
+new owner confirmation or full deployment. Missing configured storage still fails
+closed rather than manufacturing evidence. See the exact
 [policy/storage handoff](contracts/CRITICAL_PM_RETURN_SOURCE.md).
 
 ## Single-Task Delivery Discovery

@@ -13,6 +13,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_critical_blockers.rs"]
 mod critical_blockers;
+#[path = "sdlc_critical_pm_reservation.rs"]
+mod critical_pm_reservation;
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
 #[path = "sdlc_lifecycle.rs"]

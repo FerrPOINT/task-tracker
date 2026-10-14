@@ -1,6 +1,8 @@
 //! Child of the existing candidates fixture, not another DB runner.
 //! Runtime/Workflow observations and business content below are explicitly synthetic.
 use super::*;
+#[path = "sdlc_critical_pm_reservation_pg_tests.rs"]
+mod pm_review_tests;
 use crate::sdlc::attachment_artifacts as artifacts;
 use domain::attachment_artifact::{ArtifactUpload, Seal};
 use domain::sdlc_critical_blockers::*;

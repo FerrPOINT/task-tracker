@@ -1,6 +1,28 @@
 # Critical Blocker Qualification
 
-## Latest Immutable Source
+## Latest Qualified Return Transport
+
+Tracker `caf7ab3f9c93946fc149d61027bee72cafb536ac`, SDK
+`33ce7042a7617db59285390a67b191e3ae738dbf`: locked workspace all-target check,
+fmt and strict workspace Clippy PASS. Thirteen selected tests PASS: two app,
+two API, one API registration, five CLI HTTP scenarios, one CLI/domain key parity,
+one numeric future probe and the actual critical hold/terminal-return PG aggregate.
+The aggregate includes authorization, immutable evidence, races, SQL rollback,
+Return and original-key replay; all nine scenario phases finish, in7.26s.
+
+The test-only async phase boundaries reduce measured outer scenario size from
+107216 to22528 bytes and Return helper size from68544 to10736. This is a successful
+regression with unchanged assertions/fixtures, not proof of a universal overflow
+cause. No stack environment, timeout or production authorization was relaxed.
+
+Rust-generated OpenAPI SHA256:
+`898c0c19efdf77a388e7ec3442e1ec4eeb4640a1481b5e87b7da1afec4a8712f`.
+Runner exit0; Base v2 journal `cleaned`, owned inputs and disposable volumes cleaned.
+No accepted stand, provider, model, runtime or secret was changed. Native proof in
+the PG fixture is synthetic. New critical PM reservation source is not covered by
+this run; its compile/PG and the actual PM re-entry/consent/routing flow remain open.
+
+## Historical Key-Fix Qualification
 
 Tracker `3ddb1596960ffd10ec66a99b4353ef3a74a70187`, backend SDK
 `33ce7042a7617db59285390a67b191e3ae738dbf`, was checked locally using the existing
@@ -43,10 +65,11 @@ security and dependency pins are unchanged; no second transport was added.
 
 Source registers producer POST/detail/original-key API and CLI. Existing
 attachment FileStorage is supplied by production DI; missing storage fails closed.
-The source also contains the scheduler terminal-return transaction and archive,
-not fabricated result/reconcile evidence. Public Return wiring and the complete
-same-task/new-PM execution, new revision/exact owner consent and routing generations
-remain separate work.
+The source also contains the qualified scheduler terminal-return transaction,
+archive and public API/CLI wiring, not fabricated result/reconcile evidence.
+The same-task/new-PM reservation persistence is integrated source awaiting its
+own affected gate. New PM admission/runtime, revision/exact owner consent and
+routing generations remain separate work.
 
 The one new unreleased096 includes the critical SQL after the lifecycle fragment.
 Readonly accepted Tracker lineage is19 applied rows through0033, not096; no

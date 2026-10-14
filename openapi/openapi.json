@@ -2153,6 +2153,341 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/critical-blockers": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "submit_critical_business_blocker",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitCriticalBlocker"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalBlockerReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalBlockerReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_critical_business_blocker_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalBlockerReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/returns": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "return_critical_business_blocker_to_pm",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnCriticalToPm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable return replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPolicyChange"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPolicyChange"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_critical_business_blocker_return_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPolicyChange"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/{blocker_id}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_critical_business_blocker",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "blocker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalBlockerReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/delivery-proposals": {
       "post": {
         "tags": [
@@ -10048,6 +10383,263 @@
         },
         "additionalProperties": false
       },
+      "CriticalBlockerKind": {
+        "type": "string",
+        "enum": [
+          "requirements_contradiction",
+          "missing_business_decision"
+        ]
+      },
+      "CriticalBlockerOption": {
+        "type": "object",
+        "required": [
+          "option_id",
+          "label",
+          "consequences"
+        ],
+        "properties": {
+          "consequences": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "option_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalBlockerReceipt": {
+        "type": "object",
+        "description": "Detail may evolve; each operation journal must retain its original receipt verbatim.",
+        "required": [
+          "blocker_id",
+          "version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "producer_subject",
+          "agent_id",
+          "role",
+          "assignment_hash",
+          "chat_id",
+          "run_id",
+          "routing_snapshot_id",
+          "routing_generation",
+          "proposal",
+          "blocker_sha256",
+          "state",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string"
+          },
+          "blocker_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blocker_sha256": {
+            "type": "string"
+          },
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "pm_review": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CriticalPmReviewRef"
+              }
+            ]
+          },
+          "producer_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/SubmitCriticalBlocker"
+          },
+          "resolution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CriticalResolutionRef"
+              }
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/DeliveryRole"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "routing_generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CriticalBlockerState"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "technical_terminal": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RuntimeTerminalObservation"
+              }
+            ]
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalBlockerState": {
+        "type": "string",
+        "enum": [
+          "proposed",
+          "held",
+          "awaiting_pm_review",
+          "in_pm_review",
+          "resolved"
+        ]
+      },
+      "CriticalPmReviewGuard": {
+        "type": "object",
+        "description": "CAS fields for the scheduler-only return, not a standalone public hold operation.",
+        "required": [
+          "blocker_id",
+          "blocker_sha256",
+          "expected_blocker_version",
+          "expected_task_version",
+          "fence",
+          "idempotency_key"
+        ],
+        "properties": {
+          "blocker_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blocker_sha256": {
+            "type": "string"
+          },
+          "expected_blocker_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expected_task_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/DeliveryFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPmReviewRef": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPolicyChange": {
+        "type": "object",
+        "description": "Existing policy plan, also the immutable scheduler Return operation readback.",
+        "required": [
+          "lifecycle",
+          "blocker"
+        ],
+        "properties": {
+          "blocker": {
+            "$ref": "#/components/schemas/CriticalBlockerReceipt"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/LifecycleReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalResolutionRef": {
+        "type": "object",
+        "required": [
+          "requirement_revision",
+          "content_hash",
+          "routing_generation"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "routing_generation": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
       "CumulativeFlowPointResponse": {
         "type": "object",
         "required": [
@@ -16657,6 +17249,22 @@
         },
         "additionalProperties": false
       },
+      "ReturnCriticalToPm": {
+        "type": "object",
+        "required": [
+          "review",
+          "terminal"
+        ],
+        "properties": {
+          "review": {
+            "$ref": "#/components/schemas/CriticalPmReviewGuard"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/RuntimeTerminalObservation"
+          }
+        },
+        "additionalProperties": false
+      },
       "ReviewVerdict": {
         "type": "string",
         "enum": [
@@ -17283,6 +17891,63 @@
           "terminal_receipt_sha256": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SubmitCriticalBlocker": {
+        "type": "object",
+        "required": [
+          "fence",
+          "requirement_revision",
+          "content_hash",
+          "kind",
+          "question",
+          "rationale",
+          "evidence",
+          "idempotency_key"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentArtifact"
+            }
+          },
+          "fence": {
+            "$ref": "#/components/schemas/DeliveryFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CriticalBlockerKind"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CriticalBlockerOption"
+            }
+          },
+          "question": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
           }
         },
         "additionalProperties": false

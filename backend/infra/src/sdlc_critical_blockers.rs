@@ -428,9 +428,10 @@ impl PostgresSdlcRepository {
         owner_access(&tx, &state).await?;
         let row = tx
             .query_one(statement(
-                "SELECT COALESCE(r.after_blocker,b.payload) AS payload FROM sdlc_critical_blockers b
+                "SELECT COALESCE(v.after_blocker,r.after_blocker,b.payload) AS payload FROM sdlc_critical_blockers b
              JOIN sdlc_critical_blocker_heads h ON h.blocker_id=b.blocker_id AND h.task_id=b.task_id
              LEFT JOIN sdlc_critical_pm_returns r ON r.blocker_id=b.blocker_id AND r.task_id=b.task_id
+             LEFT JOIN sdlc_critical_pm_reviews v ON v.blocker_id=b.blocker_id AND v.task_id=b.task_id
              WHERE b.task_id=$1 AND b.blocker_id=$2 FOR SHARE OF h,b",
                 vec![task.into(), blocker_id.into()],
             ))

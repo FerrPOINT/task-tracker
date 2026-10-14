@@ -1,5 +1,15 @@
 # Дата-модель Task Tracker
 
+The same unreleased096 packet now includes `critical_pm_review.sql` after the
+terminal Return fragment. An immutable PM review journal preserves original
+Held/Return receipts, before/after canonical state and the completed PM selector;
+one task-locked transaction allocates new PM assignment/execution IDs from the
+existing ordinal sequence, advances bounded versions and writes the outbox.
+It does not create consent, a lease, native admission or a runtime run. Detail
+prefers the retained InPmReview projection without rewriting original-key history.
+This new reservation source still requires compile/PostgreSQL qualification;
+the earlier qualified Return run does not cover it.
+
 The existing additive lifecycle fragment aligns routing SQL with profile-aware
 application wire. Policy v1 still uses the unchanged strict package validator;
 policy v2 requires all seven exact single-task instruction routes, shared digests
