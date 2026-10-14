@@ -2,7 +2,7 @@
 
 UX-06/09. Создание первого проекта на dashboard и в форме задачи использует существующий ProjectFormDialog. После подтверждения каталог обновляется, проект выбирается, ввод задачи сохраняется; отказ создания остаётся в диалоге. Вход и callback SSO используют Base.
 
-Общие контракты и тексты: [стандарт Base](https://github.com/FerrPOINT/services-base/blob/16e0ab44924fae7c67c2df56438667e7830cafd6/docs/platform/UI_UX_STANDARD.md). UI pin: `16e0ab44924fae7c67c2df56438667e7830cafd6`; SDK и skills pins сохранены.
+Общие контракты и тексты: [стандарт Base](https://github.com/FerrPOINT/services-base/blob/6b9dd35a92bb095debf166724e4ecb1cb0e8ceb0/docs/platform/UI_UX_STANDARD.md). UI pin: `6b9dd35a92bb095debf166724e4ecb1cb0e8ceb0`; SDK и skills pins сохранены.
 
 Интегрирован main `e276fdc` с сохранением изменённых полей настроек проекта,
 серверным обновлением нетронутых полей и backend-валидацией имени. При повторном
@@ -27,3 +27,7 @@ Frontend: 390 тестов; TypeScript/lint, build, frozen lockfile, OpenAPI и
 ## Генерализация UI
 
 UserAvatar, NavigationDrawer и оформление приоритета используют Base. Приоритеты сопоставляются в единственном адаптере Tracker.
+
+## Общие блоки текста и описаний
+
+DescriptionItem заменяет локальный Field панели SDLC. Значения, ссылки и SDLC-состояния остаются в Tracker.
