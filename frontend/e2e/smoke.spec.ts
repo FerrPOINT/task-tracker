@@ -1,6 +1,7 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import nodePath from 'node:path'
+import { createServer } from 'node:http'
 import { test, expect, type Page, type Route } from '@playwright/test'
 
 const mockUser = {
@@ -32,18 +33,27 @@ async function installSsoMocks(page: Page) {
   let issuer = 'http://localhost:7701'
   let nonce = ''
 
+  const authorizationServer = createServer((request, response) => {
+    const url = new URL(request.url!, issuer)
+    const callback = new URL(url.searchParams.get('redirect_uri')!)
+    callback.searchParams.set('code', 'qa-code')
+    callback.searchParams.set('state', url.searchParams.get('state') ?? '')
+    response.writeHead(302, { location: callback.href })
+    response.end()
+  })
+  await new Promise<void>((resolve, reject) => {
+    authorizationServer.once('error', reject)
+    authorizationServer.listen(0, '127.0.0.1', resolve)
+  })
+  const address = authorizationServer.address()
+  if (!address || typeof address === 'string') throw new Error('Missing SSO fixture address')
+  page.once('close', () => authorizationServer.close())
+
   await page.route('**/oidc/authorize**', async (route) => {
     const url = new URL(route.request().url())
     issuer = url.origin
     nonce = url.searchParams.get('nonce') ?? ''
-    const callback = new URL(url.searchParams.get('redirect_uri') ?? '/')
-    callback.searchParams.set('code', 'qa-code')
-    callback.searchParams.set('state', url.searchParams.get('state') ?? '')
-    await route.fulfill({
-      status: 302,
-      headers: { location: callback.toString() },
-      body: '',
-    })
+    await route.continue({ url: `http://127.0.0.1:${address.port}/authorize${url.search}` })
   })
   await page.route('**/oidc/token', async (route) => {
     const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid: 'qa' })).toString(
@@ -75,6 +85,98 @@ async function installSsoMocks(page: Page) {
 }
 
 test.describe('smoke', () => {
+  test('keeps the issue draft through project creation errors and authoritative catalogue refresh', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    await installSsoMocks(page)
+    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const project = {
+      id: '00000000-0000-0000-0000-000000000010',
+      key: 'NEW',
+      name: 'First Project',
+      description: '',
+      owner_id: mockUser.id,
+      owner_name: 'Demo User',
+      created_at: '2026-10-14T00:00:00Z',
+      todo_count: 0,
+      in_progress_count: 0,
+      done_count: 0,
+    }
+    let projects: (typeof project)[] = []
+    let denied = true
+    let issueWrites = 0
+    let projectWrites = 0
+    await page.route('**/api/v1/**', (route) => {
+      const request = route.request()
+      const path = new URL(request.url()).pathname.replace('/api/v1', '')
+      if (path === '/projects' && request.method() === 'GET') return routeJson(route, { projects })
+      if (path === '/projects' && request.method() === 'POST') {
+        projectWrites++
+        if (denied) return routeJson(route, { message: 'Forbidden' }, 403)
+        projects = [{ ...project, name: 'Renamed Project' }]
+        return routeJson(route, project, 201)
+      }
+      if (path === '/issues' && request.method() === 'POST') issueWrites++
+      if (path === '/users/me')
+        return routeJson(route, {
+          id: mockUser.id,
+          email: 'demo@example.com',
+          username: 'demo',
+          display_name: 'Demo User',
+        })
+      if (path === '/users') return routeJson(route, { users: [] })
+      if (path === '/issue-types')
+        return routeJson(route, [{ id: 'task', name: 'Task', is_subtask: false }])
+      if (path.endsWith('/custom-fields')) return routeJson(route, { fields: [] })
+      if (path.endsWith('/members')) return routeJson(route, { members: [] })
+      if (path === '/namespace-contexts') return routeJson(route, [])
+      return route.fulfill({ status: 404 })
+    })
+    await page.goto(`${appBaseURL}/issues/create`)
+    await page.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
+    const dialog = page.getByRole('dialog')
+    // The issue draft stays outside the modal and survives both responses.
+    await dialog.getByRole('button', { name: /^(отмена|cancel)$/i }).click()
+    await page.getByLabel(/^(заголовок|summary)\s*\*?$/i).fill('Draft before project')
+    await page.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
+    await dialog.getByLabel(/^(ключ|key)\s*\*/i).fill('NEW')
+    await dialog.getByLabel(/^(название|name)\s*\*/i).fill('First Project')
+    await dialog.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
+    await expect(dialog.getByRole('alert')).toBeVisible()
+    await expect(dialog.getByLabel(/^(название|name)\s*\*/i)).toHaveValue('First Project')
+    denied = false
+    await dialog.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByLabel(/^(проект|project)\s*\*?$/i)).toContainText('Renamed Project')
+    await expect(page.getByLabel(/^(заголовок|summary)\s*\*?$/i)).toHaveValue(
+      'Draft before project',
+    )
+    await expect(page.getByRole('button', { name: /^(создать|create)$/i })).toBeEnabled()
+    expect(projectWrites).toBe(2)
+    expect(issueWrites).toBe(0)
+    for (const width of [375, 1920, 2560]) {
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 1080 })
+      await page.screenshot({
+        path: testInfo.outputPath(`inline-project-${width}.png`),
+        fullPage: true,
+      })
+    }
+    projects = []
+    const readback = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/v1/projects' &&
+        response.request().method() === 'GET',
+    )
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await readback
+    await expect(page.getByRole('button', { name: /^(создать|create)$/i })).toBeDisabled()
+    await expect(page.getByLabel(/^(заголовок|summary)\s*\*?$/i)).toHaveValue(
+      'Draft before project',
+    )
+    expect(issueWrites).toBe(0)
+  })
+
   test('login then navigate through dashboard, projects, board and create issue', async ({
     page,
     baseURL,
@@ -383,7 +485,7 @@ test.describe('smoke', () => {
     ).toBeVisible()
 
     await page.goto(`${appBaseURL}/projects`)
-    await expect(page.getByText(mockUser.name)).toBeVisible()
+    await expect(page.getByRole('main').getByText(mockUser.name, { exact: true })).toBeVisible()
 
     await page.getByRole('link', { name: /(?:settings|настройки проекта):/i }).click()
     await expect(page).toHaveURL(`${appBaseURL}/projects/${mockUser.key}/settings`)
