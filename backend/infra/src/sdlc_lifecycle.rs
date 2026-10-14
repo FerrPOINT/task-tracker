@@ -106,7 +106,7 @@ async fn authorize_proposal_grant(
     app::sdlc_lifecycle::authorize_delivery_assignment(grant, &assignment)
 }
 
-async fn now(tx: &DatabaseTransaction) -> Result<DateTime<Utc>, AppError> {
+pub(super) async fn now(tx: &DatabaseTransaction) -> Result<DateTime<Utc>, AppError> {
     tx.query_one(statement("SELECT clock_timestamp() AS observed_at", vec![]))
         .await
         .map_err(map_db)?
@@ -115,7 +115,7 @@ async fn now(tx: &DatabaseTransaction) -> Result<DateTime<Utc>, AppError> {
         .map_err(map_db)
 }
 
-async fn current(
+pub(super) async fn current(
     tx: &DatabaseTransaction,
     task: Uuid,
 ) -> Result<Option<LifecycleReceipt>, AppError> {
@@ -249,7 +249,7 @@ fn exact_fence(
 }
 
 impl PostgresSdlcRepository {
-    async fn save_delivery_projection(
+    pub(super) async fn save_delivery_projection(
         tx: &DatabaseTransaction,
         actor: &Principal,
         receipt: &LifecycleReceipt,
@@ -867,6 +867,15 @@ impl LifecycleRepository for PostgresSdlcRepository {
             None => return Err(AppError::conflict("delivery queue absent")),
         };
         exact_revision(&state, &receipt)?;
+        if matches!(
+            command,
+            LifecycleCommand::Complete { .. }
+                | LifecycleCommand::Reserve { .. }
+                | LifecycleCommand::EnsureQueued { .. }
+                | LifecycleCommand::Reconcile { .. }
+        ) {
+            super::critical_blockers::ensure_progress_allowed(&tx, &receipt).await?;
+        }
         match &command {
             LifecycleCommand::Reconcile {
                 fence: expected,

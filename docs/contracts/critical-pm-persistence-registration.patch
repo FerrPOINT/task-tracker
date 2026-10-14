@@ -1,0 +1,16 @@
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -17,2 +17,4 @@
+ mod lifecycle;
++#[path = "sdlc_critical_blockers.rs"]
++mod critical_blockers;
+ #[path = "sdlc_native_admission.rs"]
+diff --git a/backend/infra/src/sdlc_candidates_pg_tests.rs b/backend/infra/src/sdlc_candidates_pg_tests.rs
+--- a/backend/infra/src/sdlc_candidates_pg_tests.rs
++++ b/backend/infra/src/sdlc_candidates_pg_tests.rs
+@@ -4,2 +4,4 @@
+ mod artifact_tests;
++#[path = "sdlc_critical_blockers_pg_tests.rs"]
++mod critical_blocker_tests;
+ use domain::sdlc_execution_lease::ClaimExecutionLease;
