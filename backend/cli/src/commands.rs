@@ -385,6 +385,38 @@ pub async fn issue_id(api: &Api, identifier: &str) -> Result<String> {
         .to_owned())
 }
 
+// Attachment machine grants do not authorize generic issue GET. Keys retain normal lookup.
+async fn attachment_issue_id(api: &Api, identifier: &str) -> Result<String> {
+    if let Some(id) = canonical_attachment_issue_id(identifier) {
+        return Ok(id);
+    }
+    issue_id(api, identifier).await
+}
+
+fn canonical_attachment_issue_id(identifier: &str) -> Option<String> {
+    let id: uuid::Uuid = identifier.parse().ok()?;
+    (!id.is_nil() && id.to_string() == identifier).then(|| id.to_string())
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+    #[test]
+    fn only_canonical_non_nil_uuid_bypasses_generic_issue_lookup() {
+        let id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+        assert_eq!(canonical_attachment_issue_id(id), Some(id.into()));
+        for identifier in [
+            "SDLC-7",
+            "not-a-uuid",
+            "00000000-0000-0000-0000-000000000000",
+            "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
+            "aaaaaaaabbbb4ccc8dddeeeeeeeeeeee",
+        ] {
+            assert_eq!(canonical_attachment_issue_id(identifier), None);
+        }
+    }
+}
+
 fn sdlc_path(task: Uuid, suffix: &str) -> String {
     format!("/api/v1/issues/{task}/sdlc{suffix}")
 }
@@ -513,7 +545,7 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
             LinkCommand::Delete { id } => api.delete(&format!("/api/v1/issue-links/{}",enc(&id))).await,
         },
         WorkCommand::Attachment { command } => match command {
-            AttachmentCommand::List { issue } => api.get(&format!("/api/v1/issues/{}/attachments",enc(&issue_id(api,&issue).await?))).await,
+            AttachmentCommand::List { issue } => api.get(&format!("/api/v1/issues/{}/attachments",enc(&attachment_issue_id(api,&issue).await?))).await,
             AttachmentCommand::Delete { id } => api.delete(&format!("/api/v1/attachments/{}",enc(&id))).await,
             AttachmentCommand::Download { id, out, overwrite } => {
                 support::check_destination(&out,overwrite)?;
@@ -522,7 +554,7 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
                 Ok(json!({"status":"ok","path":out,"size_bytes":data.len()}))
             }
             AttachmentCommand::Upload { issue, file, content_type } => {
-                let id = issue_id(api,&issue).await?;
+                let id = attachment_issue_id(api,&issue).await?;
                 let content_type=content_type.unwrap_or_else(||mime_guess::from_path(&file).first_or_octet_stream().to_string());
                 let part = multipart::Part::bytes(std::fs::read(&file)?).file_name(file.file_name().context("Нет имени файла")?.to_string_lossy().into_owned()).mime_str(&content_type)?;
                 support::json_response(request(api,Method::POST,&format!("/api/v1/issues/{}/attachments",enc(&id)))?.multipart(multipart::Form::new().part("file",part)),&api.secrets).await

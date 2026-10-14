@@ -1793,6 +1793,41 @@ struct AttachmentRepo {
 
 #[async_trait]
 impl AttachmentRepository for AttachmentRepo {
+    async fn publish_artifact(
+        &self,
+        config: &domain::sdlc::SdlcConfig,
+        actor: &domain::sdlc::Principal,
+        issue: IssueId,
+        upload: domain::attachment_artifact::ArtifactUpload,
+        storage: &dyn domain::FileStorage,
+    ) -> Result<Attachment, AppError> {
+        crate::sdlc::attachment_artifacts::publish(&self.db, config, actor, issue, upload, storage)
+            .await
+    }
+    async fn list_artifacts(
+        &self,
+        config: &domain::sdlc::SdlcConfig,
+        actor: &domain::sdlc::Principal,
+        issue: IssueId,
+    ) -> Result<Vec<Attachment>, AppError> {
+        crate::sdlc::attachment_artifacts::list(&self.db, config, actor, issue).await
+    }
+    async fn download_artifact(
+        &self,
+        config: &domain::sdlc::SdlcConfig,
+        actor: &domain::sdlc::Principal,
+        id: AttachmentId,
+        storage: &dyn domain::FileStorage,
+    ) -> Result<(Attachment, Vec<u8>), AppError> {
+        crate::sdlc::attachment_artifacts::download(&self.db, config, actor, id, storage).await
+    }
+    async fn authorize_sealed_human_read(
+        &self,
+        issue: IssueId,
+        requester: UserId,
+    ) -> Result<(), AppError> {
+        crate::sdlc::attachment_artifacts::human_access(&self.db, issue, requester).await
+    }
     async fn get_by_id(&self, id: AttachmentId) -> Result<Attachment, AppError> {
         let model = attachment::Entity::find_by_id(id.as_uuid())
             .one(&*self.db)
@@ -1814,6 +1849,9 @@ impl AttachmentRepository for AttachmentRepo {
     }
 
     async fn save(&self, attachment: &Attachment) -> Result<AttachmentId, AppError> {
+        if domain::attachment_artifact::is_sealed(attachment.storage_key.as_ref()) {
+            return Err(AppError::Forbidden);
+        }
         let active = attachment::ActiveModel {
             id: Set(attachment.id.as_uuid()),
             issue_id: Set(attachment.issue_id.as_uuid()),
@@ -1829,6 +1867,13 @@ impl AttachmentRepository for AttachmentRepo {
     }
 
     async fn delete(&self, id: AttachmentId) -> Result<(), AppError> {
+        if let Some(item) = attachment::Entity::find_by_id(id.as_uuid())
+            .one(&*self.db)
+            .await
+            .map_err(AppError::database)?
+        {
+            app::attachment_artifacts::deny_sealed_delete(&item.storage_key)?;
+        }
         attachment::Entity::delete_by_id(id.as_uuid())
             .exec(&*self.db)
             .await
@@ -1837,7 +1882,7 @@ impl AttachmentRepository for AttachmentRepo {
     }
 }
 
-fn map_attachment(m: attachment::Model) -> Attachment {
+pub(crate) fn map_attachment(m: attachment::Model) -> Attachment {
     Attachment {
         id: AttachmentId::from_uuid(m.id),
         issue_id: IssueId::from_uuid(m.issue_id),

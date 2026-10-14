@@ -240,6 +240,46 @@ pub trait DashboardService: Send + Sync {
 
 #[async_trait]
 pub trait AttachmentService: Send + Sync {
+    fn authorize_artifact_route(
+        &self,
+        _actor: &domain::sdlc::Principal,
+        _method: &str,
+        _path: &str,
+    ) -> Result<(), AppError> {
+        Err(AppError::Unavailable(
+            "role artifact policy not configured".into(),
+        ))
+    }
+    async fn upload_artifact(
+        &self,
+        _issue: IssueId,
+        _actor: &domain::sdlc::Principal,
+        _file_name: &str,
+        _content_type: &str,
+        _bytes: Vec<u8>,
+    ) -> Result<crate::context::AttachmentDto, AppError> {
+        Err(AppError::Unavailable(
+            "role artifact publisher not configured".into(),
+        ))
+    }
+    async fn list_artifacts(
+        &self,
+        _issue: IssueId,
+        _actor: &domain::sdlc::Principal,
+    ) -> Result<Vec<crate::context::AttachmentDto>, AppError> {
+        Err(AppError::Unavailable(
+            "role artifact reader not configured".into(),
+        ))
+    }
+    async fn download_artifact(
+        &self,
+        _id: AttachmentId,
+        _actor: &domain::sdlc::Principal,
+    ) -> Result<(crate::context::AttachmentDto, Vec<u8>), AppError> {
+        Err(AppError::Unavailable(
+            "role artifact reader not configured".into(),
+        ))
+    }
     async fn upload(
         &self,
         issue_id: IssueId,

@@ -388,6 +388,8 @@ pub struct AttachmentResponse {
     pub content_type: String,
     pub size_bytes: i64,
     pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact: Option<domain::attachment_artifact::AttachmentArtifact>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]

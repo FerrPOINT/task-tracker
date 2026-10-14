@@ -550,6 +550,46 @@ pub trait WorklogRepository: Send + Sync {
 
 #[async_trait]
 pub trait AttachmentRepository: Send + Sync {
+    async fn publish_artifact(
+        &self,
+        _config: &crate::sdlc::SdlcConfig,
+        _actor: &crate::sdlc::Principal,
+        _issue: IssueId,
+        _upload: crate::attachment_artifact::ArtifactUpload,
+        _storage: &dyn FileStorage,
+    ) -> Result<crate::Attachment, AppError> {
+        Err(AppError::Unavailable(
+            "role artifact publisher not configured".into(),
+        ))
+    }
+    async fn list_artifacts(
+        &self,
+        _config: &crate::sdlc::SdlcConfig,
+        _actor: &crate::sdlc::Principal,
+        _issue: IssueId,
+    ) -> Result<Vec<crate::Attachment>, AppError> {
+        Err(AppError::Unavailable(
+            "role artifact reader not configured".into(),
+        ))
+    }
+    async fn download_artifact(
+        &self,
+        _config: &crate::sdlc::SdlcConfig,
+        _actor: &crate::sdlc::Principal,
+        _id: AttachmentId,
+        _storage: &dyn FileStorage,
+    ) -> Result<(crate::Attachment, Vec<u8>), AppError> {
+        Err(AppError::Unavailable(
+            "role artifact reader not configured".into(),
+        ))
+    }
+    async fn authorize_sealed_human_read(
+        &self,
+        _issue: IssueId,
+        _requester: UserId,
+    ) -> Result<(), AppError> {
+        Err(AppError::Forbidden)
+    }
     async fn get_by_id(&self, id: AttachmentId) -> Result<crate::Attachment, AppError>;
     async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError>;
     async fn save(&self, attachment: &crate::Attachment) -> Result<AttachmentId, AppError>;
@@ -1077,10 +1117,19 @@ impl FileStorage for InMemoryStorage {
         if bytes.is_empty() {
             return Err(AppError::invalid_input("file is empty"));
         }
-        self.files
-            .lock()
-            .unwrap()
-            .insert((issue_id.to_string(), key.to_string()), bytes);
+        let mut files = self.files.lock().unwrap();
+        let identity = (issue_id.to_string(), key.to_string());
+        if crate::attachment_artifact::Seal::parse(key)?.is_some() {
+            if let Some(retained) = files.get(&identity) {
+                if retained != &bytes {
+                    return Err(AppError::conflict(
+                        "sealed artifact immutable replay differs",
+                    ));
+                }
+                return Ok(());
+            }
+        }
+        files.insert(identity, bytes);
         Ok(())
     }
     async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError> {
@@ -1092,6 +1141,9 @@ impl FileStorage for InMemoryStorage {
             .ok_or_else(|| AppError::not_found("attachment file", key))
     }
     async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError> {
+        if crate::attachment_artifact::is_sealed(key) {
+            return Err(AppError::conflict("sealed role artifact is immutable"));
+        }
         self.files
             .lock()
             .unwrap()
