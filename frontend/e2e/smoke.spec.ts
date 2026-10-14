@@ -177,7 +177,7 @@ test.describe('smoke', () => {
       if (route.request().method() === 'PATCH') {
         if (failSave) return routeJson(route, { error: 'unavailable' }, 500)
         const values = route.request().postDataJSON()
-        expect(values).toEqual({ name: mockUser.name, description: 'Updated description' })
+        expect(values).toEqual({ description: 'Updated description' })
         projectDetails = { ...projectDetails, ...values }
       }
       return routeJson(route, projectDetails)
@@ -392,9 +392,22 @@ test.describe('smoke', () => {
     await page.getByRole('button', { name: /^(save|сохранить)$/i }).click()
     await expect(page.getByRole('alert')).toContainText(/save|сохранить/i)
     await expect(description).toHaveValue('Updated description')
+    projectDetails = { ...projectDetails, name: 'Renamed by another editor' }
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await expect(page.getByLabel(/^(name|название)$/i)).toHaveValue('Renamed by another editor')
+    await expect(description).toHaveValue('Updated description')
     failSave = false
     await page.getByRole('button', { name: /^(save|сохранить)$/i }).click()
     await expect(page.getByRole('button', { name: /^(save|сохранить)$/i })).toBeDisabled()
+    expect(projectDetails.name).toBe('Renamed by another editor')
+    for (const width of [375, 1920, 2560]) {
+      await page.setViewportSize({ width, height: 1080 })
+      await page.screenshot({
+        path: testInfo.outputPath(`project-settings-${width}.png`),
+        fullPage: true,
+      })
+    }
+    projectDetails = { ...projectDetails, name: mockUser.name }
     await page.getByRole('link', { name: /custom fields|кастомные поля/i }).click()
     await expect(page.getByRole('textbox', { name: /field name|название поля/i })).toHaveCount(0)
     await page.getByRole('button', { name: /add field|добавить поле/i }).click()

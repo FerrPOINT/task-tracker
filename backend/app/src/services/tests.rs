@@ -1335,6 +1335,65 @@ async fn project_service_create_fails_when_owner_missing() {
 }
 
 #[tokio::test]
+async fn project_service_rejects_invalid_names_without_modifying_projects() {
+    let (ctx, user) = ctx_with_demo_data().await;
+    let key = ProjectKey::new("VALID");
+    let invalid_create = ctx
+        .services
+        .project
+        .create(CreateProjectCommand {
+            key: key.clone(),
+            name: " \n\t ".to_owned(),
+            description: None,
+            owner_id: user.id,
+        })
+        .await;
+    assert!(invalid_create.is_err());
+    assert!(
+        ctx.services
+            .project
+            .get_by_key(&key, user.id)
+            .await
+            .is_err()
+    );
+    let created = ctx
+        .services
+        .project
+        .create(CreateProjectCommand {
+            key: key.clone(),
+            name: "  Valid project  ".to_owned(),
+            description: Some("Keep this description".to_owned()),
+            owner_id: user.id,
+        })
+        .await
+        .unwrap();
+    assert_eq!(created.name, "Valid project");
+    for name in [" \t".to_owned(), "я".repeat(201)] {
+        let result = ctx
+            .services
+            .project
+            .update(
+                &key,
+                crate::commands::UpdateProjectCommand {
+                    name: Some(name),
+                    description: Some(Some("Must not be saved".to_owned())),
+                },
+                user.id,
+            )
+            .await;
+        assert!(result.is_err());
+        let unchanged = ctx
+            .services
+            .project
+            .get_by_key(&key, user.id)
+            .await
+            .unwrap();
+        assert_eq!(unchanged.name, "Valid project");
+        assert_eq!(unchanged.description, "Keep this description");
+    }
+}
+
+#[tokio::test]
 async fn project_service_list_and_get_by_key() {
     let (ctx, _user) = ctx_with_demo_data().await;
     let list = ctx
