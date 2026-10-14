@@ -77,8 +77,35 @@ feedback with 409 `pm_feedback_not_available_in_current_draft_mode`.
 Historical replay and owner operation GET still return the exact original receipt
 after publication/confirmation or lease expiry, without a new outbox event, state
 mutation or fabricated answer. Idle feedback does not require a live lease. The
-owner operation endpoint is NOT a machine read source; an assignment-scoped saved
-message GET is a coordination proposal only, not implemented in this patch.
+owner operation endpoint is NOT a machine read source.
+
+## Scoped PM Saved Feedback Read
+
+Parent registers `GET /api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}`
+with existing-controller handler `sdlc_delivery::feedback_message` and adds it to
+ApiDoc. Service/repository method: `pm_feedback_message(task,actor,message_id)`
+returns the existing `PmFeedbackReceipt` directly, HTTP 200 with `Cache-Control:
+no-store`. This packet supplies the handler and strict central PM allowlist, not
+the router/lib registration or generated OpenAPI/client outputs.
+
+Only a non-human credential with explicit `task-tracker:read` and exactly one
+current task PM assignment grant is accepted. The actual bound machine subject,
+active local user and project ownership/membership are rechecked; the latest
+immutable assignment must match canonical TaskState. Generic scheduler/service
+readers, owner impersonation/admin hints and a write-only PM token grant no access.
+Only canonical nonnil task/message UUID GET paths are allowlisted; no POST, list,
+operation-key lookup, foreign task or generic issue CRUD is added to the PM grant.
+
+Tracker queries the actual immutable feedback by task and message UUID, NOT by
+the machine caller's actor_subject. It checks the saved human owner, all receipt
+task/project/root/instance/owner identities, exact current PM fence, canonical
+stored JSON and original text hash. Missing message is 404, authorization failure
+403, inconsistent saved receipt 409. Receipt is unchanged snake_case, no wrapper;
+`requirement_revision` stays its original number or JSON null, never omission.
+Historical receipts remain readable through lease expiry, later requirements and
+confirmation while that assignment is current. No live TTL/stage/current-revision
+equality gate is imposed on history; no lease renewal, dispatch or owner Answer
+is created. Human POST and owner operation GET remain unchanged.
 
 ## Trusted PM Resume (Producer Source)
 

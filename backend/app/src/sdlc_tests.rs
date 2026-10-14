@@ -552,6 +552,131 @@ fn pm_waiting_does_not_become_a_stage_or_runtime_status() {
 }
 
 #[test]
+fn pm_feedback_message_reader_requires_read_and_current_bound_pm_grant() {
+    use crate::sdlc_lifecycle::authorize_pm_feedback_message_read;
+    let (state, _, owner, mut pm, _, _) = fixture();
+    let task = state.task_id;
+    let scope = state.assignment.as_ref().unwrap().scope(task);
+    assert!(authorize_pm_feedback_message_read(task, &pm).is_err());
+    pm.scopes.insert("task-tracker:read".into());
+    let authorize = |actor: &Principal| {
+        authorize_pm_feedback_message_read(task, actor)
+            .and_then(|()| authorize_pm_read(&state, actor))
+    };
+    assert!(authorize(&pm).is_ok());
+    assert!(authorize(&owner).is_err());
+    assert!(authorize_pm_feedback_message_read(Uuid::new_v4(), &pm).is_err());
+    assert!(authorize_pm_feedback_message_read(Uuid::nil(), &pm).is_err());
+    let mut wrong = pm.clone();
+    wrong.subject = "other-machine".into();
+    assert!(authorize(&wrong).is_err());
+    wrong = pm.clone();
+    wrong.human_session = true;
+    assert!(authorize(&wrong).is_err());
+    for scopes in [
+        vec!["task-tracker:read".into()],
+        vec!["task-tracker:write".into(), scope.clone()],
+        vec![
+            "task-tracker:read".into(),
+            scope.clone(),
+            format!("{scope}0"),
+        ],
+        vec![
+            "task-tracker:read".into(),
+            scope.trim_end_matches('1').to_string() + "2",
+        ],
+    ] {
+        wrong = pm.clone();
+        wrong.scopes = scopes.into_iter().collect();
+        wrong.trusted_human = true;
+        assert!(authorize(&wrong).is_err());
+    }
+}
+
+#[test]
+fn pm_feedback_message_readback_preserves_original_input_and_checks_every_binding() {
+    use crate::sdlc_lifecycle::exact_pm_feedback_message;
+    use domain::sdlc_lifecycle::PmFeedbackReceipt;
+    let (mut state, config, _, pm, _, fence) = fixture();
+    let mut feedback = PmFeedbackReceipt {
+        message_id: Uuid::new_v4(),
+        tracker_instance_id: state.tracker_instance_id.clone(),
+        project_id: state.project_id,
+        task_id: state.task_id,
+        root_task_id: state.root_task_id,
+        owner_subject: state.owner_subject.clone(),
+        fence,
+        text: " Actual saved owner text ".into(),
+        content_hash: canonical_hash(&json!({"text":" Actual saved owner text "})).unwrap(),
+        requirement_revision: None,
+        created_at: chrono::Utc::now(),
+    };
+    let original = serde_json::to_value(&feedback).unwrap();
+    assert_eq!(
+        serde_json::to_value(
+            exact_pm_feedback_message(&state, feedback.message_id, "owner", &feedback).unwrap()
+        )
+        .unwrap(),
+        original
+    );
+    assert!(exact_pm_feedback_message(&state, Uuid::new_v4(), "owner", &feedback).is_err());
+    assert!(
+        exact_pm_feedback_message(&state, feedback.message_id, "other-owner", &feedback).is_err()
+    );
+    for (field, value) in [
+        ("message_id", json!(Uuid::new_v4())),
+        ("task_id", json!(Uuid::new_v4())),
+        ("root_task_id", json!(Uuid::new_v4())),
+        ("project_id", json!(Uuid::new_v4())),
+        ("tracker_instance_id", json!("other-tracker")),
+        ("owner_subject", json!("other-owner")),
+        ("text", json!("substituted text")),
+        ("content_hash", json!("f".repeat(64))),
+        ("requirement_revision", json!(1)),
+    ] {
+        let mut wrong = original.clone();
+        wrong[field] = value;
+        let wrong = serde_json::from_value(wrong).unwrap();
+        assert!(
+            exact_pm_feedback_message(&state, feedback.message_id, "owner", &wrong).is_err(),
+            "{field}"
+        );
+    }
+    for (field, value) in [
+        ("assignment_id", json!(Uuid::new_v4())),
+        ("execution_id", json!(Uuid::new_v4())),
+        ("agent_id", json!(Uuid::new_v4())),
+        ("assignment_version", json!(2)),
+    ] {
+        let mut wrong = original.clone();
+        wrong["fence"][field] = value;
+        let wrong = serde_json::from_value(wrong).unwrap();
+        assert!(
+            exact_pm_feedback_message(&state, feedback.message_id, "owner", &wrong).is_err(),
+            "{field}"
+        );
+    }
+    publish(&mut state, &config, &pm, &feedback.fence);
+    assert!(exact_pm_feedback_message(&state, feedback.message_id, "owner", &feedback).is_ok());
+    feedback.requirement_revision = Some(1);
+    publish(&mut state, &config, &pm, &feedback.fence);
+    state.stage = Stage::Analysis;
+    assert_eq!(state.current_revision(), Some(2));
+    let historical = serde_json::to_value(&feedback).unwrap();
+    let before = serde_json::to_value(&state).unwrap();
+    assert_eq!(
+        serde_json::to_value(
+            exact_pm_feedback_message(&state, feedback.message_id, "owner", &feedback).unwrap()
+        )
+        .unwrap(),
+        historical
+    );
+    assert_eq!(serde_json::to_value(&state).unwrap(), before);
+    state.assignment.as_mut().unwrap().version += 1;
+    assert!(exact_pm_feedback_message(&state, feedback.message_id, "owner", &feedback).is_err());
+}
+
+#[test]
 fn pm_feedback_resume_uses_server_clock_exact_binding_and_never_reopens_published_analysis() {
     use domain::sdlc_lifecycle::*;
     let (mut state, _, _, _, _, fence) = fixture();

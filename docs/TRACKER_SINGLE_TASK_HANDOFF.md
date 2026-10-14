@@ -288,6 +288,26 @@ POST `P/pm-feedback` and GET `P/pm-feedback/operations/{key}`, owner-session onl
 CLI source calls them through `sdlc pm feedback submit --task UUID --from-file feedback.json`
 and `sdlc pm feedback operation --task UUID --key KEY`. They are not live before registration.
 
+Approved continuation read source: GET `P/pm-feedback/messages/{message_id}`
+returns the actual immutable `PmFeedbackReceipt`, including original owner text
+and hash. Source handler is `sdlc_delivery::feedback_message`; parent adds its
+router/lib/OpenAPI registration. `SdlcService::pm_feedback_message(task,actor,id)`
+uses explicit `task-tracker:read`, current PM grant/bound subject, fresh active
+user/project ACL, latest assignment and saved owner/full identity/fence checks.
+The strict central allowlist permits only canonical UUID own-task GET, never a
+machine lookup of the human operation key or new POST rights. Generic scheduler
+reader is not a holder reader. Saved receipt read requires no live lease and
+keeps historical requirement revision/null through later confirmation; it has
+no journal/outbox/state/Workflow side effects. No new schema/migration is needed.
+Focused source tests: app `pm_feedback_message_reader_requires_read_and_current_bound_pm_grant`,
+`pm_feedback_message_readback_preserves_original_input_and_checks_every_binding`;
+API `pm_feedback_message_policy_is_exact_task_canonical_uuid_get_only`,
+`saved_feedback_handler_contract_is_scoped_get_and_original_receipt`;
+existing PM resume PG fixture tests actual saved-message read-only access, revoked
+membership/disabled holder, wrong subject/stale grant, no broadened human-key
+read, expiry and historical receipt equality without side effects. Not executed
+by this worker; parent retains Cargo/PG/live qualification.
+
 The legacy application helper `pm_feedback_resume_contract(state,feedback,checkpoint,lease)` remains unchanged:
 exact task/project/root/owner/instance, assignment fence, actual prior terminal,
 checkpoint UUID/version and server-observed live lease produce the existing resume

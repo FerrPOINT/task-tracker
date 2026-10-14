@@ -53,6 +53,14 @@ reference/hash alone as independently verified terminal proof. No new outbound
 Fleet client/token or agent terminal/admission protocol is introduced. Ordinary
 claim/heartbeat, historical replay semantics and PM business-write freeze remain.
 
+Fleet continuation reads actual immutable owner feedback by message UUID using
+the existing PM holder's read-only assignment capability and fresh project ACL.
+It never impersonates the owner or looks up a human idempotency key. Tracker
+rechecks the saved owner/identities/hash against the current assignment fence;
+history is independent of lease expiry and current requirements revision. This
+read has no dispatch, lease, outbox or input-consumption effect and needs no new
+ledger/schema. Human feedback writes/operation reads keep their separate boundary.
+
 Reserved PM producer commands use Tracker reservation/lease recheck and atomic
 command/history write. No Fleet admission HTTP call is made on the producer
 path. [PM producer lease](PM_NATIVE_ADMISSION.md).

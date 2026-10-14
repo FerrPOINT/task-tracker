@@ -26,6 +26,10 @@ supports scheduler-only retained-lease PM resume from real owner answer, feedbac
 or confirmation. Fleet must verify actual current checkpoint/old-run terminal
 before that command and resume the same execution without a duplicate runtime run.
 Agents cannot self-certify terminal; ordinary expired claim/heartbeat stay denied.
+The PM holder's scoped read-only credential can read actual saved owner feedback
+by task/message UUID for continuation, without owner impersonation or fabricated
+clarification answers. Saved text/hash/fence remain authoritative; historical
+readback does not renew a lease or change consent/business state.
 [Producer contract and tests](TRACKER_SINGLE_TASK_HANDOFF.md).
 
 PM producer writes close the reserved-execution write boundary through exact

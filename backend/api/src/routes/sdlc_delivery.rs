@@ -179,10 +179,48 @@ pub async fn feedback_operation(
     ))
 }
 
+// Parent registers GET /issues/{id}/sdlc/pm-feedback/messages/{message_id}
+// with get(feedback_message) here and adds this handler to ApiDoc in lib.rs.
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}",operation_id="read_single_task_pm_feedback_message",tag="sdlc",
+    params(("id"=Uuid,Path),("message_id"=Uuid,Path)),responses((status=200,body=PmFeedbackReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn feedback_message(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((task, message_id)): Path<(Uuid, Uuid)>,
+) -> Result<(HeaderMap, Json<PmFeedbackReceipt>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .pm_feedback_message(task, &actor, message_id)
+                .await?,
+        ),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use utoipa::OpenApi;
+
+    #[test]
+    fn saved_feedback_handler_contract_is_scoped_get_and_original_receipt() {
+        #[derive(utoipa::OpenApi)]
+        #[openapi(paths(feedback_message))]
+        struct FeedbackMessageContract;
+        let spec = serde_json::to_value(FeedbackMessageContract::openapi()).unwrap();
+        let path = &spec["paths"]["/api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}"];
+        assert!(path["get"]["security"].is_array());
+        assert!(path.get("post").is_none());
+        assert_eq!(
+            path["get"]["responses"]["200"]["content"]["application/json"]["schema"]["$ref"],
+            "#/components/schemas/PmFeedbackReceipt"
+        );
+        for status in ["401", "403", "404", "409"] {
+            assert!(path["get"]["responses"][status].is_object());
+        }
+        assert_eq!(no_store()[header::CACHE_CONTROL], "no-store");
+    }
 
     #[test]
     fn every_lifecycle_surface_is_documented_with_auth_and_typed_readback() {

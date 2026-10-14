@@ -152,7 +152,11 @@ fn pm_request_policy(
         ("POST", ["clarifications", question, "cancel"]) => {
             app::sdlc::canonical_pm_uuid(question).is_some()
         }
-        _ => app::sdlc_confirmation::is_confirmation_read(method, parts.as_slice()),
+        _ => {
+            app::sdlc_confirmation::is_confirmation_read(method, parts.as_slice())
+                || (actor.scopes.contains("task-tracker:read")
+                    && app::sdlc_lifecycle::is_pm_feedback_message_read(method, parts.as_slice()))
+        }
     };
     if allowed {
         Ok(())
@@ -258,6 +262,37 @@ mod tests {
             ),
         ] {
             assert!(pm_request_policy(&actor, "GET", &path).is_err());
+        }
+    }
+
+    #[test]
+    fn pm_feedback_message_policy_is_exact_task_canonical_uuid_get_only() {
+        let (mut actor, task, _) = actor();
+        let message = Uuid::new_v4();
+        let base = format!("/api/v1/issues/{task}/sdlc/pm-feedback");
+        let path = format!("{base}/messages/{message}");
+        assert!(pm_request_policy(&actor, "GET", &path).is_err());
+        actor.scopes.insert("task-tracker:write".into());
+        assert!(pm_request_policy(&actor, "GET", &path).is_err());
+        actor.scopes.insert("task-tracker:read".into());
+        assert!(pm_request_policy(&actor, "GET", &path).is_ok());
+        for method in ["HEAD", "POST", "PUT", "PATCH", "DELETE"] {
+            assert!(pm_request_policy(&actor, method, &path).is_err());
+        }
+        for path in [
+            format!("{base}/messages"),
+            format!("{base}/messages/{message}/"),
+            format!("{base}/messages/{message}/extra"),
+            format!("{base}/messages/{}", message.to_string().to_uppercase()),
+            format!("{base}/messages/{}", Uuid::nil()),
+            format!("{base}/messages/not-a-uuid"),
+            format!("{base}/operations/owner-key"),
+            format!(
+                "/api/v1/issues/{}/sdlc/pm-feedback/messages/{message}",
+                Uuid::new_v4()
+            ),
+        ] {
+            assert!(pm_request_policy(&actor, "GET", &path).is_err(), "{path}");
         }
     }
 

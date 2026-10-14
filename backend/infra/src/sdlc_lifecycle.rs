@@ -624,6 +624,38 @@ impl LifecycleRepository for PostgresSdlcRepository {
         Ok(receipt)
     }
 
+    async fn pm_feedback_message(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        message_id: Uuid,
+    ) -> Result<PmFeedbackReceipt, AppError> {
+        app::sdlc_lifecycle::authorize_pm_feedback_message_read(task, actor)?;
+        if message_id.is_nil() {
+            return Err(AppError::validation("invalid PM feedback message ID"));
+        }
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load_read(&tx, task, actor).await?;
+        let row = tx.query_one(statement(
+            "SELECT actor_subject,payload FROM sdlc_pm_feedback WHERE task_id=$1 AND message_id=$2",
+            vec![task.into(), message_id.into()],
+        )).await.map_err(map_db)?.ok_or_else(|| AppError::not_found("PM feedback message", message_id))?;
+        let payload: Json = row.try_get("", "payload").map_err(map_db)?;
+        let receipt: PmFeedbackReceipt = serde_json::from_value(payload.clone())
+            .map_err(|_| AppError::conflict("pm_feedback_history_inconsistent"))?;
+        if serde_json::to_value(&receipt).map_err(AppError::internal)? != payload {
+            return Err(AppError::conflict("pm_feedback_history_inconsistent"));
+        }
+        let receipt = app::sdlc_lifecycle::exact_pm_feedback_message(
+            &state,
+            message_id,
+            &row.try_get::<String>("", "actor_subject").map_err(map_db)?,
+            &receipt,
+        )?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(receipt)
+    }
+
     async fn submit_delivery_proposal(
         &self,
         task: Uuid,

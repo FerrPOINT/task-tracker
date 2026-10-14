@@ -26,6 +26,21 @@ impl crate::sdlc::SdlcService {
             .await
     }
 
+    pub async fn pm_feedback_message(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        message_id: Uuid,
+    ) -> Result<PmFeedbackReceipt, AppError> {
+        authorize_pm_feedback_message_read(task, actor)?;
+        if message_id.is_nil() {
+            return Err(AppError::validation("invalid PM feedback message ID"));
+        }
+        self.lifecycle_repository()?
+            .pm_feedback_message(task, actor, message_id)
+            .await
+    }
+
     fn lifecycle_repository(&self) -> Result<&dyn LifecycleRepository, AppError> {
         self.repository.lifecycle_repository().ok_or_else(|| {
             AppError::Unavailable("single-task lifecycle repository not configured".into())
@@ -517,6 +532,61 @@ pub fn reconcile_terminal(
         );
     }
     Ok(())
+}
+
+/// Called only after the PM grant's own-task prefix has been validated.
+pub fn is_pm_feedback_message_read(method: &str, resource: &[&str]) -> bool {
+    matches!((method, resource), ("GET", ["pm-feedback", "messages", id])
+        if crate::sdlc::canonical_pm_uuid(id).is_some())
+}
+
+pub fn authorize_pm_feedback_message_read(task: Uuid, actor: &Principal) -> Result<(), AppError> {
+    if crate::sdlc::pm_grant_task(actor)? != Some(task)
+        || !actor.scopes.contains("task-tracker:read")
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
+pub fn exact_pm_feedback_message(
+    state: &domain::sdlc::TaskState,
+    message_id: Uuid,
+    saved_owner: &str,
+    receipt: &PmFeedbackReceipt,
+) -> Result<PmFeedbackReceipt, AppError> {
+    state.require_root()?;
+    let assignment = state.assignment.as_ref().ok_or(AppError::Forbidden)?;
+    let fence = domain::sdlc::MachineFence {
+        assignment_id: assignment.assignment_id,
+        execution_id: assignment.execution_id,
+        agent_id: assignment.agent_id,
+        assignment_version: assignment.version,
+    };
+    if message_id.is_nil()
+        || receipt.message_id != message_id
+        || receipt.tracker_instance_id != state.tracker_instance_id
+        || receipt.project_id != state.project_id
+        || receipt.task_id != state.task_id
+        || receipt.root_task_id != state.root_task_id
+        || receipt.owner_subject != state.owner_subject
+        || saved_owner != state.owner_subject
+        || receipt.fence != fence
+        || receipt.text.trim().is_empty()
+        || receipt.text.len() > 100_000
+        || receipt.text.contains('\0')
+        || receipt.content_hash
+            != crate::sdlc::canonical_hash(&serde_json::json!({"text":receipt.text}))?
+        || receipt.requirement_revision.is_some_and(|revision| {
+            !state
+                .revisions
+                .iter()
+                .any(|saved| saved.revision == revision)
+        })
+    {
+        return Err(AppError::conflict("pm_feedback_history_inconsistent"));
+    }
+    Ok(receipt.clone())
 }
 
 /// New input only: historical operation replay must run before this gate.

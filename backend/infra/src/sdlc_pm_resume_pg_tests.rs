@@ -108,6 +108,25 @@ async fn assert_new_feedback_rejected(
     assert_eq!(feedback_snapshot(db, task).await, before);
 }
 
+async fn assert_saved_feedback_read_unchanged(
+    db: &DatabaseConnection,
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    reader: &Principal,
+    receipt: &domain::sdlc_lifecycle::PmFeedbackReceipt,
+) {
+    let before = feedback_snapshot(db, task).await;
+    let readback = repo
+        .pm_feedback_message(task, reader, receipt.message_id)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(readback).unwrap(),
+        serde_json::to_value(receipt).unwrap()
+    );
+    assert_eq!(feedback_snapshot(db, task).await, before);
+}
+
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_PM_RESUME_TEST_DATABASE_URL ending in _pm_resume_test"]
 async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
@@ -228,6 +247,60 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         .submit_pm_feedback(task, &owner, feedback_command.clone())
         .await
         .unwrap();
+    let mut feedback_reader = pm.clone();
+    feedback_reader.scopes.remove("task-tracker:write");
+    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;
+    let snapshot = feedback_snapshot(&db, task).await;
+    let mut write_only = pm.clone();
+    write_only.scopes.remove("task-tracker:read");
+    let mut wrong_subject = feedback_reader.clone();
+    wrong_subject.subject = "scheduler".into();
+    let mut stale_grant = feedback_reader.clone();
+    let mut stale_assignment = reservation.assignment.clone();
+    stale_assignment.version += 1;
+    stale_grant.scopes = ["task-tracker:read".to_owned(), stale_assignment.scope(task)].into();
+    for denied in [
+        &owner,
+        &reader,
+        &scheduler,
+        &write_only,
+        &wrong_subject,
+        &stale_grant,
+    ] {
+        assert!(matches!(
+            repo.pm_feedback_message(task, denied, feedback.message_id)
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    assert!(matches!(
+        repo.pm_feedback_message(Uuid::new_v4(), &feedback_reader, feedback.message_id)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    assert!(matches!(
+        repo.pm_feedback_message(task, &feedback_reader, Uuid::new_v4())
+            .await,
+        Err(AppError::NotFound(_))
+    ));
+    assert!(matches!(
+        repo.pm_feedback_message(task, &feedback_reader, Uuid::nil())
+            .await,
+        Err(AppError::Validation(_))
+    ));
+    assert!(matches!(
+        repo.pm_feedback_operation(task, &feedback_reader, "feedback")
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    exec(&db,"DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='pm')",vec![project.into()]).await.unwrap();
+    assert!(matches!(
+        repo.pm_feedback_message(task, &feedback_reader, feedback.message_id)
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    exec(&db,"INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'developer' FROM users WHERE central_sub='pm'",vec![project.into()]).await.unwrap();
+    assert_eq!(feedback_snapshot(&db, task).await, snapshot);
     let command = resume(
         &initial,
         PmResumeInput::Feedback {
@@ -273,6 +346,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         ExecutionLeaseState::Expired
     ));
     assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
+    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;
     let heartbeat = HeartbeatExecutionLease {
         expected_owner_version: 1,
         fence: fence.clone(),
@@ -443,6 +517,11 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
             .await,
         Err(AppError::Forbidden)
     ));
+    assert!(matches!(
+        repo.pm_feedback_message(task, &feedback_reader, feedback.message_id)
+            .await,
+        Err(AppError::Forbidden)
+    ));
     exec(
         &db,
         "UPDATE users SET is_active=true WHERE central_sub='pm'",
@@ -531,6 +610,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     .unwrap();
     assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
     assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
+    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;
     let answer: Answer = parse(
         repo.execute_verified(
             task,
@@ -709,6 +789,8 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         &awaiting_feedback,
     )
     .await;
+    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &awaiting_feedback)
+        .await;
     let closing = resume(
         &answer_lease,
         PmResumeInput::Confirmation {
@@ -766,6 +848,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     .unwrap();
     assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
     assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
+    assert_saved_feedback_read_unchanged(&db, &repo, task, &feedback_reader, &feedback).await;
     assert_eq!(
         repo.pm_resume_operation(task, &reader, "resume-feedback")
             .await

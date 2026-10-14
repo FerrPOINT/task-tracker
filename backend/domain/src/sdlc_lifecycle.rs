@@ -540,6 +540,13 @@ pub trait LifecycleRepository: Send + Sync {
         key: &str,
     ) -> Result<PmFeedbackReceipt, AppError>;
 
+    async fn pm_feedback_message(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        message_id: Uuid,
+    ) -> Result<PmFeedbackReceipt, AppError>;
+
     async fn submit_delivery_proposal(
         &self,
         task: Uuid,
