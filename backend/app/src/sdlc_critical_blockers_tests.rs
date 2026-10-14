@@ -459,6 +459,40 @@ fn heartbeat_can_advance_while_held_but_commands_require_fresh_lease_version() {
 }
 
 #[test]
+fn current_producer_fence_survives_heartbeat_without_renewing_or_changing_lease_identity() {
+    let mut f = Fixture::new(LifecycleStage::Analysis);
+    let lease = f.current.lease.as_mut().unwrap();
+    lease.version += 2;
+    lease.heartbeat_at += Duration::seconds(10);
+    lease.expires_at += Duration::seconds(10);
+    f.now += Duration::seconds(11);
+    let retained = f.proposal.clone();
+    let change = f.plan().unwrap();
+    assert_eq!(change.blocker.proposal, retained);
+    assert_eq!(change.lifecycle.lease, f.current.lease);
+    assert_eq!(change.blocker.proposal.fence.expected_lease_version, 1);
+    assert_eq!(change.lifecycle.lease.as_ref().unwrap().version, 3);
+    f.current = change.lifecycle;
+    assert!(
+        return_to_pm(
+            &f.current,
+            &change.blocker,
+            &f.scheduler,
+            &f.config,
+            &f.handoff(&change.blocker)
+        )
+        .is_ok()
+    );
+
+    let mut future = Fixture::new(LifecycleStage::Analysis);
+    future.proposal.fence.expected_lease_version += 1;
+    assert!(future.plan().is_err());
+    let mut foreign = Fixture::new(LifecycleStage::Analysis);
+    foreign.proposal.fence.lease_id = Uuid::new_v4();
+    assert!(foreign.plan().is_err());
+}
+
+#[test]
 fn empty_and_single_options_hold_v1_with_own_grant_without_scheduler_impersonation() {
     for count in [0, 1] {
         let mut f = Fixture::new(LifecycleStage::Architecture);

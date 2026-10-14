@@ -148,7 +148,11 @@ fn current_custody<'a>(
         || assignment.fencing_token != fence.fencing_token
         || assignment.lease_id != fence.lease_id
         || lease.lease_id != fence.lease_id
-        || lease.version != fence.expected_lease_version
+        || !positive(lease.version)
+        || fence.expected_lease_version > lease.version
+        // A producer's retained fence survives same-lease heartbeats, as delivery proposals do.
+        // Scheduler handoff remains an exact fresh lease-version CAS, including after expiry.
+        || (live_at.is_none() && lease.version != fence.expected_lease_version)
         || lease.holder_subject != holder
         || lease.claimed_at > lease.heartbeat_at
         || lease.heartbeat_at >= lease.expires_at
