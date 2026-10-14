@@ -212,6 +212,11 @@ async fn snapshot(f: &Fixture, task: Uuid) -> Json {
         'blockers',(SELECT count(*) FROM sdlc_critical_blockers WHERE task_id=$1),
         'operations',(SELECT count(*) FROM sdlc_critical_blocker_operations WHERE task_id=$1),
         'heads',(SELECT count(*) FROM sdlc_critical_blocker_heads WHERE task_id=$1),
+        'returns',(SELECT count(*) FROM sdlc_critical_pm_returns WHERE task_id=$1),
+        'assignments',(SELECT count(*) FROM sdlc_delivery_assignments WHERE task_id=$1),
+        'results',(SELECT count(*) FROM sdlc_delivery_results WHERE task_id=$1),
+        'proposals',(SELECT count(*) FROM sdlc_delivery_proposals WHERE task_id=$1),
+        'reconciliations',(SELECT count(*) FROM sdlc_delivery_reconciliations WHERE task_id=$1),
         'holds',(SELECT count(*) FROM sdlc_delivery_holds WHERE task_id=$1),
         'outbox',(SELECT count(*) FROM sdlc_outbox WHERE task_id=$1),
         'permits',(SELECT count(*) FROM sdlc_delivery_projection_permits WHERE task_id=$1)) AS value",
@@ -248,11 +253,23 @@ async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced
         .try_get::<bool>("", "missing")
         .unwrap()
     {
-        // Until main registers the additive migration, apply ONLY this fragment to the existing fresh fixture.
+        // Fresh-fixture source check only; main registers this in the ONE unreleased 096 packet.
         f.db.execute_unprepared(include_str!("../../migration/src/critical_pm_return.sql"))
             .await
             .unwrap();
     }
+    assert!(
+        f.db.query_one(statement(
+            "SELECT to_regclass('sdlc_critical_pm_returns') IS NOT NULL AS present",
+            vec![],
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<bool>("", "present")
+        .unwrap(),
+        "old unreleased hold-only 096 is not an accepted upgrade baseline; use a fresh fixture"
+    );
     let user = Uuid::new_v4();
     exec(&f.db, "INSERT INTO users(id,email,username,display_name,password_hash,central_sub,is_active)
         VALUES($1,'critical-agent@example.test','critical-agent','critical-agent','!','critical-agent',true)", vec![user.into()]).await.unwrap();
@@ -625,10 +642,10 @@ async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced
 
     let race = start(&f, "critical-race", false, &storage).await;
     let terminal = proposal(&f, &race).await;
-    let body = blocker(&race);
+    let race_body = blocker(&race);
     let (post, complete) = tokio::join!(
         f.repo
-            .submit_critical_blocker_with_storage(race.task, &race.producer, body, &storage),
+            .submit_critical_blocker_with_storage(race.task, &race.producer, race_body, &storage),
         f.repo.lifecycle_command(
             race.task,
             &f.writer,
@@ -657,4 +674,345 @@ async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced
         assert_eq!(final_state["holds"], json!(0));
         assert_eq!(final_state["state"]["stage"], json!("Architecture"));
     }
+    return_held_to_pm(&f, &r, &one, &body).await;
+    assert_eq!(
+        snapshot(&f, race.task).await,
+        final_state,
+        "return must not release/change another task"
+    );
+}
+
+/// Same actual PG fixture, transaction paths and sealed evidence; native readback is SYNTHETIC.
+async fn return_held_to_pm(
+    f: &Fixture,
+    r: &Running,
+    original: &CriticalBlockerReceipt,
+    original_body: &SubmitCriticalBlocker,
+) {
+    let held = f
+        .repo
+        .lifecycle_read(r.task, &f.reader)
+        .await
+        .unwrap()
+        .receipt;
+    let binding = held.binding.as_ref().unwrap();
+    let command = ReturnCriticalToPm {
+        review: CriticalPmReviewGuard {
+            blocker_id: original.blocker_id,
+            blocker_sha256: original.blocker_sha256.clone(),
+            expected_blocker_version: original.version,
+            expected_task_version: held.task.version,
+            fence: fence(&held),
+            idempotency_key: "return-critical-to-pm".into(),
+        },
+        terminal: RuntimeTerminalObservation {
+            assignment_hash: original.assignment_hash.clone(),
+            chat_id: binding.chat_id,
+            run_id: binding.run_id,
+            state: RuntimeTerminalState::Cancelled,
+            receipt: ArtifactReceipt {
+                reference: "fixture://SYNTHETIC-actual-native-terminal-readback".into(),
+                sha256: "d".repeat(64),
+            },
+        },
+    };
+    let before = snapshot(f, r.task).await;
+    assert_eq!(before["returns"], json!(0));
+    assert_eq!(before["holds"], json!(1));
+    for actor in [&r.producer, &f.owner, &f.reader] {
+        assert!(matches!(
+            f.repo
+                .return_critical_to_pm_with_terminal(r.task, actor, command.clone())
+                .await,
+            Err(AppError::Forbidden)
+        ));
+        assert_eq!(snapshot(f, r.task).await, before);
+    }
+    // Caller must preserve the body but refresh ALL current CAS fields after heartbeat.
+    for mismatch in 0..10 {
+        let mut invalid = command.clone();
+        match mismatch {
+            0 => invalid.review.expected_task_version += 1,
+            1 => invalid.review.expected_blocker_version += 1,
+            2 => invalid.review.fence.expected_lease_version -= 1,
+            3 => invalid.review.fence.expected_lease_version += 1,
+            4 => invalid.review.fence.lease_id = Uuid::new_v4(),
+            5 => invalid.review.fence.fencing_token += 1,
+            6 => invalid.terminal.run_id = Uuid::new_v4(),
+            7 => invalid.terminal.assignment_hash = "e".repeat(64),
+            8 => invalid.review.blocker_sha256 = "f".repeat(64),
+            _ => invalid.terminal.receipt.reference.clear(),
+        }
+        assert!(
+            f.repo
+                .return_critical_to_pm_with_terminal(r.task, &f.writer, invalid)
+                .await
+                .is_err()
+        );
+        assert_eq!(snapshot(f, r.task).await, before);
+    }
+    for nonterminal in ["unknown", "running", "stop_acknowledged", "timeout"] {
+        let mut invalid = serde_json::to_value(&command).unwrap();
+        invalid["terminal"]["state"] = json!(nonterminal);
+        assert!(serde_json::from_value::<ReturnCriticalToPm>(invalid).is_err());
+        assert_eq!(snapshot(f, r.task).await, before);
+    }
+    let plan = app::sdlc_critical_blockers::return_to_pm(
+        &held,
+        original,
+        &f.writer,
+        &f.repo.config,
+        &command,
+    )
+    .unwrap();
+    let tx = f.db.begin().await.unwrap();
+    assert!(
+        PostgresSdlcRepository::save_delivery_projection(&tx, &f.writer, &plan.lifecycle, false)
+            .await
+            .is_err(),
+        "no journal-free canonical Draft or capacity release"
+    );
+    tx.rollback().await.unwrap();
+    assert_eq!(snapshot(f, r.task).await, before);
+
+    // SQL gates themselves reject forged terminal, stale lease, unrelated state and unrecoverable keys.
+    for mismatch in 0..4 {
+        let mut raw = serde_json::to_value(&command).unwrap();
+        let mut after = serde_json::to_value(&plan.lifecycle).unwrap();
+        let mut after_blocker = serde_json::to_value(&plan.blocker).unwrap();
+        let key = if mismatch == 3 {
+            "."
+        } else {
+            &command.review.idempotency_key
+        };
+        match mismatch {
+            0 => {
+                raw["terminal"]["state"] = json!("unknown");
+                after_blocker["technical_terminal"] = raw["terminal"].clone();
+            }
+            1 => {
+                raw["review"]["fence"]["expected_lease_version"] =
+                    json!(held.lease.as_ref().unwrap().version - 1)
+            }
+            2 => after["task"]["cycle"] = json!(held.task.cycle + 1),
+            _ => raw["review"]["idempotency_key"] = json!(key),
+        }
+        let tx = f.db.begin().await.unwrap();
+        assert!(exec(&tx, "INSERT INTO sdlc_critical_pm_returns(return_id,task_id,blocker_id,assignment_id,actor_subject,
+            idempotency_key,request_sha256,command,before_receipt,after_receipt,after_blocker)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", vec![Uuid::now_v7().into(), r.task.into(),
+                original.blocker_id.into(), command.review.fence.assignment_id.into(), f.writer.subject.clone().into(),
+                key.into(), app::sdlc::canonical_hash(&raw).unwrap().into(), raw.into(),
+                json_value(&held).unwrap(), after.into(), after_blocker.into()]).await.is_err());
+        tx.rollback().await.unwrap();
+        assert_eq!(snapshot(f, r.task).await, before);
+    }
+
+    let tx = f.db.begin().await.unwrap();
+    exec(&tx, "INSERT INTO sdlc_critical_pm_returns(return_id,task_id,blocker_id,assignment_id,actor_subject,
+        idempotency_key,request_sha256,command,before_receipt,after_receipt,after_blocker)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", vec![Uuid::now_v7().into(), r.task.into(),
+            original.blocker_id.into(), command.review.fence.assignment_id.into(), f.writer.subject.clone().into(),
+            command.review.idempotency_key.clone().into(), app::sdlc::canonical_hash(&command).unwrap().into(),
+            json_value(&command).unwrap(), json_value(&held).unwrap(), json_value(&plan.lifecycle).unwrap(),
+            json_value(&plan.blocker).unwrap()]).await.unwrap();
+    assert!(
+        tx.commit().await.is_err(),
+        "journal-only return cannot commit"
+    );
+    assert_eq!(snapshot(f, r.task).await, before);
+
+    // Fail after archive, release, canonical and issue projection: rollback must restore all of them.
+    f.db.execute_unprepared("CREATE FUNCTION critical_test_reject_return() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.event_type='critical.returned_to_pm' THEN RAISE EXCEPTION 'synthetic late return failure'; END IF;
+        RETURN NEW; END $$; CREATE TRIGGER critical_test_reject_return BEFORE INSERT ON sdlc_outbox
+        FOR EACH ROW EXECUTE FUNCTION critical_test_reject_return();").await.unwrap();
+    assert!(
+        f.repo
+            .return_critical_to_pm_with_terminal(r.task, &f.writer, command.clone())
+            .await
+            .is_err()
+    );
+    assert_eq!(snapshot(f, r.task).await, before);
+    f.db.execute_unprepared("DROP TRIGGER critical_test_reject_return ON sdlc_outbox; DROP FUNCTION critical_test_reject_return();")
+        .await.unwrap();
+
+    let (first, second) = tokio::join!(
+        f.repo
+            .return_critical_to_pm_with_terminal(r.task, &f.writer, command.clone()),
+        f.repo
+            .return_critical_to_pm_with_terminal(r.task, &f.writer, command.clone()),
+    );
+    let (first, replay_one) = first.unwrap();
+    let (second, replay_two) = second.unwrap();
+    assert_eq!(first, second);
+    assert_eq!(first, plan);
+    assert_ne!(
+        replay_one, replay_two,
+        "one task-lock winner, one immutable original-key replay"
+    );
+    let actual = f
+        .repo
+        .lifecycle_read(r.task, &f.reader)
+        .await
+        .unwrap()
+        .receipt;
+    assert_eq!(actual, plan.lifecycle);
+    assert_eq!(actual.task.stage, LifecycleStage::Draft);
+    assert_eq!(actual.task.status, LifecycleStatus::Ready);
+    assert_eq!(actual.task.runtime, RuntimeState::Terminal);
+    assert_eq!(
+        actual.task.waiting_reason.as_deref(),
+        Some(PM_REVIEW_REASON)
+    );
+    assert_eq!(actual.task.version, held.task.version + 1);
+    assert_eq!(actual.task.routing, held.task.routing);
+    assert_eq!(actual.task.cycle, held.task.cycle);
+    assert_eq!(actual.task.transient_retries, held.task.transient_retries);
+    assert_eq!(actual.task.previous_result_id, None);
+    assert_eq!(actual.task.resume_chat_id, None);
+    assert_eq!(actual.assignment, None);
+    assert_eq!(actual.lease, None);
+    assert_eq!(actual.binding, None);
+    assert_eq!(actual.result, None);
+    assert_eq!(plan.blocker.version, 2);
+    assert_eq!(plan.blocker.state, CriticalBlockerState::AwaitingPmReview);
+    assert_eq!(plan.blocker.proposal, *original_body);
+    assert_eq!(
+        plan.blocker.technical_terminal,
+        Some(command.terminal.clone())
+    );
+    assert_eq!(plan.blocker.pm_review, None);
+    assert_eq!(plan.blocker.resolution, None);
+    for reader in [&f.owner, &f.reader] {
+        assert_eq!(
+            f.repo
+                .critical_blocker(r.task, reader, original.blocker_id)
+                .await
+                .unwrap(),
+            plan.blocker
+        );
+    }
+    let row = f.db.query_one(statement(
+        "SELECT r.before_receipt,r.command,r.after_receipt,r.after_blocker,b.payload,
+            (SELECT count(*) FROM sdlc_outbox e WHERE e.task_id=r.task_id AND e.event_type='critical.returned_to_pm') AS events
+         FROM sdlc_critical_pm_returns r JOIN sdlc_critical_blockers b USING(blocker_id,task_id) WHERE r.task_id=$1",
+        vec![r.task.into()],
+    )).await.unwrap().unwrap();
+    assert_eq!(
+        row.try_get::<Json>("", "before_receipt").unwrap(),
+        serde_json::to_value(&held).unwrap()
+    );
+    assert_eq!(
+        row.try_get::<Json>("", "command").unwrap(),
+        serde_json::to_value(&command).unwrap()
+    );
+    assert_eq!(
+        row.try_get::<Json>("", "after_receipt").unwrap(),
+        serde_json::to_value(&actual).unwrap()
+    );
+    assert_eq!(
+        row.try_get::<Json>("", "after_blocker").unwrap(),
+        serde_json::to_value(&plan.blocker).unwrap()
+    );
+    assert_eq!(
+        row.try_get::<Json>("", "payload").unwrap(),
+        serde_json::to_value(original).unwrap()
+    );
+    assert_eq!(row.try_get::<i64>("", "events").unwrap(), 1);
+    let returned = snapshot(f, r.task).await;
+    assert_eq!(returned["returns"], json!(1));
+    assert_eq!(returned["holds"], json!(0));
+    assert_eq!(returned["permits"], json!(0));
+    for retained in [
+        "blockers",
+        "operations",
+        "heads",
+        "assignments",
+        "results",
+        "proposals",
+        "reconciliations",
+    ] {
+        assert_eq!(returned[retained], before[retained]);
+    }
+    // The retired child may recover only its ORIGINAL Held operation, never fresh work/detail.
+    assert_eq!(
+        f.repo
+            .critical_blocker_operation(r.task, &r.producer, &original_body.idempotency_key)
+            .await
+            .unwrap(),
+        *original
+    );
+    assert_eq!(
+        f.repo
+            .submit_critical_blocker_with_storage(
+                r.task,
+                &r.producer,
+                original_body.clone(),
+                &CorruptBytes
+            )
+            .await
+            .unwrap(),
+        (original.clone(), true)
+    );
+    assert!(
+        f.repo
+            .critical_blocker(r.task, &r.producer, original.blocker_id)
+            .await
+            .is_err()
+    );
+    let mut fresh = original_body.clone();
+    fresh.idempotency_key = "post-after-return".into();
+    assert!(
+        f.repo
+            .submit_critical_blocker_with_storage(r.task, &r.producer, fresh, &CorruptBytes)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        f.repo
+            .return_critical_to_pm_with_terminal(r.task, &f.writer, command.clone())
+            .await
+            .unwrap(),
+        (plan, true)
+    );
+    let mut changed = command.clone();
+    changed.terminal.receipt.sha256 = "e".repeat(64);
+    assert!(matches!(
+        f.repo
+            .return_critical_to_pm_with_terminal(r.task, &f.writer, changed)
+            .await,
+        Err(AppError::Conflict(_))
+    ));
+    let mut duplicate = command;
+    duplicate.review.idempotency_key = "second-return".into();
+    assert!(
+        f.repo
+            .return_critical_to_pm_with_terminal(r.task, &f.writer, duplicate)
+            .await
+            .is_err()
+    );
+    for command in [
+        LifecycleCommand::EnsureQueued {
+            idempotency_key: "awaiting-queue".into(),
+        },
+        LifecycleCommand::Reserve {
+            expected_task_version: actual.task.version,
+            idempotency_key: "awaiting-reserve".into(),
+        },
+    ] {
+        assert!(matches!(
+            f.repo.lifecycle_command(r.task, &f.writer, command).await,
+            Err(AppError::Conflict(_))
+        ));
+    }
+    for sql in [
+        "UPDATE sdlc_critical_pm_returns SET after_blocker='{}' WHERE task_id=$1",
+        "DELETE FROM sdlc_critical_pm_returns WHERE task_id=$1",
+    ] {
+        let tx = f.db.begin().await.unwrap();
+        assert!(exec(&tx, sql, vec![r.task.into()]).await.is_err());
+        tx.rollback().await.unwrap();
+    }
+    assert_eq!(snapshot(f, r.task).await, returned);
 }

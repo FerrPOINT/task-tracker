@@ -1,4 +1,4 @@
-//! Child of sdlc. Atomic critical POST/held history only; no PM return or new queue.
+//! Child of sdlc. Atomic critical hold/terminal return, without PM allocation or another queue.
 use super::*;
 use crate::entities::attachment;
 use domain::attachment_artifact::Seal;
@@ -73,8 +73,17 @@ async fn current_producer(
         .await?
         .ok_or(AppError::Forbidden)?;
     super::lifecycle::exact_revision(state, &current)?;
+    receipt_producer(&current, actor, saved, &grant)
+}
+
+fn receipt_producer(
+    current: &LifecycleReceipt,
+    actor: &Principal,
+    saved: &CriticalBlockerReceipt,
+    grant: &DeliveryGrant,
+) -> Result<(), AppError> {
     let assignment = current.assignment.as_ref().ok_or(AppError::Forbidden)?;
-    app::sdlc_lifecycle::authorize_delivery_assignment(&grant, assignment)?;
+    app::sdlc_lifecycle::authorize_delivery_assignment(grant, assignment)?;
     let binding = current.binding.as_ref().ok_or(AppError::Forbidden)?;
     if saved.producer_subject != actor.subject
         || binding.machine_subject != actor.subject
@@ -91,6 +100,33 @@ async fn current_producer(
         return Err(AppError::Forbidden);
     }
     Ok(())
+}
+
+/// Only original-key replay/read can use archived custody. This never admits fresh writes.
+async fn original_producer(
+    tx: &DatabaseTransaction,
+    state: &TaskState,
+    actor: &Principal,
+    saved: &CriticalBlockerReceipt,
+    write: bool,
+) -> Result<(), AppError> {
+    let row = tx
+        .query_one(statement(
+            "SELECT r.before_receipt FROM sdlc_critical_pm_returns r
+         JOIN sdlc_critical_blocker_heads h ON h.task_id=r.task_id AND h.blocker_id=r.blocker_id
+         WHERE r.task_id=$1 AND r.blocker_id=$2",
+            vec![state.task_id.into(), saved.blocker_id.into()],
+        ))
+        .await
+        .map_err(map_db)?;
+    if let Some(row) = row {
+        let grant = app::sdlc_lifecycle::producer(actor, write)?;
+        let archived: LifecycleReceipt = decode(&row, "before_receipt")?;
+        exact_history(tx, &archived).await?;
+        receipt_producer(&archived, actor, saved, &grant)
+    } else {
+        current_producer(tx, state, actor, saved, write).await
+    }
 }
 
 async fn original_operation(
@@ -126,8 +162,9 @@ pub(super) async fn ensure_progress_allowed(
 ) -> Result<(), AppError> {
     let row = tx
         .query_one(statement(
-            "SELECT b.payload FROM sdlc_critical_blocker_heads h
+            "SELECT COALESCE(r.after_blocker,b.payload) AS payload FROM sdlc_critical_blocker_heads h
          JOIN sdlc_critical_blockers b ON b.blocker_id=h.blocker_id AND b.task_id=h.task_id
+         LEFT JOIN sdlc_critical_pm_returns r ON r.blocker_id=b.blocker_id AND r.task_id=b.task_id
          WHERE h.task_id=$1 FOR SHARE OF h,b",
             vec![current.task.task_id.into()],
         ))
@@ -239,7 +276,7 @@ impl PostgresSdlcRepository {
         owner_access(&tx, &state).await?;
         if let Some(saved) = original_operation(&tx, task, actor, &command.idempotency_key).await? {
             scope(&state, &saved)?;
-            current_producer(&tx, &state, actor, &saved, true).await?;
+            original_producer(&tx, &state, actor, &saved, true).await?;
             let receipt = app::sdlc_critical_blockers::replay_blocker(&saved, &command)?;
             tx.commit().await.map_err(map_db)?;
             return Ok((receipt, true));
@@ -319,7 +356,7 @@ impl PostgresSdlcRepository {
         Ok((receipt, false))
     }
 
-    /// Original-key read is scoped to the producing current child, not a broad key search.
+    /// Original-key read is scoped to the original child (archived after return), not a broad key search.
     pub async fn critical_blocker_operation(
         &self,
         task: Uuid,
@@ -335,12 +372,12 @@ impl PostgresSdlcRepository {
             .await?
             .ok_or_else(|| AppError::not_found("critical blocker operation", key))?;
         scope(&state, &saved)?;
-        current_producer(&tx, &state, actor, &saved, false).await?;
+        original_producer(&tx, &state, actor, &saved, false).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(saved)
     }
 
-    /// Current held detail; future PM review/return states require their own additive implementation.
+    /// Current held/awaiting detail; original held history is never overwritten.
     pub async fn critical_blocker(
         &self,
         task: Uuid,
@@ -355,8 +392,9 @@ impl PostgresSdlcRepository {
         owner_access(&tx, &state).await?;
         let row = tx
             .query_one(statement(
-                "SELECT b.payload FROM sdlc_critical_blockers b
+                "SELECT COALESCE(r.after_blocker,b.payload) AS payload FROM sdlc_critical_blockers b
              JOIN sdlc_critical_blocker_heads h ON h.blocker_id=b.blocker_id AND h.task_id=b.task_id
+             LEFT JOIN sdlc_critical_pm_returns r ON r.blocker_id=b.blocker_id AND r.task_id=b.task_id
              WHERE b.task_id=$1 AND b.blocker_id=$2 FOR SHARE OF h,b",
                 vec![task.into(), blocker_id.into()],
             ))
@@ -375,5 +413,89 @@ impl PostgresSdlcRepository {
         }
         tx.commit().await.map_err(map_db)?;
         Ok(saved)
+    }
+
+    /// Proposed inherent interface only. Trusted Fleet must read actual native terminal first;
+    /// Tracker validates scheduler identity, current CAS, archived binding and terminal identity.
+    pub async fn return_critical_to_pm_with_terminal(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: ReturnCriticalToPm,
+    ) -> Result<(app::sdlc_critical_blockers::CriticalPolicyChange, bool), AppError> {
+        app::sdlc_reservation::scheduler(actor, &self.config)?;
+        app::sdlc::validate_key(&command.review.idempotency_key)?;
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load(&tx, task, actor).await?;
+        owner_access(&tx, &state).await?;
+        let hash = app::sdlc::canonical_hash(&command)?;
+        if let Some(row) = tx.query_one(statement(
+            "SELECT request_sha256,command,after_receipt,after_blocker FROM sdlc_critical_pm_returns
+             WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
+            vec![task.into(), actor.subject.clone().into(), command.review.idempotency_key.clone().into()],
+        )).await.map_err(map_db)? {
+            let original: ReturnCriticalToPm = decode(&row, "command")?;
+            if row.try_get::<String>("", "request_sha256").map_err(map_db)? != hash || original != command {
+                return Err(AppError::conflict("critical return key payload mismatch"));
+            }
+            let plan = app::sdlc_critical_blockers::CriticalPolicyChange {
+                lifecycle: decode(&row, "after_receipt")?, blocker: decode(&row, "after_blocker")?,
+            };
+            scope(&state, &plan.blocker)?;
+            tx.commit().await.map_err(map_db)?;
+            return Ok((plan, true));
+        }
+        let current = super::lifecycle::current(&tx, task)
+            .await?
+            .ok_or_else(invalid_history)?;
+        super::lifecycle::exact_revision(&state, &current)?;
+        let row = tx.query_one(statement(
+            "SELECT COALESCE(r.after_blocker,b.payload) AS payload FROM sdlc_critical_blocker_heads h
+             JOIN sdlc_critical_blockers b ON b.task_id=h.task_id AND b.blocker_id=h.blocker_id
+             LEFT JOIN sdlc_critical_pm_returns r ON r.task_id=b.task_id AND r.blocker_id=b.blocker_id
+             WHERE h.task_id=$1 AND h.blocker_id=$2 FOR SHARE OF h,b",
+            vec![task.into(), command.review.blocker_id.into()],
+        )).await.map_err(map_db)?.ok_or_else(invalid_history)?;
+        let blocker: CriticalBlockerReceipt = decode(&row, "payload")?;
+        scope(&state, &blocker)?;
+        let plan = app::sdlc_critical_blockers::return_to_pm(
+            &current,
+            &blocker,
+            actor,
+            &self.config,
+            &command,
+        )?;
+        exact_history(&tx, &current).await?;
+        tx.query_one(statement(
+            "SELECT assignment_id FROM sdlc_delivery_holds WHERE task_id=$1 AND assignment_id=$2 FOR UPDATE",
+            vec![task.into(), command.review.fence.assignment_id.into()],
+        )).await.map_err(map_db)?.ok_or_else(invalid_history)?;
+        let return_id = Uuid::now_v7();
+        exec(&tx, "INSERT INTO sdlc_critical_pm_returns(return_id,task_id,blocker_id,assignment_id,actor_subject,
+            idempotency_key,request_sha256,command,before_receipt,after_receipt,after_blocker)
+            VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", vec![return_id.into(), task.into(), blocker.blocker_id.into(),
+                command.review.fence.assignment_id.into(), actor.subject.clone().into(), command.review.idempotency_key.clone().into(),
+                hash.into(), json_value(&command)?, json_value(&current)?, json_value(&plan.lifecycle)?, json_value(&plan.blocker)?]).await?;
+        // Both old and critical release guards require the actual immutable return journal above.
+        exec(
+            &tx,
+            "DELETE FROM sdlc_delivery_holds WHERE task_id=$1 AND assignment_id=$2",
+            vec![task.into(), command.review.fence.assignment_id.into()],
+        )
+        .await?;
+        Self::save_delivery_projection(&tx, actor, &plan.lifecycle, false).await?;
+        let event = json!({"contract_version":1,"tracker_instance_id":state.tracker_instance_id,
+            "project_id":state.project_id,"task_id":task,"root_task_id":task,"owner_subject":state.owner_subject,
+            "stage":plan.lifecycle.task.stage,"requirement_revision":blocker.proposal.requirement_revision,
+            "result":&plan.blocker,"lifecycle":&plan.lifecycle});
+        exec(
+            &tx,
+            "INSERT INTO sdlc_outbox(event_id,task_id,event_type,payload)
+            VALUES($1,$2,'critical.returned_to_pm',$3)",
+            vec![return_id.into(), task.into(), event.into()],
+        )
+        .await?;
+        tx.commit().await.map_err(map_db)?;
+        Ok((plan, false))
     }
 }
