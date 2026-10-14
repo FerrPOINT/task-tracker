@@ -47,6 +47,11 @@ Use explicit inherent/UFCS delegation to avoid recursive trait method calls.
 3. For a new POST: exact canonical revision/routing, saved assignment/run rows,
    original generation1 snapshot and retained existing capacity row. Current
    technical grant requests its own waiting; scheduler identity is not forged.
+   Nonrenewing proposal fencing permits a positive frozen startup lease version
+   <= current for the SAME lease/assignment/execution/fencing token. Future
+   versions or different custody are denied. Original payload/hash is not rewritten
+   after heartbeat. Main's app-only current_custody refinement is a prerequisite;
+   scheduler terminal return still requires the EXACT current lease version.
 4. Existing sealed attachment metadata and author rows are locked. Compare actual
    task/assignment/execution/role/run and exact server seal with every requested
    artifact. Read raw bytes from existing FileStorage; reuse `Seal` and
@@ -55,10 +60,13 @@ Use explicit inherent/UFCS delegation to avoid recursive trait method calls.
    Persist blocker/previous head, original Held v1 journal, current selection,
    existing canonical projection/permits, and `critical.blocker_held` SDLC outbox
    event in one transaction. Event ID is the actual allocated blocker UUID.
-6. Existing Complete/Reserve/EnsureQueued/Reconcile entry calls the new guard after
+6. Fresh submit_delivery_proposal and Complete/Reserve/EnsureQueued/Reconcile call the new guard after
    exact_revision under the same locks. Old operation replay is immutable/no-op;
    fresh progression fails while held. Heartbeat remains available. Both existing
    Reconcile dispositions release custody, so neither may bypass a critical hold.
+
+These are Tracker business-write fences, not a filesystem/native runtime barrier.
+The required Fleet native stop/readback watcher is not implemented by these guards.
 
 Detail permits actual task owner, current scoped producer, or configured scheduler
 READ after fresh project/owner ACL. Old PM grants are denied. Original-key GET is
@@ -117,10 +125,12 @@ without `public.seaql_migrations`, enforced by the existing fixture.
 Authored assertions: direct proposal-only commit and unbacked waiting denied; corrupt raw bytes/hash/
 invalid recommendation/owner impersonation create no effects; late SQL failure
 rolls back all writes; concurrent exact POST gives one saved receipt; original key
-and owner/scheduler detail; foreign scope/project member/admin-hint read denied;
+and owner/scheduler detail; pre-POST heartbeat with unchanged startup body/hash,
+future lease version/new lease/new fencing token denied; foreign scope/project member/admin-hint read denied;
 changed replay409; waiting-only
 projection and generation1 retained; heartbeat permitted; fresh EnsureQueued,
-Reserve, Complete and both Reconcile dispositions denied without mutation; direct hold release and
+Reserve, fresh normal completion proposal, Complete and both Reconcile dispositions
+denied without mutation; pre-hold completion proposal replay remains unchanged; direct hold release and
 journal rewrite denied; real task-lock POST/Complete race has exactly one winner
 and cannot commit an acknowledged proposal without hold.
 

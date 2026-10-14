@@ -75,7 +75,9 @@ BEGIN
             AND head->'assignment'->'fencing_token'=body->'fence'->'fencing_token'
             AND head->'assignment'->'lease_id'=body->'fence'->'lease_id'
             AND head->'lease'->'lease_id'=body->'fence'->'lease_id'
-            AND head->'lease'->'version'=body->'fence'->'expected_lease_version'
+            AND jsonb_typeof(body->'fence'->'expected_lease_version')='number'
+            AND (body->'fence'->>'expected_lease_version')::bigint
+                BETWEEN 1 AND (head->'lease'->>'version')::bigint
             AND (head->'lease'->>'expires_at')::timestamptz>expected_time
             AND (NEW.payload->>'created_at')::timestamptz<=(head->'lease'->>'expires_at')::timestamptz
             AND NEW.payload->>'tracker_instance_id'=task_instance

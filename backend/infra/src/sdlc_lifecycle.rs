@@ -715,6 +715,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
         }
         let receipt = current(&tx, task).await?.ok_or_else(corrupt)?;
         exact_revision(&state, &receipt)?;
+        super::critical_blockers::ensure_progress_allowed(&tx, &receipt).await?;
         let binding = receipt
             .binding
             .as_ref()

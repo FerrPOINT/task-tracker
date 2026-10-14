@@ -268,6 +268,28 @@ async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced
     let mut r = start(&f, "critical-main", true, &storage).await;
     let terminal = proposal(&f, &r).await;
     let body = blocker(&r);
+    let original_completion_proposal = SubmitDeliveryProposal {
+        fence: fence(&r.head),
+        workflow_receipt: terminal.workflow_receipt.clone(),
+        result: result(&r),
+        idempotency_key: format!("proposal-{}", r.head.task.version),
+    };
+    let frozen_body = body.clone();
+    // Fleet heartbeat advances the SERVER lease; the caller's startup fence stays untouched.
+    r.head = f
+        .repo
+        .lifecycle_command(
+            r.task,
+            &f.writer,
+            LifecycleCommand::Heartbeat {
+                fence: fence(&r.head),
+                idempotency_key: "before-critical-heartbeat".into(),
+            },
+        )
+        .await
+        .unwrap()
+        .0;
+    assert!(body.fence.expected_lease_version < r.head.lease.as_ref().unwrap().version);
     let before = snapshot(&f, r.task).await;
     let initial_routing = r.head.task.routing.clone();
     // The database itself rejects a proposal-only commit, not just an application error path.
@@ -297,6 +319,21 @@ async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced
     );
     unbacked.rollback().await.unwrap();
     assert_eq!(snapshot(&f, r.task).await, before);
+    for changed_fence in 0..3 {
+        let mut invalid = body.clone();
+        match changed_fence {
+            0 => invalid.fence.expected_lease_version = r.head.lease.as_ref().unwrap().version + 1,
+            1 => invalid.fence.lease_id = Uuid::new_v4(),
+            _ => invalid.fence.fencing_token += 1,
+        }
+        assert!(
+            f.repo
+                .submit_critical_blocker_with_storage(r.task, &r.producer, invalid, &storage)
+                .await
+                .is_err()
+        );
+        assert_eq!(snapshot(&f, r.task).await, before);
+    }
     exec(&tx, "INSERT INTO sdlc_critical_blockers(blocker_id,task_id,assignment_id,payload,previous_receipt)
         VALUES($1,$2,$3,$4,$5)", vec![plan.blocker.blocker_id.into(), r.task.into(),
             body.fence.assignment_id.into(), json_value(&plan.blocker).unwrap(), json_value(&r.head).unwrap()]).await.unwrap();
@@ -374,6 +411,11 @@ async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced
     assert_eq!(one.pm_review, None);
     assert_eq!(one.technical_terminal, None);
     assert_eq!(one.producer_subject, "critical-agent");
+    assert_eq!(one.proposal, frozen_body);
+    assert_eq!(
+        one.blocker_sha256,
+        app::sdlc::canonical_hash(&frozen_body).unwrap()
+    );
     let held = snapshot(&f, r.task).await;
     for count in ["blockers", "operations", "heads", "holds"] {
         assert_eq!(held[count], json!(1));
@@ -482,6 +524,29 @@ async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced
         one
     );
     let before_progress = snapshot(&f, r.task).await;
+    let historical = f
+        .repo
+        .submit_delivery_proposal(r.task, &r.producer, original_completion_proposal.clone())
+        .await
+        .unwrap();
+    assert!(historical.1);
+    assert_eq!(historical.0.result, original_completion_proposal.result);
+    assert_eq!(snapshot(&f, r.task).await, before_progress);
+    let fresh = SubmitDeliveryProposal {
+        fence: fence(&r.head),
+        idempotency_key: "normal-completion-after-hold".into(),
+        ..original_completion_proposal
+    };
+    match f
+        .repo
+        .submit_delivery_proposal(r.task, &r.producer, fresh)
+        .await
+        .unwrap_err()
+    {
+        AppError::Conflict(message) => assert!(message.contains("critical PM review holds")),
+        error => panic!("expected critical hold conflict, got {error:?}"),
+    }
+    assert_eq!(snapshot(&f, r.task).await, before_progress);
     let binding = r.head.binding.as_ref().unwrap();
     let native = RuntimeTerminalObservation {
         assignment_hash: one.assignment_hash.clone(),
