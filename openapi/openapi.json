@@ -7581,6 +7581,84 @@
         ]
       }
     },
+    "/api/v1/sdlc/delivery-candidates": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_delivery_candidates",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryCandidates"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ""
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sdlc/project-access": {
       "get": {
         "tags": [
@@ -9327,6 +9405,13 @@
         },
         "additionalProperties": false
       },
+      "CandidateOperation": {
+        "type": "string",
+        "enum": [
+          "ensure_queued",
+          "reserve"
+        ]
+      },
       "ClaimExecutionLease": {
         "type": "object",
         "required": [
@@ -10104,6 +10189,89 @@
           "task_id": {
             "type": "string",
             "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryCandidate": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "root_task_id",
+          "requirement_revision",
+          "next_operation",
+          "task_version"
+        ],
+        "properties": {
+          "next_operation": {
+            "$ref": "#/components/schemas/CandidateOperation"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryCandidates": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "observed_at",
+          "items",
+          "next_cursor"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryCandidate"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
           }
         },
         "additionalProperties": false
