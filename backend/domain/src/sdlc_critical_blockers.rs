@@ -131,6 +131,16 @@ pub fn sha256(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// These keys are read back as one URL segment through the existing CLI transport.
+pub fn valid_operation_key(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && !matches!(value, "." | "..")
+        && !value
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '/' | '\\'))
+}
+
 fn text(value: &str, limit: usize) -> bool {
     !value.trim().is_empty()
         && value.len() <= limit
@@ -148,13 +158,7 @@ impl SubmitCriticalBlocker {
             || self.fence.lease_id.is_nil()
             || !(1..=crate::sdlc::MAX_SAFE_VERSION).contains(&self.fence.fencing_token)
             || !(1..=crate::sdlc::MAX_SAFE_VERSION).contains(&self.fence.expected_lease_version)
-            || self.idempotency_key.is_empty()
-            || self.idempotency_key.len() > 128
-            || matches!(self.idempotency_key.as_str(), "." | "..")
-            || self
-                .idempotency_key
-                .chars()
-                .any(|c| c.is_whitespace() || c.is_control())
+            || !valid_operation_key(&self.idempotency_key)
             || !(1..=crate::sdlc::MAX_SAFE_VERSION).contains(&self.requirement_revision)
             || !sha256(&self.content_hash)
             || !text(&self.question, 4096)

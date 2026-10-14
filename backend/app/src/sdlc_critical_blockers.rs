@@ -12,7 +12,9 @@ impl crate::sdlc::SdlcService {
         actor: &Principal,
         command: SubmitCriticalBlocker,
     ) -> Result<(CriticalBlockerReceipt, bool), AppError> {
-        crate::sdlc::validate_key(&command.idempotency_key)?;
+        if !valid_operation_key(&command.idempotency_key) {
+            return Err(AppError::validation("invalid critical operation key"));
+        }
         self.lifecycle_repository()?
             .submit_critical_blocker(task, actor, command)
             .await
@@ -38,7 +40,9 @@ impl crate::sdlc::SdlcService {
         actor: &Principal,
         key: &str,
     ) -> Result<CriticalBlockerReceipt, AppError> {
-        crate::sdlc::validate_key(key)?;
+        if !valid_operation_key(key) {
+            return Err(AppError::validation("invalid critical operation key"));
+        }
         self.lifecycle_repository()?
             .critical_blocker_operation(task, actor, key)
             .await
@@ -306,10 +310,8 @@ fn match_blocker(
     command: &CriticalPmReviewGuard,
 ) -> Result<(), AppError> {
     crate::sdlc::validate_key(&command.idempotency_key)?;
-    if matches!(command.idempotency_key.as_str(), "." | "..") {
-        return Err(AppError::validation(
-            "critical operation key cannot be a URL dot segment",
-        ));
+    if !valid_operation_key(&command.idempotency_key) {
+        return Err(AppError::validation("invalid critical operation key"));
     }
     let assignment = current.assignment.as_ref().ok_or_else(conflict)?;
     let binding = current.binding.as_ref().ok_or_else(conflict)?;

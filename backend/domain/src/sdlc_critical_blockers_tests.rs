@@ -143,11 +143,14 @@ fn text_fence_key_and_revision_bounds_apply_to_typed_callers_too() {
             "case {change}"
         );
     }
-    for key in [".", ".."] {
+    for key in [".", "..", "original/1", "original\\1"] {
         let mut bad = p.clone();
         bad.idempotency_key = key.into();
         assert!(bad.validate(DeliveryRole::Analyst).is_err());
     }
+    let mut encoded = p;
+    encoded.idempotency_key = "critical:original:1?x=+%#".into();
+    assert!(encoded.validate(DeliveryRole::Analyst).is_ok());
 }
 
 #[test]

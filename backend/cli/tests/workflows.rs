@@ -1241,7 +1241,7 @@ fn critical_blocker_proposal() -> Value {
         "evidence":[{"receipt":{"reference":"tracker-attachment:55555555-5555-5555-5555-555555555555",
             "sha256":"b".repeat(64)},"binding":{"assignment_id":"22222222-2222-2222-2222-222222222222",
             "execution_id":"33333333-3333-3333-3333-333333333333","role":"analyst"}}],
-        "idempotency_key":"critical:original/1?x=+%#"
+        "idempotency_key":"critical:original:1?x=+%#"
     });
     let typed: domain::sdlc_critical_blockers::SubmitCriticalBlocker =
         serde_json::from_value(proposal.clone()).unwrap();
@@ -1341,7 +1341,7 @@ async fn sdlc_critical_blocker_reads_exact_detail_and_original_key_without_mutat
                         "--task",
                         TASK,
                         "--key",
-                        "critical:original/1?x=+%#"
+                        "critical:original:1?x=+%#"
                     ],
                     None,
                 )
@@ -1358,7 +1358,7 @@ async fn sdlc_critical_blocker_reads_exact_detail_and_original_key_without_mutat
     assert_eq!(
         requests[1].path,
         format!(
-            "/api/v1/issues/{TASK}/sdlc/critical-blockers/operations/critical%3Aoriginal%2F1%3Fx%3D%2B%25%23"
+            "/api/v1/issues/{TASK}/sdlc/critical-blockers/operations/critical%3Aoriginal%3A1%3Fx%3D%2B%25%23"
         )
     );
     for request in requests {
@@ -1396,7 +1396,7 @@ async fn sdlc_critical_blocker_errors_never_retry_or_publish_success() {
             args.extend_from_slice(match action {
                 "submit" => &["--from-file", "-"],
                 "read" => &["--blocker", "66666666-6666-6666-6666-666666666666"],
-                _ => &["--key", "critical:original/1?x=+%#"],
+                _ => &["--key", "critical:original:1?x=+%#"],
             });
             let output = server
                 .run(&args, (action == "submit").then_some(proposal.as_str()))
@@ -1558,6 +1558,42 @@ async fn sdlc_critical_blocker_invalid_inputs_never_make_http_requests() {
         .await;
     assert_eq!(malformed.status.code(), Some(1));
     assert!(malformed.stdout.is_empty());
+    for key in ["", ".", "..", "critical/1", "critical\\1", "bad key"] {
+        let rejected = server
+            .run(
+                &[
+                    "sdlc",
+                    "critical-blocker",
+                    "operation",
+                    "--task",
+                    TASK,
+                    "--key",
+                    key,
+                ],
+                None,
+            )
+            .await;
+        assert!(!rejected.status.success());
+        assert!(rejected.stdout.is_empty());
+        let mut proposal = critical_blocker_proposal();
+        proposal["idempotency_key"] = json!(key);
+        let rejected = server
+            .run(
+                &[
+                    "sdlc",
+                    "critical-blocker",
+                    "submit",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&proposal.to_string()),
+            )
+            .await;
+        assert!(!rejected.status.success());
+        assert!(rejected.stdout.is_empty());
+    }
     assert!(server.requests().is_empty());
 }
 

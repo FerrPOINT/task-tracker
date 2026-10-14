@@ -35,7 +35,8 @@ CREATE TABLE sdlc_critical_blocker_operations (
     task_id uuid NOT NULL REFERENCES sdlc_tasks(task_id) ON DELETE RESTRICT,
     actor_subject text NOT NULL CHECK(length(actor_subject)>0),
     idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128
-        AND idempotency_key !~ '[[:space:][:cntrl:]]' AND idempotency_key NOT IN ('.','..')),
+        AND idempotency_key !~ '[[:space:][:cntrl:]]' AND idempotency_key NOT IN ('.','..')
+        AND position('/' in idempotency_key)=0 AND position(chr(92) in idempotency_key)=0),
     payload_hash text NOT NULL CHECK(payload_hash ~ '^[0-9a-f]{64}$'),
     blocker_id uuid NOT NULL UNIQUE,
     result jsonb NOT NULL,
@@ -56,7 +57,8 @@ CREATE TABLE sdlc_critical_pm_returns (
     assignment_id uuid NOT NULL UNIQUE REFERENCES sdlc_delivery_assignments(assignment_id) ON DELETE RESTRICT,
     actor_subject text NOT NULL CHECK(length(actor_subject)>0),
     idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128
-        AND idempotency_key !~ '[[:space:][:cntrl:]]' AND idempotency_key NOT IN ('.','..')),
+        AND idempotency_key !~ '[[:space:][:cntrl:]]' AND idempotency_key NOT IN ('.','..')
+        AND position('/' in idempotency_key)=0 AND position(chr(92) in idempotency_key)=0),
     request_sha256 text NOT NULL CHECK(request_sha256 ~ '^[0-9a-f]{64}$'),
     command jsonb NOT NULL, before_receipt jsonb NOT NULL,
     after_receipt jsonb NOT NULL, after_blocker jsonb NOT NULL,
