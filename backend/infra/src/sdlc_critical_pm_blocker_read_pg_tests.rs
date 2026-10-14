@@ -125,7 +125,7 @@ async fn actual_current_pm_blocker_read_requires_saved_review_fresh_acl_and_curr
     );
     let (_, replay) = f
         .repo
-        .claim_pm_execution_lease(
+        .claim_execution_lease(
             r.task,
             &pm,
             ClaimExecutionLease {
