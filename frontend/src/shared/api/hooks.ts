@@ -505,7 +505,8 @@ export function useUpdateProject(key: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: Parameters<typeof updateProject>[1]) => updateProject(key, input),
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      qc.setQueriesData({ queryKey: projectKeys.info(key) }, saved)
       qc.invalidateQueries({ queryKey: projectKeys.info(key) })
       qc.invalidateQueries({ queryKey: ['namespace-contexts', 'task-tracker'] })
       qc.invalidateQueries({ queryKey: ['namespace-context'] })
