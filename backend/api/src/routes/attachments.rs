@@ -20,7 +20,10 @@ use shared::{AppError, AttachmentId, IssueId, UserId};
     responses(
         (status = 200, description = "Attachments listed", body = AttachmentListResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Task or artifact access denied"),
         (status = 404, description = "Issue not found"),
+        (status = 409, description = "Artifact custody conflict"),
+        (status = 503, description = "Authentication or artifact storage unavailable"),
     ),
     security(("bearer" = []))
 )]
@@ -72,7 +75,10 @@ pub async fn list_attachments(
         (status = 201, description = "Attachment uploaded", body = AttachmentResponse),
         (status = 400, description = "Bad request (missing file, empty file, too large)"),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Task or artifact access denied"),
         (status = 404, description = "Issue not found"),
+        (status = 409, description = "Artifact custody conflict"),
+        (status = 503, description = "Authentication or artifact storage unavailable"),
     ),
     security(("bearer" = []))
 )]
@@ -153,7 +159,10 @@ pub async fn upload_attachment(
     responses(
         (status = 200, description = "File bytes", content_type = "application/octet-stream"),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Task or artifact access denied"),
         (status = 404, description = "Attachment not found"),
+        (status = 409, description = "Artifact custody conflict"),
+        (status = 503, description = "Authentication or artifact storage unavailable"),
     ),
     security(("bearer" = []))
 )]

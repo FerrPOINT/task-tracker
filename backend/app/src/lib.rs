@@ -1,3 +1,4 @@
+pub mod attachment_artifacts;
 pub mod auth;
 pub mod authz;
 pub mod commands;

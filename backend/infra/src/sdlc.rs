@@ -28,6 +28,8 @@ pub struct PostgresSdlcRepository {
     config: SdlcConfig,
 }
 
+#[path = "attachment_artifacts.rs"]
+pub(crate) mod attachment_artifacts;
 #[path = "sdlc_candidates.rs"]
 mod candidates;
 

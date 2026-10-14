@@ -294,6 +294,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         dto::TransitionResponse,
         dto::IssueTypeResponse,
         crate::dto::AttachmentResponse,
+        domain::attachment_artifact::AttachmentArtifact,
+        domain::attachment_artifact::ArtifactBinding,
         crate::dto::AttachmentListResponse,
         routes::notifications::NotificationListResponse,
         routes::notifications::NotificationSettingsResponse,
@@ -443,6 +445,22 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     };
 
     let auth = from_fn_with_state(ctx.clone(), middleware::auth::bearer_auth);
+    let attachment_routes = Router::new()
+        .route(
+            "/issues/{issue_id}/attachments",
+            get(routes::attachments::list_attachments).post(
+                routes::attachments::upload_attachment
+                    .layer(DefaultBodyLimit::max(ctx.config.storage.max_upload_bytes)),
+            ),
+        )
+        .route(
+            "/attachments/{id}/download",
+            get(routes::attachments::download_attachment),
+        )
+        .route_layer(from_fn_with_state(
+            ctx.clone(),
+            middleware::attachment_auth::attachment_auth,
+        ));
 
     let protected = Router::new()
         .route("/tasks/{id}/documents", get(routes::namespace::documents))
@@ -494,13 +512,6 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
             get(routes::board::get_board),
         )
         .route(
-            "/issues/{issue_id}/attachments",
-            get(routes::attachments::list_attachments).post(
-                routes::attachments::upload_attachment
-                    .layer(DefaultBodyLimit::max(ctx.config.storage.max_upload_bytes)),
-            ),
-        )
-        .route(
             "/projects/{project_key}/labels",
             get(routes::labels::list_labels).post(routes::labels::create_label),
         )
@@ -536,10 +547,6 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         .route(
             "/issues/{issue_id}/votes",
             get(routes::watchers_votes::list_votes),
-        )
-        .route(
-            "/attachments/{id}/download",
-            get(routes::attachments::download_attachment),
         )
         .route(
             "/attachments/{id}",
@@ -724,6 +731,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
     let api = public
         .merge(auth_routes)
         .merge(protected)
+        .merge(attachment_routes)
         .merge(owner_routes)
         .merge(routes::sdlc::router());
 

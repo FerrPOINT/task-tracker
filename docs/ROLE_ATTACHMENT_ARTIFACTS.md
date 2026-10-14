@@ -3,8 +3,9 @@
 Source packet based on integration a17e8f70382f2a01b5bc1bf35be4bfd23833b0dd.
 Existing attachment routes, metadata table, repository, disk storage and CLI are
 reused. No lifecycle/candidate wire, migration, dependency, scope, planner,
-controller, artifact table or separate store is introduced. Main owns the
-registrations/DI below and generated OpenAPI; this packet alone is not live.
+controller, artifact table or separate store is introduced. Registrations and
+server DI are integrated in source. Generated OpenAPI, local qualification and
+live rollout remain separate gates; this packet is not installed or live.
 
 ## Wire And Commands
 
@@ -83,7 +84,7 @@ No error cleanup deletes the sealed destination or a concurrent winner. A proces
 crash may leave its private staging file. No new cleanup registry or broad purge is
 introduced; existing owner retention procedures must handle confirmed orphan data.
 
-## Main Registration Handoff
+## Integrated Registration And DI
 
 1. `backend/domain/src/lib.rs`: `pub mod attachment_artifact;`
 2. `backend/app/src/lib.rs`: `pub mod attachment_artifacts;`
@@ -122,7 +123,7 @@ existing fixture connection for the final real AttachmentRepository delete check
 
 ## Focused QA Requests
 
-These are requests for main QA, not claimed executed tests. From `backend`, first
+These are pending local QA, not claimed executed tests. From `backend`, first
 collect each selector using `-- --list` and assert nonzero, then execute:
 
 ```text

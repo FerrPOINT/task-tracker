@@ -1,5 +1,7 @@
 //! Existing PostgreSQL owner ledgers; Fleet/Workflow observations below are explicitly synthetic.
 use super::*;
+#[path = "attachment_artifacts_pg_tests.rs"]
+mod artifact_tests;
 use domain::sdlc_execution_lease::ClaimExecutionLease;
 use domain::sdlc_lifecycle::*;
 use domain::sdlc_reservation::CompletePmDraft;
