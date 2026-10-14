@@ -9,6 +9,7 @@ pub mod sdlc;
 pub mod sdlc_candidates;
 pub mod sdlc_configuration;
 pub mod sdlc_confirmation;
+pub mod sdlc_critical_blockers;
 pub mod sdlc_draft_flow;
 pub mod sdlc_lifecycle;
 pub mod sdlc_metadata;
