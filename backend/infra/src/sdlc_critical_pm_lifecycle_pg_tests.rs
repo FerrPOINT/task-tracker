@@ -7,6 +7,9 @@ use domain::sdlc_execution_lease::{
 };
 use domain::sdlc_reservation::PmDraftCompletionReceipt;
 
+#[path = "sdlc_critical_pm_cycles_pg_tests.rs"]
+mod cycles_tests;
+
 struct ReviewFixture {
     f: Fixture,
     task: Uuid,
@@ -389,62 +392,7 @@ async fn completion(r: &ReviewFixture, hash: String, confirmation: Confirmation)
         workflow_receipt_sha256: "b".repeat(64),
         idempotency_key: "review-complete".into(),
     };
-    let tx = r.f.db.begin().await.unwrap();
-    let state = r.f.repo.load(&tx, r.task, &r.f.writer).await.unwrap();
-    let result = PmDraftCompletionReceipt {
-        contract_version: 1,
-        completion_id: Uuid::new_v4(),
-        tracker_instance_id: state.tracker_instance_id.clone(),
-        project_id: state.project_id,
-        task_id: r.task,
-        root_task_id: r.task,
-        owner_subject: state.owner_subject.clone(),
-        fence: c.fence.clone(),
-        owner_version: r.review.reservation.owner_cas.version,
-        lease_id: c.lease_id,
-        lease_version: c.lease_version,
-        requirement_revision: c.requirement_revision,
-        content_hash: c.content_hash.clone(),
-        terminal_receipt_ref: c.terminal_receipt_ref.clone(),
-        terminal_receipt_sha256: c.terminal_receipt_sha256.clone(),
-        workflow_receipt_ref: c.workflow_receipt_ref.clone(),
-        workflow_receipt_sha256: c.workflow_receipt_sha256.clone(),
-        previous_pm_admission_state: "reserved".into(),
-        next_pm_admission_state: "completed".into(),
-        idempotency_key: c.idempotency_key.clone(),
-        created_at: crate::sdlc::execution_lease::clock(&tx).await.unwrap(),
-    };
-    let digest =
-        app::sdlc::canonical_hash(&json!({"operation":"complete_pm_draft","payload":c})).unwrap();
-    assert!(
-        r.f.repo
-            .finalize_critical_pm_review(&tx, &state, &r.f.writer, &c, &digest, &result)
-            .await
-            .unwrap()
-            .is_some()
-    );
-    // A lost member of the atomic packet must roll back completion, resolution AND generation.
-    tx.execute(statement(
-        "DELETE FROM sdlc_outbox WHERE task_id=$1 AND event_type='analysis.intent_created'
-        AND payload->'result'->'requirement_revision'='2'::jsonb",
-        vec![r.task.into()],
-    ))
-    .await
-    .unwrap();
-    assert!(tx.commit().await.is_err());
-    let row = r
-        .f
-        .db
-        .query_one(statement(
-            "SELECT NOT EXISTS(SELECT 1 FROM sdlc_pm_completions WHERE execution_id=$1) AS absent,
-        NOT EXISTS(SELECT 1 FROM sdlc_task_routing_generations WHERE task_id=$2) AS unchanged",
-            vec![c.fence.execution_id.into(), r.task.into()],
-        ))
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(row.try_get::<bool>("", "absent").unwrap());
-    assert!(row.try_get::<bool>("", "unchanged").unwrap());
+    Box::pin(cycles_tests::incomplete_packets(r, &c)).await;
     let mut stale = c.clone();
     stale.lease_version -= 1;
     assert!(matches!(
