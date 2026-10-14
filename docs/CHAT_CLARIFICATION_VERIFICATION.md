@@ -1,5 +1,12 @@
 # Tracker Clarification Verification
 
+## Critical Blocker Follow-Up (2026-10-14)
+
+The latest [critical qualification](CRITICAL_BLOCKER_VERIFICATION.md) passes27
+selected domain/app/CLI/API cases and workspace check, then fails its storage PG
+aggregate with Rust stack overflow. It is not a passing full gate. Public Return,
+same-task PM re-entry, updated routing and live acceptance remain separate work.
+
 ## Single-Task CLI Input And Current-Grant Readback (2026-10-14)
 
 Qualified Tracker source: `81759bbb8a07c1076b9c3c4f97c7af058b626dd2`.

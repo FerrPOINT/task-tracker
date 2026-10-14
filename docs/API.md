@@ -2,6 +2,13 @@
 
 ## Critical Business Blocker Integration
 
+Existing attachment storage is now connected through production DI. Critical
+operation keys are1..128 UTF-8 bytes without whitespace/control, literal
+slash/backslash or standalone `.`/`..`, so original-key CLI readback is possible.
+Legacy keys and the Base transport security contract are unchanged. Latest
+[qualification and the open PG failure](CRITICAL_BLOCKER_VERIFICATION.md) must not
+be confused with live acceptance or a completed full gate.
+
 The existing strict SDLC router now registers typed POST
 `/api/v1/issues/{id}/sdlc/critical-blockers`, GET
 `/api/v1/issues/{id}/sdlc/critical-blockers/{blocker_id}` and original-key GET
