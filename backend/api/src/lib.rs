@@ -88,6 +88,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc_delivery::proposal_operation,
         routes::sdlc_delivery::feedback,
         routes::sdlc_delivery::feedback_operation,
+        routes::sdlc_delivery::feedback_message,
         routes::sdlc_routing::set,
         routes::sdlc_routing::current,
         routes::sdlc_routing::version,

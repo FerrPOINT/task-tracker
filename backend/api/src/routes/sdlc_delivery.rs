@@ -31,6 +31,10 @@ pub(super) fn router() -> Router<Arc<app::AppContext>> {
             "/issues/{id}/sdlc/pm-feedback/operations/{idempotency_key}",
             get(feedback_operation),
         )
+        .route(
+            "/issues/{id}/sdlc/pm-feedback/messages/{message_id}",
+            get(feedback_message),
+        )
 }
 
 fn no_store() -> HeaderMap {
