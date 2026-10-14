@@ -11,6 +11,9 @@ mod draft_flow_tests;
 #[path = "sdlc_pm_resume_pg_tests.rs"]
 mod pm_resume_tests;
 
+#[path = "sdlc_single_task_rework_pg_tests.rs"]
+mod rework_tests;
+
 fn parse<T: DeserializeOwned>(value: Json) -> T {
     serde_json::from_value(value).unwrap()
 }

@@ -9,6 +9,12 @@ type mismatch. Tracker units, OpenAPI and actual PG scenarios were not reached;
 compile coverage is not migration or lifecycle acceptance. Base-v2 cleanup and
 owned input removal are verified. No automatic rerun is claimed.
 
+A later single-task Rework repository aggregate is registered separately: thirteen
+executions retain one task/root and its frozen routing through Reviewer and Tester
+rejections, repeated Developer/Review/Testing and final DevOps completion. Receipts
+are explicitly synthetic; source formatting is checked, compile/PG is not yet run.
+It is not covered by the earlier1f87247 Clippy result or live deployment evidence.
+
 The subsequent c17a538/3597a17 resumption invocation passes Tracker359 locked
 workspace/all-target strict Clippy. It then fails in a Fleet HTTP test fixture;
 Tracker unit/OpenAPI/PG steps are not reached. This is a compile/lint result,
