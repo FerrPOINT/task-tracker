@@ -106,12 +106,14 @@ fn fence(head: &LifecycleReceipt) -> DeliveryFence {
 }
 
 async fn bind(f: &Fixture, task: Uuid) -> LifecycleReceipt {
+    eprintln!("critical_pg.phase.bind.read.begin");
     let head = f
         .repo
         .lifecycle_read(task, &f.reader)
         .await
         .unwrap()
         .receipt;
+    eprintln!("critical_pg.phase.bind.reserve.begin");
     let reserved = f
         .repo
         .lifecycle_command(
@@ -125,6 +127,7 @@ async fn bind(f: &Fixture, task: Uuid) -> LifecycleReceipt {
         .await
         .unwrap()
         .0;
+    eprintln!("critical_pg.phase.bind.run.begin");
     f.repo
         .lifecycle_command(
             task,
@@ -163,6 +166,7 @@ async fn output(
             &head.assignment.as_ref().unwrap().scope(),
         ],
     );
+    eprintln!("critical_pg.phase.output.publish.begin");
     let item = artifacts::publish(
         &f.db,
         &f.repo.config,
@@ -177,6 +181,7 @@ async fn output(
     )
     .await
     .unwrap();
+    eprintln!("critical_pg.phase.output.publish.done");
     let evidence = Seal::parse(item.storage_key.as_ref())
         .unwrap()
         .unwrap()
@@ -207,6 +212,7 @@ async fn proposal(f: &Fixture, r: &Running) -> TerminalReceipt {
         reference: "fixture://synthetic-workflow-completion-not-live-proof".into(),
         sha256: "b".repeat(64),
     };
+    eprintln!("critical_pg.phase.proposal.begin");
     f.repo
         .submit_delivery_proposal(
             r.task,
@@ -220,6 +226,7 @@ async fn proposal(f: &Fixture, r: &Running) -> TerminalReceipt {
         )
         .await
         .unwrap();
+    eprintln!("critical_pg.phase.proposal.done");
     let binding = r.head.binding.as_ref().unwrap();
     TerminalReceipt {
         chat_id: binding.chat_id,
@@ -239,7 +246,9 @@ async fn start(
     architect: bool,
     storage: &domain::InMemoryStorage,
 ) -> Running {
+    eprintln!("critical_pg.phase.start.confirm.begin");
     let task = f.confirmed(key, true).await;
+    eprintln!("critical_pg.phase.start.confirm.done");
     f.repo
         .lifecycle_command(
             task,
@@ -250,9 +259,11 @@ async fn start(
         )
         .await
         .unwrap();
+    eprintln!("critical_pg.phase.start.queue.done");
     let mut r = output(f, task, bind(f, task).await, storage).await;
     if architect {
         let terminal = proposal(f, &r).await;
+        eprintln!("critical_pg.phase.start.analysis_complete.begin");
         f.repo
             .lifecycle_command(
                 task,
@@ -266,8 +277,10 @@ async fn start(
             )
             .await
             .unwrap();
+        eprintln!("critical_pg.phase.start.analysis_complete.done");
         r = output(f, task, bind(f, task).await, storage).await;
     }
+    eprintln!("critical_pg.phase.start.done");
     r
 }
 
@@ -323,11 +336,17 @@ impl domain::FileStorage for CorruptBytes {
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test; synthetic runtime only"]
 async fn actual_critical_post_is_atomic_replayed_authorized_held_and_race_fenced() {
-    critical_pg_scenario().await;
+    eprintln!("critical_pg.phase.scenario.begin");
+    Box::pin(critical_pg_scenario()).await;
+    eprintln!("critical_pg.phase.scenario.done");
 }
 
 async fn critical_pg_scenario() {
+    eprintln!("critical_pg.phase.fixture.begin");
     let f = Fixture::new().await;
+    eprintln!("critical_pg.phase.fixture.done");
+    eprintln!("critical_pg.phase.setup.begin");
+    let (storage, mut r, terminal, body, original_completion_proposal) = Box::pin(async {
     if f.db
         .query_one(statement(
             "SELECT to_regclass('sdlc_critical_blockers') IS NULL AS missing",
@@ -368,7 +387,7 @@ async fn critical_pg_scenario() {
     .unwrap();
     let storage = domain::InMemoryStorage::default();
     // Hold Architect, leaving the distinct Analyst agent/pool slot available for the race case.
-    let mut r = start(&f, "critical-main", true, &storage).await;
+    let r = start(&f, "critical-main", true, &storage).await;
     let terminal = proposal(&f, &r).await;
     let body = blocker(&r);
     let original_completion_proposal = SubmitDeliveryProposal {
@@ -377,6 +396,11 @@ async fn critical_pg_scenario() {
         result: result(&r),
         idempotency_key: format!("proposal-{}", r.head.task.version),
     };
+        (storage, r, terminal, body, original_completion_proposal)
+    }).await;
+    eprintln!("critical_pg.phase.setup.done");
+    eprintln!("critical_pg.phase.hold.begin");
+    let (one, actual) = Box::pin(async {
     let frozen_body = body.clone();
     // Fleet heartbeat advances the SERVER lease; the caller's startup fence stays untouched.
     r.head = f
@@ -597,175 +621,194 @@ async fn critical_pg_scenario() {
         Err(AppError::Conflict(_))
     ));
     assert_eq!(snapshot(&f, r.task).await, held);
+        (one, actual)
+    }).await;
+    eprintln!("critical_pg.phase.hold.done");
 
-    // Existing Heartbeat remains usable and does not change the original Held receipt.
-    let heartbeat = f
-        .repo
-        .lifecycle_command(
-            r.task,
-            &f.writer,
-            LifecycleCommand::Heartbeat {
-                fence: fence(&actual),
-                idempotency_key: "held-heartbeat".into(),
-            },
-        )
-        .await
-        .unwrap()
-        .0;
-    r.head = heartbeat;
-    let replay_after_heartbeat = f
-        .repo
-        .submit_critical_blocker_with_storage(r.task, &r.producer, body.clone(), &CorruptBytes)
-        .await
-        .unwrap();
-    assert_eq!(replay_after_heartbeat, (one.clone(), true));
-    assert_eq!(
-        f.repo
-            .critical_blocker_operation(r.task, &r.producer, &body.idempotency_key)
-            .await
-            .unwrap(),
-        one
-    );
-    let before_progress = snapshot(&f, r.task).await;
-    let historical = f
-        .repo
-        .submit_delivery_proposal(r.task, &r.producer, original_completion_proposal.clone())
-        .await
-        .unwrap();
-    assert!(historical.1);
-    assert_eq!(historical.0.result, original_completion_proposal.result);
-    assert_eq!(snapshot(&f, r.task).await, before_progress);
-    let fresh = SubmitDeliveryProposal {
-        fence: fence(&r.head),
-        idempotency_key: "normal-completion-after-hold".into(),
-        ..original_completion_proposal
-    };
-    match f
-        .repo
-        .submit_delivery_proposal(r.task, &r.producer, fresh)
-        .await
-        .unwrap_err()
-    {
-        AppError::Conflict(message) => assert!(message.contains("critical PM review holds")),
-        error => panic!("expected critical hold conflict, got {error:?}"),
-    }
-    assert_eq!(snapshot(&f, r.task).await, before_progress);
-    let binding = r.head.binding.as_ref().unwrap();
-    let native = RuntimeTerminalObservation {
-        assignment_hash: one.assignment_hash.clone(),
-        chat_id: binding.chat_id,
-        run_id: binding.run_id,
-        state: RuntimeTerminalState::Cancelled,
-        receipt: ArtifactReceipt {
-            reference: "fixture://synthetic-native-terminal".into(),
-            sha256: "d".repeat(64),
-        },
-    };
-    for command in [
-        LifecycleCommand::EnsureQueued {
-            idempotency_key: "held-queue".into(),
-        },
-        LifecycleCommand::Reserve {
-            expected_task_version: r.head.task.version,
-            idempotency_key: "held-reserve".into(),
-        },
-        LifecycleCommand::Complete {
-            fence: fence(&r.head),
-            terminal,
-            result: result(&r),
-            idempotency_key: "held-complete".into(),
-        },
-        LifecycleCommand::Reconcile {
-            fence: fence(&r.head),
-            terminal: native.clone(),
-            recovery: RecoveryDisposition::Stop,
-            idempotency_key: "held-stop".into(),
-        },
-        LifecycleCommand::Reconcile {
-            fence: fence(&r.head),
-            terminal: RuntimeTerminalObservation {
-                state: RuntimeTerminalState::Failed,
-                ..native
-            },
-            recovery: RecoveryDisposition::RetryTransient {
-                replay_safety_receipt: ArtifactReceipt {
-                    reference: "fixture://synthetic-replay-safety".into(),
-                    sha256: "e".repeat(64),
+    eprintln!("critical_pg.phase.progress.begin");
+    Box::pin(async {
+        // Existing Heartbeat remains usable and does not change the original Held receipt.
+        let heartbeat = f
+            .repo
+            .lifecycle_command(
+                r.task,
+                &f.writer,
+                LifecycleCommand::Heartbeat {
+                    fence: fence(&actual),
+                    idempotency_key: "held-heartbeat".into(),
                 },
-            },
-            idempotency_key: "held-retry".into(),
-        },
-    ] {
-        assert!(matches!(
-            f.repo.lifecycle_command(r.task, &f.writer, command).await,
-            Err(AppError::Conflict(_))
-        ));
+            )
+            .await
+            .unwrap()
+            .0;
+        r.head = heartbeat;
+        let replay_after_heartbeat = f
+            .repo
+            .submit_critical_blocker_with_storage(r.task, &r.producer, body.clone(), &CorruptBytes)
+            .await
+            .unwrap();
+        assert_eq!(replay_after_heartbeat, (one.clone(), true));
+        assert_eq!(
+            f.repo
+                .critical_blocker_operation(r.task, &r.producer, &body.idempotency_key)
+                .await
+                .unwrap(),
+            one
+        );
+        let before_progress = snapshot(&f, r.task).await;
+        let historical = f
+            .repo
+            .submit_delivery_proposal(r.task, &r.producer, original_completion_proposal.clone())
+            .await
+            .unwrap();
+        assert!(historical.1);
+        assert_eq!(historical.0.result, original_completion_proposal.result);
         assert_eq!(snapshot(&f, r.task).await, before_progress);
-    }
-    let tx = f.db.begin().await.unwrap();
-    assert!(
-        exec(
-            &tx,
-            "DELETE FROM sdlc_delivery_holds WHERE task_id=$1",
-            vec![r.task.into()]
-        )
-        .await
-        .is_err()
-    );
-    tx.rollback().await.unwrap();
-    let tx = f.db.begin().await.unwrap();
-    assert!(
-        exec(
-            &tx,
-            "UPDATE sdlc_critical_blocker_operations SET result='{}' WHERE task_id=$1",
-            vec![r.task.into()]
-        )
-        .await
-        .is_err()
-    );
-    tx.rollback().await.unwrap();
-    assert_eq!(snapshot(&f, r.task).await, before_progress);
-
-    let race = start(&f, "critical-race", false, &storage).await;
-    let terminal = proposal(&f, &race).await;
-    let race_body = blocker(&race);
-    let (post, complete) = tokio::join!(
-        f.repo
-            .submit_critical_blocker_with_storage(race.task, &race.producer, race_body, &storage),
-        f.repo.lifecycle_command(
-            race.task,
-            &f.writer,
+        let fresh = SubmitDeliveryProposal {
+            fence: fence(&r.head),
+            idempotency_key: "normal-completion-after-hold".into(),
+            ..original_completion_proposal
+        };
+        match f
+            .repo
+            .submit_delivery_proposal(r.task, &r.producer, fresh)
+            .await
+            .unwrap_err()
+        {
+            AppError::Conflict(message) => assert!(message.contains("critical PM review holds")),
+            error => panic!("expected critical hold conflict, got {error:?}"),
+        }
+        assert_eq!(snapshot(&f, r.task).await, before_progress);
+        let binding = r.head.binding.as_ref().unwrap();
+        let native = RuntimeTerminalObservation {
+            assignment_hash: one.assignment_hash.clone(),
+            chat_id: binding.chat_id,
+            run_id: binding.run_id,
+            state: RuntimeTerminalState::Cancelled,
+            receipt: ArtifactReceipt {
+                reference: "fixture://synthetic-native-terminal".into(),
+                sha256: "d".repeat(64),
+            },
+        };
+        for command in [
+            LifecycleCommand::EnsureQueued {
+                idempotency_key: "held-queue".into(),
+            },
+            LifecycleCommand::Reserve {
+                expected_task_version: r.head.task.version,
+                idempotency_key: "held-reserve".into(),
+            },
             LifecycleCommand::Complete {
-                fence: fence(&race.head),
+                fence: fence(&r.head),
                 terminal,
-                result: result(&race),
-                idempotency_key: "racing-complete".into(),
-            }
-        ),
-    );
-    assert_ne!(
-        post.is_ok(),
-        complete.is_ok(),
-        "exactly one actual task-locked operation wins"
-    );
-    let final_state = snapshot(&f, race.task).await;
-    if post.is_ok() {
-        assert_eq!(final_state["blockers"], json!(1));
-        assert_eq!(final_state["holds"], json!(1));
-        assert_eq!(final_state["state"]["waiting_reason"], json!(HOLD_REASON));
-    } else {
-        assert_eq!(final_state["blockers"], json!(0));
-        assert_eq!(final_state["operations"], json!(0));
-        assert_eq!(final_state["heads"], json!(0));
-        assert_eq!(final_state["holds"], json!(0));
-        assert_eq!(final_state["state"]["stage"], json!("Architecture"));
-    }
-    return_held_to_pm(&f, &r, &one, &body).await;
+                result: result(&r),
+                idempotency_key: "held-complete".into(),
+            },
+            LifecycleCommand::Reconcile {
+                fence: fence(&r.head),
+                terminal: native.clone(),
+                recovery: RecoveryDisposition::Stop,
+                idempotency_key: "held-stop".into(),
+            },
+            LifecycleCommand::Reconcile {
+                fence: fence(&r.head),
+                terminal: RuntimeTerminalObservation {
+                    state: RuntimeTerminalState::Failed,
+                    ..native
+                },
+                recovery: RecoveryDisposition::RetryTransient {
+                    replay_safety_receipt: ArtifactReceipt {
+                        reference: "fixture://synthetic-replay-safety".into(),
+                        sha256: "e".repeat(64),
+                    },
+                },
+                idempotency_key: "held-retry".into(),
+            },
+        ] {
+            assert!(matches!(
+                f.repo.lifecycle_command(r.task, &f.writer, command).await,
+                Err(AppError::Conflict(_))
+            ));
+            assert_eq!(snapshot(&f, r.task).await, before_progress);
+        }
+        let tx = f.db.begin().await.unwrap();
+        assert!(
+            exec(
+                &tx,
+                "DELETE FROM sdlc_delivery_holds WHERE task_id=$1",
+                vec![r.task.into()]
+            )
+            .await
+            .is_err()
+        );
+        tx.rollback().await.unwrap();
+        let tx = f.db.begin().await.unwrap();
+        assert!(
+            exec(
+                &tx,
+                "UPDATE sdlc_critical_blocker_operations SET result='{}' WHERE task_id=$1",
+                vec![r.task.into()]
+            )
+            .await
+            .is_err()
+        );
+        tx.rollback().await.unwrap();
+        assert_eq!(snapshot(&f, r.task).await, before_progress);
+    })
+    .await;
+    eprintln!("critical_pg.phase.progress.done");
+    eprintln!("critical_pg.phase.race.begin");
+    let (race, final_state) = Box::pin(async {
+        let race = start(&f, "critical-race", false, &storage).await;
+        let terminal = proposal(&f, &race).await;
+        let race_body = blocker(&race);
+        let (post, complete) = tokio::join!(
+            f.repo.submit_critical_blocker_with_storage(
+                race.task,
+                &race.producer,
+                race_body,
+                &storage
+            ),
+            f.repo.lifecycle_command(
+                race.task,
+                &f.writer,
+                LifecycleCommand::Complete {
+                    fence: fence(&race.head),
+                    terminal,
+                    result: result(&race),
+                    idempotency_key: "racing-complete".into(),
+                }
+            ),
+        );
+        assert_ne!(
+            post.is_ok(),
+            complete.is_ok(),
+            "exactly one actual task-locked operation wins"
+        );
+        let final_state = snapshot(&f, race.task).await;
+        if post.is_ok() {
+            assert_eq!(final_state["blockers"], json!(1));
+            assert_eq!(final_state["holds"], json!(1));
+            assert_eq!(final_state["state"]["waiting_reason"], json!(HOLD_REASON));
+        } else {
+            assert_eq!(final_state["blockers"], json!(0));
+            assert_eq!(final_state["operations"], json!(0));
+            assert_eq!(final_state["heads"], json!(0));
+            assert_eq!(final_state["holds"], json!(0));
+            assert_eq!(final_state["state"]["stage"], json!("Architecture"));
+        }
+        (race, final_state)
+    })
+    .await;
+    eprintln!("critical_pg.phase.race.done");
+    eprintln!("critical_pg.phase.return.begin");
+    Box::pin(return_held_to_pm(&f, &r, &one, &body)).await;
     assert_eq!(
         snapshot(&f, race.task).await,
         final_state,
         "return must not release/change another task"
     );
+    eprintln!("critical_pg.phase.return.done");
 }
 
 /// Same actual PG fixture, transaction paths and sealed evidence; native readback is SYNTHETIC.
@@ -775,82 +818,95 @@ async fn return_held_to_pm(
     original: &CriticalBlockerReceipt,
     original_body: &SubmitCriticalBlocker,
 ) {
-    let held = f
-        .repo
-        .lifecycle_read(r.task, &f.reader)
-        .await
-        .unwrap()
-        .receipt;
-    let binding = held.binding.as_ref().unwrap();
-    let command = ReturnCriticalToPm {
-        review: CriticalPmReviewGuard {
-            blocker_id: original.blocker_id,
-            blocker_sha256: original.blocker_sha256.clone(),
-            expected_blocker_version: original.version,
-            expected_task_version: held.task.version,
-            fence: fence(&held),
-            idempotency_key: "return-critical-to-pm".into(),
-        },
-        terminal: RuntimeTerminalObservation {
-            assignment_hash: original.assignment_hash.clone(),
-            chat_id: binding.chat_id,
-            run_id: binding.run_id,
-            state: RuntimeTerminalState::Cancelled,
-            receipt: ArtifactReceipt {
-                reference: "fixture://SYNTHETIC-actual-native-terminal-readback".into(),
-                sha256: "d".repeat(64),
-            },
-        },
-    };
-    let before = snapshot(f, r.task).await;
-    assert_eq!(before["returns"], json!(0));
-    assert_eq!(before["holds"], json!(1));
-    assert!(
-        f.repo
-            .critical_pm_return_operation(r.task, &f.reader, &command.review.idempotency_key)
+    eprintln!("critical_pg.phase.return.prepare.begin");
+    let (held, command, before) = Box::pin(async {
+        let held = f
+            .repo
+            .lifecycle_read(r.task, &f.reader)
             .await
-            .is_err(),
-        "no retroactive Return operation before the real transaction"
-    );
-    assert_eq!(snapshot(f, r.task).await, before);
-    for actor in [&r.producer, &f.owner, &f.reader] {
-        assert!(matches!(
-            f.repo
-                .return_critical_to_pm_with_terminal(r.task, actor, command.clone())
-                .await,
-            Err(AppError::Forbidden)
-        ));
-        assert_eq!(snapshot(f, r.task).await, before);
-    }
-    // Caller must preserve the body but refresh ALL current CAS fields after heartbeat.
-    for mismatch in 0..10 {
-        let mut invalid = command.clone();
-        match mismatch {
-            0 => invalid.review.expected_task_version += 1,
-            1 => invalid.review.expected_blocker_version += 1,
-            2 => invalid.review.fence.expected_lease_version -= 1,
-            3 => invalid.review.fence.expected_lease_version += 1,
-            4 => invalid.review.fence.lease_id = Uuid::new_v4(),
-            5 => invalid.review.fence.fencing_token += 1,
-            6 => invalid.terminal.run_id = Uuid::new_v4(),
-            7 => invalid.terminal.assignment_hash = "e".repeat(64),
-            8 => invalid.review.blocker_sha256 = "f".repeat(64),
-            _ => invalid.terminal.receipt.reference.clear(),
-        }
+            .unwrap()
+            .receipt;
+        let binding = held.binding.as_ref().unwrap();
+        let command = ReturnCriticalToPm {
+            review: CriticalPmReviewGuard {
+                blocker_id: original.blocker_id,
+                blocker_sha256: original.blocker_sha256.clone(),
+                expected_blocker_version: original.version,
+                expected_task_version: held.task.version,
+                fence: fence(&held),
+                idempotency_key: "return-critical-to-pm".into(),
+            },
+            terminal: RuntimeTerminalObservation {
+                assignment_hash: original.assignment_hash.clone(),
+                chat_id: binding.chat_id,
+                run_id: binding.run_id,
+                state: RuntimeTerminalState::Cancelled,
+                receipt: ArtifactReceipt {
+                    reference: "fixture://SYNTHETIC-actual-native-terminal-readback".into(),
+                    sha256: "d".repeat(64),
+                },
+            },
+        };
+        let before = snapshot(f, r.task).await;
+        (held, command, before)
+    })
+    .await;
+    eprintln!("critical_pg.phase.return.prepare.done");
+    eprintln!("critical_pg.phase.return.validation.begin");
+    Box::pin(async {
+        assert_eq!(before["returns"], json!(0));
+        assert_eq!(before["holds"], json!(1));
         assert!(
             f.repo
-                .return_critical_to_pm_with_terminal(r.task, &f.writer, invalid)
+                .critical_pm_return_operation(r.task, &f.reader, &command.review.idempotency_key)
                 .await
-                .is_err()
+                .is_err(),
+            "no retroactive Return operation before the real transaction"
         );
         assert_eq!(snapshot(f, r.task).await, before);
-    }
-    for nonterminal in ["unknown", "running", "stop_acknowledged", "timeout"] {
-        let mut invalid = serde_json::to_value(&command).unwrap();
-        invalid["terminal"]["state"] = json!(nonterminal);
-        assert!(serde_json::from_value::<ReturnCriticalToPm>(invalid).is_err());
-        assert_eq!(snapshot(f, r.task).await, before);
-    }
+        for actor in [&r.producer, &f.owner, &f.reader] {
+            assert!(matches!(
+                f.repo
+                    .return_critical_to_pm_with_terminal(r.task, actor, command.clone())
+                    .await,
+                Err(AppError::Forbidden)
+            ));
+            assert_eq!(snapshot(f, r.task).await, before);
+        }
+        // Caller must preserve the body but refresh ALL current CAS fields after heartbeat.
+        for mismatch in 0..10 {
+            let mut invalid = command.clone();
+            match mismatch {
+                0 => invalid.review.expected_task_version += 1,
+                1 => invalid.review.expected_blocker_version += 1,
+                2 => invalid.review.fence.expected_lease_version -= 1,
+                3 => invalid.review.fence.expected_lease_version += 1,
+                4 => invalid.review.fence.lease_id = Uuid::new_v4(),
+                5 => invalid.review.fence.fencing_token += 1,
+                6 => invalid.terminal.run_id = Uuid::new_v4(),
+                7 => invalid.terminal.assignment_hash = "e".repeat(64),
+                8 => invalid.review.blocker_sha256 = "f".repeat(64),
+                _ => invalid.terminal.receipt.reference.clear(),
+            }
+            assert!(
+                f.repo
+                    .return_critical_to_pm_with_terminal(r.task, &f.writer, invalid)
+                    .await
+                    .is_err()
+            );
+            assert_eq!(snapshot(f, r.task).await, before);
+        }
+        for nonterminal in ["unknown", "running", "stop_acknowledged", "timeout"] {
+            let mut invalid = serde_json::to_value(&command).unwrap();
+            invalid["terminal"]["state"] = json!(nonterminal);
+            assert!(serde_json::from_value::<ReturnCriticalToPm>(invalid).is_err());
+            assert_eq!(snapshot(f, r.task).await, before);
+        }
+    })
+    .await;
+    eprintln!("critical_pg.phase.return.validation.done");
+    eprintln!("critical_pg.phase.return.sql.begin");
+    let plan = Box::pin(async {
     let plan = app::sdlc_critical_blockers::return_to_pm(
         &held,
         original,
@@ -930,7 +986,12 @@ async fn return_held_to_pm(
     assert_eq!(snapshot(f, r.task).await, before);
     f.db.execute_unprepared("DROP TRIGGER critical_test_reject_return ON sdlc_outbox; DROP FUNCTION critical_test_reject_return();")
         .await.unwrap();
+        plan
+    }).await;
+    eprintln!("critical_pg.phase.return.sql.done");
 
+    eprintln!("critical_pg.phase.return.accept.begin");
+    let (plan, actual, returned) = Box::pin(async {
     let (first, second) = tokio::join!(
         f.repo
             .return_critical_to_pm_with_terminal(r.task, &f.writer, command.clone()),
@@ -1081,84 +1142,92 @@ async fn return_held_to_pm(
     ] {
         assert_eq!(returned[retained], before[retained]);
     }
-    // The retired child may recover only its ORIGINAL Held operation, never fresh work/detail.
-    assert_eq!(
-        f.repo
-            .critical_blocker_operation(r.task, &r.producer, &original_body.idempotency_key)
-            .await
-            .unwrap(),
-        *original
-    );
-    assert_eq!(
-        f.repo
-            .submit_critical_blocker_with_storage(
-                r.task,
-                &r.producer,
-                original_body.clone(),
-                &CorruptBytes
-            )
-            .await
-            .unwrap(),
-        (original.clone(), true)
-    );
-    assert!(
-        f.repo
-            .critical_blocker(r.task, &r.producer, original.blocker_id)
-            .await
-            .is_err()
-    );
-    let mut fresh = original_body.clone();
-    fresh.idempotency_key = "post-after-return".into();
-    assert!(
-        f.repo
-            .submit_critical_blocker_with_storage(r.task, &r.producer, fresh, &CorruptBytes)
-            .await
-            .is_err()
-    );
-    assert_eq!(
-        f.repo
-            .return_critical_to_pm_with_terminal(r.task, &f.writer, command.clone())
-            .await
-            .unwrap(),
-        (plan, true)
-    );
-    let mut changed = command.clone();
-    changed.terminal.receipt.sha256 = "e".repeat(64);
-    assert!(matches!(
-        f.repo
-            .return_critical_to_pm_with_terminal(r.task, &f.writer, changed)
-            .await,
-        Err(AppError::Conflict(_))
-    ));
-    let mut duplicate = command;
-    duplicate.review.idempotency_key = "second-return".into();
-    assert!(
-        f.repo
-            .return_critical_to_pm_with_terminal(r.task, &f.writer, duplicate)
-            .await
-            .is_err()
-    );
-    for command in [
-        LifecycleCommand::EnsureQueued {
-            idempotency_key: "awaiting-queue".into(),
-        },
-        LifecycleCommand::Reserve {
-            expected_task_version: actual.task.version,
-            idempotency_key: "awaiting-reserve".into(),
-        },
-    ] {
+        (plan, actual, returned)
+    }).await;
+    eprintln!("critical_pg.phase.return.accept.done");
+    eprintln!("critical_pg.phase.return.replay.begin");
+    Box::pin(async {
+        // The retired child may recover only its ORIGINAL Held operation, never fresh work/detail.
+        assert_eq!(
+            f.repo
+                .critical_blocker_operation(r.task, &r.producer, &original_body.idempotency_key)
+                .await
+                .unwrap(),
+            *original
+        );
+        assert_eq!(
+            f.repo
+                .submit_critical_blocker_with_storage(
+                    r.task,
+                    &r.producer,
+                    original_body.clone(),
+                    &CorruptBytes
+                )
+                .await
+                .unwrap(),
+            (original.clone(), true)
+        );
+        assert!(
+            f.repo
+                .critical_blocker(r.task, &r.producer, original.blocker_id)
+                .await
+                .is_err()
+        );
+        let mut fresh = original_body.clone();
+        fresh.idempotency_key = "post-after-return".into();
+        assert!(
+            f.repo
+                .submit_critical_blocker_with_storage(r.task, &r.producer, fresh, &CorruptBytes)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            f.repo
+                .return_critical_to_pm_with_terminal(r.task, &f.writer, command.clone())
+                .await
+                .unwrap(),
+            (plan, true)
+        );
+        let mut changed = command.clone();
+        changed.terminal.receipt.sha256 = "e".repeat(64);
         assert!(matches!(
-            f.repo.lifecycle_command(r.task, &f.writer, command).await,
+            f.repo
+                .return_critical_to_pm_with_terminal(r.task, &f.writer, changed)
+                .await,
             Err(AppError::Conflict(_))
         ));
-    }
-    for sql in [
-        "UPDATE sdlc_critical_pm_returns SET after_blocker='{}' WHERE task_id=$1",
-        "DELETE FROM sdlc_critical_pm_returns WHERE task_id=$1",
-    ] {
-        let tx = f.db.begin().await.unwrap();
-        assert!(exec(&tx, sql, vec![r.task.into()]).await.is_err());
-        tx.rollback().await.unwrap();
-    }
-    assert_eq!(snapshot(f, r.task).await, returned);
+        let mut duplicate = command;
+        duplicate.review.idempotency_key = "second-return".into();
+        assert!(
+            f.repo
+                .return_critical_to_pm_with_terminal(r.task, &f.writer, duplicate)
+                .await
+                .is_err()
+        );
+        for command in [
+            LifecycleCommand::EnsureQueued {
+                idempotency_key: "awaiting-queue".into(),
+            },
+            LifecycleCommand::Reserve {
+                expected_task_version: actual.task.version,
+                idempotency_key: "awaiting-reserve".into(),
+            },
+        ] {
+            assert!(matches!(
+                f.repo.lifecycle_command(r.task, &f.writer, command).await,
+                Err(AppError::Conflict(_))
+            ));
+        }
+        for sql in [
+            "UPDATE sdlc_critical_pm_returns SET after_blocker='{}' WHERE task_id=$1",
+            "DELETE FROM sdlc_critical_pm_returns WHERE task_id=$1",
+        ] {
+            let tx = f.db.begin().await.unwrap();
+            assert!(exec(&tx, sql, vec![r.task.into()]).await.is_err());
+            tx.rollback().await.unwrap();
+        }
+        assert_eq!(snapshot(f, r.task).await, returned);
+    })
+    .await;
+    eprintln!("critical_pg.phase.return.replay.done");
 }
