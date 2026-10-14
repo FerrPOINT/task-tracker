@@ -28,6 +28,9 @@ pub struct PostgresSdlcRepository {
     config: SdlcConfig,
 }
 
+#[path = "sdlc_candidates.rs"]
+mod candidates;
+
 fn statement(sql: &str, values: Vec<Value>) -> Statement {
     Statement::from_sql_and_values(DatabaseBackend::Postgres, sql, values)
 }

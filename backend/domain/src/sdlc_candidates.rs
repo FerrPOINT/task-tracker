@@ -13,6 +13,7 @@ fn default_limit() -> u16 {
 }
 
 #[derive(Clone, Debug, Deserialize, utoipa::IntoParams)]
+#[into_params(parameter_in = Query)]
 #[serde(deny_unknown_fields)]
 pub struct DeliveryCandidatesQuery {
     pub project_id: Uuid,

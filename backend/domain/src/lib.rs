@@ -4,6 +4,7 @@ pub mod events;
 pub mod jql;
 pub mod repositories;
 pub mod sdlc;
+pub mod sdlc_candidates;
 pub mod sdlc_configuration;
 pub mod sdlc_execution_lease;
 pub mod sdlc_lifecycle;

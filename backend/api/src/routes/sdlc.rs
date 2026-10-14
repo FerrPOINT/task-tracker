@@ -139,6 +139,10 @@ pub fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
         .route("/sdlc/project-access", get(project_access))
         .route("/sdlc/project-directory", get(project_directory))
+        .route(
+            "/sdlc/delivery-candidates",
+            get(super::sdlc_candidates::delivery_candidates),
+        )
         .route("/projects/{project_id}/sdlc/drafts", post(create_draft))
         .route(
             "/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}",

@@ -80,6 +80,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
 #[openapi(
     modifiers(&SecurityAddon),
     paths(
+        routes::sdlc_candidates::delivery_candidates,
         routes::sdlc_delivery::current,
         routes::sdlc_delivery::command,
         routes::sdlc_delivery::operation,
@@ -255,6 +256,9 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::components_versions::delete_version,
     ),
     components(schemas(
+        domain::sdlc_candidates::DeliveryCandidates,
+        domain::sdlc_candidates::DeliveryCandidate,
+        domain::sdlc_candidates::CandidateOperation,
         dto::RegisterRequest,
         dto::LoginRequest,
         dto::AuthResponse,

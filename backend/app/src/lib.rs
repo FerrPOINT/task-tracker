@@ -5,6 +5,7 @@ pub mod context;
 pub mod dto;
 pub mod oidc;
 pub mod sdlc;
+pub mod sdlc_candidates;
 pub mod sdlc_configuration;
 pub mod sdlc_confirmation;
 pub mod sdlc_draft_flow;
