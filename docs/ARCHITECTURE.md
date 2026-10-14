@@ -1,5 +1,16 @@
 # Архитектура Task Tracker
 
+Current critical PM review source uses the existing command/lease/resume/completion
+transactions, not a second scheduler. A journal-validated current review may read
+its exact frozen approved baseline while PM edits a newer revision; technical
+`exact_revision` checks stay strict. Owner confirmation alone remains Draft and
+creates no Analysis intent. Only actual trusted PM completion atomically resolves
+the blocker and publishes an append-only routing generation and Analysis intent.
+No current-project-policy substitution, historical receipt overwrite or legacy
+Analysis fallback is introduced. This integration is source-only until the
+compile/PostgreSQL/repeated-cycle gates pass.
+[Persistence boundary](contracts/critical-pm-lifecycle-persistence.md).
+
 General Delivery Reserve owns execution display-key allocation using PM's existing
 identity sequence. All new-profile roles, including Analyst, receive immutable
 `execution:{ordinal,key}` in assignment/hash and lifecycle readback. Allocation is

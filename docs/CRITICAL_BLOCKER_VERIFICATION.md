@@ -1,5 +1,23 @@
 # Critical Blocker Qualification
 
+## Source Follow-Up: 15 October
+
+Tracker544322c passes fmt and the previous borrowed-DB compilation point, but
+workspace all-target Clippy stops with E0599 in the new reader PG fixture. It
+called `claim_pm_execution_lease` instead of the actual `claim_execution_lease`.
+188139a corrects that method; the same issue in the newly authored lifecycle
+fixture is corrected during938b7da integration. No rerun or new PG pass is claimed.
+The pure16/reader/API cases and original-Hold aggregate were not reached.
+The Base-v2 QA project and owned inputs were cleaned; accepted data is unchanged.
+
+938b7da registers the current-review lifecycle SQL/infra companion in the ONE
+unreleased096 packet: claim/commands/resume/finalization, append-only routing
+generations, inventory selectors and resolved-head CAS. Confirmation stays Draft
+until atomic PM completion/resolution/new Analysis. Four new source-contract
+units and one lifecycle PG aggregate are authored, not executed. Populated-history
+migration and two complete review cycles remain required; this is not live readiness.
+[Persistence contract and exact gates](contracts/critical-pm-lifecycle-persistence.md).
+
 ## PM Review Reservation Qualification
 
 Tracker `8ac333aeb8c0a2d5adbf08aebece197d87ffa2cb` passes fmt, locked workspace
@@ -90,9 +108,10 @@ Source registers producer POST/detail/original-key API and CLI. Existing
 attachment FileStorage is supplied by production DI; missing storage fails closed.
 The source also contains the qualified scheduler terminal-return transaction,
 archive and public API/CLI wiring, not fabricated result/reconcile evidence.
-The same-task/new-PM reservation persistence is integrated source awaiting its
-own affected gate. New PM admission/runtime, revision/exact owner consent and
-routing generations remain separate work.
+The same-task/new-PM reservation persistence passes the earlier27 focused cases
+above. New current-review lifecycle/generation source is integrated separately
+and does not inherit that pass. Fleet new-PM control/admission/runtime, actual
+owner reconfirmation and new-source PG acceptance remain required.
 
 The one new unreleased096 includes the critical SQL after the lifecycle fragment.
 Readonly accepted Tracker lineage is19 applied rows through0033, not096; no
