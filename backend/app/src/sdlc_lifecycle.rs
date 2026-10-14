@@ -519,6 +519,36 @@ pub fn reconcile_terminal(
     Ok(())
 }
 
+/// New input only: historical operation replay must run before this gate.
+pub fn validate_new_pm_feedback(state: &domain::sdlc::TaskState) -> Result<(), AppError> {
+    use domain::sdlc::{DraftSubmode, QuestionState, Stage};
+    state.require_root()?;
+    let marked = state.draft_flow()?.is_some();
+    let stage_allowed =
+        state.stage == Stage::Draft || (!marked && state.stage == Stage::Clarification);
+    let status_allowed = matches!(
+        state.status,
+        Some(LifecycleStatus::Ready | LifecycleStatus::InProgress)
+    ) || (!marked && state.status.is_none());
+    let mode_allowed = matches!(
+        state.draft_submode,
+        Some(DraftSubmode::Brainstorming | DraftSubmode::AwaitingConfirmation)
+    ) || (!marked && state.draft_submode.is_none());
+    if !stage_allowed
+        || !status_allowed
+        || !mode_allowed
+        || state
+            .questions
+            .iter()
+            .any(|q| q.state == QuestionState::Open)
+    {
+        return Err(AppError::conflict(
+            "pm_feedback_not_available_in_current_draft_mode",
+        ));
+    }
+    Ok(())
+}
+
 pub fn pm_feedback_resume_contract(
     state: &domain::sdlc::TaskState,
     feedback: &PmFeedbackReceipt,

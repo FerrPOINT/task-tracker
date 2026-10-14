@@ -74,6 +74,95 @@ fn draft_validation_keeps_exact_content_and_checks_character_and_byte_limits() {
 }
 
 #[test]
+fn new_pm_feedback_only_accepts_draft_dialogue_and_preserves_legacy_state() {
+    use crate::sdlc_lifecycle::validate_new_pm_feedback;
+    use domain::sdlc_lifecycle::LifecycleStatus;
+
+    let (mut state, config, _, pm, _, fence) = fixture();
+    assert!(validate_new_pm_feedback(&state).is_ok());
+    state.stage = Stage::Clarification;
+    let legacy = serde_json::to_value(&state).unwrap();
+    assert!(validate_new_pm_feedback(&state).is_ok());
+    assert_eq!(serde_json::to_value(&state).unwrap(), legacy);
+
+    state.stage = Stage::Draft;
+    state
+        .retained_fields
+        .insert("flow".into(), json!("single-task-v1"));
+    for mode in [
+        DraftSubmode::Brainstorming,
+        DraftSubmode::AwaitingConfirmation,
+    ] {
+        state.draft_submode = Some(mode);
+        for status in [LifecycleStatus::Ready, LifecycleStatus::InProgress] {
+            state.status = Some(status);
+            let before = serde_json::to_value(&state).unwrap();
+            assert!(validate_new_pm_feedback(&state).is_ok());
+            assert_eq!(serde_json::to_value(&state).unwrap(), before);
+        }
+    }
+    for status in [None, Some(LifecycleStatus::Completed)] {
+        state.status = status;
+        assert!(validate_new_pm_feedback(&state).is_err());
+    }
+    state.status = Some(LifecycleStatus::Ready);
+    for mode in [None, Some(DraftSubmode::Clarification)] {
+        state.draft_submode = mode;
+        assert!(validate_new_pm_feedback(&state).is_err());
+    }
+    state.draft_submode = Some(DraftSubmode::Brainstorming);
+    for stage in [
+        Stage::Clarification,
+        Stage::Backlog,
+        Stage::Analysis,
+        Stage::Architecture,
+        Stage::Development,
+        Stage::Review,
+        Stage::Testing,
+        Stage::Rework,
+        Stage::Deployment,
+    ] {
+        state.stage = stage;
+        assert!(validate_new_pm_feedback(&state).is_err());
+    }
+    state.stage = Stage::Draft;
+    publish(&mut state, &config, &pm, &fence);
+    assert_eq!(
+        state.draft_submode,
+        Some(DraftSubmode::AwaitingConfirmation)
+    );
+    assert!(validate_new_pm_feedback(&state).is_ok());
+    let mut question = question(&fence, QuestionMode::Single);
+    question.required = false;
+    apply(
+        &mut state,
+        &pm,
+        &config,
+        &SdlcCommand::PublishQuestion(question),
+    )
+    .unwrap();
+    assert!(validate_new_pm_feedback(&state).is_err());
+    state.draft_submode = Some(DraftSubmode::AwaitingConfirmation);
+    // Even an optional open question blocks free feedback in an inconsistent mode.
+    assert!(validate_new_pm_feedback(&state).is_err());
+    state.retained_fields.remove("flow");
+    state.stage = Stage::Clarification;
+    state.status = None;
+    state.draft_submode = None;
+    assert!(validate_new_pm_feedback(&state).is_err());
+    state.questions[0].state = QuestionState::Answered;
+    assert!(validate_new_pm_feedback(&state).is_ok());
+    state.draft_submode = Some(DraftSubmode::Clarification);
+    assert!(validate_new_pm_feedback(&state).is_err());
+    state.draft_submode = None;
+    state.root_task_id = Uuid::new_v4();
+    assert!(validate_new_pm_feedback(&state).is_err());
+    state.root_task_id = state.task_id;
+    state.retained_fields.insert("flow".into(), json!(null));
+    assert!(validate_new_pm_feedback(&state).is_err());
+}
+
+#[test]
 fn draft_flow_omission_preserves_hash_and_marker_survives_pm_transitions() {
     let legacy = json!({"title":"Draft","description":"Input","idempotency_key":"create"});
     let command: CreateDraftCommand = serde_json::from_value(legacy.clone()).unwrap();

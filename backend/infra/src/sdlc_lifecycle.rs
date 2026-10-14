@@ -565,6 +565,7 @@ impl LifecycleRepository for PostgresSdlcRepository {
             tx.commit().await.map_err(map_db)?;
             return Ok((receipt, true));
         }
+        app::sdlc_lifecycle::validate_new_pm_feedback(&state)?;
         let duplicate = tx
             .query_one(statement(
                 "SELECT message_id FROM sdlc_pm_feedback WHERE message_id=$1",

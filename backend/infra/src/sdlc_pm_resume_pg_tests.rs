@@ -46,6 +46,68 @@ async fn saved_lease(db: &DatabaseConnection, execution: Uuid) -> Json {
     .unwrap()
 }
 
+async fn feedback_snapshot(db: &DatabaseConnection, task: Uuid) -> Json {
+    db.query_one(statement(
+        "SELECT jsonb_build_object('task',to_jsonb(t),
+         'leases',(SELECT jsonb_agg(to_jsonb(l)) FROM sdlc_pm_execution_leases l
+             JOIN sdlc_pm_executions e USING(execution_id) WHERE e.task_id=t.task_id),
+         'feedback',(SELECT count(*) FROM sdlc_pm_feedback WHERE task_id=t.task_id),
+         'operations',(SELECT count(*) FROM sdlc_idempotency WHERE task_id=t.task_id),
+         'outbox',(SELECT count(*) FROM sdlc_outbox WHERE task_id=t.task_id),
+         'questions',(SELECT count(*) FROM sdlc_question_versions WHERE task_id=t.task_id),
+         'answers',(SELECT count(*) FROM sdlc_answers WHERE task_id=t.task_id),
+         'requirements',(SELECT count(*) FROM sdlc_requirements WHERE task_id=t.task_id),
+         'executions',(SELECT count(*) FROM sdlc_pm_executions WHERE task_id=t.task_id),
+         'resume_inputs',(SELECT count(*) FROM sdlc_pm_resume_inputs WHERE task_id=t.task_id)) AS snapshot
+         FROM sdlc_tasks t WHERE task_id=$1",
+        vec![task.into()],
+    )).await.unwrap().unwrap().try_get("", "snapshot").unwrap()
+}
+
+async fn assert_feedback_replay_unchanged(
+    db: &DatabaseConnection,
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    owner: &Principal,
+    command: &SubmitPmFeedback,
+    receipt: &domain::sdlc_lifecycle::PmFeedbackReceipt,
+) {
+    let before = feedback_snapshot(db, task).await;
+    let (replayed, was_replayed) = repo
+        .submit_pm_feedback(task, owner, command.clone())
+        .await
+        .unwrap();
+    assert!(was_replayed);
+    let expected = serde_json::to_value(receipt).unwrap();
+    assert_eq!(serde_json::to_value(replayed).unwrap(), expected);
+    assert_eq!(
+        serde_json::to_value(
+            repo.pm_feedback_operation(task, owner, &command.idempotency_key)
+                .await
+                .unwrap()
+        )
+        .unwrap(),
+        expected
+    );
+    assert_eq!(feedback_snapshot(db, task).await, before);
+}
+
+async fn assert_new_feedback_rejected(
+    db: &DatabaseConnection,
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    owner: &Principal,
+    original: &SubmitPmFeedback,
+) {
+    let before = feedback_snapshot(db, task).await;
+    let mut fresh = original.clone();
+    fresh.message_id = Uuid::new_v4();
+    fresh.idempotency_key = format!("denied-{}", fresh.message_id);
+    assert!(matches!(repo.submit_pm_feedback(task, owner, fresh).await,
+        Err(AppError::Conflict(reason)) if reason == "pm_feedback_not_available_in_current_draft_mode"));
+    assert_eq!(feedback_snapshot(db, task).await, before);
+}
+
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_PM_RESUME_TEST_DATABASE_URL ending in _pm_resume_test"]
 async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
@@ -156,17 +218,14 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         .await
         .unwrap();
     let checkpoint = Uuid::new_v4();
+    let feedback_command = SubmitPmFeedback {
+        message_id: Uuid::new_v4(),
+        fence: fence.clone(),
+        text: "Real saved brainstorming input".into(),
+        idempotency_key: "feedback".into(),
+    };
     let (feedback, _) = repo
-        .submit_pm_feedback(
-            task,
-            &owner,
-            SubmitPmFeedback {
-                message_id: Uuid::new_v4(),
-                fence: fence.clone(),
-                text: "Real saved brainstorming input".into(),
-                idempotency_key: "feedback".into(),
-            },
-        )
+        .submit_pm_feedback(task, &owner, feedback_command.clone())
         .await
         .unwrap();
     let command = resume(
@@ -213,6 +272,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         repo.execution_lease(task, &pm, None).await.unwrap().state,
         ExecutionLeaseState::Expired
     ));
+    assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
     let heartbeat = HeartbeatExecutionLease {
         expected_owner_version: 1,
         fence: fence.clone(),
@@ -424,6 +484,26 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     )
     .await
     .unwrap();
+    let mut awaiting_command = feedback_command.clone();
+    awaiting_command.message_id = Uuid::new_v4();
+    awaiting_command.idempotency_key = "feedback-awaiting-confirmation".into();
+    awaiting_command.text = "Actual owner feedback while reviewing requirements".into();
+    let mut before = feedback_snapshot(&db, task).await;
+    let (awaiting_feedback, replayed) = repo
+        .submit_pm_feedback(task, &owner, awaiting_command.clone())
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(awaiting_feedback.requirement_revision, Some(1));
+    let after = feedback_snapshot(&db, task).await;
+    for counter in ["feedback", "operations", "outbox"] {
+        assert_eq!(
+            after[counter].as_i64().unwrap(),
+            before[counter].as_i64().unwrap() + 1
+        );
+        before[counter] = after[counter].clone();
+    }
+    assert_eq!(before, after);
     let question = PublishQuestion {
         fence: fence.clone(),
         request_id: Uuid::new_v4(),
@@ -449,6 +529,8 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     )
     .await
     .unwrap();
+    assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
+    assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
     let answer: Answer = parse(
         repo.execute_verified(
             task,
@@ -470,6 +552,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         .await
         .unwrap(),
     );
+    assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
     let answer_command = resume(
         &heartbeat_lease,
         PmResumeInput::Answer {
@@ -615,6 +698,17 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         .await
         .unwrap(),
     );
+    assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
+    assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
+    assert_feedback_replay_unchanged(
+        &db,
+        &repo,
+        task,
+        &owner,
+        &awaiting_command,
+        &awaiting_feedback,
+    )
+    .await;
     let closing = resume(
         &answer_lease,
         PmResumeInput::Confirmation {
@@ -670,6 +764,8 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     )
     .await
     .unwrap();
+    assert_new_feedback_rejected(&db, &repo, task, &owner, &feedback_command).await;
+    assert_feedback_replay_unchanged(&db, &repo, task, &owner, &feedback_command, &feedback).await;
     assert_eq!(
         repo.pm_resume_operation(task, &reader, "resume-feedback")
             .await

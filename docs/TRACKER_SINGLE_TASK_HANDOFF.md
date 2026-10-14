@@ -270,6 +270,19 @@ contains task/project/root/owner/instance, the current PM fence, original text a
 hash, nullable current requirement revision and server creation time.
 It never creates a clarification answer or changes requirements, consent,
 stage or lease; accepting idle feedback does not require a live lease.
+New effects run a Draft/submode/status gate AFTER original-operation replay under
+the same task lock: marked tasks require Draft Ready/InProgress and brainstorming
+or awaiting_confirmation, with no open structured question (optional included).
+Legacy unmarked Draft/Clarification permits absent status/submode, never an open
+question or explicit clarification mode; history is not normalized in storage.
+After exact owner confirmation, new feedback is 409 even while the PM fence remains
+unchanged for its closing Workflow. Original receipts/replay stay available through
+confirmation, revision changes and lease expiry, with no duplicate business event.
+Focused source tests: app `new_pm_feedback_only_accepts_draft_dialogue_and_preserves_legacy_state`
+and the existing infra `pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history`
+now cover rejection/no side effects, real awaiting-confirmation feedback and
+immutable replay/readback. These additions have not been executed by this worker;
+Cargo/PG QA stays with parent.
 Parent still owns HTTP registration and Fleet delivery of this receipt:
 POST `P/pm-feedback` and GET `P/pm-feedback/operations/{key}`, owner-session only.
 CLI source calls them through `sdlc pm feedback submit --task UUID --from-file feedback.json`

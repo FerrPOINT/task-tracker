@@ -63,6 +63,23 @@ confirmation retains its original explicit-version snapshot semantics.
 статус квалификации и открытые gates:
 [single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
 
+## New PM Feedback Guard
+
+Owner-only POST `.../pm-feedback` rechecks ACL, current PM fence and immutable
+assignment, then original-operation replay under the task lock. Only a new effect
+requires Draft with Ready/InProgress and brainstorming/awaiting_confirmation;
+any open structured question blocks free feedback. Marked tasks require these
+explicit canonical fields. Legacy unmarked Draft/Clarification may omit status
+and submode, but may not have an open question or an explicit clarification mode.
+No legacy state/history is rewritten. Backlog/Analysis and later stages reject new
+feedback with 409 `pm_feedback_not_available_in_current_draft_mode`.
+
+Historical replay and owner operation GET still return the exact original receipt
+after publication/confirmation or lease expiry, without a new outbox event, state
+mutation or fabricated answer. Idle feedback does not require a live lease. The
+owner operation endpoint is NOT a machine read source; an assignment-scoped saved
+message GET is a coordination proposal only, not implemented in this patch.
+
 ## Trusted PM Resume (Producer Source)
 
 Parent registration in the existing SDLC controller:
