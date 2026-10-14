@@ -102,3 +102,46 @@ it('offers a retry on project load failure instead of an editable empty form', a
   expect(refetch).toHaveBeenCalledOnce()
   expect(screen.queryByRole('button', { name: 'Сохранить' })).not.toBeInTheDocument()
 })
+
+it('saves only the edited description after another user renames the project', async () => {
+  const view = renderSettings()
+  await userEvent.type(screen.getByLabelText('Описание'), ' local edit')
+  state.query.mockReturnValue({
+    data: { ...project, name: 'Remote name' },
+    isPending: false,
+    isError: false,
+  })
+  view.rerender(settingsView())
+  expect(screen.getByLabelText('Название')).toHaveValue('Remote name')
+  await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(state.mutate).toHaveBeenCalledWith(
+    { description: 'Saved description local edit' },
+    expect.any(Object),
+  )
+})
+
+it('saves only the edited name after another user changes the description', async () => {
+  const view = renderSettings()
+  await userEvent.type(screen.getByLabelText('Название'), ' local edit')
+  state.query.mockReturnValue({
+    data: { ...project, description: 'Remote description' },
+    isPending: false,
+    isError: false,
+  })
+  view.rerender(settingsView())
+  expect(screen.getByLabelText('Описание')).toHaveValue('Remote description')
+  await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(state.mutate).toHaveBeenCalledWith({ name: 'Same name local edit' }, expect.any(Object))
+})
+
+it('keeps a pristine form pristine when the background query changes', () => {
+  const view = renderSettings()
+  state.query.mockReturnValue({
+    data: { ...project, name: 'Remote name' },
+    isPending: false,
+    isError: false,
+  })
+  view.rerender(settingsView())
+  expect(screen.getByLabelText('Название')).toHaveValue('Remote name')
+  expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
+})
