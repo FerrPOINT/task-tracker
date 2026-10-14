@@ -2,6 +2,16 @@
 
 ## Critical Business Blocker Integration
 
+The source also registers scheduler-only POST
+`/api/v1/issues/{id}/sdlc/critical-blockers/returns` and original-operation GET
+`/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}`.
+Both return the typed `{lifecycle, blocker}` plan and use no-store. The existing
+separate scheduler WRITE/READ credentials and authoritative fresh task/project
+checks remain unchanged. Return requires actual matching native terminal before
+the trusted caller sends it; the producer's Held acknowledgement is not terminal
+proof. These new registrations/CLI tests still need affected qualification and
+generated OpenAPI, not the earlier source's results.
+
 Existing attachment storage is now connected through production DI. Critical
 operation keys are1..128 UTF-8 bytes without whitespace/control, literal
 slash/backslash or standalone `.`/`..`, so original-key CLI readback is possible.

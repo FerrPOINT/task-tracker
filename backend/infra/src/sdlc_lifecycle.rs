@@ -524,6 +524,25 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl LifecycleRepository for PostgresSdlcRepository {
+    async fn return_critical_to_pm(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_critical_blockers::ReturnCriticalToPm,
+    ) -> Result<(domain::sdlc_critical_blockers::CriticalPolicyChange, bool), AppError> {
+        PostgresSdlcRepository::return_critical_to_pm_with_terminal(self, task, actor, command)
+            .await
+    }
+
+    async fn critical_pm_return_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_critical_blockers::CriticalPolicyChange, AppError> {
+        PostgresSdlcRepository::critical_pm_return_operation(self, task, actor, key).await
+    }
+
     async fn submit_critical_blocker(
         &self,
         task: Uuid,

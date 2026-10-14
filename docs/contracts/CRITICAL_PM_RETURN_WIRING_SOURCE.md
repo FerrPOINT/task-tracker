@@ -1,5 +1,13 @@
 # Critical Return transport source packet
 
+Parent integration update: both trait delegates, the two existing-router routes
+and global ApiDoc registrations are now connected in source. The parent applies
+those narrow edits manually because the retained handoff patch's context is
+stale; the patch below is historical, not a claim of successful application.
+Shared scheduler guards remain strict separate READ/WRITE credentials. The
+exploratory combined-scope follow-up was superseded and is not integrated.
+Affected compile/API/CLI/PG qualification and final generated spec remain pending.
+
 Baseline `614d2526bccd8bee111ef2d96313b0572728aba3`, plus the unchanged storage
 packet674 cherry-picked as `5c579cd`. Main heartbeat and dot-key validation are
 retained. This NEW source does not inherit frozen ae07 QA results and is not a

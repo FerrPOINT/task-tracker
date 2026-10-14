@@ -90,6 +90,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc_delivery::critical_propose,
         routes::sdlc_delivery::critical_detail,
         routes::sdlc_delivery::critical_operation,
+        routes::sdlc_delivery::critical_return,
+        routes::sdlc_delivery::critical_return_operation,
         routes::sdlc_delivery::feedback,
         routes::sdlc_delivery::feedback_operation,
         routes::sdlc_delivery::feedback_message,
@@ -259,6 +261,9 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::components_versions::delete_version,
     ),
     components(schemas(
+        domain::sdlc_critical_blockers::CriticalPolicyChange,
+        domain::sdlc_critical_blockers::ReturnCriticalToPm,
+        domain::sdlc_critical_blockers::CriticalPmReviewGuard,
         domain::sdlc_candidates::DeliveryCandidates,
         domain::sdlc_candidates::DeliveryCandidate,
         domain::sdlc_candidates::CandidateOperation,

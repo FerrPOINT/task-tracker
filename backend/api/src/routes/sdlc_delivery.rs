@@ -24,6 +24,14 @@ pub(super) fn router() -> Router<Arc<app::AppContext>> {
         )
         .route("/issues/{id}/sdlc/delivery-proposals", post(propose))
         .route(
+            "/issues/{id}/sdlc/critical-blockers/returns",
+            post(critical_return),
+        )
+        .route(
+            "/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}",
+            get(critical_return_operation),
+        )
+        .route(
             "/issues/{id}/sdlc/critical-blockers",
             post(critical_propose),
         )
@@ -445,6 +453,11 @@ mod tests {
             ),
             ("/api/v1/issues/{id}/sdlc/delivery-proposals", "post"),
             ("/api/v1/issues/{id}/sdlc/critical-blockers", "post"),
+            ("/api/v1/issues/{id}/sdlc/critical-blockers/returns", "post"),
+            (
+                "/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}",
+                "get",
+            ),
             (
                 "/api/v1/issues/{id}/sdlc/critical-blockers/{blocker_id}",
                 "get",
@@ -482,6 +495,18 @@ mod tests {
             );
         }
         let schemas = &spec["components"]["schemas"];
+        assert_eq!(
+            schemas["CriticalPolicyChange"]["additionalProperties"],
+            false
+        );
+        for field in ["lifecycle", "blocker"] {
+            assert!(
+                schemas["CriticalPolicyChange"]["required"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&serde_json::json!(field))
+            );
+        }
         assert_eq!(schemas["LifecycleReadback"]["additionalProperties"], false);
         assert_eq!(
             schemas["ResumePmExecutionLease"]["additionalProperties"],
