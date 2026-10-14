@@ -1,5 +1,21 @@
 # API v1 Specification — Task Tracker
 
+## Critical Business Blocker Integration
+
+The existing strict SDLC router now registers typed POST
+`/api/v1/issues/{id}/sdlc/critical-blockers`, GET
+`/api/v1/issues/{id}/sdlc/critical-blockers/{blocker_id}` and original-key GET
+`/api/v1/issues/{id}/sdlc/critical-blockers/operations/{idempotency_key}`.
+All responses are no-store. The technical capability allowlist permits only these
+exact current-task resources; it does not grant scheduler transitions or owner
+confirmation. Domain/repository authorization remains authoritative.
+
+These are source integration targets, not a usable persisted flow yet: the default
+repository port fails503 until the atomic storage package is connected. New handler
+OpenAPI regeneration/tests are pending; no PM return, native stop, capacity release
+or re-confirmed revision is implied. See the exact
+[policy/storage handoff](contracts/CRITICAL_PM_RETURN_SOURCE.md).
+
 ## Single-Task Delivery Discovery
 
 Source registers `GET /api/v1/sdlc/delivery-candidates` with required `project_id`,

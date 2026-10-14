@@ -3,11 +3,16 @@
 Baseline: `12934599d02b31fdff70fcece2ff59b1fab2a966`.
 Implements the first bounded slice of Fleet's accepted
 `docs/contracts/CRITICAL_PM_RETURN_V1.md`. The complete vertical flow remains a
-required goal, not phase2. This packet does not expose an endpoint or CLI command.
+required goal, not phase2. Main has registered the domain/app modules and added
+repository ports plus three typed, no-store API handler registrations under the
+existing strict SDLC router: POST `critical-blockers`, GET `critical-blockers/{id}`
+and GET `critical-blockers/operations/{key}`. These are not operational persistence
+proof: the default repository port returns503 until the actual storage package is
+integrated. No CLI command, PM re-entry or resumed technical cycle is claimed yet.
 
 ## Proposed public types
 
-`domain::sdlc_critical_blockers` is intentionally not registered in `lib.rs` yet.
+`domain::sdlc_critical_blockers` is now registered in `lib.rs` by integration.
 Integration owns public DTO/API/OpenAPI registration and migration ordering.
 
 - `CriticalBlockerKind`: `requirements_contradiction | missing_business_decision`.
@@ -92,8 +97,9 @@ which Complete can win after a successful POST.
 
 ## Required persistence and integration
 
-No migration, repository trait, router or applied SQL has been changed. Existing
-storage cannot safely accept this transition unmodified:
+No migration or applied SQL has been changed by this policy packet. Main added
+repository trait/service/route ports separately; actual storage cannot safely
+accept this transition unmodified:
 
 1. Reuse `PostgresSdlcRepository::load` task/project/owner ACL, task lock, existing capacity
    singleton/hold locks, canonical projection permits, delivery operation journal
@@ -146,9 +152,10 @@ No live activation is implied by this source packet.
 
 ## Qualification handoff
 
-`critical-pm-return-registration.patch` is the proposed TWO module exports for
-integration; it is not applied. Without them the tests do not collect. After main
-applies registration in a proper source/dependency context, from `backend`:
+`critical-pm-return-registration.patch` preserves the original TWO module-export
+handoff. Main has applied those exports; a source-bound local qualification is
+now running on the registered modules. Later API/persistence changes cannot inherit
+that earlier snapshot's results. From `backend`:
 
 ```text
 cargo test --locked -p domain --lib sdlc_critical_blockers::tests:: -- --list

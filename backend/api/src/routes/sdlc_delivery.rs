@@ -5,7 +5,7 @@ use axum::{
     http::{HeaderMap, HeaderValue, StatusCode, header},
     routing::{get, post},
 };
-use domain::{sdlc::Principal, sdlc_lifecycle::*};
+use domain::{sdlc::Principal, sdlc_critical_blockers::*, sdlc_lifecycle::*};
 use shared::AppError;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -22,6 +22,18 @@ pub(super) fn router() -> Router<Arc<app::AppContext>> {
             get(result),
         )
         .route("/issues/{id}/sdlc/delivery-proposals", post(propose))
+        .route(
+            "/issues/{id}/sdlc/critical-blockers",
+            post(critical_propose),
+        )
+        .route(
+            "/issues/{id}/sdlc/critical-blockers/{blocker_id}",
+            get(critical_detail),
+        )
+        .route(
+            "/issues/{id}/sdlc/critical-blockers/operations/{idempotency_key}",
+            get(critical_operation),
+        )
         .route(
             "/issues/{id}/sdlc/delivery-proposals/operations/{idempotency_key}",
             get(proposal_operation),
@@ -53,6 +65,56 @@ fn written<T>(result: (T, bool)) -> (StatusCode, HeaderMap, Json<T>) {
         no_store(),
         Json(result.0),
     )
+}
+
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/critical-blockers",operation_id="submit_critical_business_blocker",tag="sdlc",
+    params(("id"=Uuid,Path)),request_body=SubmitCriticalBlocker,
+    responses((status=201,body=CriticalBlockerReceipt),(status=200,body=CriticalBlockerReceipt,description="Original durable replay"),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn critical_propose(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(task): Path<Uuid>,
+    Json(input): Json<SubmitCriticalBlocker>,
+) -> Result<(StatusCode, HeaderMap, Json<CriticalBlockerReceipt>), AppError> {
+    Ok(written(
+        service(&ctx)?
+            .submit_critical_blocker(task, &actor, input)
+            .await?,
+    ))
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/critical-blockers/{blocker_id}",operation_id="read_critical_business_blocker",tag="sdlc",
+    params(("id"=Uuid,Path),("blocker_id"=Uuid,Path)),responses((status=200,body=CriticalBlockerReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn critical_detail(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((task, blocker)): Path<(Uuid, Uuid)>,
+) -> Result<(HeaderMap, Json<CriticalBlockerReceipt>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .critical_blocker(task, &actor, blocker)
+                .await?,
+        ),
+    ))
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/critical-blockers/operations/{idempotency_key}",operation_id="read_critical_business_blocker_operation",tag="sdlc",
+    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=CriticalBlockerReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn critical_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((task, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<CriticalBlockerReceipt>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .critical_blocker_operation(task, &actor, &key)
+                .await?,
+        ),
+    ))
 }
 
 #[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/lifecycle",operation_id="read_single_task_lifecycle",tag="sdlc",
@@ -241,6 +303,15 @@ mod tests {
                 "get",
             ),
             ("/api/v1/issues/{id}/sdlc/delivery-proposals", "post"),
+            ("/api/v1/issues/{id}/sdlc/critical-blockers", "post"),
+            (
+                "/api/v1/issues/{id}/sdlc/critical-blockers/{blocker_id}",
+                "get",
+            ),
+            (
+                "/api/v1/issues/{id}/sdlc/critical-blockers/operations/{idempotency_key}",
+                "get",
+            ),
             (
                 "/api/v1/issues/{id}/sdlc/delivery-proposals/operations/{idempotency_key}",
                 "get",

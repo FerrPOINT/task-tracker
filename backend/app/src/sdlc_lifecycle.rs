@@ -326,6 +326,11 @@ pub fn delivery_request_policy(
         ("GET", ["requirements", revision]) => crate::sdlc::canonical_pm_version(revision),
         ("GET", ["delivery-proposals", "operations", key]) => !key.is_empty(),
         ("POST", ["delivery-proposals"]) => true,
+        ("POST", ["critical-blockers"]) => true,
+        ("GET", ["critical-blockers", id]) => {
+            Uuid::parse_str(id).is_ok_and(|value| !value.is_nil() && value.to_string() == *id)
+        }
+        ("GET", ["critical-blockers", "operations", key]) => crate::sdlc::validate_key(key).is_ok(),
         _ => false,
     };
     if allowed {
