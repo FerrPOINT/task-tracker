@@ -4,7 +4,7 @@ import { Pencil } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
 import { useAdminAuditLog, useAdminSettings, useUpdateAdminSetting } from '@/shared/api/hooks'
-import { Button } from '@sdlc/ui/ui'
+import { Button, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 import { Input } from '@sdlc/ui/ui'
 import { Label } from '@sdlc/ui/ui'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@sdlc/ui/ui'
@@ -167,37 +167,41 @@ export function AdminPage() {
                 errorMessage={t('admin.settings.loadError')}
                 onRetry={() => void settings.refetch()}
               >
-                <div role="list" className="divide-y divide-border rounded-md border border-border">
-                  {settings.data?.map((setting) => (
-                    <div
-                      role="listitem"
-                      key={setting.key}
-                      className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-2 p-3"
-                    >
-                      <div className="min-w-0 space-y-1">
-                        <div className="break-all font-mono text-xs font-semibold">
-                          {setting.key}
+                <ResourceList asChild variant="bordered">
+                  <div role="list">
+                    {settings.data?.map((setting) => (
+                      <ResourceListRow asChild key={setting.key}>
+                        <div
+                          role="listitem"
+
+                          className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-2"
+                        >
+                          <div className="min-w-0 space-y-1">
+                            <div className="break-all font-mono text-xs font-semibold">
+                              {setting.key}
+                            </div>
+                            <ChangesSummary value={setting.value} />
+                            <div className="text-xs text-text-muted">
+                              {t('admin.settings.updated')}: {formatDate(setting.updated_at)}
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-11 w-11"
+                            title={t('admin.settings.edit', { key: setting.key })}
+                            aria-label={t('admin.settings.edit', { key: setting.key })}
+                            onClick={() => editSetting(setting.key, setting.value)}
+                            disabled={updateSetting.isPending}
+                          >
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                          </Button>
                         </div>
-                        <ChangesSummary value={setting.value} />
-                        <div className="text-xs text-text-muted">
-                          {t('admin.settings.updated')}: {formatDate(setting.updated_at)}
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11"
-                        title={t('admin.settings.edit', { key: setting.key })}
-                        aria-label={t('admin.settings.edit', { key: setting.key })}
-                        onClick={() => editSetting(setting.key, setting.value)}
-                        disabled={updateSetting.isPending}
-                      >
-                        <Pencil className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
+                      </ResourceListRow>
+                    ))}
+                  </div>
+                </ResourceList>
               </QueryState>
             </section>
             <section className="min-w-0 border-t border-border pt-4">

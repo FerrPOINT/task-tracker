@@ -3,7 +3,7 @@ import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
-import { Button, ConfirmDialog, ErrorState } from '@sdlc/ui/ui'
+import { Button, ConfirmDialog, ErrorState, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
 import {
   useCreateCustomField,
@@ -162,38 +162,39 @@ export function ProjectCustomFieldsPage() {
                 onRetry={() => void fields.refetch()}
               />
             ) : fields.data?.length ? (
-              <div className="divide-y divide-border overflow-hidden rounded-md border border-border bg-surface">
-                {fields.data.map((field) => (
-                  <div
-                    key={field.id}
-                    className="flex min-h-16 items-center justify-between gap-3 p-3 hover:bg-surface-raised"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="break-words font-medium">
-                        {field.name}
-                        {field.is_required ? ' *' : ''}
-                      </p>
-                      <p className="break-words text-sm text-text-muted">
-                        {t(`customFields.types.${field.field_type}`)}
-                        {field.options.length ? `: ${field.options.join(', ')}` : ''}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="min-h-11 min-w-11 shrink-0 text-danger hover:text-danger sm:min-h-10 sm:min-w-10"
-                      aria-label={t('customFields.deleteField', { name: field.name })}
-                      title={t('customFields.deleteField', { name: field.name })}
-                      onClick={() => {
-                        remove.reset()
-                        setPendingDelete({ id: field.id, name: field.name })
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
+              <ResourceList asChild variant="bordered">
+                <div className="overflow-hidden">
+                  {fields.data.map((field) => (
+                    <ResourceListRow asChild key={field.id}>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words font-medium">
+                            {field.name}
+                            {field.is_required ? ' *' : ''}
+                          </p>
+                          <p className="break-words text-sm text-text-muted">
+                            {t(`customFields.types.${field.field_type}`)}
+                            {field.options.length ? `: ${field.options.join(', ')}` : ''}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="min-h-11 min-w-11 shrink-0 text-danger hover:text-danger sm:min-h-10 sm:min-w-10"
+                          aria-label={t('customFields.deleteField', { name: field.name })}
+                          title={t('customFields.deleteField', { name: field.name })}
+                          onClick={() => {
+                            remove.reset()
+                            setPendingDelete({ id: field.id, name: field.name })
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </ResourceListRow>
+                  ))}
+                </div>
+              </ResourceList>
             ) : (
               <p className="text-sm text-text-muted">{t('customFields.noFields')}</p>
             )}

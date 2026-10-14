@@ -1,3 +1,4 @@
+import { ResourceList, ResourceListRow } from '@sdlc/ui/ui'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
@@ -40,42 +41,46 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
       </h3>
 
       {links.length > 0 && (
-        <ul className="space-y-1">
-          {links.map((l) => {
-            const isSource = l.source_id === issueId
-            const otherKey = isSource ? l.target_key : l.source_key
-            const otherId = isSource ? l.target_id : l.source_id
-            const label = isSource
-              ? t(`links.type.${l.link_type}`)
-              : t(`links.typeInverse.${l.link_type}`)
-            return (
-              <li key={l.id} className="flex min-h-10 items-center justify-between gap-2 text-sm">
-                <span className="min-w-0 break-words">
-                  <span className="text-muted-foreground">{label}</span>{' '}
-                  <Link
-                    to={`/issues/${otherId}`}
-                    className="font-medium text-accent hover:underline"
-                  >
-                    {otherKey}
-                  </Link>
-                </span>
-                <button
-                  type="button"
-                  aria-label={t('links.delete', { key: otherKey })}
-                  onClick={() =>
-                    remove.mutate(l.id, {
-                      onSuccess: () => toast.success(t('common.saved')),
-                      onError: (error) => toast.error(error.message),
-                    })
-                  }
-                  className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                >
-                  <X className="h-3.5 w-3.5" aria-hidden />
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+        <ResourceList asChild>
+          <ul>
+            {links.map((l) => {
+              const isSource = l.source_id === issueId
+              const otherKey = isSource ? l.target_key : l.source_key
+              const otherId = isSource ? l.target_id : l.source_id
+              const label = isSource
+                ? t(`links.type.${l.link_type}`)
+                : t(`links.typeInverse.${l.link_type}`)
+              return (
+                <ResourceListRow asChild key={l.id}>
+                  <li className="flex items-center justify-between gap-2 text-sm">
+                    <span className="min-w-0 break-words">
+                      <span className="text-muted-foreground">{label}</span>{' '}
+                      <Link
+                        to={`/issues/${otherId}`}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        {otherKey}
+                      </Link>
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={t('links.delete', { key: otherKey })}
+                      onClick={() =>
+                        remove.mutate(l.id, {
+                          onSuccess: () => toast.success(t('common.saved')),
+                          onError: (error) => toast.error(error.message),
+                        })
+                      }
+                      className="inline-flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded text-muted-foreground hover:text-destructive focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  </li>
+                </ResourceListRow>
+              )
+            })}
+          </ul>
+        </ResourceList>
       )}
       {links.length === 0 && <p className="text-xs text-muted-foreground">{t('links.none')}</p>}
 

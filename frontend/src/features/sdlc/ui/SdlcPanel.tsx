@@ -2,7 +2,15 @@ import { useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, Check, RefreshCw } from 'lucide-react'
-import { Button, EmptyState, ErrorState, Label, LoadingState } from '@sdlc/ui/ui'
+import {
+  Button,
+  EmptyState,
+  ErrorState,
+  Label,
+  LoadingState,
+  ResourceList,
+  ResourceListRow,
+} from '@sdlc/ui/ui'
 import {
   confirmRequirements,
   routingRoles,
@@ -411,35 +419,39 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
             {metadata.data.events.length === 0 ? (
               <EmptyState message={t('sdlc.noEvents')} />
             ) : (
-              <ol className="divide-y divide-border">
-                {metadata.data.events.map((event) => (
-                  <li key={event.event_id} className="min-w-0 py-2">
-                    <p className="font-medium">
-                      {t(`sdlc.events.${eventLabels[event.event_type]}`)}
-                    </p>
-                    <p className="text-text-muted">
-                      #{event.sequence} · {new Date(event.created_at).toLocaleString()}
-                    </p>
-                    {event.event_type === 'analysis.intent_created' && (
-                      <dl>
-                        <Field label={t('sdlc.intentRef')}>
-                          {event.payload.resource.intent_id}
-                        </Field>
-                        <Field label={t('sdlc.revision')}>
-                          {event.payload.resource.requirement_revision}
-                        </Field>
-                      </dl>
-                    )}
-                    <details className="min-w-0 text-text-muted">
-                      <summary>{t('sdlc.eventPin')}</summary>
-                      <dl>
-                        <Field label={t('sdlc.eventRef')}>{event.event_id}</Field>
-                        <Field label="SHA-256">{event.metadata_sha256}</Field>
-                      </dl>
-                    </details>
-                  </li>
-                ))}
-              </ol>
+              <ResourceList asChild>
+                <ol>
+                  {metadata.data.events.map((event) => (
+                    <ResourceListRow asChild key={event.event_id}>
+                      <li className="min-w-0">
+                        <p className="font-medium">
+                          {t(`sdlc.events.${eventLabels[event.event_type]}`)}
+                        </p>
+                        <p className="text-text-muted">
+                          #{event.sequence} · {new Date(event.created_at).toLocaleString()}
+                        </p>
+                        {event.event_type === 'analysis.intent_created' && (
+                          <dl>
+                            <Field label={t('sdlc.intentRef')}>
+                              {event.payload.resource.intent_id}
+                            </Field>
+                            <Field label={t('sdlc.revision')}>
+                              {event.payload.resource.requirement_revision}
+                            </Field>
+                          </dl>
+                        )}
+                        <details className="min-w-0 text-text-muted">
+                          <summary>{t('sdlc.eventPin')}</summary>
+                          <dl>
+                            <Field label={t('sdlc.eventRef')}>{event.event_id}</Field>
+                            <Field label="SHA-256">{event.metadata_sha256}</Field>
+                          </dl>
+                        </details>
+                      </li>
+                    </ResourceListRow>
+                  ))}
+                </ol>
+              </ResourceList>
             )}
             <div className="mt-3 flex gap-2">
               <Button
