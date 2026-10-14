@@ -805,6 +805,14 @@ async fn return_held_to_pm(
     let before = snapshot(f, r.task).await;
     assert_eq!(before["returns"], json!(0));
     assert_eq!(before["holds"], json!(1));
+    assert!(
+        f.repo
+            .critical_pm_return_operation(r.task, &f.reader, &command.review.idempotency_key)
+            .await
+            .is_err(),
+        "no retroactive Return operation before the real transaction"
+    );
+    assert_eq!(snapshot(f, r.task).await, before);
     for actor in [&r.producer, &f.owner, &f.reader] {
         assert!(matches!(
             f.repo
@@ -1007,6 +1015,52 @@ async fn return_held_to_pm(
     );
     assert_eq!(row.try_get::<i64>("", "events").unwrap(), 1);
     let returned = snapshot(f, r.task).await;
+    assert_eq!(
+        f.repo
+            .critical_pm_return_operation(r.task, &f.reader, &command.review.idempotency_key)
+            .await
+            .unwrap(),
+        plan
+    );
+    for forbidden in [&r.producer, &f.owner, &f.writer] {
+        assert!(matches!(
+            f.repo
+                .critical_pm_return_operation(r.task, forbidden, &command.review.idempotency_key)
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    for forbidden in [
+        actor("foreign", false, &["task-tracker:read"]),
+        Principal {
+            trusted_human: true,
+            ..f.reader.clone()
+        },
+        Principal {
+            scopes: ["task-tracker:read".into(), "admin".into()].into(),
+            ..f.reader.clone()
+        },
+    ] {
+        assert!(matches!(
+            f.repo
+                .critical_pm_return_operation(r.task, &forbidden, &command.review.idempotency_key)
+                .await,
+            Err(AppError::Forbidden)
+        ));
+    }
+    for key in [".", "..", "unknown-return-key"] {
+        assert!(
+            f.repo
+                .critical_pm_return_operation(r.task, &f.reader, key)
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(
+        snapshot(f, r.task).await,
+        returned,
+        "Return GET must not mutate history or current state"
+    );
     assert_eq!(returned["returns"], json!(1));
     assert_eq!(returned["holds"], json!(0));
     assert_eq!(returned["permits"], json!(0));

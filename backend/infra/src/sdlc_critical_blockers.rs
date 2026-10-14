@@ -156,6 +156,42 @@ async fn original_operation(
     .transpose()
 }
 
+async fn return_operation(
+    tx: &DatabaseTransaction,
+    task: Uuid,
+    actor: &Principal,
+    key: &str,
+) -> Result<Option<(ReturnCriticalToPm, CriticalPolicyChange)>, AppError> {
+    let row = tx.query_one(statement(
+        "SELECT request_sha256,command,after_receipt,after_blocker FROM sdlc_critical_pm_returns
+         WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
+        vec![task.into(), actor.subject.clone().into(), key.into()],
+    )).await.map_err(map_db)?;
+    row.map(|row| {
+        let command: ReturnCriticalToPm = decode(&row, "command")?;
+        let plan = CriticalPolicyChange {
+            lifecycle: decode(&row, "after_receipt")?,
+            blocker: decode(&row, "after_blocker")?,
+        };
+        if command.review.idempotency_key != key
+            || row
+                .try_get::<String>("", "request_sha256")
+                .map_err(map_db)?
+                != app::sdlc::canonical_hash(&command)?
+            || plan.blocker.blocker_id != command.review.blocker_id
+            || plan.blocker.blocker_sha256 != command.review.blocker_sha256
+            || plan.blocker.technical_terminal.as_ref() != Some(&command.terminal)
+            || plan.lifecycle.task.task_id != task
+            || plan.blocker.task_id != task
+            || plan.lifecycle.task.owner_subject != plan.blocker.owner_subject
+        {
+            return Err(invalid_history());
+        }
+        Ok((command, plan))
+    })
+    .transpose()
+}
+
 pub(super) async fn ensure_progress_allowed(
     tx: &DatabaseTransaction,
     current: &LifecycleReceipt,
@@ -424,23 +460,19 @@ impl PostgresSdlcRepository {
         command: ReturnCriticalToPm,
     ) -> Result<(app::sdlc_critical_blockers::CriticalPolicyChange, bool), AppError> {
         app::sdlc_reservation::scheduler(actor, &self.config)?;
+        if actor.trusted_human {
+            return Err(AppError::Forbidden);
+        }
         app::sdlc::validate_key(&command.review.idempotency_key)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
         owner_access(&tx, &state).await?;
-        let hash = app::sdlc::canonical_hash(&command)?;
-        if let Some(row) = tx.query_one(statement(
-            "SELECT request_sha256,command,after_receipt,after_blocker FROM sdlc_critical_pm_returns
-             WHERE task_id=$1 AND actor_subject=$2 AND idempotency_key=$3",
-            vec![task.into(), actor.subject.clone().into(), command.review.idempotency_key.clone().into()],
-        )).await.map_err(map_db)? {
-            let original: ReturnCriticalToPm = decode(&row, "command")?;
-            if row.try_get::<String>("", "request_sha256").map_err(map_db)? != hash || original != command {
+        if let Some((original, plan)) =
+            return_operation(&tx, task, actor, &command.review.idempotency_key).await?
+        {
+            if original != command {
                 return Err(AppError::conflict("critical return key payload mismatch"));
             }
-            let plan = app::sdlc_critical_blockers::CriticalPolicyChange {
-                lifecycle: decode(&row, "after_receipt")?, blocker: decode(&row, "after_blocker")?,
-            };
             scope(&state, &plan.blocker)?;
             tx.commit().await.map_err(map_db)?;
             return Ok((plan, true));
@@ -471,6 +503,7 @@ impl PostgresSdlcRepository {
             vec![task.into(), command.review.fence.assignment_id.into()],
         )).await.map_err(map_db)?.ok_or_else(invalid_history)?;
         let return_id = Uuid::now_v7();
+        let hash = app::sdlc::canonical_hash(&command)?;
         exec(&tx, "INSERT INTO sdlc_critical_pm_returns(return_id,task_id,blocker_id,assignment_id,actor_subject,
             idempotency_key,request_sha256,command,before_receipt,after_receipt,after_blocker)
             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", vec![return_id.into(), task.into(), blocker.blocker_id.into(),
@@ -497,5 +530,31 @@ impl PostgresSdlcRepository {
         .await?;
         tx.commit().await.map_err(map_db)?;
         Ok((plan, false))
+    }
+
+    /// Scheduler READ recovery only, not current task detail or a search across operation owners.
+    pub async fn critical_pm_return_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<CriticalPolicyChange, AppError> {
+        app::sdlc_lifecycle::scheduler_read(actor, &self.config)?;
+        if actor.trusted_human {
+            return Err(AppError::Forbidden);
+        }
+        app::sdlc::validate_key(key)?;
+        if task.is_nil() || matches!(key, "." | "..") {
+            return Err(AppError::validation("invalid critical return task or key"));
+        }
+        let tx = self.db.begin().await.map_err(map_db)?;
+        let state = self.load(&tx, task, actor).await?;
+        owner_access(&tx, &state).await?;
+        let (_, plan) = return_operation(&tx, task, actor, key)
+            .await?
+            .ok_or_else(|| AppError::not_found("critical PM return operation", key))?;
+        scope(&state, &plan.blocker)?;
+        tx.commit().await.map_err(map_db)?;
+        Ok(plan)
     }
 }

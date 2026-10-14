@@ -1,7 +1,9 @@
 //! Proposed critical-business-question contract. Registration belongs to integration.
 use crate::attachment_artifact::AttachmentArtifact;
 use crate::sdlc::safe_version;
-use crate::sdlc_lifecycle::{DeliveryFence, DeliveryRole, RuntimeTerminalObservation};
+use crate::sdlc_lifecycle::{
+    DeliveryFence, DeliveryRole, LifecycleReceipt, RuntimeTerminalObservation,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::AppError;
@@ -122,6 +124,14 @@ pub struct CriticalPmReviewGuard {
 pub struct ReturnCriticalToPm {
     pub review: CriticalPmReviewGuard,
     pub terminal: RuntimeTerminalObservation,
+}
+
+/// Existing policy plan, also the immutable scheduler Return operation readback.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CriticalPolicyChange {
+    pub lifecycle: LifecycleReceipt,
+    pub blocker: CriticalBlockerReceipt,
 }
 
 pub fn sha256(value: &str) -> bool {

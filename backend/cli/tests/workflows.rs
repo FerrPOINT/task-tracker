@@ -1251,6 +1251,313 @@ fn critical_blocker_proposal() -> Value {
     proposal
 }
 
+fn critical_return_command() -> Value {
+    let command = json!({
+        "review":{"blocker_id":"66666666-6666-6666-6666-666666666666","blocker_sha256":"a".repeat(64),
+            "expected_blocker_version":1,"expected_task_version":7,
+            "fence":{"assignment_id":"22222222-2222-2222-2222-222222222222",
+                "execution_id":"33333333-3333-3333-3333-333333333333","fencing_token":1,
+                "lease_id":"44444444-4444-4444-4444-444444444444","expected_lease_version":3},
+            "idempotency_key":"return:original/1?x=+%#"},
+        "terminal":{"assignment_hash":"b".repeat(64),"chat_id":"77777777-7777-7777-7777-777777777777",
+            "run_id":"88888888-8888-8888-8888-888888888888","state":"cancelled",
+            "receipt":{"reference":"fixture://SYNTHETIC-native-terminal-readback","sha256":"c".repeat(64)}}
+    });
+    let typed: domain::sdlc_critical_blockers::ReturnCriticalToPm =
+        serde_json::from_value(command.clone()).unwrap();
+    assert_eq!(serde_json::to_value(typed).unwrap(), command);
+    command
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_preserves_file_stdin_body_auth_and_exact_endpoint() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let command = critical_return_command();
+    // Transport-only partial response stub. Typed plan and actual persistence are tested elsewhere.
+    let receipt = json!({"lifecycle":{"task":{"task_id":TASK,"stage":"Draft"}},
+        "blocker":{"version":2,"state":"awaiting_pm_review","technical_terminal":command["terminal"]}});
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    write!(file, "{command}").unwrap();
+    file.flush().unwrap();
+    for versioned in [false, true] {
+        for from_file in ["-", file.path().to_str().unwrap()] {
+            for status in [201, 200] {
+                let server = Server::start(vec![(status, receipt.clone())]).await;
+                let url = if versioned {
+                    format!("{}/api/v1", server.url)
+                } else {
+                    server.url.clone()
+                };
+                let output = server
+                    .run_with_api_url(
+                        &url,
+                        &[
+                            "sdlc",
+                            "critical-blocker",
+                            "return-to-pm",
+                            "--task",
+                            TASK,
+                            "--from-file",
+                            from_file,
+                        ],
+                        (from_file == "-").then(|| command.to_string()).as_deref(),
+                    )
+                    .await;
+                assert_eq!(success(&output), receipt);
+                let requests = server.requests();
+                assert_eq!(requests.len(), 1);
+                assert_eq!(requests[0].method, "POST");
+                assert_eq!(
+                    requests[0].path,
+                    format!("/api/v1/issues/{TASK}/sdlc/critical-blockers/returns")
+                );
+                assert_eq!(
+                    serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+                    command
+                );
+                assert_eq!(
+                    requests[0].authorization.as_deref(),
+                    Some("Bearer fixture-token")
+                );
+                assert!(
+                    requests[0].key.is_none(),
+                    "key is the exact supplied command field, not another header/transport"
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_unknown_post_requires_explicit_original_key_get_not_lifecycle_transport()
+ {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let command = critical_return_command();
+    let saved = json!({"lifecycle":{"task":{"task_id":TASK,"version":8}},"blocker":{"version":2,"state":"awaiting_pm_review"}});
+    let server = Server::start(vec![
+        (
+            503,
+            json!({"error":{"code":"UNAVAILABLE","message":"unknown outcome"}}),
+        ),
+        (200, saved.clone()),
+    ])
+    .await;
+    let failed = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "return-to-pm",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            Some(&command.to_string()),
+        )
+        .await;
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty());
+    assert_eq!(server.requests().len(), 1);
+    let key = command["review"]["idempotency_key"].as_str().unwrap();
+    let read = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "return-operation",
+                "--task",
+                TASK,
+                "--key",
+                key,
+            ],
+            None,
+        )
+        .await;
+    assert_eq!(success(&read), saved);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+        command
+    );
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(
+        requests[1].path,
+        format!(
+            "/api/v1/issues/{TASK}/sdlc/critical-blockers/returns/operations/{}",
+            urlencoding::encode(key)
+        )
+    );
+    assert!(requests[1].body.is_empty());
+    assert!(requests[1].key.is_none());
+    assert_eq!(
+        requests[1].authorization.as_deref(),
+        Some("Bearer fixture-token")
+    );
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_errors_do_not_retry_mutate_or_leak_private_body() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let command = critical_return_command().to_string();
+    for status in [401, 403, 404, 409, 422, 503] {
+        for action in ["return-to-pm", "return-operation"] {
+            let server = Server::start(vec![(
+                status,
+                json!({"error":{"code":"DENIED","message":"denied fixture-token"}}),
+            )])
+            .await;
+            let mut args = vec![
+                "--error-format",
+                "json",
+                "sdlc",
+                "critical-blocker",
+                action,
+                "--task",
+                TASK,
+            ];
+            args.extend_from_slice(if action == "return-to-pm" {
+                &["--from-file", "-"]
+            } else {
+                &["--key", "return:original/1?x=+%#"]
+            });
+            let output = server
+                .run(
+                    &args,
+                    (action == "return-to-pm").then_some(command.as_str()),
+                )
+                .await;
+            assert!(!output.status.success());
+            assert!(output.stdout.is_empty());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(!stderr.contains("fixture-token"));
+            assert!(!stderr.contains("SYNTHETIC-native-terminal-readback"));
+            assert_eq!(
+                serde_json::from_str::<Value>(&stderr).unwrap()["error"]["status"],
+                status
+            );
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(
+                requests[0].method,
+                if action == "return-to-pm" {
+                    "POST"
+                } else {
+                    "GET"
+                }
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_invalid_cli_inputs_and_impersonation_flags_never_send_http() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![]).await;
+    for args in [
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "return-to-pm",
+            "--task",
+            "TT-1",
+            "--from-file",
+            "-",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "return-operation",
+            "--task",
+            "TT-1",
+            "--key",
+            "original",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "return-to-pm",
+            "--task",
+            TASK,
+            "--from-file",
+            "-",
+            "--owner",
+            "owner",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "return-to-pm",
+            "--task",
+            TASK,
+            "--from-file",
+            "-",
+            "--scheduler",
+            "scheduler",
+        ],
+    ] {
+        let output = server.run(&args, Some("{}")).await;
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+    for key in [".", "..", "space key", ""] {
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "critical-blocker",
+                    "return-operation",
+                    "--task",
+                    TASK,
+                    "--key",
+                    key,
+                ],
+                None,
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+    let output = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "return-to-pm",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            Some("not-json"),
+        )
+        .await;
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_nested_help_is_available_without_network() {
+    let server = Server::start(vec![]).await;
+    for action in ["return-to-pm", "return-operation"] {
+        let output = server
+            .run(&["sdlc", "critical-blocker", action, "--help"], None)
+            .await;
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("--task"));
+        assert!(stdout.contains(if action == "return-to-pm" {
+            "--from-file"
+        } else {
+            "--key"
+        }));
+    }
+    assert!(server.requests().is_empty());
+}
+
 #[tokio::test]
 async fn sdlc_critical_blocker_submit_preserves_typed_body_and_auth() {
     const TASK: &str = "11111111-1111-1111-1111-111111111111";

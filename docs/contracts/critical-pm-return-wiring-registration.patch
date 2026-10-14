@@ -1,0 +1,67 @@
+diff --git a/backend/infra/src/sdlc_lifecycle.rs b/backend/infra/src/sdlc_lifecycle.rs
+--- a/backend/infra/src/sdlc_lifecycle.rs
++++ b/backend/infra/src/sdlc_lifecycle.rs
+@@ -525,5 +525,23 @@
+ #[async_trait]
+ impl LifecycleRepository for PostgresSdlcRepository {
++    async fn return_critical_to_pm(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        command: domain::sdlc_critical_blockers::ReturnCriticalToPm,
++    ) -> Result<(domain::sdlc_critical_blockers::CriticalPolicyChange, bool), AppError> {
++        PostgresSdlcRepository::return_critical_to_pm_with_terminal(self, task, actor, command).await
++    }
++
++    async fn critical_pm_return_operation(
++        &self,
++        task: Uuid,
++        actor: &Principal,
++        key: &str,
++    ) -> Result<domain::sdlc_critical_blockers::CriticalPolicyChange, AppError> {
++        PostgresSdlcRepository::critical_pm_return_operation(self, task, actor, key).await
++    }
++
+     async fn submit_critical_blocker(
+         &self,
+         task: Uuid,
+diff --git a/backend/api/src/routes/sdlc_delivery.rs b/backend/api/src/routes/sdlc_delivery.rs
+--- a/backend/api/src/routes/sdlc_delivery.rs
++++ b/backend/api/src/routes/sdlc_delivery.rs
+@@ -20,6 +20,14 @@
+         .route("/issues/{id}/sdlc/delivery-proposals", post(propose))
++        .route(
++            "/issues/{id}/sdlc/critical-blockers/returns",
++            post(critical_return),
++        )
++        .route(
++            "/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}",
++            get(critical_return_operation),
++        )
+         .route(
+             "/issues/{id}/sdlc/critical-blockers",
+             post(critical_propose),
+         )
+         .route(
+diff --git a/backend/api/src/lib.rs b/backend/api/src/lib.rs
+--- a/backend/api/src/lib.rs
++++ b/backend/api/src/lib.rs
+@@ -89,6 +89,8 @@
+         routes::sdlc_delivery::proposal_operation,
+         routes::sdlc_delivery::critical_propose,
+         routes::sdlc_delivery::critical_detail,
+         routes::sdlc_delivery::critical_operation,
++        routes::sdlc_delivery::critical_return,
++        routes::sdlc_delivery::critical_return_operation,
+         routes::sdlc_delivery::feedback,
+         routes::sdlc_delivery::feedback_operation,
+@@ -261,6 +263,9 @@
+     components(schemas(
++        domain::sdlc_critical_blockers::CriticalPolicyChange,
++        domain::sdlc_critical_blockers::ReturnCriticalToPm,
++        domain::sdlc_critical_blockers::CriticalPmReviewGuard,
+         domain::sdlc_candidates::DeliveryCandidates,
+         domain::sdlc_candidates::DeliveryCandidate,
+         domain::sdlc_candidates::CandidateOperation,
+         dto::RegisterRequest,
+         dto::LoginRequest,

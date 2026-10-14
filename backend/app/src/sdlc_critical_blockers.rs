@@ -1,11 +1,37 @@
 //! Pure planning under the existing task lock/transaction; no persistence or runtime proof service.
 use domain::sdlc::{MAX_SAFE_VERSION, Principal, SdlcConfig};
+pub use domain::sdlc_critical_blockers::CriticalPolicyChange;
 use domain::sdlc_critical_blockers::*;
 use domain::sdlc_lifecycle::*;
 use shared::AppError;
 use uuid::Uuid;
 
 impl crate::sdlc::SdlcService {
+    pub async fn return_critical_to_pm(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: ReturnCriticalToPm,
+    ) -> Result<(CriticalPolicyChange, bool), AppError> {
+        validate_return_request(task, actor, &command)?;
+        self.lifecycle_repository()?
+            .return_critical_to_pm(task, actor, command)
+            .await
+    }
+
+    pub async fn critical_pm_return_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<CriticalPolicyChange, AppError> {
+        return_actor_shape(actor, false)?;
+        validate_return_key(task, key)?;
+        self.lifecycle_repository()?
+            .critical_pm_return_operation(task, actor, key)
+            .await
+    }
+
     pub async fn submit_critical_blocker(
         &self,
         task: Uuid,
@@ -56,11 +82,51 @@ pub struct BlockerAllocation {
     pub observed_at: chrono::DateTime<chrono::Utc>,
 }
 
-/// Persist both projections and the operation journal atomically; archive the old head on return.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CriticalPolicyChange {
-    pub lifecycle: LifecycleReceipt,
-    pub blocker: CriticalBlockerReceipt,
+// Configured scheduler identity and fresh task/project ACL remain authoritative in the repository.
+fn return_actor_shape(actor: &Principal, write: bool) -> Result<(), AppError> {
+    let scope = if write {
+        "task-tracker:write"
+    } else {
+        "task-tracker:read"
+    };
+    if actor.human_session
+        || actor.trusted_human
+        || actor.scopes.len() != 1
+        || !actor.scopes.contains(scope)
+    {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
+fn validate_return_key(task: Uuid, key: &str) -> Result<(), AppError> {
+    crate::sdlc::validate_key(key)?;
+    if task.is_nil() || matches!(key, "." | "..") {
+        return Err(AppError::validation("invalid critical return task or key"));
+    }
+    Ok(())
+}
+
+fn validate_return_request(
+    task: Uuid,
+    actor: &Principal,
+    command: &ReturnCriticalToPm,
+) -> Result<(), AppError> {
+    return_actor_shape(actor, true)?;
+    validate_return_key(task, &command.review.idempotency_key)?;
+    crate::sdlc_lifecycle::validate_fence(&command.review.fence)?;
+    crate::sdlc_lifecycle::validate_artifact(&command.terminal.receipt)?;
+    if command.review.blocker_id.is_nil()
+        || !sha256(&command.review.blocker_sha256)
+        || !positive(command.review.expected_blocker_version)
+        || !positive(command.review.expected_task_version)
+        || command.terminal.run_id.is_nil()
+        || command.terminal.chat_id.is_nil()
+        || !sha256(&command.terminal.assignment_hash)
+    {
+        return Err(AppError::validation("invalid critical return request"));
+    }
+    Ok(())
 }
 
 fn conflict() -> AppError {

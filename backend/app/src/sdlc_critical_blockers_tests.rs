@@ -334,6 +334,96 @@ fn return_requires_terminal_and_preserves_generation_one_verbatim() {
 }
 
 #[test]
+fn return_transport_preserves_existing_typed_plan_and_body_hashes() {
+    let mut f = Fixture::new(LifecycleStage::Review);
+    let held = f.hold();
+    let command = f.handoff(&held);
+    let command_hash = crate::sdlc::canonical_hash(&command).unwrap();
+    let held_hash = crate::sdlc::canonical_hash(&held).unwrap();
+    validate_return_request(f.current.task.task_id, &f.scheduler, &command).unwrap();
+    let plan = return_to_pm(&f.current, &held, &f.scheduler, &f.config, &command).unwrap();
+    let wire = serde_json::to_value(&plan).unwrap();
+    assert_eq!(wire.as_object().unwrap().len(), 2);
+    assert!(wire.get("lifecycle").is_some());
+    assert!(wire.get("blocker").is_some());
+    let typed: domain::sdlc_critical_blockers::CriticalPolicyChange =
+        serde_json::from_value(wire.clone()).unwrap();
+    let compatibility: crate::sdlc_critical_blockers::CriticalPolicyChange = typed.clone();
+    assert_eq!(compatibility, plan);
+    assert_eq!(crate::sdlc::canonical_hash(&command).unwrap(), command_hash);
+    assert_eq!(crate::sdlc::canonical_hash(&held).unwrap(), held_hash);
+    let mut extra = wire.clone();
+    extra["dispatch_allowed"] = json!(true);
+    assert!(serde_json::from_value::<CriticalPolicyChange>(extra).is_err());
+    for missing in ["lifecycle", "blocker"] {
+        let mut invalid = wire.clone();
+        invalid.as_object_mut().unwrap().remove(missing);
+        assert!(serde_json::from_value::<CriticalPolicyChange>(invalid).is_err());
+    }
+}
+
+#[test]
+fn return_transport_actor_shapes_and_keys_fail_closed_without_rewriting_input() {
+    let mut f = Fixture::new(LifecycleStage::Testing);
+    let held = f.hold();
+    let command = f.handoff(&held);
+    let original = command.clone();
+    for invalid in [".", "..", "", "space key", "line\nkey"] {
+        let mut changed = command.clone();
+        changed.review.idempotency_key = invalid.into();
+        assert!(validate_return_request(f.current.task.task_id, &f.scheduler, &changed).is_err());
+        assert!(validate_return_key(f.current.task.task_id, invalid).is_err());
+    }
+    let key = "return:original/1?x=+%#";
+    validate_return_key(f.current.task.task_id, key).unwrap();
+    assert!(validate_return_key(Uuid::nil(), key).is_err());
+    let mut reader = f.scheduler.clone();
+    reader.scopes = ["task-tracker:read".into()].into();
+    return_actor_shape(&reader, false).unwrap();
+    assert!(return_actor_shape(&reader, true).is_err());
+    assert!(return_actor_shape(&f.scheduler, false).is_err());
+    for actor in [
+        f.producer.clone(),
+        Principal {
+            human_session: true,
+            ..f.scheduler.clone()
+        },
+        Principal {
+            trusted_human: true,
+            ..f.scheduler.clone()
+        },
+        Principal {
+            scopes: ["task-tracker:write".into(), "admin".into()].into(),
+            ..f.scheduler.clone()
+        },
+        Principal {
+            scopes: [
+                "task-tracker:write".into(),
+                "task-tracker:sdlc:pm:invalid".into(),
+            ]
+            .into(),
+            ..f.scheduler.clone()
+        },
+    ] {
+        assert!(matches!(
+            validate_return_request(f.current.task.task_id, &actor, &command),
+            Err(AppError::Forbidden)
+        ));
+    }
+    // Shape-only preflight is not scheduler authorization; the repository's configured policy is required.
+    let foreign = Principal {
+        subject: "foreign-machine".into(),
+        ..f.scheduler.clone()
+    };
+    validate_return_request(f.current.task.task_id, &foreign, &command).unwrap();
+    assert!(matches!(
+        return_to_pm(&f.current, &held, &foreign, &f.config, &command),
+        Err(AppError::Forbidden)
+    ));
+    assert_eq!(command, original);
+}
+
+#[test]
 fn producer_cannot_impersonate_owner_scheduler_or_another_assignment() {
     for change in 0..7 {
         let mut f = Fixture::new(LifecycleStage::Analysis);
