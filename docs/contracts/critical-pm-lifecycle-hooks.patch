@@ -1,0 +1,92 @@
+diff --git a/backend/infra/src/sdlc.rs b/backend/infra/src/sdlc.rs
+--- a/backend/infra/src/sdlc.rs
++++ b/backend/infra/src/sdlc.rs
+@@ -15,2 +15,4 @@
+ mod critical_blockers;
++#[path = "sdlc_critical_pm_lifecycle.rs"]
++mod critical_pm_lifecycle;
+ #[path = "sdlc_critical_pm_reservation.rs"]
+diff --git a/backend/infra/src/sdlc_native_admission.rs b/backend/infra/src/sdlc_native_admission.rs
+--- a/backend/infra/src/sdlc_native_admission.rs
++++ b/backend/infra/src/sdlc_native_admission.rs
+@@ -193,1 +193,8 @@
++        if let Some(result) = self
++            .execute_critical_pm_review_command(&tx, &state, actor, &command, &hash)
++            .await?
++        {
++            tx.commit().await.map_err(map_db)?;
++            return Ok(result);
++        }
+         let result = app::sdlc::apply(&mut state, actor, &self.config, &command)?;
+diff --git a/backend/infra/src/sdlc_execution_lease.rs b/backend/infra/src/sdlc_execution_lease.rs
+--- a/backend/infra/src/sdlc_execution_lease.rs
++++ b/backend/infra/src/sdlc_execution_lease.rs
+@@ -194,3 +194,11 @@
+         .await?;
+         let mut state = self.load(&tx, task, actor).await?;
++        if self
++            .project_critical_pm_claim(&tx, &state, actor, &command, &hash, &receipt)
++            .await?
++            .is_some()
++        {
++            tx.commit().await.map_err(map_db)?;
++            return Ok((receipt, false));
++        }
+         if state.status.is_some() {
+diff --git a/backend/infra/src/sdlc_pm_resume.rs b/backend/infra/src/sdlc_pm_resume.rs
+--- a/backend/infra/src/sdlc_pm_resume.rs
++++ b/backend/infra/src/sdlc_pm_resume.rs
+@@ -180,3 +180,8 @@
+         let reservation = Self::reservation(&tx, &state, f.execution_id).await?;
+-        app::sdlc_pm_resume::validate_context(&state, &reservation, &command)?;
++        let review_resume = self
++            .allow_critical_pm_retained_head(&tx, &state, &command)
++            .await?;
++        if review_resume.is_none() {
++            app::sdlc_pm_resume::validate_context(&state, &reservation, &command)?;
++        }
+         check_fence(&reservation, command.expected_owner_version, f)?;
+@@ -208,3 +213,3 @@
+             .ok_or_else(inconsistent)?;
+-        if overlap.try_get::<bool>("", "busy").map_err(map_db)? {
++        if overlap.try_get::<bool>("", "busy").map_err(map_db)? && review_resume.is_none() {
+             return Err(AppError::conflict("delivery already owns lifecycle"));
+@@ -239,3 +244,3 @@
+             VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,pg_current_xact_id(),$12,$13)",
+-            vec![task.into(),f.execution_id.into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.into(),command.input.kind().into(),
++            vec![task.into(),f.execution_id.into(),actor.subject.clone().into(),command.idempotency_key.clone().into(),hash.clone().into(),command.input.kind().into(),
+                 command.input.input_id().into(),command.checkpoint.checkpoint_id.into(),command.checkpoint.checkpoint_revision.into(),command.previous_run_id.into(),
+@@ -245,2 +250,10 @@
++        if self
++            .project_critical_pm_resume(&tx, &state, actor, &command, &hash, &current)
++            .await?
++            .is_some()
++        {
++            tx.commit().await.map_err(map_db)?;
++            return Ok((current, false));
++        }
+         if state.status.is_some() && matches!(state.stage, Stage::Draft | Stage::Clarification) {
+             state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress);
+diff --git a/backend/infra/src/sdlc_reservation.rs b/backend/infra/src/sdlc_reservation.rs
+--- a/backend/infra/src/sdlc_reservation.rs
++++ b/backend/infra/src/sdlc_reservation.rs
+@@ -584,2 +584,10 @@
+         };
++        if self
++            .finalize_critical_pm_review(&tx, &state, actor, &command, &hash, &result)
++            .await?
++            .is_some()
++        {
++            tx.commit().await.map_err(map_db)?;
++            return Ok((result, false));
++        }
+         exec(&tx,"INSERT INTO sdlc_pm_completions(completion_id,task_id,execution_id,assignment_id,assignment_version,lease_id,lease_version,requirement_revision,content_hash,terminal_receipt_ref,terminal_receipt_sha256,workflow_receipt_ref,workflow_receipt_sha256,result) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+diff --git a/backend/infra/src/sdlc_critical_blockers_pg_tests.rs b/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
+--- a/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
++++ b/backend/infra/src/sdlc_critical_blockers_pg_tests.rs
+@@ -4,3 +4,5 @@
+ #[path = "sdlc_critical_pm_reservation_pg_tests.rs"]
+ mod pm_review_tests;
++#[path = "sdlc_critical_pm_lifecycle_pg_tests.rs"]
++mod pm_lifecycle_tests;
+ use crate::sdlc::attachment_artifacts as artifacts;
