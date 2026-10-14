@@ -2,6 +2,13 @@
 
 ## Source Follow-Up: 15 October
 
+The later immutable Fleet6be2dea / Tracker1f87247 batch passes Tracker fmt and
+locked workspace/all-target strict Clippy, including the two-cycle and populated
+0033-to095-to096 regression sources. It stops on a Fleet HTTP fixture's Vec/set
+type mismatch. Tracker units, OpenAPI and actual PG scenarios were not reached;
+compile coverage is not migration or lifecycle acceptance. Base-v2 cleanup and
+owned input removal are verified. No automatic rerun is claimed.
+
 The subsequent c17a538/3597a17 resumption invocation passes Tracker359 locked
 workspace/all-target strict Clippy. It then fails in a Fleet HTTP test fixture;
 Tracker unit/OpenAPI/PG steps are not reached. This is a compile/lint result,
