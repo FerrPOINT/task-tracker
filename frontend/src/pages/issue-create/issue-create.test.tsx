@@ -299,7 +299,7 @@ describe('IssueCreatePage', () => {
   })
   it('creates the prerequisite project without navigating away or submitting the issue draft', async () => {
     listProjects.mockResolvedValueOnce([])
-    createProject.mockResolvedValueOnce({
+    const project = {
       id: 'new-project',
       key: 'NEW',
       name: 'First Project',
@@ -310,7 +310,9 @@ describe('IssueCreatePage', () => {
       todo_count: 0,
       in_progress_count: 0,
       done_count: 0,
-    })
+    }
+    createProject.mockResolvedValueOnce(project)
+    listProjects.mockResolvedValueOnce([project])
     render(wrapper(<IssueCreatePage />))
     const user = userEvent.setup()
     await screen.findByRole('button', { name: 'Создать проект' })
@@ -344,4 +346,48 @@ describe('IssueCreatePage', () => {
     expect(dialog.getByLabelText(/Название/)).toHaveValue('Denied Project')
     expect(createIssue).not.toHaveBeenCalled()
   })
+
+  it.each([false, true])(
+    'uses authoritative catalogue readback after inline creation (removed: %s)',
+    async (removed) => {
+      const project = {
+        id: 'new-project',
+        key: 'NEW',
+        name: 'First Project',
+        description: '',
+        owner_id: 'u1',
+        owner_name: 'Alice',
+        created_at: '2026-10-14T00:00:00Z',
+        todo_count: 0,
+        in_progress_count: 0,
+        done_count: 0,
+      }
+      listProjects.mockResolvedValueOnce([])
+      listProjects.mockResolvedValueOnce(removed ? [] : [{ ...project, name: 'Renamed Project' }])
+      createProject.mockResolvedValueOnce(project)
+      listCustomFields.mockResolvedValueOnce([])
+      render(wrapper(<IssueCreatePage />))
+      const user = userEvent.setup()
+      await screen.findByRole('button', { name: 'Создать проект' })
+      await user.type(screen.getByLabelText(/Заголовок/), 'Draft stays after catalogue refresh')
+      await user.click(screen.getByRole('button', { name: 'Создать проект' }))
+      const dialog = within(screen.getByRole('dialog'))
+      await user.type(dialog.getByLabelText(/Ключ/), 'NEW')
+      await user.type(dialog.getByLabelText(/Название/), 'First Project')
+      await user.click(dialog.getByRole('button', { name: 'Создать проект' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2))
+      if (removed) {
+        await screen.findByText('Выбранный проект недоступен. Выберите другой проект.')
+        expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
+      } else {
+        await waitFor(() =>
+          expect(screen.getByLabelText(/Проект/)).toHaveTextContent('Renamed Project'),
+        )
+        expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled()
+      }
+      expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft stays after catalogue refresh')
+      expect(createIssue).not.toHaveBeenCalled()
+    },
+  )
 })

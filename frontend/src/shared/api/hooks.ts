@@ -9,6 +9,7 @@ import {
   createProject,
   updateProject,
   deleteProject,
+  type Project,
 } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
 import { searchIssues, SearchRequestError, type SearchFilters } from '@/api/search'
@@ -495,6 +496,11 @@ export function useCreateProject(options: { navigateOnSuccess?: boolean } = {}) 
   return useMutation({
     mutationFn: createProject,
     onSuccess: (data) => {
+      if (options.navigateOnSuccess === false) {
+        qc.setQueryData<Project[]>([...projectKeys.all, 0, 100], (projects) =>
+          [data, ...(projects ?? []).filter((project) => project.id !== data.id)].slice(0, 100),
+        )
+      }
       qc.invalidateQueries({ queryKey: projectKeys.all })
       if (options.navigateOnSuccess !== false) navigate(`/projects/${data.key}/board`)
     },

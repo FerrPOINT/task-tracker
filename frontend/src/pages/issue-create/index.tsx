@@ -1,5 +1,4 @@
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import type { Project } from '@/api/project'
 import { ProjectPicker, EmptyState } from '@sdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { getProject } from '@/api/project'
@@ -39,7 +38,6 @@ export function IssueCreatePage() {
   const usersQuery = useUsers()
   const issueTypesQuery = useIssueTypes()
 
-  const [createdProject, setCreatedProject] = useState<Project | null>(null)
   const [type, setType] = useState('Task')
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
@@ -59,18 +57,8 @@ export function IssueCreatePage() {
     queryFn: ({ signal }) => getProject(namespace.query.data!.resource_key, signal),
   })
   const projects = useMemo(
-    () =>
-      selected.data
-        ? [selected.data]
-        : namespace.ref
-          ? []
-          : createdProject
-            ? [
-                createdProject,
-                ...(projectsQuery.data ?? []).filter((project) => project.id !== createdProject.id),
-              ]
-            : (projectsQuery.data ?? []),
-    [projectsQuery.data, selected.data, namespace.ref, createdProject],
+    () => (selected.data ? [selected.data] : namespace.ref ? [] : (projectsQuery.data ?? [])),
+    [projectsQuery.data, selected.data, namespace.ref],
   )
   // A legacy blank URL retains its default. Invalid explicit context never falls back.
   const queryProjectKey = searchParams.get('project_key') ?? ''
@@ -220,7 +208,6 @@ export function IssueCreatePage() {
               !namespace.ref && !namespace.malformed ? (
                 <CreateProjectAction
                   onCreated={(project) => {
-                    setCreatedProject(project)
                     updateProjectKey(project.key)
                   }}
                 />
