@@ -2,7 +2,9 @@
 # Umbrella build for the SDLC fleet root compose (context = /opt/dev/sdlc).
 # Stages the sibling services-base checkout so the sdlc-auth-core path
 # dependency (../../../services-base/...) resolves.
-FROM rust:1.88.0-slim-bookworm AS builder
+FROM rust:1.88.0-slim-bookworm@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS builder
+ARG TARGETARCH
+ARG CARGO_REGISTRY_CACHE_ID=pdlc-operator-downloads-v1-cargo188
 ARG CARGO_BUILD_JOBS=2
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev unzip curl unzip && rm -rf /var/lib/apt/lists/*
@@ -25,7 +27,7 @@ COPY task-tracker/backend/migration/Cargo.toml migration/Cargo.toml
 COPY task-tracker/backend/server/Cargo.toml server/Cargo.toml
 COPY task-tracker/backend/shared/Cargo.toml shared/Cargo.toml
 # Immutable dependency layer; all product packages are removed before real source COPY.
-RUN --mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,target=/usr/local/cargo/registry,sharing=shared \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked \
     for package in api app cli domain infra migration server shared; do mkdir -p "$package/src"; printf '%s\n' '' > "$package/src/lib.rs"; printf '%s\n' 'fn main() {}' > "$package/src/main.rs"; done \
     && mkdir -p api/src/bin \
     && printf '%s\n' 'fn main() {}' > api/src/bin/gen_openapi.rs \
@@ -43,11 +45,11 @@ COPY task-tracker/backend/api ./api
 COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
-RUN --mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,target=/usr/local/cargo/registry,sharing=shared \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked \
     cargo build --locked --release --bin server \
     && install -m 0755 target/release/server /app/task-tracker-server
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 RUN apt-get update && apt-get install -y ca-certificates libssl3 wget && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r tasktracker && useradd -r -g tasktracker -d /app -s /usr/sbin/nologin tasktracker
 WORKDIR /app
