@@ -932,10 +932,11 @@ mod tests {
                 "#/components/schemas/CreatedDraft"
             );
         }
-        for (name, fields) in [
+        for (name, fields, optional) in [
             (
                 "CreateDraftCommand",
                 vec!["title", "description", "idempotency_key"],
+                vec!["flow"],
             ),
             (
                 "CreatedDraft",
@@ -948,15 +949,25 @@ mod tests {
                     "owner_subject",
                     "stage",
                 ],
+                vec![],
             ),
         ] {
             let object = &schema["components"]["schemas"][name];
             assert_eq!(object["additionalProperties"], false);
             assert_eq!(
                 object["properties"].as_object().unwrap().len(),
-                fields.len()
+                fields.len() + optional.len()
             );
             assert_eq!(object["required"].as_array().unwrap().len(), fields.len());
+            for field in optional {
+                assert!(object["properties"][field].is_object());
+                assert!(
+                    !object["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!(field))
+                );
+            }
             for field in fields {
                 assert!(object["properties"][field].is_object());
                 assert!(
@@ -971,6 +982,48 @@ mod tests {
             schema["components"]["schemas"]["DraftStage"]["enum"],
             serde_json::json!(["Draft"])
         );
+        assert_eq!(
+            schema["components"]["schemas"]["CreateDraftCommand"]["properties"]["flow"],
+            serde_json::json!({"$ref": "#/components/schemas/DraftFlow"})
+        );
+        assert_eq!(
+            schema["components"]["schemas"]["DraftFlow"],
+            serde_json::json!({"type": "string", "enum": ["single-task-v1"]})
+        );
+        let legacy = serde_json::json!({
+            "title": "Draft fixture",
+            "description": "Original input",
+            "idempotency_key": "draft-schema-fixture"
+        });
+        let command: domain::sdlc::CreateDraftCommand =
+            serde_json::from_value(legacy.clone()).unwrap();
+        assert!(command.flow.is_none());
+        assert_eq!(serde_json::to_value(command).unwrap(), legacy);
+        let mut marked = legacy.clone();
+        marked["flow"] = serde_json::json!("single-task-v1");
+        let command: domain::sdlc::CreateDraftCommand =
+            serde_json::from_value(marked.clone()).unwrap();
+        assert!(matches!(
+            command.flow,
+            Some(domain::sdlc::DraftFlow::SingleTaskV1)
+        ));
+        assert_eq!(serde_json::to_value(command).unwrap(), marked);
+        for invalid in [
+            serde_json::Value::Null,
+            serde_json::json!("SingleTaskV1"),
+            serde_json::json!("single-task-v2"),
+        ] {
+            let mut command = legacy.clone();
+            command["flow"] = invalid;
+            assert!(serde_json::from_value::<domain::sdlc::CreateDraftCommand>(command).is_err());
+        }
+        marked["unknown"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<domain::sdlc::CreateDraftCommand>(marked).is_err());
+        for field in ["title", "description", "idempotency_key"] {
+            let mut command = legacy.clone();
+            command.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<domain::sdlc::CreateDraftCommand>(command).is_err());
+        }
     }
 
     #[test]
@@ -1050,20 +1103,93 @@ mod tests {
             schemas["OutboxResponse"]["required"],
             serde_json::json!(["events"])
         );
+        use domain::sdlc_metadata as metadata;
+        macro_rules! resources {
+            ($($kind:literal => $resource:ty),+ $(,)?) => {
+                std::collections::BTreeMap::from([
+                    $(($kind, serde_json::to_value(
+                        <$resource as utoipa::PartialSchema>::schema()
+                    ).unwrap())),+
+                ])
+            };
+        }
+        let mut expected_resources = resources! {
+            "delivery.queued" => metadata::LifecycleResource,
+            "delivery.reconciled" => metadata::LifecycleResource,
+            "delivery.assignment_reserved" => metadata::LifecycleResource,
+            "delivery.lease_renewed" => metadata::LifecycleResource,
+            "delivery.run_bound" => metadata::LifecycleResource,
+            "delivery.result_accepted" => metadata::LifecycleResource,
+            "delivery.proposal_submitted" => metadata::DeliveryProposalResource,
+            "pm.feedback_recorded" => metadata::PmFeedbackResource,
+            "pm.completed" => metadata::PmCompletionResource,
+            "task.created" => metadata::CreatedResource,
+            "task.bound" => metadata::BoundResource,
+            "pm.assigned" => domain::sdlc::MachineFence,
+            "clarification.published" => metadata::QuestionResource<metadata::PublishedQuestionState>,
+            "clarification.cancelled" => metadata::QuestionResource<metadata::CancelledQuestionState>,
+            "clarification.answered" => metadata::AnswerResource,
+            "requirements.published" => metadata::RevisionResource,
+            "requirements.evidence_recorded" => metadata::EvidenceResource,
+            "requirements.confirmed" => metadata::ConfirmationResource,
+            "analysis.intent_created" => domain::sdlc::AnalysisIntent,
+            "analysis.assignment_reserved" => metadata::AnalysisReservationResource,
+            "analysis.result_accepted" => metadata::AnalysisResultResource,
+        };
         let variants = schemas["MetadataEvent"]["oneOf"].as_array().unwrap();
-        assert_eq!(variants.len(), 12);
+        assert_eq!(variants.len(), expected_resources.len());
         for variant in variants {
             assert_eq!(variant["additionalProperties"], false);
             assert_eq!(variant["required"].as_array().unwrap().len(), 7);
+            for field in [
+                "sequence",
+                "event_id",
+                "event_type",
+                "task_id",
+                "created_at",
+                "metadata_sha256",
+                "payload",
+            ] {
+                assert!(
+                    variant["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!(field))
+                );
+            }
             assert_eq!(variant["properties"]["sequence"]["type"], "string");
             assert_eq!(variant["properties"]["created_at"]["format"], "date-time");
             let payload = &variant["properties"]["payload"];
             assert_eq!(payload["additionalProperties"], false);
             assert_eq!(payload["required"].as_array().unwrap().len(), 7);
+            for field in [
+                "tracker_instance_id",
+                "project_id",
+                "root_task_id",
+                "owner_subject",
+                "stage",
+                "current_requirement_revision",
+                "resource",
+            ] {
+                assert!(
+                    payload["required"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&serde_json::json!(field))
+                );
+            }
             let kind = variant["properties"]["event_type"]["enum"][0]
                 .as_str()
                 .unwrap();
-            assert!(kind.contains('.'), "wire event name: {kind}");
+            assert_eq!(
+                variant["properties"]["event_type"]["enum"],
+                serde_json::json!([kind])
+            );
+            let resource = expected_resources
+                .remove(kind)
+                .expect("unknown or duplicate metadata event variant");
+            assert_eq!(payload["properties"]["resource"], resource, "{kind}");
+            assert_eq!(resource["additionalProperties"], false, "{kind}");
             if kind == "clarification.published" || kind == "clarification.cancelled" {
                 let state = &payload["properties"]["resource"]["properties"]["state"];
                 let state = if let Some(reference) = state["$ref"].as_str() {
@@ -1081,6 +1207,10 @@ mod tests {
                 );
             }
         }
+        assert!(
+            expected_resources.is_empty(),
+            "missing metadata event variants"
+        );
         for (name, object) in schemas.as_object().unwrap() {
             if name.starts_with("MetadataPayload_") {
                 assert_eq!(object["additionalProperties"], false, "{name}");

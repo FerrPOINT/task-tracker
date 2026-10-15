@@ -20,6 +20,8 @@ use uuid::Uuid;
 const DELIVERY: &str = "sdlc_pat_attachment-delivery-fixture";
 const READ_ONLY: &str = "sdlc_pat_attachment-readonly-fixture";
 const PM: &str = "sdlc_pat_attachment-pm-fixture";
+const PM_NO_READ: &str = "sdlc_pat_attachment-pm-no-read-fixture";
+const PM_MIXED: &str = "sdlc_pat_attachment-pm-mixed-fixture";
 const SCHEDULER: &str = "sdlc_pat_attachment-scheduler-fixture";
 const REVOKED: &str = "sdlc_pat_attachment-revoked-fixture";
 const UNAVAILABLE: &str = "sdlc_pat_attachment-unavailable-fixture";
@@ -125,6 +127,26 @@ async fn human_probe(
     StatusCode::NO_CONTENT
 }
 
+async fn download_probe(
+    actor: Option<Extension<Principal>>,
+    claims: Option<Extension<api::middleware::auth::UserClaims>>,
+) -> StatusCode {
+    match actor {
+        Some(Extension(actor)) if app::sdlc::has_pm_grant(&actor.scopes) => {
+            assert!(claims.is_none(), "PM must not acquire human UserClaims");
+            assert!(!actor.human_session && !actor.trusted_human);
+            assert_eq!(actor.subject, "pm-fixture");
+            assert_eq!(actor.scopes.len(), 3);
+            assert!(actor.scopes.contains("task-tracker:read"));
+            assert!(actor.scopes.contains("task-tracker:write"));
+            assert!(app::sdlc::pm_grant_task(&actor).unwrap().is_some());
+            assert!(!app::sdlc_lifecycle::has_delivery_grant(&actor.scopes));
+            StatusCode::NO_CONTENT
+        }
+        actor => machine_probe(actor, claims).await,
+    }
+}
+
 fn machine_routes(ctx: Arc<app::AppContext>) -> Router {
     Router::new().nest(
         "/api/v1",
@@ -133,7 +155,7 @@ fn machine_routes(ctx: Arc<app::AppContext>) -> Router {
                 "/issues/{id}/attachments",
                 get(machine_probe).post(machine_probe),
             )
-            .route("/attachments/{id}/download", get(machine_probe))
+            .route("/attachments/{id}/download", get(download_probe))
             .route_layer(from_fn_with_state(
                 ctx,
                 api::middleware::attachment_auth::attachment_auth,
@@ -271,6 +293,8 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
                     DELIVERY => (StatusCode::OK,"delivery-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),grant.clone()]),
                     READ_ONLY => (StatusCode::OK,"delivery-fixture",vec!["task-tracker:read".into(),grant.clone()]),
                     PM => (StatusCode::OK,"pm-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),pm_grant.clone()]),
+                    PM_NO_READ => (StatusCode::OK,"pm-fixture",vec!["task-tracker:write".into(),pm_grant.clone()]),
+                    PM_MIXED => (StatusCode::OK,"pm-fixture",vec!["task-tracker:read".into(),"task-tracker:write".into(),pm_grant.clone(),grant.clone()]),
                     SCHEDULER => (StatusCode::OK,"scheduler-fixture",vec!["task-tracker:read".into()]),
                     UNAVAILABLE => (StatusCode::SERVICE_UNAVAILABLE,"",vec![]),
                     _ => (StatusCode::UNAUTHORIZED,"",vec![]),
@@ -292,7 +316,10 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
             (SCHEDULER,"POST",task_path.as_str(),StatusCode::FORBIDDEN),
             (PM,"GET",task_path.as_str(),StatusCode::FORBIDDEN),
             (PM,"POST",task_path.as_str(),StatusCode::FORBIDDEN),
-            (PM,"GET",download.as_str(),StatusCode::FORBIDDEN),
+            (PM,"GET",download.as_str(),StatusCode::NO_CONTENT),
+            (PM,"HEAD",download.as_str(),StatusCode::FORBIDDEN),
+            (PM_NO_READ,"GET",download.as_str(),StatusCode::FORBIDDEN),
+            (PM_MIXED,"GET",download.as_str(),StatusCode::FORBIDDEN),
             (REVOKED,"GET",download.as_str(),StatusCode::UNAUTHORIZED),
             (UNAVAILABLE,"GET",download.as_str(),StatusCode::SERVICE_UNAVAILABLE),
         ] {
@@ -305,12 +332,16 @@ fn attachment_routes_use_real_central_bridge_and_service_policy_without_machine_
             assert_eq!(request(probe.clone(),method,&foreign,Some(DELIVERY)).await,StatusCode::FORBIDDEN);
         }
         let app=api::router(ctx.clone()).with_state(ctx);
-        // Real mounts/handlers reach the real service. Its memory repository lacks artifact custody.
-        for (method,path,token) in [("POST",task_path.as_str(),DELIVERY),("GET",task_path.as_str(),DELIVERY),("GET",download.as_str(),SCHEDULER)] {
+        // Route admission is not evidence authority: the real service has no saved artifact custody.
+        for (method,path,token) in [("POST",task_path.as_str(),DELIVERY),("GET",task_path.as_str(),DELIVERY),("GET",download.as_str(),SCHEDULER),("GET",download.as_str(),PM)] {
             assert_eq!(request(app.clone(),method,path,Some(token)).await,StatusCode::SERVICE_UNAVAILABLE);
         }
-        assert_eq!(request(app.clone(),"GET","/api/v1/dashboard",Some(DELIVERY)).await,StatusCode::FORBIDDEN);
-        for (method,path,token) in [("POST",task_path.as_str(),PM),("GET",task_path.as_str(),PM),("GET",download.as_str(),PM),
+        for token in [DELIVERY,PM] {
+            assert_eq!(request(app.clone(),"GET","/api/v1/dashboard",Some(token)).await,StatusCode::FORBIDDEN);
+        }
+        for (method,path,token) in [("POST",task_path.as_str(),PM),("GET",task_path.as_str(),PM),
+            ("HEAD",download.as_str(),PM),
+            ("GET",download.as_str(),PM_NO_READ),("GET",download.as_str(),PM_MIXED),
             ("POST",task_path.as_str(),SCHEDULER),("GET",task_path.as_str(),SCHEDULER),
             ("GET",foreign.as_str(),DELIVERY),("POST",foreign.as_str(),DELIVERY)] {
             assert_eq!(request(app.clone(),method,path,Some(token)).await,StatusCode::FORBIDDEN);
