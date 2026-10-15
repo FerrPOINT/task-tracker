@@ -11,8 +11,8 @@ name = "gen-openapi"
 path = "src/bin/gen_openapi.rs"
 
 [dependencies]
-pdlc-telemetry = { path = "../../../services-base/crates/pdlc-telemetry" }
-pdlc-shared = { path = "../../../services-base/crates/pdlc-shared" }
+pdlc-telemetry = { path = "../../../services-base/base-modules/rust/pdlc-telemetry" }
+pdlc-shared = { path = "../../../services-base/base-modules/rust/pdlc-shared" }
 shared = { path = "../shared" }
 domain = { path = "../domain" }
 app = { path = "../app" }
@@ -44,7 +44,7 @@ urlencoding = "2"
 # Fleet auth core: sibling services-base checkout (umbrella compose + CI);
 # reqwest backs the central login proxy.
 reqwest.workspace = true
-pdlc-auth-core = { path = "../../../services-base/crates/pdlc-auth-core" }
+pdlc-auth-core = { path = "../../../services-base/base-modules/rust/pdlc-auth-core" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

@@ -10,7 +10,7 @@ publish = false
 # Central login proxy (fleet auth-server)
 reqwest.workspace = true
 # Fleet auth core: sibling services-base checkout.
-pdlc-auth-core = { path = "../../../services-base/crates/pdlc-auth-core" }
+pdlc-auth-core = { path = "../../../services-base/base-modules/rust/pdlc-auth-core" }
 tokio = { workspace = true, features = ["sync"] }
 shared = { path = "../shared" }
 domain = { path = "../domain" }

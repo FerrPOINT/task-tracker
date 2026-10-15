@@ -10,10 +10,10 @@ WORKDIR /app
 # api/Cargo.toml: pdlc-auth-core = { path = "../../../services-base/..." }
 # /app/api/../../../services-base == /services-base
 COPY services-base/Cargo.toml /services-base/Cargo.toml
-COPY services-base/crates/pdlc-telemetry /services-base/crates/pdlc-telemetry
-COPY services-base/crates/pdlc-auth-core /services-base/crates/pdlc-auth-core
-COPY services-base/crates/pdlc-cli-core /services-base/crates/pdlc-cli-core
-COPY services-base/crates/pdlc-shared /services-base/crates/pdlc-shared
+COPY services-base/base-modules/rust/pdlc-telemetry /services-base/base-modules/rust/pdlc-telemetry
+COPY services-base/base-modules/rust/pdlc-auth-core /services-base/base-modules/rust/pdlc-auth-core
+COPY services-base/base-modules/rust/pdlc-cli-core /services-base/base-modules/rust/pdlc-cli-core
+COPY services-base/base-modules/rust/pdlc-shared /services-base/base-modules/rust/pdlc-shared
 COPY task-tracker/backend/Cargo.toml task-tracker/backend/Cargo.lock* ./
 COPY task-tracker/backend/shared ./shared
 COPY task-tracker/backend/domain ./domain
