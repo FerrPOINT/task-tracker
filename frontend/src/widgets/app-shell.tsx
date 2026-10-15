@@ -1,23 +1,27 @@
-import { useProjectDisclosures } from '@sdlc/ui/lib'
+import {
+  NavigationDrawer,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@pdlc/ui/ui'
+import { useProjectDisclosures } from '@pdlc/ui/lib'
 import {
   ProjectAvatar,
   ProjectNavigationGroup,
   SidebarNavigationGroup,
   useSidebarDisclosure,
-} from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
 import { ProjectActions } from './project-actions'
 import {
   NamespaceShellContext,
   useNamespaceCatalog,
   useNamespaceContext,
 } from './namespace-context'
-import { useEffect, useState } from 'react'
-import { SidebarItem } from '@sdlc/ui/ui'
+import { useRef, useState } from 'react'
+import { SidebarItem } from '@pdlc/ui/ui'
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
-import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
+import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
 import { useLocation, Outlet } from 'react-router'
-import * as DialogPrimitive from '@radix-ui/react-dialog'
-import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import {
   LayoutDashboard,
   FolderKanban,
@@ -28,8 +32,6 @@ import {
   User,
   Plus,
   ChevronDown,
-  Menu,
-  X,
   LogOut,
   BarChart3,
   ShieldCheck,
@@ -38,9 +40,9 @@ import {
   Check,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button, PageFrame, PlatformMark } from '@sdlc/ui/ui'
-import { ThemeMenuItems } from '@sdlc/ui/ui'
-import { PlatformHeader } from '@sdlc/ui/ui'
+import { Button, PageFrame, PlatformMark } from '@pdlc/ui/ui'
+import { ThemeMenuItems } from '@pdlc/ui/ui'
+import { PlatformHeader } from '@pdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
   useCurrentUser,
@@ -56,7 +58,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
 
 const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
 const issuePattern = /^\/issues\/([^/]+)$/
@@ -229,21 +231,13 @@ export function AppShell() {
     : routeProjectKey
   const projectDisclosures = useProjectDisclosures(collapsedProjectsStorageKey)
   const collapsedProjects = new Set(projectDisclosures.collapsed)
+  const mainRef = useRef<HTMLElement>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () =>
       typeof window !== 'undefined' &&
       window.localStorage.getItem('tt-sidebar-collapsed') === 'true',
   )
-  useEffect(() => {
-    if (!window.matchMedia) return
-    const desktop = window.matchMedia('(min-width: 768px)')
-    const closeOnDesktop = () => {
-      if (desktop.matches) setMobileMenuOpen(false)
-    }
-    desktop.addEventListener('change', closeOnDesktop)
-    return () => desktop.removeEventListener('change', closeOnDesktop)
-  }, [])
   const { data: projects = [] } = useProjects()
   const currentProject = projects.find((project) => project.key === projectKey)
   const contexts =
@@ -339,82 +333,52 @@ export function AppShell() {
         currentServiceKey="task-tracker"
         leading={
           <>
-            <DialogPrimitive.Root open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-              <DialogPrimitive.Trigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-11 w-11 md:hidden"
-                  aria-label={t('navigation.openMenu')}
+            <NavigationDrawer
+              title={t('app.name')}
+              open={mobileMenuOpen}
+              onOpenChange={setMobileMenuOpen}
+              desktopFocusRef={mainRef}
+            >
+              <Button asChild className="mb-3 min-h-11 w-full gap-2">
+                <Link
+                  to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
+                  onClick={closeMobileMenu}
+                  aria-label={t('navigation.create')}
                 >
-                  <Menu className="h-[18px] w-[18px]" aria-hidden="true" />
-                </Button>
-              </DialogPrimitive.Trigger>
-              <DialogPrimitive.Portal>
-                <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-black/50 md:hidden" />
-                <DialogPrimitive.Content
-                  aria-describedby={undefined}
-                  className="fixed inset-y-0 left-0 z-[61] h-dvh w-[calc(100vw-2rem)] max-w-72 overflow-y-auto border-r border-border bg-surface p-3 shadow-lg focus:outline-none md:hidden"
-                >
-                  <div className="mb-3 flex min-h-11 items-center justify-between gap-2 border-b border-border pb-2">
-                    <DialogPrimitive.Title className="text-sm font-semibold">
-                      {t('app.name')}
-                    </DialogPrimitive.Title>
-                    <DialogPrimitive.Close asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-11 w-11"
-                        aria-label={t('navigation.closeMenu')}
-                      >
-                        <X className="h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </DialogPrimitive.Close>
-                  </div>
-                  <Button asChild className="mb-3 min-h-11 w-full gap-2">
-                    <Link
-                      to={
-                        projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'
-                      }
-                      onClick={closeMobileMenu}
-                      aria-label={t('navigation.create')}
-                    >
-                      <Plus className="h-4 w-4" aria-hidden="true" />
-                      {t('navigation.create')}
-                    </Link>
-                  </Button>
-                  <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
-                    {navItems.map((item) => (
-                      <SidebarLink
-                        key={item.to}
-                        to={item.to}
-                        icon={item.icon}
-                        label={t(item.labelKey)}
-                        active={isActive(item.to)}
-                        onClick={closeMobileMenu}
-                      />
-                    ))}
-                  </nav>
-                  <ProjectNavigation
-                    groups={projectGroups}
-                    catalogStatus={
-                      namespaceEnabled
-                        ? catalog.isPending
-                          ? 'loading'
-                          : catalog.isError
-                            ? 'error'
-                            : undefined
-                        : undefined
-                    }
-                    collapsed={collapsedProjects}
-                    onToggle={toggleProject}
-                    isActive={isActive}
-                    onNavigate={closeMobileMenu}
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  {t('navigation.create')}
+                </Link>
+              </Button>
+              <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
+                {navItems.map((item) => (
+                  <SidebarLink
+                    key={item.to}
+                    to={item.to}
+                    icon={item.icon}
+                    label={t(item.labelKey)}
+                    active={isActive(item.to)}
+                    onClick={closeMobileMenu}
                   />
-                  {utilityNavigation(false, closeMobileMenu)}
-                </DialogPrimitive.Content>
-              </DialogPrimitive.Portal>
-            </DialogPrimitive.Root>
+                ))}
+              </nav>
+              <ProjectNavigation
+                groups={projectGroups}
+                catalogStatus={
+                  namespaceEnabled
+                    ? catalog.isPending
+                      ? 'loading'
+                      : catalog.isError
+                        ? 'error'
+                        : undefined
+                    : undefined
+                }
+                collapsed={collapsedProjects}
+                onToggle={toggleProject}
+                isActive={isActive}
+                onNavigate={closeMobileMenu}
+              />
+              {utilityNavigation(false, closeMobileMenu)}
+            </NavigationDrawer>
             <Link
               to="/"
               className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:-ml-1.5 md:flex"
@@ -495,10 +459,10 @@ export function AppShell() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
-                <DropdownMenuPrimitive.Group className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                  <DropdownMenuPrimitive.Label className="text-sm font-semibold">
+                <DropdownMenuGroup className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                  <DropdownMenuLabel className="text-sm font-semibold">
                     {t('notifications.title')}
-                  </DropdownMenuPrimitive.Label>
+                  </DropdownMenuLabel>
                   <DropdownMenuItem
                     className="min-h-11 px-2 text-xs"
                     onSelect={() => markAllNotificationsRead.mutate()}
@@ -506,8 +470,8 @@ export function AppShell() {
                   >
                     {t('notifications.markAllRead')}
                   </DropdownMenuItem>
-                </DropdownMenuPrimitive.Group>
-                <DropdownMenuPrimitive.Group className="max-h-96 overflow-y-auto p-1">
+                </DropdownMenuGroup>
+                <DropdownMenuGroup className="max-h-96 overflow-y-auto p-1">
                   {notifications.slice(0, 10).map((notification) => {
                     const content = (
                       <div className="min-w-0">
@@ -522,10 +486,7 @@ export function AppShell() {
                       </div>
                     )
                     return (
-                      <DropdownMenuPrimitive.Group
-                        key={notification.id}
-                        className="flex items-start gap-1"
-                      >
+                      <DropdownMenuGroup key={notification.id} className="flex items-start gap-1">
                         {notification.action_url ? (
                           <DropdownMenuItem
                             asChild
@@ -562,16 +523,16 @@ export function AppShell() {
                             <Check className="h-4 w-4" aria-hidden="true" />
                           </DropdownMenuItem>
                         )}
-                      </DropdownMenuPrimitive.Group>
+                      </DropdownMenuGroup>
                     )
                   })}
                   {notifications.length === 0 && (
-                    <DropdownMenuPrimitive.Label className="px-3 py-6 text-center text-sm text-text-muted">
+                    <DropdownMenuLabel className="px-3 py-6 text-center text-sm text-text-muted">
                       {t('notifications.empty')}
-                    </DropdownMenuPrimitive.Label>
+                    </DropdownMenuLabel>
                   )}
-                </DropdownMenuPrimitive.Group>
-                <DropdownMenuPrimitive.Separator className="h-px bg-border" />
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator className="h-px bg-border" />
                 <DropdownMenuItem asChild className="m-1 justify-center text-accent">
                   <Link to="/notifications">{t('notifications.viewAll')}</Link>
                 </DropdownMenuItem>
@@ -680,7 +641,7 @@ export function AppShell() {
           {utilityNavigation(sidebarCollapsed)}
         </aside>
 
-        <main className="shell-main flex-1">
+        <main ref={mainRef} tabIndex={-1} className="shell-main flex-1">
           <PageFrame mode={pageLayout}>
             {namespace.malformed ? (
               <p role="alert" className="text-danger">

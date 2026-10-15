@@ -141,7 +141,7 @@ impl OidcService {
             .as_str()
             .ok_or(AppError::Unauthorized)?;
         let jwks_uri = std::env::var("TT_AUTH__CENTRAL_JWKS_URI").unwrap_or(discovery.jwks_uri);
-        let jwks = sdlc_auth_core::JwksCache::connect(jwks_uri)
+        let jwks = pdlc_auth_core::JwksCache::connect(jwks_uri)
             .await
             .map_err(|_| AppError::Unauthorized)?;
         let key = jwks

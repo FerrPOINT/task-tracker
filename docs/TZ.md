@@ -1,5 +1,11 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+При пустом каталоге пользователь может создать первый проект с dashboard или
+прямо из формы задачи. Отказ создания сохраняет оба черновика; успешное создание
+в форме задачи выбирает проект без ухода со страницы и без отправки задачи.
+Повторное чтение каталога обновляет данные проекта; недоступный проект блокирует
+создание задачи, сохраняя введённый текст.
+
 PM producer writes close the reserved-execution write boundary through exact
 machine scope/fence plus the Tracker execution lease; they do not activate
 Analysis dispatch or allow PM to self-certify readiness.

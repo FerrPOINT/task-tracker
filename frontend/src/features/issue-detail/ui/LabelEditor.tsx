@@ -8,8 +8,8 @@ import {
   useDetachLabel,
   useCreateLabel,
 } from '@/shared/api/hooks'
-import { Button } from '@sdlc/ui/ui'
-import { Input } from '@sdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { Input } from '@pdlc/ui/ui'
 import { toast } from 'sonner'
 
 const PALETTE = [

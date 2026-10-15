@@ -1,7 +1,7 @@
-import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectAvatar } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
-import { withNamespaceLocation } from '@sdlc/ui/lib'
+import { withNamespaceLocation } from '@pdlc/ui/lib'
 import { useNamespaceContext } from '@/widgets/namespace-context'
 export function NamespacePage() {
   const { ref, malformed, query } = useNamespaceContext()

@@ -5,7 +5,7 @@ import { MemoryRouter, Routes, Route } from 'react-router'
 import { toast } from 'sonner'
 
 import { ProjectCustomFieldsPage } from './'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 
 const mockCreate = vi.hoisted(() => vi.fn())
 const mockDelete = vi.hoisted(() => vi.fn())

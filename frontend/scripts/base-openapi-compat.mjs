@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 const result = spawnSync(
   process.execPath,
   [
-    resolve('../../services-base/frontend/scripts/sdlc-openapi-compat.mjs'),
+    resolve('../../services-base/base-modules/ui/scripts/pdlc-openapi-compat.mjs'),
     '--base-ref',
     'origin/main',
   ],

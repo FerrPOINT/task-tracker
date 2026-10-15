@@ -1,12 +1,12 @@
 import { useLocation, useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
-import { NamespacePicker } from '@sdlc/ui/ui'
+import { NamespacePicker } from '@pdlc/ui/ui'
 import {
   projectNavigationScope,
   projectIdentity,
   sortProjectNavigation,
   withNamespaceLocation,
-} from '@sdlc/ui/lib'
+} from '@pdlc/ui/lib'
 import type { components } from '@/api/generated'
 import { apiBaseUrl } from '@/api/client'
 import { useAuthStore } from '@/shared/auth/store'

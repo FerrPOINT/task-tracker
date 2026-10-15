@@ -1,18 +1,19 @@
+import { platformEnv } from '@pdlc/ui/environment'
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 
-test.skip(process.env.SDLC_LIVE_QA !== '1', 'Requires the running local SDLC fleet')
+test.skip(platformEnv('LIVE_QA') !== '1', 'Requires the running local SDLC fleet')
 test.skip(({ browserName }) => browserName !== 'chromium', 'Single browser live smoke')
 test.use({ trace: 'off' })
 
 const account =
-  process.env.SDLC_LIVE_QA === '1'
+  platformEnv('LIVE_QA') === '1'
     ? (JSON.parse(
         readFileSync(
-          process.env.SDLC_QA_SESSION_FILE ??
+          platformEnv('QA_SESSION_FILE') ??
             fileURLToPath(
               new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
             ),
@@ -52,12 +53,9 @@ async function docker(method: string, path: string): Promise<unknown> {
 }
 
 test('six product APIs fail closed during an isolated Central Auth outage', async ({ request }) => {
-  test.skip(
-    !process.env.SDLC_ISOLATED_QA_PROJECT,
-    'Requires an explicitly isolated Compose project',
-  )
+  test.skip(!platformEnv('ISOLATED_QA_PROJECT'), 'Requires an explicitly isolated Compose project')
   test.setTimeout(180_000)
-  const project = process.env.SDLC_ISOLATED_QA_PROJECT!
+  const project = platformEnv('ISOLATED_QA_PROJECT')!
   expect(project).toMatch(/^sdlc-(clean-install-qa|platform-smoke-[a-zA-Z0-9-]+)$/)
   const filters = encodeURIComponent(
     JSON.stringify({

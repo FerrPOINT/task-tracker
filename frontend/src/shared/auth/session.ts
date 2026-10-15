@@ -1,4 +1,4 @@
-import { applySsoSession, restoreSso, type SsoSession } from '@sdlc/ui/sso'
+import { applySsoSession, restoreSso, type SsoSession } from '@pdlc/ui/sso'
 import { apiBaseUrl } from '@/api/client'
 import { ssoConfig, useAuthStore } from './store'
 

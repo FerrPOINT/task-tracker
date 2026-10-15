@@ -1,17 +1,19 @@
-import { ProjectPicker } from '@sdlc/ui/ui'
+import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
+import { ProjectPicker, EmptyState } from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { getProject } from '@/api/project'
-import { useSessionCommand } from '@sdlc/ui/lib'
+import { useSessionCommand } from '@pdlc/ui/lib'
 import { useNamespaceContext } from '@/widgets/namespace-context'
 import type { CreateIssueInput } from '@/api/issue-create'
+import { IssueCreationValidationError } from '@/api/issue-create'
 import { useEffect, useMemo, useState } from 'react'
 import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@sdlc/ui/ui'
-import { ErrorState } from '@sdlc/ui/ui'
-import { Input } from '@sdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { ErrorState } from '@pdlc/ui/ui'
+import { Input } from '@pdlc/ui/ui'
 import {
   useCreateIssue,
   useIssueTypes,
@@ -150,6 +152,7 @@ export function IssueCreatePage() {
         .map((field) => [field.id, customFieldValues[field.id]] as const)
         .filter(([, value]) => !isEmptyCustomFieldValue(value)),
     )
+    const firstAttempt = pendingRef.current === null
     pendingRef.current ??= {
       project_key: selectedProjectKey,
       issue_type: selectedType.toLowerCase(),
@@ -160,10 +163,20 @@ export function IssueCreatePage() {
       custom_fields,
       operation_id: crypto.randomUUID(),
     }
-    mutate(pendingRef.current, {
+    const command = pendingRef.current
+    mutate(command, {
       onSuccess: () => {
         pendingRef.current = null
         navigate(`/projects/${selectedProjectKey}/backlog`)
+      },
+      onError: (error) => {
+        if (
+          firstAttempt &&
+          error instanceof IssueCreationValidationError &&
+          pendingRef.current?.operation_id === command.operation_id
+        ) {
+          pendingRef.current = null
+        }
       },
     })
   }
@@ -201,7 +214,18 @@ export function IssueCreatePage() {
           />
         )}
         {!projectsQuery.isLoading && !projectsQuery.error && projects.length === 0 && (
-          <ErrorState message={t('issueCreate.noProjects')} />
+          <EmptyState
+            message={t('issueCreate.noProjects')}
+            action={
+              !namespace.ref && !namespace.malformed ? (
+                <CreateProjectAction
+                  onCreated={(project) => {
+                    updateProjectKey(project.key)
+                  }}
+                />
+              ) : undefined
+            }
+          />
         )}
         {!projectsQuery.isLoading && !projectsQuery.error && project_key && !currentProject && (
           <ErrorState message={t('issueCreate.projectUnavailable')} />

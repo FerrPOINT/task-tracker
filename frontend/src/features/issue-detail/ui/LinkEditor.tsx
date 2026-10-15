@@ -1,12 +1,12 @@
-import { ResourceList, ResourceListRow } from '@sdlc/ui/ui'
+import { ResourceList, ResourceListRow } from '@pdlc/ui/ui'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useIssueLinks, useCreateIssueLink, useDeleteIssueLink } from '@/shared/api/hooks'
-import { Button } from '@sdlc/ui/ui'
-import { Input } from '@sdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { Input } from '@pdlc/ui/ui'
 import { toast } from 'sonner'
 
 const LINK_TYPES = ['blocks', 'duplicates', 'relates'] as const

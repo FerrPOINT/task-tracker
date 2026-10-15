@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
 import { IssueEngagementPanel } from './IssueEngagementPanel'
 
@@ -107,6 +107,110 @@ describe('IssueEngagementPanel', () => {
 
     expect(mockVote).toHaveBeenCalledTimes(1)
     expect(mockWatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not turn a failed vote read into zero or allow a write before readback', () => {
+    const refetch = vi.fn()
+    mockVotes.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('private upstream failure'),
+      refetch,
+    })
+    const view = renderPanel()
+
+    expect(screen.queryByText('0 total')).not.toBeInTheDocument()
+    expect(screen.getByText('Unable to load votes. Try again.')).toBeInTheDocument()
+    expect(screen.queryByText('private upstream failure')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Vote' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stop watching' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+    expect(mockVote).not.toHaveBeenCalled()
+
+    mockVotes.mockReturnValue({
+      data: { count: 1, votes: [{ user_id: 'user-current' }] },
+      isLoading: false,
+      isError: false,
+      refetch,
+    })
+    view.rerender(
+      wrapper(
+        <IssueEngagementPanel issueId="issue-1" projectKey="TT" currentUserId="user-current" />,
+      ),
+    )
+    expect(screen.getByText('1 total')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove vote' })).toBeEnabled()
+  })
+
+  it('does not turn a failed watcher read into an empty list or allow a write before readback', () => {
+    const refetch = vi.fn()
+    mockWatchers.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error('private upstream failure'),
+      refetch,
+    })
+    const view = renderPanel()
+
+    expect(screen.queryByText(i18n.t('engagement.noWatchers'))).not.toBeInTheDocument()
+    expect(screen.getByText('Unable to load watchers. Try again.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Watch' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Remove vote' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+    expect(mockWatch).not.toHaveBeenCalled()
+
+    mockWatchers.mockReturnValue({ data: [], isLoading: false, isError: false, refetch })
+    view.rerender(
+      wrapper(
+        <IssueEngagementPanel issueId="issue-1" projectKey="TT" currentUserId="user-current" />,
+      ),
+    )
+    expect(screen.getByText(i18n.t('engagement.noWatchers'))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Watch' })).toBeEnabled()
+  })
+
+  it('does not allow vote or watch writes before the initial reads finish', () => {
+    mockVotes.mockReturnValue({ data: undefined, isLoading: true, isPending: true, isError: false })
+    mockWatchers.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isPending: true,
+      isError: false,
+    })
+    renderPanel()
+
+    expect(screen.getByRole('button', { name: 'Vote' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Watch' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Vote' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Watch' }))
+    expect(mockVote).not.toHaveBeenCalled()
+    expect(mockWatch).not.toHaveBeenCalled()
+  })
+
+  it('does not treat an initial offline-paused read as confirmed empty state', () => {
+    mockVotes.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isPending: true,
+      isError: false,
+    })
+    mockWatchers.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isPending: true,
+      isError: false,
+    })
+    renderPanel()
+
+    expect(screen.queryByText('0 total')).not.toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('engagement.noWatchers'))).not.toBeInTheDocument()
+    expect(screen.getAllByText(i18n.t('common.loading'))).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Vote' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Watch' })).toBeDisabled()
   })
 
   it('prevents voting on own issue but keeps watching available', () => {

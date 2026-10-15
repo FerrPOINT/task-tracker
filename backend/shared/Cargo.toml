@@ -8,11 +8,11 @@ publish = false
 
 [features]
 default = ["runtime"]
-runtime = ["sdlc-shared/http", "dep:config"]
+runtime = ["pdlc-shared/http", "dep:config"]
 
 [dependencies]
 # Fleet shared primitives: sibling services-base checkout.
-sdlc-shared = { path = "../../../services-base/crates/sdlc-shared", default-features = false, features = ["openapi"] }
+pdlc-shared = { path = "../../../services-base/crates/pdlc-shared", default-features = false, features = ["openapi"] }
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

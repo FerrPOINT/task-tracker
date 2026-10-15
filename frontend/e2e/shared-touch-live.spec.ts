@@ -1,16 +1,17 @@
+import { platformEnv } from '@pdlc/ui/environment'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
 import { signInAt } from './qa-login'
 
-test.skip(process.env.SDLC_LIVE_QA !== '1', 'Requires the running local SDLC fleet')
+test.skip(platformEnv('LIVE_QA') !== '1', 'Requires the running local SDLC fleet')
 test.skip(({ browserName }) => browserName !== 'chromium', 'Single browser live smoke')
 
 const account =
-  process.env.SDLC_LIVE_QA === '1'
+  platformEnv('LIVE_QA') === '1'
     ? (JSON.parse(
         readFileSync(
-          process.env.SDLC_QA_SESSION_FILE ??
+          platformEnv('QA_SESSION_FILE') ??
             fileURLToPath(
               new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
             ),

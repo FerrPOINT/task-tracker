@@ -1,5 +1,10 @@
 # Архитектура Task Tracker
 
+Inline-создание проекта записывает подтверждённый ответ в query cache первой
+страницы каталога и инвалидирует чтение. Форма задачи не держит отдельную
+постоянную копию проекта: свежий серверный каталог обновляет имя и доступность.
+Namespace остаётся авторитетным для явно привязанного проектного контекста.
+
 Reserved PM producer commands use Tracker reservation/lease recheck and atomic
 command/history write. No Fleet admission HTTP call is made on the producer
 path. [PM producer lease](PM_NATIVE_ADMISSION.md).
@@ -390,6 +395,14 @@ unknown POST блокирует retry до fresh context readback. Нет ред
 
 ## 9. API, документация и тестирование
 
+Форма создания задачи сохраняет исходную команду и Idempotency-Key в session
+journal до успешного ответа. Только первый структурированный отказ валидации
+(`400`/`422`, `VALIDATION_ERROR`) освобождает команду, чтобы исправленные поля
+отправлялись с новым ключом. После неопределённого исхода или восстановления
+journal последующий отказ не доказывает отсутствие прежней записи: повтор
+сохраняет исходный payload/key. Автоматический retry POST отключён. HTTP-контракт
+и схема БД не меняются.
+
 - OpenAPI-схема — `openapi/openapi.json`
 - Детали REST API — `docs/API.md`
 - UI/UX — `docs/UI_UX.md`
@@ -419,7 +432,7 @@ Git hooks через `lefthook`:
 
 ## 12. Общая Шапка Платформы
 
-`AppShell` использует `PlatformHeader` из `@sdlc/ui`: общий компонент владеет
+`AppShell` использует `PlatformHeader` из `@pdlc/ui`: общий компонент владеет
 геометрией, порядком leading/services/context/actions и единственным переключателем
 сервисов. Снимок file-зависимости и lock обновляются вместе с внедрением Base UI;
 наличие экспортов в sibling source не заменяет проверку установленного пакета.

@@ -1,7 +1,7 @@
 import createClient from 'openapi-fetch'
 import type { paths } from './generated'
 import { useAuthStore } from '@/shared/auth/store'
-import { getPlatformProduct } from '@sdlc/ui/platform'
+import { getPlatformProduct } from '@pdlc/ui/platform'
 
 export const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '') ?? ''
 

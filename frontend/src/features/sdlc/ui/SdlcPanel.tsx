@@ -1,16 +1,17 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, Check, RefreshCw } from 'lucide-react'
 import {
   Button,
+  DescriptionItem,
   EmptyState,
   ErrorState,
   Label,
   LoadingState,
   ResourceList,
   ResourceListRow,
-} from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
 import {
   confirmRequirements,
   routingRoles,
@@ -48,15 +49,6 @@ const eventLabels = {
   'analysis.assignment_reserved': 'assignmentPrepared',
   'analysis.result_accepted': 'analysisResultAccepted',
 } satisfies Record<MetadataEvent['event_type'], string>
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid min-w-0 gap-1 py-1 sm:grid-cols-[10rem_minmax(0,1fr)]">
-      <dt className="text-text-muted">{label}</dt>
-      <dd className="min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{children}</dd>
-    </div>
-  )
-}
 
 export function SdlcPanel({ issueId }: { issueId: string }) {
   const { t } = useTranslation()
@@ -201,16 +193,26 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
         <ErrorState message={errorMessage(snapshot.error)} onRetry={() => void refresh()} />
       )}
       <dl className="mb-4 min-w-0">
-        <Field label={t('sdlc.stage')}>{context.stage}</Field>
-        <Field label={t('sdlc.reason')}>
+        <DescriptionItem layout="inline" label={t('sdlc.stage')}>
+          {context.stage}
+        </DescriptionItem>
+        <DescriptionItem layout="inline" label={t('sdlc.reason')}>
           {context.waiting_reason
             ? t(`sdlc.reasons.${context.waiting_reason}`, { defaultValue: context.waiting_reason })
             : t('sdlc.noReason')}
-        </Field>
-        <Field label={t('sdlc.instance')}>{context.tracker_instance_id}</Field>
-        <Field label={t('sdlc.project')}>{context.project_id}</Field>
-        <Field label={t('sdlc.root')}>{context.root_task_id}</Field>
-        <Field label={t('sdlc.owner')}>{context.owner_subject}</Field>
+        </DescriptionItem>
+        <DescriptionItem layout="inline" label={t('sdlc.instance')}>
+          {context.tracker_instance_id}
+        </DescriptionItem>
+        <DescriptionItem layout="inline" label={t('sdlc.project')}>
+          {context.project_id}
+        </DescriptionItem>
+        <DescriptionItem layout="inline" label={t('sdlc.root')}>
+          {context.root_task_id}
+        </DescriptionItem>
+        <DescriptionItem layout="inline" label={t('sdlc.owner')}>
+          {context.owner_subject}
+        </DescriptionItem>
       </dl>
 
       {context.stage === 'Analysis' &&
@@ -221,22 +223,32 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               {intent.stage} / {intent.status} · {t('sdlc.awaitingAdmission')}
             </p>
             <dl>
-              <Field label={t('sdlc.intentRef')}>{intent.intent_id}</Field>
-              <Field label={t('sdlc.confirmationRef')}>{intent.confirmation_id}</Field>
-              <Field label={t('sdlc.revision')}>{intent.requirement_revision}</Field>
-              <Field label="SHA-256">{intent.content_hash}</Field>
-              <Field label={t('sdlc.operationKey')}>{intent.operation_key}</Field>
-              <Field label={t('sdlc.routing')}>
+              <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>
+                {intent.intent_id}
+              </DescriptionItem>
+              <DescriptionItem layout="inline" label={t('sdlc.confirmationRef')}>
+                {intent.confirmation_id}
+              </DescriptionItem>
+              <DescriptionItem layout="inline" label={t('sdlc.revision')}>
+                {intent.requirement_revision}
+              </DescriptionItem>
+              <DescriptionItem layout="inline" label="SHA-256">
+                {intent.content_hash}
+              </DescriptionItem>
+              <DescriptionItem layout="inline" label={t('sdlc.operationKey')}>
+                {intent.operation_key}
+              </DescriptionItem>
+              <DescriptionItem layout="inline" label={t('sdlc.routing')}>
                 {intent.role} / {intent.workflow} / {intent.mode} / {intent.scope}
-              </Field>
-              <Field label={t('sdlc.cycleAttempt')}>
+              </DescriptionItem>
+              <DescriptionItem layout="inline" label={t('sdlc.cycleAttempt')}>
                 {intent.cycle} / {intent.attempt}
-              </Field>
-              <Field label={t('sdlc.createdAt')}>
+              </DescriptionItem>
+              <DescriptionItem layout="inline" label={t('sdlc.createdAt')}>
                 <time dateTime={intent.created_at}>
                   {new Date(intent.created_at).toLocaleString()}
                 </time>
-              </Field>
+              </DescriptionItem>
             </dl>
           </section>
         ) : (
@@ -249,7 +261,9 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
             {t('sdlc.requirements')} · {t('sdlc.revision')} {requirements.revision}
           </h3>
           <dl className="mb-4">
-            <Field label="SHA-256">{requirements.content_hash}</Field>
+            <DescriptionItem layout="inline" label="SHA-256">
+              {requirements.content_hash}
+            </DescriptionItem>
           </dl>
           {documentFields.map((field) => (
             <div key={field} className="mb-4 min-w-0">
@@ -306,12 +320,16 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                               {t('sdlc.publication.preparation')}
                             </p>
                             <dl className="mb-2">
-                              <Field label={t('sdlc.revision')}>{displayedPolicy.version}</Field>
+                              <DescriptionItem layout="inline" label={t('sdlc.revision')}>
+                                {displayedPolicy.version}
+                              </DescriptionItem>
                             </dl>
                             <details className="mb-3 min-w-0">
                               <summary>{t('sdlc.publication.references')}</summary>
                               <dl>
-                                <Field label="SHA-256">{displayedPolicy.routing_hash}</Field>
+                                <DescriptionItem layout="inline" label="SHA-256">
+                                  {displayedPolicy.routing_hash}
+                                </DescriptionItem>
                               </dl>
                               {Object.values(routingRoles).map((role) => {
                                 const route = displayedPolicy.routes[role]
@@ -321,23 +339,38 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                       {t(`sdlc.publication.roles.${role}`)}
                                     </h5>
                                     <dl>
-                                      <Field label={t('sdlc.publication.agent')}>
+                                      <DescriptionItem
+                                        layout="inline"
+                                        label={t('sdlc.publication.agent')}
+                                      >
                                         {route.agent_id}
-                                      </Field>
-                                      <Field label={t('sdlc.publication.effectiveRevision')}>
+                                      </DescriptionItem>
+                                      <DescriptionItem
+                                        layout="inline"
+                                        label={t('sdlc.publication.effectiveRevision')}
+                                      >
                                         {route.fleet_config_revision}
-                                      </Field>
-                                      <Field label={t('sdlc.publication.package')}>
+                                      </DescriptionItem>
+                                      <DescriptionItem
+                                        layout="inline"
+                                        label={t('sdlc.publication.package')}
+                                      >
                                         {route.package_commit} / {route.package_manifest_sha256}
-                                      </Field>
-                                      <Field label={t('sdlc.publication.workflow')}>
+                                      </DescriptionItem>
+                                      <DescriptionItem
+                                        layout="inline"
+                                        label={t('sdlc.publication.workflow')}
+                                      >
                                         {route.namespace_id} / {route.namespace_name} /{' '}
                                         {route.workflow_id} / {route.workflow_key}
-                                      </Field>
-                                      <Field label={t('sdlc.publication.profile')}>
+                                      </DescriptionItem>
+                                      <DescriptionItem
+                                        layout="inline"
+                                        label={t('sdlc.publication.profile')}
+                                      >
                                         {route.profile} / {route.workflow_catalog_version} /{' '}
                                         {route.workflow_catalog_sha256}
-                                      </Field>
+                                      </DescriptionItem>
                                     </dl>
                                   </section>
                                 )
@@ -432,19 +465,23 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                         </p>
                         {event.event_type === 'analysis.intent_created' && (
                           <dl>
-                            <Field label={t('sdlc.intentRef')}>
+                            <DescriptionItem layout="inline" label={t('sdlc.intentRef')}>
                               {event.payload.resource.intent_id}
-                            </Field>
-                            <Field label={t('sdlc.revision')}>
+                            </DescriptionItem>
+                            <DescriptionItem layout="inline" label={t('sdlc.revision')}>
                               {event.payload.resource.requirement_revision}
-                            </Field>
+                            </DescriptionItem>
                           </dl>
                         )}
                         <details className="min-w-0 text-text-muted">
                           <summary>{t('sdlc.eventPin')}</summary>
                           <dl>
-                            <Field label={t('sdlc.eventRef')}>{event.event_id}</Field>
-                            <Field label="SHA-256">{event.metadata_sha256}</Field>
+                            <DescriptionItem layout="inline" label={t('sdlc.eventRef')}>
+                              {event.event_id}
+                            </DescriptionItem>
+                            <DescriptionItem layout="inline" label="SHA-256">
+                              {event.metadata_sha256}
+                            </DescriptionItem>
                           </dl>
                         </details>
                       </li>

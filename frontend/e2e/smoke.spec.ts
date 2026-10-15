@@ -1,6 +1,7 @@
 import { generateKeyPairSync, sign } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import nodePath from 'node:path'
+import { createServer } from 'node:http'
 import { test, expect, type Page, type Route } from '@playwright/test'
 
 const mockUser = {
@@ -9,6 +10,7 @@ const mockUser = {
   name: 'Demo Project',
   issueId: 'issue-1',
 }
+const namespaceEnabled = process.env.VITE_NAMESPACE_ENABLED === 'true'
 
 const markdownComment =
   '# Итоги\n\n**Результат**\n\nПервая строка\nВторая строка\n\n- Первый\n- Второй\n\n' +
@@ -32,18 +34,27 @@ async function installSsoMocks(page: Page) {
   let issuer = 'http://localhost:7701'
   let nonce = ''
 
+  const authorizationServer = createServer((request, response) => {
+    const url = new URL(request.url!, issuer)
+    const callback = new URL(url.searchParams.get('redirect_uri')!)
+    callback.searchParams.set('code', 'qa-code')
+    callback.searchParams.set('state', url.searchParams.get('state') ?? '')
+    response.writeHead(302, { location: callback.href })
+    response.end()
+  })
+  await new Promise<void>((resolve, reject) => {
+    authorizationServer.once('error', reject)
+    authorizationServer.listen(0, '127.0.0.1', resolve)
+  })
+  const address = authorizationServer.address()
+  if (!address || typeof address === 'string') throw new Error('Missing SSO fixture address')
+  page.once('close', () => authorizationServer.close())
+
   await page.route('**/oidc/authorize**', async (route) => {
     const url = new URL(route.request().url())
     issuer = url.origin
     nonce = url.searchParams.get('nonce') ?? ''
-    const callback = new URL(url.searchParams.get('redirect_uri') ?? '/')
-    callback.searchParams.set('code', 'qa-code')
-    callback.searchParams.set('state', url.searchParams.get('state') ?? '')
-    await route.fulfill({
-      status: 302,
-      headers: { location: callback.toString() },
-      body: '',
-    })
+    await route.continue({ url: `http://127.0.0.1:${address.port}/authorize${url.search}` })
   })
   await page.route('**/oidc/token', async (route) => {
     const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT', kid: 'qa' })).toString(
@@ -75,6 +86,215 @@ async function installSsoMocks(page: Page) {
 }
 
 test.describe('smoke', () => {
+  for (const outcome of ['validation400', 'validation422', 'unknown'] as const) {
+    test(`issue creation preserves safe retry semantics after ${outcome}`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      await installSsoMocks(page)
+      const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+      const registry = '11111111-1111-4111-8111-111111111111'
+      const namespace = '22222222-2222-4222-8222-222222222222'
+      const project = {
+        id: '00000000-0000-0000-0000-000000000010',
+        key: mockUser.key,
+        name: mockUser.name,
+        description: '',
+        owner_id: mockUser.id,
+        owner_name: 'Demo User',
+        created_at: '2026-10-14T00:00:00Z',
+        todo_count: 0,
+        in_progress_count: 0,
+        done_count: 0,
+      }
+      const context = {
+        label: project.name,
+        resource_key: project.key,
+        binding: {
+          schema_version: 1,
+          operation_id: '33333333-3333-4333-8333-333333333333',
+          generation: 1,
+          state: 'active',
+          drained: true,
+          namespace: { registry_instance_id: registry, namespace_id: namespace },
+          resource: { instance_id: registry, resource_id: project.id, kind: 'tracker_project' },
+        },
+      }
+      const writes: { body: Record<string, unknown>; key: string | undefined }[] = []
+      await page.route('**/api/v1/**', async (route) => {
+        const request = route.request()
+        const path = new URL(request.url()).pathname.replace('/api/v1', '')
+        if (path === '/issues' && request.method() === 'POST') {
+          writes.push({ body: request.postDataJSON(), key: request.headers()['idempotency-key'] })
+          if (writes.length === 1 && outcome === 'unknown') return route.abort('failed')
+          if (writes.length === 1 || (outcome === 'unknown' && writes.length === 2)) {
+            return routeJson(
+              route,
+              { error: { code: 'VALIDATION_ERROR', message: 'private API details' } },
+              outcome === 'validation400' ? 400 : 422,
+            )
+          }
+          return routeJson(route, { id: 'created', project_key: project.key }, 201)
+        }
+        if (path === '/users/me')
+          return routeJson(route, {
+            id: mockUser.id,
+            email: 'demo@example.com',
+            username: 'demo',
+            display_name: 'Demo User',
+          })
+        if (path === '/users') return routeJson(route, { users: [] })
+        if (path === '/projects') return routeJson(route, { projects: [project] })
+        if (path === `/projects/${project.key}`) return routeJson(route, project)
+        if (path === '/namespace-contexts') return routeJson(route, [context])
+        if (path === `/namespace-contexts/${registry}/${namespace}`)
+          return routeJson(route, context)
+        if (path === '/issue-types')
+          return routeJson(route, [{ id: 'task', name: 'Task', is_subtask: false }])
+        if (path.endsWith('/custom-fields')) return routeJson(route, { fields: [] })
+        if (path.endsWith('/members')) return routeJson(route, { members: [] })
+        return route.fulfill({ status: 404 })
+      })
+      const search = namespaceEnabled
+        ? `registry_instance_id=${registry}&namespace_id=${namespace}&project_key=${project.key}`
+        : `project_key=${project.key}`
+      await page.goto(`${appBaseURL}/issues/create?${search}`)
+      const summary = page.getByLabel(/^(заголовок|summary)\s*\*?$/i)
+      const submit = page.getByRole('button', { name: /^(создать|create)$/i })
+      await summary.fill('Original issue')
+      await expect(submit).toBeEnabled()
+      await submit.click()
+      await expect(page.getByRole('alert').first()).toBeVisible()
+      await expect(submit).toBeEnabled()
+      expect(writes).toHaveLength(1)
+      await expect(summary).toHaveValue('Original issue')
+      await expect(page.locator('body')).not.toContainText('private API details')
+      const frozen = page.getByText('Повтор отправит исходную задачу с прежним ключом операции.')
+      if (outcome === 'unknown') await expect(frozen).toBeVisible()
+      else await expect(frozen).toBeHidden()
+      if (outcome === 'validation400') {
+        for (const width of [375, 1920, 2560]) {
+          await page.setViewportSize({ width, height: width === 375 ? 812 : 1080 })
+          await page.screenshot({
+            path: testInfo.outputPath(`issue-rejection-${width}.png`),
+            fullPage: true,
+          })
+        }
+      }
+      await summary.fill('Corrected issue')
+      await submit.click()
+      if (outcome === 'unknown') {
+        await expect.poll(() => writes.length).toBe(2)
+        await expect(submit).toBeEnabled()
+        await expect(frozen).toBeVisible()
+        await submit.click()
+      }
+      await expect.poll(() => new URL(page.url()).pathname).toBe(`/projects/${project.key}/backlog`)
+      if (namespaceEnabled)
+        expect(new URL(page.url()).searchParams.get('namespace_id')).toBe(namespace)
+      expect(writes).toHaveLength(outcome === 'unknown' ? 3 : 2)
+      expect(writes[0].key).toBeTruthy()
+      if (outcome === 'unknown') {
+        for (const request of writes.slice(1)) expect(request).toEqual(writes[0])
+      } else {
+        expect(writes[1].body.summary).toBe('Corrected issue')
+        expect(writes[1].key).not.toBe(writes[0].key)
+      }
+    })
+  }
+
+  test('keeps the issue draft through project creation errors and authoritative catalogue refresh', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    await installSsoMocks(page)
+    const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const project = {
+      id: '00000000-0000-0000-0000-000000000010',
+      key: 'NEW',
+      name: 'First Project',
+      description: '',
+      owner_id: mockUser.id,
+      owner_name: 'Demo User',
+      created_at: '2026-10-14T00:00:00Z',
+      todo_count: 0,
+      in_progress_count: 0,
+      done_count: 0,
+    }
+    let projects: (typeof project)[] = []
+    let denied = true
+    let issueWrites = 0
+    let projectWrites = 0
+    await page.route('**/api/v1/**', (route) => {
+      const request = route.request()
+      const path = new URL(request.url()).pathname.replace('/api/v1', '')
+      if (path === '/projects' && request.method() === 'GET') return routeJson(route, { projects })
+      if (path === '/projects' && request.method() === 'POST') {
+        projectWrites++
+        if (denied) return routeJson(route, { message: 'Forbidden' }, 403)
+        projects = [{ ...project, name: 'Renamed Project' }]
+        return routeJson(route, project, 201)
+      }
+      if (path === '/issues' && request.method() === 'POST') issueWrites++
+      if (path === '/users/me')
+        return routeJson(route, {
+          id: mockUser.id,
+          email: 'demo@example.com',
+          username: 'demo',
+          display_name: 'Demo User',
+        })
+      if (path === '/users') return routeJson(route, { users: [] })
+      if (path === '/issue-types')
+        return routeJson(route, [{ id: 'task', name: 'Task', is_subtask: false }])
+      if (path.endsWith('/custom-fields')) return routeJson(route, { fields: [] })
+      if (path.endsWith('/members')) return routeJson(route, { members: [] })
+      if (path === '/namespace-contexts') return routeJson(route, [])
+      return route.fulfill({ status: 404 })
+    })
+    await page.goto(`${appBaseURL}/issues/create`)
+    await page.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
+    const dialog = page.getByRole('dialog')
+    // The issue draft stays outside the modal and survives both responses.
+    await dialog.getByRole('button', { name: /^(отмена|cancel)$/i }).click()
+    await page.getByLabel(/^(заголовок|summary)\s*\*?$/i).fill('Draft before project')
+    await page.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
+    await dialog.getByLabel(/^(ключ|key)\s*\*/i).fill('NEW')
+    await dialog.getByLabel(/^(название|name)\s*\*/i).fill('First Project')
+    await dialog.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
+    await expect(dialog.getByRole('alert')).toBeVisible()
+    await expect(dialog.getByLabel(/^(название|name)\s*\*/i)).toHaveValue('First Project')
+    denied = false
+    await dialog.getByRole('button', { name: /^(создать проект|create project)$/i }).click()
+    await expect(dialog).toBeHidden()
+    await expect(page.getByLabel(/^(проект|project)\s*\*?$/i)).toContainText('Renamed Project')
+    await expect(page.getByLabel(/^(заголовок|summary)\s*\*?$/i)).toHaveValue(
+      'Draft before project',
+    )
+    await expect(page.getByRole('button', { name: /^(создать|create)$/i })).toBeEnabled()
+    expect(projectWrites).toBe(2)
+    expect(issueWrites).toBe(0)
+    for (const width of [375, 1920, 2560]) {
+      await page.setViewportSize({ width, height: width === 375 ? 812 : 1080 })
+      await page.screenshot({
+        path: testInfo.outputPath(`inline-project-${width}.png`),
+        fullPage: true,
+      })
+    }
+    projects = []
+    const readback = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === '/api/v1/projects' &&
+        response.request().method() === 'GET',
+    )
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    await readback
+    await expect(page.getByRole('button', { name: /^(создать|create)$/i })).toBeDisabled()
+    await expect(page.getByLabel(/^(заголовок|summary)\s*\*?$/i)).toHaveValue(
+      'Draft before project',
+    )
+    expect(issueWrites).toBe(0)
+  })
+
   test('login then navigate through dashboard, projects, board and create issue', async ({
     page,
     baseURL,
@@ -173,6 +393,31 @@ test.describe('smoke', () => {
       done_count: 0,
     }
     let failSave = true
+    const registryId = '00000000-0000-0000-0000-000000000020'
+    const namespaceId = '00000000-0000-0000-0000-000000000021'
+    const projectContext = () => ({
+      label: projectDetails.name,
+      resource_key: projectDetails.key,
+      binding: {
+        schema_version: 1,
+        operation_id: '00000000-0000-0000-0000-000000000022',
+        generation: 1,
+        state: 'active',
+        drained: true,
+        namespace: { registry_instance_id: registryId, namespace_id: namespaceId },
+        resource: {
+          instance_id: registryId,
+          resource_id: projectDetails.id,
+          kind: 'tracker_project',
+        },
+      },
+    })
+    await page.route(/\/api\/v1\/namespace-contexts(?:\?.*)?$/, (route) =>
+      routeJson(route, [projectContext()]),
+    )
+    await page.route(`**/api/v1/namespace-contexts/${registryId}/${namespaceId}`, (route) =>
+      routeJson(route, projectContext()),
+    )
     await page.route(`**/api/v1/projects/${mockUser.key}`, (route) => {
       if (route.request().method() === 'PATCH') {
         if (failSave) return routeJson(route, { error: 'unavailable' }, 500)
@@ -336,29 +581,44 @@ test.describe('smoke', () => {
     await page.route(`**/api/v1/issues/${mockUser.issueId}/custom-fields`, (route) =>
       routeJson(route, { values: [] }),
     )
+    let failVotes = false
+    let failWatchers = false
+    const engagementWrites: string[] = []
+    page.on('request', (request) => {
+      if (
+        /\/api\/v1\/issues\/[^/]+\/(?:vote|watch)$/.test(new URL(request.url()).pathname) &&
+        request.method() !== 'GET'
+      ) {
+        engagementWrites.push(request.method())
+      }
+    })
     await page.route(`**/api/v1/issues/${mockUser.issueId}/votes`, (route) =>
-      routeJson(route, {
-        count: 1,
-        votes: [
-          {
-            user_id: '00000000-0000-0000-0000-000000000003',
-            username: 'voter',
-            display_name: 'Voter User',
-            voted_at: '2026-09-01T10:00:00Z',
-          },
-        ],
-      }),
+      failVotes
+        ? routeJson(route, { error: 'private engagement upstream failure' }, 500)
+        : routeJson(route, {
+            count: 1,
+            votes: [
+              {
+                user_id: '00000000-0000-0000-0000-000000000003',
+                username: 'voter',
+                display_name: 'Voter User',
+                voted_at: '2026-09-01T10:00:00Z',
+              },
+            ],
+          }),
     )
     await page.route(`**/api/v1/issues/${mockUser.issueId}/watchers`, (route) =>
-      routeJson(route, {
-        watchers: [
-          {
-            user_id: mockUser.id,
-            username: 'demo',
-            display_name: 'Demo User',
-          },
-        ],
-      }),
+      failWatchers
+        ? routeJson(route, { error: 'private engagement upstream failure' }, 500)
+        : routeJson(route, {
+            watchers: [
+              {
+                user_id: mockUser.id,
+                username: 'demo',
+                display_name: 'Demo User',
+              },
+            ],
+          }),
     )
     await page.route('**/api/v1/notifications', (route) =>
       routeJson(route, { notifications: [], unread_count: 0 }),
@@ -383,10 +643,16 @@ test.describe('smoke', () => {
     ).toBeVisible()
 
     await page.goto(`${appBaseURL}/projects`)
-    await expect(page.getByText(mockUser.name)).toBeVisible()
+    await expect(page.getByRole('main').getByText(mockUser.name, { exact: true })).toBeVisible()
 
     await page.getByRole('link', { name: /(?:settings|настройки проекта):/i }).click()
-    await expect(page).toHaveURL(`${appBaseURL}/projects/${mockUser.key}/settings`)
+    await expect.poll(() => new URL(page.url()).pathname).toBe(`/projects/${mockUser.key}/settings`)
+    expect(new URL(page.url()).searchParams.get('registry_instance_id')).toBe(
+      namespaceEnabled ? registryId : null,
+    )
+    expect(new URL(page.url()).searchParams.get('namespace_id')).toBe(
+      namespaceEnabled ? namespaceId : null,
+    )
     const description = page.getByLabel(/^(description|описание)$/i)
     await description.fill('Updated description')
     await page.getByRole('button', { name: /^(save|сохранить)$/i }).click()
@@ -418,18 +684,83 @@ test.describe('smoke', () => {
     await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
 
-    await page.goto(`${appBaseURL}/projects/${mockUser.key}/backlog`)
+    await page.goto(
+      `${appBaseURL}/projects/${mockUser.key}/backlog${namespaceEnabled ? `?registry_instance_id=${registryId}&namespace_id=${namespaceId}` : ''}`,
+    )
     await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
     const createLinks = page.locator('main a[href^="/issues/create"]')
     await expect(createLinks).toHaveCount(2)
     await createLinks.last().click()
-    await expect(page).toHaveURL(`${appBaseURL}/issues/create?project_key=${mockUser.key}`)
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/issues/create')
+    expect(new URL(page.url()).searchParams.get('project_key')).toBe(mockUser.key)
+    expect(new URL(page.url()).searchParams.get('registry_instance_id')).toBe(
+      namespaceEnabled ? registryId : null,
+    )
+    expect(new URL(page.url()).searchParams.get('namespace_id')).toBe(
+      namespaceEnabled ? namespaceId : null,
+    )
     await expect(page.locator('#issue-project')).toHaveAttribute('value', mockUser.key)
 
     await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
     await page.goto(`${appBaseURL}/issues/${mockUser.issueId}`)
     await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+    const engagement = page.getByTestId('issue-engagement-panel')
+    await expect(engagement.getByText(/^(1 total|всего 1)$/i)).toBeVisible()
+    await expect(
+      engagement.getByRole('button', { name: /stop watching|перестать следить/i }),
+    ).toBeEnabled()
+    failVotes = true
+    failWatchers = true
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    // The production query policy retries failed GETs at 1/2/4/8 seconds.
+    await expect(
+      engagement.getByText(/Не удалось загрузить голоса|Unable to load votes/),
+    ).toBeVisible({ timeout: 25_000 })
+    await expect(
+      engagement.getByText(/Не удалось загрузить наблюдателей|Unable to load watchers/),
+    ).toBeVisible()
+    const voteAction = engagement.getByRole('button', { name: /^(vote|голос)$/i })
+    const watchAction = engagement.getByRole('button', {
+      name: /^(stop watching|перестать следить)$/i,
+    })
+    await expect(voteAction).toBeDisabled()
+    await expect(watchAction).toBeDisabled()
+    await expect(
+      engagement.getByText(/^(0 total|всего 0|No watchers|Наблюдателей нет)$/i),
+    ).toHaveCount(0)
+    await expect(engagement.getByText(/^(1 total|всего 1)$/i)).toHaveCount(0)
+    await expect(engagement.getByText('private engagement upstream failure')).toHaveCount(0)
+    for (const width of [375, 1920, 2560]) {
+      await page.setViewportSize({ width, height: 1080 })
+      await expect(
+        engagement.getByText(/Не удалось загрузить голоса|Unable to load votes/),
+      ).toBeVisible()
+      await expect(
+        engagement.getByText(/Не удалось загрузить наблюдателей|Unable to load watchers/),
+      ).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      )
+      await page.screenshot({
+        path: testInfo.outputPath(`engagement-error-${width}.png`),
+        fullPage: true,
+      })
+    }
+    failVotes = false
+    await engagement
+      .getByRole('button', { name: /retry|повторить/i })
+      .first()
+      .click()
+    await expect(engagement.getByText(/^(1 total|всего 1)$/i)).toBeVisible()
+    await expect(voteAction).toBeEnabled()
+    await expect(watchAction).toBeDisabled()
+    failWatchers = false
+    await engagement.getByRole('button', { name: /retry|повторить/i }).click()
+    await expect(
+      engagement.getByRole('button', { name: /stop watching|перестать следить/i }),
+    ).toBeEnabled()
+    expect(engagementWrites).toEqual([])
     await expect(page.getByRole('button', { name: /vote|голос/i })).toBeVisible()
     await expect(
       page.getByRole('button', { name: /stop watching|перестать следить/i }),

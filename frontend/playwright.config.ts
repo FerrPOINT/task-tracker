@@ -1,3 +1,4 @@
+import { platformEnv } from '@pdlc/ui/environment'
 import { defineConfig, devices } from '@playwright/test'
 
 const previewHost = process.env.PLAYWRIGHT_HOST ?? '127.0.0.1'
@@ -8,7 +9,7 @@ const useExternalServer = Boolean(process.env.PLAYWRIGHT_BASE_URL)
 export default defineConfig({
   testDir: 'e2e',
   testMatch:
-    process.env.SDLC_LIVE_QA === '1' && process.env.SDLC_LEGACY_QA !== '1'
+    platformEnv('LIVE_QA') === '1' && platformEnv('LEGACY_QA') !== '1'
       ? [
           '**/sso-live.spec.ts',
           '**/functional-live.spec.ts',
@@ -31,7 +32,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
-  expect: { timeout: process.env.SDLC_LIVE_QA === '1' ? 30_000 : 5_000 },
+  expect: { timeout: platformEnv('LIVE_QA') === '1' ? 30_000 : 5_000 },
   use: {
     baseURL,
     trace: 'on-first-retry',

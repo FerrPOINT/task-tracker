@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 
 import { AppShell } from './app-shell'
 
@@ -102,7 +102,7 @@ describe('AppShell notifications', () => {
         </MemoryRouter>
       </ThemeProvider>,
     )
-    const trigger = screen.getByRole('button', { name: 'Открыть меню' })
+    const trigger = screen.getByRole('button', { name: 'Открыть навигацию' })
     await user.click(trigger)
     const dialog = await screen.findByRole('dialog')
     const create = within(dialog).getByRole('link', { name: 'Создать' })
@@ -238,7 +238,7 @@ describe('AppShell notifications', () => {
       </ThemeProvider>,
     )
 
-    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
+    await user.click(screen.getByRole('button', { name: 'Открыть навигацию' }))
     let dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByRole('link', { name: 'Доска' })).toHaveAttribute(
       'aria-current',
@@ -247,7 +247,7 @@ describe('AppShell notifications', () => {
     await user.keyboard('{Escape}')
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
 
-    await user.click(screen.getByRole('button', { name: 'Открыть меню' }))
+    await user.click(screen.getByRole('button', { name: 'Открыть навигацию' }))
     dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('link', { name: 'Бэклог' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())

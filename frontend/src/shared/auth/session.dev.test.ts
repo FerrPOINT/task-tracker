@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sso = vi.hoisted(() => ({ restoreSso: vi.fn() }))
-vi.mock('@sdlc/ui/sso', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@sdlc/ui/sso')>()),
+vi.mock('@pdlc/ui/sso', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@pdlc/ui/sso')>()),
   ...sso,
 }))
 
@@ -14,17 +14,19 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 
-describe('deployment-owned SSO client', () => {
+describe.each(['sdlc', 'pdlc'])('deployment-owned SSO client in %s namespace', (namespace) => {
   it.each([
     { configured: undefined, expected: 'task-tracker' },
     { configured: 'task-tracker-dev', expected: 'task-tracker-dev' },
   ])('restores the session with $expected', async ({ configured, expected }) => {
     vi.stubEnv('VITE_AUTH_CLIENT_ID', configured)
+    vi.stubEnv('VITE_AUTH_NAMESPACE', namespace)
     const { restoreTrackerSession } = await import('./session')
     await expect(restoreTrackerSession()).rejects.toThrow('Login required')
     expect(sso.restoreSso).toHaveBeenCalledWith({
       issuer: 'http://localhost:8701',
       clientId: expected,
+      namespace,
     })
   })
 })

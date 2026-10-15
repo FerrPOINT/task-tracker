@@ -1,14 +1,15 @@
+import { platformEnv } from '@pdlc/ui/environment'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 
 test.skip(
-  process.env.SDLC_LIVE_QA !== '1',
+  platformEnv('LIVE_QA') !== '1',
   'Requires the local QA bootstrap and running Compose fleet',
 )
 test.skip(
-  process.env.SDLC_LEGACY_QA !== '1',
+  platformEnv('LEGACY_QA') !== '1',
   'Legacy local-password and role-binding QA; central SSO scenarios live in sso-live, functional-live and visual-live',
 )
 test.skip(
@@ -17,10 +18,10 @@ test.skip(
 )
 
 const account = (
-  process.env.SDLC_LIVE_QA === '1'
+  platformEnv('LIVE_QA') === '1'
     ? JSON.parse(
         readFileSync(
-          process.env.SDLC_QA_SESSION_FILE ??
+          platformEnv('QA_SESSION_FILE') ??
             fileURLToPath(
               new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
             ),
@@ -98,7 +99,7 @@ test.describe('live platform switcher', () => {
 
   for (const [index, app] of apps.entries()) {
     test(`${app.label}: authenticated catalog and navigation`, async ({ page }) => {
-      if (process.env.SDLC_LIVE_VISUAL === '1') test.setTimeout(120_000)
+      if (platformEnv('LIVE_VISUAL') === '1') test.setTimeout(120_000)
       const errors: string[] = []
       page.on('pageerror', (error) => errors.push(error.message))
       await page.goto(`http://localhost:${app.port}/`)
@@ -115,7 +116,7 @@ test.describe('live platform switcher', () => {
         }
       }
 
-      if (process.env.SDLC_LIVE_VISUAL === '1') {
+      if (platformEnv('LIVE_VISUAL') === '1') {
         mkdirSync(screenshotDir, { recursive: true })
         for (const theme of ['dark', 'gray', 'light']) {
           if (app.key === 'project-workflow') {
@@ -254,7 +255,7 @@ test.describe('live platform switcher', () => {
           () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
         )
         expect(overflow).toBeLessThanOrEqual(1)
-        if (process.env.SDLC_LIVE_VISUAL === '1') {
+        if (platformEnv('LIVE_VISUAL') === '1') {
           mkdirSync(screenshotDir, { recursive: true })
           await page.screenshot({
             path: `${screenshotDir}/task-board-${theme}-${width}.png`,
@@ -330,7 +331,7 @@ test.describe('live platform switcher', () => {
               { message: `${path} in ${theme} at ${width}px overflows horizontally` },
             )
             .toBeLessThanOrEqual(1)
-          if (process.env.SDLC_LIVE_VISUAL === '1') {
+          if (platformEnv('LIVE_VISUAL') === '1') {
             await page.screenshot({
               path: `${screenshotDir}/admin-${path.slice(1).replace('/', '-')}-${theme}-${width}.png`,
               fullPage: true,
@@ -400,7 +401,7 @@ test.describe('live platform switcher', () => {
     await card.getByRole('button', { name: /Изменить статус/ }).click()
     await page.getByRole('menuitem', { name: /В работе/ }).click()
     await expect(card).toBeVisible()
-    if (process.env.SDLC_LIVE_VISUAL === '1') {
+    if (platformEnv('LIVE_VISUAL') === '1') {
       await page.setViewportSize({ width: 375, height: 812 })
       await page.screenshot({
         path: `${screenshotDir}/task-board-filled-375.png`,
@@ -560,7 +561,7 @@ test.describe('live platform switcher', () => {
               { message: `${path} in ${theme} at ${width}px overflows` },
             )
             .toBeLessThanOrEqual(1)
-          if (process.env.SDLC_LIVE_VISUAL === '1') {
+          if (platformEnv('LIVE_VISUAL') === '1') {
             await page.screenshot({
               path: `${screenshotDir}/task-${path.replaceAll('/', '-').slice(1)}-${theme}-${width}.png`,
               fullPage: true,
@@ -675,7 +676,7 @@ test.describe('live platform switcher', () => {
         page.getByText(`${spaceKey} · QA ${account.runId} wiki`),
         wikiFailures.join(', '),
       ).toBeVisible({ timeout: 20_000 })
-      if (process.env.SDLC_LIVE_VISUAL === '1') {
+      if (platformEnv('LIVE_VISUAL') === '1') {
         mkdirSync(screenshotDir, { recursive: true })
         await page.screenshot({
           path: `${screenshotDir}/wiki-qa-spaces.png`,
@@ -839,7 +840,7 @@ test.describe('live platform switcher', () => {
   })
 
   test('isolated CI/CD QA job is visible with its real log', async ({ page }) => {
-    test.skip(process.env.SDLC_CICD_QA !== '1', 'Requires the isolated CI/CD QA Compose project')
+    test.skip(platformEnv('CICD_QA') !== '1', 'Requires the isolated CI/CD QA Compose project')
     page.setDefaultTimeout(10_000)
     const state = JSON.parse(
       readFileSync(
