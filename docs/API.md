@@ -1803,7 +1803,7 @@ data: {"type":"sprint_changed","project_key":"TT"}
 ### Пример (JavaScript)
 
 ```javascript
-import { connectAuthenticatedEventStream } from '@sdlc/ui/lib';
+import { connectAuthenticatedEventStream } from '@pdlc/ui/lib';
 
 const disconnect = connectAuthenticatedEventStream({
   url: '/api/v1/events',

@@ -229,7 +229,7 @@ Prettier checks passed. No full workspace build/test/clippy or new DB test was r
 Frontend checks use Node 22.20.0 and the existing dependency cache, with read-only
 public Base source at the actual `.base-revision` pin
 `9408802dfa978cba2f67162a49adca6f65851b01` via ignored isolated QA configuration.
-The ordinary installed `@sdlc/ui` cache is stale: an unmodified full frontend
+The ordinary installed `@pdlc/ui` cache is stale: an unmodified full frontend
 typecheck reports three existing SSO export/signature errors in login files.
 Those unrelated files and dependency resolution were not changed. Rematerializing
 the pinned Base package belongs to the integrated source gate; this slice's scoped

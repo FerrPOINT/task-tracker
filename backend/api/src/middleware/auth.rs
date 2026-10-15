@@ -90,7 +90,7 @@ pub async fn bearer_auth(
 /// Resolves a central subject independently of historical local email rows.
 async fn find_or_link_central_user(
     ctx: &Arc<app::AppContext>,
-    central: &sdlc_auth_core::AuthContext,
+    central: &pdlc_auth_core::AuthContext,
     display_name: Option<&str>,
 ) -> Result<domain::User, shared::AppError> {
     // Older Auth PAT introspection verifies identity/scopes without display

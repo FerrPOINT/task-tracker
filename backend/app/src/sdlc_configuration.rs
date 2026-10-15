@@ -215,7 +215,7 @@ impl FleetConfigurationReader {
             || url.query().is_some()
             || url.fragment().is_some()
             || url.as_str().trim_end_matches('/') != origin.trim_end_matches('/')
-            || !token.starts_with("sdlc_pat_")
+            || !pdlc_auth_core::is_personal_token(token)
             || !(41..=136).contains(&token.len())
             || !token.bytes().all(|b| b.is_ascii_graphic())
         {

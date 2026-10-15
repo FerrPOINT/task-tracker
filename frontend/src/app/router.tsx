@@ -1,8 +1,8 @@
-import { LoadingState } from '@sdlc/ui/ui'
+import { LoadingState } from '@pdlc/ui/ui'
 import { NamespacePage } from '@/pages/namespace'
 import { lazy, Suspense } from 'react'
 import { Navigate } from 'react-router'
-import { createProductRouter, PlatformRoute } from '@sdlc/ui/platform'
+import { createProductRouter, PlatformRoute } from '@pdlc/ui/platform'
 import { AppShell } from '@/widgets/app-shell'
 import { RequireAuth } from '@/shared/auth/require-auth'
 

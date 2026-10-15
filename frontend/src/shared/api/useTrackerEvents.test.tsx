@@ -3,10 +3,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { useTrackerEvents } from './useTrackerEvents'
 import { useAuthStore } from '@/shared/auth/store'
-import { connectAuthenticatedEventStream } from '@sdlc/ui/lib'
+import { connectAuthenticatedEventStream } from '@pdlc/ui/lib'
 
-vi.mock('@sdlc/ui/lib', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@sdlc/ui/lib')>()),
+vi.mock('@pdlc/ui/lib', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@pdlc/ui/lib')>()),
   connectAuthenticatedEventStream: vi.fn(() => vi.fn()),
 }))
 

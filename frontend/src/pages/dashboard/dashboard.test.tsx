@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 
 import { DashboardPage } from './'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
 
 const getDashboard = vi.hoisted(() =>
@@ -46,6 +46,7 @@ vi.mock('@/api/dashboard', () => ({
 }))
 vi.mock('@/api/project', () => ({
   listProjects,
+  createProject: vi.fn(),
 }))
 
 function wrapper(children: React.ReactNode) {
@@ -139,5 +140,13 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('link', { name: /TT-6/ })).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: /P5 · Project 5/ })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /P6 · Project 6/ })).not.toBeInTheDocument()
+  })
+  it('offers creation of the first project after a successful empty catalogue read', async () => {
+    listProjects.mockResolvedValueOnce([])
+    render(wrapper(<DashboardPage />))
+    expect(await screen.findByRole('button', { name: 'Создать проект' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Создать проект' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Ключ/)).toBeInTheDocument()
   })
 })

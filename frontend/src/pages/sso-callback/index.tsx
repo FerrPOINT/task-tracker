@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
-import { useTranslation } from 'react-i18next'
-import { completeSso } from '@sdlc/ui/sso'
-import { Button } from '@sdlc/ui/ui'
+import { completeSso } from '@pdlc/ui/sso'
+import { SsoCallbackView } from '@pdlc/ui/ui'
 import { ssoConfig, useAuthStore } from '@/shared/auth/store'
 import { loadSsoSession } from '@/shared/auth/session'
-import { finishPlatformLogin } from '@sdlc/ui/platform'
+import { finishPlatformLogin } from '@pdlc/ui/platform'
 
 let pending: ReturnType<typeof completeSso> | null = null
 function completion() {
@@ -22,7 +21,6 @@ function completion() {
 }
 
 export function SsoCallbackPage() {
-  const { t } = useTranslation()
   const navigate = useNavigate()
   const [failed, setFailed] = useState(false)
   useEffect(() => {
@@ -46,20 +44,5 @@ export function SsoCallbackPage() {
       active = false
     }
   }, [navigate])
-  return (
-    <main className="grid min-h-screen place-items-center bg-background p-4">
-      {failed ? (
-        <div className="space-y-4 text-center">
-          <p role="alert" className="text-sm text-danger">
-            {t('auth.sso.callbackError')}
-          </p>
-          <Button className="min-h-11" onClick={() => navigate('/login', { replace: true })}>
-            {t('auth.sso.retry')}
-          </Button>
-        </div>
-      ) : (
-        <p role="status">{t('auth.sso.completing')}</p>
-      )}
-    </main>
-  )
+  return <SsoCallbackView failed={failed} onRetry={() => navigate('/login', { replace: true })} />
 }

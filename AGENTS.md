@@ -91,3 +91,9 @@ and sdlc-common. Temporary sdlc-qa-/sdlc-build- projects require task/purpose,
 explicit endpoint and scoped cleanup in finally. Direct docker run/create,
 fake Compose labels and global prune are forbidden. Runtime data, snapshots,
 keys and shared caches are preserved. Base owns tools and LOCAL_GROUPS rules.
+
+## Термины PDLC и общие компоненты
+
+Перед изменением платформенных имён прочитайте [интеграцию с Base](docs/PDLC_BASE_INTEGRATION.md) и канонические TERMS/BRANDING.
+Для UI: `pnpm --dir frontend exec pdlc-ui search "задача"` → `show ExportName` → один нужный `example`. В Workflow SSR используйте штатный exporter Base.
+Не переносите продуктовые запросы, DTO и права в общий UI. SDK/UI/skills pins независимы; новое имя платформы не меняет SDLC IDs/scopes или Hermes upstream.

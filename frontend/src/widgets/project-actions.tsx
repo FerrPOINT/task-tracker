@@ -2,8 +2,8 @@ import { Settings, Trash2 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useLocation } from 'react-router'
-import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
-import { Button, DropdownMenuItem } from '@sdlc/ui/ui'
+import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
+import { Button, DropdownMenuItem } from '@pdlc/ui/ui'
 import { useNamespaceCatalog } from './namespace-context'
 
 type Project = { key: string; name: string; namespace?: NamespaceLocation }

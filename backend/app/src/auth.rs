@@ -46,7 +46,7 @@ use central_login::try_central_login;
 impl JwtAuthService {
     async fn find_or_link_central_user(
         &self,
-        central: &sdlc_auth_core::AuthContext,
+        central: &pdlc_auth_core::AuthContext,
         display_name: &str,
     ) -> Result<User, AppError> {
         let email = central.email.as_deref().ok_or(AppError::Unauthorized)?;
@@ -319,11 +319,11 @@ fn hash_refresh_token(token: &str) -> String {
 }
 
 fn hash_password(password: &str) -> Result<String, AppError> {
-    sdlc_auth_core::password::hash_password(password).map_err(AppError::internal)
+    pdlc_auth_core::password::hash_password(password).map_err(AppError::internal)
 }
 
 fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
-    sdlc_auth_core::password::verify_password(password, hash).map_err(AppError::internal)
+    pdlc_auth_core::password::verify_password(password, hash).map_err(AppError::internal)
 }
 
 fn create_access_token(config: &AuthConfig, user_id: UserId) -> Result<String, AppError> {

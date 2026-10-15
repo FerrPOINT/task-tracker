@@ -23,7 +23,10 @@ import { updateNotificationSettings } from '@/api/notifications'
 
 const navigate = vi.hoisted(() => vi.fn())
 const sso = vi.hoisted(() => ({ endSso: vi.fn() }))
-vi.mock('@sdlc/ui/sso', () => ({ endSso: sso.endSso }))
+vi.mock('@pdlc/ui/sso', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@pdlc/ui/sso')>()),
+  endSso: sso.endSso,
+}))
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router')

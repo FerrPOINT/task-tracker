@@ -1,14 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { IssueCreatePage } from './'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
 
+const createProject = vi.hoisted(() => vi.fn())
+const POST = vi.hoisted(() => vi.fn())
+vi.mock('@/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/client')>()
+  return { ...actual, api: { ...actual.api, POST } }
+})
 const createIssue = vi.hoisted(() =>
   vi.fn((input: Record<string, unknown>) => {
     void input
@@ -71,12 +77,13 @@ const listCustomFields = vi.hoisted(() =>
     ]),
   ),
 )
-vi.mock('@/api/issue-create', () => ({
+vi.mock('@/api/issue-create', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/issue-create')>()),
   createIssue,
 }))
 vi.mock('@/api/project', () => ({
   listProjects,
-  createProject: vi.fn(),
+  createProject,
   updateProject: vi.fn(),
   deleteProject: vi.fn(),
 }))
@@ -148,6 +155,7 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
 describe('IssueCreatePage', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
+    POST.mockReset()
     createIssue.mockClear()
     listProjects.mockClear()
     listUsers.mockClear()
@@ -155,6 +163,90 @@ describe('IssueCreatePage', () => {
     listIssueTypes.mockClear()
     listCustomFields.mockClear()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
+  })
+
+  it.each([400, 422])(
+    'allows corrected input after the first request is rejected by validation (%s)',
+    async (status) => {
+      const actual =
+        await vi.importActual<typeof import('@/api/issue-create')>('@/api/issue-create')
+      const previous = createIssue.getMockImplementation()!
+      createIssue.mockImplementation((input) =>
+        actual.createIssue(input as Parameters<typeof actual.createIssue>[0]),
+      )
+      POST.mockResolvedValueOnce({
+        response: new Response(null, { status }),
+        error: { error: { code: 'VALIDATION_ERROR', message: 'private API details' } },
+      }).mockResolvedValueOnce({
+        data: { id: 'new', project_key: 'TT' },
+        response: new Response(null, { status: 201 }),
+      })
+      try {
+        const user = userEvent.setup()
+        render(wrapper(<IssueCreatePage />))
+        await user.type(screen.getByLabelText(/Заголовок/), 'Rejected issue')
+        await user.type(await screen.findByLabelText(/Required text/), 'ready')
+        await user.click(screen.getByRole('button', { name: /^создать$/i }))
+        await screen.findByText('Не удалось создать задачу. Проверьте данные и повторите попытку.')
+        expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Rejected issue')
+        expect(
+          screen.queryByText('Повтор отправит исходную задачу с прежним ключом операции.'),
+        ).not.toBeInTheDocument()
+        await user.clear(screen.getByLabelText(/Заголовок/))
+        await user.type(screen.getByLabelText(/Заголовок/), 'Corrected issue')
+        await user.click(screen.getByRole('button', { name: /^создать$/i }))
+        await screen.findByText('Backlog')
+        expect(POST).toHaveBeenCalledTimes(2)
+        const first = POST.mock.calls[0]![1]
+        const second = POST.mock.calls[1]![1]
+        expect(first.body.summary).toBe('Rejected issue')
+        expect(second.body.summary).toBe('Corrected issue')
+        expect(second.headers['Idempotency-Key']).not.toBe(first.headers['Idempotency-Key'])
+      } finally {
+        createIssue.mockImplementation(previous)
+      }
+    },
+  )
+
+  it('keeps a request with an unknown outcome frozen after a later validation rejection', async () => {
+    const actual = await vi.importActual<typeof import('@/api/issue-create')>('@/api/issue-create')
+    const previous = createIssue.getMockImplementation()!
+    createIssue.mockImplementation((input) =>
+      actual.createIssue(input as Parameters<typeof actual.createIssue>[0]),
+    )
+    POST.mockRejectedValueOnce(new TypeError('Response lost'))
+      .mockResolvedValueOnce({
+        response: new Response(null, { status: 422 }),
+        error: { error: { code: 'VALIDATION_ERROR', message: 'private API details' } },
+      })
+      .mockResolvedValueOnce({
+        data: { id: 'new', project_key: 'TT' },
+        response: new Response(null, { status: 201 }),
+      })
+    try {
+      const user = userEvent.setup()
+      render(wrapper(<IssueCreatePage />))
+      await user.type(screen.getByLabelText(/Заголовок/), 'Original issue')
+      await user.type(await screen.findByLabelText(/Required text/), 'ready')
+      await user.click(screen.getByRole('button', { name: /^создать$/i }))
+      await screen.findByText('Не удалось создать задачу. Проверьте данные и повторите попытку.')
+      expect(POST).toHaveBeenCalledTimes(1)
+      await user.clear(screen.getByLabelText(/Заголовок/))
+      await user.type(screen.getByLabelText(/Заголовок/), 'New input after unknown result')
+      await user.click(screen.getByRole('button', { name: /^создать$/i }))
+      await waitFor(() => expect(POST).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled())
+      expect(
+        screen.getByText('Повтор отправит исходную задачу с прежним ключом операции.'),
+      ).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /^создать$/i }))
+      await screen.findByText('Backlog')
+      expect(POST).toHaveBeenCalledTimes(3)
+      const original = POST.mock.calls[0]![1]
+      for (const [, request] of POST.mock.calls.slice(1)) expect(request).toEqual(original)
+    } finally {
+      createIssue.mockImplementation(previous)
+    }
   })
 
   it('creates issue and navigates', async () => {
@@ -296,4 +388,97 @@ describe('IssueCreatePage', () => {
       ),
     )
   })
+  it('creates the prerequisite project without navigating away or submitting the issue draft', async () => {
+    listProjects.mockResolvedValueOnce([])
+    const project = {
+      id: 'new-project',
+      key: 'NEW',
+      name: 'First Project',
+      description: '',
+      owner_id: 'u1',
+      owner_name: 'Alice',
+      created_at: '2026-10-14T00:00:00Z',
+      todo_count: 0,
+      in_progress_count: 0,
+      done_count: 0,
+    }
+    createProject.mockResolvedValueOnce(project)
+    listProjects.mockResolvedValueOnce([project])
+    render(wrapper(<IssueCreatePage />))
+    const user = userEvent.setup()
+    await screen.findByRole('button', { name: 'Создать проект' })
+    await user.type(screen.getByLabelText(/Заголовок/), 'Draft before project')
+    await user.click(screen.getByRole('button', { name: 'Создать проект' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await user.type(dialog.getByLabelText(/Ключ/), 'NEW')
+    await user.type(dialog.getByLabelText(/Название/), 'First Project')
+    await user.click(dialog.getByRole('button', { name: 'Создать проект' }))
+    await waitFor(() => expect(createProject).toHaveBeenCalledOnce())
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft before project')
+    expect(screen.getByLabelText(/Проект/)).toHaveTextContent('First Project')
+    expect(createIssue).not.toHaveBeenCalled()
+  })
+
+  it('retains the issue and project input after project creation is denied', async () => {
+    listProjects.mockResolvedValueOnce([])
+    createProject.mockRejectedValueOnce(new Error('Нет прав на создание проекта'))
+    render(wrapper(<IssueCreatePage />))
+    const user = userEvent.setup()
+    await screen.findByRole('button', { name: 'Создать проект' })
+    await user.type(screen.getByLabelText(/Заголовок/), 'Draft stays')
+    await user.click(screen.getByRole('button', { name: 'Создать проект' }))
+    const dialog = within(screen.getByRole('dialog'))
+    await user.type(dialog.getByLabelText(/Ключ/), 'NEW')
+    await user.type(dialog.getByLabelText(/Название/), 'Denied Project')
+    await user.click(dialog.getByRole('button', { name: 'Создать проект' }))
+    await screen.findByText('Нет прав на создание проекта')
+    expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft stays')
+    expect(dialog.getByLabelText(/Название/)).toHaveValue('Denied Project')
+    expect(createIssue).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])(
+    'uses authoritative catalogue readback after inline creation (removed: %s)',
+    async (removed) => {
+      const project = {
+        id: 'new-project',
+        key: 'NEW',
+        name: 'First Project',
+        description: '',
+        owner_id: 'u1',
+        owner_name: 'Alice',
+        created_at: '2026-10-14T00:00:00Z',
+        todo_count: 0,
+        in_progress_count: 0,
+        done_count: 0,
+      }
+      listProjects.mockResolvedValueOnce([])
+      listProjects.mockResolvedValueOnce(removed ? [] : [{ ...project, name: 'Renamed Project' }])
+      createProject.mockResolvedValueOnce(project)
+      listCustomFields.mockResolvedValueOnce([])
+      render(wrapper(<IssueCreatePage />))
+      const user = userEvent.setup()
+      await screen.findByRole('button', { name: 'Создать проект' })
+      await user.type(screen.getByLabelText(/Заголовок/), 'Draft stays after catalogue refresh')
+      await user.click(screen.getByRole('button', { name: 'Создать проект' }))
+      const dialog = within(screen.getByRole('dialog'))
+      await user.type(dialog.getByLabelText(/Ключ/), 'NEW')
+      await user.type(dialog.getByLabelText(/Название/), 'First Project')
+      await user.click(dialog.getByRole('button', { name: 'Создать проект' }))
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      await waitFor(() => expect(listProjects).toHaveBeenCalledTimes(2))
+      if (removed) {
+        await screen.findByText('Выбранный проект недоступен. Выберите другой проект.')
+        expect(screen.getByRole('button', { name: /^создать$/i })).toBeDisabled()
+      } else {
+        await waitFor(() =>
+          expect(screen.getByLabelText(/Проект/)).toHaveTextContent('Renamed Project'),
+        )
+        expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled()
+      }
+      expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Draft stays after catalogue refresh')
+      expect(createIssue).not.toHaveBeenCalled()
+    },
+  )
 })

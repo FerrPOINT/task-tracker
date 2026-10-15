@@ -36,6 +36,24 @@ jobs:
       - uses: actions/checkout@v7
         with:
           path: task-tracker
+      - name: Read pinned Base revision
+        id: base
+        working-directory: task-tracker
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out services-base sibling (path deps)
+        uses: actions/checkout@v7
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
+          ref: ${{ steps.base.outputs.sha }}
+      - name: Verify pinned Base checkout
+        working-directory: task-tracker
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
       - name: README validator tests
         working-directory: task-tracker
         run: |
@@ -149,7 +167,7 @@ jobs:
           pin=.base-ui-revision
           echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
           echo "pin=$pin" >> "$GITHUB_OUTPUT"
-      - name: Check out services-base sibling (@sdlc/ui file dep)
+      - name: Check out services-base sibling (@pdlc/ui file dep)
         uses: actions/checkout@v7
         with:
           repository: FerrPOINT/services-base

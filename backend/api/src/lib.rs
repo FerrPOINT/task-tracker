@@ -405,7 +405,7 @@ fn apply_security(operation: Option<&mut Operation>, security: Option<Vec<Securi
 }
 
 pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
-    let cors = sdlc_shared::cors::cors_layer(&ctx.config.server.cors_allowed_origins);
+    let cors = pdlc_shared::cors::cors_layer(&ctx.config.server.cors_allowed_origins);
 
     // Rate limiter for auth endpoints (configurable, default 5 requests per 15 seconds per IP).
     let auth_limiter = GovernorConfigBuilder::default()
@@ -810,7 +810,7 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         )
         .layer(prometheus_layer)
         .layer(cors)
-        .layer(axum::middleware::from_fn(sdlc_telemetry::request_id_mw))
+        .layer(axum::middleware::from_fn(pdlc_telemetry::request_id_mw))
 }
 
 pub async fn bind(ctx: Arc<app::AppContext>) -> Result<tokio::net::TcpListener, std::io::Error> {

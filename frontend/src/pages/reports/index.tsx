@@ -1,4 +1,4 @@
-import { ProjectPicker } from '@sdlc/ui/ui'
+import { ProjectPicker } from '@pdlc/ui/ui'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
@@ -28,11 +28,11 @@ import {
   useControlChartReport,
   useSprints,
 } from '@/shared/api/hooks'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@sdlc/ui/ui'
-import { Card, CardHeader, CardTitle, CardContent } from '@sdlc/ui/ui'
-import { Button } from '@sdlc/ui/ui'
-import { ErrorState } from '@sdlc/ui/ui'
-import { Label } from '@sdlc/ui/ui'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@pdlc/ui/ui'
+import { Card, CardHeader, CardTitle, CardContent } from '@pdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { ErrorState } from '@pdlc/ui/ui'
+import { Label } from '@pdlc/ui/ui'
 import { fetchIssueExport, type IssueExportFormat } from '@/api/export'
 
 type TabValue = 'velocity' | 'burndown' | 'cumulative-flow' | 'control-chart'

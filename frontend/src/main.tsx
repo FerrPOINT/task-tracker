@@ -6,14 +6,14 @@ import { Toaster } from 'sonner'
 import i18n from './shared/i18n/config'
 import { RouterProvider } from 'react-router'
 import { router } from './app/router'
-import { ThemeProvider, PlatformProvider, PlatformServicesProvider, useTheme } from '@sdlc/ui/lib'
+import { ThemeProvider, PlatformProvider, PlatformServicesProvider, useTheme } from '@pdlc/ui/lib'
 import './index.css'
-import { relaySsoCallback } from '@sdlc/ui/sso'
+import { relaySsoCallback, ssoNamespace } from '@pdlc/ui/sso'
 import {
   capturePlatformReturn,
   getPlatformProduct,
   setPlatformQueryClient,
-} from '@sdlc/ui/platform'
+} from '@pdlc/ui/platform'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,7 +71,7 @@ function Boot() {
   )
 }
 
-if (!relaySsoCallback()) {
+if (!relaySsoCallback(ssoNamespace(import.meta.env.VITE_AUTH_NAMESPACE))) {
   const root = createRoot(document.getElementById('root')!)
   getPlatformProduct()?.onRetire(() => {
     root.unmount()

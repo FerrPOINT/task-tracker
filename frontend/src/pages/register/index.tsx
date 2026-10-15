@@ -3,10 +3,10 @@ import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
-import { Button } from '@sdlc/ui/ui'
-import { ErrorState } from '@sdlc/ui/ui'
-import { Input } from '@sdlc/ui/ui'
-import { PlatformMark } from '@sdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { ErrorState } from '@pdlc/ui/ui'
+import { Input } from '@pdlc/ui/ui'
+import { PlatformMark } from '@pdlc/ui/ui'
 import { useRegister } from '@/shared/api/hooks'
 
 export function RegisterPage() {

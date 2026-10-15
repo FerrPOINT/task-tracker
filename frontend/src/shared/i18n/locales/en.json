@@ -154,17 +154,7 @@
     "haveAccount": "Already have an account",
     "passwordMismatch": "Passwords do not match",
     "displayName": "Display name",
-    "totpCode": "Two-factor code",
-    "sso": {
-      "title": "Sign in to Task Tracker",
-      "signIn": "Sign in with SDLC",
-      "redirecting": "Redirecting to Central Auth...",
-      "unavailable": "Could not open Central Auth. Try again.",
-      "retry": "Try signing in again",
-      "completing": "Finishing sign-in...",
-      "callbackError": "Could not finish signing in. Try again.",
-      "securityNotice": "Sign-in is shared across SDLC apps. Previously configured Task Tracker two-factor authentication is disabled, reducing sign-in protection."
-    }
+    "totpCode": "Two-factor code"
   },
   "notifications": {
     "title": "Notifications",
@@ -463,20 +453,8 @@
     }
   },
   "common": {
-    "save": "Save",
-    "cancel": "Cancel",
-    "confirm": "Confirm",
-    "retry": "Retry",
-    "delete": "Delete",
-    "theme": "Theme: {{theme}}",
-    "creating": "Creating…",
-    "loading": "Loading…",
-    "edit": "Edit",
-    "saving": "Saving…",
     "saved": "Saved",
-    "error": "Error",
-    "unassigned": "Unassigned",
-    "user": "User"
+    "error": "Error"
   },
   "loading": {
     "empty": "Nothing to show yet.",
@@ -544,6 +522,8 @@
     "watching": "Watching",
     "unwatch": "Stop watching",
     "noWatchers": "No watchers",
+    "votesError": "Unable to load votes. Try again.",
+    "watchersError": "Unable to load watchers. Try again.",
     "ownIssue": "You cannot vote for your own issue"
   },
   "links": {

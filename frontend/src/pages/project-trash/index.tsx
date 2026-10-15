@@ -1,12 +1,12 @@
-import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectAvatar } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Button } from '@sdlc/ui/ui'
-import { ConfirmDialog, ErrorState } from '@sdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { ConfirmDialog, ErrorState } from '@pdlc/ui/ui'
 import { useTrash, useRestoreIssue, usePurgeIssue } from '@/shared/api/hooks'
 
 const TRASH_PAGE_SIZE = 50

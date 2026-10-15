@@ -2,8 +2,8 @@ mod commands;
 mod support;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use pdlc_cli_core::ApiClient;
 use reqwest::Method;
-use sdlc_cli_core::ApiClient;
 use serde_json::{Value, json};
 use std::{process::ExitCode, time::Duration};
 use support::ErrorFormat;
@@ -23,7 +23,7 @@ struct Cli {
     )]
     api_url: String,
 
-    /// Bearer token (or set TASKTRACKER_TOKEN / SDLC_API_TOKEN)
+    /// Bearer token (or set TASKTRACKER_TOKEN / PDLC_API_TOKEN)
     #[arg(long, env = "TASKTRACKER_TOKEN", hide_env_values = true)]
     token: Option<String>,
 
@@ -535,7 +535,7 @@ impl Api {
         let secrets = token
             .clone()
             .into_iter()
-            .chain(std::env::var("SDLC_API_TOKEN").ok())
+            .chain(pdlc_cli_core::platform_env("API_TOKEN")?)
             .flat_map(|value| [value.trim().to_owned(), value])
             .filter(|value| !value.is_empty())
             .collect();
@@ -684,6 +684,7 @@ async fn main() -> ExitCode {
     let mut secrets = cli
         .token
         .clone()
+        .or_else(|| std::env::var("PDLC_API_TOKEN").ok())
         .or_else(|| std::env::var("SDLC_API_TOKEN").ok())
         .into_iter()
         .collect::<Vec<_>>();

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { UserAvatar } from './user-avatar'
+import { UserAvatar } from '@pdlc/ui/ui'
 
-describe('UserAvatar', () => {
+describe('Base avatar with Tracker i18n', () => {
   it('renders a stable generated image for an assigned user', () => {
     const { rerender } = render(<UserAvatar name="Alice" userId="user-1" />)
     const firstSource = screen.getByRole('img', { name: 'Alice' }).getAttribute('src')

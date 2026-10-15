@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { ProjectBacklogPage } from './'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 
 const mockBacklog = vi.hoisted(() => vi.fn())
 const mockSprints = vi.hoisted(() => vi.fn())

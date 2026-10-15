@@ -1,14 +1,15 @@
 import { useLocation } from 'react-router'
-import { parseNamespaceLocation } from '@sdlc/ui/lib'
+import { parseNamespaceLocation } from '@pdlc/ui/lib'
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import { endSso } from '@sdlc/ui/sso'
+import { endSso } from '@pdlc/ui/sso'
 import {
   listProjects,
   getProject,
   createProject,
   updateProject,
   deleteProject,
+  type Project,
 } from '@/api/project'
 import { getBoard, getBacklog, moveIssue, type MoveIssueInput } from '@/api/board'
 import { searchIssues, SearchRequestError, type SearchFilters } from '@/api/search'
@@ -446,6 +447,7 @@ export function useCreateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: createIssue,
+    retry: false,
     onSuccess: (data) => {
       qc.setQueryData(['issue', data.id], data)
       invalidateIssueCaches(qc, data.project_key, data.id)
@@ -489,14 +491,19 @@ export function useLogout() {
   })
 }
 
-export function useCreateProject() {
+export function useCreateProject(options: { navigateOnSuccess?: boolean } = {}) {
   const qc = useQueryClient()
   const navigate = useNavigate()
   return useMutation({
     mutationFn: createProject,
     onSuccess: (data) => {
+      if (options.navigateOnSuccess === false) {
+        qc.setQueryData<Project[]>([...projectKeys.all, 0, 100], (projects) =>
+          [data, ...(projects ?? []).filter((project) => project.id !== data.id)].slice(0, 100),
+        )
+      }
       qc.invalidateQueries({ queryKey: projectKeys.all })
-      navigate(`/projects/${data.key}/board`)
+      if (options.navigateOnSuccess !== false) navigate(`/projects/${data.key}/board`)
     },
   })
 }

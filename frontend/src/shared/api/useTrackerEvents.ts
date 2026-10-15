@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/shared/auth/store'
-import { connectAuthenticatedEventStream } from '@sdlc/ui/lib'
+import { connectAuthenticatedEventStream } from '@pdlc/ui/lib'
 
 type TrackerEvent = {
   type: string
