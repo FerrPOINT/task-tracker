@@ -43,7 +43,8 @@ ARG VITE_PLATFORM_ORIGIN=""
 ENV VITE_PLATFORM_ORIGIN=${VITE_PLATFORM_ORIGIN}
 # A changed unit file reruns checks; identical production inputs keep compilation cached.
 RUN --mount=type=bind,from=unit,source=/tmp/frontend-unit-check,target=/tmp/frontend-unit-check test "$(cat /tmp/frontend-unit-check)" = passed
-RUN pnpm exec tsc --noEmit && pnpm exec vite build
+# The required unit stage already typechecks these production sources with noEmit.
+RUN pnpm exec vite build
 
 
 FROM nginx:alpine@sha256:72aeb3308ef6cb3118242fb16389518923916dfa206e32d1a8377acc328b9870
