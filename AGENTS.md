@@ -35,8 +35,8 @@
 
 ### 4. Тестирование
 
-- Backend: `cargo test`, интеграционные тесты с PostgreSQL testcontainer.
-- Frontend: Vitest + Playwright.
+- Обычная сборка/разработка: backend `cargo test --locked -p domain --lib`, frontend `pnpm test:unit`; команды и scope — `.quality-gate.json`.
+- Integration с PostgreSQL, Playwright и полный набор — ручной release gate по `docs/TESTING.md`.
 - После UI-изменений — скриншоты full-page (375 / 1920 / 2560).
 - Все новые endpoint — curl-проверка.
 
@@ -61,11 +61,11 @@
 
 ### 8. Проверка перед завершением
 
-- [x] Все тесты проходят.
-- [x] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
-- [x] Документация актуальна.
-- [x] Коммиты запушены в `origin/main`.
-- [x] Пользователь увидел результат (скриншот / curl / лог).
+- [ ] Пройдены unit/static checks затронутых компонентов; повтор использует подходящие receipts.
+- [ ] Для релиза отдельно подтверждены integration/slow/full coverage и необходимые security/data/live gates на exact candidate; невыполненные проверки обозначены NOT RUN.
+- [ ] Документация актуальна.
+- [ ] Источник опубликован в согласованную task branch в пределах поручения.
+- [ ] Приведено evidence требуемого результата (скриншот / curl / лог по scope задачи).
 
 ## Контакты
 
