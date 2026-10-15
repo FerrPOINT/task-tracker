@@ -1,5 +1,24 @@
 # Owner SDLC UI v1
 
+## Single-Task History: 15 October 2026
+
+The panel labels all generated delivery and PM metadata events, including queued,
+reconciled, assignment reserved, lease renewed, run bound, result accepted,
+proposal submitted, owner feedback and PM completion. EN/RU labels distinguish
+PM execution completion from whole-task completion; events never grant owner
+confirmation rights. Exhaustive generated event typing remains enforced.
+
+The nine-event correction passes41 focused tests, full typecheck/build, focused
+strict lint/format, generated OpenAPI check and Chromium effective-theme checks
+on Base UI8e944aa. Earlier full385-test/lint/format/packed-consumer results retain
+their unchanged-input scope; a new full394-test run is not claimed.
+
+Routing OpenAPI compatibility remains open: the single-task v2 family deliberately
+omits legacy package fields, while v1 still requires them. A shared optional/
+nullable schema does not prove legacy client compatibility. No fake package
+values, blanket exception or live seven-role acceptance follows from this UI fix.
+The older slices below retain their original v1 behavior and qualification scope.
+
 ## Явный Opt-In Публикации
 
 B-SDLC-05 добавляет в существующий consent panel отдельный unchecked выбор
