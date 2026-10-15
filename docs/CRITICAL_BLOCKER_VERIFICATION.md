@@ -1,5 +1,33 @@
 # Critical Blocker Qualification
 
+## Latest Qualified Source: 15 October
+
+Tracker `0fb1bfabfb729388a823fa25a567d61f6dd4eb5f`, Rust SDK33ce704,
+explicit Tracker-only local Compose project `sdlc-qa-single-task-0a5b4fc8c6e2`:
+fmt, locked workspace/all-target strict Clippy,30 unit/contract cases and actual
+Rust OpenAPI parity pass. Seven independently named disposable PostgreSQL
+aggregates pass with explicit exact/ignored selectors and nonzero count guards:
+
+1. Atomic critical Return, replay, authorization, holds and race fencing.
+2. Original-key PM review reservation and scoped recovery.
+3. Current-PM blocker read with saved review, fresh ACL and current lease.
+4. PM lifecycle/continuation with original history preservation.
+5. Two critical PM review cycles and atomic SQL negative cases.
+6. Populated0033 through095 to096 upgrade preserving original IDs/hashes/history,
+   including each version's actual rejection of forbidden legacy retrofit.
+7. One task/root through thirteen role executions, Reviewer/Tester Rework,
+   repeated gates, cycle-limit denial and final synthetic DevOps completion.
+
+Runner exits0 with stage complete and tracker_pg_passed=true. Base ComposeHelper
+v2 journals `cleaned`; owned containers/disposable volumes and input exports are
+removed, shared cache preserved. PostgreSQL ports were not published. Accepted
+images/data and external service configuration are unchanged.
+
+This closes these bounded source/PostgreSQL checks, not real native execution,
+accepted-database installation or deployment/health/acceptance. Fleet checks were
+explicitly excluded and receive no passing result. The older entries below are
+historical input-specific evidence, not the latest qualification status.
+
 ## Source Follow-Up: 15 October
 
 The later immutable Fleet6be2dea / Tracker1f87247 batch passes Tracker fmt and
