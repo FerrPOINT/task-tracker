@@ -51,6 +51,23 @@ Rollback приложения отключает rollout, сохраняя ис�
 
 ## Выполненные Проверки
 
+### Актуальный Локальный Gate: 15 Октября
+
+На `2e9943f246ae500f72eb88520d7eea74a011a079`, SDK7c7b24cd, проходят
+fmt, workspace/all-target check и strict Clippy, actual Rust OpenAPI parity и
+полный workspace:743 tests,52 явно ignored,35 passing summaries. Все три прежних
+schema/auth failures закрыты конкретными regressions, без ослабления strict wire
+или machine-vs-human permissions. Временные Compose/PG/Cargo inputs очищены.
+
+Семь ранее пройденных PG aggregates, включая populated history и Rework, имеют
+отдельный unchanged-production scope на9c833eb; это не повторное выполнение
+ignored cases. Frontend489 и9 current Draft browser fixtures сохраняют свои
+source-bound результаты. [Общий точный receipt](https://github.com/FerrPOINT/fleet-control/blob/feat/single-task-sdlc-20261013/docs/evidence/FLEET_FOLLOWUP_49_20261015.md).
+
+Это не установка, live owner confirmation или полный семиролевой SDLC.
+
+### Исторический Scope
+
 На Tracker `b109d0c116a69603012cfb7ad37c960ceb8f975e` и Fleet
 `a6aa88d0fdafa2de2d7089b8079fc0d8ec02975d` прошли локальные locked workspace
 check всех targets, formatting, 10 Tracker lifecycle units, 1 rollout-parser
