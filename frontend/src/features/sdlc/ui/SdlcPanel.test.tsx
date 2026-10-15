@@ -641,4 +641,153 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     ).toBeInTheDocument()
     expect(screen.queryByText(/Analysis \/ Ready/)).not.toBeInTheDocument()
   })
+  it.each([
+    ['delivery.queued', 'Delivery queued', 'Работа поставлена в очередь'],
+    ['delivery.reconciled', 'Delivery reconciled', 'Состояние выполнения сверено'],
+    [
+      'delivery.assignment_reserved',
+      'Delivery assignment prepared, awaiting admission',
+      'Назначение подготовлено, допуск ожидается',
+    ],
+    ['delivery.lease_renewed', 'Delivery lease renewed', 'Аренда назначения продлена'],
+    ['delivery.run_bound', 'Delivery run bound', 'Запуск привязан к назначению'],
+    ['delivery.result_accepted', 'Delivery result accepted', 'Результат выполнения принят'],
+  ] as const)(
+    'translates lifecycle history %s without granting owner actions',
+    async (kind, en, ru) => {
+      const assigned = [
+        'delivery.assignment_reserved',
+        'delivery.lease_renewed',
+        'delivery.run_bound',
+      ].includes(kind)
+      const accepted = kind === 'delivery.result_accepted'
+      const lifecycleEvent: MetadataEvent = {
+        ...event,
+        event_type: kind,
+        payload: {
+          ...event.payload,
+          resource: {
+            task_version: 10,
+            status: assigned ? 'InProgress' : 'Ready',
+            runtime: kind === 'delivery.run_bound' ? 'running' : assigned ? 'reserved' : 'queued',
+            assignment_id: assigned ? confirmationId : null,
+            execution_id: assigned ? intentId : null,
+            agent_id: assigned ? task : null,
+            fencing_token: assigned ? 3 : null,
+            lease_id: assigned ? task : null,
+            lease_version: assigned ? 2 : null,
+            assignment_hash: assigned ? hash : null,
+            result_id: accepted ? task : null,
+            previous_result_id: accepted ? task : null,
+            result_sha256: accepted ? hash : null,
+          },
+        },
+      }
+      vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
+      vi.mocked(getSdlcMetadata).mockResolvedValue({
+        contract_version: 1,
+        projection: 'metadata_v1',
+        after: '0',
+        next_after: '19',
+        has_more: false,
+        events: [lifecycleEvent],
+      })
+      mount()
+      const history = await screen.findByRole('region', { name: 'SDLC events' })
+      expect(await within(history).findByText(en)).toBeInTheDocument()
+      await act(() => i18n.changeLanguage('ru'))
+      expect(await within(history).findByText(ru)).toBeInTheDocument()
+      expect(within(history).queryByText(/sdlc\.events\./)).not.toBeInTheDocument()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
+  it.each([
+    {
+      event: {
+        ...event,
+        event_type: 'delivery.proposal_submitted',
+        payload: {
+          ...event.payload,
+          resource: {
+            proposal_id: intentId,
+            assignment_id: confirmationId,
+            execution_id: intentId,
+            agent_id: task,
+            output_sha256: hash,
+          },
+        },
+      },
+      en: 'Delivery proposal submitted',
+      ru: 'Предложение результата сохранено',
+    },
+    {
+      event: {
+        ...event,
+        event_type: 'pm.feedback_recorded',
+        payload: {
+          ...event.payload,
+          resource: {
+            message_id: intentId,
+            content_hash: hash,
+            fence: {
+              assignment_id: confirmationId,
+              execution_id: intentId,
+              agent_id: task,
+              assignment_version: 2,
+            },
+          },
+        },
+      },
+      en: 'PM feedback recorded',
+      ru: 'Сообщение владельца для PM сохранено',
+    },
+    {
+      event: {
+        ...event,
+        event_type: 'pm.completed',
+        payload: {
+          ...event.payload,
+          resource: {
+            completion_id: intentId,
+            fence: {
+              assignment_id: confirmationId,
+              execution_id: intentId,
+              agent_id: task,
+              assignment_version: 2,
+            },
+            lease_id: task,
+            lease_version: 2,
+            requirement_revision: 2,
+            content_hash: hash,
+            terminal_receipt_sha256: hash,
+            workflow_receipt_sha256: hash,
+          },
+        },
+      },
+      en: 'PM execution completed',
+      ru: 'Выполнение PM завершено',
+    },
+  ] satisfies { event: MetadataEvent; en: string; ru: string }[])(
+    'translates $event.event_type without treating it as owner confirmation',
+    async ({ event: recorded, en, ru }) => {
+      vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
+      vi.mocked(getSdlcMetadata).mockResolvedValue({
+        contract_version: 1,
+        projection: 'metadata_v1',
+        after: '0',
+        next_after: '19',
+        has_more: false,
+        events: [recorded],
+      })
+      mount()
+      const history = await screen.findByRole('region', { name: 'SDLC events' })
+      expect(await within(history).findByText(en)).toBeInTheDocument()
+      await act(() => i18n.changeLanguage('ru'))
+      expect(await within(history).findByText(ru)).toBeInTheDocument()
+      expect(within(history).queryByText(/sdlc\.events\./)).not.toBeInTheDocument()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
 })

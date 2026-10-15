@@ -93,6 +93,15 @@
       "prerequisites": "Prerequisites"
     },
     "events": {
+      "deliveryQueued": "Delivery queued",
+      "deliveryReconciled": "Delivery reconciled",
+      "deliveryAssignmentPrepared": "Delivery assignment prepared, awaiting admission",
+      "deliveryLeaseRenewed": "Delivery lease renewed",
+      "deliveryRunBound": "Delivery run bound",
+      "deliveryResultAccepted": "Delivery result accepted",
+      "deliveryProposalSubmitted": "Delivery proposal submitted",
+      "pmFeedbackRecorded": "PM feedback recorded",
+      "pmCompleted": "PM execution completed",
       "taskCreated": "Draft created",
       "taskBound": "Task binding recorded",
       "pmAssigned": "PM assignment recorded",

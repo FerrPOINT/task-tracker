@@ -35,6 +35,15 @@ const documentFields = [
   'prerequisites',
 ] as const
 const eventLabels = {
+  'delivery.queued': 'deliveryQueued',
+  'delivery.reconciled': 'deliveryReconciled',
+  'delivery.assignment_reserved': 'deliveryAssignmentPrepared',
+  'delivery.lease_renewed': 'deliveryLeaseRenewed',
+  'delivery.run_bound': 'deliveryRunBound',
+  'delivery.result_accepted': 'deliveryResultAccepted',
+  'delivery.proposal_submitted': 'deliveryProposalSubmitted',
+  'pm.feedback_recorded': 'pmFeedbackRecorded',
+  'pm.completed': 'pmCompleted',
   'task.created': 'taskCreated',
   'task.bound': 'taskBound',
   'pm.assigned': 'pmAssigned',
