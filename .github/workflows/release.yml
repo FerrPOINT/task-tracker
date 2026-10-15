@@ -1,0 +1,252 @@
+name: release-checks (manual)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.classify.outputs.backend }}
+      frontend: ${{ steps.classify.outputs.frontend }}
+      frontend_build: ${{ steps.classify.outputs.frontend_build }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Fetch exact comparison commits
+        working-directory: task-tracker
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" != 0000000000000000000000000000000000000000 ]; then
+            git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
+          fi
+      - name: Verify packaged Base selector
+        run: |
+          python3 - <<'PY'
+          import hashlib,json,re
+          from pathlib import Path
+          root=Path('task-tracker')
+          pin=(root/'.quality-tooling-revision').read_text().strip()
+          receipt=json.loads((root/'scripts/vendor/base-quality-tooling.json').read_text())
+          if not re.fullmatch(r'[0-9a-f]{40}',pin) or receipt['schema']!='base-quality-tooling/v1' or receipt['revision']!=pin:
+              raise SystemExit('Packaged Base revision mismatch')
+          if hashlib.sha256((root/'scripts/vendor/base_quality_selection.py').read_bytes()).hexdigest()!=receipt['sha256']:
+              raise SystemExit('Packaged Base selector checksum mismatch')
+          PY
+      - id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 task-tracker/scripts/vendor/base_quality_selection.py --root task-tracker
+
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+      - name: README validator tests
+        working-directory: task-tracker
+        run: |
+          python3 -m unittest scripts.tests.test_verify_readme scripts.tests.test_ci_contract_checks scripts.tests.test_ci_change_classifier scripts.tests.test_base_maintenance
+          bash -n scripts/backup.sh scripts/restore.sh
+      - name: README structural validation
+        working-directory: task-tracker
+        run: python3 scripts/verify_readme.py
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17.6-alpine
+        env:
+          POSTGRES_USER: tasktracker
+          POSTGRES_DB: tasktracker_infra_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U tasktracker -d tasktracker_infra_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: task-tracker/backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+      - name: Read pinned Base revision
+        id: base
+        working-directory: task-tracker
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out services-base sibling (path deps)
+        uses: actions/checkout@v7
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
+          ref: ${{ steps.base.outputs.sha }}
+      - name: Verify pinned Base checkout
+        working-directory: task-tracker
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: task-tracker/backend
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --workspace --all-targets -- -D warnings
+      - run: cargo test --locked --workspace -- --test-threads=1
+      - name: Deleted issue key restore (isolated PostgreSQL)
+        env:
+          TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
+        run: cargo test --locked -p infra --test repos deleted_issue_key_can_be_resolved_for_restore_only -- --ignored --test-threads=1
+      - name: Namespace projection loss (isolated PostgreSQL)
+        env:
+          TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
+          TT_NAMESPACE__INSTANCE_ID: 11111111-1111-4111-8111-111111111111
+          TT_NAMESPACE__REGISTRY_INSTANCE_ID: 22222222-2222-4222-8222-222222222222
+        run: cargo test --locked -p infra --test repos namespace_projection_loss_cannot_offer_or_rebind_managed_project -- --ignored --test-threads=1
+      - name: Fleet MCP admission upgrade (isolated PostgreSQL)
+        env:
+          TRACKER_MCP_ADMISSION_TEST_URL: postgres://tasktracker@127.0.0.1:5432/tracker_mcp_qa_upgrade
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_mcp_qa_upgrade
+          cargo test --locked -p migration existing_v1_schema_upgrades_without_rewriting_history -- --ignored --test-threads=1
+      - name: Isolated PostgreSQL HTTP clarification and ownership lease
+        env:
+          TT_SDLC_DRAFT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_drafts
+          TT_SDLC_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_clarifications
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_drafts
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_clarifications
+          cargo test -p server --test drafts --locked -- --ignored --test-threads=1
+          cargo test -p server --test sdlc --locked -- --ignored --test-threads=1
+      - name: OpenAPI drift gate
+        run: |
+          mkdir -p ../openapi
+          cargo run --locked -p api --bin gen-openapi > ../openapi/openapi.json.generated
+          diff -u ../openapi/openapi.json ../openapi/openapi.json.generated
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: task-tracker/frontend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+          fetch-depth: 0
+      - name: Read pinned Base revision
+        id: base
+        working-directory: task-tracker
+        run: |
+          pin=.base-ui-revision
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+      - name: Check out services-base sibling (@sdlc/ui file dep)
+        uses: actions/checkout@v7
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
+          ref: ${{ steps.base.outputs.sha }}
+      - name: Verify pinned Base checkout
+        working-directory: task-tracker
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.28.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.20.0"
+          cache: pnpm
+          cache-dependency-path: task-tracker/frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        env:
+          CI: "true"
+      - run: pnpm openapi:check
+      - name: Typecheck independently of application build
+        run: pnpm exec tsc --noEmit
+      - run: pnpm test:all -- --run
+      - run: pnpm lint
+      - run: pnpm format:check
+      - name: OpenAPI compatibility against target branch
+        run: |
+          git fetch origin main --depth=1
+          pnpm openapi:compat
+      - name: Generated contract and lockfile stay unchanged
+        run: git diff --exit-code -- pnpm-lock.yaml src/api/generated.ts src/api/schema.d.ts
+      - run: pnpm exec vite build
+        if: needs.changes.outputs.frontend_build == 'true'
+      - name: Packed Base consumer
+        run: python ../../services-base/scripts/check_ui_consumer.py
+      - name: Effective themes in the built consumer
+        if: needs.changes.outputs.frontend_build == 'true'
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm exec vite preview --host 127.0.0.1 --port 4173 --strictPort > /tmp/theme-preview.log 2>&1 &
+          pnpm theme:check http://127.0.0.1:4173
+
+  minimum-rust:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: task-tracker
+      - name: Read pinned Base revision
+        id: base
+        working-directory: task-tracker
+        run: |
+          pin=.base-revision
+          if [ -f .namespace-base-revision ]; then pin=.namespace-base-revision; fi
+          echo "sha=$(cat "$pin")" >> "$GITHUB_OUTPUT"
+          echo "pin=$pin" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        with:
+          repository: FerrPOINT/services-base
+          path: services-base
+          ref: ${{ steps.base.outputs.sha }}
+          token: ${{ secrets.SERVICES_BASE_TOKEN }}
+      - name: Verify pinned Base checkout
+        working-directory: task-tracker
+        run: python3 ../services-base/scripts/verify_base_revision.py --revision "${{ steps.base.outputs.pin }}" --base ../services-base
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: task-tracker/backend
+      - name: Check declared minimum independently of release builds
+        working-directory: task-tracker/backend
+        run: cargo check --locked --workspace --all-targets

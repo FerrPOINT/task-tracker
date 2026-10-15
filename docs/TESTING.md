@@ -1,5 +1,11 @@
 # Стратегия тестирования Task Tracker
 
+Актуальная политика 2026-10-15: unit/static запускаются при обычной сборке;
+integration/slow/full coverage и browser/live — вручную перед релизом.
+Команды быстрых уровней приведены в разделе «Тестовые уровни (2026-10-15)» ниже.
+Прежняя полная матрица и тяжёлые команды этого документа сохранены как
+ручные release checks; они не запускаются автоматически после каждой правки.
+
 ## Tracker SDLC Verification
 
 CI explicitly runs the ignored `drafts` and `sdlc` HTTP suites against separate
@@ -328,3 +334,25 @@ Lefthook (`lefthook.yml`):
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
 
 Legacy assignment/native admission не создаёт Tracker reservation: HTTP/PG сценарий проверяет отказ claim без lease/completion и сохраняет blocker Analysis. Успешный PM completion проверяется отдельно после настоящего reservation, финальной публикации и подтверждения exact revision. Полная интеграция с Fleet требует отдельной приёмки.
+
+## Тестовые уровни (2026-10-15)
+
+Обязательная общая политика: [Base TESTING](https://github.com/FerrPOINT/services-base/blob/c9e4182e460ee57ac38a0ab1a866ce9626d297a4/docs/TESTING.md).
+Выбор компонентов и native commands: `.quality-gate.json`.
+
+### Разработка и сборка
+
+Backend: `cargo test --locked -p domain --lib` из backend/.
+
+Frontend из frontend/: `pnpm test:unit`, `pnpm build` включает unit.
+`pnpm test` — unit alias, `pnpm test:all` — прежний полный набор.
+Playwright, packed-consumer и effective-theme проверки — ручной release.
+
+### Ручная релизная проверка
+
+Полный прежний набор сохранён в `.github/workflows/release.yml`: только
+workflow_dispatch на exact ref. Автоматический CI не поднимает PostgreSQL
+и не запускает длительные/browser/live тесты.
+
+Required security/data/compatibility checks и thresholds сохраняются.
+Unit success не заменяет ручную приёмку; NOT RUN не означает PASS.

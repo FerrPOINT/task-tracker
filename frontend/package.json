@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "pnpm run test:unit && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "pnpm run test:unit",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "preview": "vite preview --port 4173",
@@ -20,7 +20,9 @@
     "openapi:check": "node node_modules/@sdlc/ui/scripts/sdlc-openapi-check.mjs --spec ../openapi/openapi.json --schema src/api/generated.ts",
     "openapi:compat": "node scripts/base-openapi-compat.mjs",
     "postinstall": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts",
-    "theme:check": "node ../../services-base/frontend/scripts/sdlc-effective-theme-check.mjs"
+    "theme:check": "node ../../services-base/frontend/scripts/sdlc-effective-theme-check.mjs",
+    "test:unit": "vitest run --exclude \"**/*.integration.test.*\" --exclude \"**/*.slow.test.*\" --exclude \"**/*.e2e.test.*\"",
+    "test:all": "vitest run"
   },
   "dependencies": {
     "@dicebear/core": "^9.4.3",
