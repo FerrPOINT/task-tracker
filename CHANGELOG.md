@@ -1,5 +1,10 @@
 # Changelog
 
+- SSO использует `VITE_AUTH_CLIENT_ID` из конфигурации стенда, включая
+  `task-tracker-dev` для локальной разработки. Без переопределения сохраняется
+  runtime-клиент `task-tracker`; login, callback, refresh и logout используют
+  общую конфигурацию.
+
 - Синхронизирован OpenAPI результата аналитика с Rust-генератором: endpoint,
   request и receipt схемы доступны клиентам; drift gate не падает после #130.
 
