@@ -86,6 +86,123 @@ async function installSsoMocks(page: Page) {
 }
 
 test.describe('smoke', () => {
+  for (const outcome of ['validation400', 'validation422', 'unknown'] as const) {
+    test(`issue creation preserves safe retry semantics after ${outcome}`, async ({
+      page,
+      baseURL,
+    }, testInfo) => {
+      await installSsoMocks(page)
+      const appBaseURL = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+      const registry = '11111111-1111-4111-8111-111111111111'
+      const namespace = '22222222-2222-4222-8222-222222222222'
+      const project = {
+        id: '00000000-0000-0000-0000-000000000010',
+        key: mockUser.key,
+        name: mockUser.name,
+        description: '',
+        owner_id: mockUser.id,
+        owner_name: 'Demo User',
+        created_at: '2026-10-14T00:00:00Z',
+        todo_count: 0,
+        in_progress_count: 0,
+        done_count: 0,
+      }
+      const context = {
+        label: project.name,
+        resource_key: project.key,
+        binding: {
+          schema_version: 1,
+          operation_id: '33333333-3333-4333-8333-333333333333',
+          generation: 1,
+          state: 'active',
+          drained: true,
+          namespace: { registry_instance_id: registry, namespace_id: namespace },
+          resource: { instance_id: registry, resource_id: project.id, kind: 'tracker_project' },
+        },
+      }
+      const writes: { body: Record<string, unknown>; key: string | undefined }[] = []
+      await page.route('**/api/v1/**', async (route) => {
+        const request = route.request()
+        const path = new URL(request.url()).pathname.replace('/api/v1', '')
+        if (path === '/issues' && request.method() === 'POST') {
+          writes.push({ body: request.postDataJSON(), key: request.headers()['idempotency-key'] })
+          if (writes.length === 1 && outcome === 'unknown') return route.abort('failed')
+          if (writes.length === 1 || (outcome === 'unknown' && writes.length === 2)) {
+            return routeJson(
+              route,
+              { error: { code: 'VALIDATION_ERROR', message: 'private API details' } },
+              outcome === 'validation400' ? 400 : 422,
+            )
+          }
+          return routeJson(route, { id: 'created', project_key: project.key }, 201)
+        }
+        if (path === '/users/me')
+          return routeJson(route, {
+            id: mockUser.id,
+            email: 'demo@example.com',
+            username: 'demo',
+            display_name: 'Demo User',
+          })
+        if (path === '/users') return routeJson(route, { users: [] })
+        if (path === '/projects') return routeJson(route, { projects: [project] })
+        if (path === `/projects/${project.key}`) return routeJson(route, project)
+        if (path === '/namespace-contexts') return routeJson(route, [context])
+        if (path === `/namespace-contexts/${registry}/${namespace}`)
+          return routeJson(route, context)
+        if (path === '/issue-types')
+          return routeJson(route, [{ id: 'task', name: 'Task', is_subtask: false }])
+        if (path.endsWith('/custom-fields')) return routeJson(route, { fields: [] })
+        if (path.endsWith('/members')) return routeJson(route, { members: [] })
+        return route.fulfill({ status: 404 })
+      })
+      const search = namespaceEnabled
+        ? `registry_instance_id=${registry}&namespace_id=${namespace}&project_key=${project.key}`
+        : `project_key=${project.key}`
+      await page.goto(`${appBaseURL}/issues/create?${search}`)
+      const summary = page.getByLabel(/^(заголовок|summary)\s*\*?$/i)
+      const submit = page.getByRole('button', { name: /^(создать|create)$/i })
+      await summary.fill('Original issue')
+      await expect(submit).toBeEnabled()
+      await submit.click()
+      await expect(page.getByRole('alert').first()).toBeVisible()
+      await expect(submit).toBeEnabled()
+      expect(writes).toHaveLength(1)
+      await expect(summary).toHaveValue('Original issue')
+      await expect(page.locator('body')).not.toContainText('private API details')
+      const frozen = page.getByText('Повтор отправит исходную задачу с прежним ключом операции.')
+      if (outcome === 'unknown') await expect(frozen).toBeVisible()
+      else await expect(frozen).toBeHidden()
+      if (outcome === 'validation400') {
+        for (const width of [375, 1920, 2560]) {
+          await page.setViewportSize({ width, height: width === 375 ? 812 : 1080 })
+          await page.screenshot({
+            path: testInfo.outputPath(`issue-rejection-${width}.png`),
+            fullPage: true,
+          })
+        }
+      }
+      await summary.fill('Corrected issue')
+      await submit.click()
+      if (outcome === 'unknown') {
+        await expect.poll(() => writes.length).toBe(2)
+        await expect(submit).toBeEnabled()
+        await expect(frozen).toBeVisible()
+        await submit.click()
+      }
+      await expect.poll(() => new URL(page.url()).pathname).toBe(`/projects/${project.key}/backlog`)
+      if (namespaceEnabled)
+        expect(new URL(page.url()).searchParams.get('namespace_id')).toBe(namespace)
+      expect(writes).toHaveLength(outcome === 'unknown' ? 3 : 2)
+      expect(writes[0].key).toBeTruthy()
+      if (outcome === 'unknown') {
+        for (const request of writes.slice(1)) expect(request).toEqual(writes[0])
+      } else {
+        expect(writes[1].body.summary).toBe('Corrected issue')
+        expect(writes[1].key).not.toBe(writes[0].key)
+      }
+    })
+  }
+
   test('keeps the issue draft through project creation errors and authoritative catalogue refresh', async ({
     page,
     baseURL,

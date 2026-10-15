@@ -447,6 +447,7 @@ export function useCreateIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: createIssue,
+    retry: false,
     onSuccess: (data) => {
       qc.setQueryData(['issue', data.id], data)
       invalidateIssueCaches(qc, data.project_key, data.id)

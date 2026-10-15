@@ -10,6 +10,11 @@ import { ThemeProvider } from '@pdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
 
 const createProject = vi.hoisted(() => vi.fn())
+const POST = vi.hoisted(() => vi.fn())
+vi.mock('@/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/api/client')>()
+  return { ...actual, api: { ...actual.api, POST } }
+})
 const createIssue = vi.hoisted(() =>
   vi.fn((input: Record<string, unknown>) => {
     void input
@@ -72,7 +77,8 @@ const listCustomFields = vi.hoisted(() =>
     ]),
   ),
 )
-vi.mock('@/api/issue-create', () => ({
+vi.mock('@/api/issue-create', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/issue-create')>()),
   createIssue,
 }))
 vi.mock('@/api/project', () => ({
@@ -149,6 +155,7 @@ function wrapper(children: React.ReactNode, initialEntry = '/issues/create') {
 describe('IssueCreatePage', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
+    POST.mockReset()
     createIssue.mockClear()
     listProjects.mockClear()
     listUsers.mockClear()
@@ -156,6 +163,90 @@ describe('IssueCreatePage', () => {
     listIssueTypes.mockClear()
     listCustomFields.mockClear()
     useAuthStore.setState({ token: 'tok', userId: 'u1', email: 'a@b' })
+  })
+
+  it.each([400, 422])(
+    'allows corrected input after the first request is rejected by validation (%s)',
+    async (status) => {
+      const actual =
+        await vi.importActual<typeof import('@/api/issue-create')>('@/api/issue-create')
+      const previous = createIssue.getMockImplementation()!
+      createIssue.mockImplementation((input) =>
+        actual.createIssue(input as Parameters<typeof actual.createIssue>[0]),
+      )
+      POST.mockResolvedValueOnce({
+        response: new Response(null, { status }),
+        error: { error: { code: 'VALIDATION_ERROR', message: 'private API details' } },
+      }).mockResolvedValueOnce({
+        data: { id: 'new', project_key: 'TT' },
+        response: new Response(null, { status: 201 }),
+      })
+      try {
+        const user = userEvent.setup()
+        render(wrapper(<IssueCreatePage />))
+        await user.type(screen.getByLabelText(/Заголовок/), 'Rejected issue')
+        await user.type(await screen.findByLabelText(/Required text/), 'ready')
+        await user.click(screen.getByRole('button', { name: /^создать$/i }))
+        await screen.findByText('Не удалось создать задачу. Проверьте данные и повторите попытку.')
+        expect(screen.getByLabelText(/Заголовок/)).toHaveValue('Rejected issue')
+        expect(
+          screen.queryByText('Повтор отправит исходную задачу с прежним ключом операции.'),
+        ).not.toBeInTheDocument()
+        await user.clear(screen.getByLabelText(/Заголовок/))
+        await user.type(screen.getByLabelText(/Заголовок/), 'Corrected issue')
+        await user.click(screen.getByRole('button', { name: /^создать$/i }))
+        await screen.findByText('Backlog')
+        expect(POST).toHaveBeenCalledTimes(2)
+        const first = POST.mock.calls[0]![1]
+        const second = POST.mock.calls[1]![1]
+        expect(first.body.summary).toBe('Rejected issue')
+        expect(second.body.summary).toBe('Corrected issue')
+        expect(second.headers['Idempotency-Key']).not.toBe(first.headers['Idempotency-Key'])
+      } finally {
+        createIssue.mockImplementation(previous)
+      }
+    },
+  )
+
+  it('keeps a request with an unknown outcome frozen after a later validation rejection', async () => {
+    const actual = await vi.importActual<typeof import('@/api/issue-create')>('@/api/issue-create')
+    const previous = createIssue.getMockImplementation()!
+    createIssue.mockImplementation((input) =>
+      actual.createIssue(input as Parameters<typeof actual.createIssue>[0]),
+    )
+    POST.mockRejectedValueOnce(new TypeError('Response lost'))
+      .mockResolvedValueOnce({
+        response: new Response(null, { status: 422 }),
+        error: { error: { code: 'VALIDATION_ERROR', message: 'private API details' } },
+      })
+      .mockResolvedValueOnce({
+        data: { id: 'new', project_key: 'TT' },
+        response: new Response(null, { status: 201 }),
+      })
+    try {
+      const user = userEvent.setup()
+      render(wrapper(<IssueCreatePage />))
+      await user.type(screen.getByLabelText(/Заголовок/), 'Original issue')
+      await user.type(await screen.findByLabelText(/Required text/), 'ready')
+      await user.click(screen.getByRole('button', { name: /^создать$/i }))
+      await screen.findByText('Не удалось создать задачу. Проверьте данные и повторите попытку.')
+      expect(POST).toHaveBeenCalledTimes(1)
+      await user.clear(screen.getByLabelText(/Заголовок/))
+      await user.type(screen.getByLabelText(/Заголовок/), 'New input after unknown result')
+      await user.click(screen.getByRole('button', { name: /^создать$/i }))
+      await waitFor(() => expect(POST).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(screen.getByRole('button', { name: /^создать$/i })).toBeEnabled())
+      expect(
+        screen.getByText('Повтор отправит исходную задачу с прежним ключом операции.'),
+      ).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /^создать$/i }))
+      await screen.findByText('Backlog')
+      expect(POST).toHaveBeenCalledTimes(3)
+      const original = POST.mock.calls[0]![1]
+      for (const [, request] of POST.mock.calls.slice(1)) expect(request).toEqual(original)
+    } finally {
+      createIssue.mockImplementation(previous)
+    }
   })
 
   it('creates issue and navigates', async () => {
