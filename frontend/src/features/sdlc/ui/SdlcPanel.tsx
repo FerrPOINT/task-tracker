@@ -336,9 +336,16 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                       <Field label={t('sdlc.publication.effectiveRevision')}>
                                         {route.fleet_config_revision}
                                       </Field>
-                                      <Field label={t('sdlc.publication.package')}>
-                                        {route.package_commit} / {route.package_manifest_sha256}
-                                      </Field>
+                                      {displayedPolicy.contract_version === 1 ? (
+                                        <Field label={t('sdlc.publication.package')}>
+                                          {route.package_commit} / {route.package_manifest_sha256}
+                                        </Field>
+                                      ) : (
+                                        <Field label={t('sdlc.publication.instructionProfile')}>
+                                          {route.instruction_profile} /{' '}
+                                          {route.instruction_manifest_sha256}
+                                        </Field>
+                                      )}
                                       <Field label={t('sdlc.publication.workflow')}>
                                         {route.namespace_id} / {route.namespace_name} /{' '}
                                         {route.workflow_id} / {route.workflow_key}

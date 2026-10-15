@@ -16,7 +16,7 @@ import {
 import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
 import { SdlcPanel } from './SdlcPanel'
-import { routingPolicy } from '@/api/test-fixtures/routing-policy'
+import { routingPolicy, singleTaskRoutingPolicy } from '@/api/test-fixtures/routing-policy'
 
 vi.mock('@/api/sdlc', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/sdlc')>()),
@@ -278,6 +278,86 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       'expected_routing_policy_version',
     )
   })
+  it.each([
+    ['v1', routingPolicy, 'Package commit / manifest hash', 'Instruction profile / manifest hash'],
+    [
+      'v2',
+      singleTaskRoutingPolicy,
+      'Instruction profile / manifest hash',
+      'Package commit / manifest hash',
+    ],
+  ] as const)(
+    'shows only the actual %s source references without inventing package fields',
+    async (_family, makePolicy, label, absentLabel) => {
+      const policy = makePolicy(task)
+      vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(policy)
+      mount()
+      const choice = await screen.findByRole('checkbox', {
+        name: 'Publish with routing policy version 5',
+      })
+      expect(choice).not.toBeChecked()
+      const publication = screen.getByRole('region', { name: 'SDLC publication' })
+      fireEvent.click(within(publication).getByText('Seven-role policy references'))
+      expect(within(publication).getAllByText(label)).toHaveLength(7)
+      expect(within(publication).queryByText(absentLabel)).not.toBeInTheDocument()
+      const route = policy.routes.analyst
+      expect(
+        within(publication).getByText(`${route.workflow_id} / ${route.workflow_key}`, {
+          exact: false,
+        }),
+      ).toBeInTheDocument()
+      expect(
+        within(publication).getByText(/Native readiness and dispatch are not granted/),
+      ).toBeInTheDocument()
+      if (policy.contract_version === 2) {
+        expect(
+          within(publication).getAllByText(
+            `single-task-v1 / ${policy.routes.analyst.instruction_manifest_sha256}`,
+          ),
+        ).toHaveLength(7)
+        expect(
+          within(publication).queryByText(/4b9b4c9297a13fb28a6ba2039af2f7cb719f2f58/),
+        ).not.toBeInTheDocument()
+      }
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
+  it('publishes v2 only with explicit owner selection and the existing exact policy CAS', async () => {
+    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
+    vi.mocked(confirmRequirements).mockResolvedValue(receipt)
+    mount()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+    )
+    expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
+    await waitFor(() =>
+      expect(confirmRequirements).toHaveBeenCalledWith(task, 2, {
+        content_hash: hash,
+        idempotency_key: expect.any(String),
+        expected_routing_policy_version: 5,
+      }),
+    )
+  })
+  it('shows a frozen profile Analysis intent as queued, not admitted or owner-confirmable', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...queued,
+      intent: { ...intent, workflow: 'single-task-v1:analyst' },
+    })
+    mount()
+    expect(
+      await screen.findByText('Analysis / Ready · Queued, awaiting admission'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Analyst / single-task-v1:analyst / analysis / business'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+    expect(confirmRequirements).not.toHaveBeenCalled()
+  })
   it('posts only explicitly selected viewed policy version, without native admission', async () => {
     vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(routingPolicy(task))
     vi.mocked(confirmRequirements).mockResolvedValue(receipt)
@@ -380,12 +460,18 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       vi.mocked(confirmRequirements).mock.calls[1],
     )
   })
-  it.each([401, 403, 503])(
+  it.each([401, 403, 409, 503])(
     'withholds policy choice for source error %i without opting in',
     async (status) => {
       vi.mocked(getSdlcRoutingPolicy).mockRejectedValue(new SdlcRequestError(status))
       mount()
       await screen.findByRole('alert')
+      if (status === 409)
+        expect(
+          screen.getByText(
+            'The revision or retained SDLC binding is inconsistent; refresh required',
+          ),
+        ).toBeInTheDocument()
       expect(
         screen.queryByRole('checkbox', { name: /Publish with routing/ }),
       ).not.toBeInTheDocument()
@@ -411,7 +497,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
-  it.each([403, 503])(
+  it.each([403, 409, 503])(
     'blocks already selected publication on policy refresh error %i',
     async (status) => {
       vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(routingPolicy(task))

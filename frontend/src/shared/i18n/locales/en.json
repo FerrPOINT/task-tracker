@@ -45,6 +45,7 @@
       "agent": "Agent reference",
       "effectiveRevision": "Effective configuration revision",
       "package": "Package commit / manifest hash",
+      "instructionProfile": "Instruction profile / manifest hash",
       "workflow": "Namespace / workflow references",
       "profile": "Profile / catalog version and hash",
       "roles": {

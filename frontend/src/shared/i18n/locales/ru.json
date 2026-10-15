@@ -45,6 +45,7 @@
       "agent": "Ссылка на агента",
       "effectiveRevision": "Применённая ревизия конфигурации",
       "package": "Commit пакета / хеш манифеста",
+      "instructionProfile": "Профиль инструкций / хеш манифеста",
       "workflow": "Ссылки namespace / workflow",
       "profile": "Профиль / версия и хеш каталога",
       "roles": {
