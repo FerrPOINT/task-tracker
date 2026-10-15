@@ -3,6 +3,7 @@
 # Stages the sibling services-base checkout so the sdlc-auth-core path
 # dependency (../../../services-base/...) resolves.
 FROM rust:1.88.0-slim-bookworm AS builder
+ARG CARGO_BUILD_JOBS=2
 
 RUN apt-get update && apt-get install -y pkg-config libssl-dev unzip curl unzip && rm -rf /var/lib/apt/lists/*
 
@@ -14,6 +15,24 @@ COPY services-base/crates/sdlc-telemetry /services-base/crates/sdlc-telemetry
 COPY services-base/crates/sdlc-auth-core /services-base/crates/sdlc-auth-core
 COPY services-base/crates/sdlc-cli-core /services-base/crates/sdlc-cli-core
 COPY services-base/crates/sdlc-shared /services-base/crates/sdlc-shared
+COPY task-tracker/backend/api/Cargo.toml api/Cargo.toml
+COPY task-tracker/backend/app/Cargo.toml app/Cargo.toml
+COPY task-tracker/backend/Cargo.toml task-tracker/backend/Cargo.lock* ./
+COPY task-tracker/backend/cli/Cargo.toml cli/Cargo.toml
+COPY task-tracker/backend/domain/Cargo.toml domain/Cargo.toml
+COPY task-tracker/backend/infra/Cargo.toml infra/Cargo.toml
+COPY task-tracker/backend/migration/Cargo.toml migration/Cargo.toml
+COPY task-tracker/backend/server/Cargo.toml server/Cargo.toml
+COPY task-tracker/backend/shared/Cargo.toml shared/Cargo.toml
+# Immutable dependency layer; all product packages are removed before real source COPY.
+RUN --mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,target=/usr/local/cargo/registry,sharing=shared \
+    for package in api app cli domain infra migration server shared; do mkdir -p "$package/src"; printf '%s\n' '' > "$package/src/lib.rs"; printf '%s\n' 'fn main() {}' > "$package/src/main.rs"; done \
+    && mkdir -p api/src/bin \
+    && printf '%s\n' 'fn main() {}' > api/src/bin/gen_openapi.rs \
+    && cargo build --locked --release --bin server \
+    && cargo clean --release -p api -p app -p task-tracker-cli -p domain -p infra -p migration -p server -p shared \
+    && rm -rf -- api/src app/src cli/src domain/src infra/src migration/src server/src shared/src
+
 COPY task-tracker/backend/Cargo.toml task-tracker/backend/Cargo.lock* ./
 COPY task-tracker/backend/shared ./shared
 COPY task-tracker/backend/domain ./domain
