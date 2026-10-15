@@ -139,6 +139,7 @@ BEGIN
 END $$;
 
 CREATE FUNCTION sdlc_critical_pm_lifecycle_insert_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+<<review_lifecycle>>
 DECLARE t sdlc_tasks%ROWTYPE; v sdlc_critical_pm_reviews%ROWTYPE; l sdlc_pm_execution_leases%ROWTYPE;
     head jsonb; detail jsonb; expected jsonb; next_task jsonb; expected_blocker jsonb; body jsonb;
     op text; questions jsonb; q jsonb; prior jsonb; revision jsonb; confirmation jsonb;
@@ -288,7 +289,7 @@ BEGIN
                 OR body->'revision' IS DISTINCT FROM revision->'revision'
                 OR body->'command'->'content_hash' IS DISTINCT FROM revision->'content_hash'
                 OR (revision->>'revision')::bigint <= (v.result->'context'->'requirements'->>'revision')::bigint
-                OR EXISTS(SELECT 1 FROM sdlc_confirmations WHERE task_id=t.task_id AND revision=(NEW.result->>'revision')::bigint) THEN
+                OR EXISTS(SELECT 1 FROM sdlc_confirmations c WHERE c.task_id=t.task_id AND c.revision=(NEW.result->>'revision')::bigint) THEN
                 RAISE EXCEPTION 'SDLC new exact owner confirmation required' USING ERRCODE='23514';
             END IF;
             expected:=jsonb_set(expected,'{confirmations}',(expected->'confirmations')||jsonb_build_array(NEW.result));
@@ -301,7 +302,8 @@ BEGIN
             RAISE EXCEPTION 'SDLC current review completion already exists' USING ERRCODE='23514';
         END IF;
         SELECT c.payload INTO confirmation FROM sdlc_confirmations c WHERE c.task_id=t.task_id
-            AND c.revision=(revision->>'revision')::bigint AND c.content_hash=revision->>'content_hash';
+            AND c.revision=(review_lifecycle.revision->>'revision')::bigint
+            AND c.content_hash=review_lifecycle.revision->>'content_hash';
         IF confirmation IS NULL OR confirmation->>'owner_subject' IS DISTINCT FROM t.owner_subject
             OR t.state->'confirmation_revision' IS DISTINCT FROM revision->'revision'
             OR t.state->'lifecycle'->>'waiting_reason' IS DISTINCT FROM 'critical_pm_awaiting_finalization'

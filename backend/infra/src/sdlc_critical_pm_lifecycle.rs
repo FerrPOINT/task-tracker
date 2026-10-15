@@ -703,6 +703,17 @@ async fn write_outbox(
 mod tests {
     const SQL: &str = include_str!("../../migration/src/critical_pm_review_lifecycle.sql");
     #[test]
+    fn confirmation_sql_qualifies_column_and_local_revision() {
+        assert!(SQL.contains("<<review_lifecycle>>"));
+        assert!(SQL.contains("FROM sdlc_confirmations c WHERE c.task_id=t.task_id AND c.revision=(NEW.result->>'revision')::bigint"));
+        assert!(SQL.contains("c.revision=(review_lifecycle.revision->>'revision')::bigint"));
+        assert!(SQL.contains("c.content_hash=review_lifecycle.revision->>'content_hash'"));
+        assert!(!SQL.contains("AND revision=(NEW.result->>'revision')::bigint"));
+        assert!(!SQL.contains("c.revision=(revision->>'revision')::bigint"));
+        assert!(!SQL.contains("#variable_conflict"));
+    }
+
+    #[test]
     fn generation_family_has_both_exact_fk_and_closed_null_rules() {
         for required in [
             "sdlc_analysis_intent_routing_family",

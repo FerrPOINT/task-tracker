@@ -317,21 +317,30 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
         )
         .await;
     }
-    let confirmation: Confirmation = parse(
-        command(
-            r,
-            &r.f.owner,
-            SdlcCommand::Confirm {
-                revision: 2,
-                command: ConfirmCommand {
-                    content_hash: revision.content_hash.clone(),
-                    idempotency_key: "review-confirm".into(),
-                    expected_routing_policy_version: Some(1),
-                },
-            },
-        )
-        .await,
+    let confirm = SdlcCommand::Confirm {
+        revision: 2,
+        command: ConfirmCommand {
+            content_hash: revision.content_hash.clone(),
+            idempotency_key: "review-confirm".into(),
+            expected_routing_policy_version: Some(1),
+        },
+    };
+    let confirmation: Confirmation = parse(command(r, &r.f.owner, confirm.clone()).await);
+    assert_eq!(command(r, &r.f.owner, confirm).await, json!(confirmation));
+    let confirmed = r.f.db.query_one(statement(
+        "SELECT c.payload,
+            (SELECT count(*) FROM sdlc_confirmations WHERE task_id=$1 AND revision=2) AS confirmations,
+            (SELECT count(*) FROM sdlc_critical_pm_lifecycle_operations
+                WHERE task_id=$1 AND execution_id=$2 AND kind='command' AND idempotency_key='review-confirm') AS journals
+         FROM sdlc_confirmations c WHERE c.task_id=$1 AND c.revision=2",
+        vec![r.task.into(), r.lease.fence.execution_id.into()],
+    )).await.unwrap().unwrap();
+    assert_eq!(
+        confirmed.try_get::<Json>("", "payload").unwrap(),
+        json!(confirmation)
     );
+    assert_eq!(confirmed.try_get::<i64>("", "confirmations").unwrap(), 1);
+    assert_eq!(confirmed.try_get::<i64>("", "journals").unwrap(), 1);
     let before_resume = frozen_history(&r.f, r.task).await;
     let (renewed, replay) = Box::pin(r.f.repo.resume_pm_execution_lease(
         r.task,
