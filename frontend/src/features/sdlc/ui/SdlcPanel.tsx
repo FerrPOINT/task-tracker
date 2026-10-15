@@ -360,11 +360,17 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                         {route.fleet_config_revision}
                                       </DescriptionItem>
                                       {displayedPolicy.contract_version === 1 ? (
-                                        <DescriptionItem layout="inline" label={t('sdlc.publication.package')}>
+                                        <DescriptionItem
+                                          layout="inline"
+                                          label={t('sdlc.publication.package')}
+                                        >
                                           {route.package_commit} / {route.package_manifest_sha256}
                                         </DescriptionItem>
                                       ) : (
-                                        <DescriptionItem layout="inline" label={t('sdlc.publication.instructionProfile')}>
+                                        <DescriptionItem
+                                          layout="inline"
+                                          label={t('sdlc.publication.instructionProfile')}
+                                        >
                                           {route.instruction_profile} /{' '}
                                           {route.instruction_manifest_sha256}
                                         </DescriptionItem>
