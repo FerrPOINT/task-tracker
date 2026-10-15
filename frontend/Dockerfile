@@ -16,6 +16,7 @@ RUN --mount=type=cache,id=${PNPM_CACHE_ID}-${TARGETARCH},target=/pnpm/store,shar
 
 
 FROM dependencies AS unit
+COPY task-tracker/frontend/nginx.conf ./nginx.conf
 COPY --exclude=Dockerfile* --exclude=**/Dockerfile* --exclude=.dockerignore --exclude=**/.dockerignore --exclude=nginx.conf --exclude=**/nginx.conf task-tracker/frontend/ ./
 ARG VITE_NAMESPACE_ENABLED="false"
 ENV VITE_NAMESPACE_ENABLED=${VITE_NAMESPACE_ENABLED}

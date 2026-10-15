@@ -363,3 +363,7 @@ CI `frontend` передаёт `tested-frontend-dist` в `frontend-package`; о�
 Проверка графа: `python scripts/vendor/base_frontend_artifact.py check-ci --root .`.
 [Формат/команды Base](https://github.com/FerrPOINT/services-base/blob/a9b1ae9869784676957c193a75bd92a2a0480dc1/docs/BUILD_PERFORMANCE.md#передача-frontend-artifact); packet pin — `.quality-tooling-revision`.
 Node 22.20.0; OpenAPI generation/checks сохраняются в producer.
+
+Docker unit stage явно получает `frontend/nginx.conf`: routing tests читают
+фактический config. Он остаётся вне Vite application COPY; изменение config
+повторяет относящиеся unit и packaging, сохраняя application compilation cache.
