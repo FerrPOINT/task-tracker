@@ -53,10 +53,7 @@ async function docker(method: string, path: string): Promise<unknown> {
 }
 
 test('six product APIs fail closed during an isolated Central Auth outage', async ({ request }) => {
-  test.skip(
-    !platformEnv('ISOLATED_QA_PROJECT'),
-    'Requires an explicitly isolated Compose project',
-  )
+  test.skip(!platformEnv('ISOLATED_QA_PROJECT'), 'Requires an explicitly isolated Compose project')
   test.setTimeout(180_000)
   const project = platformEnv('ISOLATED_QA_PROJECT')!
   expect(project).toMatch(/^sdlc-(clean-install-qa|platform-smoke-[a-zA-Z0-9-]+)$/)
