@@ -1,5 +1,7 @@
 # Changelog
 
+- Платформенные UI/SDK imports и пути переведены на PDLC и `base-modules/ui`; совместимые readers сохраняют прежние credentials/транзакции. Нормативные термины и границы описаны в `docs/PDLC_BASE_INTEGRATION.md`; установка и включение новых writers выполняются отдельно.
+
 - Синхронизирован OpenAPI результата аналитика с Rust-генератором: endpoint,
   request и receipt схемы доступны клиентам; drift gate не падает после #130.
 
