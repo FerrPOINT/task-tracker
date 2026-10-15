@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router'
 
 import { DashboardPage } from './'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
 
 const getDashboard = vi.hoisted(() =>

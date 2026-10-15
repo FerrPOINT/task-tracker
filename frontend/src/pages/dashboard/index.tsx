@@ -1,13 +1,13 @@
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import { ProjectAvatar, ResourceList, ResourceListRow, EmptyState } from '@sdlc/ui/ui'
+import { ProjectAvatar, ResourceList, ResourceListRow, EmptyState } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 
 import { useTranslation } from 'react-i18next'
-import { ErrorState } from '@sdlc/ui/ui'
+import { ErrorState } from '@pdlc/ui/ui'
 import { useDashboard, useProjects } from '@/shared/api/hooks'
 import { statusLabel } from '@/shared/lib/status-label'
 import { useAuthStore } from '@/shared/auth/store'
-import { usePlatformReadiness } from '@sdlc/ui/platform'
+import { usePlatformReadiness } from '@pdlc/ui/platform'
 
 const PREVIEW_LIMIT = 5
 

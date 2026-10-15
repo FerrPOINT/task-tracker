@@ -1,18 +1,19 @@
+import { platformEnv } from '@pdlc/ui/environment'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '@playwright/test'
 import { signInAt } from './qa-login'
 
-test.skip(process.env.SDLC_LIVE_QA !== '1', 'Requires real Central Auth and Task Tracker')
+test.skip(platformEnv('LIVE_QA') !== '1', 'Requires real Central Auth and Task Tracker')
 test.skip(({ browserName }) => browserName !== 'chromium', 'Single browser live acceptance')
 test.use({ trace: 'off', hasTouch: true })
 
 const account =
-  process.env.SDLC_LIVE_QA === '1'
+  platformEnv('LIVE_QA') === '1'
     ? (JSON.parse(
         readFileSync(
-          process.env.SDLC_QA_SESSION_FILE ??
+          platformEnv('QA_SESSION_FILE') ??
             fileURLToPath(
               new URL('../../../services-base/deploy/.local/qa-session.json', import.meta.url),
             ),
@@ -23,7 +24,7 @@ const account =
 const appUrl = 'http://localhost:7722'
 const apiUrl = 'http://localhost:7721/api/v1'
 const evidenceDir =
-  process.env.SDLC_HEADER_EVIDENCE_DIR ??
+  platformEnv('HEADER_EVIDENCE_DIR') ??
   fileURLToPath(new URL('../../../.local/screenshots/task-header/', import.meta.url))
 
 test('real Task header preserves context, actions, SSO and accessible responsive geometry', async ({

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@sdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
 import { useCreateProject } from '@/shared/api/hooks'
 import type { CreateProjectRequest, Project } from '@/api/project'
 import { ProjectFormDialog } from './ProjectFormDialog'

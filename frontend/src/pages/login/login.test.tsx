@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 import { LoginPage } from './'
 import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
-import { SsoLogoutPendingError } from '@sdlc/ui/sso'
+import { SsoLogoutPendingError } from '@pdlc/ui/sso'
 
 const beginSso = vi.hoisted(() => vi.fn<(...args: unknown[]) => Promise<void>>())
-vi.mock('@sdlc/ui/sso', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@sdlc/ui/sso')>()),
+vi.mock('@pdlc/ui/sso', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@pdlc/ui/sso')>()),
   beginSso,
 }))
 

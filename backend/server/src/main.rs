@@ -5,9 +5,9 @@ use shared::AppConfig;
 
 #[tokio::main]
 async fn main() {
-    sdlc_telemetry::init_tracing_with_options(
+    pdlc_telemetry::init_tracing_with_options(
         "task-tracker",
-        sdlc_telemetry::TracingOptions {
+        pdlc_telemetry::TracingOptions {
             json: true,
             target: true,
             current_span: true,

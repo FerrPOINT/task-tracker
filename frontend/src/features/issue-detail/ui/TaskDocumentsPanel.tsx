@@ -1,8 +1,8 @@
-import { ResourceList, ResourceListRow } from '@sdlc/ui/ui'
+import { ResourceList, ResourceListRow } from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { useLocation } from 'react-router'
-import { LoadingState, usePlatformServices } from '@sdlc/ui/ui'
-import { withNamespaceLocation } from '@sdlc/ui/lib'
+import { LoadingState, usePlatformServices } from '@pdlc/ui/ui'
+import { withNamespaceLocation } from '@pdlc/ui/lib'
 import { api } from '@/api/client'
 import { useNamespaceContext } from '@/widgets/namespace-context'
 

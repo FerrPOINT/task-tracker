@@ -48,7 +48,7 @@ it('resolves card actions and its board by resource identity despite a different
     ],
   })
   const project = { id: 'second', key: 'SECOND', name: 'Same name' }
-  const { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } = await import('@sdlc/ui/ui')
+  const { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } = await import('@pdlc/ui/ui')
   render(
     <MemoryRouter
       initialEntries={[

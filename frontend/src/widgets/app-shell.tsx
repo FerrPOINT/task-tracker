@@ -3,14 +3,14 @@ import {
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-} from '@sdlc/ui/ui'
-import { useProjectDisclosures } from '@sdlc/ui/lib'
+} from '@pdlc/ui/ui'
+import { useProjectDisclosures } from '@pdlc/ui/lib'
 import {
   ProjectAvatar,
   ProjectNavigationGroup,
   SidebarNavigationGroup,
   useSidebarDisclosure,
-} from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
 import { ProjectActions } from './project-actions'
 import {
   NamespaceShellContext,
@@ -18,9 +18,9 @@ import {
   useNamespaceContext,
 } from './namespace-context'
 import { useRef, useState } from 'react'
-import { SidebarItem } from '@sdlc/ui/ui'
+import { SidebarItem } from '@pdlc/ui/ui'
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
-import { withNamespaceLocation, type NamespaceLocation } from '@sdlc/ui/lib'
+import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
 import { useLocation, Outlet } from 'react-router'
 import {
   LayoutDashboard,
@@ -40,9 +40,9 @@ import {
   Check,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button, PageFrame, PlatformMark } from '@sdlc/ui/ui'
-import { ThemeMenuItems } from '@sdlc/ui/ui'
-import { PlatformHeader } from '@sdlc/ui/ui'
+import { Button, PageFrame, PlatformMark } from '@pdlc/ui/ui'
+import { ThemeMenuItems } from '@pdlc/ui/ui'
+import { PlatformHeader } from '@pdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
 import {
   useCurrentUser,
@@ -58,7 +58,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
 
 const projectKeyPattern = /^\/projects\/([^/]+)(?:\/|$)/
 const issuePattern = /^\/issues\/([^/]+)$/

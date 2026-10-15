@@ -11,7 +11,7 @@ import {
   LoadingState,
   ResourceList,
   ResourceListRow,
-} from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
 import {
   confirmRequirements,
   routingRoles,

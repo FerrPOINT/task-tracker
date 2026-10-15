@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { UserAvatar } from '@sdlc/ui/ui'
+import { UserAvatar } from '@pdlc/ui/ui'
 
 describe('Base avatar with Tracker i18n', () => {
   it('renders a stable generated image for an assigned user', () => {

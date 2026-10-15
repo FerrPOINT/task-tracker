@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 import { toast } from 'sonner'
 
 import { ProjectTrashPage } from './'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 
 const mockRestore = vi.hoisted(() => vi.fn())
 const mockPurge = vi.hoisted(() => vi.fn())

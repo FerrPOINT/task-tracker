@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useNamespaceNavigate as useNavigate } from '@sdlc/ui/ui'
+import { useNamespaceNavigate as useNavigate } from '@pdlc/ui/ui'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 
 import { IssueCreatePage } from './'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 import { useAuthStore } from '@/shared/auth/store'
 
 const createProject = vi.hoisted(() => vi.fn())

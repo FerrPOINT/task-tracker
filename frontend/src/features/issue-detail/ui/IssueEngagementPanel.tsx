@@ -8,8 +8,8 @@ import {
   useWatchIssue,
   useUnwatchIssue,
 } from '@/shared/api/hooks'
-import { Button } from '@sdlc/ui/ui'
-import { UserAvatar } from '@sdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { UserAvatar } from '@pdlc/ui/ui'
 
 type IssueEngagementPanelProps = {
   issueId: string

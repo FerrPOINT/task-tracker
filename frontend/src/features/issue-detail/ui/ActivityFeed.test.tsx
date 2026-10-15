@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import { ThemeProvider } from '@sdlc/ui/lib'
+import { ThemeProvider } from '@pdlc/ui/lib'
 import i18n from '@/shared/i18n/config'
 import { ActivityFeed } from './ActivityFeed'
 import type { Comment } from '@/entities/comment/model'

@@ -14,9 +14,9 @@ import {
   AlertDialogTitle,
   Button,
   ErrorState,
-} from '@sdlc/ui/ui'
-import { Textarea } from '@sdlc/ui/ui'
-import { Label } from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
+import { Textarea } from '@pdlc/ui/ui'
+import { Label } from '@pdlc/ui/ui'
 import {
   useComments,
   useCreateComment,

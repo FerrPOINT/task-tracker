@@ -1,4 +1,4 @@
-import { Badge } from '@sdlc/ui/ui'
+import { Badge } from '@pdlc/ui/ui'
 
 const labels: Record<string, string> = {
   highest: 'Наивысший',

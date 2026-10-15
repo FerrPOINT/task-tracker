@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Restore only to an explicitly prepared isolated, empty Compose destination.
 set -euo pipefail
+# Base owns canonical/legacy environment resolution.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../services-base/scripts" && pwd)/platform-namespace.sh"
 umask 077
 if [ "$#" -ne 1 ]; then echo 'Specify exactly one workspace backup archive' >&2; exit 2; fi
 : "${SDLC_TASK:?Set the maintenance owner task}"

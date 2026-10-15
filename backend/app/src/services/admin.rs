@@ -270,7 +270,7 @@ fn hash_password(password: &str) -> Result<String, AppError> {
     if password.is_empty() {
         return Err(AppError::invalid_input("password must not be empty"));
     }
-    sdlc_auth_core::password::hash_password(password).map_err(AppError::internal)
+    pdlc_auth_core::password::hash_password(password).map_err(AppError::internal)
 }
 
 #[cfg(test)]

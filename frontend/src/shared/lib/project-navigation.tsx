@@ -6,8 +6,8 @@ import {
   type NavigateOptions,
   type To,
 } from 'react-router'
-import { projectNavigationScope } from '@sdlc/ui/lib'
-import { NamespaceLink, useNamespaceNavigate } from '@sdlc/ui/ui'
+import { projectNavigationScope } from '@pdlc/ui/lib'
+import { NamespaceLink, useNamespaceNavigate } from '@pdlc/ui/ui'
 
 export function isAllProjects(search: string) {
   return projectNavigationScope(search).all

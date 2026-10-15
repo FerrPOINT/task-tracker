@@ -63,19 +63,19 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
     Ok(next.run(request).await)
 }
 
-fn is_human_session(central: &sdlc_auth_core::AuthContext, configured_machine: bool) -> bool {
+fn is_human_session(central: &pdlc_auth_core::AuthContext, configured_machine: bool) -> bool {
     central.session_id.is_some()
         && !configured_machine
         && central.role.as_deref() != Some("service_account")
 }
 
-fn is_trusted_human(central: &sdlc_auth_core::AuthContext, configured_machine: bool) -> bool {
+fn is_trusted_human(central: &pdlc_auth_core::AuthContext, configured_machine: bool) -> bool {
     !configured_machine
         && central.role.as_deref() != Some("service_account")
         && (central.session_id.is_some()
             // Auth's verified personal-token response identifies a user and
             // scopes, but intentionally does not carry a role or browser SID.
-            || central.token.starts_with("sdlc_pat_")
+            || pdlc_auth_core::is_personal_token(&central.token)
             || matches!(central.role.as_deref(), Some("admin" | "member" | "user")))
         && !app::sdlc::has_pm_grant(&central.scopes)
 }
@@ -85,7 +85,7 @@ mod human_identity_tests {
     use super::*;
     #[test]
     fn verified_personal_identity_preserves_machine_and_owner_session_boundaries() {
-        let mut central = sdlc_auth_core::AuthContext {
+        let mut central = pdlc_auth_core::AuthContext {
             user_id: "verified-user".into(),
             role: None,
             scopes: ["task-tracker:read".into()].into(),

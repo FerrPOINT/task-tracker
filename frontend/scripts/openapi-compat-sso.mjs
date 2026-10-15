@@ -12,7 +12,7 @@ const approvedRemovals = new Set([
   'removed schema components.schemas.UpdateUserStatusRequest',
 ])
 
-const checker = resolve('node_modules/@sdlc/ui/scripts/sdlc-openapi-compat.mjs')
+const checker = resolve('node_modules/@pdlc/ui/scripts/pdlc-openapi-compat.mjs')
 const result = spawnSync(process.execPath, [checker, '--base-ref', 'origin/main'], {
   cwd: process.cwd(),
   encoding: 'utf8',

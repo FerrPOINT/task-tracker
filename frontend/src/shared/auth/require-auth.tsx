@@ -1,5 +1,5 @@
-// Route guard from @sdlc/ui/auth: one silent refresh, then /login.
-import { RequireAuth as Guard } from '@sdlc/ui/auth'
+// Route guard from @pdlc/ui/auth: one silent refresh, then /login.
+import { RequireAuth as Guard } from '@pdlc/ui/auth'
 import { useAuthStore } from '@/shared/auth/store'
 import { restoreTrackerSession } from './session'
 

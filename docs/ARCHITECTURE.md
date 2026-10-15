@@ -424,7 +424,7 @@ Git hooks через `lefthook`:
 
 ## 12. Общая Шапка Платформы
 
-`AppShell` использует `PlatformHeader` из `@sdlc/ui`: общий компонент владеет
+`AppShell` использует `PlatformHeader` из `@pdlc/ui`: общий компонент владеет
 геометрией, порядком leading/services/context/actions и единственным переключателем
 сервисов. Снимок file-зависимости и lock обновляются вместе с внедрением Base UI;
 наличие экспортов в sibling source не заменяет проверку установленного пакета.

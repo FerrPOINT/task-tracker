@@ -14,17 +14,17 @@
     "preview": "vite preview --port 4173",
     "generate:api": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts",
     "lint": "eslint . --max-warnings=0 && pnpm lint:semantic",
-    "lint:semantic": "node scripts/sdlc-semantic-classes-check.mjs --css src/index.css --src src",
+    "lint:semantic": "node scripts/pdlc-semantic-classes-check.mjs --css src/index.css --src src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "openapi:check": "node node_modules/@sdlc/ui/scripts/sdlc-openapi-check.mjs --spec ../openapi/openapi.json --schema src/api/generated.ts",
+    "openapi:check": "node node_modules/@pdlc/ui/scripts/pdlc-openapi-check.mjs --spec ../openapi/openapi.json --schema src/api/generated.ts",
     "openapi:compat": "node scripts/base-openapi-compat.mjs",
     "postinstall": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts",
-    "theme:check": "node ../../services-base/frontend/scripts/sdlc-effective-theme-check.mjs"
+    "theme:check": "node ../../services-base/base-modules/ui/scripts/pdlc-effective-theme-check.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",
-    "@sdlc/ui": "file:../../services-base/frontend",
+    "@pdlc/ui": "file:../../services-base/base-modules/ui",
     "@tanstack/react-query": "^5.74.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -1,14 +1,14 @@
-import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectAvatar } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, UserPlus, MoreHorizontal } from 'lucide-react'
 import { toast } from 'sonner'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@sdlc/ui/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
-import { Button } from '@sdlc/ui/ui'
-import { ConfirmDialog } from '@sdlc/ui/ui'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@pdlc/ui/ui'
+import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { ConfirmDialog } from '@pdlc/ui/ui'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
   LoadingState,
   ErrorState,
-} from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
 import {
   useWorklogs,
   useCreateWorklog,

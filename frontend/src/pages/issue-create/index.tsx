@@ -1,8 +1,8 @@
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import { ProjectPicker, EmptyState } from '@sdlc/ui/ui'
+import { ProjectPicker, EmptyState } from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { getProject } from '@/api/project'
-import { useSessionCommand } from '@sdlc/ui/lib'
+import { useSessionCommand } from '@pdlc/ui/lib'
 import { useNamespaceContext } from '@/widgets/namespace-context'
 import type { CreateIssueInput } from '@/api/issue-create'
 import { useEffect, useMemo, useState } from 'react'
@@ -10,9 +10,9 @@ import { useProjectNavigate as useNavigate } from '@/shared/lib/project-navigati
 import { useSearchParams } from 'react-router'
 import { Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@sdlc/ui/ui'
-import { ErrorState } from '@sdlc/ui/ui'
-import { Input } from '@sdlc/ui/ui'
+import { Button } from '@pdlc/ui/ui'
+import { ErrorState } from '@pdlc/ui/ui'
+import { Input } from '@pdlc/ui/ui'
 import {
   useCreateIssue,
   useIssueTypes,

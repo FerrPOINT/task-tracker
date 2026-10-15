@@ -3,8 +3,8 @@ import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
-import { Button, ConfirmDialog, ErrorState, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
+import { Button, ConfirmDialog, ErrorState, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
 import {
   useCreateCustomField,
   useDeleteCustomField,

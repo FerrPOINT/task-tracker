@@ -1,5 +1,5 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
-import { ProjectAvatar } from '@sdlc/ui/ui'
+import { ProjectAvatar } from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { List, MoreHorizontal } from 'lucide-react'
@@ -11,10 +11,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '@sdlc/ui/ui'
-import { ErrorState, LoadingState } from '@sdlc/ui/ui'
+} from '@pdlc/ui/ui'
+import { ErrorState, LoadingState } from '@pdlc/ui/ui'
 import { useBoard, useMoveIssue, useTransitions } from '@/shared/api/hooks'
-import { UserAvatar } from '@sdlc/ui/ui'
+import { UserAvatar } from '@pdlc/ui/ui'
 import type { components } from '@/api/generated'
 import { toast } from 'sonner'
 import { statusLabel } from '@/shared/lib/status-label'

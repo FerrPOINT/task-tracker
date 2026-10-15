@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 
-import { completeSso } from '@sdlc/ui/sso'
-import { SsoCallbackView } from '@sdlc/ui/ui'
+import { completeSso } from '@pdlc/ui/sso'
+import { SsoCallbackView } from '@pdlc/ui/ui'
 import { ssoConfig, useAuthStore } from '@/shared/auth/store'
 import { loadSsoSession } from '@/shared/auth/session'
-import { finishPlatformLogin } from '@sdlc/ui/platform'
+import { finishPlatformLogin } from '@pdlc/ui/platform'
 
 let pending: ReturnType<typeof completeSso> | null = null
 function completion() {

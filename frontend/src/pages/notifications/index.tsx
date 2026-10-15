@@ -14,10 +14,10 @@ import {
   useNotifications,
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
-import { Button, ResourceList, ResourceListRow } from '@sdlc/ui/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@sdlc/ui/ui'
-import { ErrorState } from '@sdlc/ui/ui'
-import { Label } from '@sdlc/ui/ui'
+import { Button, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
+import { ErrorState } from '@pdlc/ui/ui'
+import { Label } from '@pdlc/ui/ui'
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const PAGE_SIZE = 20

@@ -1,8 +1,8 @@
 import { useLocation } from 'react-router'
-import { parseNamespaceLocation } from '@sdlc/ui/lib'
+import { parseNamespaceLocation } from '@pdlc/ui/lib'
 import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
-import { endSso } from '@sdlc/ui/sso'
+import { endSso } from '@pdlc/ui/sso'
 import {
   listProjects,
   getProject,
