@@ -512,6 +512,8 @@
     "watching": "Watching",
     "unwatch": "Stop watching",
     "noWatchers": "No watchers",
+    "votesError": "Unable to load votes. Try again.",
+    "watchersError": "Unable to load watchers. Try again.",
     "ownIssue": "You cannot vote for your own issue"
   },
   "links": {

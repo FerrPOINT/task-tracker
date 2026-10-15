@@ -8,8 +8,7 @@ import {
   useWatchIssue,
   useUnwatchIssue,
 } from '@/shared/api/hooks'
-import { Button } from '@pdlc/ui/ui'
-import { UserAvatar } from '@pdlc/ui/ui'
+import { Button, ErrorState, UserAvatar } from '@pdlc/ui/ui'
 
 type IssueEngagementPanelProps = {
   issueId: string
@@ -49,11 +48,18 @@ export function IssueEngagementPanel({
           <ThumbsUp className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <div className="min-w-0">
             <p className="text-sm font-medium text-text-primary">{t('engagement.votes')}</p>
-            <p className="text-xs text-muted-foreground">
-              {votesQuery.isLoading
-                ? t('common.loading')
-                : t('engagement.count', { count: voteCount })}
-            </p>
+            {votesQuery.isError ? (
+              <ErrorState
+                message={t('engagement.votesError')}
+                onRetry={() => void votesQuery.refetch()}
+              />
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                {votesQuery.isPending
+                  ? t('common.loading')
+                  : t('engagement.count', { count: voteCount })}
+              </p>
+            )}
           </div>
         </div>
         <Button
@@ -61,7 +67,14 @@ export function IssueEngagementPanel({
           variant={hasVoted ? 'secondary' : 'outline'}
           size="sm"
           className="h-10 xl:h-8"
-          disabled={!currentUserId || cannotAddVote || vote.isPending || unvote.isPending}
+          disabled={
+            !currentUserId ||
+            cannotAddVote ||
+            votesQuery.isPending ||
+            votesQuery.isError ||
+            vote.isPending ||
+            unvote.isPending
+          }
           onClick={() => (hasVoted ? unvote.mutate() : vote.mutate())}
           aria-label={hasVoted ? t('engagement.unvote') : t('engagement.vote')}
           title={cannotAddVote ? t('engagement.ownIssue') : undefined}
@@ -75,7 +88,12 @@ export function IssueEngagementPanel({
           <Eye className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <div className="min-w-0">
             <p className="text-sm font-medium text-text-primary">{t('engagement.watchers')}</p>
-            {watchersQuery.isLoading ? (
+            {watchersQuery.isError ? (
+              <ErrorState
+                message={t('engagement.watchersError')}
+                onRetry={() => void watchersQuery.refetch()}
+              />
+            ) : watchersQuery.isPending ? (
               <p className="text-xs text-muted-foreground">{t('common.loading')}</p>
             ) : watchers.length > 0 ? (
               <div className="mt-1 flex items-center">
@@ -104,7 +122,13 @@ export function IssueEngagementPanel({
           variant={isWatching ? 'secondary' : 'outline'}
           size="sm"
           className="h-10 xl:h-8"
-          disabled={!currentUserId || watch.isPending || unwatch.isPending}
+          disabled={
+            !currentUserId ||
+            watchersQuery.isPending ||
+            watchersQuery.isError ||
+            watch.isPending ||
+            unwatch.isPending
+          }
           onClick={() => (isWatching ? unwatch.mutate() : watch.mutate())}
           aria-label={isWatching ? t('engagement.unwatch') : t('engagement.watch')}
         >

@@ -10,6 +10,7 @@ const mockUser = {
   name: 'Demo Project',
   issueId: 'issue-1',
 }
+const namespaceEnabled = process.env.VITE_NAMESPACE_ENABLED === 'true'
 
 const markdownComment =
   '# Итоги\n\n**Результат**\n\nПервая строка\nВторая строка\n\n- Первый\n- Второй\n\n' +
@@ -275,6 +276,31 @@ test.describe('smoke', () => {
       done_count: 0,
     }
     let failSave = true
+    const registryId = '00000000-0000-0000-0000-000000000020'
+    const namespaceId = '00000000-0000-0000-0000-000000000021'
+    const projectContext = () => ({
+      label: projectDetails.name,
+      resource_key: projectDetails.key,
+      binding: {
+        schema_version: 1,
+        operation_id: '00000000-0000-0000-0000-000000000022',
+        generation: 1,
+        state: 'active',
+        drained: true,
+        namespace: { registry_instance_id: registryId, namespace_id: namespaceId },
+        resource: {
+          instance_id: registryId,
+          resource_id: projectDetails.id,
+          kind: 'tracker_project',
+        },
+      },
+    })
+    await page.route(/\/api\/v1\/namespace-contexts(?:\?.*)?$/, (route) =>
+      routeJson(route, [projectContext()]),
+    )
+    await page.route(`**/api/v1/namespace-contexts/${registryId}/${namespaceId}`, (route) =>
+      routeJson(route, projectContext()),
+    )
     await page.route(`**/api/v1/projects/${mockUser.key}`, (route) => {
       if (route.request().method() === 'PATCH') {
         if (failSave) return routeJson(route, { error: 'unavailable' }, 500)
@@ -438,29 +464,44 @@ test.describe('smoke', () => {
     await page.route(`**/api/v1/issues/${mockUser.issueId}/custom-fields`, (route) =>
       routeJson(route, { values: [] }),
     )
+    let failVotes = false
+    let failWatchers = false
+    const engagementWrites: string[] = []
+    page.on('request', (request) => {
+      if (
+        /\/api\/v1\/issues\/[^/]+\/(?:vote|watch)$/.test(new URL(request.url()).pathname) &&
+        request.method() !== 'GET'
+      ) {
+        engagementWrites.push(request.method())
+      }
+    })
     await page.route(`**/api/v1/issues/${mockUser.issueId}/votes`, (route) =>
-      routeJson(route, {
-        count: 1,
-        votes: [
-          {
-            user_id: '00000000-0000-0000-0000-000000000003',
-            username: 'voter',
-            display_name: 'Voter User',
-            voted_at: '2026-09-01T10:00:00Z',
-          },
-        ],
-      }),
+      failVotes
+        ? routeJson(route, { error: 'private engagement upstream failure' }, 500)
+        : routeJson(route, {
+            count: 1,
+            votes: [
+              {
+                user_id: '00000000-0000-0000-0000-000000000003',
+                username: 'voter',
+                display_name: 'Voter User',
+                voted_at: '2026-09-01T10:00:00Z',
+              },
+            ],
+          }),
     )
     await page.route(`**/api/v1/issues/${mockUser.issueId}/watchers`, (route) =>
-      routeJson(route, {
-        watchers: [
-          {
-            user_id: mockUser.id,
-            username: 'demo',
-            display_name: 'Demo User',
-          },
-        ],
-      }),
+      failWatchers
+        ? routeJson(route, { error: 'private engagement upstream failure' }, 500)
+        : routeJson(route, {
+            watchers: [
+              {
+                user_id: mockUser.id,
+                username: 'demo',
+                display_name: 'Demo User',
+              },
+            ],
+          }),
     )
     await page.route('**/api/v1/notifications', (route) =>
       routeJson(route, { notifications: [], unread_count: 0 }),
@@ -488,7 +529,13 @@ test.describe('smoke', () => {
     await expect(page.getByRole('main').getByText(mockUser.name, { exact: true })).toBeVisible()
 
     await page.getByRole('link', { name: /(?:settings|настройки проекта):/i }).click()
-    await expect(page).toHaveURL(`${appBaseURL}/projects/${mockUser.key}/settings`)
+    await expect.poll(() => new URL(page.url()).pathname).toBe(`/projects/${mockUser.key}/settings`)
+    expect(new URL(page.url()).searchParams.get('registry_instance_id')).toBe(
+      namespaceEnabled ? registryId : null,
+    )
+    expect(new URL(page.url()).searchParams.get('namespace_id')).toBe(
+      namespaceEnabled ? namespaceId : null,
+    )
     const description = page.getByLabel(/^(description|описание)$/i)
     await description.fill('Updated description')
     await page.getByRole('button', { name: /^(save|сохранить)$/i }).click()
@@ -520,18 +567,83 @@ test.describe('smoke', () => {
     await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
 
-    await page.goto(`${appBaseURL}/projects/${mockUser.key}/backlog`)
+    await page.goto(
+      `${appBaseURL}/projects/${mockUser.key}/backlog${namespaceEnabled ? `?registry_instance_id=${registryId}&namespace_id=${namespaceId}` : ''}`,
+    )
     await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
     const createLinks = page.locator('main a[href^="/issues/create"]')
     await expect(createLinks).toHaveCount(2)
     await createLinks.last().click()
-    await expect(page).toHaveURL(`${appBaseURL}/issues/create?project_key=${mockUser.key}`)
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/issues/create')
+    expect(new URL(page.url()).searchParams.get('project_key')).toBe(mockUser.key)
+    expect(new URL(page.url()).searchParams.get('registry_instance_id')).toBe(
+      namespaceEnabled ? registryId : null,
+    )
+    expect(new URL(page.url()).searchParams.get('namespace_id')).toBe(
+      namespaceEnabled ? namespaceId : null,
+    )
     await expect(page.locator('#issue-project')).toHaveAttribute('value', mockUser.key)
 
     await page.goto(`${appBaseURL}/projects/${mockUser.key}/board`)
     await expect(page.getByText('Smoke issue').first()).toBeVisible()
     await page.goto(`${appBaseURL}/issues/${mockUser.issueId}`)
     await expect(page.getByText('Issue detail smoke description')).toBeVisible()
+    const engagement = page.getByTestId('issue-engagement-panel')
+    await expect(engagement.getByText(/^(1 total|всего 1)$/i)).toBeVisible()
+    await expect(
+      engagement.getByRole('button', { name: /stop watching|перестать следить/i }),
+    ).toBeEnabled()
+    failVotes = true
+    failWatchers = true
+    await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
+    // The production query policy retries failed GETs at 1/2/4/8 seconds.
+    await expect(
+      engagement.getByText(/Не удалось загрузить голоса|Unable to load votes/),
+    ).toBeVisible({ timeout: 25_000 })
+    await expect(
+      engagement.getByText(/Не удалось загрузить наблюдателей|Unable to load watchers/),
+    ).toBeVisible()
+    const voteAction = engagement.getByRole('button', { name: /^(vote|голос)$/i })
+    const watchAction = engagement.getByRole('button', {
+      name: /^(stop watching|перестать следить)$/i,
+    })
+    await expect(voteAction).toBeDisabled()
+    await expect(watchAction).toBeDisabled()
+    await expect(
+      engagement.getByText(/^(0 total|всего 0|No watchers|Наблюдателей нет)$/i),
+    ).toHaveCount(0)
+    await expect(engagement.getByText(/^(1 total|всего 1)$/i)).toHaveCount(0)
+    await expect(engagement.getByText('private engagement upstream failure')).toHaveCount(0)
+    for (const width of [375, 1920, 2560]) {
+      await page.setViewportSize({ width, height: 1080 })
+      await expect(
+        engagement.getByText(/Не удалось загрузить голоса|Unable to load votes/),
+      ).toBeVisible()
+      await expect(
+        engagement.getByText(/Не удалось загрузить наблюдателей|Unable to load watchers/),
+      ).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      )
+      await page.screenshot({
+        path: testInfo.outputPath(`engagement-error-${width}.png`),
+        fullPage: true,
+      })
+    }
+    failVotes = false
+    await engagement
+      .getByRole('button', { name: /retry|повторить/i })
+      .first()
+      .click()
+    await expect(engagement.getByText(/^(1 total|всего 1)$/i)).toBeVisible()
+    await expect(voteAction).toBeEnabled()
+    await expect(watchAction).toBeDisabled()
+    failWatchers = false
+    await engagement.getByRole('button', { name: /retry|повторить/i }).click()
+    await expect(
+      engagement.getByRole('button', { name: /stop watching|перестать следить/i }),
+    ).toBeEnabled()
+    expect(engagementWrites).toEqual([])
     await expect(page.getByRole('button', { name: /vote|голос/i })).toBeVisible()
     await expect(
       page.getByRole('button', { name: /stop watching|перестать следить/i }),
