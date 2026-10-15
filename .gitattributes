@@ -12,3 +12,9 @@ NOTICE text eol=lf
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+
+# Canonical bytes for the exact Base frontend tooling packet.
+scripts/vendor/base_quality_selection.py text eol=lf
+scripts/vendor/base_frontend_artifact.py text eol=lf
+frontend/Dockerfile.prebuilt text eol=lf
+frontend/Dockerfile.prebuilt.dockerignore text eol=lf

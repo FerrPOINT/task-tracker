@@ -356,3 +356,10 @@ workflow_dispatch на exact ref. Автоматический CI не подн�
 
 Required security/data/compatibility checks и thresholds сохраняются.
 Unit success не заменяет ручную приёмку; NOT RUN не означает PASS.
+
+## Передача frontend artifact
+
+CI `frontend` передаёт `tested-frontend-dist` в `frontend-package`; отдельный consumer не устанавливает Node/dependencies.
+Проверка графа: `python scripts/vendor/base_frontend_artifact.py check-ci --root .`.
+[Формат/команды Base](https://github.com/FerrPOINT/services-base/blob/a9b1ae9869784676957c193a75bd92a2a0480dc1/docs/BUILD_PERFORMANCE.md#передача-frontend-artifact); packet pin — `.quality-tooling-revision`.
+Node 22.20.0; OpenAPI generation/checks сохраняются в producer.

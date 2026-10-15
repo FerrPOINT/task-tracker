@@ -16,7 +16,7 @@ RUN --mount=type=cache,id=${PNPM_CACHE_ID}-${TARGETARCH},target=/pnpm/store,shar
 
 
 FROM dependencies AS unit
-COPY task-tracker/frontend/ ./
+COPY --exclude=Dockerfile* --exclude=**/Dockerfile* --exclude=.dockerignore --exclude=**/.dockerignore --exclude=nginx.conf --exclude=**/nginx.conf task-tracker/frontend/ ./
 ARG VITE_NAMESPACE_ENABLED="false"
 ENV VITE_NAMESPACE_ENABLED=${VITE_NAMESPACE_ENABLED}
 ARG VITE_PLATFORM_BRANDING_URL=""
@@ -30,7 +30,7 @@ ENV VITE_PLATFORM_ORIGIN=${VITE_PLATFORM_ORIGIN}
 RUN pnpm test:unit && pnpm exec tsc --noEmit && printf 'passed\n' > /tmp/frontend-unit-check
 
 FROM dependencies AS builder
-COPY --exclude=**/*.test.* --exclude=**/*.spec.* --exclude=**/__tests__/** task-tracker/frontend/ ./
+COPY --exclude=Dockerfile* --exclude=**/Dockerfile* --exclude=.dockerignore --exclude=**/.dockerignore --exclude=nginx.conf --exclude=**/nginx.conf --exclude=**/*.test.* --exclude=**/*.spec.* --exclude=**/__tests__/** task-tracker/frontend/ ./
 ARG VITE_NAMESPACE_ENABLED="false"
 ENV VITE_NAMESPACE_ENABLED=${VITE_NAMESPACE_ENABLED}
 ARG VITE_PLATFORM_BRANDING_URL=""
