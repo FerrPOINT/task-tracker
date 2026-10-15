@@ -373,3 +373,7 @@ legacy project navigation при false, `app-shell.namespace.test.tsx` — Names
 при true. Оба входят в ordinary unit независимо от внешнего build mode; после
 каждого test env восстанавливается. Нельзя трактовать legacy URLs как ожидания
 Namespace UI или выключать namespace tests ради успешной сборки.
+Vitest profile фиксирует default namespace=false независимо от production VITE
+environment. Feature tests явно включают true через `vi.stubEnv`; production
+`vite build` использует свой конфиг и реальный build flag. Это сохраняет
+детерминированные legacy fixtures и проверку нового режима в одном unit graph.
