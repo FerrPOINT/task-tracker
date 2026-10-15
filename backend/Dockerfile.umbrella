@@ -46,7 +46,7 @@ COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked \
-    cargo build --locked --release --bin server \
+    cargo test --locked --release -p domain --lib && cargo build --locked --release --bin server \
     && install -m 0755 target/release/server /app/task-tracker-server
 
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
