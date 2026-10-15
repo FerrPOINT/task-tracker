@@ -278,6 +278,152 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       'expected_routing_policy_version',
     )
   })
+  it.each(['awaiting_confirmation', 'clarification', undefined, null] as const)(
+    'fetches and submits v2 only with explicit consent in actual Draft %s',
+    async (draft_submode) => {
+      vi.mocked(getSdlcSnapshot).mockResolvedValue({
+        ...initial,
+        context: {
+          ...initial.context,
+          stage: 'Draft',
+          status: 'InProgress',
+          draft_submode,
+          waiting_reason:
+            draft_submode === 'clarification'
+              ? 'waiting_for_owner_answers'
+              : 'waiting_for_owner_confirmation',
+          permissions: { can_answer: draft_submode === 'clarification', can_confirm: true },
+        },
+      })
+      vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
+      vi.mocked(confirmRequirements).mockResolvedValue(receipt)
+      mount()
+      const choice = await screen.findByRole('checkbox', {
+        name: 'Publish with routing policy version 5',
+      })
+      expect(choice).not.toBeChecked()
+      expect(getSdlcRoutingPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ stage: 'Draft', draft_submode }),
+        expect.anything(),
+      )
+      expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
+      fireEvent.click(choice)
+      fireEvent.click(
+        screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
+      await waitFor(() =>
+        expect(confirmRequirements).toHaveBeenCalledWith(task, 2, {
+          content_hash: hash,
+          idempotency_key: expect.any(String),
+          expected_routing_policy_version: 5,
+        }),
+      )
+    },
+  )
+  it.each([
+    ['brainstorming', true],
+    ['clarification', false],
+    ['awaiting_confirmation', false],
+  ] as const)(
+    'does not fetch or confirm Draft %s with can_confirm=%s',
+    async (draft_submode, can_confirm) => {
+      vi.mocked(getSdlcSnapshot).mockResolvedValue({
+        ...initial,
+        context: {
+          ...initial.context,
+          stage: 'Draft',
+          draft_submode,
+          permissions: { can_answer: draft_submode === 'clarification', can_confirm },
+        },
+      })
+      mount()
+      await screen.findByText('Exact goal shown to the owner')
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Confirm requirements' })).not.toBeInTheDocument()
+      expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+      await waitFor(() => expect(getSdlcSnapshot).toHaveBeenCalledTimes(2))
+      expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
+  it('refreshes policy in Draft awaiting_confirmation and blocks stale saved consent', async () => {
+    const draft: SdlcSnapshot = {
+      ...initial,
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        draft_submode: 'awaiting_confirmation',
+      },
+    }
+    vi.mocked(getSdlcSnapshot).mockResolvedValue(draft)
+    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
+    mount()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+    )
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+    )
+    vi.mocked(getSdlcSnapshot).mockRejectedValue(new SdlcRequestError(503))
+    const policyReads = vi.mocked(getSdlcRoutingPolicy).mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+    await screen.findByText(/Saved data · refresh failed/)
+    expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
+    expect(
+      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+    ).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
+    expect(confirmRequirements).not.toHaveBeenCalled()
+    expect(getSdlcRoutingPolicy).toHaveBeenCalledTimes(policyReads)
+    vi.mocked(getSdlcSnapshot).mockResolvedValue(draft)
+    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue({
+      ...singleTaskRoutingPolicy(task),
+      version: 6,
+      routing_hash: 'b'.repeat(64),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+    await screen.findByText(
+      'The selected policy is not current or its source is unavailable. Refresh and explicitly review the choice.',
+    )
+    expect(
+      screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+    ).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
+    expect(confirmRequirements).not.toHaveBeenCalled()
+  })
+  it('removes Draft consent when a fresh read returns to brainstorming', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        draft_submode: 'awaiting_confirmation',
+      },
+    })
+    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
+    mount()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+    )
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+    )
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        draft_submode: 'brainstorming',
+      },
+    })
+    const policyReads = vi.mocked(getSdlcRoutingPolicy).mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+    await waitFor(() => expect(screen.queryByRole('checkbox')).not.toBeInTheDocument())
+    expect(getSdlcRoutingPolicy).toHaveBeenCalledTimes(policyReads)
+    expect(confirmRequirements).not.toHaveBeenCalled()
+  })
   it.each([
     ['v1', routingPolicy, 'Package commit / manifest hash', 'Instruction profile / manifest hash'],
     [

@@ -22,6 +22,10 @@ import {
   type RoutingPolicy,
 } from '@/api/sdlc'
 import { useSdlcTask } from '../model/use-sdlc'
+import {
+  canConfirmRequirementsContext,
+  isRequirementsReviewContext,
+} from '../model/confirmation-context'
 
 const documentFields = [
   'goal',
@@ -106,11 +110,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     const result = await snapshot.refetch()
     if (result.data && !result.error) {
       await metadata.refetch()
-      if (
-        result.data.context.permissions.can_confirm &&
-        result.data.context.stage === 'Clarification'
-      )
-        await routingPolicy.refetch()
+      if (canConfirmRequirementsContext(result.data.context)) await routingPolicy.refetch()
     }
   }
   if (!authenticated) return <ErrorState message={t('sdlc.errors.401')} />
@@ -143,9 +143,8 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     ? `${queryKey[2]}:${requirements.revision}:${requirements.content_hash}`
     : null
   const canConfirm =
-    context.permissions.can_confirm &&
+    canConfirmRequirementsContext(context) &&
     requirements &&
-    context.stage === 'Clarification' &&
     !snapshot.isFetching &&
     !snapshot.error &&
     !confirm.isPending
@@ -290,7 +289,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               )}
             </div>
           ))}
-          {context.stage === 'Clarification' && (
+          {isRequirementsReviewContext(context) && (
             <div className="border-t border-border py-4">
               {confirm.error && <ErrorState message={errorMessage(confirm.error)} />}
               {confirm.data && <p role="status">{t('sdlc.confirmationSaved')}</p>}

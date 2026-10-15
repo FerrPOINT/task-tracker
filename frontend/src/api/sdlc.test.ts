@@ -110,6 +110,35 @@ describe('SDLC generated API adapter', () => {
     GET.mockResolvedValue(success({ ...context, stage: 'Draft', requirement_revision: null }))
     await expect(getSdlcSnapshot(task)).resolves.toMatchObject({ requirements: null, intent: null })
   })
+  it.each(['awaiting_confirmation', 'clarification'] as const)(
+    'reads actual Draft %s owner context and its full revision without inventing an intent',
+    async (draft_submode) => {
+      const draft: SdlcContext = {
+        ...context,
+        stage: 'Draft',
+        draft_submode,
+        status: 'InProgress',
+        permissions: { can_answer: draft_submode === 'clarification', can_confirm: true },
+        waiting_reason:
+          draft_submode === 'clarification'
+            ? 'waiting_for_owner_answers'
+            : 'waiting_for_owner_confirmation',
+      }
+      GET.mockResolvedValueOnce(success(draft)).mockResolvedValueOnce(success(requirements))
+      await expect(getSdlcSnapshot(task)).resolves.toEqual({
+        context: draft,
+        requirements,
+        intent: null,
+      })
+      expect(GET.mock.calls.map(([path]) => path)).toEqual([
+        '/api/v1/issues/{id}/sdlc/context',
+        '/api/v1/issues/{id}/sdlc/requirements/{revision}',
+      ])
+      GET.mockResolvedValueOnce(success(singleTaskRoutingPolicy(task)))
+      await expect(getSdlcRoutingPolicy(draft)).resolves.toMatchObject({ contract_version: 2 })
+      expect(POST).not.toHaveBeenCalled()
+    },
+  )
   it.each([
     'content_hash',
     'requirement_revision',
