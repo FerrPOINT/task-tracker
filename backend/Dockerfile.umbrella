@@ -40,12 +40,13 @@ ARG TARGETARCH
 ARG CARGO_REGISTRY_CACHE_ID=pdlc-operator-downloads-v1-cargo188
 COPY task-tracker/backend/domain ./domain
 COPY task-tracker/backend/shared ./shared
-RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked cargo test --locked --release -p domain --lib
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked cargo test --locked --release -p domain --lib && printf 'passed\n' > /tmp/rust-unit-check
 
-FROM unit AS builder
+FROM dependencies AS builder
 ARG TARGETARCH
 ARG CARGO_REGISTRY_CACHE_ID=pdlc-operator-downloads-v1-cargo188
-RUN rm -rf -- api/src app/src cli/src infra/src migration/src server/src
+RUN --mount=type=bind,from=unit,source=/tmp/rust-unit-check,target=/tmp/rust-unit-check test "$(cat /tmp/rust-unit-check)" = passed
+RUN rm -rf -- api/src app/src cli/src infra/src migration/src server/src domain/src shared/src
 
 COPY task-tracker/backend/Cargo.toml task-tracker/backend/Cargo.lock* ./
 COPY task-tracker/backend/shared ./shared
