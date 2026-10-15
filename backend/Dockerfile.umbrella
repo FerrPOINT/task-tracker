@@ -2,7 +2,7 @@
 # Umbrella build for the SDLC fleet root compose (context = /opt/dev/sdlc).
 # Stages the sibling services-base checkout so the sdlc-auth-core path
 # dependency (../../../services-base/...) resolves.
-FROM rust:1.88.0-slim-bookworm@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS builder
+FROM rust:1.88.0-slim-bookworm@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS dependencies
 ARG TARGETARCH
 ARG CARGO_REGISTRY_CACHE_ID=pdlc-operator-downloads-v1-cargo188
 ARG CARGO_BUILD_JOBS=2
@@ -32,8 +32,20 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACH
     && mkdir -p api/src/bin \
     && printf '%s\n' 'fn main() {}' > api/src/bin/gen_openapi.rs \
     && cargo build --locked --release --bin server \
-    && cargo clean --release -p api -p app -p task-tracker-cli -p domain -p infra -p migration -p server -p shared \
-    && rm -rf -- api/src app/src cli/src domain/src infra/src migration/src server/src shared/src
+    && cargo clean --release -p api -p app -p task-tracker-cli -p domain -p infra -p migration -p server -p shared
+
+FROM dependencies AS unit
+RUN rm -rf -- domain/src shared/src
+ARG TARGETARCH
+ARG CARGO_REGISTRY_CACHE_ID=pdlc-operator-downloads-v1-cargo188
+COPY task-tracker/backend/domain ./domain
+COPY task-tracker/backend/shared ./shared
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked cargo test --locked --release -p domain --lib
+
+FROM unit AS builder
+ARG TARGETARCH
+ARG CARGO_REGISTRY_CACHE_ID=pdlc-operator-downloads-v1-cargo188
+RUN rm -rf -- api/src app/src cli/src infra/src migration/src server/src
 
 COPY task-tracker/backend/Cargo.toml task-tracker/backend/Cargo.lock* ./
 COPY task-tracker/backend/shared ./shared
@@ -46,7 +58,7 @@ COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked \
-    cargo test --locked --release -p domain --lib && cargo build --locked --release --bin server \
+    cargo build --locked --release --bin server \
     && install -m 0755 target/release/server /app/task-tracker-server
 
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
