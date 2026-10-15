@@ -367,3 +367,9 @@ Node 22.20.0; OpenAPI generation/checks сохраняются в producer.
 Docker unit stage явно получает `frontend/nginx.conf`: routing tests читают
 фактический config. Он остаётся вне Vite application COPY; изменение config
 повторяет относящиеся unit и packaging, сохраняя application compilation cache.
+
+Shell tests задают собственный feature mode: `app-shell.test.tsx` проверяет
+legacy project navigation при false, `app-shell.namespace.test.tsx` — Namespace
+при true. Оба входят в ordinary unit независимо от внешнего build mode; после
+каждого test env восстанавливается. Нельзя трактовать legacy URLs как ожидания
+Namespace UI или выключать namespace tests ради успешной сборки.
