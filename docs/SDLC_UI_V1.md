@@ -1,5 +1,69 @@
 # Owner SDLC UI v1
 
+## Routing Output v1/v2: 15 October 2026
+
+The current frontend consumer explicitly validates both existing output families.
+Legacy v1 retains its exact required package commit/manifest and catalog3 checks.
+Single-task v2 requires `instruction_profile:single-task-v1`, matching instruction
+and catalog digests, exact seven-role mappings and catalog1; package fields must
+be omitted, not null or fabricated. Mixed families, missing source fields,
+duplicate identities and false readiness/admission claims fail closed.
+Generated API types remain the source, refined locally without casts or DTO edits.
+
+An Analysis intent now reads the existing task `routing-snapshot` endpoint and
+matches its policy family, task/root/project/instance, confirmation and requirements
+pin before accepting the Analyst workflow. It never substitutes current project
+defaults. Snapshot404 preserves only an un-routed legacy intent; a profile intent
+without its frozen snapshot, mismatches and other read failures remain errors.
+The UI displays package references for v1 or instruction references for v2,
+without granting native readiness, dispatch or owner confirmation.
+
+Consumer source `03c9a1e` integrated as `2235c5d` passes **133 focused tests** in
+`src/api/sdlc.test.ts` and `src/features/sdlc/ui/SdlcPanel.test.tsx`, full frontend
+typecheck, focused ESLint/Prettier and generated-client OpenAPI check. That verified
+frontend closure is reused here, not rerun or represented as new test execution.
+OpenAPI/SDK structural compatibility is separate; no blanket exception is added.
+
+### Full-Page Owner Publication Fixture
+
+Source `2235c5d76c092b7d7da29f71aaa1245eec7862c3`, Base UI
+`8e944aa83c951008c227e28d9df15ed40719abb1`: **9/9 Playwright cases PASS**,
+Chromium/Firefox/WebKit at 375x812, 1920x1080 and 2560x1440. This uses the actual
+issue-detail SDLC tab with synthetic signed SSO and intercepted API reads,
+Clarification `can_confirm:true`, all ten requirements fields and a declared v2
+policy. Only the references disclosure is opened. Both consent/publication
+checkboxes remain unchecked and confirmation stays disabled; no confirmation or
+other business write occurs. No task routing snapshot is fabricated before
+publication; that Analysis-only read is not exercised by this Clarification case.
+
+All seven roles' actual agent/config/instruction/workflow/catalog references are
+checked, package rows are absent, and 378 heading/reference bounds checks show no
+horizontal overflow. JS errors and unmocked origins: zero. Full-page PNGs use
+`scale:css`, without resizing or pixel edits; viewport and actual image dimensions
+are distinct in the [generated relative-path manifest](assets/screens/sdlc-routing-v2-owner-20261015-2235c5d/manifest.json).
+
+| Browser | Actual PNG at viewport375 / 1920 / 2560 |
+| --- | --- |
+| Chromium | 375x6223 / 1920x4019 / 2560x4019 |
+| Firefox | 375x6208 / 1920x4024 / 2560x4024 |
+| WebKit | 375x6203 / 1920x4019 / 2560x4019 |
+
+Visually inspected [Chromium mobile](assets/screens/sdlc-routing-v2-owner-20261015-2235c5d/chromium-375x812-fullpage.png),
+[Firefox desktop](assets/screens/sdlc-routing-v2-owner-20261015-2235c5d/firefox-1920x1080-fullpage.png)
+and [WebKit2560](assets/screens/sdlc-routing-v2-owner-20261015-2235c5d/webkit-2560x1440-fullpage.png).
+Scoped references have no clipping/overlap. This does not qualify unrelated issue
+editing controls. V1 control coverage is the reused focused tests, not a new v1
+browser case. Earlier 18 viewport and 9 full-page event PNGs remain separate,
+unchanged and hash-verified; this is an additional publication-reference packet.
+
+**Fixture-only, not production SSO, live publication or seven-role acceptance.**
+No real keys, accepted API state, containers or production code changes. No full
+build, Vitest or typecheck rerun: only transient API generation, Vite asset bundling
+and the nine bounded browser cases. Own preview stopped, junctions/scratch removed,
+shared cache lock unchanged. Sanitized published evidence contains no host paths,
+credentials or raw browser authentication reports. Historical sections below retain
+their original source/qualification scope.
+
 ## Single-Task History: 15 October 2026
 
 The panel labels all generated delivery and PM metadata events, including queued,
