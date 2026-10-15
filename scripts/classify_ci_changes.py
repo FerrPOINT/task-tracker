@@ -1,53 +1,32 @@
 #!/usr/bin/env python3
-"""Classify PR paths using the source head, not GitHub's synthetic merge ref."""
-
+"""Compatibility entrypoint for the immutable Base selector package."""
 from __future__ import annotations
-
+import hashlib
+import importlib.util
+import json
 import os
 from pathlib import Path
-import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
-SHARED_PATHS = (
-    "openapi/",
-    ".base-revision",
-    ".namespace-base-revision",
-    ".github/workflows/",
-    "scripts/classify_ci_changes.py",
-)
-BACKEND_PATHS = ("backend/",) + SHARED_PATHS
-FRONTEND_PATHS = ("frontend/", ".base-ui-revision") + SHARED_PATHS
 
 
 def classify(event_name: str, base_sha: str, head_sha: str, *, repo: Path = ROOT) -> dict[str, str]:
-    if event_name != "pull_request":
-        return {"backend": "true", "frontend": "true"}
-    if not base_sha or not head_sha:
-        raise ValueError("pull_request classification requires base and head SHAs")
-
-    changed = subprocess.run(
-        ["git", "diff", "--name-only", f"{base_sha}...{head_sha}"],
-        cwd=repo,
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
-    return {
-        "backend": str(any(path.startswith(BACKEND_PATHS) for path in changed)).lower(),
-        "frontend": str(any(path.startswith(FRONTEND_PATHS) for path in changed)).lower(),
-    }
+    artifact = ROOT / "scripts/vendor/base_quality_selection.py"
+    receipt = json.loads((artifact.parent / "base-quality-tooling.json").read_text(encoding="utf-8"))
+    pin = (ROOT / ".quality-tooling-revision").read_text(encoding="utf-8").strip()
+    if receipt["revision"] != pin or hashlib.sha256(artifact.read_bytes()).hexdigest() != receipt["sha256"]:
+        raise ValueError("Packaged Base classifier identity mismatch")
+    spec = importlib.util.spec_from_file_location("base_quality_selector", artifact)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.classify(event_name, base_sha, head_sha, repo=repo, manifest_root=ROOT)
 
 
 def main() -> None:
-    result = classify(
-        os.environ["EVENT_NAME"],
-        os.environ.get("BASE_SHA", ""),
-        os.environ.get("HEAD_SHA", ""),
-    )
+    result = classify(os.environ["EVENT_NAME"], os.environ.get("BASE_SHA", ""), os.environ.get("HEAD_SHA", ""))
     output = "".join(f"{name}={value}\n" for name, value in result.items())
-    output_path = os.environ.get("GITHUB_OUTPUT")
-    if output_path:
-        with Path(output_path).open("a", encoding="utf-8", newline="") as stream:
+    if os.environ.get("GITHUB_OUTPUT"):
+        with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8", newline="") as stream:
             stream.write(output)
     else:
         print(output, end="")

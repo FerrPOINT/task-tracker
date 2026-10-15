@@ -31,7 +31,7 @@
 - Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
 - Один коммит = одна логическая единица.
 - Не amend/squash без явного запроса.
-- Push только после проверки `cargo test`, `pnpm typecheck`, `pnpm test`.
+- Push после релевантных scoped checks; полный gate на назначенной интегрированной вехе по стандарту Base.
 
 ### 4. Тестирование
 
@@ -91,3 +91,13 @@ and sdlc-common. Temporary sdlc-qa-/sdlc-build- projects require task/purpose,
 explicit endpoint and scoped cleanup in finally. Direct docker run/create,
 fake Compose labels and global prune are forbidden. Runtime data, snapshots,
 keys and shared caches are preserved. Base owns tools and LOCAL_GROUPS rules.
+
+## Быстрые проверки и сборка
+
+Перед тестами, build и CI читать обязательный [стандарт Base](https://github.com/FerrPOINT/services-base/blob/2a8b5e905ab2a6fd4c12d0d2a70d9436e745765d/docs/BUILD_PERFORMANCE.md).
+Scoped checks во время реализации; полный gate на одной интегрированной вехе.
+Сохранять полезный cache, не переустанавливать неизменные dependencies и не
+пересобирать приложение из-за test-only. До повторного тяжёлого запуска назвать
+изменившиеся inputs/недостающее evidence; передавать один artifact между этапами.
+Required security/data/compatibility/live checks и product toolchains сохраняются.
+Компоненты и команды: `.quality-gate.json`; общие правила не копировать.
