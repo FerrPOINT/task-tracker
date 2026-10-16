@@ -16,3 +16,9 @@ Runtime и package build scripts сохраняют прежние публич�
 
 Frontend CI handoff: один `dist` с manifest/digests, затем verified nginx packaging.
 Команда self-check и product flags: [TESTING](../TESTING.md#передача-frontend-artifact). SDK/UI/skills pins сохраняются.
+
+Отдельные test setup и `vitest.config.ts` исключены из production COPY
+и `frontend:build` inputs, но остаются входами unit/static. Только эти явно
+объявленные пути допускают пропуск CI compilation; общий `vite.config.ts`
+с aliases/plugins остаётся полноценным build input. Ошибка unit блокирует
+получение нового образа даже при сохранённой production compilation.
