@@ -34,7 +34,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACH
     && cargo build --locked --release --bin server \
     && cargo clean --release -p api -p app -p task-tracker-cli -p domain -p infra -p migration -p server -p shared
 
-FROM dependencies AS unit
+FROM dependencies AS unit-dependencies
+# Compile the test dependency graph before mutable product sources.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=${CARGO_REGISTRY_CACHE_ID}-${TARGETARCH},sharing=locked \
+    cargo test --locked --release -p domain --lib --no-run \
+    && cargo clean --release -p api -p app -p task-tracker-cli -p domain -p infra -p migration -p server -p shared
+
+FROM unit-dependencies AS unit
 RUN rm -rf -- domain/src shared/src
 ARG TARGETARCH
 ARG CARGO_REGISTRY_CACHE_ID=pdlc-operator-downloads-v1-cargo188
