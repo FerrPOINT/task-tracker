@@ -12,7 +12,7 @@ runtime = ["pdlc-shared/http", "dep:config"]
 
 [dependencies]
 # Fleet shared primitives: sibling services-base checkout.
-pdlc-shared = { path = "../../../services-base/crates/pdlc-shared", default-features = false, features = ["openapi"] }
+pdlc-shared = { path = "../../../services-base/base-modules/rust/pdlc-shared", default-features = false, features = ["openapi"] }
 serde.workspace = true
 serde_json.workspace = true
 chrono.workspace = true

@@ -15,7 +15,7 @@ name = "server"
 path = "src/lib.rs"
 
 [dependencies]
-pdlc-telemetry = { path = "../../../services-base/crates/pdlc-telemetry" }
+pdlc-telemetry = { path = "../../../services-base/base-modules/rust/pdlc-telemetry" }
 shared = { path = "../shared" }
 domain = { path = "../domain" }
 app = { path = "../app" }
