@@ -162,7 +162,7 @@ jobs:
       - name: OpenAPI drift gate
         run: |
           mkdir -p ../openapi
-          cargo run --locked -p api --bin gen-openapi > ../openapi/openapi.json.generated
+          "${CARGO_TARGET_DIR:-target}/debug/gen-openapi" > ../openapi/openapi.json.generated
           diff -u ../openapi/openapi.json ../openapi/openapi.json.generated
         if: needs.changes.outputs.backend_build == 'true'
     env:

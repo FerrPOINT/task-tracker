@@ -1,5 +1,9 @@
 # Быстрые повторные проверки и сборка
 
+Ordinary backend CI после workspace build использует
+`${CARGO_TARGET_DIR:-target}/debug/gen-openapi`. Прежний output path и schema diff
+сохранены; generator не пересобирается через отдельный Cargo graph.
+
 Применить [стандарт Base](https://github.com/FerrPOINT/services-base/blob/197ead9d9b6cf6901e8f9dd31f43f719885502c3/docs/BUILD_PERFORMANCE.md) без изменения runtime и SDK/UI/skills pins.
 Product-owned команды описаны в .quality-gate.json. При разработке/сборке —
 unit/static; integration/slow/full coverage — вручную перед релизом.
