@@ -61,6 +61,7 @@ RUN pnpm exec vite build
 
 
 FROM nginx:alpine@sha256:72aeb3308ef6cb3118242fb16389518923916dfa206e32d1a8377acc328b9870
+ENV NGINX_ENTRYPOINT_WORKER_PROCESSES_AUTOTUNE=1
 ARG VITE_NAMESPACE_ENABLED="false"
 LABEL io.pdlc.namespace-ui.enabled=${VITE_NAMESPACE_ENABLED}
 COPY --from=builder /app/dist /usr/share/nginx/html
