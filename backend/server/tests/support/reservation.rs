@@ -815,7 +815,10 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
         .await,
         historical
     );
-    assert_eq!(get_json(f.client, &creation_url, f.owner, 200).await, created);
+    assert_eq!(
+        get_json(f.client, &creation_url, f.owner, 200).await,
+        created
+    );
     assert_eq!(expect(f.client, &url, f.owner, &cmd, 200).await, result);
     sql(
         f.db,
