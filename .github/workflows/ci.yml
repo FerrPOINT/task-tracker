@@ -116,6 +116,14 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
       - run: cargo test --locked --workspace -- --test-threads=1
+      - name: Populated 0033 through 0096 upgrade and strict EOL guards (isolated PostgreSQL)
+        env:
+          TT_DRAFT_FLOW_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_upgrade_draft_flow_test
+        run: |
+          set -euo pipefail
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_upgrade_draft_flow_test
+          cargo test --locked -p infra --lib sdlc_populated_upgrade_pg_tests::populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/populated-upgrade.log"
+          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/populated-upgrade.log"
       - name: Deleted issue key restore (isolated PostgreSQL)
         env:
           TT_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tasktracker_infra_test
