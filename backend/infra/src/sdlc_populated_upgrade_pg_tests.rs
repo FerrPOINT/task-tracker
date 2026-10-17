@@ -641,10 +641,11 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         .position(|n| n == "m20261012_0000095_pm_completion")
         .unwrap()
         + 1;
-    assert_eq!((accepted, predecessor, names.len()), (19, 26, 27));
+    assert_eq!((accepted, predecessor, names.len()), (19, 26, 28));
+    assert_eq!(names[predecessor], "m20261013_0000096_single_task_delivery");
     assert_eq!(
         names.last().unwrap(),
-        "m20261013_0000096_single_task_delivery"
+        "m20261017_0000097_task_source_binding"
     );
     let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")
         .expect("fresh isolated upgrade database required");
@@ -831,10 +832,29 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     assert_eq!(ledger(&db, &names[..predecessor]).await, ledger_095);
     assert_eq!(history(&db, &old_tables, false).await, history_095);
     assert_eq!(original.snapshot(&db, true).await, business_0033);
-    migration::Migrator::up(&db, None).await.unwrap();
-    let ledger_096 = ledger(&db, &names).await;
+    migration::Migrator::up(&db, Some(1)).await.unwrap();
+    let ledger_096 = ledger(&db, &names[..predecessor + 1]).await;
     for entry in ledger_095.as_array().unwrap() {
         assert!(ledger_096.as_array().unwrap().contains(entry));
+    }
+    let tables_096 = tables(&db).await;
+    let history_096 = history(&db, &tables_096, false).await;
+    migration::Migrator::up(&db, Some(1)).await.unwrap();
+    let ledger_097 = ledger(&db, &names).await;
+    for entry in ledger_096.as_array().unwrap() {
+        assert!(ledger_097.as_array().unwrap().contains(entry));
+    }
+    assert_eq!(history(&db, &tables_096, false).await, history_096);
+    for name in [
+        "sdlc_source_policy_revisions",
+        "sdlc_source_policy_heads",
+        "sdlc_source_policy_operations",
+        "sdlc_task_source_selections",
+        "sdlc_draft_source_enrollments",
+        "sdlc_source_ref_owners",
+        "sdlc_task_source_bindings",
+    ] {
+        assert_eq!(count(&db, name).await, 0, "097 must not backfill {name}");
     }
     assert_eq!(history(&db, &old_tables, true).await, history_095);
     assert_eq!(original.snapshot(&db, true).await, business_0033);
@@ -965,7 +985,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     );
     let before_rerun = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, None).await.unwrap();
-    assert_eq!(ledger(&db, &names).await, ledger_096);
+    assert_eq!(ledger(&db, &names).await, ledger_097);
     assert_eq!(history(&db, &all_tables, false).await, before_rerun);
     assert_eq!(original.snapshot(&db, true).await, business_0033);
     assert_eq!(count(&db, "issues").await, 3);

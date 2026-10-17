@@ -201,6 +201,7 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         old_history
     );
     let marked = create("marked", Some(DraftFlow::SingleTaskV1));
+    crate::sdlc::source::configure_test_source(&repo, project, &owner).await;
     let before = checkpoint_counts(&db).await;
     assert!(matches!(
         disabled.create_draft(project, &owner, marked.clone()).await,
@@ -612,11 +613,10 @@ async fn draft_flow_creation_and_atomic_owner_snapshot_preserve_legacy_and_repla
         SELECT intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,$2,routing_snapshot_id
         FROM sdlc_analysis_intents WHERE task_id=$1",vec![task.into(),wrong.into()])).await;
     tx.rollback().await.unwrap();
+    let error = inserted.unwrap_err().to_string();
     assert!(
-        inserted
-            .unwrap_err()
-            .to_string()
-            .contains("snapshot/workflow mismatch")
+        error.contains("SDLC exact generation Analyst workflow mismatch"),
+        "wrong workflow must reach the current exact routing guard: {error}"
     );
     let state = repo.read(task, &owner).await.unwrap();
     assert_eq!(state.stage, Stage::Analysis);

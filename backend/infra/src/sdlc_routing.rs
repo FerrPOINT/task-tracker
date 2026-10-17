@@ -17,7 +17,7 @@ fn decode<T: serde::de::DeserializeOwned>(row: &QueryResult) -> Result<T, AppErr
 }
 
 impl PostgresSdlcRepository {
-    async fn routing_owner(
+    pub(super) async fn routing_owner(
         tx: &DatabaseTransaction,
         project: Uuid,
         actor: &Principal,

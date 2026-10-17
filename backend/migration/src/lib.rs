@@ -25,6 +25,7 @@ mod m20261012_0000093_fleet_mcp_admission;
 mod m20261012_0000094_analysis_result;
 mod m20261012_0000095_pm_completion;
 mod m20261013_0000096_single_task_delivery;
+mod m20261017_0000097_task_source_binding;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -61,6 +62,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261012_0000094_analysis_result::Migration),
             Box::new(m20261012_0000095_pm_completion::Migration),
             Box::new(m20261013_0000096_single_task_delivery::Migration),
+            Box::new(m20261017_0000097_task_source_binding::Migration),
         ]
     }
 }

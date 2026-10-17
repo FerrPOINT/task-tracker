@@ -22,6 +22,7 @@ async fn actual_snapshot(r: &ReviewFixture) -> Json {
         'cursor',(SELECT to_jsonb(t) FROM sdlc_tasks t WHERE task_id=$1),
         'journal',(SELECT jsonb_agg(to_jsonb(j) ORDER BY operation_id) FROM sdlc_critical_pm_lifecycle_operations j WHERE task_id=$1),
         'generations',(SELECT jsonb_agg(to_jsonb(g) ORDER BY generation) FROM sdlc_task_routing_generations g WHERE task_id=$1),
+        'sources',(SELECT jsonb_agg(to_jsonb(s) ORDER BY requirement_revision) FROM sdlc_task_source_bindings s WHERE task_id=$1),
         'completions',(SELECT jsonb_agg(to_jsonb(c) ORDER BY completion_id) FROM sdlc_pm_completions c WHERE task_id=$1),
         'completion_operations',(SELECT jsonb_agg(to_jsonb(o) ORDER BY idempotency_key) FROM sdlc_pm_completion_operations o WHERE task_id=$1),
         'intents',(SELECT jsonb_agg(to_jsonb(i) ORDER BY intent_id) FROM sdlc_analysis_intents i WHERE task_id=$1),
@@ -423,6 +424,33 @@ async fn complete_once(r: &ReviewFixture, c: &CompletePmDraft) -> PmDraftComplet
 
 async fn committed_generation_negatives(r: &ReviewFixture, donor_task: Uuid) {
     let before = actual_snapshot(r).await;
+    let foreign_snapshot: Uuid =
+        r.f.db
+            .query_one(statement(
+                "SELECT snapshot_id FROM sdlc_task_routing_snapshots WHERE task_id=$1",
+                vec![donor_task.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "snapshot_id")
+            .unwrap();
+    for invalid_snapshot in [Uuid::new_v4(), foreign_snapshot] {
+        let tx = r.f.db.begin().await.unwrap();
+        let error = tx.execute(statement(
+            "INSERT INTO sdlc_task_source_bindings(task_id,project_id,confirmation_id,requirement_revision,
+                content_hash,routing_snapshot_id,forge_instance_id,repository_id,candidate_ref,
+                source_revision,policy_hash,source_hash,payload)
+            SELECT task_id,project_id,confirmation_id,requirement_revision,content_hash,$2,
+                forge_instance_id,repository_id,candidate_ref,source_revision,policy_hash,source_hash,
+                jsonb_set(payload,'{routing_snapshot_id}',to_jsonb($2::uuid))
+            FROM sdlc_task_source_bindings WHERE task_id=$1 AND requirement_revision=2",
+            vec![r.task.into(), invalid_snapshot.into()],
+        )).await.unwrap_err();
+        denied(error, "SDLC exact confirmed source binding required");
+        tx.rollback().await.unwrap();
+        assert_eq!(actual_snapshot(r).await, before);
+    }
     let snapshot:Uuid=r.f.db.query_one(statement("SELECT snapshot_id FROM sdlc_task_routing_generations WHERE task_id=$1 AND generation=2",
         vec![r.task.into()])).await.unwrap().unwrap().try_get("","snapshot_id").unwrap();
     {
@@ -1023,6 +1051,47 @@ async fn final_history(r: &ReviewFixture, first: Uuid, second: Uuid) {
     );
 }
 
+async fn current_source(
+    r: &ReviewFixture,
+    revision: i64,
+    original: &domain::sdlc_source::TaskSourceBinding,
+) {
+    use domain::sdlc_source::TaskSourceReadback;
+    let binding = match r.f.repo.task_source(r.task, &r.f.owner).await.unwrap() {
+        TaskSourceReadback::Bound { binding, .. }
+        | TaskSourceReadback::Blocked {
+            binding: Some(binding),
+            ..
+        } => binding,
+        _ => panic!("trusted PM completion must publish the exact confirmed source binding"),
+    };
+    assert_eq!(binding.requirement_revision, revision);
+    let confirmation =
+        r.f.repo
+            .confirmation_read(r.task, &r.f.owner, revision)
+            .await
+            .unwrap();
+    assert_eq!(binding.confirmation_id, confirmation.id);
+    let snapshot = r.f.db.query_one(statement(
+        "SELECT snapshot_id FROM sdlc_routing_snapshot_inventory WHERE task_id=$1 ORDER BY generation DESC LIMIT 1",
+        vec![r.task.into()],
+    )).await.unwrap().unwrap().try_get::<Uuid>("", "snapshot_id").unwrap();
+    assert_eq!(binding.routing_snapshot_id, snapshot);
+    assert_eq!(binding.source_revision, original.source_revision);
+    assert_eq!(binding.policy_hash, original.policy_hash);
+    assert_eq!(binding.namespace, original.namespace);
+    assert_eq!(binding.forge_instance_id, original.forge_instance_id);
+    assert_eq!(binding.repository_id, original.repository_id);
+    assert_eq!(binding.base_ref, original.base_ref);
+    assert_eq!(binding.base_commit, original.base_commit);
+    assert_eq!(binding.candidate_ref, original.candidate_ref);
+    let retained: domain::sdlc_source::TaskSourceBinding = parse(r.f.db.query_one(statement(
+        "SELECT payload FROM sdlc_task_source_bindings WHERE task_id=$1 AND requirement_revision=1",
+        vec![r.task.into()],
+    )).await.unwrap().unwrap().try_get("", "payload").unwrap());
+    assert_eq!(&retained, original);
+}
+
 #[tokio::test]
 #[ignore = "fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending _candidates_test; main child registration/hooks/096 required; synthetic runtime only"]
 async fn actual_two_critical_pm_cycles_and_atomic_sql_negatives() {
@@ -1030,6 +1099,10 @@ async fn actual_two_critical_pm_cycles_and_atomic_sql_negatives() {
     let task = r.task;
     let first = r.review.context.blocker_id;
     eprintln!("critical_cycles.phase.setup.done");
+    let original_source: domain::sdlc_source::TaskSourceBinding = parse(r.f.db.query_one(statement(
+        "SELECT payload FROM sdlc_task_source_bindings WHERE task_id=$1 AND requirement_revision=1",
+        vec![r.task.into()],
+    )).await.unwrap().unwrap().try_get("", "payload").unwrap());
     // A real second root supplies collision-only immutable source data; the two review cycles retain task above.
     let donor_task = Box::pin(r.f.confirmed("cycles-collision-donor", true)).await;
     let donor =
@@ -1049,6 +1122,7 @@ async fn actual_two_critical_pm_cycles_and_atomic_sql_negatives() {
     Box::pin(generation_insert_negatives(&r, &command, donor)).await;
     eprintln!("critical_cycles.phase.partial_packets.denied");
     let first_completion = Box::pin(complete_once(&r, &command)).await;
+    current_source(&r, 2, &original_source).await;
     assert_eq!(frozen_history(&r.f, r.task).await, r.original);
     assert_eq!(
         r.f.repo
@@ -1060,6 +1134,33 @@ async fn actual_two_critical_pm_cycles_and_atomic_sql_negatives() {
     Box::pin(committed_generation_negatives(&r, donor_task)).await;
     let archive = first_archive(&r, first).await;
     eprintln!("critical_cycles.phase.first.done");
+    let old_policy =
+        r.f.repo
+            .source_policy(
+                r.f.project,
+                &r.f.owner,
+                Some(original_source.source_revision),
+            )
+            .await
+            .unwrap();
+    let mut next_source = old_policy.source;
+    next_source.base_commit = "b".repeat(40);
+    let mut observation = old_policy.verification;
+    observation.base_commit = next_source.base_commit.clone();
+    observation.observed_at = chrono::Utc::now();
+    r.f.repo
+        .set_source_policy(
+            r.f.project,
+            &r.f.owner,
+            SetSourcePolicy {
+                expected_source_revision: Some(original_source.source_revision),
+                source: next_source,
+                idempotency_key: "cycles:new-source-policy".into(),
+            },
+            observation,
+        )
+        .await
+        .unwrap();
     // Legitimately change current project policy; the existing task must KEEP its original frozen policy.
     let mut routes = r.f.roles.clone();
     routes.analyst.fleet_config_revision += 1;
@@ -1086,6 +1187,7 @@ async fn actual_two_critical_pm_cycles_and_atomic_sql_negatives() {
     let (hash, second_consent) = Box::pin(revise_second(&mut r)).await;
     let second_command = completion_command(&r, 3, hash);
     let second_completion = Box::pin(complete_once(&r, &second_command)).await;
+    current_source(&r, 3, &original_source).await;
     assert_ne!(
         second_completion.fence.execution_id,
         first_completion.fence.execution_id

@@ -203,6 +203,7 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route("/issues/{id}/sdlc/evidence", post(evidence))
         .route("/issues/{id}/sdlc/events", get(events))
         .merge(super::sdlc_routing::router())
+        .merge(super::sdlc_source::router())
         .merge(super::sdlc_reservation::router())
         .merge(super::sdlc_delivery::router())
         .route_layer(middleware::from_fn(

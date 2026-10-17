@@ -273,6 +273,7 @@ metadata_events! {
     AnalysisIntentCreated, "analysis.intent_created", crate::sdlc::AnalysisIntent;
     AnalysisAssignmentReserved, "analysis.assignment_reserved", AnalysisReservationResource;
     AnalysisResultAccepted, "analysis.result_accepted", AnalysisResultResource;
+    DraftSourceSelected, "source.selected", crate::sdlc_source::DraftSourceEnrollmentReceipt;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]

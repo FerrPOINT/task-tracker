@@ -40,6 +40,7 @@ const documentFields = [
   'prerequisites',
 ] as const
 const eventLabels = {
+  'source.selected': 'sourceSelected',
   'delivery.queued': 'deliveryQueued',
   'delivery.reconciled': 'deliveryReconciled',
   'delivery.assignment_reserved': 'deliveryAssignmentPrepared',

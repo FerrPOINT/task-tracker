@@ -103,6 +103,26 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
         version(number)?;
     }
     let resource = match event.event_type.as_str() {
+        "source.selected" => {
+            let selected: domain::sdlc_source::DraftSourceEnrollmentReceipt =
+                decode(&source.result)?;
+            valid(
+                selected.task_id == event.task_id
+                    && selected.enrollment_id == event.event_id
+                    && selected.project_id == source.project_id
+                    && source.root_task_id == event.task_id
+                    && selected.owner_subject == source.owner_subject
+                    && matches!(source.stage, Stage::Draft)
+                    && selected.created_at == event.created_at
+                    && crate::sdlc_source::sealed_hash(&selected)
+                        .map_err(|_| MetadataErrorCode::MetadataSourceInvalid)?
+                        == selected.source_hash,
+            )?;
+            version(selected.source_revision)?;
+            hash(&selected.policy_hash)?;
+            hash(&selected.request_sha256)?;
+            value(selected)?
+        }
         "pm.completed" => {
             let receipt: domain::sdlc_reservation::PmDraftCompletionReceipt =
                 decode(&source.result)?;

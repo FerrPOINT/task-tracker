@@ -156,6 +156,59 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     useAuthStore.getState().logout()
   })
 
+  it.each([
+    ['en', 'Task source selected'],
+    ['ru', 'Источник задачи выбран'],
+  ])(
+    'renders the source selection receipt in %s without starting or confirming work',
+    async (language, label) => {
+      await i18n.changeLanguage(language)
+      vi.mocked(getSdlcSnapshot).mockResolvedValue({
+        ...initial,
+        context: {
+          ...initial.context,
+          stage: 'Draft',
+          requirement_revision: null,
+          waiting_reason: null,
+          permissions: { can_answer: false, can_confirm: false },
+        },
+        requirements: null,
+      })
+      const selected: MetadataEvent = {
+        ...event,
+        event_type: 'source.selected',
+        payload: {
+          ...event.payload,
+          stage: 'Draft',
+          current_requirement_revision: null,
+          resource: {
+            enrollment_id: confirmationId,
+            task_id: task,
+            project_id: task,
+            owner_subject: 'owner',
+            source_revision: 1,
+            policy_hash: hash,
+            request_sha256: 'c'.repeat(64),
+            source_hash: 'd'.repeat(64),
+            created_at: created,
+          },
+        },
+      }
+      vi.mocked(getSdlcMetadata).mockResolvedValue({
+        contract_version: 1,
+        projection: 'metadata_v1',
+        after: '0',
+        next_after: selected.sequence,
+        has_more: false,
+        events: [selected],
+      })
+      mount()
+      expect(await screen.findByText(label)).toBeInTheDocument()
+      expect(screen.queryByText('source.selected')).not.toBeInTheDocument()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
   it('shows loading and does not fabricate a queue or confirmation permission', () => {
     vi.mocked(getSdlcSnapshot).mockReturnValue(new Promise(() => {}))
     mount()

@@ -187,6 +187,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
     .await
     .unwrap();
     let owner = actor("owner", true, vec![]);
+    super::super::source::configure_test_source(&repo, project, &owner).await;
     let scheduler = actor("scheduler", false, vec![]);
     let mut reader = scheduler.clone();
     reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();

@@ -1,5 +1,9 @@
 # API v1 Specification — Task Tracker
 
+Source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md) specifies
+project source-policy CAS, explicit owner Draft enrollment and typed readback.
+Migration/schema and Forge source verification qualification are required.
+
 ## Critical Business Blocker Integration
 
 Current PM review source now permits only the existing blocker detail GET and
@@ -1903,6 +1907,24 @@ GET/PATCH/DELETE `/api/v1/issues/{id}` и POST `/api/v1/issues/{id}/transition`,
 ## Общая база
 
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
+
+## Task Source Binding
+
+Source policy uses the current owner's human SSO session; ordinary reads retain
+existing project access. No new user role or caller-issued source proof is added.
+
+- GET/POST `/api/v1/projects/{project_id}/sdlc/source-policy`.
+- GET `/api/v1/projects/{project_id}/sdlc/source-policy/versions/{revision}`.
+- GET `/api/v1/projects/{project_id}/sdlc/source-policy/operations/{idempotency_key}`.
+- GET `/api/v1/issues/{id}/sdlc/source-binding` (bound/blocked, not a Git grant).
+- GET/POST `/api/v1/issues/{id}/sdlc/source-enrollment` (original unconfirmed Draft).
+
+Readback is `no-store`; POST replay keeps its original receipt and changed input
+conflicts. Source verification uses the configured registered reader at Forge
+`/api/v1/namespace-repositories/{id}/source`; catalog metadata is not proof.
+See [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md) for ownership, CAS,
+confirmation, critical-PM generations and blocked states. Rust-generated OpenAPI
+contains distinct operation IDs and preserves prior metadata event variants.
 
 ## Analysis Configuration Preflight
 

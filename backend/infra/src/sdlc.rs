@@ -29,6 +29,8 @@ mod pm_resume;
 mod reservation;
 #[path = "sdlc_routing.rs"]
 mod routing;
+#[path = "sdlc_source.rs"]
+mod source;
 
 pub struct PostgresSdlcRepository {
     db: DatabaseConnection,
@@ -552,6 +554,10 @@ impl PostgresSdlcRepository {
                 let mut intent = app::sdlc::analysis_intent(state, &confirmation, Uuid::new_v4())?;
                 if let Some(snapshot) = &routing_snapshot {
                     intent.workflow = snapshot.policy.routes.analyst.workflow_key.clone();
+                    if state.draft_flow()?.is_some() {
+                        self.freeze_source(tx, state, &confirmation, snapshot)
+                            .await?;
+                    }
                 }
                 exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
                     vec![intent.intent_id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(),
@@ -729,6 +735,9 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    fn source_repository(&self) -> Option<&dyn domain::sdlc_source::TaskSourceRepository> {
+        Some(self)
+    }
     fn lifecycle_repository(&self) -> Option<&dyn domain::sdlc_lifecycle::LifecycleRepository> {
         Some(self)
     }
@@ -1377,6 +1386,9 @@ impl SdlcRepository for PostgresSdlcRepository {
                 VALUES($1,$2,$3,$1,$4,$5)",
                 vec![task.into(), self.config.instance_id.clone().into(), project.into(),
                     actor.subject.clone().into(), json_value(&state)?]).await?;
+            if single_task {
+                self.select_task_source(&tx, &state, user).await?;
+            }
             let result = CreatedDraft {
                 tracker_instance_id: self.config.instance_id.clone(),
                 project_id: project,

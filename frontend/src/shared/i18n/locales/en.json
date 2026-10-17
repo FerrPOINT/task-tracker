@@ -94,6 +94,7 @@
       "prerequisites": "Prerequisites"
     },
     "events": {
+      "sourceSelected": "Task source selected",
       "deliveryQueued": "Delivery queued",
       "deliveryReconciled": "Delivery reconciled",
       "deliveryAssignmentPrepared": "Delivery assignment prepared, awaiting admission",

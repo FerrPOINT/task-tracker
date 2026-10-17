@@ -1,0 +1,62 @@
+{
+  "status": "passed",
+  "fixture_only": true,
+  "real_admission": false,
+  "results": [
+    {
+      "lang": "ru",
+      "width": 375,
+      "file": "source-selected-fixture-ru-375.png",
+      "status": "passed"
+    },
+    {
+      "lang": "ru",
+      "width": 1920,
+      "file": "source-selected-fixture-ru-1920.png",
+      "status": "passed"
+    },
+    {
+      "lang": "ru",
+      "width": 2560,
+      "file": "source-selected-fixture-ru-2560.png",
+      "status": "passed"
+    },
+    {
+      "lang": "en",
+      "width": 375,
+      "file": "source-selected-fixture-en-375.png",
+      "status": "passed"
+    },
+    {
+      "lang": "en",
+      "width": 1920,
+      "file": "source-selected-fixture-en-1920.png",
+      "status": "passed"
+    },
+    {
+      "lang": "en",
+      "width": 2560,
+      "file": "source-selected-fixture-en-2560.png",
+      "status": "passed"
+    }
+  ],
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v1/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sdlc/context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sdlc/events"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sdlc/context"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/issues/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/sdlc/events"
+    }
+  ],
+  "errors": []
+}

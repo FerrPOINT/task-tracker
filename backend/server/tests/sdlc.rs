@@ -42,6 +42,8 @@ mod pm_credential_boundary;
 mod routing_policy;
 #[path = "support/sdlc_project_access.rs"]
 mod sdlc_project_access;
+#[path = "support/source_policy.rs"]
+mod source_policy;
 
 #[derive(Clone)]
 struct AuthStub {
@@ -537,6 +539,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     );
     post(&client, &format!("{url}/binding"), &owner, &bind, 200).await;
     assert_eq!(count(&db, "sdlc_tasks").await, 1);
+    source_policy::verify(&client, &base, &db, project, task, &owner, &foreign).await;
     lifecycle_guard::reject_child_row(&db, task, unbound).await;
     assert_eq!(
         client
