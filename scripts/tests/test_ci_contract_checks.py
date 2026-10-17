@@ -67,7 +67,7 @@ class CiContractChecksTest(unittest.TestCase):
             backend,
         )
         self.assertIn(
-            "cargo test --locked -p infra --lib sdlc_populated_upgrade_pg_tests::populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --exact --ignored --test-threads=1",
+            "cargo test --locked -p infra --lib populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --ignored --test-threads=1",
             backend,
         )
         self.assertIn("test result: ok. 1 passed; 0 failed; 0 ignored;", backend)

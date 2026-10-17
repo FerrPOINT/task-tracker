@@ -122,7 +122,7 @@ jobs:
         run: |
           set -euo pipefail
           docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_upgrade_draft_flow_test
-          cargo test --locked -p infra --lib sdlc_populated_upgrade_pg_tests::populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/populated-upgrade.log"
+          cargo test --locked -p infra --lib populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --ignored --test-threads=1 | tee "$RUNNER_TEMP/populated-upgrade.log"
           grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/populated-upgrade.log"
       - name: Deleted issue key restore (isolated PostgreSQL)
         env:
