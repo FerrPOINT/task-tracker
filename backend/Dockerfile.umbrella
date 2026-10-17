@@ -24,6 +24,7 @@ COPY task-tracker/backend/api ./api
 COPY task-tracker/backend/server ./server
 COPY task-tracker/backend/cli ./cli
 
+ARG CARGO_BUILD_JOBS=1
 RUN --mount=type=cache,id=task-tracker-cargo-registry-rust-1.88,target=/usr/local/cargo/registry,sharing=shared \
     --mount=type=cache,id=task-tracker-cargo-target-rust-1.88,target=/cargo-target,sharing=locked \
     CARGO_TARGET_DIR=/cargo-target cargo build --locked --release --bin server \
