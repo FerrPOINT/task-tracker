@@ -73,3 +73,11 @@ UI/SDK/skills pins независимы; source-комплект проверя�
 [Карта Base](https://github.com/FerrPOINT/services-base/blob/a4dea438ec99103ca83b51540d11de548b1ee82d/docs/platform/ARCHITECTURE.md)
 и [ADR 0006](https://github.com/FerrPOINT/services-base/blob/a4dea438ec99103ca83b51540d11de548b1ee82d/docs/adr/0006-base-repository-layout.md)
 определяют расположение и направление зависимостей. Установка выполняется отдельно.
+
+## Каталог UI
+
+UI pin принимает Base #245. При недоступном каталоге
+`usePlatformServices().services` пуст: продуктовые ссылки показывают штатное
+недоступное состояние. Меню сохраняет подписи без неподтверждённых переходов;
+известные адреса из runtime/host работают независимо от health. Восстановление
+каталога использует прежний интервал. SDK и HTTP-контракты не меняются.
