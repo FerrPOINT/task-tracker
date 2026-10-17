@@ -65,6 +65,7 @@ impl PostgresSdlcRepository {
         let policy: RoutingPolicy = decode(&row)?;
         app::sdlc_routing::validate_routes(&policy.routes)?;
         if policy.project_id != project
+            || policy.contract_version != policy.routes.contract_version()
             || policy.native_ready
             || policy.dispatch_allowed
             || policy.routing_hash != app::sdlc::canonical_hash(&policy.routes)?
@@ -126,7 +127,7 @@ impl PostgresSdlcRepository {
             .filter(|v| bounded_policy_version(*v))
             .ok_or_else(|| AppError::conflict("routing version exhausted"))?;
         let policy = RoutingPolicy {
-            contract_version: 1,
+            contract_version: command.routes.contract_version(),
             tracker_instance_id: self.config.instance_id.clone(),
             project_id: project,
             version,
@@ -163,7 +164,7 @@ impl PostgresSdlcRepository {
             return Err(AppError::validation("invalid routing version"));
         }
         let tx = self.db.begin().await.map_err(map_db)?;
-        self.project_access(&tx, project, actor).await?;
+        Self::project_access(&tx, project, actor).await?;
         let result = Self::policy(&tx, project, version).await?;
         tx.commit().await.map_err(map_db)?;
         Ok(result)
@@ -191,21 +192,42 @@ impl PostgresSdlcRepository {
         Ok(result)
     }
 
+    pub(super) async fn single_task_policy(
+        &self,
+        tx: &DatabaseTransaction,
+        project: Uuid,
+    ) -> Result<RoutingPolicy, AppError> {
+        // Caller holds the project ACL share lock; policy writers lock it exclusively.
+        let policy = Self::policy(tx, project, None).await?;
+        app::sdlc_draft_flow::validate_policy(&policy, project, &self.config.instance_id)?;
+        Ok(policy)
+    }
+
     pub(super) async fn freeze_routing(
         &self,
         tx: &DatabaseTransaction,
         state: &TaskState,
         confirmation: &Confirmation,
-        expected: i64,
+        expected: Option<i64>,
     ) -> Result<TaskRoutingSnapshot, AppError> {
         let policy = Self::policy(tx, state.project_id, None).await?;
-        if policy.version != expected || policy.tracker_instance_id != state.tracker_instance_id {
+        if state.draft_flow()?.is_some() {
+            app::sdlc_draft_flow::validate_policy(
+                &policy,
+                state.project_id,
+                &state.tracker_instance_id,
+            )?;
+        }
+        if expected.is_some_and(|version| policy.version != version)
+            || policy.tracker_instance_id != state.tracker_instance_id
+        {
             return Err(AppError::conflict(
                 "stale publication routing policy version",
             ));
         }
+        let policy_version = policy.version;
         let snapshot = TaskRoutingSnapshot {
-            contract_version: 1,
+            contract_version: policy.contract_version,
             snapshot_id: Uuid::new_v4(),
             tracker_instance_id: state.tracker_instance_id.clone(),
             project_id: state.project_id,
@@ -218,7 +240,7 @@ impl PostgresSdlcRepository {
             created_at: confirmation.created_at,
         };
         exec(tx, "INSERT INTO sdlc_task_routing_snapshots(snapshot_id,task_id,project_id,policy_version,confirmation_id,requirement_revision,content_hash,payload) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
-            vec![snapshot.snapshot_id.into(), state.task_id.into(), state.project_id.into(), expected.into(), confirmation.id.into(), confirmation.revision.into(), confirmation.content_hash.clone().into(), json_value(&snapshot)?]).await?;
+            vec![snapshot.snapshot_id.into(), state.task_id.into(), state.project_id.into(), policy_version.into(), confirmation.id.into(), confirmation.revision.into(), confirmation.content_hash.clone().into(), json_value(&snapshot)?]).await?;
         Ok(snapshot)
     }
 
@@ -230,15 +252,27 @@ impl PostgresSdlcRepository {
         reader(actor)?;
         let tx = self.db.begin().await.map_err(map_db)?;
         let state = self.load(&tx, task, actor).await?;
+        let current = super::lifecycle::current(&tx, task).await?;
+        let active_snapshot = current.as_ref().map(|r| r.task.routing.snapshot_id);
         let row = tx
             .query_one(statement(
-                "SELECT payload FROM sdlc_task_routing_snapshots WHERE task_id=$1",
-                vec![task.into()],
+                "SELECT payload FROM sdlc_routing_snapshot_inventory
+                 WHERE task_id=$1 AND (($2::uuid IS NOT NULL AND snapshot_id=$2)
+                   OR ($2::uuid IS NULL AND generation=1))",
+                vec![task.into(), active_snapshot.into()],
             ))
             .await
             .map_err(map_db)?
             .ok_or_else(|| AppError::not_found("task routing snapshot", task))?;
         let snapshot: TaskRoutingSnapshot = decode(&row)?;
+        if let Some(current) = &current {
+            if current.task.routing != snapshot {
+                return Err(AppError::conflict("active task routing snapshot differs"));
+            }
+            if self.review_snapshot(&tx, &state, current).await?.is_none() {
+                super::lifecycle::exact_revision(&state, current)?;
+            }
+        }
         let retained = Self::policy(&tx, state.project_id, Some(snapshot.policy.version)).await?;
         if snapshot.task_id != task
             || snapshot.root_task_id != state.root_task_id

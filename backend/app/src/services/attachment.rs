@@ -37,6 +37,7 @@ pub struct AttachmentServiceImpl {
     notifications: Arc<dyn domain::NotificationRepository>,
     notification_settings: Arc<dyn domain::UserNotificationSettingsRepository>,
     authz: Authz,
+    artifact_config: Option<domain::sdlc::SdlcConfig>,
 }
 
 impl AttachmentServiceImpl {
@@ -60,11 +61,28 @@ impl AttachmentServiceImpl {
             notifications,
             notification_settings,
             authz,
+            artifact_config: None,
         }
     }
 
-    fn to_dto(a: &domain::Attachment) -> crate::context::AttachmentDto {
-        crate::context::AttachmentDto {
+    /// Main wires the same validated deployment config used by the existing SDLC repository.
+    pub fn with_artifact_config(mut self, config: domain::sdlc::SdlcConfig) -> Self {
+        self.artifact_config = Some(config);
+        self
+    }
+
+    fn artifact_config(&self) -> Result<&domain::sdlc::SdlcConfig, AppError> {
+        self.artifact_config
+            .as_ref()
+            .ok_or_else(|| AppError::Unavailable("role artifact policy not configured".into()))
+    }
+
+    fn to_dto(a: &domain::Attachment) -> Result<crate::context::AttachmentDto, AppError> {
+        let seal = domain::attachment_artifact::Seal::parse(a.storage_key.as_ref())?;
+        if let Some(seal) = &seal {
+            seal.validate_attachment(a)?;
+        }
+        Ok(crate::context::AttachmentDto {
             id: a.id.to_string(),
             issue_id: a.issue_id.to_string(),
             author_id: a.author_id.to_string(),
@@ -72,7 +90,8 @@ impl AttachmentServiceImpl {
             content_type: a.content_type.as_ref().to_string(),
             size_bytes: a.size_bytes,
             created_at: a.created_at.to_rfc3339(),
-        }
+            artifact: seal.map(|seal| seal.artifact()),
+        })
     }
 }
 
@@ -118,6 +137,77 @@ fn validate_content_type(content_type: &str) -> Result<String, AppError> {
 
 #[async_trait]
 impl crate::context::AttachmentService for AttachmentServiceImpl {
+    fn authorize_artifact_route(
+        &self,
+        actor: &domain::sdlc::Principal,
+        method: &str,
+        path: &str,
+    ) -> Result<(), AppError> {
+        let config = self.artifact_config()?;
+        if crate::attachment_pm_review::route(actor, method, path)? {
+            return Ok(());
+        }
+        if crate::attachment_artifacts::delivery_attachment_route(actor, method, path)? {
+            return Ok(());
+        }
+        crate::sdlc_lifecycle::scheduler_read(actor, config)?;
+        if method == "GET" && crate::attachment_artifacts::is_download_path(path) {
+            return Ok(());
+        }
+        Err(AppError::Forbidden)
+    }
+    async fn upload_artifact(
+        &self,
+        issue: IssueId,
+        actor: &domain::sdlc::Principal,
+        file_name: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+    ) -> Result<crate::context::AttachmentDto, AppError> {
+        crate::sdlc_lifecycle::producer(actor, true)?;
+        let upload = domain::attachment_artifact::ArtifactUpload {
+            file_name: sanitize_file_name(file_name),
+            content_type: validate_content_type(content_type)?,
+            bytes,
+        };
+        let attachment = self
+            .attachments
+            .publish_artifact(
+                self.artifact_config()?,
+                actor,
+                issue,
+                upload,
+                self.storage.as_ref(),
+            )
+            .await?;
+        Self::to_dto(&attachment)
+    }
+
+    async fn list_artifacts(
+        &self,
+        issue: IssueId,
+        actor: &domain::sdlc::Principal,
+    ) -> Result<Vec<crate::context::AttachmentDto>, AppError> {
+        let items = self
+            .attachments
+            .list_artifacts(self.artifact_config()?, actor, issue)
+            .await?;
+        items.iter().map(Self::to_dto).collect()
+    }
+
+    async fn download_artifact(
+        &self,
+        id: shared::AttachmentId,
+        actor: &domain::sdlc::Principal,
+    ) -> Result<(crate::context::AttachmentDto, Vec<u8>), AppError> {
+        let (attachment, bytes) = self
+            .attachments
+            .download_artifact(self.artifact_config()?, actor, id, self.storage.as_ref())
+            .await?;
+        crate::attachment_artifacts::verify_bytes(&attachment, &bytes)?;
+        Ok((Self::to_dto(&attachment)?, bytes))
+    }
+
     async fn upload(
         &self,
         issue_id: IssueId,
@@ -174,7 +264,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             }),
         )
         .await;
-        Ok(Self::to_dto(&attachment))
+        Self::to_dto(&attachment)
     }
 
     async fn list_by_issue(
@@ -187,7 +277,15 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             .require_project_access(issue.project_id, requester)
             .await?;
         let items = self.attachments.list_by_issue(issue_id).await?;
-        Ok(items.iter().map(Self::to_dto).collect())
+        if items
+            .iter()
+            .any(|item| domain::attachment_artifact::is_sealed(item.storage_key.as_ref()))
+        {
+            self.attachments
+                .authorize_sealed_human_read(issue_id, requester)
+                .await?;
+        }
+        items.iter().map(Self::to_dto).collect()
     }
 
     async fn download(
@@ -196,6 +294,11 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         requester: UserId,
     ) -> Result<(crate::context::AttachmentDto, Vec<u8>), AppError> {
         let a = self.attachments.get_by_id(attachment_id).await?;
+        if domain::attachment_artifact::is_sealed(a.storage_key.as_ref()) {
+            self.attachments
+                .authorize_sealed_human_read(a.issue_id, requester)
+                .await?;
+        }
         let issue = self.issues.get_by_id(a.issue_id).await?;
         self.authz
             .require_project_access(issue.project_id, requester)
@@ -204,7 +307,10 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
             .storage
             .get(&a.issue_id.to_string(), a.storage_key.as_ref())
             .await?;
-        Ok((Self::to_dto(&a), bytes))
+        if domain::attachment_artifact::is_sealed(a.storage_key.as_ref()) {
+            crate::attachment_artifacts::verify_bytes(&a, &bytes)?;
+        }
+        Ok((Self::to_dto(&a)?, bytes))
     }
 
     async fn delete(
@@ -213,6 +319,7 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
         requester: UserId,
     ) -> Result<(), AppError> {
         let a = self.attachments.get_by_id(attachment_id).await?;
+        crate::attachment_artifacts::deny_sealed_delete(a.storage_key.as_ref())?;
         let issue = self.issues.get_by_id(a.issue_id).await?;
         self.authz
             .require_project_edit(issue.project_id, requester)
@@ -242,6 +349,89 @@ impl crate::context::AttachmentService for AttachmentServiceImpl {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::context::AttachmentService;
+
+    #[test]
+    fn artifact_policy_is_opt_in_and_scheduler_is_read_download_only() {
+        let repos = domain::Repositories::default();
+        let service = AttachmentServiceImpl::new(
+            repos.attachments,
+            repos.issues,
+            Arc::new(domain::InMemoryStorage::default()),
+            repos.watchers,
+            crate::context::EventBus::default(),
+            repos.notifications,
+            repos.notification_settings,
+            Authz::new(repos.members, repos.projects),
+        );
+        let mut scheduler = domain::sdlc::Principal {
+            subject: "scheduler".into(),
+            human_session: false,
+            trusted_human: false,
+            scopes: ["task-tracker:read".into()].into(),
+        };
+        let download = format!("/api/v1/attachments/{}/download", uuid::Uuid::new_v4());
+        assert!(matches!(
+            service.authorize_artifact_route(&scheduler, "GET", &download),
+            Err(AppError::Unavailable(_))
+        ));
+        let service = service.with_artifact_config(domain::sdlc::SdlcConfig {
+            instance_id: "test".into(),
+            orchestrator_subject: "pm".into(),
+            verifier_subject: "verifier".into(),
+            reservation_scheduler_subject: "scheduler".into(),
+            single_task_project_ids: Default::default(),
+        });
+        service
+            .authorize_artifact_route(&scheduler, "GET", &download)
+            .unwrap();
+        for method in ["POST", "HEAD", "PUT", "PATCH", "DELETE"] {
+            assert!(
+                service
+                    .authorize_artifact_route(&scheduler, method, &download)
+                    .is_err()
+            );
+        }
+        assert!(
+            service
+                .authorize_artifact_route(
+                    &scheduler,
+                    "GET",
+                    &format!("/api/v1/issues/{}/attachments", uuid::Uuid::new_v4())
+                )
+                .is_err()
+        );
+        scheduler.subject = "foreign-machine".into();
+        assert!(
+            service
+                .authorize_artifact_route(&scheduler, "GET", &download)
+                .is_err()
+        );
+        scheduler.subject = "scheduler".into();
+        scheduler.human_session = true;
+        assert!(
+            service
+                .authorize_artifact_route(&scheduler, "GET", &download)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn legacy_attachment_dto_omits_artifact_and_never_fabricates_receipt() {
+        let item = domain::Attachment {
+            id: shared::AttachmentId::new(),
+            issue_id: IssueId::new(),
+            author_id: UserId::new(),
+            file_name: "legacy.json".into(),
+            content_type: "application/json".into(),
+            size_bytes: 2,
+            storage_key: "old-legacy.json".into(),
+            created_at: shared::now(),
+        };
+        let dto = AttachmentServiceImpl::to_dto(&item).unwrap();
+        let value = serde_json::to_value(dto).unwrap();
+        assert!(value.get("artifact").is_none());
+    }
 
     #[test]
     fn sanitize_file_name_replaces_path_and_control_chars() {

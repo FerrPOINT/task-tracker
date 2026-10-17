@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getSdlcMetadata, getSdlcRoutingPolicy, getSdlcSnapshot } from '@/api/sdlc'
 import { useAuthStore } from '@/shared/auth/store'
+import { canConfirmRequirementsContext } from './confirmation-context'
 
 export function useSdlcTask(issueId: string, after: string) {
   const token = useAuthStore((state) => state.token)
@@ -32,8 +33,7 @@ export function useSdlcTask(issueId: string, after: string) {
     queryFn: ({ signal }) => getSdlcRoutingPolicy(context!, signal),
     enabled: Boolean(
       session.token &&
-      context?.permissions.can_confirm &&
-      context.stage === 'Clarification' &&
+      canConfirmRequirementsContext(context) &&
       !forbidden &&
       !snapshot.error &&
       !snapshot.isFetching,

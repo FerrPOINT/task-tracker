@@ -103,6 +103,133 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
         version(number)?;
     }
     let resource = match event.event_type.as_str() {
+        "pm.completed" => {
+            let receipt: domain::sdlc_reservation::PmDraftCompletionReceipt =
+                decode(&source.result)?;
+            valid(
+                receipt.completion_id == event.event_id
+                    && receipt.task_id == event.task_id
+                    && receipt.root_task_id == source.root_task_id
+                    && receipt.project_id == source.project_id
+                    && receipt.owner_subject == source.owner_subject
+                    && receipt.tracker_instance_id == source.tracker_instance_id
+                    && source.requirement_revision == Some(receipt.requirement_revision),
+            )?;
+            revision(receipt.requirement_revision, &receipt.content_hash, &refs)?;
+            hash(&receipt.terminal_receipt_sha256)?;
+            hash(&receipt.workflow_receipt_sha256)?;
+            version(receipt.lease_version)?;
+            value(PmCompletionResource {
+                completion_id: receipt.completion_id,
+                fence: receipt.fence,
+                lease_id: receipt.lease_id,
+                lease_version: receipt.lease_version,
+                requirement_revision: receipt.requirement_revision,
+                content_hash: receipt.content_hash,
+                terminal_receipt_sha256: receipt.terminal_receipt_sha256,
+                workflow_receipt_sha256: receipt.workflow_receipt_sha256,
+            })?
+        }
+        "delivery.reconciled"
+        | "delivery.queued"
+        | "delivery.assignment_reserved"
+        | "delivery.lease_renewed"
+        | "delivery.run_bound"
+        | "delivery.result_accepted" => {
+            let receipt: domain::sdlc_lifecycle::LifecycleReceipt = decode(&source.result)?;
+            let task = &receipt.task;
+            revision(
+                task.routing.requirement_revision,
+                &task.routing.content_hash,
+                &refs,
+            )?;
+            valid(
+                task.task_id == event.task_id
+                    && task.routing.task_id == event.task_id
+                    && task.routing.root_task_id == source.root_task_id
+                    && task.routing.project_id == source.project_id
+                    && task.routing.tracker_instance_id == source.tracker_instance_id
+                    && task.owner_subject == source.owner_subject
+                    && task.stage.canonical() == source.stage
+                    && source.requirement_revision == Some(task.routing.requirement_revision),
+            )?;
+            version(task.version)?;
+            if let Some(a) = &receipt.assignment {
+                valid(
+                    a.task_id == task.task_id
+                        && a.owner_subject == task.owner_subject
+                        && a.routing == task.routing
+                        && crate::sdlc_lifecycle::assignment_hash(a)
+                            .map_err(|_| MetadataErrorCode::MetadataSourceInvalid)?
+                            == a.assignment_hash,
+                )?;
+            }
+            let status = value(task.status)?
+                .as_str()
+                .ok_or(MetadataErrorCode::MetadataSourceInvalid)?
+                .to_owned();
+            let runtime = value(task.runtime)?
+                .as_str()
+                .ok_or(MetadataErrorCode::MetadataSourceInvalid)?
+                .to_owned();
+            value(LifecycleResource {
+                task_version: task.version,
+                status,
+                runtime,
+                assignment_id: receipt.assignment.as_ref().map(|a| a.assignment_id),
+                execution_id: receipt.assignment.as_ref().map(|a| a.execution_id),
+                agent_id: receipt.assignment.as_ref().map(|a| a.agent_id),
+                fencing_token: receipt.assignment.as_ref().map(|a| a.fencing_token),
+                assignment_hash: receipt
+                    .assignment
+                    .as_ref()
+                    .map(|a| a.assignment_hash.clone()),
+                lease_id: receipt.lease.as_ref().map(|l| l.lease_id),
+                lease_version: receipt.lease.as_ref().map(|l| l.version),
+                result_id: receipt.result.as_ref().map(|r| r.result_id),
+                previous_result_id: task.previous_result_id,
+                result_sha256: receipt
+                    .result
+                    .as_ref()
+                    .map(|r| r.terminal.output_sha256.clone()),
+            })?
+        }
+        "delivery.proposal_submitted" => {
+            let proposal: domain::sdlc_lifecycle::DeliveryProposalReceipt = decode(&source.result)?;
+            valid(
+                proposal.task_id == event.task_id
+                    && proposal.proposal_id == event.event_id
+                    && canonical_hash(&proposal.result)
+                        .map_err(|_| MetadataErrorCode::MetadataSourceInvalid)?
+                        == proposal.output_sha256,
+            )?;
+            value(DeliveryProposalResource {
+                proposal_id: proposal.proposal_id,
+                assignment_id: proposal.assignment_id,
+                execution_id: proposal.execution_id,
+                agent_id: proposal.agent_id,
+                output_sha256: proposal.output_sha256,
+            })?
+        }
+        "pm.feedback_recorded" => {
+            let feedback: domain::sdlc_lifecycle::PmFeedbackReceipt = decode(&source.result)?;
+            valid(
+                feedback.message_id == event.event_id
+                    && feedback.task_id == event.task_id
+                    && feedback.root_task_id == source.root_task_id
+                    && feedback.project_id == source.project_id
+                    && feedback.owner_subject == source.owner_subject
+                    && feedback.tracker_instance_id == source.tracker_instance_id
+                    && feedback.content_hash
+                        == canonical_hash(&json!({"text":feedback.text}))
+                            .map_err(|_| MetadataErrorCode::MetadataSourceInvalid)?,
+            )?;
+            value(PmFeedbackResource {
+                message_id: feedback.message_id,
+                fence: feedback.fence,
+                content_hash: feedback.content_hash,
+            })?
+        }
         "task.created" => {
             let created: CreatedDraft = decode(&source.result)?;
             valid(
@@ -348,7 +475,10 @@ pub fn project(event: &OutboxEvent, refs: MetadataReferences) -> ProjectionResul
                     && source.requirement_revision == Some(intent.requirement_revision)
                     && matches!(source.stage, Stage::Analysis)
                     && intent.role == "Analyst"
-                    && intent.workflow == "hermes-sdlc:analyst"
+                    && matches!(
+                        intent.workflow.as_str(),
+                        "hermes-sdlc:analyst" | "single-task-v1:analyst"
+                    )
                     && intent.mode == "analysis"
                     && intent.scope == "business"
                     && intent.cycle == 0
@@ -501,6 +631,9 @@ mod tests {
     fn source(sequence: i64, owner: &str) -> OutboxEvent {
         let task = Uuid::from_u128(1);
         let state = TaskState {
+            status: None,
+            retained_fields: Default::default(),
+            draft_submode: None,
             tracker_instance_id: "test".into(),
             project_id: Uuid::from_u128(2),
             task_id: task,

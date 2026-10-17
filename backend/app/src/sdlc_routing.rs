@@ -3,6 +3,28 @@ use domain::sdlc_routing::{PACKAGE_COMMIT, RoleRoutes};
 use shared::AppError;
 use std::collections::HashSet;
 
+pub fn validate_project_pm_default(
+    policy: &domain::sdlc_routing::RoutingPolicy,
+    project: uuid::Uuid,
+    instance: &str,
+    requested_agent: uuid::Uuid,
+) -> Result<(), AppError> {
+    if policy.project_id != project
+        || policy.contract_version != policy.routes.contract_version()
+        || policy.tracker_instance_id != instance
+        || policy.routes.project_manager.agent_id.is_nil()
+        || policy.routing_hash != crate::sdlc::canonical_hash(&policy.routes)?
+    {
+        return Err(AppError::conflict("project PM default is inconsistent"));
+    }
+    if requested_agent != policy.routes.project_manager.agent_id {
+        return Err(AppError::conflict(
+            "requested agent differs from authoritative project PM default",
+        ));
+    }
+    Ok(())
+}
+
 pub fn validate_routes(routes: &RoleRoutes) -> Result<(), AppError> {
     fn hash(value: &str) -> bool {
         value.len() == 64
@@ -18,27 +40,56 @@ pub fn validate_routes(routes: &RoleRoutes) -> Result<(), AppError> {
     let mut agents = HashSet::new();
     let mut namespaces = HashSet::new();
     let mut workflows = HashSet::new();
+    let single_task = routes.contract_version() == 2;
     for (role, route) in routes.entries() {
         let suffix = role.replace('_', "-");
-        let profile = match role {
-            "tester" => "hermes-sdlc-quality".into(),
-            "devops" => "hermes-sdlc-operations".into(),
-            _ => format!("hermes-sdlc-{suffix}"),
+        let (namespace, workflow, profile, catalog_version, source_matches) = if single_task {
+            (
+                format!("single-task-{suffix}"),
+                format!("single-task-v1:{role}"),
+                format!("single-task-v1-{suffix}"),
+                1,
+                route.package_commit.is_none()
+                    && route.package_manifest_sha256.is_none()
+                    && route.instruction_profile.as_deref() == Some("single-task-v1")
+                    && route
+                        .instruction_manifest_sha256
+                        .as_deref()
+                        .is_some_and(hash)
+                    && route.instruction_manifest_sha256
+                        == routes.project_manager.instruction_manifest_sha256,
+            )
+        } else {
+            let profile = match role {
+                "tester" => "hermes-sdlc-quality".into(),
+                "devops" => "hermes-sdlc-operations".into(),
+                _ => format!("hermes-sdlc-{suffix}"),
+            };
+            (
+                format!("hermes-{suffix}"),
+                format!("hermes-sdlc:{role}"),
+                profile,
+                3,
+                route.instruction_profile.is_none()
+                    && route.instruction_manifest_sha256.is_none()
+                    && route.package_commit.as_deref() == Some(PACKAGE_COMMIT)
+                    && route.package_manifest_sha256.as_deref().is_some_and(hash)
+                    && route.package_manifest_sha256
+                        == routes.project_manager.package_manifest_sha256,
+            )
         };
         if route.agent_id.is_nil()
             || !agents.insert(route.agent_id)
             || !namespaces.insert(&route.namespace_id)
             || !workflows.insert(&route.workflow_id)
             || !(1..=MAX_SAFE_VERSION).contains(&route.fleet_config_revision)
-            || route.package_commit != PACKAGE_COMMIT
-            || !hash(&route.package_manifest_sha256)
-            || route.package_manifest_sha256 != routes.project_manager.package_manifest_sha256
+            || !source_matches
             || !id(&route.namespace_id)
             || !id(&route.workflow_id)
-            || route.namespace_name != format!("hermes-{suffix}")
-            || route.workflow_key != format!("hermes-sdlc:{role}")
+            || route.namespace_name != namespace
+            || route.workflow_key != workflow
             || route.profile != profile
-            || route.workflow_catalog_version != 3
+            || route.workflow_catalog_version != catalog_version
             || !hash(&route.workflow_catalog_sha256)
             || route.workflow_catalog_sha256 != routes.project_manager.workflow_catalog_sha256
         {
@@ -142,5 +193,62 @@ mod tests {
             crate::sdlc::command_hash(&command).unwrap(),
             crate::sdlc::command_hash(&opted).unwrap()
         );
+    }
+
+    #[test]
+    fn profile_routing_is_explicit_and_cannot_mix_or_impersonate_base_packages() {
+        let legacy = routes();
+        let raw = serde_json::to_value(&legacy).unwrap();
+        assert!(raw["analyst"].get("instruction_profile").is_none());
+        assert_eq!(legacy.contract_version(), 1);
+        assert_eq!(
+            serde_json::to_value(serde_json::from_value::<RoleRoutes>(raw.clone()).unwrap())
+                .unwrap(),
+            raw
+        );
+        let mut value = raw;
+        for (role, _) in legacy.entries() {
+            let suffix = role.replace('_', "-");
+            let route = value[role].as_object_mut().unwrap();
+            route.remove("package_commit");
+            route.remove("package_manifest_sha256");
+            route.insert("instruction_profile".into(), json!("single-task-v1"));
+            route.insert("instruction_manifest_sha256".into(), json!("c".repeat(64)));
+            route.insert(
+                "namespace_name".into(),
+                json!(format!("single-task-{suffix}")),
+            );
+            route.insert(
+                "workflow_key".into(),
+                json!(format!("single-task-v1:{role}")),
+            );
+            route.insert("profile".into(), json!(format!("single-task-v1-{suffix}")));
+            route.insert("workflow_catalog_version".into(), json!(1));
+        }
+        let single: RoleRoutes = serde_json::from_value(value.clone()).unwrap();
+        validate_routes(&single).unwrap();
+        assert_eq!(single.contract_version(), 2);
+        assert!(
+            serde_json::to_value(&single).unwrap()["analyst"]
+                .get("package_commit")
+                .is_none()
+        );
+        for (field, bad) in [
+            ("package_commit", json!(PACKAGE_COMMIT)),
+            ("package_manifest_sha256", json!("a".repeat(64))),
+            ("instruction_profile", json!("single-task-v2")),
+            ("instruction_manifest_sha256", json!("A".repeat(64))),
+            ("instruction_manifest_sha256", json!("d".repeat(64))),
+            ("workflow_catalog_version", json!(3)),
+            ("workflow_key", json!("hermes-sdlc:analyst")),
+        ] {
+            let mut changed = value.clone();
+            changed["analyst"][field] = bad;
+            let changed = serde_json::from_value(changed).unwrap();
+            assert!(validate_routes(&changed).is_err(), "{field}");
+        }
+        let mut mixed = value;
+        mixed["developer"] = serde_json::to_value(&legacy.developer).unwrap();
+        assert!(validate_routes(&serde_json::from_value(mixed).unwrap()).is_err());
     }
 }

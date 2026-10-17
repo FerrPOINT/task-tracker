@@ -1,5 +1,19 @@
 # Fresh Analysis Configuration Preflight
 
+## Workflow-Owned Profile Compatibility
+
+The same protected Fleet endpoint accepts two explicit observation versions.
+Retained Base routing uses the unchanged v1 package/binding response. A v2
+`single-task-v1` route uses the actual Workflow-owned binding, exact namespace,
+workflow/profile, catalog/manifest hashes, concrete agent/effective revision and
+fresh physical configuration observation. It never fabricates a Base commit.
+
+The v2 response deliberately contains no runtime-health claim or synthetic
+readiness blockers. Catalog flags describe the producer, not an agent process
+or task permission. Phase/mode IDs must be canonical and complete for the role;
+mixed scopes, duplicate IDs/keys, missing modes and stale observations fail closed.
+Assignment/lease/runtime authorization remains a separate consumer responsibility.
+
 Tracker reads Fleet's existing protected configuration owner endpoint and checks
 it against the exact immutable prepared Analysis assignment. This is the first
 actual consumer of the mapping in `SDLC_ROUTING_V1.md`, not execution admission.

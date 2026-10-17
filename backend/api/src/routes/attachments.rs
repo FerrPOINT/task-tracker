@@ -20,24 +20,34 @@ use shared::{AppError, AttachmentId, IssueId, UserId};
     responses(
         (status = 200, description = "Attachments listed", body = AttachmentListResponse),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Task or artifact access denied"),
         (status = 404, description = "Issue not found"),
+        (status = 409, description = "Artifact custody conflict"),
+        (status = 503, description = "Authentication or artifact storage unavailable"),
     ),
     security(("bearer" = []))
 )]
 pub async fn list_attachments(
     State(ctx): State<Arc<AppContext>>,
-    Extension(claims): Extension<UserClaims>,
+    actor: Option<Extension<domain::sdlc::Principal>>,
+    claims: Option<Extension<UserClaims>>,
     Path(issue_id): Path<String>,
 ) -> Result<axum::Json<AttachmentListResponse>, AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let requester = parse_user_id(&claims)?;
-    let items = ctx
-        .services
-        .attachment
-        .list_by_issue(issue_id, requester)
-        .await?;
+    let items = if let Some(Extension(actor)) = actor {
+        ctx.services
+            .attachment
+            .list_artifacts(issue_id, &actor)
+            .await?
+    } else {
+        let claims = claims.ok_or(AppError::Unauthorized)?;
+        ctx.services
+            .attachment
+            .list_by_issue(issue_id, parse_user_id(&claims)?)
+            .await?
+    };
     Ok(axum::Json(AttachmentListResponse {
         attachments: items
             .into_iter()
@@ -49,6 +59,7 @@ pub async fn list_attachments(
                 content_type: a.content_type,
                 size_bytes: a.size_bytes,
                 created_at: a.created_at,
+                artifact: a.artifact,
             })
             .collect(),
     }))
@@ -64,26 +75,23 @@ pub async fn list_attachments(
         (status = 201, description = "Attachment uploaded", body = AttachmentResponse),
         (status = 400, description = "Bad request (missing file, empty file, too large)"),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Task or artifact access denied"),
         (status = 404, description = "Issue not found"),
+        (status = 409, description = "Artifact custody conflict"),
+        (status = 503, description = "Authentication or artifact storage unavailable"),
     ),
     security(("bearer" = []))
 )]
 pub async fn upload_attachment(
     State(ctx): State<Arc<AppContext>>,
-    Extension(claims): Extension<UserClaims>,
+    actor: Option<Extension<domain::sdlc::Principal>>,
+    claims: Option<Extension<UserClaims>>,
     Path(issue_id): Path<String>,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, axum::Json<AttachmentResponse>), AppError> {
     let issue_id = issue_id
         .parse::<IssueId>()
         .map_err(|_| AppError::invalid_input("invalid issue id"))?;
-    let author_id = UserId::from_uuid(
-        claims
-            .sub
-            .parse()
-            .map_err(|_| AppError::invalid_input("invalid user id"))?,
-    );
-
     let mut file_name: Option<String> = None;
     let mut content_type: Option<String> = None;
     let mut bytes: Option<Vec<u8>> = None;
@@ -110,11 +118,24 @@ pub async fn upload_attachment(
     let file_name = file_name.unwrap_or_else(|| "upload.bin".to_string());
     let content_type = content_type.unwrap_or_else(|| "application/octet-stream".to_string());
 
-    let a = ctx
-        .services
-        .attachment
-        .upload(issue_id, author_id, &file_name, &content_type, bytes)
-        .await?;
+    let a = if let Some(Extension(actor)) = actor {
+        ctx.services
+            .attachment
+            .upload_artifact(issue_id, &actor, &file_name, &content_type, bytes)
+            .await?
+    } else {
+        let claims = claims.ok_or(AppError::Unauthorized)?;
+        ctx.services
+            .attachment
+            .upload(
+                issue_id,
+                parse_user_id(&claims)?,
+                &file_name,
+                &content_type,
+                bytes,
+            )
+            .await?
+    };
     Ok((
         StatusCode::CREATED,
         axum::Json(AttachmentResponse {
@@ -125,6 +146,7 @@ pub async fn upload_attachment(
             content_type: a.content_type,
             size_bytes: a.size_bytes,
             created_at: a.created_at,
+            artifact: a.artifact,
         }),
     ))
 }
@@ -137,20 +159,34 @@ pub async fn upload_attachment(
     responses(
         (status = 200, description = "File bytes", content_type = "application/octet-stream"),
         (status = 401, description = "Unauthorized"),
+        (status = 403, description = "Task or artifact access denied"),
         (status = 404, description = "Attachment not found"),
+        (status = 409, description = "Artifact custody conflict"),
+        (status = 503, description = "Authentication or artifact storage unavailable"),
     ),
     security(("bearer" = []))
 )]
 pub async fn download_attachment(
     State(ctx): State<Arc<AppContext>>,
-    Extension(claims): Extension<UserClaims>,
+    actor: Option<Extension<domain::sdlc::Principal>>,
+    claims: Option<Extension<UserClaims>>,
     Path(id): Path<String>,
 ) -> Result<Response, AppError> {
     let id = id
         .parse::<AttachmentId>()
         .map_err(|_| AppError::invalid_input("invalid attachment id"))?;
-    let requester = parse_user_id(&claims)?;
-    let (meta, bytes) = ctx.services.attachment.download(id, requester).await?;
+    let (meta, bytes) = if let Some(Extension(actor)) = actor {
+        ctx.services
+            .attachment
+            .download_artifact(id, &actor)
+            .await?
+    } else {
+        let claims = claims.ok_or(AppError::Unauthorized)?;
+        ctx.services
+            .attachment
+            .download(id, parse_user_id(&claims)?)
+            .await?
+    };
 
     let mut resp = Response::new(Body::from(bytes));
     resp.headers_mut().insert(
@@ -205,4 +241,43 @@ fn parse_user_id(claims: &UserClaims) -> Result<UserId, AppError> {
         .parse()
         .map(UserId::from_uuid)
         .map_err(|_| AppError::invalid_input("invalid user id in token"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn additive_artifact_response_is_omitted_for_legacy() {
+        let mut response = AttachmentResponse {
+            id: uuid::Uuid::new_v4().to_string(),
+            issue_id: uuid::Uuid::new_v4().to_string(),
+            author_id: uuid::Uuid::new_v4().to_string(),
+            file_name: "analysis.json".into(),
+            content_type: "application/json".into(),
+            size_bytes: 2,
+            created_at: "2026-10-14T00:00:00Z".into(),
+            artifact: None,
+        };
+        assert!(
+            serde_json::to_value(&response)
+                .unwrap()
+                .get("artifact")
+                .is_none()
+        );
+        response.artifact = Some(domain::attachment_artifact::AttachmentArtifact {
+            receipt: domain::sdlc_lifecycle::ArtifactReceipt {
+                reference: format!("tracker-attachment:{}", response.id),
+                sha256: "a".repeat(64),
+            },
+            binding: domain::attachment_artifact::ArtifactBinding {
+                assignment_id: uuid::Uuid::new_v4(),
+                execution_id: uuid::Uuid::new_v4(),
+                role: domain::sdlc_lifecycle::DeliveryRole::DevOps,
+            },
+        });
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["artifact"]["binding"]["role"], "devops");
+        assert_eq!(value["artifact"].as_object().unwrap().len(), 2);
+        assert_eq!(value["artifact"]["binding"].as_object().unwrap().len(), 3);
+    }
 }

@@ -45,6 +45,7 @@
       "agent": "Ссылка на агента",
       "effectiveRevision": "Применённая ревизия конфигурации",
       "package": "Commit пакета / хеш манифеста",
+      "instructionProfile": "Профиль инструкций / хеш манифеста",
       "workflow": "Ссылки namespace / workflow",
       "profile": "Профиль / версия и хеш каталога",
       "roles": {
@@ -93,6 +94,15 @@
       "prerequisites": "Prerequisites"
     },
     "events": {
+      "deliveryQueued": "Работа поставлена в очередь",
+      "deliveryReconciled": "Состояние выполнения сверено",
+      "deliveryAssignmentPrepared": "Назначение подготовлено, допуск ожидается",
+      "deliveryLeaseRenewed": "Аренда назначения продлена",
+      "deliveryRunBound": "Запуск привязан к назначению",
+      "deliveryResultAccepted": "Результат выполнения принят",
+      "deliveryProposalSubmitted": "Предложение результата сохранено",
+      "pmFeedbackRecorded": "Сообщение владельца для PM сохранено",
+      "pmCompleted": "Выполнение PM завершено",
       "taskCreated": "Draft создан",
       "taskBound": "Task binding сохранён",
       "pmAssigned": "PM assignment сохранён",

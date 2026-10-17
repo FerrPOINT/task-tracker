@@ -1,5 +1,36 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+New single-task Draft opts in with `flow:"single-task-v1"`; project enablement
+alone never converts legacy tasks. Tracker requires authoritative v2 routing for
+new marked creation and automatically freezes current seven-role routing during
+exact owner confirmation, even when UI omits routing version. Optional provided
+version remains CAS; legacy omission hashes and replay histories are preserved.
+Fleet's existing SDK saga supplies actual PM readiness before mutation, without
+force-config or fabricated proof. The subsequent bounded producer package now
+allocates authoritative Delivery execution refs from PM's existing sequence;
+legacy Analysis allocation/namespaces and historical missing refs stay unchanged.
+No consumer may invent a Workflow taskkey when authoritative execution is absent.
+
+Текущая доработка: одна задача проходит семь конкретных профессий, без дочерних
+карточек и integration barriers. Stage и Ready/InProgress/Completed раздельны;
+PM feedback не подтверждает требования за владельца. Старые режимы/история
+не удаляются. [Реализация и оставшаяся приёмка](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+
+TRACKER LIFECYCLE producer source supports one task through PM, Analyst,
+Architect, Developer, Reviewer, Tester and DevOps. Stage, Ready/InProgress/Completed,
+waiting reason and runtime remain separate. Rework returns to Developer, then
+Review/Testing, bounded to three cycles. An agent submits a typed proposal while
+its run is alive; Fleet accepts completion only after actual runtime terminal.
+No live acceptance is claimed before parent registration and QA. Producer source
+supports scheduler-only retained-lease PM resume from real owner answer, feedback
+or confirmation. Fleet must verify actual current checkpoint/old-run terminal
+before that command and resume the same execution without a duplicate runtime run.
+Agents cannot self-certify terminal; ordinary expired claim/heartbeat stay denied.
+The PM holder's scoped read-only credential can read actual saved owner feedback
+by task/message UUID for continuation, without owner impersonation or fabricated
+clarification answers. Saved text/hash/fence remain authoritative; historical
+readback does not renew a lease or change consent/business state.
+[Producer contract and tests](TRACKER_SINGLE_TASK_HANDOFF.md).
 При пустом каталоге пользователь может создать первый проект с dashboard или
 прямо из формы задачи. Отказ создания сохраняет оба черновика; успешное создание
 в форме задачи выбирает проект без ухода со страницы и без отправки задачи.

@@ -679,7 +679,10 @@ pub fn apply(
 ) -> Result<Value, AppError> {
     authorize(state, actor, config, command)?;
     validate_key(command.key())?;
-    if matches!(state.stage, Stage::Analysis | Stage::Architecture) {
+    if !matches!(
+        state.stage,
+        Stage::Draft | Stage::Clarification | Stage::Backlog
+    ) {
         return Err(AppError::conflict(
             "Analysis/Architecture intent freezes PM business writes",
         ));
@@ -733,7 +736,12 @@ pub fn apply(
             }
             state.revisions.push(revision.clone());
             state.confirmation_revision = Some(revision.revision);
-            state.stage = Stage::Clarification;
+            if state.draft_submode.is_some() {
+                state.stage = Stage::Draft;
+                state.draft_submode = Some(DraftSubmode::AwaitingConfirmation);
+            } else {
+                state.stage = Stage::Clarification;
+            }
             serde_json::to_value(revision)
         }
         SdlcCommand::PublishQuestion(c) => {
@@ -817,7 +825,12 @@ pub fn apply(
             } else {
                 state.questions.push(q.clone());
             }
-            state.stage = Stage::Clarification;
+            if state.draft_submode.is_some() {
+                state.stage = Stage::Draft;
+                state.draft_submode = Some(DraftSubmode::Clarification);
+            } else {
+                state.stage = Stage::Clarification;
+            }
             state.confirmation_revision = None;
             serde_json::to_value(q)
         }
@@ -932,5 +945,32 @@ pub fn apply(
             serde_json::to_value(q)
         }
     };
-    result.map_err(AppError::internal)
+    let result = result.map_err(AppError::internal)?;
+    if state.status.is_some() {
+        use domain::sdlc_lifecycle::LifecycleStatus;
+        match command {
+            SdlcCommand::PublishRevision(_)
+            | SdlcCommand::PublishQuestion(_)
+            | SdlcCommand::Assign(_) => state.status = Some(LifecycleStatus::Ready),
+            SdlcCommand::Answer { .. } | SdlcCommand::Cancel { .. } => {
+                state.status = Some(
+                    if state
+                        .questions
+                        .iter()
+                        .any(|q| q.state == QuestionState::Open)
+                    {
+                        LifecycleStatus::Ready
+                    } else {
+                        LifecycleStatus::InProgress
+                    },
+                );
+            }
+            SdlcCommand::Confirm { .. } => {
+                state.status = Some(LifecycleStatus::Ready);
+                state.draft_submode = None;
+            }
+            SdlcCommand::Evidence(_) => {}
+        }
+    }
+    Ok(result)
 }

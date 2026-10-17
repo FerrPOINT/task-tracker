@@ -6,8 +6,10 @@ pub(super) fn fixture() -> (RoleRoute, Value) {
     let route = RoleRoute {
         agent_id: Uuid::new_v4(),
         fleet_config_revision: 2,
-        package_commit: domain::sdlc_routing::PACKAGE_COMMIT.into(),
-        package_manifest_sha256: "a".repeat(64),
+        package_commit: Some(domain::sdlc_routing::PACKAGE_COMMIT.into()),
+        package_manifest_sha256: Some("a".repeat(64)),
+        instruction_profile: None,
+        instruction_manifest_sha256: None,
         namespace_id: "2".into(),
         namespace_name: "hermes-analyst".into(),
         workflow_id: "2".into(),
@@ -114,6 +116,86 @@ fn matched_observation_still_requires_freshness_after_repository_readback() {
     assert!(matched.ensure_fresh().is_err());
     matched.observed_at = Utc::now() + chrono::Duration::seconds(3);
     assert!(matched.ensure_fresh().is_err());
+}
+
+#[test]
+fn workflow_profile_configuration_matches_without_fabricating_a_base_package_or_runtime_health() {
+    let (mut route, _) = fixture();
+    route.package_commit = None;
+    route.package_manifest_sha256 = None;
+    route.instruction_profile = Some("single-task-v1".into());
+    route.instruction_manifest_sha256 = Some("c".repeat(64));
+    route.namespace_name = "single-task-analyst".into();
+    route.workflow_key = "single-task-v1:analyst".into();
+    route.profile = "single-task-v1-analyst".into();
+    route.workflow_catalog_version = 1;
+    let valid = json!({"contract_version":2,"observation_ref":Uuid::new_v4(),"agent_id":route.agent_id,
+        "sdlc_role":"analyst","effective_revision":2,"observed_at":Utc::now(),"managed_files_verified":true,
+        "workflow_binding":{"schema":"single-task-sdlc/workflow-binding/v1",
+            "instruction_profile":"single-task-v1","instruction_manifest_sha256":"c".repeat(64),
+            "workflow_catalog_version":1,"workflow_catalog_sha256":route.workflow_catalog_sha256,
+            "namespace_id":"2","namespace_name":"single-task-analyst","namespace_cli_command":"workflow-single-task-analyst",
+            "workflow_id":"2","workflow_key":"single-task-v1:analyst","role_key":"analyst","profile":"single-task-v1-analyst",
+            "role_instructions_sha256":"d".repeat(64),"runtime_ready":false,"live_activation_allowed":false,
+            "modes":[{"mode_id":"3","key":"analysis","execution_scopes":["business"],"phase_ids":["4","5","6"]}]}});
+    compare_profile(
+        &route,
+        "analyst",
+        "analysis",
+        serde_json::from_value(valid.clone()).unwrap(),
+    )
+    .unwrap();
+    let mut enabled = valid.clone();
+    enabled["workflow_binding"]["runtime_ready"] = json!(true);
+    enabled["workflow_binding"]["live_activation_allowed"] = json!(true);
+    compare_profile(
+        &route,
+        "analyst",
+        "analysis",
+        serde_json::from_value(enabled).unwrap(),
+    )
+    .unwrap();
+    for (path, bad) in [
+        ("/contract_version", json!(1)),
+        ("/agent_id", json!(Uuid::new_v4())),
+        ("/managed_files_verified", json!(false)),
+        ("/effective_revision", json!(3)),
+        (
+            "/workflow_binding/instruction_manifest_sha256",
+            json!("e".repeat(64)),
+        ),
+        (
+            "/workflow_binding/namespace_cli_command",
+            json!("workflow-analyst"),
+        ),
+        ("/workflow_binding/modes/0/key", json!("delivery")),
+        ("/workflow_binding/modes/0/phase_ids/1", json!("4")),
+    ] {
+        let mut changed = valid.clone();
+        *changed.pointer_mut(path).unwrap() = bad;
+        assert!(
+            compare_profile(
+                &route,
+                "analyst",
+                "analysis",
+                serde_json::from_value(changed).unwrap()
+            )
+            .is_err(),
+            "{path}"
+        );
+    }
+    let mut forged = valid.clone();
+    forged["package"] = json!({});
+    assert!(serde_json::from_value::<ProfileObservation>(forged).is_err());
+    assert!(
+        compare_profile(
+            &route,
+            "analyst",
+            "decomposition",
+            serde_json::from_value(valid).unwrap()
+        )
+        .is_err()
+    );
 }
 
 #[tokio::test]

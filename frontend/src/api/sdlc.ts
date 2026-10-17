@@ -8,9 +8,35 @@ export type Confirmation = components['schemas']['Confirmation']
 export type MetadataEvent = components['schemas']['MetadataEvent']
 export type MetadataPage = components['schemas']['MetadataPage']
 export type ConfirmCommand = components['schemas']['ConfirmCommand']
-export type RoutingPolicy = components['schemas']['RoutingPolicy']
 export type RoleRoute = components['schemas']['RoleRoute']
 export type RoleRoutes = components['schemas']['RoleRoutes']
+export type LegacyRoleRoute = RoleRoute & {
+  package_commit: string
+  package_manifest_sha256: string
+  instruction_profile?: never
+  instruction_manifest_sha256?: never
+}
+export type SingleTaskRoleRoute = RoleRoute & {
+  instruction_profile: 'single-task-v1'
+  instruction_manifest_sha256: string
+  package_commit?: never
+  package_manifest_sha256?: never
+}
+export type LegacyRoutingPolicy = Omit<
+  components['schemas']['RoutingPolicy'],
+  'contract_version' | 'routes'
+> & {
+  contract_version: 1
+  routes: { [Role in keyof RoleRoutes]: LegacyRoleRoute }
+}
+export type SingleTaskRoutingPolicy = Omit<
+  components['schemas']['RoutingPolicy'],
+  'contract_version' | 'routes'
+> & {
+  contract_version: 2
+  routes: { [Role in keyof RoleRoutes]: SingleTaskRoleRoute }
+}
+export type RoutingPolicy = LegacyRoutingPolicy | SingleTaskRoutingPolicy
 
 export const routingRoles = {
   project_manager: 'project_manager',
@@ -34,16 +60,10 @@ export type SdlcSnapshot = {
   intent: AnalysisIntent | null
 }
 
-export async function getSdlcRoutingPolicy(
+function isRoutingPolicy(
+  data: components['schemas']['RoutingPolicy'],
   context: SdlcContext,
-  signal?: AbortSignal,
-): Promise<RoutingPolicy | null> {
-  const { data, response } = await api.GET('/api/v1/projects/{project_id}/sdlc/routing-policy', {
-    params: { path: { project_id: context.project_id } },
-    signal,
-  })
-  if (response.status === 404) return null
-  if (!data) throw new SdlcRequestError(response.status)
+): data is RoutingPolicy {
   const hash = (value: unknown) => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
   const positive = (value: number) => Number.isSafeInteger(value) && value > 0
   const numericId = (value: string) =>
@@ -59,8 +79,23 @@ export async function getSdlcRoutingPolicy(
     'namespace_id',
     'workflow_id',
   ] as const satisfies readonly (keyof RoleRoute)[]
+  const singleTask = data.contract_version === 2
+  const routeFields = [
+    'agent_id',
+    'fleet_config_revision',
+    'namespace_id',
+    'namespace_name',
+    'workflow_id',
+    'workflow_key',
+    'profile',
+    'workflow_catalog_version',
+    'workflow_catalog_sha256',
+    ...(singleTask
+      ? ['instruction_profile', 'instruction_manifest_sha256']
+      : ['package_commit', 'package_manifest_sha256']),
+  ]
   if (
-    data.contract_version !== 1 ||
+    (data.contract_version !== 1 && data.contract_version !== 2) ||
     data.project_id !== context.project_id ||
     data.tracker_instance_id !== context.tracker_instance_id ||
     !positive(data.version) ||
@@ -69,30 +104,40 @@ export async function getSdlcRoutingPolicy(
     data.native_ready !== false ||
     data.dispatch_allowed !== false ||
     !data.routes ||
+    !data.routes.project_manager ||
     Object.keys(data.routes).length !== Object.keys(routingRoles).length ||
     Object.values(routingRoles).some((role) => {
       const route = data.routes[role]
       const suffix = role.replaceAll('_', '-')
-      const profile =
-        role === 'tester'
+      const profile = singleTask
+        ? `single-task-v1-${suffix}`
+        : role === 'tester'
           ? 'hermes-sdlc-quality'
           : role === 'devops'
             ? 'hermes-sdlc-operations'
             : `hermes-sdlc-${suffix}`
       return (
         !route ||
+        Object.keys(route).length !== routeFields.length ||
+        Object.keys(route).some((field) => !routeFields.includes(field)) ||
         !uuid(route.agent_id) ||
         !positive(route.fleet_config_revision) ||
-        route.package_commit !== '4b9b4c9297a13fb28a6ba2039af2f7cb719f2f58' ||
-        !hash(route.package_manifest_sha256) ||
+        (singleTask
+          ? route.instruction_profile !== 'single-task-v1' ||
+            !hash(route.instruction_manifest_sha256) ||
+            route.instruction_manifest_sha256 !==
+              data.routes.project_manager.instruction_manifest_sha256
+          : route.package_commit !== '4b9b4c9297a13fb28a6ba2039af2f7cb719f2f58' ||
+            !hash(route.package_manifest_sha256) ||
+            route.package_manifest_sha256 !==
+              data.routes.project_manager.package_manifest_sha256) ||
         !numericId(route.namespace_id) ||
         !numericId(route.workflow_id) ||
-        route.namespace_name !== `hermes-${suffix}` ||
-        route.workflow_key !== `hermes-sdlc:${role}` ||
+        route.namespace_name !== `${singleTask ? 'single-task' : 'hermes'}-${suffix}` ||
+        route.workflow_key !== `${singleTask ? 'single-task-v1' : 'hermes-sdlc'}:${role}` ||
         route.profile !== profile ||
-        route.workflow_catalog_version !== 3 ||
+        route.workflow_catalog_version !== (singleTask ? 1 : 3) ||
         !hash(route.workflow_catalog_sha256) ||
-        route.package_manifest_sha256 !== data.routes.project_manager.package_manifest_sha256 ||
         route.workflow_catalog_sha256 !== data.routes.project_manager.workflow_catalog_sha256
       )
     }) ||
@@ -102,7 +147,21 @@ export async function getSdlcRoutingPolicy(
         Object.keys(routingRoles).length,
     )
   )
-    throw new SdlcRequestError(409)
+    return false
+  return true
+}
+
+export async function getSdlcRoutingPolicy(
+  context: SdlcContext,
+  signal?: AbortSignal,
+): Promise<RoutingPolicy | null> {
+  const { data, response } = await api.GET('/api/v1/projects/{project_id}/sdlc/routing-policy', {
+    params: { path: { project_id: context.project_id } },
+    signal,
+  })
+  if (response.status === 404) return null
+  if (!data) throw new SdlcRequestError(response.status)
+  if (!isRoutingPolicy(data, context)) throw new SdlcRequestError(409)
   return data
 }
 
@@ -151,7 +210,8 @@ export async function getSdlcSnapshot(
         intent.stage !== 'Analysis' ||
         intent.status !== 'Ready' ||
         intent.role !== 'Analyst' ||
-        intent.workflow !== 'hermes-sdlc:analyst' ||
+        (intent.workflow !== 'hermes-sdlc:analyst' &&
+          intent.workflow !== 'single-task-v1:analyst') ||
         intent.mode !== 'analysis' ||
         intent.scope !== 'business' ||
         intent.cycle !== 0 ||
@@ -159,6 +219,33 @@ export async function getSdlcSnapshot(
         intent.operation_key !== `analysis:${intent.confirmation_id}`)
     )
       throw new SdlcRequestError(409)
+    if (intent) {
+      // The task's frozen publication, never today's project defaults, pins its workflow.
+      const result = await api.GET('/api/v1/issues/{id}/sdlc/routing-snapshot', {
+        params: { path: { id } },
+        signal,
+      })
+      if (result.response.status === 404) {
+        if (intent.workflow !== 'hermes-sdlc:analyst') throw new SdlcRequestError(409)
+      } else {
+        if (!result.data) throw new SdlcRequestError(result.response.status)
+        const routing = result.data
+        if (
+          !routing.policy ||
+          !isRoutingPolicy(routing.policy, context) ||
+          routing.contract_version !== routing.policy.contract_version ||
+          routing.task_id !== id ||
+          routing.root_task_id !== context.root_task_id ||
+          routing.project_id !== context.project_id ||
+          routing.tracker_instance_id !== context.tracker_instance_id ||
+          routing.confirmation_id !== intent.confirmation_id ||
+          routing.requirement_revision !== intent.requirement_revision ||
+          routing.content_hash !== intent.content_hash ||
+          intent.workflow !== routing.policy.routes.analyst.workflow_key
+        )
+          throw new SdlcRequestError(409)
+      }
+    }
   }
   return { context, requirements, intent }
 }

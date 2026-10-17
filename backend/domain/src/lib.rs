@@ -1,11 +1,17 @@
+pub mod attachment_artifact;
 pub mod email_port;
 pub mod entities;
 pub mod events;
 pub mod jql;
 pub mod repositories;
 pub mod sdlc;
+pub mod sdlc_candidates;
 pub mod sdlc_configuration;
+pub mod sdlc_critical_blockers;
+pub mod sdlc_critical_pm_lifecycle;
+pub mod sdlc_critical_pm_reservation;
 pub mod sdlc_execution_lease;
+pub mod sdlc_lifecycle;
 pub mod sdlc_metadata;
 pub mod sdlc_native_admission;
 pub mod sdlc_pm_draft;

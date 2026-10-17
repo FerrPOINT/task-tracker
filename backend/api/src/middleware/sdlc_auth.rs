@@ -59,6 +59,7 @@ pub async fn strict_central_auth(mut request: Request, next: Next) -> Result<Res
         return Err(AppError::Forbidden);
     }
     pm_request_policy(&actor, request.method().as_str(), path)?;
+    app::sdlc_lifecycle::delivery_request_policy(&actor, request.method().as_str(), path)?;
     request.extensions_mut().insert(actor);
     Ok(next.run(request).await)
 }
@@ -78,6 +79,7 @@ fn is_trusted_human(central: &pdlc_auth_core::AuthContext, configured_machine: b
             || pdlc_auth_core::is_personal_token(&central.token)
             || matches!(central.role.as_deref(), Some("admin" | "member" | "user")))
         && !app::sdlc::has_pm_grant(&central.scopes)
+        && !app::sdlc_lifecycle::has_delivery_grant(&central.scopes)
 }
 
 #[cfg(test)]
@@ -118,6 +120,10 @@ mod human_identity_tests {
     }
 }
 
+#[cfg(test)]
+#[path = "sdlc_critical_pm_read_tests.rs"]
+mod critical_pm_read_tests;
+
 fn pm_request_policy(
     actor: &domain::sdlc::Principal,
     method: &str,
@@ -150,7 +156,16 @@ fn pm_request_policy(
         ("POST", ["clarifications", question, "cancel"]) => {
             app::sdlc::canonical_pm_uuid(question).is_some()
         }
-        _ => false,
+        _ => {
+            app::sdlc_confirmation::is_confirmation_read(method, parts.as_slice())
+                || (actor.scopes.contains("task-tracker:read")
+                    && app::sdlc_critical_blockers::is_pm_critical_blocker_read(
+                        method,
+                        parts.as_slice(),
+                    ))
+                || (actor.scopes.contains("task-tracker:read")
+                    && app::sdlc_lifecycle::is_pm_feedback_message_read(method, parts.as_slice()))
+        }
     };
     if allowed {
         Ok(())
@@ -199,6 +214,7 @@ mod tests {
             "requirements/revisions",
             "requirements/1",
             "requirements/1/diff",
+            "requirements/1/confirmation",
             "events",
             "pm-draft-execution-lease",
         ] {
@@ -226,10 +242,15 @@ mod tests {
             "pm-draft-assignment",
             "evidence",
             "requirements/1/confirm",
+            "pm-draft-execution-lease/resume",
+            "pm-draft-execution-lease/resume/operations/original",
             "clarifications/00000000-0000-0000-0000-000000000000/cancel",
             "requirements/01",
             "requirements/0",
             "requirements/9007199254740992",
+            "requirements/01/confirmation",
+            "requirements/0/confirmation",
+            "requirements/9007199254740992/confirmation",
             "context/",
         ] {
             for method in ["GET", "POST"] {
@@ -250,6 +271,37 @@ mod tests {
             ),
         ] {
             assert!(pm_request_policy(&actor, "GET", &path).is_err());
+        }
+    }
+
+    #[test]
+    fn pm_feedback_message_policy_is_exact_task_canonical_uuid_get_only() {
+        let (mut actor, task, _) = actor();
+        let message = Uuid::new_v4();
+        let base = format!("/api/v1/issues/{task}/sdlc/pm-feedback");
+        let path = format!("{base}/messages/{message}");
+        assert!(pm_request_policy(&actor, "GET", &path).is_err());
+        actor.scopes.insert("task-tracker:write".into());
+        assert!(pm_request_policy(&actor, "GET", &path).is_err());
+        actor.scopes.insert("task-tracker:read".into());
+        assert!(pm_request_policy(&actor, "GET", &path).is_ok());
+        for method in ["HEAD", "POST", "PUT", "PATCH", "DELETE"] {
+            assert!(pm_request_policy(&actor, method, &path).is_err());
+        }
+        for path in [
+            format!("{base}/messages"),
+            format!("{base}/messages/{message}/"),
+            format!("{base}/messages/{message}/extra"),
+            format!("{base}/messages/{}", message.to_string().to_uppercase()),
+            format!("{base}/messages/{}", Uuid::nil()),
+            format!("{base}/messages/not-a-uuid"),
+            format!("{base}/operations/owner-key"),
+            format!(
+                "/api/v1/issues/{}/sdlc/pm-feedback/messages/{message}",
+                Uuid::new_v4()
+            ),
+        ] {
+            assert!(pm_request_policy(&actor, "GET", &path).is_err(), "{path}");
         }
     }
 

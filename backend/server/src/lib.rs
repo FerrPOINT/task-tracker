@@ -65,24 +65,47 @@ pub async fn run(
     // as the domain EmailPort implementation.
     let email: Arc<dyn domain::EmailPort> = Arc::new(SmtpEmailSender::new(&config.email));
     let events = app::context::EventBus::default();
-    let mut ctx = AppContext::with_events(config.clone(), repos, storage, events, email.clone());
+    let mut ctx = AppContext::with_events(
+        config.clone(),
+        repos,
+        storage.clone(),
+        events,
+        email.clone(),
+    );
     if let Ok(instance_id) = std::env::var("TASKTRACKER_SDLC__INSTANCE_ID") {
-        let repository = infra::sdlc::PostgresSdlcRepository::connect(
-            &config.database.url,
-            domain::sdlc::SdlcConfig {
-                reservation_scheduler_subject: std::env::var(
-                    "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
-                )
+        let sdlc_config = domain::sdlc::SdlcConfig {
+            single_task_project_ids: domain::sdlc::parse_single_task_projects(
+                &std::env::var("TASKTRACKER_SDLC__SINGLE_TASK_PROJECT_IDS").unwrap_or_default(),
+            )
+            .expect("invalid single-task project allowlist"),
+            reservation_scheduler_subject: std::env::var(
+                "TASKTRACKER_SDLC__RESERVATION_SCHEDULER_SUBJECT",
+            )
+            .unwrap_or_default(),
+            instance_id,
+            orchestrator_subject: std::env::var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT")
                 .unwrap_or_default(),
-                instance_id,
-                orchestrator_subject: std::env::var("TASKTRACKER_SDLC__ORCHESTRATOR_SUBJECT")
-                    .unwrap_or_default(),
-                verifier_subject: std::env::var("TASKTRACKER_SDLC__VERIFIER_SUBJECT")
-                    .unwrap_or_default(),
-            },
-        )
-        .await
-        .expect("failed to initialize stable SDLC storage");
+            verifier_subject: std::env::var("TASKTRACKER_SDLC__VERIFIER_SUBJECT")
+                .unwrap_or_default(),
+        };
+        let repository =
+            infra::sdlc::PostgresSdlcRepository::connect(&config.database.url, sdlc_config.clone())
+                .await
+                .expect("failed to initialize stable SDLC storage")
+                .with_file_storage(storage.clone());
+        ctx.services.attachment = Arc::new(
+            app::services::AttachmentServiceImpl::new(
+                ctx.repos.attachments.clone(),
+                ctx.repos.issues.clone(),
+                storage,
+                ctx.repos.watchers.clone(),
+                ctx.events.clone(),
+                ctx.repos.notifications.clone(),
+                ctx.repos.notification_settings.clone(),
+                ctx.authz.clone(),
+            )
+            .with_artifact_config(sdlc_config),
+        );
         ctx.sdlc = Some(app::sdlc::SdlcService {
             repository: Arc::new(repository),
             fleet_configuration: app::sdlc_configuration::FleetConfigurationReader::new(

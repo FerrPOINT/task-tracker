@@ -1,5 +1,38 @@
 # Tracker Clarification Verification
 
+## Critical Blocker Follow-Up (2026-10-14)
+
+The latest [critical qualification](CRITICAL_BLOCKER_VERIFICATION.md) passes27
+selected domain/app/CLI/API cases and workspace check, then fails its storage PG
+aggregate with Rust stack overflow. It is not a passing full gate. Public Return,
+same-task PM re-entry, updated routing and live acceptance remain separate work.
+
+## Single-Task CLI Input And Current-Grant Readback (2026-10-14)
+
+Qualified Tracker source: `81759bbb8a07c1076b9c3c4f97c7af058b626dd2`.
+The joint local Fleet/Tracker runner completed with exit 0; its owned Compose
+resources and disposable inputs were verified cleaned. Accepted services and
+runtime data were not changed. This is component qualification, not live SDLC.
+
+Passing checks on that source:
+
+- `cargo fmt --all --check` and locked workspace/all-target Clippy with warnings denied.
+- Three `task-tracker-cli` HTTP tests selected by
+  `sdlc_lifecycle_and_accepted_result`: actual existing lifecycle/result GET paths,
+  bearer forwarding, supported base URLs, errors, invalid UUIDs and no write retry.
+- The delivery-grant route-policy unit and 134 application service tests.
+- The explicit PostgreSQL lifecycle test
+  `canonical_projection_heartbeat_race_terminal_recovery_and_disabled_replay`.
+  This includes the current delivery assignment reading its task's predecessor
+  result and rejecting stale/foreign assignment, subject, scope and PM access.
+
+The packaged CLI source is separately pinned to
+`2aa87cbc9061f60b626f11f26de2281693f8b05f`; its CLI tree matches the qualified
+server source. The new read commands reuse existing APIs and do not grant generic
+issue access. Actual final-image installation of that CLI, seven-agent readiness
+and the model-backed PM-to-Deployment witness remain unverified by these tests.
+Earlier migration, PM and browser evidence below retains its original scope.
+
 ## Project Directory And PM Credential Boundary (2026-10-02, Component Verified)
 
 The local branch is reconciled with accepted main `307e049` at merge `588e7a0`.

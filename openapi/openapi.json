@@ -200,8 +200,17 @@
           "401": {
             "description": "Unauthorized"
           },
+          "403": {
+            "description": "Task or artifact access denied"
+          },
           "404": {
             "description": "Attachment not found"
+          },
+          "409": {
+            "description": "Artifact custody conflict"
+          },
+          "503": {
+            "description": "Authentication or artifact storage unavailable"
           }
         },
         "security": [
@@ -2144,6 +2153,610 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/critical-blockers": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "submit_critical_business_blocker",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitCriticalBlocker"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalBlockerReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalBlockerReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_critical_business_blocker_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalBlockerReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "reserve_critical_business_pm_review",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReserveCriticalPmReview"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable reservation replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPmReservationResult"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPmReservationResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_critical_business_pm_review_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPmReservationResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/returns": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "return_critical_business_blocker_to_pm",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnCriticalToPm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable return replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPolicyChange"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPolicyChange"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_critical_business_blocker_return_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalPolicyChange"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/critical-blockers/{blocker_id}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_critical_business_blocker",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "blocker_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CriticalBlockerReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/delivery-proposals": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "submit_single_task_delivery_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitDeliveryProposal"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryProposalReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryProposalReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/delivery-proposals/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_delivery_proposal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryProposalReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/events": {
       "get": {
         "tags": [
@@ -2276,6 +2889,248 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/lifecycle": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_lifecycle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "single_task_lifecycle_command",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/lifecycle/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_lifecycle_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LifecycleReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/lifecycle/results/{result_id}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_delivery_result",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryInput"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -2808,6 +3663,142 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "resume_execution_lease",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResumePmExecutionLease"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "resume_execution_lease_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionLeaseOperation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/pm-draft-input": {
       "get": {
         "tags": [
@@ -2850,6 +3841,202 @@
           },
           "503": {
             "description": "SDLC or Central Auth unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-feedback": {
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "submit_single_task_pm_feedback",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitPmFeedback"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original durable replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmFeedbackReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmFeedbackReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_pm_feedback_message",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmFeedbackReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/pm-feedback/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_pm_feedback",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PmFeedbackReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -3066,6 +4253,69 @@
                 }
               }
             }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/requirements/{revision}/confirmation": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "confirmation_read",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Confirmation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
           }
         },
         "security": [
@@ -3298,8 +4548,17 @@
           "401": {
             "description": "Unauthorized"
           },
+          "403": {
+            "description": "Task or artifact access denied"
+          },
           "404": {
             "description": "Issue not found"
+          },
+          "409": {
+            "description": "Artifact custody conflict"
+          },
+          "503": {
+            "description": "Authentication or artifact storage unavailable"
           }
         },
         "security": [
@@ -3347,8 +4606,17 @@
           "401": {
             "description": "Unauthorized"
           },
+          "403": {
+            "description": "Task or artifact access denied"
+          },
           "404": {
             "description": "Issue not found"
+          },
+          "409": {
+            "description": "Artifact custody conflict"
+          },
+          "503": {
+            "description": "Authentication or artifact storage unavailable"
           }
         },
         "security": [
@@ -6811,6 +8079,84 @@
         ]
       }
     },
+    "/api/v1/sdlc/delivery-candidates": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_single_task_delivery_candidates",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryCandidates"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": ""
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/sdlc/project-access": {
       "get": {
         "tags": [
@@ -7511,6 +8857,60 @@
   },
   "components": {
     "schemas": {
+      "AcceptedDeliveryResult": {
+        "type": "object",
+        "required": [
+          "result_id",
+          "assignment_id",
+          "task_id",
+          "terminal",
+          "output",
+          "previous_stage",
+          "next_stage",
+          "next_status",
+          "cycle",
+          "created_at"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "next_stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "next_status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "output": {
+            "$ref": "#/components/schemas/DeliveryResult"
+          },
+          "previous_stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "result_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/TerminalReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
       "AddProjectMemberRequest": {
         "type": "object",
         "required": [
@@ -8124,6 +9524,44 @@
         },
         "additionalProperties": false
       },
+      "ArtifactBinding": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "role"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/DeliveryRole"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ArtifactReceipt": {
+        "type": "object",
+        "required": [
+          "reference",
+          "sha256"
+        ],
+        "properties": {
+          "reference": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "AssignCommand": {
         "type": "object",
         "required": [
@@ -8158,6 +9596,22 @@
           }
         }
       },
+      "AttachmentArtifact": {
+        "type": "object",
+        "required": [
+          "receipt",
+          "binding"
+        ],
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/ArtifactBinding"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
       "AttachmentListResponse": {
         "type": "object",
         "required": [
@@ -8184,6 +9638,16 @@
           "created_at"
         ],
         "properties": {
+          "artifact": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AttachmentArtifact"
+              }
+            ]
+          },
           "author_id": {
             "type": "string"
           },
@@ -8486,6 +9950,13 @@
           }
         },
         "additionalProperties": false
+      },
+      "CandidateOperation": {
+        "type": "string",
+        "enum": [
+          "ensure_queued",
+          "reserve"
+        ]
       },
       "ClaimExecutionLease": {
         "type": "object",
@@ -8835,6 +10306,9 @@
             "type": "string",
             "maxLength": 100000
           },
+          "flow": {
+            "$ref": "#/components/schemas/DraftFlow"
+          },
           "idempotency_key": {
             "type": "string",
             "maxLength": 128,
@@ -9045,6 +10519,338 @@
         },
         "additionalProperties": false
       },
+      "CriticalBlockerKind": {
+        "type": "string",
+        "enum": [
+          "requirements_contradiction",
+          "missing_business_decision"
+        ]
+      },
+      "CriticalBlockerOption": {
+        "type": "object",
+        "required": [
+          "option_id",
+          "label",
+          "consequences"
+        ],
+        "properties": {
+          "consequences": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "option_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalBlockerReceipt": {
+        "type": "object",
+        "description": "Detail may evolve; each operation journal must retain its original receipt verbatim.",
+        "required": [
+          "blocker_id",
+          "version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "producer_subject",
+          "agent_id",
+          "role",
+          "assignment_hash",
+          "chat_id",
+          "run_id",
+          "routing_snapshot_id",
+          "routing_generation",
+          "proposal",
+          "blocker_sha256",
+          "state",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string"
+          },
+          "blocker_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blocker_sha256": {
+            "type": "string"
+          },
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "pm_review": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CriticalPmReviewRef"
+              }
+            ]
+          },
+          "producer_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/SubmitCriticalBlocker"
+          },
+          "resolution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CriticalResolutionRef"
+              }
+            ]
+          },
+          "role": {
+            "$ref": "#/components/schemas/DeliveryRole"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "routing_generation": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CriticalBlockerState"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "technical_terminal": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RuntimeTerminalObservation"
+              }
+            ]
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalBlockerState": {
+        "type": "string",
+        "enum": [
+          "proposed",
+          "held",
+          "awaiting_pm_review",
+          "in_pm_review",
+          "resolved"
+        ]
+      },
+      "CriticalPmRequirementsRef": {
+        "type": "object",
+        "required": [
+          "revision",
+          "content_hash"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPmReservationPurpose": {
+        "type": "string",
+        "enum": [
+          "critical_business_review"
+        ]
+      },
+      "CriticalPmReservationResult": {
+        "type": "object",
+        "required": [
+          "purpose",
+          "reservation",
+          "context"
+        ],
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/CriticalPmReviewContext"
+          },
+          "purpose": {
+            "$ref": "#/components/schemas/CriticalPmReservationPurpose"
+          },
+          "reservation": {
+            "$ref": "#/components/schemas/PmDraftReservation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPmReviewContext": {
+        "type": "object",
+        "required": [
+          "blocker_id",
+          "blocker_sha256",
+          "blocker_version",
+          "requirements"
+        ],
+        "properties": {
+          "blocker_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blocker_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "blocker_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/CriticalPmRequirementsRef"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPmReviewGuard": {
+        "type": "object",
+        "description": "CAS fields for the scheduler-only return, not a standalone public hold operation.",
+        "required": [
+          "blocker_id",
+          "blocker_sha256",
+          "expected_blocker_version",
+          "expected_task_version",
+          "fence",
+          "idempotency_key"
+        ],
+        "properties": {
+          "blocker_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blocker_sha256": {
+            "type": "string"
+          },
+          "expected_blocker_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "expected_task_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/DeliveryFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPmReviewRef": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalPolicyChange": {
+        "type": "object",
+        "description": "Existing policy plan, also the immutable scheduler Return operation readback.",
+        "required": [
+          "lifecycle",
+          "blocker"
+        ],
+        "properties": {
+          "blocker": {
+            "$ref": "#/components/schemas/CriticalBlockerReceipt"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/LifecycleReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CriticalResolutionRef": {
+        "type": "object",
+        "required": [
+          "requirement_revision",
+          "content_hash",
+          "routing_generation"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "routing_generation": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
       "CumulativeFlowPointResponse": {
         "type": "object",
         "required": [
@@ -9178,6 +10984,467 @@
           }
         }
       },
+      "DeliveryAssignment": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "task_id",
+          "owner_subject",
+          "role",
+          "stage",
+          "cycle",
+          "attempt",
+          "agent_id",
+          "routing",
+          "fencing_token",
+          "lease_id",
+          "assignment_hash"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_hash": {
+            "type": "string"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "execution": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeliveryExecution"
+              }
+            ]
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "role": {
+            "$ref": "#/components/schemas/DeliveryRole"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/TaskRoutingSnapshot"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryCandidate": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "root_task_id",
+          "requirement_revision",
+          "next_operation",
+          "task_version"
+        ],
+        "properties": {
+          "next_operation": {
+            "$ref": "#/components/schemas/CandidateOperation"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryCandidates": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "observed_at",
+          "items",
+          "next_cursor"
+        ],
+        "properties": {
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 1,
+            "minimum": 1
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryCandidate"
+            }
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryExecution": {
+        "type": "object",
+        "required": [
+          "ordinal",
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^SDLC-[1-9][0-9]{0,18}$"
+          },
+          "ordinal": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]{0,18}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryFence": {
+        "type": "object",
+        "required": [
+          "assignment_id",
+          "execution_id",
+          "fencing_token",
+          "lease_id",
+          "expected_lease_version"
+        ],
+        "properties": {
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "receipt",
+              "source"
+            ],
+            "properties": {
+              "receipt": {
+                "$ref": "#/components/schemas/AcceptedDeliveryResult"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "delivery"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "receipt",
+              "source"
+            ],
+            "properties": {
+              "receipt": {
+                "$ref": "#/components/schemas/AnalysisResultReceipt"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "legacy_analysis"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "DeliveryProposalReceipt": {
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "task_id",
+          "assignment_id",
+          "execution_id",
+          "agent_id",
+          "producer_subject",
+          "workflow_receipt",
+          "result",
+          "output_sha256",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "assignment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "execution_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "output_sha256": {
+            "type": "string"
+          },
+          "producer_subject": {
+            "type": "string"
+          },
+          "proposal_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "result": {
+            "$ref": "#/components/schemas/DeliveryResult"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DeliveryResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "analysis",
+              "role"
+            ],
+            "properties": {
+              "analysis": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "analyst"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "design",
+              "role"
+            ],
+            "properties": {
+              "design": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "architect"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "commit_sha",
+              "changes",
+              "checks",
+              "role"
+            ],
+            "properties": {
+              "changes": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "checks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ArtifactReceipt"
+                }
+              },
+              "commit_sha": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "developer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "verdict",
+              "report",
+              "role"
+            ],
+            "properties": {
+              "report": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "reviewer"
+                ]
+              },
+              "verdict": {
+                "$ref": "#/components/schemas/ReviewVerdict"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "verdict",
+              "report",
+              "role"
+            ],
+            "properties": {
+              "report": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "tester"
+                ]
+              },
+              "verdict": {
+                "$ref": "#/components/schemas/TestVerdict"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "deployment",
+              "verification",
+              "role"
+            ],
+            "properties": {
+              "deployment": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "devops"
+                ]
+              },
+              "verification": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              }
+            }
+          }
+        ]
+      },
+      "DeliveryRole": {
+        "type": "string",
+        "enum": [
+          "analyst",
+          "architect",
+          "developer",
+          "reviewer",
+          "tester",
+          "devops"
+        ]
+      },
       "DirectoryUserResponse": {
         "type": "object",
         "required": [
@@ -9197,10 +11464,24 @@
           }
         }
       },
+      "DraftFlow": {
+        "type": "string",
+        "enum": [
+          "single-task-v1"
+        ]
+      },
       "DraftStage": {
         "type": "string",
         "enum": [
           "Draft"
+        ]
+      },
+      "DraftSubmode": {
+        "type": "string",
+        "enum": [
+          "brainstorming",
+          "clarification",
+          "awaiting_confirmation"
         ]
       },
       "EventsSuccess": {
@@ -9820,6 +12101,324 @@
           }
         }
       },
+      "LifecycleCommand": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "terminal",
+              "recovery",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "reconcile"
+                ]
+              },
+              "recovery": {
+                "$ref": "#/components/schemas/RecoveryDisposition"
+              },
+              "terminal": {
+                "$ref": "#/components/schemas/RuntimeTerminalObservation"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "ensure_queued"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "expected_task_version",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "expected_task_version": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "reserve"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "heartbeat"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "binding",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "binding": {
+                "$ref": "#/components/schemas/RunBinding"
+              },
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "bind_run"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "terminal",
+              "result",
+              "idempotency_key",
+              "operation"
+            ],
+            "properties": {
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "idempotency_key": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string",
+                "enum": [
+                  "complete"
+                ]
+              },
+              "result": {
+                "$ref": "#/components/schemas/DeliveryResult"
+              },
+              "terminal": {
+                "$ref": "#/components/schemas/TerminalReceipt"
+              }
+            }
+          }
+        ]
+      },
+      "LifecycleReadback": {
+        "type": "object",
+        "required": [
+          "observed_at",
+          "receipt",
+          "runtime_state"
+        ],
+        "properties": {
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/LifecycleReceipt"
+          },
+          "runtime_state": {
+            "$ref": "#/components/schemas/RuntimeState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LifecycleReceipt": {
+        "type": "object",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "assignment": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DeliveryAssignment"
+              }
+            ]
+          },
+          "binding": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RunBinding"
+              }
+            ]
+          },
+          "lease": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionLease"
+              }
+            ]
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AcceptedDeliveryResult"
+              }
+            ]
+          },
+          "task": {
+            "$ref": "#/components/schemas/LifecycleTask"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LifecycleStage": {
+        "type": "string",
+        "enum": [
+          "Draft",
+          "Backlog",
+          "Analysis",
+          "Architecture",
+          "Development",
+          "Review",
+          "Testing",
+          "Rework",
+          "Deployment"
+        ]
+      },
+      "LifecycleStatus": {
+        "type": "string",
+        "enum": [
+          "Ready",
+          "InProgress",
+          "Completed"
+        ]
+      },
+      "LifecycleTask": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "owner_subject",
+          "version",
+          "stage",
+          "status",
+          "cycle",
+          "transient_retries",
+          "runtime",
+          "routing"
+        ],
+        "properties": {
+          "cycle": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "previous_result_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "resume_chat_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/TaskRoutingSnapshot"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/RuntimeState"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LifecycleStage"
+          },
+          "status": {
+            "$ref": "#/components/schemas/LifecycleStatus"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "transient_retries": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "waiting_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
       "LoginRequest": {
         "type": "object",
         "required": [
@@ -9931,6 +12530,1375 @@
       },
       "MetadataEvent": {
         "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.queued"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.reconciled"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.assignment_reserved"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.lease_renewed"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.run_bound"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.result_accepted"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "task_version",
+                      "status",
+                      "runtime"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "assignment_hash": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "assignment_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "fencing_token": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "lease_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ],
+                        "format": "int64"
+                      },
+                      "previous_result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "uuid"
+                      },
+                      "result_sha256": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "runtime": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "task_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "delivery.proposal_submitted"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "proposal_id",
+                      "assignment_id",
+                      "execution_id",
+                      "agent_id",
+                      "output_sha256"
+                    ],
+                    "properties": {
+                      "agent_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "assignment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "execution_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "output_sha256": {
+                        "type": "string"
+                      },
+                      "proposal_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "pm.feedback_recorded"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "message_id",
+                      "fence",
+                      "content_hash"
+                    ],
+                    "properties": {
+                      "content_hash": {
+                        "type": "string"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "message_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "pm.completed"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "required": [
+                      "completion_id",
+                      "fence",
+                      "lease_id",
+                      "lease_version",
+                      "requirement_revision",
+                      "content_hash",
+                      "terminal_receipt_sha256",
+                      "workflow_receipt_sha256"
+                    ],
+                    "properties": {
+                      "completion_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "content_hash": {
+                        "type": "string"
+                      },
+                      "fence": {
+                        "$ref": "#/components/schemas/MachineFence"
+                      },
+                      "lease_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "lease_version": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "requirement_revision": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "terminal_receipt_sha256": {
+                        "type": "string"
+                      },
+                      "workflow_receipt_sha256": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
+          },
           {
             "type": "object",
             "required": [
@@ -12199,6 +16167,172 @@
           "pm_draft_reserved"
         ]
       },
+      "PmFeedbackReceipt": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "owner_subject",
+          "fence",
+          "text",
+          "content_hash",
+          "created_at"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmResumeCheckpoint": {
+        "type": "object",
+        "required": [
+          "checkpoint_id",
+          "checkpoint_revision",
+          "checkpoint_sha256",
+          "fence",
+          "requirement_revision",
+          "content_hash"
+        ],
+        "properties": {
+          "checkpoint_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkpoint_revision": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "checkpoint_sha256": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "requirement_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "PmResumeInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "input_id",
+              "input_kind"
+            ],
+            "properties": {
+              "input_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "input_kind": {
+                "type": "string",
+                "enum": [
+                  "answer"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "input_id",
+              "input_kind"
+            ],
+            "properties": {
+              "input_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "input_kind": {
+                "type": "string",
+                "enum": [
+                  "feedback"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "input_id",
+              "input_kind"
+            ],
+            "properties": {
+              "input_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "input_kind": {
+                "type": "string",
+                "enum": [
+                  "confirmation"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "PreparedAnalysisAssignment": {
         "type": "object",
         "required": [
@@ -12831,6 +16965,42 @@
           }
         }
       },
+      "RecoveryDisposition": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "disposition"
+            ],
+            "properties": {
+              "disposition": {
+                "type": "string",
+                "enum": [
+                  "stop"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "replay_safety_receipt",
+              "disposition"
+            ],
+            "properties": {
+              "disposition": {
+                "type": "string",
+                "enum": [
+                  "retry_transient"
+                ]
+              },
+              "replay_safety_receipt": {
+                "$ref": "#/components/schemas/ArtifactReceipt"
+              }
+            }
+          }
+        ]
+      },
       "RefreshRequest": {
         "type": "object",
         "properties": {
@@ -13116,6 +17286,58 @@
         },
         "additionalProperties": false
       },
+      "ReserveCriticalPmReview": {
+        "type": "object",
+        "required": [
+          "blocker_id",
+          "blocker_sha256",
+          "expected_blocker_version",
+          "expected_task_version",
+          "expected_pm_owner_version",
+          "expected_pm_assignment_version",
+          "idempotency_key"
+        ],
+        "properties": {
+          "blocker_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "blocker_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "expected_blocker_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_pm_assignment_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_pm_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_task_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
       "ReservePmDraft": {
         "type": "object",
         "required": [
@@ -13241,6 +17463,78 @@
           }
         }
       },
+      "ResumePmExecutionLease": {
+        "type": "object",
+        "description": "Trusted scheduler observation; artifact alone is not independently verified runtime proof.",
+        "required": [
+          "expected_owner_version",
+          "lease_id",
+          "expected_lease_version",
+          "input",
+          "checkpoint",
+          "previous_run_id",
+          "previous_run_terminal",
+          "idempotency_key"
+        ],
+        "properties": {
+          "checkpoint": {
+            "$ref": "#/components/schemas/PmResumeCheckpoint"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "input": {
+            "$ref": "#/components/schemas/PmResumeInput"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previous_run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previous_run_terminal": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReturnCriticalToPm": {
+        "type": "object",
+        "required": [
+          "review",
+          "terminal"
+        ],
+        "properties": {
+          "review": {
+            "$ref": "#/components/schemas/CriticalPmReviewGuard"
+          },
+          "terminal": {
+            "$ref": "#/components/schemas/RuntimeTerminalObservation"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReviewVerdict": {
+        "type": "string",
+        "enum": [
+          "approved",
+          "rework"
+        ]
+      },
       "RevisionDiff": {
         "type": "object",
         "required": [
@@ -13275,8 +17569,6 @@
         "required": [
           "agent_id",
           "fleet_config_revision",
-          "package_commit",
-          "package_manifest_sha256",
           "namespace_id",
           "namespace_name",
           "workflow_id",
@@ -13296,6 +17588,18 @@
             "maximum": 9007199254740991,
             "minimum": 1
           },
+          "instruction_manifest_sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instruction_profile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "namespace_id": {
             "type": "string"
           },
@@ -13303,10 +17607,16 @@
             "type": "string"
           },
           "package_commit": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "package_manifest_sha256": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "profile": {
             "type": "string"
@@ -13429,6 +17739,80 @@
           "declared"
         ]
       },
+      "RunBinding": {
+        "type": "object",
+        "required": [
+          "chat_id",
+          "run_id",
+          "machine_subject",
+          "dispatch_receipt"
+        ],
+        "properties": {
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "dispatch_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          },
+          "machine_subject": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeState": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "reserved",
+          "running",
+          "terminal",
+          "unknown"
+        ]
+      },
+      "RuntimeTerminalObservation": {
+        "type": "object",
+        "required": [
+          "assignment_hash",
+          "chat_id",
+          "run_id",
+          "state",
+          "receipt"
+        ],
+        "properties": {
+          "assignment_hash": {
+            "type": "string"
+          },
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RuntimeTerminalState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeTerminalState": {
+        "type": "string",
+        "enum": [
+          "succeeded",
+          "failed",
+          "cancelled"
+        ]
+      },
       "SdlcContext": {
         "type": "object",
         "required": [
@@ -13457,6 +17841,16 @@
             "format": "int32",
             "minimum": 0
           },
+          "draft_submode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DraftSubmode"
+              }
+            ]
+          },
           "owner_subject": {
             "type": "string"
           },
@@ -13480,6 +17874,16 @@
           },
           "stage": {
             "$ref": "#/components/schemas/Stage"
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LifecycleStatus"
+              }
+            ]
           },
           "task_id": {
             "type": "string",
@@ -13610,7 +18014,12 @@
           "Clarification",
           "Backlog",
           "Analysis",
-          "Architecture"
+          "Architecture",
+          "Development",
+          "Review",
+          "Testing",
+          "Rework",
+          "Deployment"
         ]
       },
       "StatusResponse": {
@@ -13745,6 +18154,112 @@
           "terminal_receipt_sha256": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SubmitCriticalBlocker": {
+        "type": "object",
+        "required": [
+          "fence",
+          "requirement_revision",
+          "content_hash",
+          "kind",
+          "question",
+          "rationale",
+          "evidence",
+          "idempotency_key"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentArtifact"
+            }
+          },
+          "fence": {
+            "$ref": "#/components/schemas/DeliveryFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CriticalBlockerKind"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CriticalBlockerOption"
+            }
+          },
+          "question": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SubmitDeliveryProposal": {
+        "type": "object",
+        "required": [
+          "fence",
+          "workflow_receipt",
+          "result",
+          "idempotency_key"
+        ],
+        "properties": {
+          "fence": {
+            "$ref": "#/components/schemas/DeliveryFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "result": {
+            "$ref": "#/components/schemas/DeliveryResult"
+          },
+          "workflow_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SubmitPmFeedback": {
+        "type": "object",
+        "required": [
+          "message_id",
+          "fence",
+          "text",
+          "idempotency_key"
+        ],
+        "properties": {
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -13995,6 +18510,43 @@
           }
         },
         "additionalProperties": false
+      },
+      "TerminalReceipt": {
+        "type": "object",
+        "required": [
+          "chat_id",
+          "run_id",
+          "fleet_receipt",
+          "workflow_receipt",
+          "output_sha256"
+        ],
+        "properties": {
+          "chat_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fleet_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          },
+          "output_sha256": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workflow_receipt": {
+            "$ref": "#/components/schemas/ArtifactReceipt"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TestVerdict": {
+        "type": "string",
+        "enum": [
+          "passed",
+          "rework"
+        ]
       },
       "TotpCodeRequest": {
         "type": "object",

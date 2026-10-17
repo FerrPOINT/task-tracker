@@ -325,7 +325,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     );
     assert_eq!(
         get_json(&client, &access_url, &foreign, 200).await,
-        expected_scope
+        json!({"contract_version":1,"tracker_instance_id":"tracker-draft-test","project_ids":[]})
     );
     for (token, status) in [
         ("local-token".to_string(), 401),
@@ -410,6 +410,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         (bearer(&secret, &issuer, &owner_sub, false), 403),
         ("sdlc_pat_owner".into(), 403),
         ("sdlc_pat_read".into(), 403),
+        (foreign.clone(), 403),
     ] {
         expect(&client, &url, &token, &command("denied"), status).await;
     }
@@ -888,8 +889,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         [project.into()])).await.unwrap().unwrap().try_get::<i64>("","n").unwrap();
     let after_delete = expect(&client, &url, &owner, &command("after-deleted-number"), 201).await;
     assert_eq!(after_delete["task_key"], format!("DRAFT-{}", max + 1));
-    // Team membership is not a project ACL. Removing it preserves author reads
-    // and replay; foreign exact-owner confirmation still fails below.
+    // Task ownership cannot replace project membership for fresh access or replay.
     sql(
         &db,
         "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
@@ -898,11 +898,24 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     .await;
     assert_eq!(
         get_json(&client, &access_url, &owner, 200).await,
-        expected_scope
+        json!({"contract_version":1,"tracker_instance_id":"tracker-draft-test","project_ids":[other_project]})
     );
-    expect(&client, &url, &owner, &command("creation"), 200).await;
-    get_json(&client, &input_url, &owner, 200).await;
-    get_json(&client, &context_url, &foreign, 200).await;
+    let denied_counts = [
+        count(&db, "issues").await,
+        count(&db, "sdlc_draft_creations").await,
+        count(&db, "sdlc_outbox").await,
+    ];
+    expect(&client, &url, &owner, &command("creation"), 403).await;
+    get_json(&client, &input_url, &owner, 403).await;
+    get_json(&client, &context_url, &foreign, 403).await;
+    assert_eq!(
+        [
+            count(&db, "issues").await,
+            count(&db, "sdlc_draft_creations").await,
+            count(&db, "sdlc_outbox").await,
+        ],
+        denied_counts
+    );
     expect(
         &client,
         &format!(
@@ -1063,14 +1076,12 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
     assert_eq!(count(&db, "sdlc_draft_creations").await, ledger_before);
     assert_eq!(count(&db, "issues").await, issues_before);
     assert_eq!(count(&db, "sdlc_outbox").await, events_before);
-    // Shared trusted humans may create in the same Project. Creation receipts
-    // and exact-owner confirmations remain tied to the original actor.
+    // Verified humans without project membership cannot create, including after restart.
     let foreign_command = command("shared-human-neighbor");
-    let foreign_draft = expect(&client, &url, &foreign, &foreign_command, 201).await;
-    assert_eq!(
-        expect(&client, &url, &foreign, &foreign_command, 200).await,
-        foreign_draft
-    );
+    expect(&client, &url, &foreign, &foreign_command, 403).await;
+    assert_eq!(count(&db, "sdlc_draft_creations").await, ledger_before);
+    assert_eq!(count(&db, "issues").await, issues_before);
+    assert_eq!(count(&db, "sdlc_outbox").await, events_before);
     unavailable.store(true, Ordering::SeqCst);
     get_json(
         &client,

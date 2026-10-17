@@ -83,9 +83,10 @@ impl PostgresSdlcRepository {
         {
             return Err(invalid());
         }
-        let saved = tx.query_one(statement("SELECT result FROM sdlc_pm_lease_operations WHERE execution_id=$1 AND lease_version=$2",
-            vec![id.into(),result.lease.version.into()])).await.map_err(map_db)?.ok_or_else(invalid)?;
-        if saved.try_get::<Json>("", "result").map_err(map_db)? != value {
+        let saved = tx.query_all(statement("SELECT result FROM sdlc_pm_lease_operations WHERE execution_id=$1 AND lease_version=$2
+            UNION ALL SELECT result FROM sdlc_pm_resume_inputs WHERE execution_id=$1 AND lease_version=$2",
+            vec![id.into(),result.lease.version.into()])).await.map_err(map_db)?;
+        if saved.len() != 1 || saved[0].try_get::<Json>("", "result").map_err(map_db)? != value {
             return Err(invalid());
         }
         Ok(Some(result))
@@ -191,6 +192,40 @@ impl PostgresSdlcRepository {
             &receipt,
         )
         .await?;
+        let mut state = self.load(&tx, task, actor).await?;
+        if self
+            .project_critical_pm_claim(&tx, &state, actor, &command, &hash, &receipt)
+            .await?
+            .is_some()
+        {
+            tx.commit().await.map_err(map_db)?;
+            return Ok((receipt, false));
+        }
+        if state.status.is_some() {
+            state.status = Some(domain::sdlc_lifecycle::LifecycleStatus::InProgress);
+            let next = json_value(&state)?;
+            exec(
+                &tx,
+                "INSERT INTO sdlc_pm_state_write_permits(task_id,transaction_id,next_state)
+                SELECT $1,pg_current_xact_id(),$2 FROM sdlc_tasks
+                WHERE task_id=$1 AND state IS DISTINCT FROM $2",
+                vec![task.into(), next.clone()],
+            )
+            .await?;
+            exec(
+                &tx,
+                "UPDATE sdlc_tasks SET state=$2 WHERE task_id=$1",
+                vec![task.into(), next],
+            )
+            .await?;
+            let status_id = lifecycle::mapped_issue_status(
+                &tx,
+                state.stage,
+                domain::sdlc_lifecycle::LifecycleStatus::InProgress,
+            )
+            .await?;
+            lifecycle::project_issue_status(&tx, task, actor, status_id).await?;
+        }
         tx.commit().await.map_err(map_db)?;
         Ok((receipt, false))
     }
@@ -312,7 +347,11 @@ fn fence(r: &PmDraftReservation) -> MachineFence {
         assignment_version: r.assignment.version,
     }
 }
-fn check_fence(r: &PmDraftReservation, owner: i64, f: &MachineFence) -> Result<(), AppError> {
+pub(super) fn check_fence(
+    r: &PmDraftReservation,
+    owner: i64,
+    f: &MachineFence,
+) -> Result<(), AppError> {
     if owner != r.owner_cas.version
         || f.assignment_id != r.assignment.assignment_id
         || f.execution_id != r.assignment.execution_id
@@ -335,7 +374,10 @@ fn receipt(r: &PmDraftReservation, lease: ExecutionLease) -> ExecutionLeaseRecei
         dispatch_allowed: false,
     }
 }
-fn valid_receipt(c: &ExecutionLeaseReceipt, r: &PmDraftReservation) -> Result<(), AppError> {
+pub(super) fn valid_receipt(
+    c: &ExecutionLeaseReceipt,
+    r: &PmDraftReservation,
+) -> Result<(), AppError> {
     check_fence(r, c.owner_version, &c.fence)?;
     if c.contract_version != 1
         || c.binding != r.binding

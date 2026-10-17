@@ -1,5 +1,257 @@
 # API v1 Specification — Task Tracker
 
+## Critical Business Blocker Integration
+
+Current PM review source now permits only the existing blocker detail GET and
+`GET /api/v1/attachments/{id}/download` for an exact evidence item of that review.
+The same fresh owner/project/current-assignment/lease guard is checked before and
+after blob I/O; raw bytes/seal/provenance must match. Ordinary attachment
+list/upload/delete and old PM grants remain denied, without human impersonation.
+These readers and the pure atomic-finalization planner are registered source
+awaiting focused checks. Actual reader PG remains blocked on the separately owned
+PM lease/projection integration; registration does not establish executable review.
+
+Registered source also adds POST
+`/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews` and GET
+`/api/v1/issues/{id}/sdlc/critical-blockers/pm-reviews/operations/{idempotency_key}`.
+The existing closed command requires exact blocker/task/current-PM owner and
+assignment versions. Only the configured scheduler's separate WRITE/READ child
+credentials apply. Fresh reservation returns201, original replay200; all replies,
+extractor errors and auth rejection are no-store. CLI uses
+`sdlc critical-blocker pm-review reserve|operation`, without automatic retry.
+Response preserves the original input and concrete PM but allocates new execution
+and assignment IDs; `dispatch_allowed=false`. These new routes, codegen and
+persistence still await their own qualification, not the earlier Return pass.
+
+The source also registers scheduler-only POST
+`/api/v1/issues/{id}/sdlc/critical-blockers/returns` and original-operation GET
+`/api/v1/issues/{id}/sdlc/critical-blockers/returns/operations/{idempotency_key}`.
+Both return the typed `{lifecycle, blocker}` plan and use no-store. The existing
+separate scheduler WRITE/READ credentials and authoritative fresh task/project
+checks remain unchanged. Return requires actual matching native terminal before
+the trusted caller sends it; the producer's Held acknowledgement is not terminal
+proof. These registrations and CLI tests pass on `caf7ab3`, together with the
+actual PG aggregate and Rust-generated OpenAPI. This is not live PM acceptance.
+
+Existing attachment storage is now connected through production DI. Critical
+operation keys are1..128 UTF-8 bytes without whitespace/control, literal
+slash/backslash or standalone `.`/`..`, so original-key CLI readback is possible.
+Legacy keys and the Base transport security contract are unchanged. Latest
+[source-bound qualification](CRITICAL_BLOCKER_VERIFICATION.md) must not
+be confused with live acceptance or a completed full gate.
+
+The existing strict SDLC router now registers typed POST
+`/api/v1/issues/{id}/sdlc/critical-blockers`, GET
+`/api/v1/issues/{id}/sdlc/critical-blockers/{blocker_id}` and original-key GET
+`/api/v1/issues/{id}/sdlc/critical-blockers/operations/{idempotency_key}`.
+All responses are no-store. The technical capability allowlist permits only these
+exact current-task resources; it does not grant scheduler transitions or owner
+confirmation. Domain/repository authorization remains authoritative.
+
+The atomic repository implementation and existing attachment storage are connected
+through production DI. Local qualification covers persistence/terminal Return and
+generated public routes; it does not establish a live native stop, resumed PM,
+new owner confirmation or full deployment. Missing configured storage still fails
+closed rather than manufacturing evidence. See the exact
+[policy/storage handoff](contracts/CRITICAL_PM_RETURN_SOURCE.md).
+
+## Single-Task Delivery Discovery
+
+Source registers `GET /api/v1/sdlc/delivery-candidates` with required `project_id`,
+optional UUID `after` and `limit` 1..100 (default50). Only the configured scheduler's
+read-only credential with current project access can discover work. The response
+declares `ensure_queued` or `reserve`, not permission to dispatch; existing command
+CAS, capacity, root/agent lease and PM-terminal gates remain authoritative.
+Owner consent alone does not expose an initial candidate. Full wire and source-bound
+qualification: [delivery candidates](SDLC_DELIVERY_CANDIDATES.md). No new table,
+planner or runtime admission is introduced; source registration is not deployment.
+
+## Authoritative Delivery Execution Reference
+
+Fresh scheduler-only lifecycle Reserve returns
+`assignment.execution:{ordinal:"123",key:"SDLC-123"}` in the existing receipt.
+The same value is returned by GET lifecycle (`receipt.assignment.execution`) and
+GET lifecycle operations (`assignment.execution`). Ordinal is a canonical positive
+decimal PostgreSQL bigint string, never a JSON number; key must match exactly.
+Unknown fields, noncanonical/overflow ordinal or mismatched key in a present value
+are rejected by the producer DTO. Caller Reserve fields/auth are unchanged:
+the consumer cannot submit/select an ordinal, taskkey or chat-derived key.
+
+Tracker allocates from the SAME existing identity sequence as PM executions:
+`nextval(pg_get_serial_sequence('sdlc_pm_executions','ordinal'))`, after fresh ACL,
+original-operation replay and normal Reserve capacity/CAS checks. Execution ref,
+UUID, assignment hash, immutable assignment, hold, canonical projection, operation
+and outbox persist in the same transaction. Rollback may leave a sequence gap,
+never an accepted partial assignment; replay returns the original execution/key.
+New retry assignment/execution receives a new ordinal, retained PM resume does not.
+
+The optional field is omitted for old assignments; omission preserves old wire and
+hash. Old receipts are not backfilled. A technical Workflow dispatch requires a
+present authoritative reference and must fail closed when absent. Historical
+compatibility fixtures intentionally remain non-dispatchable without a fresh Reserve.
+
+Uniqueness is within the new single-task profile flow (PM plus general Delivery,
+including Analyst). Legacy Analysis keeps its separate
+`sdlc_analysis_workflow_task_ordinal` and original receipts/Workflow namespace.
+Display `SDLC-N` may coincide across legacy families; canonical identity is
+Tracker instance + execution UUID, and Workflow refs are namespace/profile scoped.
+No stopped writers, setval/high-water repair, new sequence or legacy allocator
+change is required or included. Parent owns Fleet DTO/generated registrations.
+
+## Explicit New Draft Flow
+
+The existing Draft creation request adds optional `flow:"single-task-v1"`.
+Omission keeps legacy JSON/hash and creation behavior, even in an enabled project.
+Explicit null, booleans and other values are invalid; no default flow is inferred.
+`CreatedDraft` and Context wire are unchanged. Only new marked creations receive
+Ready/brainstorming; legacy bindings/reservations are never retrofitted.
+
+For new marked effects, Tracker requires project opt-in and a present, valid,
+authoritative seven-role policy v2. Missing policy is 404, incompatible policy is
+409, disabled project is 503. Fleet's existing Draft saga must check actual PM
+readiness through its existing SDK before mutation; declared routing is not runtime
+proof, and no caller-ready flag or force-config is introduced. Fresh ACL precedes
+original creation replay; current policy/rollout checks follow replay. Changed
+payload/flow with the same key is 409. Existing operation GET reconstructs the
+original command/hash using immutable input plus the retained flow marker.
+
+Exact owner confirmation of a marked task always freezes the current v2 policy in
+the existing transaction, even if `expected_routing_policy_version` is omitted.
+When supplied, that version remains an additional CAS. No command field is added
+or mutated server-side for hashing. Confirmation, frozen seven-role snapshot,
+route-derived Analysis intent, canonical issue projection, operation and outbox
+commit together or roll back. Replay keeps its original consent/snapshot after
+policy changes or disable. Existing PM assignment is not rebound. Unmarked legacy
+confirmation retains its original explicit-version snapshot semantics.
+
+Новый opt-in single-task пакет добавляет lifecycle/readback, agent proposals
+и PM feedback в существующий strict SDLC router. Registered paths, DTO,
+статус квалификации и открытые gates:
+[single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+
+## New PM Feedback Guard
+
+Owner-only POST `.../pm-feedback` rechecks ACL, current PM fence and immutable
+assignment, then original-operation replay under the task lock. Only a new effect
+requires Draft with Ready/InProgress and brainstorming/awaiting_confirmation;
+any open structured question blocks free feedback. Marked tasks require these
+explicit canonical fields. Legacy unmarked Draft/Clarification may omit status
+and submode, but may not have an open question or an explicit clarification mode.
+No legacy state/history is rewritten. Backlog/Analysis and later stages reject new
+feedback with 409 `pm_feedback_not_available_in_current_draft_mode`.
+
+Historical replay and owner operation GET still return the exact original receipt
+after publication/confirmation or lease expiry, without a new outbox event, state
+mutation or fabricated answer. Idle feedback does not require a live lease. The
+owner operation endpoint is NOT a machine read source.
+
+## Scoped PM Saved Feedback Read
+
+Parent registers `GET /api/v1/issues/{id}/sdlc/pm-feedback/messages/{message_id}`
+with existing-controller handler `sdlc_delivery::feedback_message` and adds it to
+ApiDoc. Service/repository method: `pm_feedback_message(task,actor,message_id)`
+returns the existing `PmFeedbackReceipt` directly, HTTP 200 with `Cache-Control:
+no-store`. This packet supplies the handler and strict central PM allowlist, not
+the router/lib registration or generated OpenAPI/client outputs.
+
+Only a non-human credential with explicit `task-tracker:read` and exactly one
+current task PM assignment grant is accepted. The actual bound machine subject,
+active local user and project ownership/membership are rechecked; the latest
+immutable assignment must match canonical TaskState. Generic scheduler/service
+readers, owner impersonation/admin hints and a write-only PM token grant no access.
+Only canonical nonnil task/message UUID GET paths are allowlisted; no POST, list,
+operation-key lookup, foreign task or generic issue CRUD is added to the PM grant.
+
+Tracker queries the actual immutable feedback by task and message UUID, NOT by
+the machine caller's actor_subject. It checks the saved human owner, all receipt
+task/project/root/instance/owner identities, exact current PM fence, canonical
+stored JSON and original text hash. Missing message is 404, authorization failure
+403, inconsistent saved receipt 409. Receipt is unchanged snake_case, no wrapper;
+`requirement_revision` stays its original number or JSON null, never omission.
+Historical receipts remain readable through lease expiry, later requirements and
+confirmation while that assignment is current. No live TTL/stage/current-revision
+equality gate is imposed on history; no lease renewal, dispatch or owner Answer
+is created. Human POST and owner operation GET remain unchanged.
+
+## Trusted PM Resume (Producer Source)
+
+Parent registration in the existing SDLC controller:
+`POST /api/v1/issues/{task}/sdlc/pm-draft-execution-lease/resume` takes
+`ResumePmExecutionLease`, returns existing `ExecutionLeaseReceipt` (original on replay).
+`GET .../resume/operations/{key}` returns existing `ExecutionLeaseOperation`.
+Service methods are `resume_pm_execution_lease(task,actor,command)` and
+`pm_resume_operation(task,actor,key)`; POST returns `(receipt,replayed)` internally.
+POST requires exactly configured `reservation_scheduler_subject` with the sole
+`task-tracker:write` scope, non-human session. GET requires the same configured
+subject with the sole `task-tracker:read` scope. Separate delegated child tokens
+stay in Fleet, never an agent. Both recheck active user/project membership/ownership.
+The PM holder's current ACL is also rechecked before a new resume effect.
+
+Strict snake_case DTO (all fields required; canonical nonnil lowercase UUIDs):
+
+```text
+{expected_owner_version,lease_id,expected_lease_version,
+ input:{input_kind:answer|feedback|confirmation,input_id},
+ checkpoint:{checkpoint_id,checkpoint_revision,checkpoint_sha256,fence:MachineFence,
+             requirement_revision,content_hash},
+ previous_run_id,previous_run_terminal:{reference,sha256},idempotency_key}
+```
+
+`checkpoint.requirement_revision` and `content_hash` are required nullable fields:
+both null before publication, otherwise the exact current revision/hash. They are
+never omitted. Versions are positive safe integers, SHA256 lowercase 64hex.
+Input IDs reference real `Answer.id`, `PmFeedbackReceipt.message_id`, `Confirmation.id`
+in this task's own immutable ledger, not a generated event/request/question ID.
+Request hash is canonical SHA256 of
+`{"operation":"resume_pm_execution_lease","payload":<entire command>}`.
+
+Trust boundary is the existing Lifecycle Complete boundary: before POST, the trusted
+Fleet consumer reads the actual current Workflow checkpoint and actual old-run
+terminal using its existing separately credentialed Fleet runtime readback
+`GET /internal/runtime/v1/pm/runs/{run}` / callback receipt. It validates their
+execution/checkpoint/run/assignment relationships. Tracker validates the configured
+trusted producer, stored reservation/binding/fence, exact owner and lease CAS,
+current requirement hash and own input ledger, then immutable consumption/dedup.
+`ArtifactReceipt` alone is NOT independently verified proof of runtime terminal.
+Tracker adds no outbound Fleet client/token, caller boolean or self-certification.
+
+The same lease UUID/holder/claimed_at and assignment/execution/fence survive;
+version increments by one and TTL30 starts from the locked server clock. Ordinary
+expired claim/heartbeat still fail. Answer/feedback resume only Draft (legacy
+Clarification compatible); confirmation resume only closes Backlog/Analysis PM
+Workflow after exact owner consent, without reopening business writes. No new
+assignment, task, chat, business scheduler, question or answer is fabricated.
+409 on stale lease CAS consumes nothing: read fresh existing PM lease GET, reconcile
+the actual checkpoint/run and retry the unaccepted command with current CAS. If
+acceptance is unknown, first read the resume operation by the original key; do not
+change an already accepted payload/key or launch another runtime run. Operation
+GET/replay returns the original receipt; existing PM lease GET remains separate
+fresh `observed_at/current` readback. Input/run/checkpoint consumption is atomic
+with lease update and any canonical issue projection; it emits no duplicate input
+or heartbeat business-outbox message. Old feedback/checkpoint wire is unchanged.
+The existing PM lease GET retains its PM assignment-scoped reader authorization;
+the scheduler's read-only child token authorizes resume operation GET, not that
+holder-only endpoint. Fleet must use its existing delegated holder reader for the
+fresh lease cursor; no scheduler read privilege is silently added here.
+
+## Direct Confirmation Readback (Producer Source)
+
+Parent registration: `GET /api/v1/issues/{task}/sdlc/requirements/{revision}/confirmation`
+returns the existing exact `Confirmation`, without a wrapper or new schema fields.
+The current PM assignment grant with `task-tracker:read` is supported after parent
+adds the narrowly scoped allowlist predicate from `app::sdlc_confirmation`. Fresh
+active-user/project ACL and assignment checks precede exact revision/hash/owner
+history verification. A live execution lease is not required for this read.
+404 means consent has not been recorded, 409 means inconsistent saved history,
+403 means denied access, and invalid revision is 422. Receipt stage remains the
+historical Backlog value. CLI `sdlc confirmation read --task UUID --revision N`
+uses one direct GET, with no analysis-intent/outbox fallback and no mutation.
+
+Reserved PM requirement/question writes require the exact machine scope/fence and
+a current Tracker execution lease; the command schema does not accept a readiness
+claim. Owner answers and separate verifier evidence use admitted history when
+available but do not require it. [Contract](PM_NATIVE_ADMISSION.md).
+
 ## Имена и частичное обновление проектов
 
 Создание и обновление проекта проверяют имя на сервере: после удаления пробелов
@@ -10,11 +262,6 @@
 изменённые поля. Фоновое обновление подставляет свежие значения нетронутых полей
 и сохраняет локальный ввод изменённых, поэтому сохранение описания не откатывает
 новое серверное имя проекта.
-
-Reserved PM requirement/question writes require the exact machine scope/fence and
-a current Tracker execution lease; the command schema does not accept a readiness
-claim. Owner answers and separate verifier evidence use admitted history when
-available but do not require it. [Contract](PM_NATIVE_ADMISSION.md).
 
 ## Каталог сквозных проектов для серверных consumers
 

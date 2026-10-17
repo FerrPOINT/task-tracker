@@ -1,5 +1,90 @@
 # Дата-модель Task Tracker
 
+Critical PM lifecycle source now registers its before/after journal and immutable
+routing generations in the existing unreleased096, after the review reservation
+fragment. `Finalizing` consumes the server-prepared completion in that same
+transaction, not a previously committed completion or the first PM's old receipt.
+The readonly inventory preserves the original generation1 table; later Analysis
+intents use the exclusive `review_routing_snapshot_id` FK branch. Claim, command,
+resume, completion/outbox and resolved-head CAS remain task-locked. These new
+registrations/selectors require affected compile/PG qualification; no populated
+accepted database has been migrated. [Exact model and gates](contracts/critical-pm-lifecycle-persistence.md).
+
+The same unreleased096 packet now includes `critical_pm_review.sql` after the
+terminal Return fragment. An immutable PM review journal preserves original
+Held/Return receipts, before/after canonical state and the completed PM selector;
+one task-locked transaction allocates new PM assignment/execution IDs from the
+existing ordinal sequence, advances bounded versions and writes the outbox.
+It does not create consent, a lease, native admission or a runtime run. Detail
+prefers the retained InPmReview projection without rewriting original-key history.
+This new reservation source still requires compile/PostgreSQL qualification;
+the earlier qualified Return run does not cover it.
+
+The existing additive lifecycle fragment aligns routing SQL with profile-aware
+application wire. Policy v1 still uses the unchanged strict package validator;
+policy v2 requires all seven exact single-task instruction routes, shared digests
+and distinct canonical agent/namespace/workflow IDs. Mixed/null/unknown routes,
+version/family mismatch and readiness flags remain rejected. Snapshot version must
+match its stored policy version family. Analysis intent retains contract v1, but
+its workflow must equal the Analyst route in its exact frozen snapshot (legacy
+without snapshot stays `hermes-sdlc:analyst`). No historical rows/hashes or migration
+registration/order are rewritten; no new migration is added. Focused populated
+legacy-policy/Draft migration, v2 constraint negatives and publication regressions
+are source-only pending parent PG QA.
+
+New immutable delivery assignment JSON includes `execution:{ordinal,key}`;
+the canonical positive bigint ordinal is encoded as a decimal string and paired
+exactly with `SDLC-<ordinal>`. It is part of assignment hash and original receipts.
+The existing SQL fragment adds optional-history shape checks, delivery ordinal
+uniqueness and a present-reference requirement for fresh inserts. Existing missing
+fields remain missing, with no backfill/hash rewrite. No separate counter/table or
+ordinal column is added: fresh Delivery (including Analyst) consumes the existing
+PM identity sequence. Legacy Analysis retains its own ordinal sequence/namespace.
+Display keys are not globally unique historical identities: Tracker instance plus
+execution UUID is canonical. Rollback gaps are intentional; sequence state is never
+rewound or rebased, and historical Analysis allocation is not changed.
+
+Canonical `sdlc_tasks.state.flow` is absent for legacy tasks and exactly the string
+`single-task-v1` for explicitly opted-in new Drafts. It is retained through legacy
+serde round trips, not duplicated in another mutable table. The existing additive
+SQL fragment adds shape/root and immutable/no-retrofit guards; a deferred insertion
+guard requires the original immutable Draft creation/input ledger at commit.
+Creation operation readback reconstructs its hash from that immutable marker and
+input, so opted-in and legacy requests cannot share a key as the same payload.
+No backfill, old status/history rewrite or second migration is introduced.
+Marked confirmation requires the exact current v2 routing snapshot in the same
+transaction. Initial canonical delivery enrollment and new delivery assignments
+require marker; existing operation/assignment history remains untouched.
+
+Текущая additive `000096` и single-task delivery/feedback history находятся
+в интеграции; legacy история сохраняется. Это не подтверждение проверки
+миграций на заполненной БД. [Модель и gates](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+
+Single-task lifecycle stores canonical stage/status in `sdlc_tasks.state`; its
+delivery head stores execution only. Explicit many-to-one stage/status mapping
+uses three dedicated issue status IDs, preserving legacy board statuses/history.
+Immutable assignments, proposals, results, reconciliation and operations share
+one transactional projection/outbox boundary. Optional canonical PM status and
+Draft submode are omitted on historical rows without them. Parent owns migration
+registration/order for the additive SQL fragment.
+[Schema and wire details](TRACKER_SINGLE_TASK_HANDOFF.md).
+
+The same additive `single_task_lifecycle.sql` fragment also adds immutable
+`sdlc_pm_resume_inputs` (not another migration): task/scheduler/key plus canonical
+command hash, typed real input UUID, execution/checkpoint/revision, old runtime run,
+original lease receipt/version and exact transaction ID. Uniqueness consumes each
+task/input once, each execution/old-run once and each checkpoint revision once;
+older consumed checkpoint revisions fail as well. Lease current-source validation
+reads the disjoint union of holder-authored `sdlc_pm_lease_operations` and this
+scheduler ledger; neither historical ledger is rewritten. The existing lease
+trigger permits expired renewal only with the exact matching resume journal row
+inserted in that same transaction. Ordinary claim/heartbeat cannot use historical
+resume rows as an expiry bypass. New resume checks own answer/question, feedback or
+exact owner-confirmation ledgers, retained assignment, active holder/project ACL,
+current requirements and no overlapping delivery hold. Canonical PM status/issue
+projection (when present), consumption and lease CAS commit or roll back together.
+No new business-outbox event or task/execution generation is created by resume.
+
 Additive 000091 adds immutable `sdlc_pm_native_admissions`, keyed by execution/run
 and tied to assignment version, fence and exact owner observation. Additive
 000092 adds transaction-scoped `sdlc_pm_state_write_permits`; a reserved task's

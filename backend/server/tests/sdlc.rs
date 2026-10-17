@@ -40,6 +40,8 @@ mod namespace_catalog;
 mod pm_credential_boundary;
 #[path = "support/routing_policy.rs"]
 mod routing_policy;
+#[path = "support/sdlc_project_access.rs"]
+mod sdlc_project_access;
 
 #[derive(Clone)]
 struct AuthStub {
@@ -456,6 +458,19 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
     let foreign = human_token(&secret, &issuer, "foreign", "sdlc", chrono_now() + 3600);
     let client = Client::new();
     let (base, stop, handle) = start_tracker(config.clone()).await;
+    sdlc_project_access::verify(
+        &db,
+        &client,
+        &base,
+        project,
+        task,
+        &routing_policy::Actors {
+            owner: &owner,
+            operator: &operator,
+            foreign: &foreign,
+        },
+    )
+    .await;
     namespace_catalog::verify(&client, &base, &db, project, &owner).await;
     let url = format!("{base}/api/v1/issues/{task}/sdlc");
     let profiles_before = count(&db, "users").await;
@@ -547,7 +562,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
                 .await
                 .unwrap()
                 .status(),
-            200
+            403
         );
     }
     assert_eq!(
@@ -853,7 +868,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         analysis_intent::confirm(&db, &client, &url, &owner, &final_confirm, task).await;
     let routing_snapshot = routing_policy::snapshot(&client, &base, task, &owner).await;
     assert_eq!(routing_snapshot["policy"], routing);
-    analysis_intent::read(&client, &url, &foreign, 200).await;
+    analysis_intent::read(&client, &url, &foreign, 403).await;
     assert_eq!(confirmation["stage"], "Backlog");
     assert_eq!(confirmation["revision"], 2);
     let events = client
@@ -924,7 +939,7 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
         422,
     )
     .await;
-    metadata::get(&client, &metadata_url, &foreign, 200).await;
+    metadata::get(&client, &metadata_url, &foreign, 403).await;
     metadata::get(&client, &metadata_url, "local-token", 401).await;
     metadata::get(&client, &metadata_url, "sdlc_pat_pm", 200).await;
     metadata::get(&client, &metadata_url, "sdlc_pat_fleet", 403).await;
@@ -999,7 +1014,8 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             .is_err()
     );
     sql(&db, "DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='operator')", vec![project.into()]).await;
-    metadata::get(&client, &metadata_url, &operator, 200).await;
+    metadata::get(&client, &metadata_url, &operator, 403).await;
+    sdlc_project_access::directories(&client, &base, &operator, vec![]).await;
     sql(
         &db,
         "UPDATE users SET is_active=false WHERE central_sub='pm'",
@@ -1021,11 +1037,12 @@ async fn postgres_http_clarification_ownership_replay_gate_and_restart() {
             .await
             .unwrap()
             .status(),
-        200
+        403
     );
     let mismatch = infra::sdlc::PostgresSdlcRepository::connect(
         &database_url,
         SdlcConfig {
+            single_task_project_ids: std::collections::HashSet::new(),
             reservation_scheduler_subject: "scheduler".into(),
             instance_id: "changed-instance".into(),
             orchestrator_subject: "fleet".into(),
@@ -1381,6 +1398,9 @@ async fn metadata_pagination_and_blockers(
         SELECT $1,project_id,'SDLC-999999','task',status_id,'metadata-size',$2,'medium','[]',0,0 FROM issues WHERE id=$3",
         vec![huge_task.into(), huge_user.into(), task.into()]).await;
     let state = TaskState {
+        status: None,
+        retained_fields: Default::default(),
+        draft_submode: None,
         tracker_instance_id: valid_payload["tracker_instance_id"]
             .as_str()
             .unwrap()

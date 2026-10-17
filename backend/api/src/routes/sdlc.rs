@@ -139,6 +139,10 @@ pub fn router() -> Router<Arc<app::AppContext>> {
     Router::new()
         .route("/sdlc/project-access", get(project_access))
         .route("/sdlc/project-directory", get(project_directory))
+        .route(
+            "/sdlc/delivery-candidates",
+            get(super::sdlc_candidates::delivery_candidates),
+        )
         .route("/projects/{project_id}/sdlc/drafts", post(create_draft))
         .route(
             "/projects/{project_id}/sdlc/drafts/operations/{idempotency_key}",
@@ -154,6 +158,14 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route(
             "/issues/{id}/sdlc/pm-draft-execution-lease/heartbeat",
             post(heartbeat_execution_lease),
+        )
+        .route(
+            "/issues/{id}/sdlc/pm-draft-execution-lease/resume",
+            post(resume_execution_lease),
+        )
+        .route(
+            "/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",
+            get(resume_execution_lease_operation),
         )
         .route(
             "/issues/{id}/sdlc/pm-draft-assignment",
@@ -181,6 +193,10 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route("/issues/{id}/sdlc/requirements/{revision}", get(revision))
         .route("/issues/{id}/sdlc/requirements/{revision}/diff", get(diff))
         .route(
+            "/issues/{id}/sdlc/requirements/{revision}/confirmation",
+            get(confirmation_read),
+        )
+        .route(
             "/issues/{id}/sdlc/requirements/{revision}/confirm",
             post(confirm),
         )
@@ -188,9 +204,11 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .route("/issues/{id}/sdlc/events", get(events))
         .merge(super::sdlc_routing::router())
         .merge(super::sdlc_reservation::router())
+        .merge(super::sdlc_delivery::router())
         .route_layer(middleware::from_fn(
             crate::middleware::sdlc_auth::strict_central_auth,
         ))
+        .merge(super::sdlc_critical_pm_reviews::router())
 }
 
 #[utoipa::path(
@@ -430,6 +448,48 @@ pub async fn execution_lease(
     ))
 }
 
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume",tag="sdlc",
+    params(("id"=Uuid,Path)),request_body=ResumePmExecutionLease,
+    responses((status=201,body=ExecutionLeaseReceipt),(status=200,body=ExecutionLeaseReceipt),
+        (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn resume_execution_lease(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Json(command): Json<ResumePmExecutionLease>,
+) -> Result<Response, AppError> {
+    let (receipt, replayed) = service(&ctx)?
+        .resume_pm_execution_lease(id, &actor, command)
+        .await?;
+    let status = if replayed {
+        axum::http::StatusCode::OK
+    } else {
+        axum::http::StatusCode::CREATED
+    };
+    Ok((
+        status,
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
+    )
+        .into_response())
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",tag="sdlc",
+    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
+    responses((status=200,body=ExecutionLeaseOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn resume_execution_lease_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((id, key)): Path<(Uuid, String)>,
+) -> Result<Response, AppError> {
+    let receipt = service(&ctx)?.pm_resume_operation(id, &actor, &key).await?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
+    )
+        .into_response())
+}
+
 #[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/binding", params(("id"=Uuid, Path)), request_body=BindCommand, responses((status=200,body=SdlcContext), (status=422,description="root_task_id must equal task_id; children require accepted Architect decomposition")), security(("bearer"=[])))]
 pub async fn bind(
     State(ctx): State<Arc<app::AppContext>>,
@@ -627,6 +687,25 @@ pub async fn confirm(
             .execute(id, &actor, SdlcCommand::Confirm { revision, command })
             .await?,
     ))
+}
+
+#[utoipa::path(get, path="/api/v1/issues/{id}/sdlc/requirements/{revision}/confirmation", tag="sdlc",
+    params(("id"=Uuid,Path),("revision"=i64,Path)),
+    responses((status=200,body=Confirmation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),
+    security(("bearer"=[])))]
+pub async fn confirmation_read(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((id, revision)): Path<(Uuid, i64)>,
+) -> Result<Response, AppError> {
+    let receipt = service(&ctx)?
+        .confirmation_read(id, &actor, revision)
+        .await?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
+    )
+        .into_response())
 }
 
 #[utoipa::path(post, path="/api/v1/issues/{id}/sdlc/evidence", params(("id"=Uuid, Path)), request_body=EvidenceCommand, responses((status=200,body=Evidence)), security(("bearer"=[])))]

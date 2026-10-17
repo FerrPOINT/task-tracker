@@ -148,7 +148,7 @@ pub(super) async fn before(
         404,
     )
     .await;
-    read(client, &url, foreign, 200).await;
+    read(client, &url, foreign, 403).await;
     read(client, &url, "sdlc_pat_pm", 403).await;
     sql(
         db,

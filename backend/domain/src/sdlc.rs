@@ -43,10 +43,53 @@ pub struct Principal {
 
 #[derive(Clone, Debug)]
 pub struct SdlcConfig {
+    pub single_task_project_ids: HashSet<Uuid>,
     pub reservation_scheduler_subject: String,
     pub instance_id: String,
     pub orchestrator_subject: String,
     pub verifier_subject: String,
+}
+
+pub fn parse_single_task_projects(raw: &str) -> Result<HashSet<Uuid>, AppError> {
+    let mut projects = HashSet::new();
+    if raw.trim().is_empty() {
+        return Ok(projects);
+    }
+    for part in raw.split(',') {
+        let part = part.trim();
+        let id = Uuid::parse_str(part)
+            .map_err(|_| AppError::validation("invalid single-task project allowlist"))?;
+        if id.is_nil() || id.to_string() != part || !projects.insert(id) {
+            return Err(AppError::validation(
+                "invalid single-task project allowlist",
+            ));
+        }
+    }
+    Ok(projects)
+}
+
+#[cfg(test)]
+mod rollout_tests {
+    use super::*;
+
+    #[test]
+    fn single_task_rollout_is_empty_by_default_and_requires_exact_projects() {
+        assert!(parse_single_task_projects("").unwrap().is_empty());
+        let id = Uuid::from_u128(1);
+        assert_eq!(
+            parse_single_task_projects(&format!(" {id} ")).unwrap(),
+            HashSet::from([id])
+        );
+        for invalid in [
+            "all".into(),
+            Uuid::nil().to_string(),
+            format!("{id},"),
+            format!("{id},{id}"),
+            "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA".into(),
+        ] {
+            assert!(parse_single_task_projects(&invalid).is_err());
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq)]
@@ -93,6 +136,11 @@ pub enum Stage {
     Backlog,
     Analysis,
     Architecture,
+    Development,
+    Review,
+    Testing,
+    Rework,
+    Deployment,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
@@ -291,6 +339,23 @@ pub struct CreateDraftCommand {
     pub description: String,
     #[schema(min_length = 1, max_length = 128)]
     pub idempotency_key: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "draft_flow"
+    )]
+    #[schema(nullable = false)]
+    pub flow: Option<DraftFlow>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+pub enum DraftFlow {
+    #[serde(rename = "single-task-v1")]
+    SingleTaskV1,
+}
+
+fn draft_flow<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<DraftFlow>, D::Error> {
+    DraftFlow::deserialize(d).map(Some)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
@@ -395,7 +460,7 @@ pub struct Question {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq)]
 pub struct Confirmation {
     pub id: Uuid,
     pub task_id: Uuid,
@@ -431,10 +496,22 @@ pub struct SdlcContext {
     pub root_task_id: Uuid,
     pub owner_subject: String,
     pub stage: Stage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::sdlc_lifecycle::LifecycleStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_submode: Option<DraftSubmode>,
     pub requirement_revision: Option<i64>,
     pub waiting_reason: Option<String>,
     pub permissions: Permissions,
     pub assignment: Option<PmAssignment>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, utoipa::ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DraftSubmode {
+    Brainstorming,
+    Clarification,
+    AwaitingConfirmation,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -445,15 +522,39 @@ pub struct TaskState {
     pub root_task_id: Uuid,
     pub owner_subject: String,
     pub stage: Stage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::sdlc_lifecycle::LifecycleStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_submode: Option<DraftSubmode>,
     pub confirmation_revision: Option<i64>,
     pub assignment: Option<PmAssignment>,
     pub questions: Vec<Question>,
     pub revisions: Vec<RequirementsRevision>,
     pub confirmations: Vec<Confirmation>,
     pub evidence: Vec<Evidence>,
+    // Retain canonical delivery fields through legacy aggregate load/save paths.
+    #[serde(flatten)]
+    pub retained_fields: serde_json::Map<String, serde_json::Value>,
 }
 
 impl TaskState {
+    pub fn draft_flow(&self) -> Result<Option<DraftFlow>, AppError> {
+        self.retained_fields
+            .get("flow")
+            .map(|value| {
+                serde_json::from_value(value.clone())
+                    .map_err(|_| AppError::conflict("invalid immutable Draft flow marker"))
+            })
+            .transpose()
+    }
+    pub fn clarifying(&self) -> bool {
+        self.stage == Stage::Clarification
+            || (self.stage == Stage::Draft
+                && matches!(
+                    self.draft_submode,
+                    Some(DraftSubmode::Clarification | DraftSubmode::AwaitingConfirmation)
+                ))
+    }
     pub fn require_root(&self) -> Result<(), AppError> {
         if self.task_id.is_nil() || self.root_task_id != self.task_id {
             return Err(AppError::conflict(
@@ -479,7 +580,7 @@ impl TaskState {
             .filter_map(|q| q.answer.as_ref().map(|answer| answer.created_at))
             .max();
         self.require_root().is_ok()
-            && matches!(self.stage, Stage::Clarification)
+            && self.clarifying()
             && self.confirmation_revision == Some(revision.revision)
             && !self
                 .questions
@@ -502,7 +603,7 @@ impl TaskState {
     }
     pub fn context(&self, actor: &Principal) -> SdlcContext {
         let can_answer = self.owner(actor)
-            && matches!(self.stage, Stage::Clarification)
+            && self.clarifying()
             && self
                 .questions
                 .iter()
@@ -514,25 +615,52 @@ impl TaskState {
             task_id: self.task_id,
             root_task_id: self.root_task_id,
             owner_subject: self.owner_subject.clone(),
-            stage: self.stage,
+            stage: if self.stage == Stage::Clarification {
+                Stage::Draft
+            } else {
+                self.stage
+            },
+            status: self.status,
+            draft_submode: self.draft_submode,
             requirement_revision: self.current_revision(),
-            waiting_reason: match self.stage {
-                Stage::Draft => Some("waiting_for_pm".into()),
-                Stage::Backlog => None,
-                Stage::Analysis => Some("queued_for_analysis".into()),
-                Stage::Architecture => Some("queued_for_architecture".into()),
-                Stage::Clarification
-                    if self
-                        .questions
-                        .iter()
-                        .any(|q| q.state == QuestionState::Open) =>
-                {
-                    Some("waiting_for_owner_answers".into())
+            waiting_reason: if let Some(reason) = self.retained_fields.get("waiting_reason") {
+                reason.as_str().map(str::to_owned)
+            } else {
+                match self.stage {
+                    Stage::Draft if !self.clarifying() => Some("waiting_for_pm".into()),
+                    Stage::Draft
+                        if self
+                            .questions
+                            .iter()
+                            .any(|q| q.state == QuestionState::Open) =>
+                    {
+                        Some("waiting_for_owner_answers".into())
+                    }
+                    Stage::Draft if !self.ready() => {
+                        Some("waiting_for_requirements_or_evidence".into())
+                    }
+                    Stage::Draft => Some("waiting_for_owner_confirmation".into()),
+                    Stage::Backlog => None,
+                    Stage::Analysis => Some("queued_for_analysis".into()),
+                    Stage::Architecture => Some("queued_for_architecture".into()),
+                    Stage::Development
+                    | Stage::Review
+                    | Stage::Testing
+                    | Stage::Rework
+                    | Stage::Deployment => None,
+                    Stage::Clarification
+                        if self
+                            .questions
+                            .iter()
+                            .any(|q| q.state == QuestionState::Open) =>
+                    {
+                        Some("waiting_for_owner_answers".into())
+                    }
+                    Stage::Clarification if !self.ready() => {
+                        Some("waiting_for_requirements_or_evidence".into())
+                    }
+                    Stage::Clarification => Some("waiting_for_owner_confirmation".into()),
                 }
-                Stage::Clarification if !self.ready() => {
-                    Some("waiting_for_requirements_or_evidence".into())
-                }
-                Stage::Clarification => Some("waiting_for_owner_confirmation".into()),
             },
             permissions: Permissions {
                 can_answer,
@@ -580,6 +708,9 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    fn lifecycle_repository(&self) -> Option<&dyn crate::sdlc_lifecycle::LifecycleRepository> {
+        None
+    }
     async fn reserve_analysis(
         &self,
         task: Uuid,
@@ -678,6 +809,18 @@ pub trait SdlcRepository: Send + Sync {
         actor: &Principal,
         key: Option<&str>,
     ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseReadback, AppError>;
+    async fn resume_pm_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: crate::sdlc_execution_lease::ResumePmExecutionLease,
+    ) -> Result<(crate::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError>;
+    async fn pm_resume_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<crate::sdlc_execution_lease::ExecutionLeaseOperation, AppError>;
     async fn reserve_pm_draft(
         &self,
         task: Uuid,
@@ -710,6 +853,12 @@ pub trait SdlcRepository: Send + Sync {
         key: &str,
     ) -> Result<CreatedDraft, AppError>;
     async fn read(&self, task: Uuid, actor: &Principal) -> Result<TaskState, AppError>;
+    async fn confirmation_read(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        revision: i64,
+    ) -> Result<Confirmation, AppError>;
     async fn pm_draft_input(
         &self,
         task: Uuid,

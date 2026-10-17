@@ -133,6 +133,9 @@ async fn empty_mutation_success_preserves_human_messages_and_json() {
         }
     }
 }
+#[path = "workflows/critical_pm_reviews.rs"]
+mod critical_pm_reviews;
+
 #[derive(Debug, Clone)]
 struct Recorded {
     method: String,
@@ -693,6 +696,1240 @@ async fn sdlc_analysis_commands_forward_json_payloads_without_extra_contracts() 
         serde_json::from_slice::<Value>(&requests[2].body).unwrap(),
         result
     );
+}
+
+#[tokio::test]
+async fn sdlc_draft_pm_and_exact_confirmation_use_existing_producers() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const PROJECT: &str = "22222222-2222-2222-2222-222222222222";
+    let payload = json!({"idempotency_key":"stable-key","content_hash":"a".repeat(64)});
+    let server = Server::start(vec![(201, json!({"task_id":TASK})); 6]).await;
+    let cases = [
+        (
+            vec![
+                "sdlc",
+                "draft",
+                "create",
+                "--project",
+                PROJECT,
+                "--from-file",
+                "-",
+            ],
+            format!("/api/v1/projects/{PROJECT}/sdlc/drafts"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "pm",
+                "assignment",
+                "reserve",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-assignment"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "pm",
+                "lease",
+                "claim",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "pm",
+                "lease",
+                "heartbeat",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease/heartbeat"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "pm",
+                "completion",
+                "submit",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-completion"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "revision",
+                "confirm",
+                "--task",
+                TASK,
+                "--revision",
+                "7",
+                "--from-file",
+                "-",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/requirements/7/confirm"),
+        ),
+    ];
+    for (args, _) in &cases {
+        success(&server.run(args, Some(&payload.to_string())).await);
+    }
+    let requests = server.requests();
+    assert_eq!(requests.len(), cases.len());
+    for (request, (_, path)) in requests.iter().zip(cases) {
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.path, path);
+        assert_eq!(
+            serde_json::from_slice::<Value>(&request.body).unwrap(),
+            payload
+        );
+        assert!(request.key.is_none());
+    }
+}
+
+#[tokio::test]
+async fn sdlc_pm_unknown_acceptance_readbacks_preserve_keys_without_mutation() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const PROJECT: &str = "22222222-2222-2222-2222-222222222222";
+    let server = Server::start(vec![(200, json!({"retained":true})); 5]).await;
+    let cases = [
+        (
+            vec![
+                "sdlc",
+                "draft",
+                "operation",
+                "--project",
+                PROJECT,
+                "--key",
+                "lost key",
+            ],
+            format!("/api/v1/projects/{PROJECT}/sdlc/drafts/operations/lost%20key"),
+        ),
+        (
+            vec![
+                "sdlc",
+                "pm",
+                "assignment",
+                "read",
+                "--task",
+                TASK,
+                "--key",
+                "lost key",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-assignment?idempotency_key=lost%20key"),
+        ),
+        (
+            vec![
+                "sdlc", "pm", "lease", "read", "--task", TASK, "--key", "lost key",
+            ],
+            format!(
+                "/api/v1/issues/{TASK}/sdlc/pm-draft-execution-lease?idempotency_key=lost%20key"
+            ),
+        ),
+        (
+            vec![
+                "sdlc",
+                "pm",
+                "completion",
+                "operation",
+                "--task",
+                TASK,
+                "--key",
+                "lost key",
+            ],
+            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-completion/operations/lost%20key"),
+        ),
+        (
+            vec!["sdlc", "pm", "completion", "read", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/pm-draft-completion"),
+        ),
+    ];
+    for (args, _) in &cases {
+        success(&server.run(args, None).await);
+    }
+    let requests = server.requests();
+    assert_eq!(requests.len(), cases.len());
+    for (request, (_, path)) in requests.iter().zip(cases) {
+        assert_eq!(request.method, "GET");
+        assert_eq!(request.path, path);
+        assert!(request.body.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn sdlc_exact_confirmation_rejects_invalid_revision_before_http() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![]).await;
+    for revision in ["0", "9007199254740992", "1.0"] {
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "revision",
+                    "confirm",
+                    "--task",
+                    TASK,
+                    "--revision",
+                    revision,
+                    "--from-file",
+                    "-",
+                ],
+                Some("{}"),
+            )
+            .await;
+        assert!(!output.status.success());
+    }
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_confirmation_read_returns_actual_retained_owner_receipt_without_post() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const CONSENT: &str = "22222222-2222-2222-2222-222222222222";
+    let receipt = json!({"id":CONSENT,"task_id":TASK,"revision":7,"content_hash":"a".repeat(64),
+        "owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"});
+    let server = Server::start(vec![(200, receipt.clone())]).await;
+    let output = server
+        .run(
+            &[
+                "sdlc",
+                "confirmation",
+                "read",
+                "--task",
+                TASK,
+                "--revision",
+                "7",
+            ],
+            None,
+        )
+        .await;
+    success(&output);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output.stdout).unwrap(),
+        receipt
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 1);
+    assert!(requests.iter().all(|r| r.method == "GET"));
+    assert_eq!(
+        requests[0].path,
+        format!("/api/v1/issues/{TASK}/sdlc/requirements/7/confirmation")
+    );
+}
+
+#[tokio::test]
+async fn sdlc_confirmation_read_rejects_mismatched_receipt_without_publishing() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const CONSENT: &str = "22222222-2222-2222-2222-222222222222";
+    let server = Server::start(vec![(
+        200,
+        json!({"id":CONSENT,"task_id":TASK,"revision":8,"content_hash":"a".repeat(64),
+        "owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"}),
+    )])
+    .await;
+    let output = server
+        .run(
+            &[
+                "sdlc",
+                "confirmation",
+                "read",
+                "--task",
+                TASK,
+                "--revision",
+                "7",
+            ],
+            None,
+        )
+        .await;
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert_eq!(server.requests().len(), 1);
+    assert!(server.requests().iter().all(|r| r.method == "GET"));
+}
+
+#[tokio::test]
+async fn sdlc_confirmation_read_denials_do_not_fallback_to_intent_outbox_or_post() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    for status in [403, 404, 409] {
+        let server = Server::start(vec![(status, json!({"error":"unavailable receipt"}))]).await;
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "confirmation",
+                    "read",
+                    "--task",
+                    TASK,
+                    "--revision",
+                    "7",
+                ],
+                None,
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let requests = server.requests();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].method, "GET");
+        assert_eq!(
+            requests[0].path,
+            format!("/api/v1/issues/{TASK}/sdlc/requirements/7/confirmation")
+        );
+    }
+}
+
+#[tokio::test]
+async fn sdlc_confirmation_read_rejects_malformed_receipt_without_fallback() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let valid = json!({"id":"22222222-2222-2222-2222-222222222222","task_id":TASK,"revision":7,
+        "content_hash":"a".repeat(64),"owner_subject":"owner","created_at":"2026-10-13T12:00:00Z","stage":"Backlog"});
+    for (field, value) in [
+        ("id", json!("00000000-0000-0000-0000-000000000000")),
+        ("task_id", json!("33333333-3333-3333-3333-333333333333")),
+        ("revision", json!("7")),
+        ("content_hash", json!("not-a-sha256")),
+        ("owner_subject", json!(" ")),
+        ("created_at", Value::Null),
+        ("stage", json!("Analysis")),
+    ] {
+        let mut receipt = valid.clone();
+        receipt[field] = value;
+        let server = Server::start(vec![(200, receipt)]).await;
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "confirmation",
+                    "read",
+                    "--task",
+                    TASK,
+                    "--revision",
+                    "7",
+                ],
+                None,
+            )
+            .await;
+        assert!(!output.status.success(), "accepted invalid {field}");
+        assert!(output.stdout.is_empty());
+        assert_eq!(server.requests().len(), 1);
+        assert_eq!(server.requests()[0].method, "GET");
+    }
+}
+
+#[tokio::test]
+async fn sdlc_confirmation_read_rejects_invalid_revision_before_http() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![]).await;
+    for revision in ["0", "-1", "9007199254740992", "1.0", "not-a-revision"] {
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "confirmation",
+                    "read",
+                    "--task",
+                    TASK,
+                    "--revision",
+                    revision,
+                ],
+                None,
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_lifecycle_and_accepted_result_reads_preserve_response_and_authorization() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const RESULT: &str = "22222222-2222-2222-2222-222222222222";
+    let cases = [
+        (
+            vec!["sdlc", "lifecycle", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/lifecycle"),
+            json!({"observed_at":"2026-10-14T12:00:00Z","runtime_state":"running",
+                "receipt":{"assignment":{"previous_result_id":RESULT},"result":null}}),
+        ),
+        (
+            vec!["sdlc", "result", "read", "--task", TASK, "--result", RESULT],
+            format!("/api/v1/issues/{TASK}/sdlc/lifecycle/results/{RESULT}"),
+            json!({"source":"delivery","receipt":{"result_id":RESULT,"task_id":TASK,
+                "output":{"role":"developer","commit_sha":"a".repeat(40),
+                    "changes":{"reference":"tracker-attachment:33333333-3333-3333-3333-333333333333","sha256":"b".repeat(64)},
+                    "checks":[]}}}),
+        ),
+    ];
+    for (args, path, receipt) in cases {
+        for versioned_base in [false, true] {
+            let server = Server::start(vec![(200, receipt.clone())]).await;
+            let base = if versioned_base {
+                format!("{}/api/v1", server.url)
+            } else {
+                server.url.clone()
+            };
+            let output = server.run_with_api_url(&base, &args, None).await;
+            assert_eq!(success(&output), receipt);
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].method, "GET");
+            assert_eq!(requests[0].path, path);
+            assert_eq!(
+                requests[0].authorization.as_deref(),
+                Some("Bearer fixture-token")
+            );
+            assert!(requests[0].body.is_empty());
+            assert!(requests[0].key.is_none());
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_lifecycle_and_accepted_result_read_errors_never_retry_or_mutate() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const RESULT: &str = "22222222-2222-2222-2222-222222222222";
+    let cases = [
+        (
+            vec!["sdlc", "lifecycle", "--task", TASK],
+            format!("/api/v1/issues/{TASK}/sdlc/lifecycle"),
+        ),
+        (
+            vec!["sdlc", "result", "read", "--task", TASK, "--result", RESULT],
+            format!("/api/v1/issues/{TASK}/sdlc/lifecycle/results/{RESULT}"),
+        ),
+    ];
+    for (args, path) in cases {
+        for status in [401, 403, 404, 409, 500] {
+            let server = Server::start(vec![(
+                status,
+                json!({"error":{"code":"DENIED","message":"fixture-token"}}),
+            )])
+            .await;
+            let mut cli = vec!["--error-format", "json"];
+            cli.extend_from_slice(&args);
+            let output = server.run(&cli, None).await;
+            assert_eq!(output.status.code(), Some(1));
+            assert!(output.stdout.is_empty());
+            assert_eq!(
+                serde_json::from_slice::<Value>(&output.stderr).unwrap()["error"]["status"],
+                status
+            );
+            assert!(!String::from_utf8_lossy(&output.stderr).contains("fixture-token"));
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].method, "GET");
+            assert_eq!(requests[0].path, path);
+            assert_eq!(
+                requests[0].authorization.as_deref(),
+                Some("Bearer fixture-token")
+            );
+            assert!(requests[0].body.is_empty());
+            assert!(requests[0].key.is_none());
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_lifecycle_and_accepted_result_reads_reject_invalid_uuids_before_http() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![]).await;
+    for args in [
+        vec!["sdlc", "lifecycle", "--task", "TASK-1"],
+        vec![
+            "sdlc", "result", "read", "--task", "TASK-1", "--result", TASK,
+        ],
+        vec![
+            "sdlc",
+            "result",
+            "read",
+            "--task",
+            TASK,
+            "--result",
+            "not-a-uuid",
+        ],
+    ] {
+        let output = server.run(&args, None).await;
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_role_proposal_forwards_workflow_evidence_and_reconciles_its_original_operation() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let proposal = json!({"fence":{"assignment_id":"22222222-2222-2222-2222-222222222222",
+        "execution_id":"33333333-3333-3333-3333-333333333333","fencing_token":7,
+        "lease_id":"44444444-4444-4444-4444-444444444444","expected_lease_version":2},
+        "workflow_receipt":{"reference":"workflow/terminal/7","sha256":"a".repeat(64)},
+        "result":{"role":"reviewer","verdict":"approved","report":{"reference":"evidence/review.json","sha256":"b".repeat(64)}},
+        "idempotency_key":"proposal key"});
+    let server = Server::start(vec![
+        (201, json!({"proposal_id":"proposal"})),
+        (200, json!({"proposal_id":"proposal"})),
+    ])
+    .await;
+    success(
+        &server
+            .run(
+                &[
+                    "sdlc",
+                    "result",
+                    "propose",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&proposal.to_string()),
+            )
+            .await,
+    );
+    success(
+        &server
+            .run(
+                &[
+                    "sdlc",
+                    "result",
+                    "operation",
+                    "--task",
+                    TASK,
+                    "--key",
+                    "proposal key",
+                ],
+                None,
+            )
+            .await,
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(
+        requests[0].path,
+        format!("/api/v1/issues/{TASK}/sdlc/delivery-proposals")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+        proposal
+    );
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(
+        requests[1].path,
+        format!("/api/v1/issues/{TASK}/sdlc/delivery-proposals/operations/proposal%20key")
+    );
+}
+
+fn critical_blocker_proposal() -> Value {
+    let proposal = json!({
+        "fence":{"assignment_id":"22222222-2222-2222-2222-222222222222",
+            "execution_id":"33333333-3333-3333-3333-333333333333","fencing_token":1,
+            "lease_id":"44444444-4444-4444-4444-444444444444","expected_lease_version":1},
+        "requirement_revision":1,"content_hash":"a".repeat(64),"kind":"requirements_contradiction",
+        "question":"synthetic private business question","rationale":"Two approved requirements contradict.",
+        "options":[],"recommendation":null,
+        "evidence":[{"receipt":{"reference":"tracker-attachment:55555555-5555-5555-5555-555555555555",
+            "sha256":"b".repeat(64)},"binding":{"assignment_id":"22222222-2222-2222-2222-222222222222",
+            "execution_id":"33333333-3333-3333-3333-333333333333","role":"analyst"}}],
+        "idempotency_key":"critical:original:1?x=+%#"
+    });
+    let typed: domain::sdlc_critical_blockers::SubmitCriticalBlocker =
+        serde_json::from_value(proposal.clone()).unwrap();
+    typed
+        .validate(domain::sdlc_lifecycle::DeliveryRole::Analyst)
+        .unwrap();
+    proposal
+}
+
+fn critical_return_command() -> Value {
+    let command = json!({
+        "review":{"blocker_id":"66666666-6666-6666-6666-666666666666","blocker_sha256":"a".repeat(64),
+            "expected_blocker_version":1,"expected_task_version":7,
+            "fence":{"assignment_id":"22222222-2222-2222-2222-222222222222",
+                "execution_id":"33333333-3333-3333-3333-333333333333","fencing_token":1,
+                "lease_id":"44444444-4444-4444-4444-444444444444","expected_lease_version":3},
+            "idempotency_key":"return:original:1?x=+%#"},
+        "terminal":{"assignment_hash":"b".repeat(64),"chat_id":"77777777-7777-7777-7777-777777777777",
+            "run_id":"88888888-8888-8888-8888-888888888888","state":"cancelled",
+            "receipt":{"reference":"fixture://SYNTHETIC-native-terminal-readback","sha256":"c".repeat(64)}}
+    });
+    let typed: domain::sdlc_critical_blockers::ReturnCriticalToPm =
+        serde_json::from_value(command.clone()).unwrap();
+    assert_eq!(serde_json::to_value(typed).unwrap(), command);
+    command
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_preserves_file_stdin_body_auth_and_exact_endpoint() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let command = critical_return_command();
+    // Transport-only partial response stub. Typed plan and actual persistence are tested elsewhere.
+    let receipt = json!({"lifecycle":{"task":{"task_id":TASK,"stage":"Draft"}},
+        "blocker":{"version":2,"state":"awaiting_pm_review","technical_terminal":command["terminal"]}});
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    write!(file, "{command}").unwrap();
+    file.flush().unwrap();
+    for versioned in [false, true] {
+        for from_file in ["-", file.path().to_str().unwrap()] {
+            for status in [201, 200] {
+                let server = Server::start(vec![(status, receipt.clone())]).await;
+                let url = if versioned {
+                    format!("{}/api/v1", server.url)
+                } else {
+                    server.url.clone()
+                };
+                let output = server
+                    .run_with_api_url(
+                        &url,
+                        &[
+                            "sdlc",
+                            "critical-blocker",
+                            "return-to-pm",
+                            "--task",
+                            TASK,
+                            "--from-file",
+                            from_file,
+                        ],
+                        (from_file == "-").then(|| command.to_string()).as_deref(),
+                    )
+                    .await;
+                assert_eq!(success(&output), receipt);
+                let requests = server.requests();
+                assert_eq!(requests.len(), 1);
+                assert_eq!(requests[0].method, "POST");
+                assert_eq!(
+                    requests[0].path,
+                    format!("/api/v1/issues/{TASK}/sdlc/critical-blockers/returns")
+                );
+                assert_eq!(
+                    serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+                    command
+                );
+                assert_eq!(
+                    requests[0].authorization.as_deref(),
+                    Some("Bearer fixture-token")
+                );
+                assert!(
+                    requests[0].key.is_none(),
+                    "key is the exact supplied command field, not another header/transport"
+                );
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_unknown_post_requires_explicit_original_key_get_not_lifecycle_transport()
+ {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let command = critical_return_command();
+    let saved = json!({"lifecycle":{"task":{"task_id":TASK,"version":8}},"blocker":{"version":2,"state":"awaiting_pm_review"}});
+    let server = Server::start(vec![
+        (
+            503,
+            json!({"error":{"code":"UNAVAILABLE","message":"unknown outcome"}}),
+        ),
+        (200, saved.clone()),
+    ])
+    .await;
+    let failed = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "return-to-pm",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            Some(&command.to_string()),
+        )
+        .await;
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty());
+    assert_eq!(server.requests().len(), 1);
+    let key = command["review"]["idempotency_key"].as_str().unwrap();
+    let read = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "return-operation",
+                "--task",
+                TASK,
+                "--key",
+                key,
+            ],
+            None,
+        )
+        .await;
+    assert_eq!(success(&read), saved);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+        command
+    );
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(
+        requests[1].path,
+        format!(
+            "/api/v1/issues/{TASK}/sdlc/critical-blockers/returns/operations/{}",
+            urlencoding::encode(key)
+        )
+    );
+    assert!(requests[1].body.is_empty());
+    assert!(requests[1].key.is_none());
+    assert_eq!(
+        requests[1].authorization.as_deref(),
+        Some("Bearer fixture-token")
+    );
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_errors_do_not_retry_mutate_or_leak_private_body() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let command = critical_return_command().to_string();
+    for status in [401, 403, 404, 409, 422, 503] {
+        for action in ["return-to-pm", "return-operation"] {
+            let server = Server::start(vec![(
+                status,
+                json!({"error":{"code":"DENIED","message":"denied fixture-token"}}),
+            )])
+            .await;
+            let mut args = vec![
+                "--error-format",
+                "json",
+                "sdlc",
+                "critical-blocker",
+                action,
+                "--task",
+                TASK,
+            ];
+            args.extend_from_slice(if action == "return-to-pm" {
+                &["--from-file", "-"]
+            } else {
+                &["--key", "return:original:1?x=+%#"]
+            });
+            let output = server
+                .run(
+                    &args,
+                    (action == "return-to-pm").then_some(command.as_str()),
+                )
+                .await;
+            assert!(!output.status.success());
+            assert!(output.stdout.is_empty());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(!stderr.contains("fixture-token"));
+            assert!(!stderr.contains("SYNTHETIC-native-terminal-readback"));
+            assert_eq!(
+                serde_json::from_str::<Value>(&stderr).unwrap()["error"]["status"],
+                status
+            );
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(
+                requests[0].method,
+                if action == "return-to-pm" {
+                    "POST"
+                } else {
+                    "GET"
+                }
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_invalid_cli_inputs_and_impersonation_flags_never_send_http() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![]).await;
+    for args in [
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "return-to-pm",
+            "--task",
+            "TT-1",
+            "--from-file",
+            "-",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "return-operation",
+            "--task",
+            "TT-1",
+            "--key",
+            "original",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "return-to-pm",
+            "--task",
+            TASK,
+            "--from-file",
+            "-",
+            "--owner",
+            "owner",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "return-to-pm",
+            "--task",
+            TASK,
+            "--from-file",
+            "-",
+            "--scheduler",
+            "scheduler",
+        ],
+    ] {
+        let output = server.run(&args, Some("{}")).await;
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+    for key in [
+        ".",
+        "..",
+        "space key",
+        "",
+        "return/original",
+        "return\\original",
+    ] {
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "critical-blocker",
+                    "return-operation",
+                    "--task",
+                    TASK,
+                    "--key",
+                    key,
+                ],
+                None,
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let mut body = critical_return_command();
+        body["review"]["idempotency_key"] = json!(key);
+        let output = server
+            .run(
+                &[
+                    "sdlc",
+                    "critical-blocker",
+                    "return-to-pm",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&body.to_string()),
+            )
+            .await;
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+    }
+    let output = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "return-to-pm",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            Some("not-json"),
+        )
+        .await;
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_critical_return_nested_help_is_available_without_network() {
+    let server = Server::start(vec![]).await;
+    for action in ["return-to-pm", "return-operation"] {
+        let output = server
+            .run(&["sdlc", "critical-blocker", action, "--help"], None)
+            .await;
+        assert!(output.status.success());
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(stdout.contains("--task"));
+        assert!(stdout.contains(if action == "return-to-pm" {
+            "--from-file"
+        } else {
+            "--key"
+        }));
+    }
+    assert!(server.requests().is_empty());
+}
+
+#[tokio::test]
+async fn sdlc_critical_blocker_submit_preserves_typed_body_and_auth() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let proposal = critical_blocker_proposal();
+    let receipt = json!({"blocker_id":"66666666-6666-6666-6666-666666666666",
+        "version":1,"state":"held","proposal":proposal});
+    let mut file = tempfile::NamedTempFile::new().unwrap();
+    write!(file, "{proposal}").unwrap();
+    file.flush().unwrap();
+    for versioned in [false, true] {
+        for from_file in ["-", file.path().to_str().unwrap()] {
+            let server = Server::start(vec![(201, receipt.clone())]).await;
+            let url = if versioned {
+                format!("{}/api/v1", server.url)
+            } else {
+                server.url.clone()
+            };
+            let output = server
+                .run_with_api_url(
+                    &url,
+                    &[
+                        "sdlc",
+                        "critical-blocker",
+                        "submit",
+                        "--task",
+                        TASK,
+                        "--from-file",
+                        from_file,
+                    ],
+                    (from_file == "-").then(|| proposal.to_string()).as_deref(),
+                )
+                .await;
+            assert_eq!(success(&output), receipt);
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].method, "POST");
+            assert_eq!(
+                requests[0].path,
+                format!("/api/v1/issues/{TASK}/sdlc/critical-blockers")
+            );
+            assert_eq!(
+                serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+                proposal
+            );
+            assert_eq!(
+                requests[0].authorization.as_deref(),
+                Some("Bearer fixture-token")
+            );
+            assert!(requests[0].key.is_none());
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_critical_blocker_reads_exact_detail_and_original_key_without_mutation() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    const BLOCKER: &str = "66666666-6666-6666-6666-666666666666";
+    let current = json!({"blocker_id":BLOCKER,"version":2,"state":"awaiting_pm_review"});
+    let original = json!({"blocker_id":BLOCKER,"version":1,"state":"held"});
+    let server = Server::start(vec![(200, current.clone()), (200, original.clone())]).await;
+    assert_eq!(
+        success(
+            &server
+                .run(
+                    &[
+                        "sdlc",
+                        "critical-blocker",
+                        "read",
+                        "--task",
+                        TASK,
+                        "--blocker",
+                        BLOCKER
+                    ],
+                    None,
+                )
+                .await
+        ),
+        current
+    );
+    assert_eq!(
+        success(
+            &server
+                .run(
+                    &[
+                        "sdlc",
+                        "critical-blocker",
+                        "operation",
+                        "--task",
+                        TASK,
+                        "--key",
+                        "critical:original:1?x=+%#"
+                    ],
+                    None,
+                )
+                .await
+        ),
+        original
+    );
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(
+        requests[0].path,
+        format!("/api/v1/issues/{TASK}/sdlc/critical-blockers/{BLOCKER}")
+    );
+    assert_eq!(
+        requests[1].path,
+        format!(
+            "/api/v1/issues/{TASK}/sdlc/critical-blockers/operations/critical%3Aoriginal%3A1%3Fx%3D%2B%25%23"
+        )
+    );
+    for request in requests {
+        assert_eq!(request.method, "GET");
+        assert!(request.body.is_empty());
+        assert!(request.key.is_none());
+        assert_eq!(
+            request.authorization.as_deref(),
+            Some("Bearer fixture-token")
+        );
+    }
+}
+
+#[tokio::test]
+async fn sdlc_critical_blocker_errors_never_retry_or_publish_success() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let proposal = critical_blocker_proposal().to_string();
+    for status in [401, 403, 404, 409, 422, 503] {
+        for action in ["submit", "read", "operation"] {
+            let server = Server::start(vec![(
+                status,
+                json!({"error":{"code":"DENIED",
+                "message":"request denied fixture-token"}}),
+            )])
+            .await;
+            let mut args = vec![
+                "--error-format",
+                "json",
+                "sdlc",
+                "critical-blocker",
+                action,
+                "--task",
+                TASK,
+            ];
+            args.extend_from_slice(match action {
+                "submit" => &["--from-file", "-"],
+                "read" => &["--blocker", "66666666-6666-6666-6666-666666666666"],
+                _ => &["--key", "critical:original:1?x=+%#"],
+            });
+            let output = server
+                .run(&args, (action == "submit").then_some(proposal.as_str()))
+                .await;
+            assert!(!output.status.success());
+            assert!(output.stdout.is_empty());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(!stderr.contains("fixture-token"));
+            assert!(!stderr.contains("synthetic private business question"));
+            assert_eq!(
+                serde_json::from_str::<Value>(&stderr).unwrap()["error"]["status"],
+                status
+            );
+            let requests = server.requests();
+            assert_eq!(requests.len(), 1, "{action} {status}");
+            assert_eq!(
+                requests[0].method,
+                if action == "submit" { "POST" } else { "GET" }
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn sdlc_critical_blocker_unknown_submit_requires_explicit_original_key_read() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let proposal = critical_blocker_proposal();
+    let original = json!({"blocker_id":"66666666-6666-6666-6666-666666666666","version":1,"proposal":proposal});
+    let server = Server::start(vec![
+        (
+            503,
+            json!({"error":{"code":"UNAVAILABLE","message":"unknown outcome"}}),
+        ),
+        (200, original.clone()),
+    ])
+    .await;
+    let failed = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "submit",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            Some(&proposal.to_string()),
+        )
+        .await;
+    assert!(!failed.status.success());
+    assert!(failed.stdout.is_empty());
+    assert_eq!(server.requests().len(), 1);
+    let key = proposal["idempotency_key"].as_str().unwrap();
+    let read = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "operation",
+                "--task",
+                TASK,
+                "--key",
+                key,
+            ],
+            None,
+        )
+        .await;
+    assert_eq!(success(&read), original);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].method, "POST");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&requests[0].body).unwrap(),
+        proposal
+    );
+    assert_eq!(requests[1].method, "GET");
+    assert_eq!(
+        requests[1].path,
+        format!(
+            "/api/v1/issues/{TASK}/sdlc/critical-blockers/operations/{}",
+            urlencoding::encode(key)
+        )
+    );
+}
+
+#[tokio::test]
+async fn sdlc_critical_blocker_invalid_inputs_never_make_http_requests() {
+    const TASK: &str = "11111111-1111-1111-1111-111111111111";
+    let server = Server::start(vec![]).await;
+    for args in [
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "submit",
+            "--task",
+            "TT-1",
+            "--from-file",
+            "-",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "read",
+            "--task",
+            TASK,
+            "--blocker",
+            "not-a-uuid",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "operation",
+            "--task",
+            "TT-1",
+            "--key",
+            "original",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "submit",
+            "--task",
+            TASK,
+            "--from-file",
+            "-",
+            "--owner",
+            "owner",
+        ],
+        vec![
+            "sdlc",
+            "critical-blocker",
+            "submit",
+            "--task",
+            TASK,
+            "--from-file",
+            "-",
+            "--scheduler",
+            "scheduler",
+        ],
+    ] {
+        let output = server.run(&args, Some("{}")).await;
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+    }
+    let malformed = server
+        .run(
+            &[
+                "sdlc",
+                "critical-blocker",
+                "submit",
+                "--task",
+                TASK,
+                "--from-file",
+                "-",
+            ],
+            Some("{"),
+        )
+        .await;
+    assert_eq!(malformed.status.code(), Some(1));
+    assert!(malformed.stdout.is_empty());
+    for key in ["", ".", "..", "critical/1", "critical\\1", "bad key"] {
+        let rejected = server
+            .run(
+                &[
+                    "sdlc",
+                    "critical-blocker",
+                    "operation",
+                    "--task",
+                    TASK,
+                    "--key",
+                    key,
+                ],
+                None,
+            )
+            .await;
+        assert!(!rejected.status.success());
+        assert!(rejected.stdout.is_empty());
+        let mut proposal = critical_blocker_proposal();
+        proposal["idempotency_key"] = json!(key);
+        let rejected = server
+            .run(
+                &[
+                    "sdlc",
+                    "critical-blocker",
+                    "submit",
+                    "--task",
+                    TASK,
+                    "--from-file",
+                    "-",
+                ],
+                Some(&proposal.to_string()),
+            )
+            .await;
+        assert!(!rejected.status.success());
+        assert!(rejected.stdout.is_empty());
+    }
+    assert!(server.requests().is_empty());
 }
 
 #[tokio::test]

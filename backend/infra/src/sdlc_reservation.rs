@@ -27,7 +27,8 @@ impl PostgresSdlcRepository {
                 .map_err(|_| inconsistent())?;
         app::sdlc_routing::validate_routes(&snapshot.policy.routes)?;
         let policy_row = tx.query_one(statement("SELECT payload FROM sdlc_project_routing_revisions WHERE project_id=$1 AND version=$2", vec![state.project_id.into(), snapshot.policy.version.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
-        if snapshot.contract_version != 1
+        if snapshot.contract_version != snapshot.policy.routes.contract_version()
+            || snapshot.policy.contract_version != snapshot.contract_version
             || snapshot.tracker_instance_id != state.tracker_instance_id
             || snapshot.project_id != state.project_id
             || snapshot.task_id != state.task_id
@@ -268,14 +269,14 @@ impl PostgresSdlcRepository {
             return Err(AppError::conflict("pm_quiescence_unverified"));
         }
         let agent = snapshot.policy.routes.analyst.agent_id;
-        let blocked = tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE root_task_id=$1 OR agent_id=$2) AS busy, EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t ON t.task_id=a.task_id AND t.pm_execution_id=(a.payload->>'execution_id')::uuid WHERE a.payload->>'agent_id'=$2::text AND t.pm_admission_state IS DISTINCT FROM 'completed') AS pm",vec![state.root_task_id.into(),agent.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
+        let blocked = tx.query_one(statement("SELECT EXISTS(SELECT 1 FROM sdlc_shared_capacity WHERE task_id=$1 OR agent_id=$2) AS busy, EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t ON t.task_id=a.task_id AND t.pm_execution_id=(a.payload->>'execution_id')::uuid WHERE a.payload->>'agent_id'=$2::text AND t.pm_admission_state IS DISTINCT FROM 'completed') AS pm",vec![state.root_task_id.into(),agent.into()])).await.map_err(map_db)?.ok_or_else(inconsistent)?;
         if blocked.try_get::<bool>("", "pm").map_err(map_db)? {
             return Err(AppError::conflict("pm_quiescence_unverified"));
         }
         if blocked.try_get::<bool>("", "busy").map_err(map_db)? {
             return Err(AppError::conflict("root_or_agent_capacity_held"));
         }
-        let slot = tx.query_one(statement("SELECT s::smallint AS slot FROM generate_series(1,2) s WHERE NOT EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE pool_slot=s) ORDER BY s LIMIT 1",vec![])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("technical_pool_capacity_held"))?.try_get::<i16>("","slot").map_err(map_db)?;
+        let slot = tx.query_one(statement("SELECT s::smallint AS slot FROM generate_series(1,2) s WHERE NOT EXISTS(SELECT 1 FROM sdlc_shared_capacity WHERE pool_slot=s) ORDER BY s LIMIT 1",vec![])).await.map_err(map_db)?.ok_or_else(||AppError::conflict("technical_pool_capacity_held"))?.try_get::<i16>("","slot").map_err(map_db)?;
         let fence = tx
             .query_one(statement(
                 "SELECT nextval('sdlc_analysis_reservation_fence') AS n",
@@ -318,10 +319,10 @@ impl PostgresSdlcRepository {
             reservation_version: 1,
             workflow_task_ref: format!("SDLC-{workflow_ordinal}"),
             agent_id: agent,
-            route: snapshot.policy.routes.analyst,
+            route: snapshot.policy.routes.analyst.clone(),
             stage: AnalysisStage::Analysis,
             role_key: "analyst".into(),
-            workflow_key: "hermes-sdlc:analyst".into(),
+            workflow_key: snapshot.policy.routes.analyst.workflow_key,
             mode_key: "analysis".into(),
             scope: "business".into(),
             cycle_number: 0,
@@ -581,6 +582,14 @@ impl PostgresSdlcRepository {
             idempotency_key: command.idempotency_key.clone(),
             created_at: now,
         };
+        if self
+            .finalize_critical_pm_review(&tx, &state, actor, &command, &hash, &result)
+            .await?
+            .is_some()
+        {
+            tx.commit().await.map_err(map_db)?;
+            return Ok((result, false));
+        }
         exec(&tx,"INSERT INTO sdlc_pm_completions(completion_id,task_id,execution_id,assignment_id,assignment_version,lease_id,lease_version,requirement_revision,content_hash,terminal_receipt_ref,terminal_receipt_sha256,workflow_receipt_ref,workflow_receipt_sha256,result) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
             vec![result.completion_id.into(),task.into(),assignment.execution_id.into(),assignment.assignment_id.into(),assignment.version.into(),result.lease_id.into(),result.lease_version.into(),result.requirement_revision.into(),result.content_hash.clone().into(),result.terminal_receipt_ref.clone().into(),result.terminal_receipt_sha256.clone().into(),result.workflow_receipt_ref.clone().into(),result.workflow_receipt_sha256.clone().into(),json_value(&result)?]).await?;
         exec(&tx,"INSERT INTO sdlc_pm_completion_operations(task_id,idempotency_key,actor_subject,payload_hash,completion_id,result) VALUES($1,$2,$3,$4,$5,$6)",

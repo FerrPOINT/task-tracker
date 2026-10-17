@@ -170,6 +170,26 @@ write сначала используется соответствующий `op
 Автоматического повторения POST, heartbeat или dispatch нет. Положительный
 preflight сам по себе не означает принятого dispatch или завершённого Analysis.
 
+### Single-task: чтение назначения и принятого результата
+
+```bash
+task-tracker sdlc lifecycle --task <issue-uuid>
+task-tracker sdlc result read --task <issue-uuid> --result <previous-result-uuid>
+```
+
+Это readonly GET существующих `/issues/{uuid}/sdlc/lifecycle` и
+`/issues/{uuid}/sdlc/lifecycle/results/{result_uuid}` относительно `/api/v1`.
+Первый возвращает текущий `LifecycleReadback`; UUID предыдущего результата берётся
+из actual assignment, не из display key. Второй возвращает серверный `DeliveryInput`
+без подмены typed output содержимым attachment. Attachment list/download сохраняют
+существующие проверки accepted predecessor chain.
+Обе команды используют настроенный CLI token; серверная авторизация не меняется.
+В исходном Tracker402 delivery-grant policy ещё не разрешает nested result GET:
+такой 403 остаётся ошибкой, не поводом использовать scheduler token или fallback.
+Ошибки не вызывают retry, POST или смену identity. Existing result propose/operation
+не изменены. HTTP contract tests добавлены в `backend/cli/tests/workflows.rs`;
+их выполнение и приёмка с actual Central auth требуют отдельной проверки.
+
 ### Реестр сценариев и проверок
 
 Пути ниже относительно `/api/v1`; параметры UUID разрешаются из ключа до дочернего запроса.

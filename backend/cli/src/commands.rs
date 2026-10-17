@@ -6,6 +6,11 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+#[path = "sdlc_critical_commands.rs"]
+mod critical_commands;
+#[path = "sdlc_pm_commands.rs"]
+mod pm_commands;
+
 #[derive(Debug, Args)]
 pub struct Page {
     #[arg(long)]
@@ -206,6 +211,41 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Propose or reconcile a critical business question without advancing the task
+    CriticalBlocker {
+        #[command(subcommand)]
+        command: critical_commands::CriticalBlockerCommand,
+    },
+    /// Read the current authoritative single-task assignment and lifecycle
+    Lifecycle {
+        #[arg(long)]
+        task: Uuid,
+    },
+    /// Propose a typed role result; only Fleet accepts it after runtime terminal
+    Result {
+        #[command(subcommand)]
+        command: pm_commands::DeliveryResultCommand,
+    },
+    /// Read existing project defaults or immutable task routing
+    Routing {
+        #[command(subcommand)]
+        command: pm_commands::RoutingCommand,
+    },
+    /// Read the actual owner confirmation receipt without owner write authority
+    Confirmation {
+        #[command(subcommand)]
+        command: pm_commands::ConfirmationCommand,
+    },
+    /// Create or reconcile the first-message owner Draft
+    Draft {
+        #[command(subcommand)]
+        command: pm_commands::DraftCommand,
+    },
+    /// Use existing Tracker PM reservation, lease and completion contracts
+    Pm {
+        #[command(subcommand)]
+        command: pm_commands::PmCommand,
+    },
     /// Read server-derived SDLC task context by canonical issue UUID
     Context {
         #[arg(long)]
@@ -335,6 +375,15 @@ pub enum SdlcRevisionCommand {
         #[arg(long, value_name = "PATH|-")]
         from_file: String,
     },
+    /// Confirm an exact revision using the existing owner-only endpoint
+    Confirm {
+        #[arg(long)]
+        task: Uuid,
+        #[arg(long, value_parser = clap::value_parser!(i64).range(1..=9_007_199_254_740_991))]
+        revision: i64,
+        #[arg(long, value_name = "PATH|-")]
+        from_file: String,
+    },
 }
 
 pub async fn issue_id(api: &Api, identifier: &str) -> Result<String> {
@@ -348,6 +397,19 @@ pub async fn issue_id(api: &Api, identifier: &str) -> Result<String> {
         .to_owned())
 }
 
+// Attachment machine grants do not authorize generic issue GET. Keys retain normal lookup.
+async fn attachment_issue_id(api: &Api, identifier: &str) -> Result<String> {
+    if let Some(id) = canonical_attachment_issue_id(identifier) {
+        return Ok(id);
+    }
+    issue_id(api, identifier).await
+}
+
+fn canonical_attachment_issue_id(identifier: &str) -> Option<String> {
+    let id: uuid::Uuid = identifier.parse().ok()?;
+    (!id.is_nil() && id.to_string() == identifier).then(|| id.to_string())
+}
+
 fn sdlc_path(task: Uuid, suffix: &str) -> String {
     format!("/api/v1/issues/{task}/sdlc{suffix}")
 }
@@ -359,6 +421,15 @@ fn json_input(path: &str) -> Result<Value> {
 
 pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
     match command {
+        SdlcCommand::CriticalBlocker { command } => {
+            critical_commands::critical_blocker(api, command).await
+        }
+        SdlcCommand::Lifecycle { task } => api.get(&sdlc_path(task, "/lifecycle")).await,
+        SdlcCommand::Result { command } => pm_commands::delivery_result(api, command).await,
+        SdlcCommand::Routing { command } => pm_commands::routing(api, command).await,
+        SdlcCommand::Confirmation { command } => pm_commands::confirmation(api, command).await,
+        SdlcCommand::Draft { command } => pm_commands::draft(api, command).await,
+        SdlcCommand::Pm { command } => pm_commands::pm(api, command).await,
         SdlcCommand::Context { task } => api.get(&sdlc_path(task, "/context")).await,
         SdlcCommand::Input { task } => api.get(&sdlc_path(task, "/pm-draft-input")).await,
         SdlcCommand::Questions { task } => api.get(&sdlc_path(task, "/clarifications")).await,
@@ -422,6 +493,17 @@ pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
             }
         },
         SdlcCommand::Revision { command } => match command {
+            SdlcRevisionCommand::Confirm {
+                task,
+                revision,
+                from_file,
+            } => {
+                api.post(
+                    &sdlc_path(task, &format!("/requirements/{revision}/confirm")),
+                    json_input(&from_file)?,
+                )
+                .await
+            }
             SdlcRevisionCommand::Publish { task, from_file } => {
                 api.post(&sdlc_path(task, "/requirements"), json_input(&from_file)?)
                     .await
@@ -460,7 +542,7 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
             LinkCommand::Delete { id } => api.delete(&format!("/api/v1/issue-links/{}",enc(&id))).await,
         },
         WorkCommand::Attachment { command } => match command {
-            AttachmentCommand::List { issue } => api.get(&format!("/api/v1/issues/{}/attachments",enc(&issue_id(api,&issue).await?))).await,
+            AttachmentCommand::List { issue } => api.get(&format!("/api/v1/issues/{}/attachments",enc(&attachment_issue_id(api,&issue).await?))).await,
             AttachmentCommand::Delete { id } => api.delete(&format!("/api/v1/attachments/{}",enc(&id))).await,
             AttachmentCommand::Download { id, out, overwrite } => {
                 support::check_destination(&out,overwrite)?;
@@ -469,7 +551,7 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
                 Ok(json!({"status":"ok","path":out,"size_bytes":data.len()}))
             }
             AttachmentCommand::Upload { issue, file, content_type } => {
-                let id = issue_id(api,&issue).await?;
+                let id = attachment_issue_id(api,&issue).await?;
                 let content_type=content_type.unwrap_or_else(||mime_guess::from_path(&file).first_or_octet_stream().to_string());
                 let part = multipart::Part::bytes(std::fs::read(&file)?).file_name(file.file_name().context("Нет имени файла")?.to_string_lossy().into_owned()).mime_str(&content_type)?;
                 support::json_response(request(api,Method::POST,&format!("/api/v1/issues/{}/attachments",enc(&id)))?.multipart(multipart::Form::new().part("file",part)),&api.secrets).await
@@ -495,6 +577,25 @@ pub async fn execute(api: &Api, command: WorkCommand) -> Result<Value> {
                 api.patch(&format!("/api/v1/worklogs/{}",enc(&id)),body).await
             }
             WorklogCommand::Delete { id } => api.delete(&format!("/api/v1/worklogs/{}",enc(&id))).await,
+        }
+    }
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::*;
+    #[test]
+    fn only_canonical_non_nil_uuid_bypasses_generic_issue_lookup() {
+        let id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+        assert_eq!(canonical_attachment_issue_id(id), Some(id.into()));
+        for identifier in [
+            "SDLC-7",
+            "not-a-uuid",
+            "00000000-0000-0000-0000-000000000000",
+            "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
+            "aaaaaaaabbbb4ccc8dddeeeeeeeeeeee",
+        ] {
+            assert_eq!(canonical_attachment_issue_id(identifier), None);
         }
     }
 }

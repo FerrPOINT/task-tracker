@@ -190,6 +190,13 @@ impl PostgresSdlcRepository {
             self.verify_native_command(&tx, &state, &expected, observed.as_ref(), &command)
                 .await?;
         }
+        if let Some(result) = self
+            .execute_critical_pm_review_command(&tx, &state, actor, &command, &hash)
+            .await?
+        {
+            tx.commit().await.map_err(map_db)?;
+            return Ok(result);
+        }
         let result = app::sdlc::apply(&mut state, actor, &self.config, &command)?;
         let event = self
             .persist_result(&tx, task, &command, &result, &state)
@@ -227,7 +234,9 @@ mod owned_history_tests {
         )).await.unwrap().unwrap()).unwrap();
         let repo = PostgresSdlcRepository {
             db,
+            file_storage: None,
             config: SdlcConfig {
+                single_task_project_ids: std::collections::HashSet::new(),
                 instance_id: state.tracker_instance_id.clone(),
                 orchestrator_subject: String::new(),
                 verifier_subject: String::new(),

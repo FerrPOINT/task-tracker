@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "fixture": true,
+  "live_acceptance": false,
+  "production_sso": false,
+  "production_changes": false,
+  "source": "2235c5d76c092b7d7da29f71aaa1245eec7862c3",
+  "base_ui": "8e944aa83c951008c227e28d9df15ed40719abb1",
+  "route": "/issues/DEMO-1?tab=sdlc",
+  "language": "ru",
+  "fixture_state": {
+    "stage": "Clarification",
+    "requirement_revision": 2,
+    "policy_contract_version": 2,
+    "policy_version": 5,
+    "can_confirm": true,
+    "can_answer": false,
+    "owner_acknowledged": false,
+    "publication_selected": false,
+    "confirmation_disabled": true,
+    "references_expanded": true,
+    "native_ready": false,
+    "dispatch_allowed": false
+  },
+  "browser_cases_passed": 9,
+  "screenshots": 9,
+  "roles_checked_per_case": 7,
+  "reference_bounds_observations": 378,
+  "business_writes": 0,
+  "page_errors": 0,
+  "unmocked_origins": 0,
+  "horizontal_overflow": false,
+  "capture": {
+    "fullPage": true,
+    "scale": "css",
+    "animations": "disabled",
+    "pixels_edited": false,
+    "path_base": "manifest_directory"
+  },
+  "images": [
+    {
+      "path": "chromium-375x812-fullpage.png",
+      "browser": "chromium",
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "actual_image": {
+        "width": 375,
+        "height": 6223
+      },
+      "sha256": "0c6351ea323cfccc5e5dfbe1a8f6ea7e5a12b4ad56c5984d2e81fb82f2a0192d",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "69ff2a559bb347fd80d3c7691cad6b113c16ac71de6a8518609abe13f5dc32a2"
+    },
+    {
+      "path": "chromium-1920x1080-fullpage.png",
+      "browser": "chromium",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual_image": {
+        "width": 1920,
+        "height": 4019
+      },
+      "sha256": "2ceced9ba696dfb1c4851b87b99492c52bf676a1daca4204c34945135c1cae6a",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "c5209e2edd7e08b1e5377bdffb0ef44394f48f9e94b33d16bd93230859570ba8"
+    },
+    {
+      "path": "chromium-2560x1440-fullpage.png",
+      "browser": "chromium",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "actual_image": {
+        "width": 2560,
+        "height": 4019
+      },
+      "sha256": "8a13025a0b57ead4a03c2b72ff19558efc6840552083554215e2cb942df5802c",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "564185801c2881659cfb3b92410efd4af7a9dbb5efa62e172d21f4da234ed1e4"
+    },
+    {
+      "path": "firefox-375x812-fullpage.png",
+      "browser": "firefox",
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "actual_image": {
+        "width": 375,
+        "height": 6208
+      },
+      "sha256": "2e4f871433538b079bd721bba121884265b0419abe2d43fcd452ef9c5c3a615c",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "ab4dbe98683bbb8679687fe57544500e5c2e53220d2893240355b07cdc7d08a0"
+    },
+    {
+      "path": "firefox-1920x1080-fullpage.png",
+      "browser": "firefox",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual_image": {
+        "width": 1920,
+        "height": 4024
+      },
+      "sha256": "ec3ff97ac5bdc3c98696ce4692c4f0f20cbd9bdb52a03ee0142c3fe2980abe76",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "0362c0265b86c0d0150d7d445573f3e618624b35db58c15ee3fcdf2b85c28653"
+    },
+    {
+      "path": "firefox-2560x1440-fullpage.png",
+      "browser": "firefox",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "actual_image": {
+        "width": 2560,
+        "height": 4024
+      },
+      "sha256": "43bfc4cefc70a9c5894446ac343788d15679ad3aa650f8527c23f06963ff15bc",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "3f8f2150501910660bb98a4a93be96b560df2169ceb9ee39258f7e8addade52e"
+    },
+    {
+      "path": "webkit-375x812-fullpage.png",
+      "browser": "webkit",
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "actual_image": {
+        "width": 375,
+        "height": 6203
+      },
+      "sha256": "4d8e754633cf61a03e53bb3b225c7f32211e94704302ea52b7cc9aa677f34011",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "be22e607479a322e728ddf6bb1987ce0a2c3aa83c953acfa5b2f547652d15ecb"
+    },
+    {
+      "path": "webkit-1920x1080-fullpage.png",
+      "browser": "webkit",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual_image": {
+        "width": 1920,
+        "height": 4019
+      },
+      "sha256": "26c2f96bd44211ccd53e00eda44c8827098a497de4c4b225d0d61ffc5a0f3cf5",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "aae6e5d5b411f8032cc5e32dc5909c30fe503231926700dd4af76989b588f0aa"
+    },
+    {
+      "path": "webkit-2560x1440-fullpage.png",
+      "browser": "webkit",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "actual_image": {
+        "width": 2560,
+        "height": 4019
+      },
+      "sha256": "4c9fcdd4d7feaaab60f4aae6d354030c9181313a2ceda08d4e2b579df845cb16",
+      "fullPage": true,
+      "scale": "css",
+      "view": "owner-v2-publication-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "7a5b6c1f4b0c9afdb4cd37190fdbb66e09697c752f0f43ec955d77c1a84b3f95"
+    }
+  ],
+  "fixture_sha256": "5fe1c3b35e44b71f0459f20a8fcd5a4aadb88156aadcaf9fab816906ec0ad7cf",
+  "config_sha256": "c3650001c4afb5e55cfb95f680da035cb837a7bcf21406cef91f1c2dfb8e00be",
+  "source_file_sha256": {
+    "frontend/src/shared/i18n/locales/en.json": "063ce873b1d8ab76afd613e0ae8e2818e4a82b580cde2a109aa2fc23522db7c0",
+    "frontend/src/api/test-fixtures/routing-policy.ts": "3651e816bd77a66a4800ae29f61b35cd31e7aa4f56af43ac7c02ba9876f06d78",
+    "frontend/src/features/sdlc/ui/SdlcPanel.tsx": "1fdc73855cc30fba623116c379d835d1ca16f7352dd61b0bf7ae17493fc6437d",
+    "frontend/src/api/sdlc.ts": "719d671cf9ef7df367b759ee9f0266e6612e1f44641538b27ee0f8237cf18106",
+    "frontend/src/api/sdlc.test.ts": "7f4e5b9d2b6c4ae2440303ac49b992f6e59f4c2b8343e2735f14dd058a5ee1f8",
+    "frontend/src/features/sdlc/ui/SdlcPanel.test.tsx": "3466b12859b1c2321a475062f18c2c690ba9ba52bd412b852767bd37dbd06c09",
+    "frontend/src/shared/i18n/locales/ru.json": "3ff3eb5d254955d737ad1a8b85852fba2a35315d0905f08d68d27e31cf149556"
+  },
+  "execution_report_sha256": "bda8acf16c84e06bbbb42bdd35c5859f469df3509f3853f2359c9be5a408607f",
+  "cleanup_report_sha256": "dff990a8241bcc2d3dccf995c4ff2c1e3af979d69a84a4c1f01e35b1e318667a",
+  "cleanup_verified": true,
+  "shared_cache_lock_unchanged": true,
+  "historical_validation_reuse": {
+    "source": "03c9a1e298dc380f8dbeb9bc325132274ec02738",
+    "frontend_closure_verified": true,
+    "focused_tests_passed": 133,
+    "unit_log_sha256": "b9eb686252e5678817add37b574cd49fc37640f7fdd7872dbb847e72e0f091a8",
+    "typecheck": "PASS historical",
+    "focused_lint_format": "PASS historical",
+    "v1_control": "focused unit/component coverage; no new v1 browser case"
+  },
+  "new_execution_scope": [
+    "fixture formatting",
+    "transient API generation",
+    "Vite bundling only",
+    "nine Playwright cases"
+  ],
+  "vitest_rerun": false,
+  "typecheck_rerun": false,
+  "full_build_rerun": false,
+  "old_evidence_preserved": {
+    "viewport_pngs": 18,
+    "fullpage_pngs": 9,
+    "hashes_verified": true
+  }
+}

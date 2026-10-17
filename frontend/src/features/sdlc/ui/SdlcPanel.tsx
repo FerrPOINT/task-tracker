@@ -22,6 +22,10 @@ import {
   type RoutingPolicy,
 } from '@/api/sdlc'
 import { useSdlcTask } from '../model/use-sdlc'
+import {
+  canConfirmRequirementsContext,
+  isRequirementsReviewContext,
+} from '../model/confirmation-context'
 
 const documentFields = [
   'goal',
@@ -36,6 +40,15 @@ const documentFields = [
   'prerequisites',
 ] as const
 const eventLabels = {
+  'delivery.queued': 'deliveryQueued',
+  'delivery.reconciled': 'deliveryReconciled',
+  'delivery.assignment_reserved': 'deliveryAssignmentPrepared',
+  'delivery.lease_renewed': 'deliveryLeaseRenewed',
+  'delivery.run_bound': 'deliveryRunBound',
+  'delivery.result_accepted': 'deliveryResultAccepted',
+  'delivery.proposal_submitted': 'deliveryProposalSubmitted',
+  'pm.feedback_recorded': 'pmFeedbackRecorded',
+  'pm.completed': 'pmCompleted',
   'task.created': 'taskCreated',
   'task.bound': 'taskBound',
   'pm.assigned': 'pmAssigned',
@@ -97,11 +110,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     const result = await snapshot.refetch()
     if (result.data && !result.error) {
       await metadata.refetch()
-      if (
-        result.data.context.permissions.can_confirm &&
-        result.data.context.stage === 'Clarification'
-      )
-        await routingPolicy.refetch()
+      if (canConfirmRequirementsContext(result.data.context)) await routingPolicy.refetch()
     }
   }
   if (!authenticated) return <ErrorState message={t('sdlc.errors.401')} />
@@ -134,9 +143,8 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
     ? `${queryKey[2]}:${requirements.revision}:${requirements.content_hash}`
     : null
   const canConfirm =
-    context.permissions.can_confirm &&
+    canConfirmRequirementsContext(context) &&
     requirements &&
-    context.stage === 'Clarification' &&
     !snapshot.isFetching &&
     !snapshot.error &&
     !confirm.isPending
@@ -281,7 +289,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               )}
             </div>
           ))}
-          {context.stage === 'Clarification' && (
+          {isRequirementsReviewContext(context) && (
             <div className="border-t border-border py-4">
               {confirm.error && <ErrorState message={errorMessage(confirm.error)} />}
               {confirm.data && <p role="status">{t('sdlc.confirmationSaved')}</p>}
@@ -351,12 +359,22 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                       >
                                         {route.fleet_config_revision}
                                       </DescriptionItem>
-                                      <DescriptionItem
-                                        layout="inline"
-                                        label={t('sdlc.publication.package')}
-                                      >
-                                        {route.package_commit} / {route.package_manifest_sha256}
-                                      </DescriptionItem>
+                                      {displayedPolicy.contract_version === 1 ? (
+                                        <DescriptionItem
+                                          layout="inline"
+                                          label={t('sdlc.publication.package')}
+                                        >
+                                          {route.package_commit} / {route.package_manifest_sha256}
+                                        </DescriptionItem>
+                                      ) : (
+                                        <DescriptionItem
+                                          layout="inline"
+                                          label={t('sdlc.publication.instructionProfile')}
+                                        >
+                                          {route.instruction_profile} /{' '}
+                                          {route.instruction_manifest_sha256}
+                                        </DescriptionItem>
+                                      )}
                                       <DescriptionItem
                                         layout="inline"
                                         label={t('sdlc.publication.workflow')}

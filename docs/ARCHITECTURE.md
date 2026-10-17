@@ -1,5 +1,78 @@
 # Архитектура Task Tracker
 
+Current critical PM review source uses the existing command/lease/resume/completion
+transactions, not a second scheduler. A journal-validated current review may read
+its exact frozen approved baseline while PM edits a newer revision; technical
+`exact_revision` checks stay strict. Owner confirmation alone remains Draft and
+creates no Analysis intent. Only actual trusted PM completion atomically resolves
+the blocker and publishes an append-only routing generation and Analysis intent.
+No current-project-policy substitution, historical receipt overwrite or legacy
+Analysis fallback is introduced. Tracker0fb passes the bounded compile,
+PostgreSQL, repeated-cycle and populated-history checks; this is not accepted
+stand installation or native/live SDLC acceptance.
+[Qualified scope](CRITICAL_BLOCKER_VERIFICATION.md#latest-qualified-source-15-october).
+[Persistence boundary](contracts/critical-pm-lifecycle-persistence.md).
+
+General Delivery Reserve owns execution display-key allocation using PM's existing
+identity sequence. All new-profile roles, including Analyst, receive immutable
+`execution:{ordinal,key}` in assignment/hash and lifecycle readback. Allocation is
+after replay/CAS/capacity checks and before the one transactional persistence/outbox
+boundary; failed transactions may consume unused ordinals. Fleet never synthesizes
+an execution key from task/chat identity. Missing execution on a historical receipt
+is a technical dispatch blocker, not authority to invent one. Legacy Analysis's
+separate sequence and Workflow namespace remain unchanged; no global historical
+display-key uniqueness, stopped-writer cutover or high-water repair is attempted.
+Stable canonical execution identity is Tracker instance plus execution UUID.
+
+New single-task enrollment is explicit at Draft creation, not inferred from a
+project flag or an existing PM reservation. The immutable `flow:"single-task-v1"`
+marker stays in canonical TaskState's retained JSON; Context/CreatedDraft do not
+grow new fields. Creation checks current declared v2 policy under the existing
+project lock only after original replay. Actual PM readiness belongs to Fleet's
+existing Draft SDK path, outside Tracker's transaction; Tracker never forces
+configuration or treats policy declarations as actual readiness.
+
+Owner confirmation freezes current project routing under the same project lock
+as consent/persistence. Optional caller version is an extra CAS, not the opt-in
+switch. The original confirmation command hash is unchanged when it is omitted;
+the selected policy is retained in the immutable snapshot, never retroactively
+substituted on replay. SQL protects marker shape/origin/immutability and requires
+the exact v2 snapshot before a marked task leaves Draft. Existing initial delivery
+projection and new assignment inserts reject absent marker without rewriting
+historical executions or interfering with their terminal/readback paths.
+
+Новая opt-in вертикаль одной задачи сохраняет цепочку controller/service/repository.
+Agent proposal не равен stage completion: Fleet после actual terminal передаёт
+guarded Complete, а Tracker владеет переходом и capacity. Второй планировщик
+не добавляется. [Single-task integration](SINGLE_TASK_DELIVERY_INTEGRATION.md).
+
+Single-task producer source retains one task UUID through all roles, with
+scheduler-only terminal acceptance/reconciliation and ordinary assignment-scoped
+agent proposals. SDLC project access always requires active local ownership or
+explicit membership; global human hints do not expand the SDLC directory. New
+queue/reserve is project-opt-in after original-operation replay. Tracker adds no
+runtime scheduler or Hermes proof protocol; parent integrates existing routes.
+[Integration boundary and trusted PM resume](TRACKER_SINGLE_TASK_HANDOFF.md).
+
+PM resume reuses the current execution/assignment/checkpoint and lease generation,
+with a new runtime run owned by Fleet, not a new Tracker scheduler. Only the configured
+reservation scheduler's separate write-only child credential can consume a real
+owner answer/feedback/confirmation and CAS-renew that retained lease after expiry.
+Before command submission, Fleet reads actual Workflow checkpoint and old runtime
+terminal through its existing credentialed readback/callback path. Tracker trusts
+that configured producer boundary (as Lifecycle Complete), checks local identity,
+ACL, current requirements and immutable input/dedup, and never treats an artifact
+reference/hash alone as independently verified terminal proof. No new outbound
+Fleet client/token or agent terminal/admission protocol is introduced. Ordinary
+claim/heartbeat, historical replay semantics and PM business-write freeze remain.
+
+Fleet continuation reads actual immutable owner feedback by message UUID using
+the existing PM holder's read-only assignment capability and fresh project ACL.
+It never impersonates the owner or looks up a human idempotency key. Tracker
+rechecks the saved owner/identities/hash against the current assignment fence;
+history is independent of lease expiry and current requirements revision. This
+read has no dispatch, lease, outbox or input-consumption effect and needs no new
+ledger/schema. Human feedback writes/operation reads keep their separate boundary.
 Inline-создание проекта записывает подтверждённый ответ в query cache первой
 страницы каталога и инвалидирует чтение. Форма задачи не держит отдельную
 постоянную копию проекта: свежий серверный каталог обновляет имя и доступность.

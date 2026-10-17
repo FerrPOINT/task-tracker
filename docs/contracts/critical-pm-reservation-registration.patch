@@ -1,0 +1,24 @@
+diff --git a/backend/domain/src/lib.rs b/backend/domain/src/lib.rs
+--- a/backend/domain/src/lib.rs
++++ b/backend/domain/src/lib.rs
+@@ -7,7 +7,8 @@
+ pub mod sdlc;
+ pub mod sdlc_candidates;
+ pub mod sdlc_configuration;
+ pub mod sdlc_critical_blockers;
++pub mod sdlc_critical_pm_reservation;
+ pub mod sdlc_execution_lease;
+ pub mod sdlc_lifecycle;
+ pub mod sdlc_metadata;
+diff --git a/backend/app/src/lib.rs b/backend/app/src/lib.rs
+--- a/backend/app/src/lib.rs
++++ b/backend/app/src/lib.rs
+@@ -9,7 +9,8 @@
+ pub mod sdlc_candidates;
+ pub mod sdlc_configuration;
+ pub mod sdlc_confirmation;
+ pub mod sdlc_critical_blockers;
++pub mod sdlc_critical_pm_reservation;
+ pub mod sdlc_draft_flow;
+ pub mod sdlc_lifecycle;
+ pub mod sdlc_metadata;

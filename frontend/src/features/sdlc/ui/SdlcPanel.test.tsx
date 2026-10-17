@@ -16,7 +16,7 @@ import {
 import { useAuthStore } from '@/shared/auth/store'
 import i18n from '@/shared/i18n/config'
 import { SdlcPanel } from './SdlcPanel'
-import { routingPolicy } from '@/api/test-fixtures/routing-policy'
+import { routingPolicy, singleTaskRoutingPolicy } from '@/api/test-fixtures/routing-policy'
 
 vi.mock('@/api/sdlc', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/api/sdlc')>()),
@@ -278,6 +278,232 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       'expected_routing_policy_version',
     )
   })
+  it.each(['awaiting_confirmation', 'clarification', undefined, null] as const)(
+    'fetches and submits v2 only with explicit consent in actual Draft %s',
+    async (draft_submode) => {
+      vi.mocked(getSdlcSnapshot).mockResolvedValue({
+        ...initial,
+        context: {
+          ...initial.context,
+          stage: 'Draft',
+          status: 'InProgress',
+          draft_submode,
+          waiting_reason:
+            draft_submode === 'clarification'
+              ? 'waiting_for_owner_answers'
+              : 'waiting_for_owner_confirmation',
+          permissions: { can_answer: draft_submode === 'clarification', can_confirm: true },
+        },
+      })
+      vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
+      vi.mocked(confirmRequirements).mockResolvedValue(receipt)
+      mount()
+      const choice = await screen.findByRole('checkbox', {
+        name: 'Publish with routing policy version 5',
+      })
+      expect(choice).not.toBeChecked()
+      expect(getSdlcRoutingPolicy).toHaveBeenCalledWith(
+        expect.objectContaining({ stage: 'Draft', draft_submode }),
+        expect.anything(),
+      )
+      expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
+      fireEvent.click(choice)
+      fireEvent.click(
+        screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
+      await waitFor(() =>
+        expect(confirmRequirements).toHaveBeenCalledWith(task, 2, {
+          content_hash: hash,
+          idempotency_key: expect.any(String),
+          expected_routing_policy_version: 5,
+        }),
+      )
+    },
+  )
+  it.each([
+    ['brainstorming', true],
+    ['clarification', false],
+    ['awaiting_confirmation', false],
+  ] as const)(
+    'does not fetch or confirm Draft %s with can_confirm=%s',
+    async (draft_submode, can_confirm) => {
+      vi.mocked(getSdlcSnapshot).mockResolvedValue({
+        ...initial,
+        context: {
+          ...initial.context,
+          stage: 'Draft',
+          draft_submode,
+          permissions: { can_answer: draft_submode === 'clarification', can_confirm },
+        },
+      })
+      mount()
+      await screen.findByText('Exact goal shown to the owner')
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Confirm requirements' })).not.toBeInTheDocument()
+      expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+      await waitFor(() => expect(getSdlcSnapshot).toHaveBeenCalledTimes(2))
+      expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
+  it('refreshes policy in Draft awaiting_confirmation and blocks stale saved consent', async () => {
+    const draft: SdlcSnapshot = {
+      ...initial,
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        draft_submode: 'awaiting_confirmation',
+      },
+    }
+    vi.mocked(getSdlcSnapshot).mockResolvedValue(draft)
+    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
+    mount()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+    )
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+    )
+    vi.mocked(getSdlcSnapshot).mockRejectedValue(new SdlcRequestError(503))
+    const policyReads = vi.mocked(getSdlcRoutingPolicy).mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+    await screen.findByText(/Saved data · refresh failed/)
+    expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
+    expect(
+      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+    ).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
+    expect(confirmRequirements).not.toHaveBeenCalled()
+    expect(getSdlcRoutingPolicy).toHaveBeenCalledTimes(policyReads)
+    vi.mocked(getSdlcSnapshot).mockResolvedValue(draft)
+    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue({
+      ...singleTaskRoutingPolicy(task),
+      version: 6,
+      routing_hash: 'b'.repeat(64),
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+    await screen.findByText(
+      'The selected policy is not current or its source is unavailable. Refresh and explicitly review the choice.',
+    )
+    expect(
+      screen.getByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+    ).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
+    expect(confirmRequirements).not.toHaveBeenCalled()
+  })
+  it('removes Draft consent when a fresh read returns to brainstorming', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        draft_submode: 'awaiting_confirmation',
+      },
+    })
+    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
+    mount()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+    )
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+    )
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...initial,
+      context: {
+        ...initial.context,
+        stage: 'Draft',
+        draft_submode: 'brainstorming',
+      },
+    })
+    const policyReads = vi.mocked(getSdlcRoutingPolicy).mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+    await waitFor(() => expect(screen.queryByRole('checkbox')).not.toBeInTheDocument())
+    expect(getSdlcRoutingPolicy).toHaveBeenCalledTimes(policyReads)
+    expect(confirmRequirements).not.toHaveBeenCalled()
+  })
+  it.each([
+    ['v1', routingPolicy, 'Package commit / manifest hash', 'Instruction profile / manifest hash'],
+    [
+      'v2',
+      singleTaskRoutingPolicy,
+      'Instruction profile / manifest hash',
+      'Package commit / manifest hash',
+    ],
+  ] as const)(
+    'shows only the actual %s source references without inventing package fields',
+    async (_family, makePolicy, label, absentLabel) => {
+      const policy = makePolicy(task)
+      vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(policy)
+      mount()
+      const choice = await screen.findByRole('checkbox', {
+        name: 'Publish with routing policy version 5',
+      })
+      expect(choice).not.toBeChecked()
+      const publication = screen.getByRole('region', { name: 'SDLC publication' })
+      fireEvent.click(within(publication).getByText('Seven-role policy references'))
+      expect(within(publication).getAllByText(label)).toHaveLength(7)
+      expect(within(publication).queryByText(absentLabel)).not.toBeInTheDocument()
+      const route = policy.routes.analyst
+      expect(
+        within(publication).getByText(`${route.workflow_id} / ${route.workflow_key}`, {
+          exact: false,
+        }),
+      ).toBeInTheDocument()
+      expect(
+        within(publication).getByText(/Native readiness and dispatch are not granted/),
+      ).toBeInTheDocument()
+      if (policy.contract_version === 2) {
+        expect(
+          within(publication).getAllByText(
+            `single-task-v1 / ${policy.routes.analyst.instruction_manifest_sha256}`,
+          ),
+        ).toHaveLength(7)
+        expect(
+          within(publication).queryByText(/4b9b4c9297a13fb28a6ba2039af2f7cb719f2f58/),
+        ).not.toBeInTheDocument()
+      }
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
+  it('publishes v2 only with explicit owner selection and the existing exact policy CAS', async () => {
+    vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(singleTaskRoutingPolicy(task))
+    vi.mocked(confirmRequirements).mockResolvedValue(receipt)
+    mount()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Publish with routing policy version 5' }),
+    )
+    expect(screen.getByRole('button', { name: 'Confirm requirements' })).toBeDisabled()
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'I confirm the requirements of revision 2' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm requirements' }))
+    await waitFor(() =>
+      expect(confirmRequirements).toHaveBeenCalledWith(task, 2, {
+        content_hash: hash,
+        idempotency_key: expect.any(String),
+        expected_routing_policy_version: 5,
+      }),
+    )
+  })
+  it('shows a frozen profile Analysis intent as queued, not admitted or owner-confirmable', async () => {
+    vi.mocked(getSdlcSnapshot).mockResolvedValue({
+      ...queued,
+      intent: { ...intent, workflow: 'single-task-v1:analyst' },
+    })
+    mount()
+    expect(
+      await screen.findByText('Analysis / Ready · Queued, awaiting admission'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Analyst / single-task-v1:analyst / analysis / business'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
+    expect(confirmRequirements).not.toHaveBeenCalled()
+  })
   it('posts only explicitly selected viewed policy version, without native admission', async () => {
     vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(routingPolicy(task))
     vi.mocked(confirmRequirements).mockResolvedValue(receipt)
@@ -380,12 +606,18 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       vi.mocked(confirmRequirements).mock.calls[1],
     )
   })
-  it.each([401, 403, 503])(
+  it.each([401, 403, 409, 503])(
     'withholds policy choice for source error %i without opting in',
     async (status) => {
       vi.mocked(getSdlcRoutingPolicy).mockRejectedValue(new SdlcRequestError(status))
       mount()
       await screen.findByRole('alert')
+      if (status === 409)
+        expect(
+          screen.getByText(
+            'The revision or retained SDLC binding is inconsistent; refresh required',
+          ),
+        ).toBeInTheDocument()
       expect(
         screen.queryByRole('checkbox', { name: /Publish with routing/ }),
       ).not.toBeInTheDocument()
@@ -411,7 +643,7 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
   })
-  it.each([403, 503])(
+  it.each([403, 409, 503])(
     'blocks already selected publication on policy refresh error %i',
     async (status) => {
       vi.mocked(getSdlcRoutingPolicy).mockResolvedValue(routingPolicy(task))
@@ -641,4 +873,153 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
     ).toBeInTheDocument()
     expect(screen.queryByText(/Analysis \/ Ready/)).not.toBeInTheDocument()
   })
+  it.each([
+    ['delivery.queued', 'Delivery queued', 'Работа поставлена в очередь'],
+    ['delivery.reconciled', 'Delivery reconciled', 'Состояние выполнения сверено'],
+    [
+      'delivery.assignment_reserved',
+      'Delivery assignment prepared, awaiting admission',
+      'Назначение подготовлено, допуск ожидается',
+    ],
+    ['delivery.lease_renewed', 'Delivery lease renewed', 'Аренда назначения продлена'],
+    ['delivery.run_bound', 'Delivery run bound', 'Запуск привязан к назначению'],
+    ['delivery.result_accepted', 'Delivery result accepted', 'Результат выполнения принят'],
+  ] as const)(
+    'translates lifecycle history %s without granting owner actions',
+    async (kind, en, ru) => {
+      const assigned = [
+        'delivery.assignment_reserved',
+        'delivery.lease_renewed',
+        'delivery.run_bound',
+      ].includes(kind)
+      const accepted = kind === 'delivery.result_accepted'
+      const lifecycleEvent: MetadataEvent = {
+        ...event,
+        event_type: kind,
+        payload: {
+          ...event.payload,
+          resource: {
+            task_version: 10,
+            status: assigned ? 'InProgress' : 'Ready',
+            runtime: kind === 'delivery.run_bound' ? 'running' : assigned ? 'reserved' : 'queued',
+            assignment_id: assigned ? confirmationId : null,
+            execution_id: assigned ? intentId : null,
+            agent_id: assigned ? task : null,
+            fencing_token: assigned ? 3 : null,
+            lease_id: assigned ? task : null,
+            lease_version: assigned ? 2 : null,
+            assignment_hash: assigned ? hash : null,
+            result_id: accepted ? task : null,
+            previous_result_id: accepted ? task : null,
+            result_sha256: accepted ? hash : null,
+          },
+        },
+      }
+      vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
+      vi.mocked(getSdlcMetadata).mockResolvedValue({
+        contract_version: 1,
+        projection: 'metadata_v1',
+        after: '0',
+        next_after: '19',
+        has_more: false,
+        events: [lifecycleEvent],
+      })
+      mount()
+      const history = await screen.findByRole('region', { name: 'SDLC events' })
+      expect(await within(history).findByText(en)).toBeInTheDocument()
+      await act(() => i18n.changeLanguage('ru'))
+      expect(await within(history).findByText(ru)).toBeInTheDocument()
+      expect(within(history).queryByText(/sdlc\.events\./)).not.toBeInTheDocument()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
+  it.each([
+    {
+      event: {
+        ...event,
+        event_type: 'delivery.proposal_submitted',
+        payload: {
+          ...event.payload,
+          resource: {
+            proposal_id: intentId,
+            assignment_id: confirmationId,
+            execution_id: intentId,
+            agent_id: task,
+            output_sha256: hash,
+          },
+        },
+      },
+      en: 'Delivery proposal submitted',
+      ru: 'Предложение результата сохранено',
+    },
+    {
+      event: {
+        ...event,
+        event_type: 'pm.feedback_recorded',
+        payload: {
+          ...event.payload,
+          resource: {
+            message_id: intentId,
+            content_hash: hash,
+            fence: {
+              assignment_id: confirmationId,
+              execution_id: intentId,
+              agent_id: task,
+              assignment_version: 2,
+            },
+          },
+        },
+      },
+      en: 'PM feedback recorded',
+      ru: 'Сообщение владельца для PM сохранено',
+    },
+    {
+      event: {
+        ...event,
+        event_type: 'pm.completed',
+        payload: {
+          ...event.payload,
+          resource: {
+            completion_id: intentId,
+            fence: {
+              assignment_id: confirmationId,
+              execution_id: intentId,
+              agent_id: task,
+              assignment_version: 2,
+            },
+            lease_id: task,
+            lease_version: 2,
+            requirement_revision: 2,
+            content_hash: hash,
+            terminal_receipt_sha256: hash,
+            workflow_receipt_sha256: hash,
+          },
+        },
+      },
+      en: 'PM execution completed',
+      ru: 'Выполнение PM завершено',
+    },
+  ] satisfies { event: MetadataEvent; en: string; ru: string }[])(
+    'translates $event.event_type without treating it as owner confirmation',
+    async ({ event: recorded, en, ru }) => {
+      vi.mocked(getSdlcSnapshot).mockResolvedValue(queued)
+      vi.mocked(getSdlcMetadata).mockResolvedValue({
+        contract_version: 1,
+        projection: 'metadata_v1',
+        after: '0',
+        next_after: '19',
+        has_more: false,
+        events: [recorded],
+      })
+      mount()
+      const history = await screen.findByRole('region', { name: 'SDLC events' })
+      expect(await within(history).findByText(en)).toBeInTheDocument()
+      await act(() => i18n.changeLanguage('ru'))
+      expect(await within(history).findByText(ru)).toBeInTheDocument()
+      expect(within(history).queryByText(/sdlc\.events\./)).not.toBeInTheDocument()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+      expect(confirmRequirements).not.toHaveBeenCalled()
+    },
+  )
 })

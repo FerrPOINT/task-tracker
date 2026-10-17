@@ -71,6 +71,52 @@ struct Observation {
     blockers: Vec<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileMode {
+    mode_id: String,
+    key: String,
+    execution_scopes: Vec<String>,
+    phase_ids: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileBinding {
+    schema: String,
+    instruction_profile: String,
+    instruction_manifest_sha256: String,
+    workflow_catalog_version: u32,
+    workflow_catalog_sha256: String,
+    namespace_id: String,
+    namespace_name: String,
+    namespace_cli_command: String,
+    workflow_id: String,
+    workflow_key: String,
+    role_key: String,
+    profile: String,
+    role_instructions_sha256: String,
+    modes: Vec<ProfileMode>,
+    // Catalog observations, not agent process health or task execution permission.
+    #[serde(rename = "runtime_ready")]
+    _runtime_ready: bool,
+    #[serde(rename = "live_activation_allowed")]
+    _live_activation_allowed: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileObservation {
+    contract_version: u8,
+    observation_ref: Uuid,
+    agent_id: Uuid,
+    sdlc_role: String,
+    effective_revision: i64,
+    workflow_binding: ProfileBinding,
+    observed_at: DateTime<Utc>,
+    managed_files_verified: bool,
+}
+
 pub struct MatchedConfiguration {
     pub observation_ref: Uuid,
     pub observed_at: DateTime<Utc>,
@@ -123,8 +169,10 @@ fn compare(
         })
         || p.schema != "base-sdlc/package-proof/v1"
         || p.repository != "https://github.com/FerrPOINT/services-base.git"
-        || p.commit != route.package_commit
-        || p.manifest_sha256 != route.package_manifest_sha256
+        || route.instruction_profile.is_some()
+        || route.instruction_manifest_sha256.is_some()
+        || route.package_commit.as_deref() != Some(p.commit.as_str())
+        || route.package_manifest_sha256.as_deref() != Some(p.manifest_sha256.as_str())
         || p.role != role
         || p.namespace != route.namespace_name
         || p.profile != route.profile
@@ -141,7 +189,7 @@ fn compare(
         || w.profile != route.profile
         || w.catalog_version != route.workflow_catalog_version
         || w.catalog_sha256 != route.workflow_catalog_sha256
-        || w.skills_revision != route.package_commit
+        || route.package_commit.as_deref() != Some(w.skills_revision.as_str())
     {
         return Err(mismatch());
     }
@@ -227,9 +275,103 @@ impl FleetConfigurationReader {
             }
             body.extend_from_slice(&chunk);
         }
-        let value = serde_json::from_slice(&body).map_err(|_| unavailable())?;
-        compare(route, role, mode, value)
+        if route.instruction_profile.as_deref() == Some("single-task-v1") {
+            let value = serde_json::from_slice(&body).map_err(|_| unavailable())?;
+            compare_profile(route, role, mode, value)
+        } else {
+            let value = serde_json::from_slice(&body).map_err(|_| unavailable())?;
+            compare(route, role, mode, value)
+        }
     }
+}
+
+fn compare_profile(
+    route: &RoleRoute,
+    role: &str,
+    mode: &str,
+    observation: ProfileObservation,
+) -> Result<MatchedConfiguration, AppError> {
+    let w = &observation.workflow_binding;
+    let observed_role = if observation.sdlc_role == "dev_ops" {
+        "devops"
+    } else {
+        &observation.sdlc_role
+    };
+    let suffix = role.replace('_', "-");
+    if observation.contract_version != 2
+        || observation.observation_ref.is_nil()
+        || observation.agent_id != route.agent_id
+        || observed_role != role
+        || observation.effective_revision != route.fleet_config_revision
+        || !observation.managed_files_verified
+        || route.package_commit.is_some()
+        || route.package_manifest_sha256.is_some()
+        || route.instruction_profile.as_deref() != Some("single-task-v1")
+        || w.schema != "single-task-sdlc/workflow-binding/v1"
+        || w.instruction_profile != "single-task-v1"
+        || route.instruction_manifest_sha256.as_deref()
+            != Some(w.instruction_manifest_sha256.as_str())
+        || !sha256(&w.instruction_manifest_sha256)
+        || !sha256(&w.role_instructions_sha256)
+        || w.namespace_id != route.namespace_id
+        || w.namespace_name != route.namespace_name
+        || w.namespace_name != format!("single-task-{suffix}")
+        || w.namespace_cli_command != format!("workflow-single-task-{suffix}")
+        || w.workflow_id != route.workflow_id
+        || w.workflow_key != route.workflow_key
+        || w.workflow_key != format!("single-task-v1:{role}")
+        || w.role_key != role
+        || w.profile != route.profile
+        || w.profile != format!("single-task-v1-{suffix}")
+        || w.workflow_catalog_version != 1
+        || w.workflow_catalog_version != route.workflow_catalog_version
+        || w.workflow_catalog_sha256 != route.workflow_catalog_sha256
+        || !sha256(&w.workflow_catalog_sha256)
+    {
+        return Err(mismatch());
+    }
+    let expected: &[(&str, &str)] = match role {
+        "project_manager" => &[("draft", "business")],
+        "analyst" => &[("analysis", "business")],
+        "architect" => &[("decomposition", "business")],
+        "developer" => &[("initial", "delivery"), ("rework", "delivery")],
+        "reviewer" | "tester" | "devops" => &[("delivery", "delivery")],
+        _ => return Err(mismatch()),
+    };
+    let database_id = |id: &str| {
+        id.parse::<i64>()
+            .is_ok_and(|n| n > 0 && n.to_string() == id)
+    };
+    let mut modes = std::collections::HashSet::new();
+    let mut mode_keys = std::collections::HashSet::new();
+    let mut phases = std::collections::HashSet::new();
+    if w.modes.len() != expected.len()
+        || !database_id(&w.namespace_id)
+        || !database_id(&w.workflow_id)
+        || !w.modes.iter().any(|m| m.key == mode)
+        || w.modes.iter().any(|m| {
+            !database_id(&m.mode_id)
+                || !modes.insert(&m.mode_id)
+                || !mode_keys.insert(&m.key)
+                || !expected.iter().any(|(key, scope)| {
+                    m.key == *key
+                        && m.execution_scopes.len() == 1
+                        && m.execution_scopes[0] == *scope
+                })
+                || m.phase_ids.len() != 3
+                || m.phase_ids
+                    .iter()
+                    .any(|id| !database_id(id) || !phases.insert(id))
+        })
+    {
+        return Err(mismatch());
+    }
+    let matched = MatchedConfiguration {
+        observation_ref: observation.observation_ref,
+        observed_at: observation.observed_at,
+    };
+    matched.ensure_fresh()?;
+    Ok(matched)
 }
 
 #[cfg(test)]

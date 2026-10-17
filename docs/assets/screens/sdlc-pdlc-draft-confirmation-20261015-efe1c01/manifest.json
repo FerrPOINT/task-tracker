@@ -1,0 +1,273 @@
+{
+  "schema_version": 1,
+  "fixture": true,
+  "live_acceptance": false,
+  "production_sso": false,
+  "source": "a545a5f6fb97457d85bd49d8be4db1dbab6dacd6",
+  "baseline": "efe1c0172df953fbcfb221766bd00095f540cedc",
+  "source_adjustment": "Prettier-only SdlcPanel conditional props; no semantic change",
+  "base_ui": "7c7b24cd57cb4470b696d97933283018a20fbbb3",
+  "base_sdk": "7c7b24cd57cb4470b696d97933283018a20fbbb3",
+  "namespace_base": "7c7b24cd57cb4470b696d97933283018a20fbbb3",
+  "ui_package": "@pdlc/ui",
+  "ui_source": "base-modules/ui",
+  "installed_ui_files_verified": 352,
+  "lock_sha256": "ce3550d0cbb56d5f584098211f07a20becd540db9f42d73939484220afaef7b6",
+  "dependency_installation": "own frozen lock, own temporary store, ignore scripts; no shared cache writes or node_modules copies",
+  "route": "/issues/DEMO-1?tab=sdlc",
+  "language": "ru",
+  "fixture_state": {
+    "stage": "Draft",
+    "draft_submode": "awaiting_confirmation",
+    "status": "Ready",
+    "requirement_revision": 2,
+    "policy_contract_version": 2,
+    "policy_version": 5,
+    "can_confirm": true,
+    "can_answer": false,
+    "references_expanded": true,
+    "owner_acknowledged": false,
+    "publication_selected": false,
+    "confirmation_disabled": true,
+    "native_ready": false,
+    "dispatch_allowed": false
+  },
+  "browser_cases_passed": 9,
+  "screenshots": 9,
+  "reference_bounds_observations": 378,
+  "business_writes": 0,
+  "page_errors": 0,
+  "unmocked_origins": 0,
+  "horizontal_overflow": false,
+  "capture": {
+    "fullPage": true,
+    "scale": "css",
+    "animations": "disabled",
+    "pixels_edited": false,
+    "path_base": "manifest_directory"
+  },
+  "images": [
+    {
+      "path": "chromium-375x812-fullpage.png",
+      "browser": "chromium",
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "actual_image": {
+        "width": 375,
+        "height": 6243
+      },
+      "sha256": "556c18a80336db3a23cd0c822f1e0c7191a6e1658a7f0fdacc1077828d76a076",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "c6e2b0393f0a63142d097956c7c71b1b056dbb39c2292b2e9c0395226711a3d2"
+    },
+    {
+      "path": "chromium-1920x1080-fullpage.png",
+      "browser": "chromium",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual_image": {
+        "width": 1920,
+        "height": 4019
+      },
+      "sha256": "1633ed16490dfd14a7778b9521c7913aac02f8702929b1d50d404412347756f2",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "6891b9dc71d82a252ad2e431e5eed263837e4124ddf991c83885cc2a3ac095d7"
+    },
+    {
+      "path": "chromium-2560x1440-fullpage.png",
+      "browser": "chromium",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "actual_image": {
+        "width": 2560,
+        "height": 4019
+      },
+      "sha256": "3589b33c19850e0de31d947063ef6b4f4681d5d498e311e038235ebfa05d331b",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "f179fab5fd838feee1e5fbcf75a5ab16947cfc466eb62f01b1d4701acafa3145"
+    },
+    {
+      "path": "firefox-375x812-fullpage.png",
+      "browser": "firefox",
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "actual_image": {
+        "width": 375,
+        "height": 6228
+      },
+      "sha256": "e3f3ed8d21dddaa3fdc48754cfba27a84625d1c964e744180af6277e6af3ef3f",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "c93dfff23cdb1830d74a29a1b53df8da3cda2c2def8bbdfd8e17a207d1f6d77f"
+    },
+    {
+      "path": "firefox-1920x1080-fullpage.png",
+      "browser": "firefox",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual_image": {
+        "width": 1920,
+        "height": 4024
+      },
+      "sha256": "d4793e67217c99734c4ef9510529b3ba3a9869753c45dd792c9dc04182b8f6bd",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "f4923cc5706eac12cc674349fc994f4d4e635cdf5d3b6d5a66a23c28add27b12"
+    },
+    {
+      "path": "firefox-2560x1440-fullpage.png",
+      "browser": "firefox",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "actual_image": {
+        "width": 2560,
+        "height": 4024
+      },
+      "sha256": "e5ebdc1514d5a5f9b88b28b8a76403e61f442e9579890a8549c4403cd1224a5c",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "c65184e01ea68986994d1de2c62f3efb19d7d91c235494143539a5f3b7b1c7c4"
+    },
+    {
+      "path": "webkit-375x812-fullpage.png",
+      "browser": "webkit",
+      "viewport": {
+        "width": 375,
+        "height": 812
+      },
+      "actual_image": {
+        "width": 375,
+        "height": 6223
+      },
+      "sha256": "41900b9f20489100330c66c868c439c528c3fca291a1a400583f2b3ca9c18fee",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "0246d0d65b6075809085d0008ea66588c42568dabe90b9cc1fbe3627aa7a3b7a"
+    },
+    {
+      "path": "webkit-1920x1080-fullpage.png",
+      "browser": "webkit",
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "actual_image": {
+        "width": 1920,
+        "height": 4019
+      },
+      "sha256": "ddb260233b43ea803f0e97691e844496083cea81001b167b545616e9ef287522",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "86672de2a880bb4f177ad088bea0238dd4e2737ead83d302822a244ab35d5e63"
+    },
+    {
+      "path": "webkit-2560x1440-fullpage.png",
+      "browser": "webkit",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "actual_image": {
+        "width": 2560,
+        "height": 4019
+      },
+      "sha256": "7c0a1cf77fec675a63d835af789faa1bd202f14c9b8ec90844a9ddf3bbe05803",
+      "fullPage": true,
+      "scale": "css",
+      "view": "pdlc-draft-awaiting-confirmation-v2-references-expanded",
+      "roles_checked": 7,
+      "reference_bounds_checked": 42,
+      "case_record_sha256": "eb52f44e0a30d341fed3358bdc7f6b098e5e7a870aeb3813e4db06601c9be7d8"
+    }
+  ],
+  "frontend_validation": {
+    "focused_tests_passed": 156,
+    "full_tests_passed": 489,
+    "full_test_runs": 1,
+    "full_build_runs": 1,
+    "typecheck": "PASS",
+    "full_lint": "PASS",
+    "full_format": "PASS after allowed panel-only formatting",
+    "api_generation_check": "PASS",
+    "raw_panel_format_preflight": "FAIL; required whitespace-only correction retained in source_adjustment"
+  },
+  "source_file_sha256": {
+    "frontend/src/features/sdlc/model/confirmation-context.test.ts": "2847ca953e77571d6847e1a2748181bc2caf04bad63b070be8eebe478f80fe34",
+    "frontend/src/shared/i18n/locales/en.json": "d13314aa052a391cc81695d27be2d09463359624eeecf65b32a7be987d3fb723",
+    "frontend/src/features/sdlc/model/confirmation-context.ts": "036d1b21aef62ab6d9c4bf2f053f093883cef23873349438884bd7f7f25c83c6",
+    "frontend/src/features/sdlc/model/use-sdlc.ts": "987caae08d2c422953ce06beb5b6d051a2ff3a3978b36d85af62fd7d42e83547",
+    "frontend/src/features/sdlc/ui/SdlcPanel.test.tsx": "0cfc1a40541f6b88ec60bbd98facefac16b569858f56d218c128617acb780077",
+    "frontend/src/api/test-fixtures/routing-policy.ts": "3651e816bd77a66a4800ae29f61b35cd31e7aa4f56af43ac7c02ba9876f06d78",
+    "frontend/src/api/sdlc.ts": "719d671cf9ef7df367b759ee9f0266e6612e1f44641538b27ee0f8237cf18106",
+    "frontend/src/features/sdlc/ui/SdlcPanel.tsx": "35bcda174dd91caa2e0ffb57a478850821bacf92e633dac94403d9e0d892261e",
+    "frontend/src/api/sdlc.test.ts": "bf1350599141d50c06f6165ed7db6d2cfb5fc0da39caa4af4b0979424e811972",
+    "frontend/src/shared/i18n/locales/ru.json": "b2a9c39a1bceb5976a3d698eb43134ab27df9be9573da1b4d6cdde267c91979c"
+  },
+  "fixture_sha256": "b95d5661c1065dd33527fc2955310dfbc357e632abbdb47794cad880b52ffe6d",
+  "config_sha256": "c3650001c4afb5e55cfb95f680da035cb837a7bcf21406cef91f1c2dfb8e00be",
+  "report_sha256": {
+    "focused-unit.log": "2d03ace83307cc5e19b642ae0bf7b0890baa8bab3b768d7bed0239f1dcd7747e",
+    "full-unit.log": "fdab217d417211b506ec3d0d32f56455122e87edec2262fcedc0c3dc2e7b29a3",
+    "typecheck.log": "f1acfe9de53ba8bf22f383a6b56112112890aed6dcb07d2aa0a26408606e15d2",
+    "full-lint.log": "ebffc2145b3151862e409d1403480986b85aadbca7f4817fe9715de8cbf9c0a7",
+    "full-format-check.log": "8b02a1bd78ac90357f9138a659c56c52c7a5b3b5f6a286bc3722bd1dff3a0469",
+    "full-build.log": "b42bee5459518ee28591d54bd4216b9a8a33c07f4bb37ecdb18866bacea54742",
+    "openapi-check.log": "88a890cc95df7e51d88321100484ede30c8c3c656583309473c3128c3d546c74",
+    "fullpage.json": "ca2fe9243065b6674404ae3c9ce1bd4b540287b56862f37058bb1fea70e74a35",
+    "inputs.json": "426509234615593e6e8436431553c61f9f83d5edbb3cfc4bc8ce80731a1d37d9",
+    "result.json": "d4b83c23ec11d8f82b27408b748ff2d98e0f3762d39e33ca857fcdc239362646"
+  },
+  "cleanup_verified": true,
+  "own_store_removed": true,
+  "node_modules_removed": true,
+  "preview_stopped": true,
+  "lock_unchanged": true,
+  "historical_packet": {
+    "source": "36f7ce98a28a89e4471663ce51cf5c524e0ff225",
+    "docs_commit": "d3c4f5ba045627133bf17bd6623afc70eb0ee420",
+    "base_ui": "8e944aa83c951008c227e28d9df15ed40719abb1",
+    "screenshots": 9,
+    "hashes_verified": true,
+    "qualifies_current_candidate": false
+  },
+  "initial_runner_setup_failure": "Unsupported state-dir argument; stopped before install/tests, old log preserved, cleanup verified"
+}
