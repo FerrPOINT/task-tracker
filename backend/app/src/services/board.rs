@@ -29,6 +29,24 @@ pub struct BoardServiceImpl {
 }
 
 impl BoardServiceImpl {
+    /// Backlog belongs to the board's first Todo column, not an unrelated
+    /// workflow whose status happens to come first in the global catalogue.
+    fn backlog_status(board: &Board, statuses: &[domain::Status]) -> StatusId {
+        board
+            .columns
+            .iter()
+            .find(|column| column.category == StatusCategory::Todo && !column.id.as_uuid().is_nil())
+            .map(|column| column.id)
+            .or_else(|| {
+                statuses
+                    .iter()
+                    .filter(|status| status.category == StatusCategory::Todo)
+                    .min_by_key(|status| (!status.is_default, status.position, status.id.as_uuid()))
+                    .map(|status| status.id)
+            })
+            .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()))
+    }
+
     /// Snapshot of the target column's WIP capacity for the atomic guard.
     /// Counting happens again inside the critical section; this snapshot
     /// only builds the guard (limits/names) that survives into it.
@@ -92,19 +110,7 @@ impl BoardServiceImpl {
             .await?;
 
         let db_statuses = self.statuses.list_all().await?;
-        // Backlog = issues in the first Todo-category status that are not in a sprint.
-        let todo_status = db_statuses
-            .iter()
-            .find(|s| s.category == StatusCategory::Todo)
-            .map(|s| s.id)
-            .unwrap_or_else(|| {
-                board
-                    .columns
-                    .iter()
-                    .find(|c| c.category == StatusCategory::Todo)
-                    .map(|c| c.id)
-                    .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()))
-            });
+        let todo_status = Self::backlog_status(&board, &db_statuses);
         let backlog_total = self
             .issues
             .count_backlog(board.project_id, todo_status)
@@ -228,18 +234,7 @@ impl crate::context::BoardService for BoardServiceImpl {
             .await?;
 
         let db_statuses = self.statuses.list_all().await?;
-        let todo_status = db_statuses
-            .iter()
-            .find(|s| s.category == StatusCategory::Todo)
-            .map(|s| s.id)
-            .unwrap_or_else(|| {
-                board
-                    .columns
-                    .iter()
-                    .find(|c| c.category == StatusCategory::Todo)
-                    .map(|c| c.id)
-                    .unwrap_or(StatusId::from_uuid(uuid::Uuid::nil()))
-            });
+        let todo_status = Self::backlog_status(&board, &db_statuses);
 
         let sprint_issues_raw: Vec<_> = all_non_backlog_candidates
             .into_iter()

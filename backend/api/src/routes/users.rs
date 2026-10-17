@@ -220,10 +220,9 @@ async fn fetch_central_directory(
                 shared::AppError::Unavailable("Central Auth directory is invalid".into())
             })?;
         let count = batch.len();
-        for entry in batch {
+        for mut entry in batch {
             if entry.id.trim().is_empty()
                 || entry.email.trim().is_empty()
-                || entry.display_name.trim().is_empty()
                 || !matches!(entry.status.as_str(), "active" | "pending" | "disabled")
             {
                 return Err(shared::AppError::Unavailable(
@@ -232,6 +231,9 @@ async fn fetch_central_directory(
             }
             if entry.status == "disabled" {
                 continue;
+            }
+            if entry.display_name.trim().is_empty() {
+                entry.display_name = entry.email.clone();
             }
             users.push(entry);
         }
@@ -284,6 +286,38 @@ mod tests {
             UserId::for_central_subject("new-subject").to_string()
         );
         assert_eq!(first[0].display_name, "Central name");
+    }
+
+    #[tokio::test]
+    async fn blank_display_name_does_not_break_central_directory_read() {
+        // Auth registration permits an empty display name. It is presentation,
+        // not identity or proof that an otherwise active account is invalid.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let router = axum::Router::new().route("/auth/users", axum::routing::get(|| async {
+            Json(serde_json::json!([
+                {"id":"active-subject","email":"active@example.test","display_name":"  ","status":"active"},
+                {"id":"disabled-subject","email":"disabled@example.test","display_name":"","status":"disabled"}
+            ]))
+        }));
+        let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "Bearer test-directory-session".parse().unwrap(),
+        );
+        let result =
+            fetch_central_directory(&headers, &format!("http://{address}/oidc/jwks")).await;
+        server.abort();
+        let _ = server.await;
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 1);
+        let projected = project_directory(&entries, &HashMap::new()).unwrap();
+        assert_eq!(
+            projected[0].id,
+            UserId::for_central_subject("active-subject").to_string()
+        );
+        assert_eq!(projected[0].display_name, "active@example.test");
     }
 
     #[test]
