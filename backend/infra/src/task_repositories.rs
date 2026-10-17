@@ -2,6 +2,8 @@
 use domain::task_repositories::{RepositoryRef, TaskRepositoriesReader};
 use shared::{AppError, resource_context::NamespaceRef};
 use uuid::Uuid;
+#[path = "task_source_reader.rs"]
+mod source_reader;
 pub struct ForgeReader {
     client: reqwest::Client,
     endpoint: reqwest::Url,
@@ -98,6 +100,13 @@ impl ForgeReader {
 }
 #[async_trait::async_trait]
 impl TaskRepositoriesReader for ForgeReader {
+    async fn verify_source(
+        &self,
+        namespace: &NamespaceRef,
+        source: &domain::sdlc_source::SourcePolicySpec,
+    ) -> Result<domain::sdlc_source::VerifiedSource, AppError> {
+        self.verify_source_observation(namespace, source).await
+    }
     async fn evidence(
         &self,
         namespace: &NamespaceRef,
