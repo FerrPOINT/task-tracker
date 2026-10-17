@@ -275,6 +275,7 @@ async fn source_owner_cas_replay_owner_disable_and_no_historical_enrollment() {
         .await
         .unwrap();
     }
+    assert_legacy_routed_confirmation(&db, &repo, &owner, draft.task_id).await;
     let task = new_draft.task_id;
     let policy = repo.routing_policy(project, &owner, None).await.unwrap();
     let (reservation, _) = repo
@@ -703,6 +704,96 @@ async fn explicit_unconfigured_draft_fixture(
             .is_err()
     );
     assert_frozen_enrollment(db, &repo, task, owner, receipt.source_revision).await;
+}
+
+async fn assert_legacy_routed_confirmation(
+    db: &DatabaseConnection,
+    repo: &PostgresSdlcRepository,
+    owner: &Principal,
+    task: Uuid,
+) {
+    let state = repo.read(task, owner).await.unwrap();
+    assert_eq!(state.draft_flow().unwrap(), None);
+    let policy = repo
+        .routing_policy(state.project_id, owner, None)
+        .await
+        .unwrap();
+    let (reservation, _) = repo
+        .reserve_pm_draft(
+            task,
+            owner,
+            serde_json::from_value(json!({
+                "requested_agent_id":policy.routes.project_manager.agent_id,
+                "expected_owner_version":0,"expected_assignment_version":null,
+                "idempotency_key":"legacy-routed:reserve"}))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let mut pm = actor("source-pm", false);
+    pm.scopes.insert(reservation.assignment.scope(task));
+    let fence = MachineFence {
+        assignment_id: reservation.assignment.assignment_id,
+        execution_id: reservation.assignment.execution_id,
+        agent_id: reservation.assignment.agent_id,
+        assignment_version: reservation.assignment.version,
+    };
+    repo.claim_execution_lease(
+        task,
+        &pm,
+        domain::sdlc_execution_lease::ClaimExecutionLease {
+            expected_owner_version: reservation.owner_cas.version,
+            fence: fence.clone(),
+            idempotency_key: "legacy-routed:claim".into(),
+        },
+    )
+    .await
+    .unwrap();
+    let command = prepare_enrollment_confirmation(repo, task, &reservation, &pm, &fence).await;
+    let before = repo.read(task, owner).await.unwrap();
+    let saved = repo
+        .execute_verified(task, owner, command.clone(), reservation.clone(), None)
+        .await
+        .unwrap();
+    let snapshot = repo.task_routing_snapshot(task, owner).await.unwrap();
+    assert_eq!(snapshot.policy, policy);
+    assert_eq!(saved["id"], json!(snapshot.confirmation_id));
+    assert_eq!(saved["stage"], json!("Backlog"));
+    let intent = repo.analysis_intent(task, owner).await.unwrap();
+    assert_eq!(intent.confirmation_id, snapshot.confirmation_id);
+    assert_eq!(intent.workflow, snapshot.policy.routes.analyst.workflow_key);
+    let after = repo.read(task, owner).await.unwrap();
+    assert_eq!(after.stage, Stage::Analysis);
+    assert_eq!(after.status, None);
+    assert_eq!(
+        serde_json::to_value(after.assignment).unwrap(),
+        serde_json::to_value(before.assignment).unwrap()
+    );
+    let inventory = db
+        .query_one(statement(
+            "SELECT (SELECT count(*) FROM sdlc_task_source_selections WHERE task_id=$1) AS selections,
+             (SELECT count(*) FROM sdlc_task_source_bindings WHERE task_id=$1) AS bindings,
+             (SELECT count(*) FROM sdlc_task_routing_snapshots WHERE task_id=$1) AS snapshots,
+             (SELECT count(*) FROM sdlc_analysis_intents WHERE task_id=$1) AS intents",
+            vec![task.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(inventory.try_get::<i64>("", "selections").unwrap(), 0);
+    assert_eq!(inventory.try_get::<i64>("", "bindings").unwrap(), 0);
+    assert_eq!(inventory.try_get::<i64>("", "snapshots").unwrap(), 1);
+    assert_eq!(inventory.try_get::<i64>("", "intents").unwrap(), 1);
+    assert_eq!(
+        repo.execute_verified(task, owner, command, reservation, None)
+            .await
+            .unwrap(),
+        saved
+    );
+    assert_eq!(
+        repo.task_routing_snapshot(task, owner).await.unwrap(),
+        snapshot
+    );
 }
 
 async fn prepare_enrollment_confirmation(

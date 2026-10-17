@@ -554,8 +554,10 @@ impl PostgresSdlcRepository {
                 let mut intent = app::sdlc::analysis_intent(state, &confirmation, Uuid::new_v4())?;
                 if let Some(snapshot) = &routing_snapshot {
                     intent.workflow = snapshot.policy.routes.analyst.workflow_key.clone();
-                    self.freeze_source(tx, state, &confirmation, snapshot)
-                        .await?;
+                    if state.draft_flow()?.is_some() {
+                        self.freeze_source(tx, state, &confirmation, snapshot)
+                            .await?;
+                    }
                 }
                 exec(tx, "INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,operation_key,payload,routing_snapshot_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
                     vec![intent.intent_id.into(), task.into(), (*revision).into(), c.content_hash.clone().into(),
