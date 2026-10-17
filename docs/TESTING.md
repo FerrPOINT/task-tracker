@@ -390,6 +390,14 @@ generation ещё не выполнялась; его не добавляют п
 
 ## Точные Rust artifacts обычной сборки
 
+Project-directory units модуля `sdlc` находятся в
+`backend/domain/src/tests/project_directory.rs`; module остаётся под `cfg(test)`.
+Оба Docker entrypoints включают файл в unit stage и исключают только его из
+production COPY. Обычная команда `cargo test --locked -p domain --lib` сохраняет
+прежние test names/assertions. Test-only edit этого файла выбирает unit gate,
+сохраняя production artifact inputs; production neighbor по-прежнему меняет key.
+Native unit/failing-unit/app-cache controls подтверждаются на общей вехе.
+
 `backend:build` в `.quality-gate.json` выбирает только package/bin targets
 поставляемого runtime: `server`.
 Outputs именованы явно; отсутствие любого required executable завершает gate
