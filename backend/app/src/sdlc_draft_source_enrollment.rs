@@ -24,7 +24,6 @@ pub fn authorize_draft(state: &TaskState, actor: &Principal) -> Result<(), AppEr
     }
     if state.stage != Stage::Draft
         || state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
-        || state.confirmation_revision.is_some()
         || !state.confirmations.is_empty()
     {
         return Err(AppError::conflict(

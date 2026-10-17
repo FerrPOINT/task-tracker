@@ -94,6 +94,7 @@
       "prerequisites": "Prerequisites"
     },
     "events": {
+      "sourceSelected": "Источник задачи выбран",
       "deliveryQueued": "Работа поставлена в очередь",
       "deliveryReconciled": "Состояние выполнения сверено",
       "deliveryAssignmentPrepared": "Назначение подготовлено, допуск ожидается",

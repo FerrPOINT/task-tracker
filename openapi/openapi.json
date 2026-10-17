@@ -4430,6 +4430,180 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/source-binding": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "sdlc_task_source_binding",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Immutable binding and current context, or typed blocked state; never a Git write permit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskSourceReadback"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/source-enrollment": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "sdlc_source_enrollment_preflight",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftSourceEnrollmentPreflight"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "sdlc_enroll_draft_source",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollDraftSource"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftSourceEnrollmentReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftSourceEnrollmentReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/transition": {
       "post": {
         "tags": [
@@ -6617,6 +6791,245 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RoutingPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/source-policy": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "sdlc_current_source_policy",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSourcePolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "sdlc_set_source_policy",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSourcePolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSourcePolicy"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSourcePolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/source-policy/operations/{idempotency_key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "sdlc_source_policy_operation",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSourcePolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/sdlc/source-policy/versions/{revision}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "sdlc_source_policy_version",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSourcePolicy"
                 }
               }
             }
@@ -11470,6 +11883,90 @@
           "single-task-v1"
         ]
       },
+      "DraftSourceEnrollmentPreflight": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "project_id",
+          "state_sha256",
+          "selection_sha256",
+          "policy",
+          "preflight_sha256"
+        ],
+        "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/ProjectSourcePolicy"
+          },
+          "preflight_sha256": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "selection_sha256": {
+            "type": "string"
+          },
+          "state_sha256": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DraftSourceEnrollmentReceipt": {
+        "type": "object",
+        "description": "Metadata-only receipt. It is neither a published source binding nor a runtime permit.",
+        "required": [
+          "enrollment_id",
+          "task_id",
+          "project_id",
+          "owner_subject",
+          "source_revision",
+          "policy_hash",
+          "request_sha256",
+          "source_hash",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enrollment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "policy_hash": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "request_sha256": {
+            "type": "string"
+          },
+          "source_hash": {
+            "type": "string"
+          },
+          "source_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "DraftStage": {
         "type": "string",
         "enum": [
@@ -11483,6 +11980,31 @@
           "clarification",
           "awaiting_confirmation"
         ]
+      },
+      "EnrollDraftSource": {
+        "type": "object",
+        "required": [
+          "expected_preflight_sha256",
+          "source_revision",
+          "policy_hash",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_preflight_sha256": {
+            "type": "string"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "policy_hash": {
+            "type": "string"
+          },
+          "source_revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
       },
       "EventsSuccess": {
         "oneOf": [
@@ -15329,6 +15851,138 @@
               }
             },
             "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "sequence",
+              "event_id",
+              "task_id",
+              "created_at",
+              "metadata_sha256",
+              "payload",
+              "event_type"
+            ],
+            "properties": {
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "event_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "event_type": {
+                "type": "string",
+                "enum": [
+                  "source.selected"
+                ]
+              },
+              "metadata_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "payload": {
+                "type": "object",
+                "required": [
+                  "tracker_instance_id",
+                  "project_id",
+                  "root_task_id",
+                  "owner_subject",
+                  "stage",
+                  "current_requirement_revision",
+                  "resource"
+                ],
+                "properties": {
+                  "current_requirement_revision": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "format": "int64",
+                    "maximum": 9007199254740991,
+                    "minimum": 1
+                  },
+                  "owner_subject": {
+                    "type": "string"
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "resource": {
+                    "type": "object",
+                    "description": "Metadata-only receipt. It is neither a published source binding nor a runtime permit.",
+                    "required": [
+                      "enrollment_id",
+                      "task_id",
+                      "project_id",
+                      "owner_subject",
+                      "source_revision",
+                      "policy_hash",
+                      "request_sha256",
+                      "source_hash",
+                      "created_at"
+                    ],
+                    "properties": {
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "enrollment_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "owner_subject": {
+                        "type": "string"
+                      },
+                      "policy_hash": {
+                        "type": "string"
+                      },
+                      "project_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "request_sha256": {
+                        "type": "string"
+                      },
+                      "source_hash": {
+                        "type": "string"
+                      },
+                      "source_revision": {
+                        "type": "integer",
+                        "format": "int64"
+                      },
+                      "task_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "root_task_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "stage": {
+                    "$ref": "#/components/schemas/Stage"
+                  },
+                  "tracker_instance_id": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "sequence": {
+                "type": "string",
+                "pattern": "^[1-9][0-9]{0,18}$"
+              },
+              "task_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            },
+            "additionalProperties": false
           }
         ]
       },
@@ -16683,6 +17337,55 @@
           }
         }
       },
+      "ProjectSourcePolicy": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "source_revision",
+          "source_hash",
+          "source",
+          "verification",
+          "author_subject",
+          "created_at"
+        ],
+        "properties": {
+          "author_subject": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourcePolicySpec"
+          },
+          "source_hash": {
+            "type": "string"
+          },
+          "source_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/VerifiedSource"
+          }
+        },
+        "additionalProperties": false
+      },
       "PublishQuestion": {
         "type": "object",
         "required": [
@@ -17935,6 +18638,69 @@
         },
         "additionalProperties": false
       },
+      "SetSourcePolicy": {
+        "type": "object",
+        "required": [
+          "expected_source_revision",
+          "source",
+          "idempotency_key"
+        ],
+        "properties": {
+          "expected_source_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/SourcePolicySpec"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SourceBlockReason": {
+        "type": "string",
+        "enum": [
+          "missing_binding",
+          "missing_project_source_policy",
+          "missing_current_execution",
+          "source_context_changed",
+          "execution_not_running",
+          "lease_expired"
+        ]
+      },
+      "SourcePolicySpec": {
+        "type": "object",
+        "required": [
+          "forge_instance_id",
+          "repository_id",
+          "base_ref",
+          "base_commit"
+        ],
+        "properties": {
+          "base_commit": {
+            "type": "string"
+          },
+          "base_ref": {
+            "type": "string"
+          },
+          "forge_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "SprintListResponse": {
         "type": "object",
         "required": [
@@ -18511,6 +19277,170 @@
         },
         "additionalProperties": false
       },
+      "TaskSourceBinding": {
+        "type": "object",
+        "required": [
+          "contract_version",
+          "tracker_instance_id",
+          "project_id",
+          "task_id",
+          "root_task_id",
+          "confirmation_id",
+          "requirement_revision",
+          "content_hash",
+          "routing_snapshot_id",
+          "namespace",
+          "forge_instance_id",
+          "repository_id",
+          "base_ref",
+          "base_commit",
+          "candidate_ref",
+          "source_revision",
+          "policy_hash",
+          "source_hash",
+          "owner_subject",
+          "created_at"
+        ],
+        "properties": {
+          "base_commit": {
+            "type": "string"
+          },
+          "base_ref": {
+            "type": "string"
+          },
+          "candidate_ref": {
+            "type": "string"
+          },
+          "confirmation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "contract_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "forge_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "namespace": {
+            "$ref": "#/components/schemas/NamespaceRef"
+          },
+          "owner_subject": {
+            "type": "string"
+          },
+          "policy_hash": {
+            "type": "string"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requirement_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "root_task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "routing_snapshot_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source_hash": {
+            "type": "string"
+          },
+          "source_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TaskSourceReadback": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "reason",
+              "state"
+            ],
+            "properties": {
+              "binding": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/TaskSourceBinding"
+                  }
+                ]
+              },
+              "current": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LifecycleReadback"
+                  }
+                ]
+              },
+              "reason": {
+                "$ref": "#/components/schemas/SourceBlockReason"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "blocked"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "binding",
+              "current",
+              "state"
+            ],
+            "properties": {
+              "binding": {
+                "$ref": "#/components/schemas/TaskSourceBinding"
+              },
+              "current": {
+                "$ref": "#/components/schemas/LifecycleReadback"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "bound"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "TerminalReceipt": {
         "type": "object",
         "required": [
@@ -18948,6 +19878,57 @@
             "type": "string"
           }
         }
+      },
+      "VerifiedSource": {
+        "type": "object",
+        "description": "Read only from the configured Forge namespace reader, never accepted as HTTP input.",
+        "required": [
+          "namespace",
+          "forge_instance_id",
+          "repository_id",
+          "public_name",
+          "base_ref",
+          "base_commit",
+          "default_ref",
+          "protected_refs",
+          "observed_at"
+        ],
+        "properties": {
+          "base_commit": {
+            "type": "string"
+          },
+          "base_ref": {
+            "type": "string"
+          },
+          "default_ref": {
+            "type": "string"
+          },
+          "forge_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "namespace": {
+            "$ref": "#/components/schemas/NamespaceRef"
+          },
+          "observed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "protected_refs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "public_name": {
+            "type": "string"
+          },
+          "repository_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
       },
       "VersionListResponse": {
         "type": "object",

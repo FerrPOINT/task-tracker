@@ -645,17 +645,19 @@ async fn explicit_unconfigured_draft_fixture(
             .is_err()
     );
     assert!(repo.draft_source_preflight(task, owner).await.is_err());
-    assert_eq!(
-        old_state,
-        serde_json::to_value(repo.read(task, owner).await.unwrap()).unwrap()
-    );
+    let current_state = repo.read(task, owner).await.unwrap();
+    assert_eq!(old_state, serde_json::to_value(&current_state).unwrap());
     let tx = db.begin().await.unwrap();
     assert_eq!(
         old_assignment,
         serde_json::to_value(
-            PostgresSdlcRepository::reservation(&tx, &draft, reservation.assignment.execution_id)
-                .await
-                .unwrap()
+            PostgresSdlcRepository::reservation(
+                &tx,
+                &current_state,
+                reservation.assignment.execution_id
+            )
+            .await
+            .unwrap()
         )
         .unwrap()
     );

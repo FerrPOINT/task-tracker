@@ -2185,6 +2185,16 @@ erDiagram
     PERMISSION_SCHEMES ||--o{ PERMISSION_SCHEME_ENTRIES : "entries"
     NOTIFICATION_SCHEMES ||--o{ NOTIFICATION_SCHEME_EVENTS : "events"
 ```
+## Task Source Binding
+
+Contract: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md).
+`sdlc_task_source_bindings` references the exact immutable confirmation and the
+initial or critical-PM routing snapshot. PostgreSQL's INSERT gate validates the
+snapshot through `sdlc_routing_snapshot_inventory`, since that union is a view;
+both underlying histories reject UPDATE/DELETE. A foreign/missing snapshot is
+rejected. Migration 097 adds empty source tables without enrolling historical
+tasks or rewriting their IDs, hashes, receipts or business data.
+
 ## References
 
 - `docs/TZ.md`

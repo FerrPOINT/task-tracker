@@ -1131,6 +1131,7 @@ mod tests {
             };
         }
         let mut expected_resources = resources! {
+            "source.selected" => domain::sdlc_source::DraftSourceEnrollmentReceipt,
             "delivery.queued" => metadata::LifecycleResource,
             "delivery.reconciled" => metadata::LifecycleResource,
             "delivery.assignment_reserved" => metadata::LifecycleResource,

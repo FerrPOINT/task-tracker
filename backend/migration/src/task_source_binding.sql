@@ -86,7 +86,7 @@ BEGIN
         JOIN sdlc_source_policy_revisions p ON p.project_id=h.project_id AND p.source_revision=h.source_revision
         WHERE t.task_id=NEW.task_id AND t.project_id=NEW.project_id AND t.root_task_id=t.task_id
         AND t.owner_subject=NEW.actor_subject AND t.state->>'stage'='Draft'
-        AND t.state->>'flow'='single-task-v1' AND t.state->>'confirmation_revision' IS NULL
+        AND t.state->>'flow'='single-task-v1'
         AND t.state->'confirmations'='[]'::jsonb
         AND p.source_revision=NEW.source_revision AND p.source_hash=NEW.policy_hash)
         OR EXISTS(SELECT 1 FROM sdlc_task_source_selections WHERE task_id=NEW.task_id AND source_revision IS NOT NULL)
@@ -126,7 +126,9 @@ CREATE TABLE sdlc_task_source_bindings (
     confirmation_id uuid NOT NULL,
     requirement_revision bigint NOT NULL,
     content_hash text NOT NULL,
-    routing_snapshot_id uuid NOT NULL REFERENCES sdlc_task_routing_snapshots(snapshot_id),
+    -- The exact reference spans immutable initial and review snapshots. The INSERT gate
+    -- below enforces it through their inventory; a FK to only generation one is invalid.
+    routing_snapshot_id uuid NOT NULL,
     forge_instance_id uuid NOT NULL,
     repository_id uuid NOT NULL,
     candidate_ref text NOT NULL,
@@ -156,7 +158,7 @@ CREATE TABLE sdlc_task_source_bindings (
 CREATE FUNCTION sdlc_source_binding_gate() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM sdlc_task_routing_snapshots r JOIN sdlc_tasks t USING(task_id)
+        SELECT 1 FROM sdlc_routing_snapshot_inventory r JOIN sdlc_tasks t USING(task_id)
         JOIN tracker_namespace_bindings b ON b.resource_id=t.project_id AND b.state='active'
         JOIN sdlc_effective_task_source_selections s ON s.task_id=t.task_id AND s.project_id=t.project_id
         JOIN sdlc_source_policy_revisions p ON p.project_id=s.project_id AND p.source_revision=s.source_revision AND p.source_hash=s.policy_hash

@@ -504,6 +504,15 @@ impl PostgresSdlcRepository {
                 result.fence.execution_id.into(),result.completion_id.into(),generation.snapshot.confirmation_id.into(),
                 generation.snapshot.requirement_revision.into(),generation.snapshot.content_hash.clone().into(),state.project_id.into(),
                 generation.snapshot.policy.version.into(),json_value(&generation.snapshot)?,operation_id.into()]).await?;
+        let confirmation = plan
+            .after
+            .state
+            .confirmations
+            .iter()
+            .find(|confirmation| confirmation.id == generation.snapshot.confirmation_id)
+            .ok_or_else(inconsistent)?;
+        self.freeze_source(tx, &plan.after.state, confirmation, &generation.snapshot)
+            .await?;
         exec(tx,"INSERT INTO sdlc_analysis_intents(intent_id,task_id,requirement_revision,content_hash,confirmation_id,
             operation_key,payload,routing_snapshot_id,routing_generation,review_routing_snapshot_id)
             VALUES($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9)",vec![intent.intent_id.into(),state.task_id.into(),intent.requirement_revision.into(),

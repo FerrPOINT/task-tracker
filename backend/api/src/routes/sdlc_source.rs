@@ -39,11 +39,14 @@ fn no_store() -> HeaderMap {
 
 fn matches_replay(policy: &ProjectSourcePolicy, input: &SetSourcePolicy) -> bool {
     policy.source == input.source
-        && input.expected_source_revision.unwrap_or(0).checked_add(1)
-            == Some(policy.source_revision)
+        && input.expected_source_revision
+            == policy
+                .source_revision
+                .checked_sub(1)
+                .filter(|previous| *previous > 0)
 }
 
-#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/source-policy",tag="sdlc",
+#[utoipa::path(operation_id="sdlc_set_source_policy",post,path="/api/v1/projects/{project_id}/sdlc/source-policy",tag="sdlc",
     params(("project_id"=Uuid,Path)),request_body=SetSourcePolicy,
     responses((status=201,body=ProjectSourcePolicy),(status=200,body=ProjectSourcePolicy),
         (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
@@ -89,7 +92,7 @@ pub async fn set(
     ))
 }
 
-#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/source-policy",tag="sdlc",
+#[utoipa::path(operation_id="sdlc_current_source_policy",get,path="/api/v1/projects/{project_id}/sdlc/source-policy",tag="sdlc",
     params(("project_id"=Uuid,Path)),responses((status=200,body=ProjectSourcePolicy),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
 pub async fn current(
     State(ctx): State<Arc<app::AppContext>>,
@@ -107,7 +110,7 @@ pub async fn current(
     ))
 }
 
-#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/source-policy/versions/{revision}",tag="sdlc",
+#[utoipa::path(operation_id="sdlc_source_policy_version",get,path="/api/v1/projects/{project_id}/sdlc/source-policy/versions/{revision}",tag="sdlc",
     params(("project_id"=Uuid,Path),("revision"=i64,Path)),responses((status=200,body=ProjectSourcePolicy),(status=401),(status=403),(status=404),(status=422),(status=503)),security(("bearer"=[])))]
 pub async fn version(
     State(ctx): State<Arc<app::AppContext>>,
@@ -125,7 +128,7 @@ pub async fn version(
     ))
 }
 
-#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/source-policy/operations/{idempotency_key}",tag="sdlc",
+#[utoipa::path(operation_id="sdlc_source_policy_operation",get,path="/api/v1/projects/{project_id}/sdlc/source-policy/operations/{idempotency_key}",tag="sdlc",
     params(("project_id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=ProjectSourcePolicy),(status=401),(status=403),(status=404),(status=422),(status=503)),security(("bearer"=[])))]
 pub async fn operation(
     State(ctx): State<Arc<app::AppContext>>,
@@ -143,7 +146,7 @@ pub async fn operation(
     ))
 }
 
-#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/source-binding",tag="sdlc",
+#[utoipa::path(operation_id="sdlc_task_source_binding",get,path="/api/v1/issues/{id}/sdlc/source-binding",tag="sdlc",
     params(("id"=Uuid,Path)),responses((status=200,body=TaskSourceReadback,description="Immutable binding and current context, or typed blocked state; never a Git write permit"),
         (status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
 pub async fn binding(
@@ -162,7 +165,7 @@ pub async fn binding(
     ))
 }
 
-#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/source-enrollment",tag="sdlc",
+#[utoipa::path(operation_id="sdlc_source_enrollment_preflight",get,path="/api/v1/issues/{id}/sdlc/source-enrollment",tag="sdlc",
     params(("id"=Uuid,Path)),responses((status=200,body=DraftSourceEnrollmentPreflight),
         (status=401),(status=403),(status=404),(status=409),(status=503)),security(("bearer"=[])))]
 pub async fn enrollment_preflight(
@@ -182,7 +185,7 @@ pub async fn enrollment_preflight(
     ))
 }
 
-#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/source-enrollment",tag="sdlc",
+#[utoipa::path(operation_id="sdlc_enroll_draft_source",post,path="/api/v1/issues/{id}/sdlc/source-enrollment",tag="sdlc",
     params(("id"=Uuid,Path)),request_body=EnrollDraftSource,
     responses((status=201,body=DraftSourceEnrollmentReceipt),(status=200,body=DraftSourceEnrollmentReceipt),
         (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
@@ -214,6 +217,62 @@ pub async fn enroll_draft(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn replay_preserves_nullable_cas_and_exact_source() {
+        let source = SourcePolicySpec {
+            forge_instance_id: Uuid::new_v4(),
+            repository_id: Uuid::new_v4(),
+            base_ref: "refs/heads/main".into(),
+            base_commit: "a".repeat(40),
+        };
+        let now = chrono::Utc::now();
+        let mut policy = ProjectSourcePolicy {
+            contract_version: 1,
+            tracker_instance_id: "fixture-tracker".into(),
+            project_id: Uuid::new_v4(),
+            source_revision: 1,
+            source_hash: "b".repeat(64),
+            source: source.clone(),
+            verification: VerifiedSource {
+                namespace: shared::resource_context::NamespaceRef {
+                    registry_instance_id: Uuid::new_v4(),
+                    namespace_id: Uuid::new_v4(),
+                },
+                forge_instance_id: source.forge_instance_id,
+                repository_id: source.repository_id,
+                public_name: "fixture/source".into(),
+                base_ref: source.base_ref.clone(),
+                base_commit: source.base_commit.clone(),
+                default_ref: "refs/heads/main".into(),
+                protected_refs: vec![],
+                observed_at: now,
+            },
+            author_subject: "owner".into(),
+            created_at: now,
+        };
+        let mut input = SetSourcePolicy {
+            expected_source_revision: None,
+            source,
+            idempotency_key: "source:replay".into(),
+        };
+        assert!(matches_replay(&policy, &input));
+        input.expected_source_revision = Some(0);
+        assert!(
+            !matches_replay(&policy, &input),
+            "zero is not the original null CAS"
+        );
+        policy.source_revision = 2;
+        input.expected_source_revision = Some(1);
+        assert!(matches_replay(&policy, &input));
+        for changed in [None, Some(0), Some(2), Some(i64::MAX)] {
+            input.expected_source_revision = changed;
+            assert!(!matches_replay(&policy, &input));
+        }
+        input.expected_source_revision = Some(1);
+        input.source.base_commit = "c".repeat(40);
+        assert!(!matches_replay(&policy, &input));
+    }
 
     #[test]
     fn source_post_is_closed_owner_input_not_a_caller_verification_receipt() {

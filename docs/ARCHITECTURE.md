@@ -1,5 +1,13 @@
 # Архитектура Task Tracker
 
+Привязка исходников сохраняет существующие controller/service/repository и
+транзакцию подтверждения требований. Владелец проекта утверждает проверенный
+источник, Draft выбирает immutable revision, а confirmation фиксирует точный
+binding. Reader Forge использует существующую зарегистрированную границу;
+метаданные каталога и hash receipt не предоставляют Git-write authority.
+Explicit enrollment прежнего Draft не меняет PM lease, задачу или чат.
+[Контракт источника](SDLC_TASK_SOURCE_BINDING.md).
+
 Current critical PM review source uses the existing command/lease/resume/completion
 transactions, not a second scheduler. A journal-validated current review may read
 its exact frozen approved baseline while PM edits a newer revision; technical

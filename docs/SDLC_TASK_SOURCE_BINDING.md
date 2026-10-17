@@ -1,7 +1,7 @@
 # Task Source Binding
 
-Source candidate only. No compile, database, Forge counterpart or installed/live
-qualification is claimed by this package.
+Кандидат контракта привязки исходников задачи. Наличие кода и сгенерированной
+схемы не подтверждает установку или совместную live-приёмку с Forge.
 
 ## Owner Policy
 
@@ -82,9 +82,20 @@ original selection/state/PM assignment bytes remain unchanged. Metadata-only aud
 once with the pin. Existing metadata_v1 event/context readback carries enrollment
 ID, task/project/owner, policy revision/hash and sealed receipt hash, not a Git or
 dispatch capability. Nothing injects a new PM run or automatically steers it.
-The typed metadata projection additions are in Main's separate integration patch.
+Typed metadata projection `source.selected` зарегистрирована вместе с маршрутом
+и receipt; она не запускает агента.
 
-Only normal exact requirements confirmation publishes `TaskSourceBinding`.
+Initial exact requirements confirmation publishes `TaskSourceBinding`. During an
+existing critical PM review, owner confirmation alone stays Draft: the trusted
+PM completion publishes its new routing generation and corresponding source
+binding atomically. Both use the ORIGINAL immutable task source selection;
+changing project source policy never changes a running task's source. The SQL
+gate accepts both original and generated snapshots through the existing routing
+snapshot inventory; historical bindings remain immutable.
+
+Pending `confirmation_revision` is the target awaiting owner confirmation, not
+consent. An unconfirmed Draft may enroll after PM publishes requirements;
+actual confirmation history/publication still closes enrollment.
 Only a CURRENT Developer assignment/run/fence/lease after confirmation can be
 considered for a scoped Forge Git grant. An active PM grant never gains branch
 write rights from source selection. Published/technical-task rebind remains closed.
@@ -118,8 +129,10 @@ legacy Forge SAT behavior are unchanged.
 
 One NEW additive migration 0097 creates source policy/selection/enrollment/ref-owner/binding
 history and namespace/immutability gates; no historical migration or row backfill.
-Module, route, migration and OpenAPI registrations are in a separate unapplied
-`tracker-source-registrations.patch` for Main; generated OpenAPI is not hand edited.
+Модули, маршруты, миграция и OpenAPI types зарегистрированы в приложении.
+Снимок `openapi/openapi.json` получается штатным Rust-генератором; TypeScript
+клиент — закреплённым `openapi-typescript`. Ручное редактирование схемы запрещено.
+Новые operation ID имеют префикс `sdlc_` и не меняют операции routing-policy.
 
 Existing Forge registered-reader GET by repository UUID proves namespace/identity,
 not a source SHA or receive policy. User refs/commits GETs reuse native Git but
@@ -129,14 +142,23 @@ Forge should reuse those native operations and existing admission/policy code
 behind the existing registered-reader surface. Required facts are `VerifiedSource`:
 exact namespace/instance/repo/public name, approved full base ref/native commit,
 authoritative default and ALL linked-project defaults/protected refs, observation
-time. No new URL, auth class or broad user-route permission is prescribed here.
-No speculative HTTP adapter ships: trait default returns
-`forge_source_verification_counterpart_missing` until the existing-surface
-contract is implemented/qualified. Metadata/SHA syntax never become verification.
+time. The source route uses the same registered-reader identity and admission;
+no new auth class or broad user-route permission is added.
+`ForgeReader` использует тот же зарегистрированный reader и GET
+`/api/v1/namespace-repositories/{repository_id}/source` с точными `base_ref`/`base_commit`.
+Caller PAT не пересылается. Redirect отключён, сжатый или превышающий 64 КиБ
+ответ отклоняется; проверяются instance, namespace, repo, native SHA и время
+наблюдения не старше 30 секунд. Старые catalog metadata не считаются проверкой
+источника. Без настроенного reader trait сохраняет явный отказ.
 
-Source-only checks: rustfmt parsing/check, diff whitespace and registration-patch
-apply-check. Added eleven app tests, two API cases, one migration static test
-and one ignored disposable-PG owner/CAS/selection/enrollment test; none executed here.
-Main must compile typed API/generate schemas and qualify migration/both lineages,
-full confirmation rollback/unique-ref persistence, context auth/lease races and
-existing single-task PG fixtures with explicit project source setup before merge.
+Парная реализация Forge поставляется отдельно в CI/CD #122; обычный catalog
+endpoint без `/source` сохраняет прежний ответ и не выдаёт source proof. Совпадение форм DTO
+не заменяет её typed/HTTP/native-Git приёмку. Старая установленная версия Forge
+не выдаёт фиктивный проверенный источник.
+
+Обязательная приёмка: Rust compile/fmt/clippy, существующая проверка уникальности
+OpenAPI operation ID, штатная генерация схемы/клиента и disposable PostgreSQL.
+Проверяются owner/CAS/replay, запрет автоматического enrollment истории,
+сохранение исходного Draft/PM assignment, гонка enrollment/confirmation,
+транзакционный rollback и уникальность candidate ref. Fixture-проверки и реальные
+межпродуктовые сценарии учитываются отдельно; live-приёмка не следует из unit tests.

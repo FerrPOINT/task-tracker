@@ -109,11 +109,15 @@ fn only_exact_human_owner_unconfirmed_root_draft_is_eligible() {
         }
         assert!(authorize_draft(&state, &actor).is_err(), "{field}");
     }
-    for field in ["stage", "confirmation_revision", "root_task_id", "flow"] {
+    for field in ["stage", "confirmations", "root_task_id", "flow"] {
         let mut raw = serde_json::to_value(&state).unwrap();
         raw[field] = match field {
             "stage" => json!("Analysis"),
-            "confirmation_revision" => json!(1),
+            "confirmations" => json!([{
+                "id": Uuid::new_v4(), "task_id": state.task_id, "revision": 1,
+                "content_hash": "a".repeat(64), "owner_subject": owner.subject,
+                "created_at": Utc::now(), "stage": "Backlog",
+            }]),
             "root_task_id" => json!(Uuid::new_v4()),
             _ => json!("legacy"),
         };
@@ -122,6 +126,15 @@ fn only_exact_human_owner_unconfirmed_root_draft_is_eligible() {
             "{field}"
         );
     }
+}
+
+#[test]
+fn pending_confirmation_revision_does_not_publish_owner_consent() {
+    let (mut state, owner, _, _) = fixture();
+    state.confirmation_revision = Some(1);
+    state.draft_submode = Some(domain::sdlc::DraftSubmode::AwaitingConfirmation);
+    assert!(state.confirmations.is_empty());
+    authorize_draft(&state, &owner).unwrap();
 }
 
 #[test]

@@ -1,4 +1,51 @@
 use super::*;
+
+/// Synthetic observation for disposable PostgreSQL tests; never native Forge evidence.
+#[cfg(test)]
+pub(super) async fn configure_test_source(
+    repo: &PostgresSdlcRepository,
+    project: Uuid,
+    owner: &Principal,
+) {
+    let namespace = NamespaceRef {
+        registry_instance_id: Uuid::new_v4(),
+        namespace_id: Uuid::new_v4(),
+    };
+    let binding = json!({"schema_version":1,"namespace":namespace,
+        "resource":{"kind":"tracker_project","instance_id":Uuid::new_v4(),"resource_id":project},
+        "operation_id":Uuid::new_v4(),"generation":1,"state":"active"});
+    exec(&repo.db,"INSERT INTO tracker_namespace_bindings(resource_id,registry_instance_id,namespace_id,generation,state,command)
+        VALUES($1,$2,$3,1,'active',$4)",vec![project.into(),namespace.registry_instance_id.into(),namespace.namespace_id.into(),binding.into()]).await.unwrap();
+    let source = SourcePolicySpec {
+        forge_instance_id: Uuid::new_v4(),
+        repository_id: Uuid::new_v4(),
+        base_ref: "refs/heads/main".into(),
+        base_commit: "a".repeat(40),
+    };
+    let verified = VerifiedSource {
+        namespace,
+        forge_instance_id: source.forge_instance_id,
+        repository_id: source.repository_id,
+        public_name: "fixture/source".into(),
+        base_ref: source.base_ref.clone(),
+        base_commit: source.base_commit.clone(),
+        default_ref: "refs/heads/main".into(),
+        protected_refs: vec!["refs/heads/release".into()],
+        observed_at: chrono::Utc::now(),
+    };
+    repo.set_source_policy(
+        project,
+        owner,
+        SetSourcePolicy {
+            expected_source_revision: None,
+            source,
+            idempotency_key: "fixture-source-policy".into(),
+        },
+        verified,
+    )
+    .await
+    .unwrap();
+}
 use domain::sdlc_source::*;
 use shared::resource_context::NamespaceRef;
 

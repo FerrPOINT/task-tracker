@@ -252,7 +252,6 @@ struct MetadataEventFields<R> {
 }
 
 metadata_events! {
-    DraftSourceSelected, "source.selected", crate::sdlc_source::DraftSourceEnrollmentReceipt;
     DeliveryQueued, "delivery.queued", LifecycleResource;
     DeliveryReconciled, "delivery.reconciled", LifecycleResource;
     DeliveryAssignmentReserved, "delivery.assignment_reserved", LifecycleResource;
@@ -274,6 +273,7 @@ metadata_events! {
     AnalysisIntentCreated, "analysis.intent_created", crate::sdlc::AnalysisIntent;
     AnalysisAssignmentReserved, "analysis.assignment_reserved", AnalysisReservationResource;
     AnalysisResultAccepted, "analysis.result_accepted", AnalysisResultResource;
+    DraftSourceSelected, "source.selected", crate::sdlc_source::DraftSourceEnrollmentReceipt;
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]

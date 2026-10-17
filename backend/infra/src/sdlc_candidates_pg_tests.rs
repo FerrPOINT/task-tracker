@@ -1,5 +1,6 @@
 //! Existing PostgreSQL owner ledgers; Fleet/Workflow observations below are explicitly synthetic.
 use super::*;
+use domain::sdlc_source::{SetSourcePolicy, TaskSourceRepository};
 #[path = "attachment_artifacts_pg_tests.rs"]
 mod artifact_tests;
 #[path = "sdlc_critical_blockers_pg_tests.rs"]
@@ -107,6 +108,7 @@ impl Fixture {
         .unwrap();
         let roles = routes();
         let owner = actor("owner", true, &[]);
+        super::super::source::configure_test_source(&repo, project, &owner).await;
         repo.set_routing_policy(
             project,
             &owner,

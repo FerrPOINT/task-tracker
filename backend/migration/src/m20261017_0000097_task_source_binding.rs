@@ -44,7 +44,9 @@ mod tests {
         assert!(sql.contains("REFERENCES task_repository_links"));
         assert!(sql.contains("sdlc_draft_source_enrollment_gate BEFORE INSERT"));
         assert!(sql.contains("t.state->>'stage'='Draft'"));
-        assert!(sql.contains("t.state->>'confirmation_revision' IS NULL"));
+        assert!(
+            sql.contains("OR EXISTS(SELECT 1 FROM sdlc_confirmations WHERE task_id=NEW.task_id)")
+        );
         assert!(sql.contains("FROM sdlc_delivery_results WHERE task_id=NEW.task_id"));
         assert!(!sql.contains("INSERT INTO sdlc_draft_source_enrollments"));
         assert!(!sql.contains("runtime_observation"));
