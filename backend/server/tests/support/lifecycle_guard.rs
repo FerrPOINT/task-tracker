@@ -109,11 +109,20 @@ pub async fn queued_analysis(db: &DatabaseConnection, task: Uuid) {
                 vec![task.into(), candidate.into()],
             ))
             .await
-            .unwrap_err()
-            .to_string();
+            .unwrap_err();
+        let code = match &error {
+            sea_orm::DbErr::Exec(sea_orm::RuntimeErr::SqlxError(error)) => {
+                error.as_database_error().and_then(|error| error.code())
+            }
+            _ => None,
+        };
+        assert_eq!(code.as_deref(), Some("23514"), "{error}");
+        // Later migrations can reject at the accepted-result guard before the queued guard.
+        let error = error.to_string();
         assert!(
             error.contains("guarded admission before lifecycle mutation")
-                || error.contains("authorized state write"),
+                || error.contains("authorized state write")
+                || error.contains("legacy Analysis requires exact accepted result and permit"),
             "{error}"
         );
     }
