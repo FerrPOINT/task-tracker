@@ -328,6 +328,12 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
   ] as const)(
     'does not fetch or confirm Draft %s with can_confirm=%s',
     async (draft_submode, can_confirm) => {
+      let completeMetadata!: (value: Awaited<ReturnType<typeof getSdlcMetadata>>) => void
+      vi.mocked(getSdlcMetadata).mockReturnValueOnce(
+        new Promise((resolve) => {
+          completeMetadata = resolve
+        }),
+      )
       vi.mocked(getSdlcSnapshot).mockResolvedValue({
         ...initial,
         context: {
@@ -342,8 +348,26 @@ describe('SDLC owner panel (isolated controller fixtures, not live admission)', 
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Confirm requirements' })).not.toBeInTheDocument()
       expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
-      fireEvent.click(screen.getByRole('button', { name: 'Refresh SDLC state' }))
+      await waitFor(() => expect(getSdlcMetadata).toHaveBeenCalledOnce())
+      const refresh = screen.getByRole('button', { name: 'Refresh SDLC state' })
+      // Snapshot content renders before metadata finishes; refresh is still disabled.
+      expect(refresh).toBeDisabled()
+      await act(async () => {
+        completeMetadata({
+          contract_version: 1,
+          projection: 'metadata_v1',
+          after: '0',
+          next_after: '0',
+          has_more: false,
+          events: [],
+        })
+      })
+      await waitFor(() => expect(refresh).toBeEnabled())
+      fireEvent.click(refresh)
       await waitFor(() => expect(getSdlcSnapshot).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(getSdlcMetadata).toHaveBeenCalledTimes(2))
+      await waitFor(() => expect(refresh).toBeEnabled())
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
       expect(getSdlcRoutingPolicy).not.toHaveBeenCalled()
       expect(confirmRequirements).not.toHaveBeenCalled()
     },
