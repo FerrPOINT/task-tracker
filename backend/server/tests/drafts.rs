@@ -142,7 +142,7 @@ async fn get_json(client: &Client, url: &str, token: &str, status: u16) -> Value
     let response = client.get(url).bearer_auth(token).send().await.unwrap();
     let actual = response.status().as_u16();
     let result: Value = response.json().await.unwrap();
-    assert_eq!(actual, status, "{result}");
+    assert_eq!(actual, status, "GET {url}: {result}");
     result
 }
 
@@ -515,8 +515,9 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         get_json(&client, &creation_readback, &owner, 200).await,
         result
     );
-    // Shared project access does not expose another author's exact creation key.
-    get_json(&client, &creation_readback, &foreign, 404).await;
+    // A global administrator without project membership cannot probe creation keys.
+    get_json(&client, &creation_readback, &foreign, 403).await;
+    // Project ownership still does not expose another author's exact creation key.
     get_json(&client, &creation_readback, &operator, 404).await;
     get_json(
         &client,
@@ -785,14 +786,15 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         "{base}/api/v1/issues/{}/sdlc/pm-draft-input",
         other["task_id"].as_str().unwrap()
     );
-    get_json(&client, &other_input_url, &owner, 200).await;
+    let other_snapshot = get_json(&client, &other_input_url, &owner, 200).await;
     sql(
         &db,
         "DELETE FROM project_members WHERE project_id=$1 AND user_id=$2",
         vec![other_project.into(), owner_id.into()],
     )
     .await;
-    get_json(&client, &other_input_url, &owner, 200).await;
+    // Revoking only this membership must deny its reads while preserving the first project.
+    get_json(&client, &other_input_url, &owner, 403).await;
     get_json(
         &client,
         &format!(
@@ -800,7 +802,7 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
             other["task_id"].as_str().unwrap()
         ),
         &owner,
-        200,
+        403,
     )
     .await;
     assert_eq!(get_json(&client, &input_url, &owner, 200).await, snapshot);
@@ -810,6 +812,10 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         vec![other_project.into(), owner_id.into()],
     )
     .await;
+    assert_eq!(
+        get_json(&client, &other_input_url, &owner, 200).await,
+        other_snapshot
+    );
     // Ordinary issues and Drafts share the permanent allocator and unique key.
     let ordinary = json!({"project_key":"DRAFT","issue_type":"task","summary":"Ordinary task","description":"ordinary","priority":"medium"});
     let ordinary_url = format!("{base}/api/v1/issues");

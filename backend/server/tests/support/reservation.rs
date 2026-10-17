@@ -795,15 +795,31 @@ pub async fn verify(config: Arc<shared::AppConfig>, f: Fixture<'_>) {
         vec![f.project.into(), f.owner_id.into()],
     )
     .await;
-    get_json(f.client, &url, f.owner, 200).await;
-    get_json(f.client, &creation_url, f.owner, 200).await;
-    expect(f.client, &url, f.owner, &cmd, 200).await;
+    // Retained owner operations still require fresh project access, including replay.
+    get_json(f.client, &url, f.owner, 403).await;
+    get_json(f.client, &creation_url, f.owner, 403).await;
+    expect(f.client, &url, f.owner, &cmd, 403).await;
     sql(
         f.db,
         "INSERT INTO project_members(project_id,user_id,role) VALUES($1,$2,'member')",
         vec![f.project.into(), f.owner_id.into()],
     )
     .await;
+    assert_eq!(
+        get_json(
+            f.client,
+            &format!("{url}?idempotency_key=reservation"),
+            f.owner,
+            200
+        )
+        .await,
+        historical
+    );
+    assert_eq!(
+        get_json(f.client, &creation_url, f.owner, 200).await,
+        created
+    );
+    assert_eq!(expect(f.client, &url, f.owner, &cmd, 200).await, result);
     sql(
         f.db,
         "UPDATE users SET is_active=false WHERE id=$1",

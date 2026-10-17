@@ -310,13 +310,24 @@ pub(super) async fn after(
         404,
     )
     .await;
-    read(
-        client,
-        &format!("{base}/api/v1/issues/{task}/sdlc/routing-snapshot"),
-        foreign,
-        200,
+    let snapshot_url = format!("{base}/api/v1/issues/{task}/sdlc/routing-snapshot");
+    // Global admin hints do not grant access; an explicit member may read the frozen snapshot.
+    read(client, &snapshot_url, foreign, 403).await;
+    sql(
+        db,
+        "INSERT INTO project_members(project_id,user_id,role) SELECT $1,id,'member' FROM users WHERE central_sub='foreign'",
+        vec![project.into()],
     )
     .await;
+    let permitted = read(client, &snapshot_url, foreign, 200).await;
+    assert_eq!(&permitted, old);
+    sql(
+        db,
+        "DELETE FROM project_members WHERE project_id=$1 AND user_id=(SELECT id FROM users WHERE central_sub='foreign')",
+        vec![project.into()],
+    )
+    .await;
+    read(client, &snapshot_url, foreign, 403).await;
     read(
         client,
         &format!("{base}/api/v1/issues/{task}/sdlc/routing-snapshot"),
