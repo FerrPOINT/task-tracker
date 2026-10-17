@@ -1,5 +1,21 @@
 # AGENTS.md — Task Tracker
 
+## Выбор сборки и повторное использование
+
+Перед build/test/install определить нужные компоненты и изменившиеся реальные
+inputs; проверить готовый artifact, environment и cache. Неизменные inputs и
+проверенный artifact означают отсутствие повторных install/compile/source export.
+Docs/test-only не пересобирают приложение без изменения его build inputs.
+Во время работы выполнять scoped unit/static; полный gate — на согласованной
+вехе. Integration/slow/full coverage — вручную перед релизом; необходимые
+security/data/compatibility/live gates сохраняются. Полные команды в этом
+документе — каталог проверок, а не требование выполнять всё после каждой правки.
+Перед повторным heavy назвать changed inputs или missing proof; REUSED не
+выдавать за новый тест. Полезный прогретый cache сохранять в его бюджете.
+В source workspace читать `docs/BUILD_PERFORMANCE.md` из `qualityTooling.path`
+в `../source-workspace.json` и [правила workspace](../AGENTS.md).
+В standalone checkout использовать стандарт принятой версии Base.
+
 ## Репозиторий
 
 - **GitHub**: `git@github.com:FerrPOINT/task-tracker.git`
@@ -31,7 +47,7 @@
 - Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
 - Один коммит = одна логическая единица.
 - Не amend/squash без явного запроса.
-- Push только после проверки `cargo test`, `pnpm typecheck`, `pnpm test`.
+- Push после scoped-проверок затронутых компонентов; полный gate — на согласованной вехе.
 
 ### 4. Тестирование
 
@@ -61,7 +77,7 @@
 
 ### 8. Проверка перед завершением
 
-- [x] Все тесты проходят.
+- [x] Применимые проверки выбранных компонентов проходят.
 - [x] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
 - [x] Документация актуальна.
 - [x] Коммиты запушены в `origin/main`.
