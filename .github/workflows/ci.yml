@@ -122,6 +122,9 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --workspace --all-targets -- -D warnings
         if: ${{ !inputs.http_only }}
+      - name: Lint affected HTTP test targets
+        if: ${{ inputs.http_only }}
+        run: cargo clippy --locked -p server --test drafts --test sdlc -- -D warnings
       - run: cargo test --locked --workspace -- --test-threads=1
         if: ${{ !inputs.http_only }}
       - name: Populated 0033 through 0096 upgrade and strict EOL guards (isolated PostgreSQL)
