@@ -58,6 +58,20 @@ class CiContractChecksTest(unittest.TestCase):
         self.assertIn("pnpm openapi:compat", frontend_job)
         self.assertIn("pnpm format:check", frontend_job)
 
+    def test_populated_upgrade_runs_exactly_one_ignored_test_in_fresh_database(self) -> None:
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
+        self.assertIn("createdb -U tasktracker tracker_upgrade_draft_flow_test", backend)
+        self.assertIn(
+            "TT_DRAFT_FLOW_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_upgrade_draft_flow_test",
+            backend,
+        )
+        self.assertIn(
+            "cargo test --locked -p infra --lib populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history -- --ignored --test-threads=1",
+            backend,
+        )
+        self.assertIn("test result: ok. 1 passed; 0 failed; 0 ignored;", backend)
+
 
 if __name__ == "__main__":
     unittest.main()
