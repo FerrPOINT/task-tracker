@@ -377,3 +377,13 @@ Vitest profile фиксирует default namespace=false независимо �
 environment. Feature tests явно включают true через `vi.stubEnv`; production
 `vite build` использует свой конфиг и реальный build flag. Это сохраняет
 детерминированные legacy fixtures и проверку нового режима в одном unit graph.
+
+## Одна OpenAPI generation в CI
+
+В frontend job автоматического CI и ручного release `postinstall` выполняет
+generation во время frozen install; project lifecycle явно включён. Сразу после
+установки Git проверяет tracked outputs и отсутствие drift, без второго
+generator invocation. Проверяемые outputs: `src/api/generated.ts`.
+Lockfile, backward compatibility и backend OpenAPI drift gates сохраняются.
+Самостоятельный `pnpm openapi:check` остаётся проверкой для окружения, в котором
+generation ещё не выполнялась; его не добавляют повторно после postinstall.
