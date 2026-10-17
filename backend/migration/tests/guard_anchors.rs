@@ -10,11 +10,28 @@ fn pending_096_begin_checks_count_both_eols_without_normalizing_source() {
     ] {
         assert_eq!(sql.matches(pattern).count(), 2, "{pattern}");
     }
-    assert_eq!(
-        sql.matches("EXECUTE replace(source,anchor,replacement)")
-            .count(),
-        2
-    );
+    let legacy_begin = sql
+        .split_once("-- Preserve legacy function bodies;")
+        .unwrap()
+        .1
+        .split_once("SELECT pg_get_functiondef('sdlc_pm_resume_input_gate()'")
+        .unwrap()
+        .0;
+    let ownership_begin = sql
+        .split_once("-- Existing PM ownership/write permits are preserved.")
+        .unwrap()
+        .1
+        .split_once("END $$;")
+        .unwrap()
+        .0;
+    for block in [legacy_begin, ownership_begin] {
+        assert_eq!(
+            block
+                .matches("EXECUTE replace(source,anchor,replacement)")
+                .count(),
+            1
+        );
+    }
     assert!(!sql.contains("source:=replace(source,E'\\r\\n'"));
     assert!(!sql.contains("source:=replace(source,E'\\n'"));
     assert!(sql.contains("RAISE EXCEPTION 'SDLC guard anchor differs %',name"));
