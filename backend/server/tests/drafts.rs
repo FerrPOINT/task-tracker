@@ -142,7 +142,7 @@ async fn get_json(client: &Client, url: &str, token: &str, status: u16) -> Value
     let response = client.get(url).bearer_auth(token).send().await.unwrap();
     let actual = response.status().as_u16();
     let result: Value = response.json().await.unwrap();
-    assert_eq!(actual, status, "{result}");
+    assert_eq!(actual, status, "GET {url}: {result}");
     result
 }
 
@@ -515,8 +515,9 @@ async fn clean_migration_http_creation_ownership_concurrency_rollback_and_restar
         get_json(&client, &creation_readback, &owner, 200).await,
         result
     );
-    // Shared project access does not expose another author's exact creation key.
-    get_json(&client, &creation_readback, &foreign, 404).await;
+    // A global administrator without project membership cannot probe creation keys.
+    get_json(&client, &creation_readback, &foreign, 403).await;
+    // Project ownership still does not expose another author's exact creation key.
     get_json(&client, &creation_readback, &operator, 404).await;
     get_json(
         &client,
