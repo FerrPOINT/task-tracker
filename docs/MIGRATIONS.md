@@ -58,6 +58,17 @@ m{YYYYMMDD}_{NNNNNN}_{description}.rs
 - Не удалять миграции из `lib.rs` — только помечать как deprecated.
 - Не использовать raw SQL без необходимости — предпочитать SeaORM API.
 
+#### Approved Exception: Pending 0096 (2026-10-17)
+
+Explicit owner approval permits only LF/CRLF compatibility in the two BEGIN-anchor
+checks in `critical_pm_review_lifecycle.sql`, part of pending 0096. Exactly one
+anchor across both representations is required; zero, duplicate or mixed anchors
+remain errors. Only the matched anchor and inserted branch are replaced; existing
+function bodies, predicates and permits are not normalized. Migrations 0033–0095,
+applied ledger rows and business history remain unchanged. This is a bounded
+exception, not a relaxation of the committed-migration policy. Source tests are
+not a claim of populated PostgreSQL qualification or installed runtime recovery.
+
 ## 6. Applying Migrations
 
 Миграции применяются автоматически при старте сервера:

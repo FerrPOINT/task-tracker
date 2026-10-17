@@ -511,6 +511,119 @@ async fn rejected(db: &DatabaseConnection, sql: &str, task: Uuid, message: &str)
     assert!(error.to_string().contains(message), "{error}");
 }
 
+async fn guard_definition(db: &impl ConnectionTrait, name: &str) -> String {
+    db.query_one(statement(
+        "SELECT pg_get_functiondef($1::regprocedure) AS definition",
+        vec![name.into()],
+    ))
+    .await
+    .unwrap()
+    .unwrap()
+    .try_get("", "definition")
+    .unwrap()
+}
+
+async fn pending_096_guard_eol_cases(db: &DatabaseConnection) {
+    let prefix = concat!(
+        include_str!("../../migration/src/single_task_lifecycle.sql"),
+        "\n",
+        include_str!("../../migration/src/critical_pm_return.sql"),
+        "\n",
+        include_str!("../../migration/src/critical_pm_review.sql")
+    )
+    .replace("\r\n", "\n");
+    let lifecycle =
+        include_str!("../../migration/src/critical_pm_review_lifecycle.sql").replace("\r\n", "\n");
+    let (prelude, guarded) = lifecycle
+        .split_once("-- Preserve legacy function bodies; checked anchors insert narrow current-transaction branches only.\n")
+        .unwrap();
+    let first = guarded
+        .split_once("-- Cross-table UUID uniqueness")
+        .unwrap()
+        .0;
+    let second = lifecycle
+        .split_once("-- Existing PM ownership/write permits are preserved. This exact journal is the ONLY new branch.\n")
+        .unwrap().1
+        .split_once("-- Keep every legacy guard condition").unwrap().0;
+    let names = [
+        "sdlc_delivery_canonical_gate()",
+        "sdlc_critical_projection_gate()",
+        "sdlc_pm_reservation_gate()",
+    ];
+    for eol in ["\n", "\r\n"] {
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared(&prefix.replace('\n', eol))
+            .await
+            .unwrap();
+        tx.execute_unprepared(&prelude.replace('\n', eol))
+            .await
+            .unwrap();
+        let mut definitions = Vec::new();
+        for name in names {
+            // Synthetic predecessor representation only; all DDL is rolled back.
+            let definition = guard_definition(&tx, name)
+                .await
+                .replace("\r\n", "\n")
+                .replace('\n', eol);
+            tx.execute_unprepared(&definition).await.unwrap();
+            definitions.push(guard_definition(&tx, name).await);
+        }
+        for (index, name) in names.iter().enumerate() {
+            let anchor = format!("BEGIN{eol}");
+            for mutation in ["missing", "duplicate", "mixed"] {
+                let check = tx.begin().await.unwrap();
+                let replacement = match mutation {
+                    "missing" => format!("begin{eol}"),
+                    "duplicate" => format!("-- BEGIN{eol}{anchor}"),
+                    _ => format!(
+                        "-- BEGIN{}{anchor}",
+                        if eol == "\n" { "\r\n" } else { "\n" }
+                    ),
+                };
+                let changed = definitions[index].replacen(&anchor, &replacement, 1);
+                assert_ne!(changed, definitions[index]);
+                check.execute_unprepared(&changed).await.unwrap();
+                let error = check
+                    .execute_unprepared(if index == 2 { second } else { first })
+                    .await
+                    .unwrap_err();
+                assert!(
+                    error.to_string().contains(if index == 2 {
+                        "SDLC PM ownership guard anchor differs"
+                    } else {
+                        "SDLC guard anchor differs"
+                    }),
+                    "{name}: {mutation}: {error}"
+                );
+                check.rollback().await.unwrap();
+            }
+        }
+        tx.execute_unprepared(first).await.unwrap();
+        tx.execute_unprepared(second).await.unwrap();
+        for (index, name) in names.iter().enumerate() {
+            let after = guard_definition(&tx, name).await;
+            let anchor = format!("BEGIN{eol}");
+            let (before, tail) = definitions[index].split_once(&anchor).unwrap();
+            let inserted = after
+                .strip_prefix(before)
+                .unwrap()
+                .strip_suffix(tail)
+                .unwrap();
+            assert!(inserted.starts_with(&anchor));
+            assert!(inserted.contains("sdlc_critical_pm_exact_event"));
+            assert_eq!(inserted.contains("\r\n"), eol == "\r\n");
+        }
+        tx.rollback().await.unwrap();
+        // Also exercise the complete unchanged 0096 SQL sequence in this EOL representation.
+        let complete = db.begin().await.unwrap();
+        complete
+            .execute_unprepared(&format!("{prefix}\n{lifecycle}").replace('\n', eol))
+            .await
+            .unwrap();
+        complete.rollback().await.unwrap();
+    }
+}
+
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_DRAFT_FLOW_TEST_DATABASE_URL ending in _draft_flow_test"]
 async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_history() {
@@ -714,6 +827,10 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     )
     .await;
 
+    Box::pin(pending_096_guard_eol_cases(&db)).await;
+    assert_eq!(ledger(&db, &names[..predecessor]).await, ledger_095);
+    assert_eq!(history(&db, &old_tables, false).await, history_095);
+    assert_eq!(original.snapshot(&db, true).await, business_0033);
     migration::Migrator::up(&db, None).await.unwrap();
     let ledger_096 = ledger(&db, &names).await;
     for entry in ledger_095.as_array().unwrap() {
