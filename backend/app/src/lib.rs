@@ -15,11 +15,13 @@ pub mod sdlc_critical_pm_lifecycle;
 pub mod sdlc_critical_pm_reservation;
 pub mod sdlc_critical_pm_reviews;
 pub mod sdlc_draft_flow;
+pub mod sdlc_draft_source_enrollment;
 pub mod sdlc_lifecycle;
 pub mod sdlc_metadata;
 pub mod sdlc_pm_resume;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;
+pub mod sdlc_source;
 pub mod services;
 pub mod totp;
 

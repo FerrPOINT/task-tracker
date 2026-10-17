@@ -1,5 +1,9 @@
 # Дата-модель Task Tracker
 
+Source candidate migration 0097 adds immutable policy/selection/enrollment/ref-owner/source
+binding history, without backfilling tasks or editing old migrations. See
+[Task Source Binding](SDLC_TASK_SOURCE_BINDING.md); not installed/live evidence.
+
 Critical PM lifecycle source now registers its before/after journal and immutable
 routing generations in the existing unreleased096, after the review reservation
 fragment. `Finalizing` consumes the server-prepared completion in that same

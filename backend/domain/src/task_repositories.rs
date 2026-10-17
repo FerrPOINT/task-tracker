@@ -17,6 +17,17 @@ pub struct TaskRepositoryLink {
 }
 #[async_trait]
 pub trait TaskRepositoriesReader: Send + Sync {
+    // Source facts require the existing registered reader's qualified Forge counterpart.
+    // Repository identity and a syntactically valid SHA alone never verify source.
+    async fn verify_source(
+        &self,
+        _namespace: &NamespaceRef,
+        _source: &crate::sdlc_source::SourcePolicySpec,
+    ) -> Result<crate::sdlc_source::VerifiedSource, AppError> {
+        Err(AppError::Unavailable(
+            "forge_source_verification_counterpart_missing".into(),
+        ))
+    }
     async fn evidence(
         &self,
         _namespace: &NamespaceRef,

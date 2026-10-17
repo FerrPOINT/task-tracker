@@ -17,6 +17,7 @@ pub mod sdlc_native_admission;
 pub mod sdlc_pm_draft;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;
+pub mod sdlc_source;
 pub mod stubs;
 pub mod value_objects;
 

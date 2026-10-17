@@ -28,6 +28,7 @@ pub mod sdlc_critical_pm_reviews;
 pub mod sdlc_delivery;
 pub mod sdlc_reservation;
 pub mod sdlc_routing;
+pub mod sdlc_source;
 pub mod users;
 pub mod watchers_votes;
 pub mod workflow;

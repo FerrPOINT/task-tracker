@@ -319,7 +319,7 @@ pub fn delivery_request_policy(
     let resource = path.strip_prefix(&prefix).ok_or(AppError::Forbidden)?;
     let parts: Vec<_> = resource.split('/').collect();
     let allowed = match (method, parts.as_slice()) {
-        ("GET", ["lifecycle" | "context" | "requirements" | "events"]) => true,
+        ("GET", ["lifecycle" | "context" | "requirements" | "events" | "source-binding"]) => true,
         ("GET", ["lifecycle", "results", id]) => {
             Uuid::parse_str(id).is_ok_and(|value| !value.is_nil() && value.to_string() == *id)
         }

@@ -1,5 +1,9 @@
 # API v1 Specification — Task Tracker
 
+Source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md) specifies
+project source-policy CAS, explicit owner Draft enrollment and typed readback.
+Migration/schema and Forge source verification qualification are required.
+
 ## Critical Business Blocker Integration
 
 Current PM review source now permits only the existing blocker detail GET and

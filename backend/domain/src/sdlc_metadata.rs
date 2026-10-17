@@ -252,6 +252,7 @@ struct MetadataEventFields<R> {
 }
 
 metadata_events! {
+    DraftSourceSelected, "source.selected", crate::sdlc_source::DraftSourceEnrollmentReceipt;
     DeliveryQueued, "delivery.queued", LifecycleResource;
     DeliveryReconciled, "delivery.reconciled", LifecycleResource;
     DeliveryAssignmentReserved, "delivery.assignment_reserved", LifecycleResource;

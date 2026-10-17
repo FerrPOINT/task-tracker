@@ -1,5 +1,9 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+Bounded source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md).
+Single-task candidate refs are server allocated under owner project policy and
+frozen at existing exact requirements confirmation, without a new business step.
+
 New single-task Draft opts in with `flow:"single-task-v1"`; project enablement
 alone never converts legacy tasks. Tracker requires authoritative v2 routing for
 new marked creation and automatically freezes current seven-role routing during
