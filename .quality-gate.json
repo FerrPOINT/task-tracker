@@ -337,7 +337,7 @@
         "-euo",
         "pipefail",
         "-c",
-        "cargo build --locked --release --workspace\nfound=false\nwhile IFS= read -r -d '' binary; do\n    cp -- \"$binary\" \"$BASE_QUALITY_ARTIFACTS/\"\n    found=true\ndone < <(find \"$CARGO_TARGET_DIR/release\" -maxdepth 1 -type f -executable -print0)\n[[ \"$found\" == true ]]"
+        "cargo build --locked --release -p server --bin server\nfor binary in server; do\n    test -s \"$CARGO_TARGET_DIR/release/$binary\"\n    test -x \"$CARGO_TARGET_DIR/release/$binary\"\n    cp -- \"$CARGO_TARGET_DIR/release/$binary\" \"$BASE_QUALITY_ARTIFACTS/$binary\"\ndone"
       ],
       "cwd": "backend",
       "inputs": [
@@ -368,7 +368,7 @@
         "backend/**/tests/**"
       ],
       "artifact_outputs": [
-        "."
+        "server"
       ],
       "artifact_toolchain": "pinned-image",
       "environment_inputs": [
