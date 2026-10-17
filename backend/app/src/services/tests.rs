@@ -1571,6 +1571,42 @@ async fn board_service_backlog() {
 }
 
 #[tokio::test]
+async fn board_service_backlog_uses_project_todo_before_unrelated_catalog_status() {
+    let (base, user) = ctx_with_demo_data().await;
+    let issue = create_demo_issue(&base, &user, "Project backlog item").await;
+    let mut statuses = base.repos.statuses.list_all().await.unwrap();
+    statuses.insert(
+        0,
+        Status {
+            id: StatusId::new(),
+            name: "Another workflow's Todo".into(),
+            category: StatusCategory::Todo,
+            position: 0,
+            is_default: false,
+            is_closed: false,
+        },
+    );
+    let repos = Arc::new(domain::Repositories {
+        statuses: Arc::new(domain::MemoryStatusRepository::new(statuses)),
+        ..(*base.repos).clone()
+    });
+    let ctx = AppContext::new(test_config(), repos, Arc::new(TestStorage::default()));
+    let key = ProjectKey::new("TT");
+    let backlog = ctx
+        .services
+        .board
+        .get_backlog(&key, user.id, 0, 100)
+        .await
+        .unwrap();
+    assert_eq!(backlog.backlog_total, 1);
+    assert_eq!(backlog.backlog_issues.len(), 1);
+    assert_eq!(backlog.backlog_issues[0].id, issue.to_string());
+    assert!(backlog.sprint_issues.is_empty());
+    let board = ctx.services.board.get_board(&key, user.id).await.unwrap();
+    assert_eq!(board.backlog_total, 1);
+}
+
+#[tokio::test]
 async fn active_sprint_issue_ids_include_only_issues_in_that_sprint() {
     let (ctx, user) = ctx_with_demo_data().await;
     let project = ctx
