@@ -1,0 +1,19 @@
+# Root context is the parent source workspace. Prune unrelated sibling checkouts before walking them.
+/admin-panel
+/ai-hub
+/CI-CD
+/fleet-control
+/infrastructure
+/java-agent
+/project-workflow
+/sources
+/task-tracker-pr126-pagination
+/wiki
+/.local
+**/.git
+**/.local
+**/target
+**/node_modules
+**/.gradle
+**/build
+**/dist
