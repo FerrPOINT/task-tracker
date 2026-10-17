@@ -470,8 +470,13 @@ BEGIN
         ELSE
             replacement:=E'BEGIN\n    IF TG_TABLE_NAME=''sdlc_tasks'' THEN\n        IF sdlc_critical_pm_exact_event(OLD.task_id,OLD.state,NEW.state) THEN RETURN NEW; END IF;\n    END IF;\n    IF EXISTS(SELECT 1 FROM sdlc_critical_blocker_heads h WHERE h.task_id=NEW.task_id AND sdlc_critical_pm_detail(h.blocker_id)->>''state''=''resolved'') THEN RETURN NEW; END IF;\n';
         END IF;
-        IF (length(source)-length(replace(source,anchor,'')))/length(anchor)<>1 THEN
+        IF (length(source)-length(replace(source,E'BEGIN\n','')))/length(E'BEGIN\n')
+            + (length(source)-length(replace(source,E'BEGIN\r\n','')))/length(E'BEGIN\r\n')<>1 THEN
             RAISE EXCEPTION 'SDLC guard anchor differs %',name;
+        END IF;
+        IF strpos(source,E'BEGIN\r\n')>0 THEN
+            anchor:=E'BEGIN\r\n';
+            replacement:=replace(replacement,E'\n',E'\r\n');
         END IF;
         EXECUTE replace(source,anchor,replacement);
     END LOOP;
@@ -510,9 +515,11 @@ DECLARE source text; anchor text; replacement text;
 BEGIN
     SELECT pg_get_functiondef('sdlc_pm_reservation_gate()'::regprocedure) INTO source;
     anchor:=E'BEGIN\n';
-    IF (length(source)-length(replace(source,anchor,'')))/length(anchor)<>1 THEN
+    IF (length(source)-length(replace(source,E'BEGIN\n','')))/length(E'BEGIN\n')
+        + (length(source)-length(replace(source,E'BEGIN\r\n','')))/length(E'BEGIN\r\n')<>1 THEN
         RAISE EXCEPTION 'SDLC PM ownership guard anchor differs';
     END IF;
+    IF strpos(source,E'BEGIN\r\n')>0 THEN anchor:=E'BEGIN\r\n'; END IF;
     replacement:=E'BEGIN\n    IF sdlc_critical_pm_exact_event(OLD.task_id,OLD.state,NEW.state) THEN\n'
         || E'        IF (NEW.task_id=OLD.task_id AND NEW.root_task_id=OLD.root_task_id AND NEW.project_id=OLD.project_id\n'
         || E'            AND NEW.owner_subject=OLD.owner_subject AND NEW.tracker_instance_id=OLD.tracker_instance_id\n'
@@ -526,6 +533,7 @@ BEGIN
         || E'            RAISE EXCEPTION ''SDLC exact PM review ownership/permit required'' USING ERRCODE=''23514'';\n'
         || E'        END IF;\n        DELETE FROM sdlc_pm_state_write_permits WHERE task_id=OLD.task_id\n'
         || E'            AND transaction_id=pg_current_xact_id() AND next_state=NEW.state;\n        RETURN NEW;\n    END IF;\n';
+    IF anchor=E'BEGIN\r\n' THEN replacement:=replace(replacement,E'\n',E'\r\n'); END IF;
     EXECUTE replace(source,anchor,replacement);
 END $$;
 
