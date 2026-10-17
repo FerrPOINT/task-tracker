@@ -8,10 +8,25 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW = ROOT / ".github/workflows/ci.yml"
+WORKFLOW = ROOT / ".github/workflows/release.yml"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_automatic_units_do_not_prepare_postgres_and_http_mode_stays_manual(self) -> None:
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
+        http = workflow.split("\n  http:\n", 1)[1]
+        self.assertNotIn("services:", backend)
+        self.assertNotIn("--ignored", backend)
+        self.assertIn("cargo test --locked -p domain --lib", backend)
+        self.assertIn("github.event_name == 'workflow_dispatch' && inputs.http_only", http)
+        self.assertIn("services:", http)
+        self.assertIn("cargo clippy --locked -p server --test drafts --test sdlc -- -D warnings", http)
+        for suite in ("drafts", "sdlc"):
+            self.assertIn(f"cargo test -p server --test {suite} --locked -- --ignored --test-threads=1", http)
+        self.assertNotIn("populated_0033_through_095", http)
+        self.assertEqual(http.count("run: python3 ../scripts/vendor/base_rust_target_cache.py"), 1)
+
     def test_frontend_uses_ui_pin_and_backend_retains_sdk_pin(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         frontend = re.split(r"\n  [a-zA-Z0-9_-]+:\n", workflow.split("\n  frontend:\n", 1)[1], 1)[0]
@@ -54,7 +69,8 @@ class CiContractChecksTest(unittest.TestCase):
         workflow = WORKFLOW.read_text(encoding="utf-8")
         frontend_job = workflow.split("\n  frontend:\n", 1)[1]
         self.assertIn("fetch-depth: 0", frontend_job)
-        self.assertIn("pnpm openapi:check", frontend_job)
+        self.assertIn("pnpm install --frozen-lockfile --ignore-scripts=false", frontend_job)
+        self.assertIn("git diff --exit-code -- pnpm-lock.yaml src/api/generated.ts", frontend_job)
         self.assertIn("pnpm openapi:compat", frontend_job)
         self.assertIn("pnpm format:check", frontend_job)
 

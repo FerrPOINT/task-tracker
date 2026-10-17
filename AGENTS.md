@@ -31,12 +31,12 @@
 - Conventional commits (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`).
 - Один коммит = одна логическая единица.
 - Не amend/squash без явного запроса.
-- Push только после проверки `cargo test`, `pnpm typecheck`, `pnpm test`.
+- Push после релевантных scoped checks; integration/slow gate вручную перед релизом по стандарту Base.
 
 ### 4. Тестирование
 
-- Backend: `cargo test`, интеграционные тесты с PostgreSQL testcontainer.
-- Frontend: Vitest + Playwright.
+- Обычная сборка/разработка: backend `cargo test --locked -p domain --lib`, frontend `pnpm test:unit`; команды и scope — `.quality-gate.json`.
+- Integration с PostgreSQL, Playwright и полный набор — ручной release gate по `docs/TESTING.md`.
 - После UI-изменений — скриншоты full-page (375 / 1920 / 2560).
 - Все новые endpoint — curl-проверка.
 
@@ -61,11 +61,11 @@
 
 ### 8. Проверка перед завершением
 
-- [x] Все тесты проходят.
-- [x] Линтеры (`clippy`, `eslint`, `prettier`) чистые.
-- [x] Документация актуальна.
-- [x] Коммиты запушены в `origin/main`.
-- [x] Пользователь увидел результат (скриншот / curl / лог).
+- [ ] Пройдены unit/static checks затронутых компонентов; повтор использует подходящие receipts.
+- [ ] Для релиза отдельно подтверждены integration/slow/full coverage и необходимые security/data/live gates на exact candidate; невыполненные проверки обозначены NOT RUN.
+- [ ] Документация актуальна.
+- [ ] Источник опубликован в согласованную task branch в пределах поручения.
+- [ ] Приведено evidence требуемого результата (скриншот / curl / лог по scope задачи).
 
 ## Контакты
 
@@ -97,3 +97,33 @@ keys and shared caches are preserved. Base owns tools and LOCAL_GROUPS rules.
 Перед изменением платформенных имён прочитайте [интеграцию с Base](docs/PDLC_BASE_INTEGRATION.md) и канонические TERMS/BRANDING.
 Для UI: `pnpm --dir frontend exec pdlc-ui search "задача"` → `show ExportName` → один нужный `example`. В Workflow SSR используйте штатный exporter Base.
 Не переносите продуктовые запросы, DTO и права в общий UI. SDK/UI/skills pins независимы; новое имя платформы не меняет SDLC IDs/scopes или Hermes upstream.
+
+## Быстрые проверки и сборка
+
+Перед тестами, build и CI читать обязательный [стандарт Base](https://github.com/FerrPOINT/services-base/blob/7d98497e8ce5f5206f00b9e33b9a5c504ce02f96/docs/BUILD_PERFORMANCE.md).
+При разработке и сборке unit/static. Integration/slow/full coverage —
+ручной gate при подготовке релиза по docs/TESTING.md.
+Сохранять полезный cache, не переустанавливать неизменные dependencies и не
+пересобирать приложение из-за test-only. До повторного тяжёлого запуска назвать
+изменившиеся inputs/недостающее evidence; передавать один artifact между этапами.
+Required security/data/compatibility/live checks и product toolchains сохраняются.
+Компоненты и команды: `.quality-gate.json`; общие правила не копировать.
+
+Уровни и команды: [TESTING](docs/TESTING.md). Полный `.github/workflows/release.yml`
+запускается вручную на exact ref; зелёный unit build не означает release acceptance.
+
+## Выбор сборки и повторное использование
+
+Перед build/test/install определить нужные компоненты и изменившиеся реальные
+inputs; проверить готовый artifact, environment и cache. Неизменные inputs и
+проверенный artifact означают отсутствие повторных install/compile/source export.
+Docs/test-only не пересобирают приложение без изменения его build inputs.
+Во время работы выполнять scoped unit/static; полный gate — на согласованной
+вехе. Integration/slow/full coverage — вручную перед релизом; необходимые
+security/data/compatibility/live gates сохраняются. Полные команды в этом
+документе — каталог проверок, а не требование выполнять всё после каждой правки.
+Перед повторным heavy назвать changed inputs или missing proof; REUSED не
+выдавать за новый тест. Полезный прогретый cache сохранять в его бюджете.
+В source workspace читать `docs/BUILD_PERFORMANCE.md` из `qualityTooling.path`
+в `../source-workspace.json` и `../AGENTS.md`.
+В standalone checkout использовать стандарт принятой версии Base.

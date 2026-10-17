@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render as renderView, screen, waitFor, within, fireEvent } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -60,10 +60,12 @@ function mockHooks(notifications: Notification[] | undefined, unreadCount?: numb
   useMarkAllNotificationsRead.mockReturnValue({ mutate: vi.fn() })
 }
 
-describe('AppShell notifications', () => {
+describe('legacy AppShell notifications', () => {
   beforeEach(() => {
+    vi.stubEnv('VITE_NAMESPACE_ENABLED', 'false')
     window.localStorage.removeItem('tt-sidebar-collapsed')
   })
+  afterEach(() => vi.unstubAllEnvs())
 
   it('uses the common header slot order and one service switcher without duplicate search', () => {
     mockHooks([])

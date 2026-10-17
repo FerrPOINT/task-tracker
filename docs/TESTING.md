@@ -1,5 +1,11 @@
 # Стратегия тестирования Task Tracker
 
+Актуальная политика 2026-10-15: unit/static запускаются при обычной сборке;
+integration/slow/full coverage и browser/live — вручную перед релизом.
+Команды быстрых уровней приведены в разделе «Тестовые уровни (2026-10-15)» ниже.
+Прежняя полная матрица и тяжёлые команды этого документа сохранены как
+ручные release checks; они не запускаются автоматически после каждой правки.
+
 ## Tracker SDLC Verification
 
 CI explicitly runs the ignored `drafts` and `sdlc` HTTP suites against separate
@@ -328,3 +334,75 @@ Lefthook (`lefthook.yml`):
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
 
 Legacy assignment/native admission не создаёт Tracker reservation: HTTP/PG сценарий проверяет отказ claim без lease/completion и сохраняет blocker Analysis. Успешный PM completion проверяется отдельно после настоящего reservation, финальной публикации и подтверждения exact revision. Полная интеграция с Fleet требует отдельной приёмки.
+
+## Тестовые уровни (2026-10-15)
+
+Обязательная общая политика: [Base TESTING](https://github.com/FerrPOINT/services-base/blob/ad724088e9a63b1e353fb5b28e4308e9ae6f45ae/docs/TESTING.md).
+Выбор компонентов и native commands: `.quality-gate.json`.
+
+### Разработка и сборка
+
+Backend: `cargo test --locked -p domain --lib` из backend/.
+
+Frontend из frontend/: `pnpm test:unit`, `pnpm build` включает unit.
+`pnpm test` — unit alias, `pnpm test:all` — прежний полный набор.
+Playwright, packed-consumer и effective-theme проверки — ручной release.
+
+### Ручная релизная проверка
+
+Полный прежний набор сохранён в `.github/workflows/release.yml`: только
+workflow_dispatch на exact ref. Автоматический CI не поднимает PostgreSQL
+и не запускает длительные/browser/live тесты.
+
+Required security/data/compatibility checks и thresholds сохраняются.
+Unit success не заменяет ручную приёмку; NOT RUN не означает PASS.
+
+## Передача frontend artifact
+
+CI `frontend` передаёт `tested-frontend-dist` в `frontend-package`; отдельный consumer не устанавливает Node/dependencies.
+Проверка графа: `python scripts/vendor/base_frontend_artifact.py check-ci --root .`.
+[Формат/команды Base](https://github.com/FerrPOINT/services-base/blob/a9b1ae9869784676957c193a75bd92a2a0480dc1/docs/BUILD_PERFORMANCE.md#передача-frontend-artifact); packet pin — `.quality-tooling-revision`.
+Node 22.20.0; OpenAPI generation/checks сохраняются в producer.
+
+Docker unit stage явно получает `frontend/nginx.conf`: routing tests читают
+фактический config. Он остаётся вне Vite application COPY; изменение config
+повторяет относящиеся unit и packaging, сохраняя application compilation cache.
+
+Shell tests задают собственный feature mode: `app-shell.test.tsx` проверяет
+legacy project navigation при false, `app-shell.namespace.test.tsx` — Namespace
+при true. Оба входят в ordinary unit независимо от внешнего build mode; после
+каждого test env восстанавливается. Нельзя трактовать legacy URLs как ожидания
+Namespace UI или выключать namespace tests ради успешной сборки.
+Vitest profile фиксирует default namespace=false независимо от production VITE
+environment. Feature tests явно включают true через `vi.stubEnv`; production
+`vite build` использует свой конфиг и реальный build flag. Это сохраняет
+детерминированные legacy fixtures и проверку нового режима в одном unit graph.
+
+## Одна OpenAPI generation в CI
+
+В frontend job автоматического CI и ручного release `postinstall` выполняет
+generation во время frozen install; project lifecycle явно включён. Сразу после
+установки Git проверяет tracked outputs и отсутствие drift, без второго
+generator invocation. Проверяемые outputs: `src/api/generated.ts`.
+Lockfile, backward compatibility и backend OpenAPI drift gates сохраняются.
+Самостоятельный `pnpm openapi:check` остаётся проверкой для окружения, в котором
+generation ещё не выполнялась; его не добавляют повторно после postinstall.
+
+## Точные Rust artifacts обычной сборки
+
+Project-directory units модуля `sdlc` находятся в
+`backend/domain/src/tests/project_directory.rs`; module остаётся под `cfg(test)`.
+Оба Docker entrypoints включают файл в unit stage и исключают только его из
+production COPY. Обычная команда `cargo test --locked -p domain --lib` сохраняет
+прежние test names/assertions. Test-only edit этого файла выбирает unit gate,
+сохраняя production artifact inputs; production neighbor по-прежнему меняет key.
+Native unit/failing-unit/app-cache controls подтверждаются на общей вехе.
+
+`backend:build` в `.quality-gate.json` выбирает только package/bin targets
+поставляемого runtime: `server`.
+Outputs именованы явно; отсутствие любого required executable завершает gate
+ошибкой. Случайный соседний executable не попадает в artifact.
+CLI `task-tracker`, migration и OpenAPI остаются отдельными consumers; их workspace/release проверки сохранены.
+`backend:quality` сохраняет полные workspace clippy/tests в ручном release;
+MSRV/features/OpenAPI и необходимые integration gates не сокращаются.
+Fresh target между source exports и registry/compiler-cache policy Base сохраняются.
