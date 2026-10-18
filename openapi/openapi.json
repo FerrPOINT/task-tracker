@@ -17804,6 +17804,51 @@
           }
         }
       },
+      "RecoverUnsubmittedPmExecutionLease": {
+        "type": "object",
+        "required": [
+          "expected_owner_version",
+          "fence",
+          "lease_id",
+          "expected_lease_version",
+          "session_run_id",
+          "barrier_id",
+          "idempotency_key"
+        ],
+        "properties": {
+          "barrier_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expected_lease_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "expected_owner_version": {
+            "type": "integer",
+            "format": "int64",
+            "maximum": 9007199254740991,
+            "minimum": 1
+          },
+          "fence": {
+            "$ref": "#/components/schemas/MachineFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          },
+          "lease_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "session_run_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "RecoveryDisposition": {
         "oneOf": [
           {
@@ -17909,51 +17954,6 @@
             "format": "uuid"
           },
           "repository_id": {
-            "type": "string",
-            "format": "uuid"
-          }
-        },
-        "additionalProperties": false
-      },
-      "RecoverUnsubmittedPmExecutionLease": {
-        "type": "object",
-        "required": [
-          "expected_owner_version",
-          "fence",
-          "lease_id",
-          "expected_lease_version",
-          "session_run_id",
-          "barrier_id",
-          "idempotency_key"
-        ],
-        "properties": {
-          "barrier_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "expected_lease_version": {
-            "type": "integer",
-            "format": "int64",
-            "maximum": 9007199254740991,
-            "minimum": 1
-          },
-          "expected_owner_version": {
-            "type": "integer",
-            "format": "int64",
-            "maximum": 9007199254740991,
-            "minimum": 1
-          },
-          "fence": {
-            "$ref": "#/components/schemas/MachineFence"
-          },
-          "idempotency_key": {
-            "type": "string"
-          },
-          "lease_id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "session_run_id": {
             "type": "string",
             "format": "uuid"
           }

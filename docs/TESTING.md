@@ -17,10 +17,21 @@ timestamps, версии, hashes, original-key receipts и outbox; новый nu
 `TT_DRAFT_FLOW_TEST_DATABASE_URL` с суффиксом `_draft_flow_test` и теперь
 проверяет0097→0098. Его данные сами по себе не доказывают PM lease history.
 
-Оба сценария и новая mock-проверка down-refusal пока только подготовлены и
-reviewed; Cargo/PG выполнение ещё не подтверждено. Fmt и статический review
-не заменяют migrations/integration gate. Fake witness не является live Fleet
-или Hermes evidence.
+Локальный scoped Linux gate от 18 октября 2026 года на исходниках
+`407d058a0ca4800d62f8dfa6af5d79e523429a66`: fmt, strict Clippy, typed build,
+9 точных тестов и фактический OpenAPI generator проходят. В девять входят
+3 app identity, 2 loopback HTTP, API schema, mock migration, оба указанных
+populated PG сценария. Базы были отдельными свежими disposable fixtures;
+пропуск из-за отсутствующего env не допускался. Cleanup подтверждён.
+
+Result receipt SHA256:
+`6a6ab4fe311861e5541a53be6248cf22461e81f78375c652e9ddadd180d10cb2`.
+Generated OpenAPI SHA256:
+`2f35bf3bbc12c3e4b711216f453c2d0f139b40c40e7ede1fcb3b0248a9e9724f`.
+Retained compiler cache не является доказательством будущих проверок;
+initial-cohort standalone binaries отмечены только compiled, не executed.
+Server image, real Auth, установка и live Fleet/Hermes flow этим прогоном
+не проверялись. Fake witness не является live runtime evidence.
 
 Регрессии для непустой установки проверяют Todo-колонку доски, когда другие
 workflow добавляют более ранние Todo-статусы в общий каталог. Счётчики доски
