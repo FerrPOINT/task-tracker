@@ -25,6 +25,8 @@ mod lifecycle;
 mod native_admission;
 #[path = "sdlc_pm_resume.rs"]
 mod pm_resume;
+#[path = "sdlc_pm_unsubmitted.rs"]
+mod pm_unsubmitted;
 #[path = "sdlc_reservation.rs"]
 mod reservation;
 #[path = "sdlc_routing.rs"]
@@ -902,6 +904,33 @@ impl SdlcRepository for PostgresSdlcRepository {
         key: &str,
     ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
         self.read_pm_resume_operation(task, actor, key).await
+    }
+    async fn preflight_unsubmitted_pm_recovery(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: &domain::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
+    ) -> Result<Option<domain::sdlc_execution_lease::ExecutionLeaseReceipt>, AppError> {
+        self.preflight_unsubmitted_recovery(task, actor, command)
+            .await
+    }
+    async fn recover_unsubmitted_pm_execution_lease(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        command: domain::sdlc_execution_lease::RecoverUnsubmittedPmExecutionLease,
+        witness: domain::sdlc_execution_lease::UnsubmittedPmWitness,
+    ) -> Result<(domain::sdlc_execution_lease::ExecutionLeaseReceipt, bool), AppError> {
+        self.recover_unsubmitted_pm_lease(task, actor, command, witness)
+            .await
+    }
+    async fn unsubmitted_pm_recovery_operation(
+        &self,
+        task: Uuid,
+        actor: &Principal,
+        key: &str,
+    ) -> Result<domain::sdlc_execution_lease::ExecutionLeaseOperation, AppError> {
+        self.read_unsubmitted_recovery(task, actor, key).await
     }
     async fn reserve_pm_draft(
         &self,

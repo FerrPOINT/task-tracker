@@ -1,5 +1,44 @@
 # Стратегия тестирования Task Tracker
 
+## PM Recovery: Миграция0098
+
+В PR169 подготовлен отдельный сценарий непустого PM upgrade: fixture доходит
+до0097, обычные repository/API пути создают две lease и четыре claim/heartbeat
+операции. Затем реальный0098 up должен сохранить полные строки, IDs, holder,
+timestamps, версии, hashes, original-key receipts и outbox; новый nullable
+`recovery` проверяется отдельно. Down обязан отказать без потери истории.
+Далее тот же тест проверяет recovery v2→v3 после настоящего истечения TTL.
+
+Точный ignored selector:
+`sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history`.
+Он требует свежую disposable `TT_CANDIDATES_TEST_DATABASE_URL` с суффиксом
+`_candidates_test`, без migration ledger; нельзя pre-migrate или делить DB
+с другим сценарием. Отдельный legacy populated test использует свежую
+`TT_DRAFT_FLOW_TEST_DATABASE_URL` с суффиксом `_draft_flow_test` и теперь
+проверяет0097→0098. Его данные сами по себе не доказывают PM lease history.
+
+Workflow CI явно запускает PM selector с `--exact --ignored` в отдельной свежей
+`tracker_pm_candidates_test`; она не используется legacy upgrade или HTTP fixtures.
+Гейт выполняется также при addressed `workflow_dispatch` с `http_only=true`.
+Проверка результата требует `1 passed; 0 failed; 0 ignored`: пустая выборка,
+пропущенный ignored-тест или отсутствующая БД не дают успешную приёмку.
+
+Локальный scoped Linux gate от 18 октября 2026 года на исходниках
+`407d058a0ca4800d62f8dfa6af5d79e523429a66`: fmt, strict Clippy, typed build,
+9 точных тестов и фактический OpenAPI generator проходят. В девять входят
+3 app identity, 2 loopback HTTP, API schema, mock migration, оба указанных
+populated PG сценария. Базы были отдельными свежими disposable fixtures;
+пропуск из-за отсутствующего env не допускался. Cleanup подтверждён.
+
+Result receipt SHA256:
+`6a6ab4fe311861e5541a53be6248cf22461e81f78375c652e9ddadd180d10cb2`.
+Generated OpenAPI SHA256:
+`2f35bf3bbc12c3e4b711216f453c2d0f139b40c40e7ede1fcb3b0248a9e9724f`.
+Retained compiler cache не является доказательством будущих проверок;
+initial-cohort standalone binaries отмечены только compiled, не executed.
+Server image, real Auth, установка и live Fleet/Hermes flow этим прогоном
+не проверялись. Fake witness не является live runtime evidence.
+
 Регрессии для непустой установки проверяют Todo-колонку доски, когда другие
 workflow добавляют более ранние Todo-статусы в общий каталог. Счётчики доски
 и бэклога должны совпадать, новая задача без спринта должна оставаться в бэклоге.

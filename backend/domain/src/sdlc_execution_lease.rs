@@ -73,6 +73,46 @@ pub struct HeartbeatExecutionLease {
     pub idempotency_key: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RecoverUnsubmittedPmExecutionLease {
+    #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub expected_owner_version: i64,
+    #[serde(deserialize_with = "canonical_fence")]
+    pub fence: MachineFence,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub lease_id: Uuid,
+    #[serde(deserialize_with = "safe_version")]
+    #[schema(minimum = 1, maximum = 9007199254740991i64)]
+    pub expected_lease_version: i64,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub session_run_id: Uuid,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub barrier_id: Uuid,
+    pub idempotency_key: String,
+}
+
+pub use crate::sdlc_native_admission::Identity as PmExecutionIdentity;
+
+/// Obtained from the configured Fleet reader, never accepted in the POST body.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnsubmittedPmWitness {
+    pub contract_version: u8,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub session_run_id: Uuid,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub barrier_id: Uuid,
+    pub identity: PmExecutionIdentity,
+    #[serde(deserialize_with = "canonical_uuid")]
+    pub lease_id: Uuid,
+    #[serde(deserialize_with = "safe_version")]
+    pub lease_version: i64,
+    #[serde(deserialize_with = "safe_version")]
+    pub owner_version: i64,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(tag = "input_kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum PmResumeInput {
