@@ -537,7 +537,7 @@ pub async fn repositories(
         .namespace_binding(task.project_id)
         .await?
         .ok_or_else(|| AppError::conflict("unmanaged_task"))?;
-    let values = ctx.repos.projects.repository_links(task.project_id).await?;
+    let values = ctx.repos.issues.repository_links(task.id).await?;
     let links = values
         .into_iter()
         .map(|value| {
@@ -639,8 +639,8 @@ pub async fn link_repository(
         .ok_or_else(|| AppError::conflict("unmanaged_task"))?;
     let saved_links = ctx
         .repos
-        .projects
-        .repository_links(task.project_id)
+        .issues
+        .repository_links(task.id)
         .await?
         .into_iter()
         .map(|value| {
@@ -669,8 +669,8 @@ pub async fn link_repository(
     let link = serde_json::from_value(snapshot.clone())
         .map_err(|_| AppError::Unavailable("forge_reader_invalid_response".into()))?;
     ctx.repos
-        .projects
-        .link_repository(task.project_id, user, &repository, &snapshot)
+        .issues
+        .link_repository(task.id, user, &repository, &snapshot)
         .await?;
     Ok(Json(link))
 }

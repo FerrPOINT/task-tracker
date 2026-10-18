@@ -24,13 +24,13 @@ export function TaskRepositoriesPanel({
   const [error, setError] = useState('')
   const [evidenceOffset, setEvidenceOffset] = useState(0)
   const matching = context.data?.resource_key === projectKey
-  const key = ['task-repositories', ref?.registry_instance_id, ref?.namespace_id, taskId]
+  const key = ['project-repositories', ref?.registry_instance_id, ref?.namespace_id, projectKey]
   const linked = useQuery({
     queryKey: key,
     enabled: Boolean(ref && matching),
     queryFn: async ({ signal }) => {
-      const { data, error } = await api.GET('/api/v1/tasks/{id}/repositories', {
-        params: { path: { id: taskId } },
+      const { data, error } = await api.GET('/api/v1/projects/{project_key}/repositories', {
+        params: { path: { project_key: projectKey } },
         signal,
       })
       if (error || !data) throw new Error('Связи репозиториев недоступны')
@@ -38,7 +38,13 @@ export function TaskRepositoriesPanel({
     },
   })
   const evidence = useQuery({
-    queryKey: ['task-delivery-evidence', ...key, evidenceOffset],
+    queryKey: [
+      'task-delivery-evidence',
+      ref?.registry_instance_id,
+      ref?.namespace_id,
+      taskId,
+      evidenceOffset,
+    ],
     enabled: Boolean(ref && matching),
     queryFn: async ({ signal }) => {
       const { data, error } = await api.GET('/api/v1/tasks/{id}/delivery-evidence', {
@@ -53,10 +59,13 @@ export function TaskRepositoriesPanel({
     queryKey: ['available-task-repositories', ...key, offset],
     enabled: Boolean(ref && matching && context.data?.binding.state === 'active'),
     queryFn: async ({ signal }) => {
-      const { data, error } = await api.GET('/api/v1/tasks/{id}/available-repositories', {
-        params: { path: { id: taskId }, query: { offset } },
-        signal,
-      })
+      const { data, error } = await api.GET(
+        '/api/v1/projects/{project_key}/available-repositories',
+        {
+          params: { path: { project_key: projectKey }, query: { offset } },
+          signal,
+        },
+      )
       if (error || !data) throw new Error('Каталог Forge недоступен')
       return data
     },
@@ -69,8 +78,8 @@ export function TaskRepositoriesPanel({
     setBusy(true)
     setError('')
     try {
-      const { error } = await api.POST('/api/v1/tasks/{id}/repositories', {
-        params: { path: { id: taskId } },
+      const { error } = await api.POST('/api/v1/projects/{project_key}/repositories', {
+        params: { path: { project_key: projectKey } },
         body: {
           forge_instance_id: repository.forge_instance_id,
           repository_id: repository.repository_id,
@@ -89,7 +98,7 @@ export function TaskRepositoriesPanel({
   const fleet = services.find((service) => service.key === 'fleet-control')?.ui_url
   return (
     <section className="space-y-3 rounded-lg border border-border bg-surface p-4">
-      <h2 className="font-semibold">Репозитории задачи</h2>
+      <h2 className="font-semibold">Репозитории проекта</h2>
       {fleet && (
         <p>
           <a
