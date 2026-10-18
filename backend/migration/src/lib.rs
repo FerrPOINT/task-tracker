@@ -30,10 +30,60 @@ mod m20261018_0000098_pm_unsubmitted_recovery;
 
 pub use sea_orm_migration::prelude::*;
 
+mod m20261016_0000096_project_repositories;
+mod m20261016_0000096_task_source_compatibility;
+mod m20261018_0000098_project_repository_catalog;
+
 pub struct Migrator;
+struct PublishedMigrator;
+struct ProjectRepositoryMigrator;
 
 #[async_trait::async_trait]
 impl MigratorTrait for Migrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        PublishedMigrator::migrations()
+    }
+
+    async fn get_migration_with_status<C>(
+        db: &C,
+    ) -> Result<Vec<sea_orm_migration::Migration>, DbErr>
+    where
+        C: ConnectionTrait,
+    {
+        let history = Self::get_migration_models(db).await?;
+        if history
+            .iter()
+            .any(|m| m.version == "m20261016_0000096_project_repositories")
+        {
+            ProjectRepositoryMigrator::get_migration_with_status(db).await
+        } else {
+            PublishedMigrator::get_migration_with_status(db).await
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl MigratorTrait for ProjectRepositoryMigrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        let mut migrations = PublishedMigrator::migrations();
+        let index = migrations
+            .iter()
+            .position(|m| m.name() == "m20261017_0000097_task_source_binding")
+            .expect("source binding migration registered");
+        migrations.insert(
+            index,
+            Box::new(m20261016_0000096_project_repositories::Migration),
+        );
+        migrations.insert(
+            index + 1,
+            Box::new(m20261016_0000096_task_source_compatibility::Migration),
+        );
+        migrations
+    }
+}
+
+#[async_trait::async_trait]
+impl MigratorTrait for PublishedMigrator {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
         vec![
             Box::new(m20250723_000001_create_tables::Migration),
@@ -65,6 +115,10 @@ impl MigratorTrait for Migrator {
             Box::new(m20261013_0000096_single_task_delivery::Migration),
             Box::new(m20261017_0000097_task_source_binding::Migration),
             Box::new(m20261018_0000098_pm_unsubmitted_recovery::Migration),
+            Box::new(m20261018_0000098_project_repository_catalog::Migration),
         ]
     }
 }
+
+#[cfg(test)]
+mod project_repository_tests;

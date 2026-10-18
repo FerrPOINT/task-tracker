@@ -99,5 +99,9 @@ export const router = createProductRouter(
     { path: '/register', element: <Navigate to="/login" replace /> },
     { path: '*', element: <Navigate to="/" replace /> },
   ],
-  { serviceKey: 'task-tracker', portalOrigin: import.meta.env.VITE_PLATFORM_ORIGIN },
+  {
+    basename: import.meta.env.BASE_URL,
+    serviceKey: 'task-tracker',
+    portalOrigin: import.meta.env.VITE_PLATFORM_ORIGIN,
+  },
 )

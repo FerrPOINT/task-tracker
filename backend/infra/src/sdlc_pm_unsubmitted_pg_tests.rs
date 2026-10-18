@@ -6,9 +6,10 @@ use domain::sdlc_execution_lease::*;
 async fn unsubmitted_pm_migration_0098_order_and_down_refusal_without_database() {
     let migrations = migration::Migrator::migrations();
     let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
-    assert_eq!(names.len(), 29);
+    assert_eq!(names.len(), 30);
     assert_eq!(names[27], "m20261017_0000097_task_source_binding");
     assert_eq!(names[28], "m20261018_0000098_pm_unsubmitted_recovery");
+    assert_eq!(names[29], "m20261018_0000098_project_repository_catalog");
     let db = sea_orm::MockDatabase::new(sea_orm::DbBackend::Postgres).into_connection();
     let error = migrations[28]
         .down(&sea_orm_migration::SchemaManager::new(&db))
@@ -250,8 +251,19 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
             .to_string()
             .contains("PM recovery history is immutable; destructive rollback is disabled")
     );
+    migration::Migrator::up(&f.db, Some(1)).await.unwrap();
+    let catalog_versions = migration_versions(&f).await;
+    assert_eq!(
+        &catalog_versions[..upgraded_versions.len()],
+        upgraded_versions.as_slice()
+    );
+    assert_eq!(catalog_versions.len(), recovery_index + 2);
+    assert_eq!(
+        catalog_versions.last().unwrap(),
+        "m20261018_0000098_project_repository_catalog"
+    );
     migration::Migrator::up(&f.db, None).await.unwrap();
-    assert_eq!(migration_versions(&f).await, upgraded_versions);
+    assert_eq!(migration_versions(&f).await, catalog_versions);
     for (pm, (saved, operations)) in [&p, &q].into_iter().zip(&preserved) {
         assert_eq!(&upgrade_snapshot(&f, pm).await, saved);
         assert_eq!(&original_operations(&f, pm).await, operations);

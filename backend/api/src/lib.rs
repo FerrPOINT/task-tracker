@@ -158,6 +158,10 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::namespace::context,
         routes::namespace::documents,
         routes::namespace::repositories,
+        routes::project_repositories::list,
+        routes::project_repositories::available,
+        routes::project_repositories::link,
+        routes::project_repositories::unlink,
         routes::namespace::delivery_evidence,
         routes::namespace::link_repository,
         routes::namespace::available_repositories,
@@ -497,6 +501,18 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         ));
 
     let protected = Router::new()
+        .route(
+            "/projects/{project_key}/repositories",
+            get(routes::project_repositories::list).post(routes::project_repositories::link),
+        )
+        .route(
+            "/projects/{project_key}/available-repositories",
+            get(routes::project_repositories::available),
+        )
+        .route(
+            "/projects/{project_key}/repositories/{forge_instance_id}/{repository_id}",
+            axum::routing::delete(routes::project_repositories::unlink),
+        )
         .route("/tasks/{id}/documents", get(routes::namespace::documents))
         .route(
             "/tasks/{id}/delivery-evidence",

@@ -32,3 +32,5 @@ pub mod sdlc_source;
 pub mod users;
 pub mod watchers_votes;
 pub mod workflow;
+
+pub mod project_repositories;

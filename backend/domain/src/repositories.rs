@@ -253,6 +253,35 @@ pub trait ProjectRepository: Send + Sync {
         project: &Project,
         board: &crate::Board,
     ) -> Result<ProjectId, AppError>;
+    async fn repository_links(
+        &self,
+        _project: ProjectId,
+        _offset: u32,
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        Err(AppError::Unavailable(
+            "project_repository_links_not_implemented".into(),
+        ))
+    }
+    async fn link_repository(
+        &self,
+        _project: ProjectId,
+        _actor: UserId,
+        _repository: &crate::task_repositories::RepositoryRef,
+        _snapshot: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        Err(AppError::Unavailable(
+            "project_repository_links_not_implemented".into(),
+        ))
+    }
+    async fn unlink_repository(
+        &self,
+        _project: ProjectId,
+        _repository: &crate::task_repositories::RepositoryRef,
+    ) -> Result<(), AppError> {
+        Err(AppError::Unavailable(
+            "project_repository_links_not_implemented".into(),
+        ))
+    }
     async fn delete(&self, id: ProjectId) -> Result<(), AppError>;
     async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError>;
 }

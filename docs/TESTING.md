@@ -374,3 +374,30 @@ Lefthook (`lefthook.yml`):
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
 
 Legacy assignment/native admission не создаёт Tracker reservation: HTTP/PG сценарий проверяет отказ claim без lease/completion и сохраняет blocker Analysis. Успешный PM completion проверяется отдельно после настоящего reservation, финальной публикации и подтверждения exact revision. Полная интеграция с Fleet требует отдельной приёмки.
+
+## Совместимость каталога проекта и восстановления PM
+
+Кандидат PR170 сохраняет оба полных имени миграции 0098 и выполняет их
+раздельно в populated upgrade. Отказ rollback PM проверяется до применения
+каталога; затем отдельно проверяются отказ rollback каталога и idempotent up.
+Пять `migration::project_repository_tests` используют разные свежие БД с
+суффиксом `_pdlc4_compat_test`: legacy, published, fresh/unknown, уже применённый
+каталог до PM и тот же порядок на legacy lineage. Тесты не правят ledger ради
+совместимости, а сравнивают сохранённые строки и прежние применённые записи.
+
+CI содержит явный exact/ignored gate с отдельной БД на случай и проверкой
+`1 passed; 0 failed; 0 ignored`. Наличие gate не означает его успешное исполнение:
+для объединённого кандидата требуется отдельный run на точном source.
+
+Project links pagination: ignored infra integration test
+`project_repository_link_paging_preserves_scope_and_order` требует явную свежую
+`TT_PROJECT_LINK_TEST_DATABASE_URL` с суффиксом `_project_links_test`. CI отдельно
+исполняет его с exact selector и проверяет один выполненный тест. Production
+repository создаёт 102 связи, включая одинаковый repository ID в двух Forge,
+и связь другого проекта; страницы 100+2 не теряют, не дублируют и не смешивают
+записи, большой uint32 offset безопасен. UI проверяет переход вперёд/назад и
+сброс страницы при смене проекта. Рабочие БД не используются.
+
+HTTP fixture дополнительно проверяет 409 для создания и удаления существующей/отсутствующей
+связи архивного проекта, доступность чтения и возврат к обычному идемпотентному DELETE
+после следующего active generation. Fixture не уменьшает generation и не меняет lease timestamps.

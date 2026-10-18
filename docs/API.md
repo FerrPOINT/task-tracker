@@ -1938,6 +1938,11 @@ See [strict contract and failure states](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
 ## Сквозной Namespace
 
 Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).
+
+## Project repository catalogue
+
+GET/POST `/api/v1/projects/{project_key}/repositories`, GET `/api/v1/projects/{project_key}/available-repositories` и DELETE `/api/v1/projects/{project_key}/repositories/{forge_instance_id}/{repository_id}` сохраняют проектную принадлежность связей и проверяют проектный доступ/edit. POST/DELETE возвращают 204. Опубликованный task route сохраняет task-scoped DTO/200 POST. Панель репозиториев в карточке задачи использует owning-project API и общий project query key. Ни каталог проекта, ни обычная связь не назначают immutable source binding; его создаёт только штатный SDLC confirmation/enrollment.
+
 ## Восстановление Первоначального PM Lease
 
 `POST /api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted`
@@ -1974,3 +1979,15 @@ Fleet сохраняет durable barrier до авторитетного readbac
 Свидетельство допустимо только при активном barrier и никогда не отправленном
 первоначальном native run. Этот пакет Tracker не устанавливает companion Fleet
 barrier. Существующие контракты claim/heartbeat/resume сохраняются.
+
+### Страницы связей проекта
+
+`GET /api/v1/projects/{project_key}/repositories?offset=0` возвращает до 100
+сохранённых связей. Необязательный `offset` — uint32, по умолчанию 0; следующая
+страница начинается с `offset + 100`. Порядок: `created_at`, `repository_id`,
+`forge_instance_id`. Параметры не меняют project access и namespace readback.
+Панель сохраняет task scope свидетельств и сбрасывает страницу связей при
+смене owning project или namespace. Ответ остаётся массивом прежнего DTO.
+
+POST и DELETE связей архивного проекта возвращают 409 `namespace_resource_read_only`,
+включая повторное удаление уже отсутствующей связи. Чтение сохранённых связей остаётся доступным.
