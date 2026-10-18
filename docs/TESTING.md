@@ -17,6 +17,12 @@ timestamps, версии, hashes, original-key receipts и outbox; новый nu
 `TT_DRAFT_FLOW_TEST_DATABASE_URL` с суффиксом `_draft_flow_test` и теперь
 проверяет0097→0098. Его данные сами по себе не доказывают PM lease history.
 
+Workflow CI явно запускает PM selector с `--exact --ignored` в отдельной свежей
+`tracker_pm_candidates_test`; она не используется legacy upgrade или HTTP fixtures.
+Гейт выполняется также при addressed `workflow_dispatch` с `http_only=true`.
+Проверка результата требует `1 passed; 0 failed; 0 ignored`: пустая выборка,
+пропущенный ignored-тест или отсутствующая БД не дают успешную приёмку.
+
 Локальный scoped Linux gate от 18 октября 2026 года на исходниках
 `407d058a0ca4800d62f8dfa6af5d79e523429a66`: fmt, strict Clippy, typed build,
 9 точных тестов и фактический OpenAPI generator проходят. В девять входят
