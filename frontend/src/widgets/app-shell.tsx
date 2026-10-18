@@ -1,5 +1,5 @@
+import { AppShell as BaseAppShell } from '@pdlc/ui/ui'
 import {
-  NavigationDrawer,
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -17,7 +17,6 @@ import {
   useNamespaceCatalog,
   useNamespaceContext,
 } from './namespace-context'
-import { useRef, useState } from 'react'
 import { SidebarItem } from '@pdlc/ui/ui'
 import { ProjectLink as Link, isAllProjects } from '@/shared/lib/project-navigation'
 import { withNamespaceLocation, type NamespaceLocation } from '@pdlc/ui/lib'
@@ -35,12 +34,10 @@ import {
   LogOut,
   BarChart3,
   ShieldCheck,
-  PanelLeftClose,
-  PanelLeftOpen,
   Check,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button, PageFrame, PlatformMark } from '@pdlc/ui/ui'
+import { Button, PlatformMark } from '@pdlc/ui/ui'
 import { ThemeMenuItems } from '@pdlc/ui/ui'
 import { PlatformHeader } from '@pdlc/ui/ui'
 import { useTrackerEvents } from '@/shared/api/useTrackerEvents'
@@ -231,13 +228,6 @@ export function AppShell() {
     : routeProjectKey
   const projectDisclosures = useProjectDisclosures(collapsedProjectsStorageKey)
   const collapsedProjects = new Set(projectDisclosures.collapsed)
-  const mainRef = useRef<HTMLElement>(null)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () =>
-      typeof window !== 'undefined' &&
-      window.localStorage.getItem('tt-sidebar-collapsed') === 'true',
-  )
   const { data: projects = [] } = useProjects()
   const currentProject = projects.find((project) => project.key === projectKey)
   const contexts =
@@ -323,293 +313,27 @@ export function AppShell() {
     return true
   }
 
-  function closeMobileMenu() {
-    setMobileMenuOpen(false)
-  }
-
   return (
-    <div className="min-h-screen bg-background text-text-primary">
-      <PlatformHeader
-        currentServiceKey="task-tracker"
-        leading={
-          <>
-            <NavigationDrawer
-              title={t('app.name')}
-              open={mobileMenuOpen}
-              onOpenChange={setMobileMenuOpen}
-              desktopFocusRef={mainRef}
-            >
-              <Button asChild className="mb-3 min-h-11 w-full gap-2">
-                <Link
-                  to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
-                  onClick={closeMobileMenu}
-                  aria-label={t('navigation.create')}
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  {t('navigation.create')}
-                </Link>
-              </Button>
-              <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
-                {navItems.map((item) => (
-                  <SidebarLink
-                    key={item.to}
-                    to={item.to}
-                    icon={item.icon}
-                    label={t(item.labelKey)}
-                    active={isActive(item.to)}
-                    onClick={closeMobileMenu}
-                  />
-                ))}
-              </nav>
-              <ProjectNavigation
-                groups={projectGroups}
-                catalogStatus={
-                  namespaceEnabled
-                    ? catalog.isPending
-                      ? 'loading'
-                      : catalog.isError
-                        ? 'error'
-                        : undefined
-                    : undefined
-                }
-                collapsed={collapsedProjects}
-                onToggle={toggleProject}
-                isActive={isActive}
-                onNavigate={closeMobileMenu}
-              />
-              {utilityNavigation(false, closeMobileMenu)}
-            </NavigationDrawer>
-            <Link
-              to="/"
-              className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:-ml-1.5 md:flex"
-              aria-label={t('app.name')}
-            >
-              <PlatformMark size="shell" withName={false} />
-            </Link>
-          </>
-        }
-        context={
-          import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
-            <NamespaceShellContext />
-          ) : (
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={t('navigation.projects')}
-                  title={currentProject?.name ?? t('navigation.projects')}
-                  className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
-                >
-                  {currentProject && <ProjectAvatar projectKey={currentProject.key} size="xs" />}
-                  <span className="truncate">
-                    {currentProject?.name ?? t('navigation.projects')}
-                  </span>
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                className="max-h-[calc(100dvh-4rem)] w-64 overflow-y-auto"
-              >
-                <DropdownMenuItem asChild>
-                  <Link to="/projects" className="gap-2">
-                    <FolderKanban className="h-4 w-4" />
-                    {t('navigation.allProjects')}
-                  </Link>
-                </DropdownMenuItem>
-                {projects.map((project) => (
-                  <DropdownMenuItem key={project.key} asChild>
-                    <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
-                      <ProjectAvatar projectKey={project.key} size="xs" />
-                      <span className="min-w-0 flex-1 truncate">{project.name}</span>
-                      <span className="text-xs text-text-muted">{project.key}</span>
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )
-        }
-        actions={
-          <>
-            <Button asChild size="sm" className="min-h-10 min-w-10 gap-1 px-2.5 text-xs">
+    <BaseAppShell
+      currentServiceKey="task-tracker"
+      title={t('app.name')}
+      layout={pageLayout}
+      collapsibleSidebar
+      sidebarStorageKey="tt-sidebar-collapsed"
+      renderNavigation={({ compact, mobile, onNavigate }) => (
+        <>
+          {mobile && (
+            <Button asChild className="mb-3 min-h-11 w-full gap-2">
               <Link
                 to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
+                onClick={onNavigate}
                 aria-label={t('navigation.create')}
               >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden xl:inline">{t('navigation.create')}</span>
+                <Plus className="h-4 w-4" aria-hidden />
+                {t('navigation.create')}
               </Link>
             </Button>
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative h-11 w-11 md:h-10 md:w-10"
-                  aria-label={t('notifications.open')}
-                  data-testid="notification-trigger"
-                >
-                  <Bell className="h-[18px] w-[18px]" />
-                  {unreadCount > 0 && (
-                    <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
-                      {unreadCount}
-                    </span>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
-                <DropdownMenuGroup className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                  <DropdownMenuLabel className="text-sm font-semibold">
-                    {t('notifications.title')}
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem
-                    className="min-h-11 px-2 text-xs"
-                    onSelect={() => markAllNotificationsRead.mutate()}
-                    disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
-                  >
-                    {t('notifications.markAllRead')}
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-                <DropdownMenuGroup className="max-h-96 overflow-y-auto p-1">
-                  {notifications.slice(0, 10).map((notification) => {
-                    const content = (
-                      <div className="min-w-0">
-                        <div className="line-clamp-2 break-words font-medium">
-                          {notification.title}
-                        </div>
-                        {notification.body && (
-                          <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
-                            {notification.body}
-                          </div>
-                        )}
-                      </div>
-                    )
-                    return (
-                      <DropdownMenuGroup key={notification.id} className="flex items-start gap-1">
-                        {notification.action_url ? (
-                          <DropdownMenuItem
-                            asChild
-                            className="min-h-11 min-w-0 flex-1 items-start p-2"
-                          >
-                            <Link
-                              to={notification.action_url}
-                              onClick={() => {
-                                if (!notification.is_read)
-                                  markNotificationRead.mutate(notification.id)
-                              }}
-                            >
-                              {content}
-                            </Link>
-                          </DropdownMenuItem>
-                        ) : (
-                          <DropdownMenuItem
-                            className="min-h-11 min-w-0 flex-1 items-start p-2"
-                            onSelect={() => {
-                              if (!notification.is_read)
-                                markNotificationRead.mutate(notification.id)
-                            }}
-                          >
-                            {content}
-                          </DropdownMenuItem>
-                        )}
-                        {!notification.is_read && (
-                          <DropdownMenuItem
-                            className="min-h-11 w-11 shrink-0 justify-center p-0"
-                            aria-label={`${t('notifications.markRead')}: ${notification.title}`}
-                            title={t('notifications.markRead')}
-                            onSelect={() => markNotificationRead.mutate(notification.id)}
-                          >
-                            <Check className="h-4 w-4" aria-hidden="true" />
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuGroup>
-                    )
-                  })}
-                  {notifications.length === 0 && (
-                    <DropdownMenuLabel className="px-3 py-6 text-center text-sm text-text-muted">
-                      {t('notifications.empty')}
-                    </DropdownMenuLabel>
-                  )}
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator className="h-px bg-border" />
-                <DropdownMenuItem asChild className="m-1 justify-center text-accent">
-                  <Link to="/notifications">{t('notifications.viewAll')}</Link>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-11 w-11 md:h-10 md:w-10"
-                  aria-label={t('navigation.account')}
-                >
-                  <User className="h-[18px] w-[18px]" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <div className="break-words px-2 py-1.5 text-sm font-medium text-text-primary">
-                  {user?.display_name ?? user?.email ?? t('navigation.user')}
-                </div>
-                {user?.display_name && user.display_name !== user.email && (
-                  <div className="break-words px-2 pb-2 text-xs text-text-muted">{user?.email}</div>
-                )}
-                <ThemeMenuItems />
-                <DropdownMenuItem asChild>
-                  <Link to="/admin" className="gap-2 text-text-secondary">
-                    <ShieldCheck className="h-4 w-4" />
-                    <span>{t('navigation.admin')}</span>
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => logout.mutate()}
-                  disabled={logout.isPending}
-                  className="gap-2 text-text-secondary"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>{t('navigation.logout')}</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </>
-        }
-      />
-
-      <div className="flex min-h-[calc(100dvh-var(--shell-header-height))]">
-        <aside
-          className={`sticky top-[var(--shell-header-height)] hidden h-[calc(100dvh-var(--shell-header-height))] shrink-0 flex-col gap-2 overflow-y-auto border-r border-border bg-surface py-3 md:flex ${sidebarCollapsed ? 'w-[var(--shell-sidebar-compact)] px-2' : 'w-[var(--shell-sidebar-expanded)] px-3'}`}
-        >
-          <div
-            className={`flex min-h-9 items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between px-2'}`}
-          >
-            {!sidebarCollapsed && (
-              <span className="truncate text-xs font-medium uppercase text-text-muted">
-                {t('navigation.menu')}
-              </span>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              aria-label={
-                sidebarCollapsed ? t('navigation.expandSidebar') : t('navigation.collapseSidebar')
-              }
-              aria-expanded={!sidebarCollapsed}
-              onClick={() => {
-                const next = !sidebarCollapsed
-                setSidebarCollapsed(next)
-                window.localStorage.setItem('tt-sidebar-collapsed', String(next))
-              }}
-            >
-              {sidebarCollapsed ? (
-                <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-              ) : (
-                <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-              )}
-            </Button>
-          </div>
+          )}
           <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
             {navItems.map((item) => (
               <SidebarLink
@@ -618,7 +342,8 @@ export function AppShell() {
                 icon={item.icon}
                 label={t(item.labelKey)}
                 active={isActive(item.to)}
-                compact={sidebarCollapsed}
+                compact={compact}
+                onClick={onNavigate}
               />
             ))}
           </nav>
@@ -636,32 +361,234 @@ export function AppShell() {
             collapsed={collapsedProjects}
             onToggle={toggleProject}
             isActive={isActive}
-            compact={sidebarCollapsed}
+            compact={compact}
+            onNavigate={onNavigate}
           />
-          {utilityNavigation(sidebarCollapsed)}
-        </aside>
-
-        <main ref={mainRef} tabIndex={-1} className="shell-main flex-1">
-          <PageFrame mode={pageLayout}>
-            {namespace.malformed ? (
-              <p role="alert" className="text-danger">
-                Некорректная ссылка на проект.
-              </p>
-            ) : namespace.ref && routeProjectKey && namespace.query.isPending ? (
-              <p role="status">Проверяем привязку Tracker…</p>
-            ) : namespace.ref &&
-              routeProjectKey &&
-              (namespace.query.isError ||
-                namespace.query.data?.resource_key !== routeProjectKey) ? (
-              <p role="alert" className="text-danger">
-                Ресурс не подтверждён в выбранном проекте.
-              </p>
+          {utilityNavigation(compact, onNavigate)}
+        </>
+      )}
+      renderHeader={(navigationTrigger) => (
+        <PlatformHeader
+          currentServiceKey="task-tracker"
+          leading={
+            <>
+              {navigationTrigger}
+              <Link
+                to="/"
+                className="hidden items-center gap-2 font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:-ml-1.5 md:flex"
+                aria-label={t('app.name')}
+              >
+                <PlatformMark size="shell" withName={false} />
+              </Link>
+            </>
+          }
+          context={
+            import.meta.env.VITE_NAMESPACE_ENABLED === 'true' ? (
+              <NamespaceShellContext />
             ) : (
-              <Outlet />
-            )}
-          </PageFrame>
-        </main>
-      </div>
-    </div>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t('navigation.projects')}
+                    title={currentProject?.name ?? t('navigation.projects')}
+                    className="hidden min-h-10 min-w-0 max-w-32 items-center gap-1 rounded-md px-2 text-sm text-text-secondary hover:bg-surface-raised hover:text-text-primary lg:flex xl:max-w-52"
+                  >
+                    {currentProject && <ProjectAvatar projectKey={currentProject.key} size="xs" />}
+                    <span className="truncate">
+                      {currentProject?.name ?? t('navigation.projects')}
+                    </span>
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="max-h-[calc(100dvh-4rem)] w-64 overflow-y-auto"
+                >
+                  <DropdownMenuItem asChild>
+                    <Link to="/projects" className="gap-2">
+                      <FolderKanban className="h-4 w-4" />
+                      {t('navigation.allProjects')}
+                    </Link>
+                  </DropdownMenuItem>
+                  {projects.map((project) => (
+                    <DropdownMenuItem key={project.key} asChild>
+                      <Link to={`/projects/${project.key}/board`} className="justify-between gap-2">
+                        <ProjectAvatar projectKey={project.key} size="xs" />
+                        <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                        <span className="text-xs text-text-muted">{project.key}</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
+          }
+          actions={
+            <>
+              <Button asChild size="sm" className="min-h-10 min-w-10 gap-1 px-2.5 text-xs">
+                <Link
+                  to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
+                  aria-label={t('navigation.create')}
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden xl:inline">{t('navigation.create')}</span>
+                </Link>
+              </Button>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="relative h-11 w-11 md:h-10 md:w-10"
+                    aria-label={t('notifications.open')}
+                    data-testid="notification-trigger"
+                  >
+                    <Bell className="h-[18px] w-[18px]" />
+                    {unreadCount > 0 && (
+                      <span className="notification-count absolute -right-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] font-semibold leading-4">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[calc(100vw-1rem)] max-w-80 p-0">
+                  <DropdownMenuGroup className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                    <DropdownMenuLabel className="text-sm font-semibold">
+                      {t('notifications.title')}
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      className="min-h-11 px-2 text-xs"
+                      onSelect={() => markAllNotificationsRead.mutate()}
+                      disabled={unreadCount === 0 || markAllNotificationsRead.isPending}
+                    >
+                      {t('notifications.markAllRead')}
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuGroup className="max-h-96 overflow-y-auto p-1">
+                    {notifications.slice(0, 10).map((notification) => {
+                      const content = (
+                        <div className="min-w-0">
+                          <div className="line-clamp-2 break-words font-medium">
+                            {notification.title}
+                          </div>
+                          {notification.body && (
+                            <div className="mt-0.5 line-clamp-2 text-xs text-text-muted">
+                              {notification.body}
+                            </div>
+                          )}
+                        </div>
+                      )
+                      return (
+                        <DropdownMenuGroup key={notification.id} className="flex items-start gap-1">
+                          {notification.action_url ? (
+                            <DropdownMenuItem
+                              asChild
+                              className="min-h-11 min-w-0 flex-1 items-start p-2"
+                            >
+                              <Link
+                                to={notification.action_url}
+                                onClick={() => {
+                                  if (!notification.is_read)
+                                    markNotificationRead.mutate(notification.id)
+                                }}
+                              >
+                                {content}
+                              </Link>
+                            </DropdownMenuItem>
+                          ) : (
+                            <DropdownMenuItem
+                              className="min-h-11 min-w-0 flex-1 items-start p-2"
+                              onSelect={() => {
+                                if (!notification.is_read)
+                                  markNotificationRead.mutate(notification.id)
+                              }}
+                            >
+                              {content}
+                            </DropdownMenuItem>
+                          )}
+                          {!notification.is_read && (
+                            <DropdownMenuItem
+                              className="min-h-11 w-11 shrink-0 justify-center p-0"
+                              aria-label={`${t('notifications.markRead')}: ${notification.title}`}
+                              title={t('notifications.markRead')}
+                              onSelect={() => markNotificationRead.mutate(notification.id)}
+                            >
+                              <Check className="h-4 w-4" aria-hidden="true" />
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuGroup>
+                      )
+                    })}
+                    {notifications.length === 0 && (
+                      <DropdownMenuLabel className="px-3 py-6 text-center text-sm text-text-muted">
+                        {t('notifications.empty')}
+                      </DropdownMenuLabel>
+                    )}
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator className="h-px bg-border" />
+                  <DropdownMenuItem asChild className="m-1 justify-center text-accent">
+                    <Link to="/notifications">{t('notifications.viewAll')}</Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11 md:h-10 md:w-10"
+                    aria-label={t('navigation.account')}
+                  >
+                    <User className="h-[18px] w-[18px]" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="break-words px-2 py-1.5 text-sm font-medium text-text-primary">
+                    {user?.display_name ?? user?.email ?? t('navigation.user')}
+                  </div>
+                  {user?.display_name && user.display_name !== user.email && (
+                    <div className="break-words px-2 pb-2 text-xs text-text-muted">
+                      {user?.email}
+                    </div>
+                  )}
+                  <ThemeMenuItems />
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin" className="gap-2 text-text-secondary">
+                      <ShieldCheck className="h-4 w-4" />
+                      <span>{t('navigation.admin')}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => logout.mutate()}
+                    disabled={logout.isPending}
+                    className="gap-2 text-text-secondary"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>{t('navigation.logout')}</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          }
+        />
+      )}
+    >
+      {namespace.malformed ? (
+        <p role="alert" className="text-danger">
+          Некорректная ссылка на проект.
+        </p>
+      ) : namespace.ref && routeProjectKey && namespace.query.isPending ? (
+        <p role="status">Проверяем привязку Tracker…</p>
+      ) : namespace.ref &&
+        routeProjectKey &&
+        (namespace.query.isError || namespace.query.data?.resource_key !== routeProjectKey) ? (
+        <p role="alert" className="text-danger">
+          Ресурс не подтверждён в выбранном проекте.
+        </p>
+      ) : (
+        <Outlet />
+      )}
+    </BaseAppShell>
   )
 }
