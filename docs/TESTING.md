@@ -356,7 +356,8 @@ cargo test -p server --test sdlc stage_discussion_http -- --ignored --test-threa
 Первый сценарий выполняет настоящие транзакции PM/стадий, проверяет отсутствие
 перехода без комментария и при его изменении после proposal, повторы и rework.
 Второй запускает настоящий Tracker HTTP server и PostgreSQL; Central Auth заменён
-явным тестовым issuer. Проверяются все авторы и страницы, свежий scan после нового
+явным тестовым issuer. Все три новые ручки также вызываются настоящим `curl`.
+Проверяются все авторы и страницы, свежий scan после нового
 комментария, UTF-8, точный replay, удалённый cursor, изменённый текст, истёкшая lease
 и отзыв project ACL. Серверный test binary использует process-local env: запускать
 этот ignored-сценарий отдельно, с одним test thread.

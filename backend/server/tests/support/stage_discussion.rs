@@ -15,6 +15,42 @@ async fn read(client: &Client, url: &str, token: &str, status: u16) -> Value {
     serde_json::from_str(&body).unwrap()
 }
 
+async fn curl_json(url: &str, body: Option<&Value>) -> Value {
+    let url = url.to_owned();
+    let body = body.map(Value::to_string);
+    let output = tokio::task::spawn_blocking(move || {
+        let mut command = std::process::Command::new("curl");
+        command.args([
+            "--silent",
+            "--show-error",
+            "--fail-with-body",
+            "--max-time",
+            "10",
+            "--header",
+            "Authorization: Bearer sdlc_pat_discussion_pm",
+            "--url",
+            &url,
+        ]);
+        if let Some(body) = body {
+            command.args([
+                "--header",
+                "Content-Type: application/json",
+                "--data-binary",
+                &body,
+            ]);
+        }
+        command.output().unwrap()
+    })
+    .await
+    .unwrap();
+    assert!(
+        output.status.success(),
+        "curl discussion smoke failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    serde_json::from_slice(&output.stdout).unwrap()
+}
+
 #[tokio::test]
 #[ignore = "requires fresh disposable TT_DISCUSSION_TEST_DATABASE_URL ending in _discussion_test"]
 async fn stage_discussion_http_pagination_comment_replay_and_revocation() {
@@ -280,6 +316,15 @@ async fn stage_discussion_http_pagination_comment_replay_and_revocation() {
     assert_eq!(post(&client, &endpoint, token, &command, 200).await, saved);
     let operation = format!("{endpoint}/operations/discussion:comment");
     assert_eq!(read(&client, &operation, token, 200).await, saved);
+    assert_eq!(curl_json(&endpoint, Some(&command)).await, saved);
+    assert_eq!(curl_json(&operation, None).await, saved);
+    assert_eq!(
+        curl_json(&endpoint, None).await["comments"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
     let page = read(&client, &format!("{endpoint}?limit=1"), token, 200).await;
     assert_eq!(page["title"], "Полная история задачи");
     assert_eq!(page["description"], "Сохранённое описание 🚀");
