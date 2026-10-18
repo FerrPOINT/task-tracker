@@ -1,9 +1,5 @@
 import { AppShell as BaseAppShell } from '@pdlc/ui/ui'
-import {
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from '@pdlc/ui/ui'
+import { DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator } from '@pdlc/ui/ui'
 import { useProjectDisclosures } from '@pdlc/ui/lib'
 import {
   ProjectAvatar,
