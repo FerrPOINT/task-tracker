@@ -346,10 +346,10 @@ describe('project sidebar and Namespace selection', () => {
     mount()
     const heading = await screen.findByRole('button', { name: 'Одинаковый проект · A' })
     const list = document.getElementById(heading.getAttribute('aria-controls')!)!
-    await user.click(screen.getByRole('button', { name: 'Свернуть боковую панель' }))
+    await user.click(screen.getByRole('button', { name: 'Свернуть меню' }))
     expect(list).toHaveAttribute('data-nested', 'false')
     expect(within(list).getByRole('link', { name: 'Доска' })).toHaveAttribute('title', 'Доска')
-    await user.click(screen.getByRole('button', { name: 'Развернуть боковую панель' }))
+    await user.click(screen.getByRole('button', { name: 'Развернуть меню' }))
     expect(list).toHaveAttribute('data-nested', 'true')
   })
 
