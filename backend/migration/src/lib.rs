@@ -26,6 +26,7 @@ mod m20261012_0000094_analysis_result;
 mod m20261012_0000095_pm_completion;
 mod m20261013_0000096_single_task_delivery;
 mod m20261017_0000097_task_source_binding;
+mod m20261018_0000098_pm_unsubmitted_recovery;
 
 pub use sea_orm_migration::prelude::*;
 
@@ -113,6 +114,7 @@ impl MigratorTrait for PublishedMigrator {
             Box::new(m20261012_0000095_pm_completion::Migration),
             Box::new(m20261013_0000096_single_task_delivery::Migration),
             Box::new(m20261017_0000097_task_source_binding::Migration),
+            Box::new(m20261018_0000098_pm_unsubmitted_recovery::Migration),
             Box::new(m20261018_0000098_project_repository_catalog::Migration),
         ]
     }

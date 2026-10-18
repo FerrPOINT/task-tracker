@@ -1942,3 +1942,40 @@ See [strict contract and failure states](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
 ## Project repository catalogue
 
 GET/POST `/api/v1/projects/{project_key}/repositories`, GET `/api/v1/projects/{project_key}/available-repositories` и DELETE `/api/v1/projects/{project_key}/repositories/{forge_instance_id}/{repository_id}` сохраняют проектную принадлежность связей и проверяют проектный доступ/edit. POST/DELETE возвращают 204. Опубликованный task route сохраняет task-scoped DTO/200 POST. Панель репозиториев в карточке задачи использует owning-project API и общий project query key. Ни каталог проекта, ни обычная связь не назначают immutable source binding; его создаёт только штатный SDLC confirmation/enrollment.
+
+## Восстановление Первоначального PM Lease
+
+`POST /api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted`
+использует существующий отдельный write-only credential планировщика. Строгое тело:
+`{expected_owner_version,fence,lease_id,expected_lease_version,session_run_id,barrier_id,idempotency_key}`.
+Свидетельство, boolean, terminal или checkpoint от вызывающей стороны не принимаются.
+После предварительной проверки прав/CAS backend самостоятельно читает доверенный Fleet:
+`/internal/runtime/v1/pm/runs/{session_run_id}/unsubmitted?barrier_id=<uuid>`.
+Используются существующие `TASKTRACKER_SDLC__FLEET_URL` и
+`TASKTRACKER_SDLC__FLEET_READ_TOKEN`: Fleet проверяет PAT через Auth, ожидаемые
+subject/scope и зарегистрированного агента. Секрет terminal callback Workflow
+не используется. Редиректы и повторы отключены, ответ ограничен 64 КиБ.
+Принимается только строгий JSON версии 1 с точными run/barrier, PM execution
+identity, ID/версией lease и версией владельца.
+
+После HTTP Tracker под блокировками повторно проверяет первоначальный single-task
+Draft, владельца, назначение, доступ к проекту и истёкший lease. Активный lease
+обслуживается обычным heartbeat. Native admission, completion/resume PM,
+последующее назначение или техническое исполнение запрещают новое восстановление.
+Меняются только версия lease (+1), heartbeat и expiry: TTL 30 секунд по часам БД.
+ID lease, holder, время первоначального claim и история сохраняются.
+Ответ — существующий `ExecutionLeaseReceipt`: 201 при первом принятии, 200 при
+точном повторе, всегда `dispatch_allowed=false` и `no-store`.
+
+`GET /api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted/operations/{idempotency_key}`
+использует существующий read-only credential планировщика и возвращает исходный
+`ExecutionLeaseOperation`. Область hash: `recover_unsubmitted_pm_execution_lease`.
+Неизвестный исход POST проверяется этим GET с первоначальным ключом, без нового
+ключа, claim или задачи. Тот же ключ с другим телом даёт 409. GET/точный повтор
+возвращают историческое принятие, а не текущий допуск; новое свидетельство Fleet
+не требуется. Ошибки новой команды не меняют lease и историю.
+
+Fleet сохраняет durable barrier до авторитетного readback восстановления.
+Свидетельство допустимо только при активном barrier и никогда не отправленном
+первоначальном native run. Этот пакет Tracker не устанавливает companion Fleet
+barrier. Существующие контракты claim/heartbeat/resume сохраняются.

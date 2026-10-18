@@ -24,6 +24,29 @@ async fn value(db: &DatabaseConnection, sql: &str) -> serde_json::Value {
         .unwrap()
 }
 struct LegacyBeforeSource;
+struct CatalogBeforePmRecovery;
+struct LegacyCatalogBeforePmRecovery;
+
+#[async_trait::async_trait]
+impl MigratorTrait for CatalogBeforePmRecovery {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        PublishedMigrator::migrations()
+            .into_iter()
+            .filter(|migration| migration.name() != "m20261018_0000098_pm_unsubmitted_recovery")
+            .collect()
+    }
+}
+
+#[async_trait::async_trait]
+impl MigratorTrait for LegacyCatalogBeforePmRecovery {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        ProjectRepositoryMigrator::migrations()
+            .into_iter()
+            .filter(|migration| migration.name() != "m20261018_0000098_pm_unsubmitted_recovery")
+            .collect()
+    }
+}
+
 #[async_trait::async_trait]
 impl MigratorTrait for LegacyBeforeSource {
     fn migrations() -> Vec<Box<dyn MigrationTrait>> {
@@ -76,7 +99,7 @@ async fn project_compat_legacy_preserves_links_and_ledger_without_invented_task_
         .await,
         serde_json::json!(0)
     );
-    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261016_0000096_task_source_compatibility','m20261017_0000097_task_source_binding','m20261018_0000098_project_repository_catalog')").await);
+    assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version NOT IN ('m20261016_0000096_task_source_compatibility','m20261017_0000097_task_source_binding','m20261018_0000098_pm_unsubmitted_recovery','m20261018_0000098_project_repository_catalog')").await);
     let once = value(
         &db,
         "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m",
@@ -111,6 +134,63 @@ async fn project_compat_published_source_history_remains_valid() {
     assert_eq!(ledger,value(&db,"SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version<>'m20261018_0000098_project_repository_catalog'").await);
     assert_eq!(value(&db,"SELECT to_jsonb(count(*)) AS v FROM seaql_migrations WHERE version='m20261016_0000096_project_repositories'").await,serde_json::json!(0));
 }
+
+async fn assert_catalog_before_pm_history(db: &DatabaseConnection) {
+    project_fixture(db).await;
+    db.execute_unprepared(r#"INSERT INTO project_repository_links(project_id,forge_instance_id,repository_id,snapshot,created_by) VALUES
+('00000000-0000-4000-8000-000000000002','00000000-0000-4000-8000-000000000010','00000000-0000-4000-8000-000000000011','{"public_name":"preserved/repository"}','00000000-0000-4000-8000-000000000001');"#).await.unwrap();
+    let links = value(
+        db,
+        "SELECT jsonb_agg(to_jsonb(p) ORDER BY repository_id) AS v FROM project_repository_links p",
+    )
+    .await;
+    let ledger_before = value(
+        db,
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m",
+    )
+    .await;
+    Migrator::up(db, None).await.unwrap();
+    assert_eq!(ledger_before, value(db,
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m WHERE version<>'m20261018_0000098_pm_unsubmitted_recovery'").await);
+    assert_eq!(links, value(db,
+        "SELECT jsonb_agg(to_jsonb(p) ORDER BY repository_id) AS v FROM project_repository_links p").await);
+    assert_eq!(value(db,
+        "SELECT to_jsonb(count(*)) AS v FROM information_schema.columns WHERE table_schema='public' AND table_name='sdlc_pm_lease_operations' AND column_name='recovery'").await,serde_json::json!(1));
+    let once = value(
+        db,
+        "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m",
+    )
+    .await;
+    Migrator::up(db, None).await.unwrap();
+    assert_eq!(
+        once,
+        value(
+            db,
+            "SELECT jsonb_agg(to_jsonb(m) ORDER BY version) AS v FROM seaql_migrations m"
+        )
+        .await
+    );
+    assert_eq!(links, value(db,
+        "SELECT jsonb_agg(to_jsonb(p) ORDER BY repository_id) AS v FROM project_repository_links p").await);
+}
+
+#[tokio::test]
+#[ignore = "requires fresh owned *_pdlc4_compat_test PostgreSQL"]
+async fn project_compat_catalog_before_pm_history_remains_valid() {
+    let db = db().await;
+    CatalogBeforePmRecovery::up(&db, None).await.unwrap();
+    assert_catalog_before_pm_history(&db).await;
+}
+
+#[tokio::test]
+#[ignore = "requires fresh owned *_pdlc4_compat_test PostgreSQL"]
+async fn project_compat_legacy_catalog_before_pm_history_remains_valid() {
+    let db = db().await;
+    LegacyBeforeSource::up(&db, None).await.unwrap();
+    LegacyCatalogBeforePmRecovery::up(&db, None).await.unwrap();
+    assert_catalog_before_pm_history(&db).await;
+}
+
 #[tokio::test]
 #[ignore = "requires fresh owned *_pdlc4_compat_test PostgreSQL"]
 async fn project_compat_fresh_and_unknown_history() {
