@@ -135,6 +135,8 @@ async fn empty_mutation_success_preserves_human_messages_and_json() {
 }
 #[path = "workflows/critical_pm_reviews.rs"]
 mod critical_pm_reviews;
+#[path = "workflows/stage_discussion.rs"]
+mod stage_discussion;
 
 #[derive(Debug, Clone)]
 struct Recorded {

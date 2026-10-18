@@ -388,6 +388,7 @@ async fn questions_and_revision(r: &mut ReviewFixture) -> (String, Confirmation)
 }
 
 async fn completion(r: &ReviewFixture, hash: String, confirmation: Confirmation) {
+    crate::sdlc::discussion::test_pm_comment(&r.f.repo, r.task).await;
     let c = CompletePmDraft {
         contract_version: 1,
         fence: r.lease.fence.clone(),

@@ -375,6 +375,7 @@ fn completion_command(r: &ReviewFixture, revision: i64, hash: String) -> Complet
 }
 
 async fn complete_once(r: &ReviewFixture, c: &CompletePmDraft) -> PmDraftCompletionReceipt {
+    crate::sdlc::discussion::test_pm_comment(&r.f.repo, r.task).await;
     let (a, b) = tokio::join!(
         Box::pin(r.f.repo.complete_pm_draft(r.task, &r.f.writer, c.clone())),
         Box::pin(r.f.repo.complete_pm_draft(r.task, &r.f.writer, c.clone()))

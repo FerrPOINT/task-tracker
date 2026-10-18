@@ -17,6 +17,8 @@ mod critical_blockers;
 mod critical_pm_lifecycle;
 #[path = "sdlc_critical_pm_reservation.rs"]
 mod critical_pm_reservation;
+#[path = "sdlc_discussion.rs"]
+mod discussion;
 #[path = "sdlc_execution_lease.rs"]
 mod execution_lease;
 #[path = "sdlc_lifecycle.rs"]
@@ -25,6 +27,8 @@ mod lifecycle;
 mod native_admission;
 #[path = "sdlc_pm_resume.rs"]
 mod pm_resume;
+#[path = "sdlc_producer_access.rs"]
+mod producer_access;
 #[path = "sdlc_reservation.rs"]
 mod reservation;
 #[path = "sdlc_routing.rs"]
@@ -735,6 +739,9 @@ impl PostgresSdlcRepository {
 
 #[async_trait]
 impl SdlcRepository for PostgresSdlcRepository {
+    fn discussion_repository(&self) -> Option<&dyn domain::sdlc_discussion::DiscussionRepository> {
+        Some(self)
+    }
     fn source_repository(&self) -> Option<&dyn domain::sdlc_source::TaskSourceRepository> {
         Some(self)
     }

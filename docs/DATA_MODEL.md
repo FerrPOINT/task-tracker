@@ -2205,3 +2205,10 @@ tasks or rewriting their IDs, hashes, receipts or business data.
 ## Сквозной Namespace
 
 Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).
+## Комментарий стадии single-task
+
+Итоговая работа профессии хранится в существующей таблице `comments` с настоящим
+машинным author ID. Typed receipt и hash операции — в `sdlc_idempotency` в той же
+task-locked транзакции. Новые таблицы или миграции не добавляются. При новой
+передаче проверяются текущие assignment/execution/revision и неизменность тела.
+[Подробный контракт](STAGE_WORK_CONTRACT.md).

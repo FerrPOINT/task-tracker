@@ -44,6 +44,8 @@ mod routing_policy;
 mod sdlc_project_access;
 #[path = "support/source_policy.rs"]
 mod source_policy;
+#[path = "support/stage_discussion.rs"]
+mod stage_discussion;
 
 #[derive(Clone)]
 struct AuthStub {

@@ -123,5 +123,6 @@ pub struct StatusDto {
     pub is_default: bool,
 }
 
+pub mod sdlc_discussion;
 pub mod task_documents;
 pub mod task_repositories;

@@ -347,6 +347,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         ],
         before_receipt_reads
     );
+    crate::sdlc::discussion::test_pm_comment(&repo, task).await;
     repo.complete_pm_draft(
         task,
         &scheduler,
@@ -675,6 +676,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
         result: output.clone(),
         idempotency_key: "proposal-0".into(),
     };
+    crate::sdlc::discussion::test_delivery_comment(&repo, task).await;
     let (concurrent_heartbeat, concurrent_proposal) = tokio::join!(
         repo.lifecycle_command(
             task,
@@ -1078,6 +1080,7 @@ async fn canonical_projection_heartbeat_race_terminal_recovery_and_disabled_repl
             );
             assert_eq!(count(&db, "sdlc_outbox").await, outbox_before);
         }
+        crate::sdlc::discussion::test_delivery_comment(&repo, task).await;
         let (proposal, _) = repo
             .submit_delivery_proposal(
                 task,

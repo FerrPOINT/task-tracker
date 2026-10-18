@@ -219,7 +219,7 @@ fn fence(
     exact_fence(receipt, expected, observed_at, renewing)
 }
 
-fn exact_fence(
+pub(super) fn exact_fence(
     receipt: &LifecycleReceipt,
     expected: &DeliveryFence,
     observed_at: DateTime<Utc>,
@@ -810,6 +810,14 @@ impl LifecycleRepository for PostgresSdlcRepository {
         }
         let assignment = receipt.assignment.as_ref().ok_or_else(corrupt)?;
         app::sdlc_lifecycle::authorize_delivery_assignment(&grant, assignment)?;
+        super::discussion::require_stage_comment(
+            &tx,
+            &state,
+            &actor.subject,
+            assignment.assignment_id,
+            assignment.execution_id,
+        )
+        .await?;
         let duplicate = tx
             .query_one(statement(
                 "SELECT proposal_id FROM sdlc_delivery_proposals WHERE assignment_id=$1",
@@ -1101,6 +1109,14 @@ impl LifecycleRepository for PostgresSdlcRepository {
                         {
                             return Err(AppError::conflict("terminal run does not match binding"));
                         }
+                        super::discussion::require_stage_comment(
+                            &tx,
+                            &state,
+                            &binding.machine_subject,
+                            expected.assignment_id,
+                            expected.execution_id,
+                        )
+                        .await?;
                         let previous_stage = receipt.task.stage;
                         app::sdlc_lifecycle::accept_result(&mut receipt.task, result)?;
                         let accepted = AcceptedDeliveryResult {

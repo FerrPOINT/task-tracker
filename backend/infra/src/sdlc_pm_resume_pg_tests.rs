@@ -184,6 +184,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
     .await
     .unwrap();
     let owner = actor("owner", true, vec![]);
+    crate::sdlc::source::configure_test_source(&repo, project, &owner).await;
     let scheduler = actor("scheduler", false, vec![]);
     let mut reader = scheduler.clone();
     reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
@@ -827,6 +828,7 @@ async fn pm_resume_typed_inputs_expiry_cas_dedup_atomicity_and_history() {
         .await,
         Err(AppError::Conflict(_))
     ));
+    crate::sdlc::discussion::test_pm_comment(&repo, task).await;
     repo.complete_pm_draft(
         task,
         &scheduler,

@@ -3,7 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use domain::sdlc_execution_lease::*;
 
 impl PostgresSdlcRepository {
-    async fn lease_authority(
+    pub(super) async fn lease_authority(
         &self,
         tx: &DatabaseTransaction,
         task: Uuid,
@@ -13,6 +13,18 @@ impl PostgresSdlcRepository {
             return Err(AppError::Forbidden);
         }
         let state = self.load_read(tx, task, actor).await?;
+        Self::pm_lease_authority(tx, &state, actor).await
+    }
+
+    pub(super) async fn pm_lease_authority(
+        tx: &DatabaseTransaction,
+        state: &TaskState,
+        actor: &Principal,
+    ) -> Result<PmDraftReservation, AppError> {
+        if actor.human_session {
+            return Err(AppError::Forbidden);
+        }
+        let task = state.task_id;
         let assignment = state
             .assignment
             .as_ref()
@@ -31,7 +43,7 @@ impl PostgresSdlcRepository {
         if id != Some(assignment.execution_id) || status.as_deref() != Some("reserved") {
             return Err(AppError::conflict("PM reservation is not current"));
         }
-        let result = Self::reservation(tx, &state, assignment.execution_id).await?;
+        let result = Self::reservation(tx, state, assignment.execution_id).await?;
         if result.assignment != *assignment
             || result.owner_cas.version != version
             || result.contract_version != 1

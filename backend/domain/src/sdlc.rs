@@ -708,6 +708,9 @@ impl SdlcCommand {
 
 #[async_trait]
 pub trait SdlcRepository: Send + Sync {
+    fn discussion_repository(&self) -> Option<&dyn crate::sdlc_discussion::DiscussionRepository> {
+        None
+    }
     fn source_repository(&self) -> Option<&dyn crate::sdlc_source::TaskSourceRepository> {
         None
     }

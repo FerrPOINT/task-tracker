@@ -582,6 +582,14 @@ impl PostgresSdlcRepository {
             idempotency_key: command.idempotency_key.clone(),
             created_at: now,
         };
+        super::discussion::require_stage_comment(
+            &tx,
+            &state,
+            &assignment.machine_subject,
+            assignment.assignment_id,
+            assignment.execution_id,
+        )
+        .await?;
         if self
             .finalize_critical_pm_review(&tx, &state, actor, &command, &hash, &result)
             .await?

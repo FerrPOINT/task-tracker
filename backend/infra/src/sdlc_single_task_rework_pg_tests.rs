@@ -2,6 +2,92 @@
 //! Real repository transactions, synthetic role artifacts and trusted terminal receipts.
 //! No live Fleet/Workflow execution or attachment-byte verification is claimed.
 use super::*;
+use domain::sdlc_discussion::{
+    CommentFence, DiscussionQuery, DiscussionRepository, PublishStageComment,
+};
+
+async fn fixture_stage_comment(
+    repo: &PostgresSdlcRepository,
+    task: Uuid,
+    actor: &Principal,
+    fence: CommentFence,
+    key: &str,
+) {
+    let command = PublishStageComment { fence,
+        body: "Synthetic fixture report: role work, exact inputs, checks, findings and requested handoff.\nNot live execution evidence.".into(),
+        idempotency_key: key.into() };
+    let (saved, replayed) = repo
+        .publish_stage_comment(task, actor, command.clone())
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(saved.author_subject, actor.subject);
+    assert_eq!(
+        saved.body_sha256,
+        app::attachment_artifacts::raw_sha256(command.body.as_bytes())
+    );
+    let read = repo
+        .stage_comment_operation(task, actor, key)
+        .await
+        .unwrap();
+    assert_eq!(read.comment_id, saved.comment_id);
+    let (repeated, replayed) = repo
+        .publish_stage_comment(task, actor, command.clone())
+        .await
+        .unwrap();
+    assert!(replayed);
+    assert_eq!(repeated.comment_id, saved.comment_id);
+    let mut stale = command.clone();
+    stale.idempotency_key = format!("{key}:stale");
+    match &mut stale.fence {
+        CommentFence::Pm { fence, .. } => fence.assignment_version += 1,
+        CommentFence::Delivery { fence } => fence.fencing_token += 1,
+    }
+    assert!(matches!(
+        repo.publish_stage_comment(task, actor, stale).await,
+        Err(AppError::Conflict(_))
+    ));
+    assert!(matches!(
+        repo.discussion(Uuid::new_v4(), actor, DiscussionQuery::default())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let mut foreign = actor.clone();
+    foreign.subject = "owner".into();
+    assert!(matches!(
+        repo.discussion(task, &foreign, DiscussionQuery::default())
+            .await,
+        Err(AppError::Forbidden)
+    ));
+    let changed = PublishStageComment {
+        body: "Changed original operation".into(),
+        ..command
+    };
+    assert!(matches!(
+        repo.publish_stage_comment(task, actor, changed).await,
+        Err(AppError::Conflict(_))
+    ));
+    let mut query = DiscussionQuery {
+        limit: Some(1),
+        ..Default::default()
+    };
+    let mut ids = Vec::new();
+    loop {
+        let page = repo.discussion(task, actor, query).await.unwrap();
+        assert_eq!(page.task_id, task);
+        assert!(!page.title.is_empty());
+        ids.extend(page.comments.iter().map(|c| c.id));
+        let Some(after) = page.next_after else {
+            break;
+        };
+        query = DiscussionQuery {
+            limit: Some(1),
+            after: Some(after),
+            snapshot: page.snapshot,
+        };
+    }
+    assert_eq!(ids.iter().filter(|id| **id == saved.comment_id).count(), 1);
+}
 
 struct ReworkFixture {
     db: DatabaseConnection,
@@ -167,6 +253,18 @@ async fn complete_initial_pm(
         .await,
         Err(AppError::Conflict(_))
     ));
+    fixture_stage_comment(
+        repo,
+        task,
+        &pm,
+        CommentFence::Pm {
+            fence: fence.clone(),
+            lease_id: lease.lease.lease_id,
+            expected_lease_version: lease.lease.version,
+        },
+        "rework:pm:comment",
+    )
+    .await;
     let (completed, replayed) = repo
         .complete_pm_draft(
             task,
@@ -241,6 +339,8 @@ impl ReworkFixture {
         let scheduler = actor("scheduler", false, vec![]);
         let mut reader = scheduler.clone();
         reader.scopes = ["task-tracker:read".to_owned()].into_iter().collect();
+        // A new single-task Draft must freeze a legitimately configured source.
+        super::super::source::configure_test_source(&repo, project, &owner).await;
         let routes = draft_flow_tests::single_task_routes();
         repo.set_routing_policy(
             project,
@@ -494,6 +594,20 @@ impl ReworkFixture {
                 .await,
             Err(AppError::Forbidden)
         ));
+        assert!(matches!(
+            self.repo.submit_delivery_proposal(self.task, &producer, proposal_command.clone()).await,
+            Err(AppError::Conflict(message)) if message.contains("stage completion comment required")
+        ));
+        fixture_stage_comment(
+            &self.repo,
+            self.task,
+            &producer,
+            CommentFence::Delivery {
+                fence: proposal_command.fence.clone(),
+            },
+            &format!("rework:{index}:comment"),
+        )
+        .await;
         let (proposal, replayed) = self
             .repo
             .submit_delivery_proposal(self.task, &producer, proposal_command.clone())
@@ -527,6 +641,42 @@ impl ReworkFixture {
                 .await,
             Err(AppError::Forbidden)
         ));
+        // The proposal is not permission to ignore an edited completion comment.
+        let comment = self
+            .repo
+            .stage_comment_operation(self.task, &producer, &format!("rework:{index}:comment"))
+            .await
+            .unwrap();
+        let original_body: String = self
+            .db
+            .query_one(statement(
+                "SELECT body FROM comments WHERE id=$1",
+                vec![comment.comment_id.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "body")
+            .unwrap();
+        exec(
+            &self.db,
+            "UPDATE comments SET body='Edited after proposal' WHERE id=$1",
+            vec![comment.comment_id.into()],
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            self.repo.lifecycle_command(self.task, &self.scheduler, complete.clone()).await,
+            Err(AppError::Conflict(message)) if message.contains("stage comment content changed")
+        ));
+        self.assert_current(&running).await;
+        exec(
+            &self.db,
+            "UPDATE comments SET body=$2 WHERE id=$1",
+            vec![comment.comment_id.into(), original_body.into()],
+        )
+        .await
+        .unwrap();
         let (completed, replayed) = self
             .repo
             .lifecycle_command(self.task, &self.scheduler, complete.clone())
@@ -580,6 +730,52 @@ impl ReworkFixture {
     }
 
     async fn assert_original_replays(&self, original: &OriginalStep) {
+        let key = format!(
+            "{}:comment",
+            original
+                .proposal_command
+                .idempotency_key
+                .strip_suffix(":proposal")
+                .unwrap()
+        );
+        let comment = self
+            .repo
+            .stage_comment_operation(self.task, &original.producer, &key)
+            .await
+            .unwrap();
+        let body: String = self
+            .db
+            .query_one(statement(
+                "SELECT body FROM comments WHERE id=$1",
+                vec![comment.comment_id.into()],
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get("", "body")
+            .unwrap();
+        let (same, replayed) = self
+            .repo
+            .publish_stage_comment(
+                self.task,
+                &original.producer,
+                PublishStageComment {
+                    body,
+                    fence: comment.fence.clone(),
+                    idempotency_key: key,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(replayed);
+        assert_eq!(same.comment_id, comment.comment_id);
+        assert!(
+            self.repo
+                .discussion(self.task, &original.producer, DiscussionQuery::default())
+                .await
+                .is_err(),
+            "historical replay must not grant a fresh discussion read"
+        );
         let expected_result = original.completed.result.as_ref().unwrap();
         let DeliveryInput::Delivery(actual_result) = self
             .repo

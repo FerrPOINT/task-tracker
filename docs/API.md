@@ -1938,3 +1938,8 @@ See [strict contract and failure states](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
 ## Сквозной Namespace
 
 Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).
+## Обсуждение и комментарий стадии
+
+[Контракт, права, pagination, CLI и guarded завершение](STAGE_WORK_CONTRACT.md).
+Новые маршруты `/issues/{task}/sdlc/discussion` работают с обычными комментариями
+Tracker, собственным назначением/арендой и исходной идемпотентной operation.

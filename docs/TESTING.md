@@ -335,3 +335,32 @@ Lefthook (`lefthook.yml`):
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
 
 Legacy assignment/native admission не создаёт Tracker reservation: HTTP/PG сценарий проверяет отказ claim без lease/completion и сохраняет blocker Analysis. Успешный PM completion проверяется отдельно после настоящего reservation, финальной публикации и подтверждения exact revision. Полная интеграция с Fleet требует отдельной приёмки.
+
+## Обсуждение и итоговый комментарий single-task
+
+Быстрые проверки: `cargo test -p app --lib sdlc_discussion`,
+`cargo test -p api --lib discussion`,
+`cargo test -p task-tracker-cli --test workflows stage_discussion`.
+CLI проверяется через управляемый HTTP endpoint, без настоящего назначения.
+
+Два дополнительных теста запускаются **явно**, каждый на собственной новой
+одноразовой PostgreSQL с полной схемой миграций. Они не входят в обычный `cargo test`:
+
+```bash
+# TT_LIFECYCLE_TEST_DATABASE_URL: новая БД с именем, оканчивающимся на _lifecycle_test
+cargo test -p infra --lib one_task_persists_review_and_testing_rework -- --ignored --test-threads=1
+# TT_DISCUSSION_TEST_DATABASE_URL: другая новая БД с суффиксом _discussion_test
+cargo test -p server --test sdlc stage_discussion_http -- --ignored --test-threads=1
+```
+
+Первый сценарий выполняет настоящие транзакции PM/стадий, проверяет отсутствие
+перехода без комментария и при его изменении после proposal, повторы и rework.
+Второй запускает настоящий Tracker HTTP server и PostgreSQL; Central Auth заменён
+явным тестовым issuer. Проверяются все авторы и страницы, свежий scan после нового
+комментария, UTF-8, точный replay, удалённый cursor, изменённый текст, истёкшая lease
+и отзыв project ACL. Серверный test binary использует process-local env: запускать
+этот ignored-сценарий отдельно, с одним test thread.
+
+Эти проверки не запускают настоящий Fleet/Workflow или LLM и не являются
+полной live-приёмкой семи профессий. Отдельный ручной сценарий и независимый
+бизнес-оракул описаны в Base `docs/acceptance/SDLC_PROOF.md`.

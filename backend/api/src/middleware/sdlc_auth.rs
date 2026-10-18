@@ -144,12 +144,18 @@ fn pm_request_policy(
                 | "clarifications"
                 | "requirements"
                 | "events"
+                | "discussion"
                 | "pm-draft-execution-lease",
             ],
         )
         | ("GET", ["requirements", "revisions"])
         | ("POST", ["clarifications" | "requirements" | "pm-draft-execution-lease"])
         | ("POST", ["pm-draft-execution-lease", "heartbeat"]) => true,
+        ("POST", ["discussion"]) => actor.scopes.contains("task-tracker:write"),
+        ("GET", ["discussion", "operations", key]) => {
+            actor.scopes.contains("task-tracker:read")
+                && app::sdlc_discussion::validate_key(key).is_ok()
+        }
         ("GET", ["requirements", revision]) | ("GET", ["requirements", revision, "diff"]) => {
             app::sdlc::canonical_pm_version(revision)
         }
@@ -336,5 +342,37 @@ mod tests {
             actor.human_session = human;
             assert!(pm_request_policy(&actor, "GET", "/api/v1/sdlc/project-directory").is_ok());
         }
+    }
+
+    #[test]
+    fn pm_discussion_routes_are_exact_and_do_not_grant_generic_comment_access() {
+        let (mut actor, task, _) = actor();
+        actor
+            .scopes
+            .extend(["task-tracker:read".into(), "task-tracker:write".into()]);
+        let base = format!("/api/v1/issues/{task}/sdlc/discussion");
+        for (method, path) in [
+            ("GET", base.clone()),
+            ("POST", base.clone()),
+            ("GET", format!("{base}/operations/fixture:comment")),
+        ] {
+            pm_request_policy(&actor, method, &path).unwrap();
+        }
+        for (method, path) in [
+            ("DELETE", base.clone()),
+            ("HEAD", base.clone()),
+            ("POST", format!("{base}/operations/fixture:comment")),
+            ("GET", format!("{base}/")),
+            ("GET", format!("{base}/operations/..")),
+            ("GET", format!("/api/v1/issues/{task}/comments")),
+            (
+                "GET",
+                format!("/api/v1/issues/{}/sdlc/discussion", Uuid::new_v4()),
+            ),
+        ] {
+            assert!(pm_request_policy(&actor, method, &path).is_err());
+        }
+        actor.scopes.remove("task-tracker:write");
+        assert!(pm_request_policy(&actor, "POST", &base).is_err());
     }
 }

@@ -206,6 +206,7 @@ pub fn router() -> Router<Arc<app::AppContext>> {
         .merge(super::sdlc_source::router())
         .merge(super::sdlc_reservation::router())
         .merge(super::sdlc_delivery::router())
+        .merge(super::sdlc_discussion::router())
         .route_layer(middleware::from_fn(
             crate::middleware::sdlc_auth::strict_central_auth,
         ))

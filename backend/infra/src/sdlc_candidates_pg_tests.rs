@@ -253,6 +253,7 @@ impl Fixture {
             .await
             .unwrap();
         if completed {
+            crate::sdlc::discussion::test_pm_comment(&self.repo, task).await;
             self.repo
                 .complete_pm_draft(
                     task,

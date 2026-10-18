@@ -1,4 +1,5 @@
 //! Child module of `sdlc`: existing attachment rows/blobs and owner transaction only.
+use super::producer_access::{Authority, ProjectGate, authority, ensure_live, local_access};
 use super::*;
 use crate::entities::attachment;
 use domain::attachment_artifact::{ArtifactBinding, ArtifactUpload, Seal};
@@ -32,206 +33,6 @@ pub(crate) async fn human_access(
     )
     .await?;
     tx.commit().await.map_err(map_db)
-}
-
-async fn local_access(tx: &DatabaseTransaction, project: Uuid, user: Uuid) -> Result<(), AppError> {
-    tx.query_one(statement(
-        "SELECT id FROM users WHERE id=$1 AND is_active FOR SHARE",
-        vec![user.into()],
-    ))
-    .await
-    .map_err(map_db)?
-    .ok_or(AppError::Forbidden)?;
-    let row = tx
-        .query_one(statement(
-            "SELECT owner_id FROM projects WHERE id=$1 FOR SHARE",
-            vec![project.into()],
-        ))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?;
-    if row.try_get::<Uuid>("", "owner_id").map_err(map_db)? != user {
-        tx.query_one(statement(
-            "SELECT user_id FROM project_members WHERE project_id=$1 AND user_id=$2 FOR SHARE",
-            vec![project.into(), user.into()],
-        ))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?;
-    }
-    Ok(())
-}
-
-struct Authority {
-    user: Uuid,
-    head: LifecycleReceipt,
-    scheduler: bool,
-}
-
-async fn authority(
-    tx: &DatabaseTransaction,
-    config: &SdlcConfig,
-    task: Uuid,
-    actor: &Principal,
-    write: bool,
-) -> Result<Authority, AppError> {
-    let grant = if write {
-        Some(app::sdlc_lifecycle::producer(actor, true)?)
-    } else if let Some(grant) = app::sdlc_lifecycle::delivery_grant(actor)? {
-        app::sdlc_lifecycle::producer(actor, false)?;
-        Some(grant)
-    } else {
-        app::sdlc_lifecycle::scheduler_read(actor, config)?;
-        None
-    };
-    if grant.as_ref().is_some_and(|grant| grant.task_id != task) {
-        return Err(AppError::Forbidden);
-    }
-    let issue = tx
-        .query_one(statement(
-            "SELECT project_id,status_id FROM issues WHERE id=$1 AND deleted_at IS NULL FOR UPDATE",
-            vec![task.into()],
-        ))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?;
-    let project: Uuid = issue.try_get("", "project_id").map_err(map_db)?;
-    let user = tx
-        .query_one(statement(
-            "SELECT id FROM users WHERE central_sub=$1 AND is_active FOR SHARE",
-            vec![actor.subject.clone().into()],
-        ))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?
-        .try_get::<Uuid>("", "id")
-        .map_err(map_db)?;
-    local_access(tx, project, user).await?;
-    if !config.single_task_project_ids.contains(&project) {
-        return Err(AppError::Unavailable(
-            "single-task artifact policy disabled".into(),
-        ));
-    }
-    let state: TaskState = decode(
-        &tx.query_one(statement(
-            "SELECT state FROM sdlc_tasks WHERE task_id=$1 FOR UPDATE",
-            vec![task.into()],
-        ))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?,
-        "state",
-    )?;
-    state.require_root()?;
-    if state.task_id != task
-        || state.project_id != project
-        || state.tracker_instance_id != config.instance_id
-        || state.draft_flow()? != Some(DraftFlow::SingleTaskV1)
-    {
-        return Err(AppError::Forbidden);
-    }
-    let head: LifecycleReceipt = decode(
-        &tx.query_one(statement(
-            "SELECT receipt FROM sdlc_delivery_tasks WHERE task_id=$1 FOR UPDATE",
-            vec![task.into()],
-        ))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?,
-        "receipt",
-    )?;
-    super::lifecycle::exact_revision(&state, &head)?;
-    if head.task.routing.contract_version != 2 {
-        return Err(AppError::conflict("single-task artifact routing required"));
-    }
-    app::sdlc_routing::validate_routes(&head.task.routing.policy.routes)
-        .map_err(|_| AppError::conflict("artifact routing history invalid"))?;
-    if issue.try_get::<Uuid>("", "status_id").map_err(map_db)?
-        != super::lifecycle::mapped_issue_status(tx, head.task.stage.canonical(), head.task.status)
-            .await?
-    {
-        return Err(AppError::conflict("artifact lifecycle projection drift"));
-    }
-    let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
-    let binding = head.binding.as_ref().ok_or(AppError::Forbidden)?;
-    if assignment.task_id != task
-        || assignment.owner_subject != head.task.owner_subject
-        || assignment.stage != head.task.stage
-        || assignment.cycle != head.task.cycle
-        || assignment.routing != head.task.routing
-        || assignment.stage.role() != Some(assignment.role)
-        || assignment.assignment_hash != app::sdlc_lifecycle::assignment_hash(assignment)?
-    {
-        return Err(AppError::conflict("artifact assignment drift"));
-    }
-    let saved: DeliveryAssignment = decode(
-        &tx.query_one(statement(
-            "SELECT payload FROM sdlc_delivery_assignments WHERE assignment_id=$1 AND task_id=$2",
-            vec![assignment.assignment_id.into(), task.into()],
-        ))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?,
-        "payload",
-    )?;
-    let run: RunBinding = decode(
-        &tx.query_one(statement(
-            "SELECT payload FROM sdlc_delivery_run_bindings WHERE assignment_id=$1 AND run_id=$2",
-            vec![assignment.assignment_id.into(), binding.run_id.into()],
-        ))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?,
-        "payload",
-    )?;
-    if &saved != assignment || &run != binding {
-        return Err(AppError::conflict("artifact binding history drift"));
-    }
-    if let Some(grant) = &grant {
-        app::sdlc_lifecycle::authorize_delivery_assignment(grant, assignment)?;
-        if binding.machine_subject != actor.subject {
-            return Err(AppError::Forbidden);
-        }
-    }
-    if write {
-        if head
-            .lease
-            .as_ref()
-            .is_none_or(|lease| lease.holder_subject != config.reservation_scheduler_subject)
-        {
-            return Err(AppError::Forbidden);
-        }
-        ensure_live(tx, &head).await?;
-    }
-    Ok(Authority {
-        user,
-        head,
-        scheduler: grant.is_none(),
-    })
-}
-
-async fn ensure_live(tx: &DatabaseTransaction, head: &LifecycleReceipt) -> Result<(), AppError> {
-    let assignment = head.assignment.as_ref().ok_or(AppError::Forbidden)?;
-    let lease = head.lease.as_ref().ok_or(AppError::Forbidden)?;
-    let now: chrono::DateTime<chrono::Utc> = tx
-        .query_one(statement("SELECT clock_timestamp() AS now", vec![]))
-        .await
-        .map_err(map_db)?
-        .ok_or(AppError::Forbidden)?
-        .try_get("", "now")
-        .map_err(map_db)?;
-    if head.task.runtime != RuntimeState::Running
-        || head.task.status != LifecycleStatus::InProgress
-        || lease.lease_id != assignment.lease_id
-        || lease.version < 1
-        || lease.expires_at <= now
-    {
-        return Err(AppError::conflict(
-            "artifact publisher not running or lease expired",
-        ));
-    }
-    // The scheduler owns this lease. Agent identity is the run binding, never lease.holder_subject.
-    Ok(())
 }
 
 pub(super) async fn provenance(
@@ -379,7 +180,15 @@ pub(crate) async fn publish(
         return Err(AppError::invalid_input("file is empty"));
     }
     let tx = db.begin().await.map_err(map_db)?;
-    let auth = authority(&tx, config, issue.as_uuid(), actor, true).await?;
+    let auth = authority(
+        &tx,
+        config,
+        issue.as_uuid(),
+        actor,
+        true,
+        ProjectGate::EnabledProject,
+    )
+    .await?;
     let assignment = auth.head.assignment.as_ref().ok_or(AppError::Forbidden)?;
     let seal = Seal::new(
         issue.as_uuid(),
@@ -460,7 +269,15 @@ pub(crate) async fn list(
 ) -> Result<Vec<domain::Attachment>, AppError> {
     app::sdlc_lifecycle::producer(actor, false)?;
     let tx = db.begin().await.map_err(map_db)?;
-    let auth = authority(&tx, config, issue.as_uuid(), actor, false).await?;
+    let auth = authority(
+        &tx,
+        config,
+        issue.as_uuid(),
+        actor,
+        false,
+        ProjectGate::EnabledProject,
+    )
+    .await?;
     let models = attachment::Entity::find()
         .filter(attachment::Column::IssueId.eq(issue.as_uuid()))
         .all(&tx)
@@ -496,7 +313,15 @@ pub(crate) async fn download(
         .map_err(map_db)?
         .ok_or(AppError::Forbidden)?;
     let item = crate::repos::map_attachment(model);
-    let auth = authority(&tx, config, item.issue_id.as_uuid(), actor, false).await?;
+    let auth = authority(
+        &tx,
+        config,
+        item.issue_id.as_uuid(),
+        actor,
+        false,
+        ProjectGate::EnabledProject,
+    )
+    .await?;
     if !allowed(&tx, &auth, &item).await? {
         return Err(AppError::Forbidden);
     }

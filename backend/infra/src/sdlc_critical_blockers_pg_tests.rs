@@ -213,6 +213,7 @@ fn result(r: &Running) -> DeliveryResult {
 }
 
 async fn proposal(f: &Fixture, r: &Running) -> TerminalReceipt {
+    crate::sdlc::discussion::test_delivery_comment(&f.repo, r.task).await;
     let output = result(r);
     let workflow_receipt = ArtifactReceipt {
         reference: "fixture://synthetic-workflow-completion-not-live-proof".into(),

@@ -2757,6 +2757,231 @@
         ]
       }
     },
+    "/api/v1/issues/{id}/sdlc/discussion": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_task_discussion",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "snapshot",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskDiscussion"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "publish_stage_comment",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishStageComment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Original committed comment replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageCommentReceipt"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageCommentReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/issues/{id}/sdlc/discussion/operations/{key}": {
+      "get": {
+        "tags": [
+          "sdlc"
+        ],
+        "operationId": "read_stage_comment_operation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StageCommentReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": ""
+          },
+          "403": {
+            "description": ""
+          },
+          "404": {
+            "description": ""
+          },
+          "409": {
+            "description": ""
+          },
+          "422": {
+            "description": ""
+          },
+          "503": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/issues/{id}/sdlc/events": {
       "get": {
         "tags": [
@@ -10394,6 +10619,56 @@
         },
         "additionalProperties": false
       },
+      "CommentFence": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "lease_id",
+              "expected_lease_version",
+              "kind"
+            ],
+            "properties": {
+              "expected_lease_version": {
+                "type": "integer",
+                "format": "int64"
+              },
+              "fence": {
+                "$ref": "#/components/schemas/MachineFence"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "pm"
+                ]
+              },
+              "lease_id": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "fence",
+              "kind"
+            ],
+            "properties": {
+              "fence": {
+                "$ref": "#/components/schemas/DeliveryFence"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "delivery"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "CommentListResponse": {
         "type": "object",
         "required": [
@@ -11874,6 +12149,41 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "DiscussionComment": {
+        "type": "object",
+        "required": [
+          "id",
+          "author_id",
+          "author_name",
+          "body",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "author_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "author_name": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -17492,6 +17802,26 @@
         },
         "additionalProperties": false
       },
+      "PublishStageComment": {
+        "type": "object",
+        "required": [
+          "fence",
+          "body",
+          "idempotency_key"
+        ],
+        "properties": {
+          "body": {
+            "type": "string"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/CommentFence"
+          },
+          "idempotency_key": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "Question": {
         "type": "object",
         "required": [
@@ -18788,6 +19118,58 @@
           "Deployment"
         ]
       },
+      "StageCommentReceipt": {
+        "type": "object",
+        "required": [
+          "comment_id",
+          "task_id",
+          "author_id",
+          "author_subject",
+          "agent_id",
+          "fence",
+          "body_sha256",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "author_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "author_subject": {
+            "type": "string"
+          },
+          "body_sha256": {
+            "type": "string"
+          },
+          "comment_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "fence": {
+            "$ref": "#/components/schemas/CommentFence"
+          },
+          "requirement_revision": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "StatusResponse": {
         "type": "object",
         "required": [
@@ -19080,6 +19462,53 @@
             "$ref": "#/components/schemas/TaskRef"
           },
           "task_key": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskDiscussion": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "project_id",
+          "title",
+          "description",
+          "comments"
+        ],
+        "properties": {
+          "comments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiscussionComment"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "next_after": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "snapshot": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Upper bound captured on the first page. New comments require a fresh scan."
+          },
+          "task_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
             "type": "string"
           }
         }

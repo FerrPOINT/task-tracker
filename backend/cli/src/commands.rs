@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 #[path = "sdlc_critical_commands.rs"]
 mod critical_commands;
+#[path = "sdlc_discussion_commands.rs"]
+mod discussion_commands;
 #[path = "sdlc_pm_commands.rs"]
 mod pm_commands;
 
@@ -211,6 +213,11 @@ pub enum WorklogCommand {
 
 #[derive(Subcommand)]
 pub enum SdlcCommand {
+    /// Read participants' discussion and publish the current stage's completion comment
+    Discussion {
+        #[command(subcommand)]
+        command: discussion_commands::DiscussionCommand,
+    },
     /// Propose or reconcile a critical business question without advancing the task
     CriticalBlocker {
         #[command(subcommand)]
@@ -425,6 +432,7 @@ pub async fn execute_sdlc(api: &Api, command: SdlcCommand) -> Result<Value> {
             critical_commands::critical_blocker(api, command).await
         }
         SdlcCommand::Lifecycle { task } => api.get(&sdlc_path(task, "/lifecycle")).await,
+        SdlcCommand::Discussion { command } => discussion_commands::execute(api, command).await,
         SdlcCommand::Result { command } => pm_commands::delivery_result(api, command).await,
         SdlcCommand::Routing { command } => pm_commands::routing(api, command).await,
         SdlcCommand::Confirmation { command } => pm_commands::confirmation(api, command).await,

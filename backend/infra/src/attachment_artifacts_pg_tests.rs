@@ -237,6 +237,7 @@ async fn actual_role_artifacts_are_fenced_replayed_predecessor_scoped_and_immuta
         reference: "fixture://synthetic-workflow-terminal".into(),
         sha256: "d".repeat(64),
     };
+    crate::sdlc::discussion::test_delivery_comment(&f.repo, task).await;
     let (proposal, _) = f
         .repo
         .submit_delivery_proposal(
