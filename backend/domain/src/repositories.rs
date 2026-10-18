@@ -256,6 +256,7 @@ pub trait ProjectRepository: Send + Sync {
     async fn repository_links(
         &self,
         _project: ProjectId,
+        _offset: u32,
     ) -> Result<Vec<serde_json::Value>, AppError> {
         Err(AppError::Unavailable(
             "project_repository_links_not_implemented".into(),

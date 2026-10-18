@@ -1979,3 +1979,15 @@ Fleet сохраняет durable barrier до авторитетного readbac
 Свидетельство допустимо только при активном barrier и никогда не отправленном
 первоначальном native run. Этот пакет Tracker не устанавливает companion Fleet
 barrier. Существующие контракты claim/heartbeat/resume сохраняются.
+
+### Страницы связей проекта
+
+`GET /api/v1/projects/{project_key}/repositories?offset=0` возвращает до 100
+сохранённых связей. Необязательный `offset` — uint32, по умолчанию 0; следующая
+страница начинается с `offset + 100`. Порядок: `created_at`, `repository_id`,
+`forge_instance_id`. Параметры не меняют project access и namespace readback.
+Панель сохраняет task scope свидетельств и сбрасывает страницу связей при
+смене owning project или namespace. Ответ остаётся массивом прежнего DTO.
+
+POST и DELETE связей архивного проекта возвращают 409 `namespace_resource_read_only`,
+включая повторное удаление уже отсутствующей связи. Чтение сохранённых связей остаётся доступным.

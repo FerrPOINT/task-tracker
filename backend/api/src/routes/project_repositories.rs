@@ -59,14 +59,20 @@ fn parse_links(
 }
 
 #[utoipa::path(get, operation_id="tracker_project_repository_links", path="/api/v1/projects/{project_key}/repositories", tag="projects",
-    params(("project_key"=String,Path)), responses((status=200,body=Vec<domain::task_repositories::TaskRepositoryLink>)), security(("bearer" = [])))]
+    params(("project_key"=String,Path),RepositoryPage), responses((status=200,body=Vec<domain::task_repositories::TaskRepositoryLink>)), security(("bearer" = [])))]
 pub async fn list(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(claims): Extension<app::auth::UserClaims>,
     Path(key): Path<String>,
+    Query(page): Query<RepositoryPage>,
 ) -> Result<Json<Vec<domain::task_repositories::TaskRepositoryLink>>, AppError> {
     let (project, binding) = project_for_access(&ctx, &key, requester(&claims)?, false).await?;
-    let links = parse_links(ctx.repos.projects.repository_links(project.id).await?)?;
+    let links = parse_links(
+        ctx.repos
+            .projects
+            .repository_links(project.id, page.offset.unwrap_or(0))
+            .await?,
+    )?;
     if links.iter().any(|link| link.namespace != binding.namespace) {
         return Err(AppError::Unavailable(
             "invalid_repository_link_projection".into(),

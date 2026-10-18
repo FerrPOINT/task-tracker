@@ -388,3 +388,16 @@ Legacy assignment/native admission не создаёт Tracker reservation: HTTP
 CI содержит явный exact/ignored gate с отдельной БД на случай и проверкой
 `1 passed; 0 failed; 0 ignored`. Наличие gate не означает его успешное исполнение:
 для объединённого кандидата требуется отдельный run на точном source.
+
+Project links pagination: ignored infra integration test
+`project_repository_link_paging_preserves_scope_and_order` требует явную свежую
+`TT_PROJECT_LINK_TEST_DATABASE_URL` с суффиксом `_project_links_test`. CI отдельно
+исполняет его с exact selector и проверяет один выполненный тест. Production
+repository создаёт 102 связи, включая одинаковый repository ID в двух Forge,
+и связь другого проекта; страницы 100+2 не теряют, не дублируют и не смешивают
+записи, большой uint32 offset безопасен. UI проверяет переход вперёд/назад и
+сброс страницы при смене проекта. Рабочие БД не используются.
+
+HTTP fixture дополнительно проверяет 409 для создания и удаления существующей/отсутствующей
+связи архивного проекта, доступность чтения и возврат к обычному идемпотентному DELETE
+после следующего active generation. Fixture не уменьшает generation и не меняет lease timestamps.

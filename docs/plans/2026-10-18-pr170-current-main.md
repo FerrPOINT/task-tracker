@@ -18,7 +18,23 @@ CI явно исполняет все пять ignored project compatibility tes
 Base262 `e522088b`: текущий main Base, basename и callback transport. SDK pin
 не меняется. Runtime и пользовательские данные этой подготовкой не изменяются.
 
-Текущий статус: исходники подготовлены; до публикации нужны профильные проверки
-Rust/PostgreSQL, frontend typecheck/tests/build и OpenAPI. Старая CI-квалификация
-исходного PR и тесты отдельных родителей не считаются проверкой этого дерева.
-Приёмка dev SSO/CRUD и scheduler остаётся отдельным этапом у владельца стенда.
+Квалификация завершена: 772 обычных Rust-теста и strict workspace clippy
+на неизменившихся production inputs; девять отдельных PostgreSQL/HTTP сценариев,
+включая пять историй миграций, пагинацию, PM recovery, populated upgrade и HTTP.
+Финальная дельта backend после общего suite — ignored HTTP fixture; она отдельно
+исполнена с PostgreSQL и strict clippy. Существующий Authz.require_writable
+подтверждён для архивного проекта без дополнительной политики в обработчике.
+
+Frontend: 499 тестов, typecheck, lint, format, OpenAPI check/compat, root и /tracker/
+build. Chromium UI fixture проверяет 100→2→100, отсутствие горизонтального
+переполнения и full-page screenshots 375/1920/2560. Fixture содержит синтетические
+данные и не является real SSO acceptance. На Windows прошли 14 docs/CI checks;
+четыре неизменённые POSIX wrapper checks здесь не исполнялись.
+
+Исходный дефект воспроизведён production repository: из 102 связей видны только
+100. Теперь bounded offset paging сохраняет полный каталог, порядок и project
+scope; UI сбрасывает страницу при смене проекта и позволяет вернуться после
+ошибки поздней страницы. Исходники и runtime соседней разработки не менялись.
+
+Живые SSO/CRUD и scheduler acceptance новой версии остаются отдельным этапом.
+Кандидат здесь не установлен; Draft зависит от Base262 и интеграционной приёмки.

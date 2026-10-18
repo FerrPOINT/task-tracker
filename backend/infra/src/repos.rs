@@ -791,13 +791,14 @@ impl ProjectRepository for ProjectRepo {
     async fn repository_links(
         &self,
         project: ProjectId,
+        offset: u32,
     ) -> Result<Vec<serde_json::Value>, AppError> {
         let rows = self
             .db
             .query_all(Statement::from_sql_and_values(
                 DbBackend::Postgres,
-                "SELECT snapshot FROM project_repository_links WHERE project_id=$1 ORDER BY created_at,repository_id LIMIT 100",
-                [project.as_uuid().into()],
+                "SELECT snapshot FROM project_repository_links WHERE project_id=$1 ORDER BY created_at,repository_id,forge_instance_id LIMIT 100 OFFSET $2",
+                [project.as_uuid().into(), i64::from(offset).into()],
             ))
             .await
             .map_err(AppError::database)?;

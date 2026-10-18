@@ -25,12 +25,15 @@ export function TaskRepositoriesPanel({
   const [evidenceOffset, setEvidenceOffset] = useState(0)
   const matching = context.data?.resource_key === projectKey
   const key = ['project-repositories', ref?.registry_instance_id, ref?.namespace_id, projectKey]
+  const scope = JSON.stringify(key)
+  const [linkedPage, setLinkedPage] = useState({ scope, offset: 0 })
+  const linkedOffset = linkedPage.scope === scope ? linkedPage.offset : 0
   const linked = useQuery({
-    queryKey: key,
+    queryKey: [...key, linkedOffset],
     enabled: Boolean(ref && matching),
     queryFn: async ({ signal }) => {
       const { data, error } = await api.GET('/api/v1/projects/{project_key}/repositories', {
-        params: { path: { project_key: projectKey } },
+        params: { path: { project_key: projectKey }, query: { offset: linkedOffset } },
         signal,
       })
       if (error || !data) throw new Error('Связи репозиториев недоступны')
@@ -146,11 +149,33 @@ export function TaskRepositoriesPanel({
             ))}
             {linked.data?.length === 0 && (
               <ResourceListRow asChild>
-                <li className="text-text-muted">Репозитории пока не указаны.</li>
+                <li className="text-text-muted">
+                  {linkedOffset === 0
+                    ? 'Репозитории пока не указаны.'
+                    : 'На этой странице связей нет.'}
+                </li>
               </ResourceListRow>
             )}
           </ul>
         </ResourceList>
+      )}
+      {(linkedOffset > 0 || (!linked.isError && (linked.data?.length ?? 0) === 100)) && (
+        <div className="flex gap-2" aria-label="Страницы связей проекта">
+          <Button
+            variant="outline"
+            disabled={linked.isFetching || linkedOffset === 0}
+            onClick={() => setLinkedPage({ scope, offset: Math.max(0, linkedOffset - 100) })}
+          >
+            Предыдущие связи
+          </Button>
+          <Button
+            variant="outline"
+            disabled={linked.isFetching || linked.isError || (linked.data?.length ?? 0) < 100}
+            onClick={() => setLinkedPage({ scope, offset: linkedOffset + 100 })}
+          >
+            Следующие связи
+          </Button>
+        </div>
       )}
       {context.data?.binding.state === 'active' && (
         <div className="space-y-3">
