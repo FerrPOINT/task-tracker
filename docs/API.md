@@ -1938,37 +1938,39 @@ See [strict contract and failure states](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
 ## Сквозной Namespace
 
 Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).
-## Initial Unsubmitted PM Lease Recovery
+## Восстановление Первоначального PM Lease
 
 `POST /api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted`
-uses the existing separate scheduler write-only credential. Its strict JSON body
-is `{expected_owner_version,fence,lease_id,expected_lease_version,session_run_id,barrier_id,idempotency_key}`.
-No caller witness, boolean, terminal or checkpoint is accepted. The backend first
-checks current authority/CAS, then independently GETs the configured trusted Fleet
-`/internal/runtime/v1/pm/runs/{session_run_id}/unsubmitted?barrier_id=<uuid>` using
-the existing `TASKTRACKER_SDLC__FLEET_URL` / `TASKTRACKER_SDLC__FLEET_READ_TOKEN`
-reader. It follows no redirects, retries no request, bounds the body to 64 KiB,
-and accepts only a strict JSON witness with contract version 1, exact run/barrier,
-existing PM execution identity, lease ID/version and owner version.
+использует существующий отдельный write-only credential планировщика. Строгое тело:
+`{expected_owner_version,fence,lease_id,expected_lease_version,session_run_id,barrier_id,idempotency_key}`.
+Свидетельство, boolean, terminal или checkpoint от вызывающей стороны не принимаются.
+После предварительной проверки прав/CAS backend самостоятельно читает доверенный Fleet:
+`/internal/runtime/v1/pm/runs/{session_run_id}/unsubmitted?barrier_id=<uuid>`.
+Используются существующие `TASKTRACKER_SDLC__FLEET_URL` и
+`TASKTRACKER_SDLC__FLEET_READ_TOKEN`: Fleet проверяет PAT через Auth, ожидаемые
+subject/scope и зарегистрированного агента. Секрет terminal callback Workflow
+не используется. Редиректы и повторы отключены, ответ ограничен 64 КиБ.
+Принимается только строгий JSON версии 1 с точными run/barrier, PM execution
+identity, ID/версией lease и версией владельца.
 
-After HTTP, Tracker rechecks current initial single-task Draft reservation, owner,
-assignment, project ACL and expired lease under locks. A current active lease must
-use ordinary heartbeat. Native admissions, PM completion/resume, successor or
-technical delivery ownership reject a fresh recovery. Recovery changes only the
-retained lease version (+1), heartbeat and expiry (database-clock TTL 30 seconds).
-Lease ID, holder, claim timestamp and original operation history remain unchanged.
-The response is the existing `ExecutionLeaseReceipt`: 201 on first acceptance,
-200 for exact historical replay, always `dispatch_allowed=false` and `no-store`.
+После HTTP Tracker под блокировками повторно проверяет первоначальный single-task
+Draft, владельца, назначение, доступ к проекту и истёкший lease. Активный lease
+обслуживается обычным heartbeat. Native admission, completion/resume PM,
+последующее назначение или техническое исполнение запрещают новое восстановление.
+Меняются только версия lease (+1), heartbeat и expiry: TTL 30 секунд по часам БД.
+ID lease, holder, время первоначального claim и история сохраняются.
+Ответ — существующий `ExecutionLeaseReceipt`: 201 при первом принятии, 200 при
+точном повторе, всегда `dispatch_allowed=false` и `no-store`.
 
 `GET /api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted/operations/{idempotency_key}`
-uses the existing scheduler read-only credential and returns the original
-`ExecutionLeaseOperation`. Hash domain: `recover_unsubmitted_pm_execution_lease`.
-Unknown POST acceptance is reconciled through this GET with the original key;
-no replacement key, claim or task is needed. Same key with changed body is 409.
-GET/exact POST replay returns historical acceptance, not current lease authority,
-and needs no new Fleet witness. Fresh command failures leave lease/history intact.
+использует существующий read-only credential планировщика и возвращает исходный
+`ExecutionLeaseOperation`. Область hash: `recover_unsubmitted_pm_execution_lease`.
+Неизвестный исход POST проверяется этим GET с первоначальным ключом, без нового
+ключа, claim или задачи. Тот же ключ с другим телом даёт 409. GET/точный повтор
+возвращают историческое принятие, а не текущий допуск; новое свидетельство Fleet
+не требуется. Ошибки новой команды не меняют lease и историю.
 
-Fleet must retain its durable submission barrier until authoritative recovery
-readback. A witness is valid only while that barrier is active and the original
-native run was never submitted. This Tracker source does not install or implement
-the companion Fleet barrier. Existing claim/heartbeat/resume contracts remain.
+Fleet сохраняет durable barrier до авторитетного readback восстановления.
+Свидетельство допустимо только при активном barrier и никогда не отправленном
+первоначальном native run. Этот пакет Tracker не устанавливает companion Fleet
+barrier. Существующие контракты claim/heartbeat/resume сохраняются.
