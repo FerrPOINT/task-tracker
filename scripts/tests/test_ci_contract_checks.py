@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
-import unittest
+import importlib.util
 import re
 import shlex
+import tomllib
+import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -13,6 +15,46 @@ WORKFLOW = ROOT / ".github/workflows/release.yml"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_normal_seaorm_consumers_do_not_enable_the_mock_driver(self) -> None:
+        workspace = tomllib.loads((ROOT / 'backend/Cargo.toml').read_text(encoding='utf-8'))['workspace']
+        seaorm = workspace['dependencies']['sea-orm']
+        self.assertIs(seaorm['default-features'], False)
+        self.assertNotIn('mock', seaorm['features'])
+        self.assertTrue({'sqlx-postgres', 'runtime-tokio-rustls', 'macros', 'with-json',
+                         'with-uuid', 'with-chrono'}.issubset(seaorm['features']))
+        for member in workspace['members']:
+            manifest = tomllib.loads((ROOT / 'backend' / member / 'Cargo.toml').read_text(encoding='utf-8'))
+            tables = [manifest, *manifest.get('target', {}).values()]
+            for table in tables:
+                for kind in ('dependencies', 'build-dependencies'):
+                    for alias, dependency in table.get(kind, {}).items():
+                        if alias == 'sea-orm' or (isinstance(dependency, dict) and dependency.get('package') == 'sea-orm'):
+                            with self.subTest(member=member, kind=kind, alias=alias):
+                                self.assertIsInstance(dependency, dict)
+                                self.assertIs(dependency.get('workspace'), True)
+                                self.assertNotIn('mock', dependency.get('features', []))
+            for values in manifest.get('features', {}).values():
+                self.assertNotIn('sea-orm/mock', values)
+
+    def test_infra_mock_driver_is_owned_by_its_existing_dev_dependency(self) -> None:
+        infra = tomllib.loads((ROOT / 'backend/infra/Cargo.toml').read_text(encoding='utf-8'))
+        dependency = infra['dev-dependencies'].get('sea-orm', {})
+        self.assertIs(dependency.get('workspace'), True)
+        self.assertEqual(dependency.get('features'), ['mock'])
+        self.assertNotIn('version', dependency, 'The test driver must keep the same locked SeaORM package')
+
+    def test_contract_test_edits_select_fast_tooling_without_application_builds(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            'tracker_quality_selection', ROOT / 'scripts/vendor/base_quality_selection.py')
+        selector = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(selector)
+        changed = selector.plan(ROOT, profile='build', changed=['scripts/tests/test_ci_contract_checks.py'])
+        self.assertEqual([gate['id'] for gate in changed['gates']], ['tooling:ci-contracts'])
+        self.assertEqual(changed['gates'][0]['execution_slot'], 'none')
+        production = selector.plan(ROOT, profile='build', changed=['backend/Cargo.toml'])
+        self.assertTrue(any(gate['id'] == 'backend:build' for gate in production['gates']))
+        self.assertTrue(any(gate['id'] == 'tooling:ci-contracts' for gate in production['gates']))
+
     def test_ordinary_ci_builds_only_runtime_and_contract_targets(self) -> None:
         workflow = (ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8')
         backend = workflow.split('\n  backend:\n', 1)[1].split('\n  frontend:\n', 1)[0]
@@ -46,7 +88,7 @@ class CiContractChecksTest(unittest.TestCase):
 
     def test_frontend_uses_ui_pin_and_backend_retains_sdk_pin(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
-        frontend = re.split(r"\n  [a-zA-Z0-9_-]+:\n", workflow.split("\n  frontend:\n", 1)[1], 1)[0]
+        frontend = re.split(r"\n  [a-zA-Z0-9_-]+:\n", workflow.split("\n  frontend:\n", 1)[1], maxsplit=1)[0]
         backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]
         self.assertIn("pin=.base-ui-revision", frontend)
         self.assertNotIn("pin=.namespace-base-revision", frontend)

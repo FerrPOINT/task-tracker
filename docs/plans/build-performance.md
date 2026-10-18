@@ -53,3 +53,12 @@ generator и полный manifest определяют его cache key. Неп
 ошибка generation блокируют результат, включая прогретый compile cache.
 
 CI Rust target после restore готовится через `python3 ../scripts/vendor/base_rust_target_cache.py` из `backend/`; версия и checksum включены в отдельный Base quality packet.
+
+SeaORM mock исключён из workspace production features и включён только для
+существующей infra dev-dependency. Versions/lock и assertions mock suites
+сохранены. Быстрый `tooling:ci-contracts` проверяет прямые dependency declarations
+и CI boundary без подготовки приложения; его source-only изменение больше не
+попадает в unknown-path fallback, который выбирал оба frontend/backend builds.
+Actual locked server/migration feature graph, `repos_mock` compilation/execution
+и resource delta остаются отдельной native qualification по TESTING; экономия
+CPU/RAM/времени без неё не объявляется.

@@ -344,6 +344,29 @@ Legacy assignment/native admission не создаёт Tracker reservation: HTTP
 
 Backend: `cargo test --locked -p domain --lib` из backend/.
 
+SeaORM `mock` принадлежит только dev-dependency `infra`, а не workspace
+production features. Существующий `infra/tests/repos_mock.rs` и его assertions
+сохранены. Manifest/CI boundary проверяется без Cargo/JVM/Docker:
+`python -B -m unittest scripts.tests.test_ci_contract_checks -q` (Python >=3.11).
+Gate `tooling:ci-contracts` входит в fast/unit/build/integrated/release;
+изменение только этого Python-теста выбирает tooling, без application build.
+
+На согласованной native вехе отдельно проверить из backend/:
+
+```bash
+cargo tree --locked --offline -p server -e normal,build,features -f '{p} {f}'
+cargo tree --locked --offline -p migration -e normal,build,features -f '{p} {f}'
+cargo build --locked --release -p server --bin server
+cargo test --locked -p infra --test repos_mock
+```
+
+Normal server/migration resolved graph должен исключать `sea-orm/mock`, а
+существующий test target должен получить его через dev feature. Проверка TOML
+не заменяет Cargo resolution/compilation и измерения ресурсов; эти native checks
+для данного изменения пока NOT RUN. Lockfile, SDK pins и обычный unit inventory
+не меняются. Поведение dev features описано в
+[Cargo feature resolver](https://doc.rust-lang.org/cargo/reference/features.html#feature-resolver-version-2).
+
 Frontend из frontend/: `pnpm test:unit`, `pnpm build` включает unit.
 `pnpm test` — unit alias, `pnpm test:all` — прежний полный набор.
 Playwright, packed-consumer и effective-theme проверки — ручной release.

@@ -2,6 +2,14 @@
   "schema": "base-quality-product/v1",
   "product": "task-tracker",
   "components": {
+    "tooling": [
+      "scripts/tests/test_ci_contract_checks.py",
+      "scripts/vendor/base_quality_selection.py",
+      "backend/Cargo.toml",
+      "backend/*/Cargo.toml",
+      ".github/workflows/ci.yml",
+      ".github/workflows/release.yml"
+    ],
     "docs": [
       "docs/**",
       "*.md",
@@ -27,6 +35,24 @@
     ]
   },
   "gates": [
+    {
+      "id": "tooling:ci-contracts",
+      "component": "tooling",
+      "profiles": ["fast", "unit", "build", "integrated", "release"],
+      "test_tier": "unit",
+      "execution_slot": "none",
+      "argv": ["{python}", "-B", "-m", "unittest", "scripts.tests.test_ci_contract_checks", "-q"],
+      "inputs": [
+        "scripts/tests/test_ci_contract_checks.py",
+        "scripts/vendor/base_quality_selection.py",
+        "backend/Cargo.toml",
+        "backend/*/Cargo.toml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml"
+      ],
+      "tools": [{"argv": ["{python}", "--version"], "pattern": "^Python 3\\.(1[1-9]|[2-9][0-9])\\."}],
+      "cacheable": true
+    },
     {
       "id": "docs:readme",
       "component": "docs",
