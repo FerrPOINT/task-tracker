@@ -7164,6 +7164,60 @@
         ]
       }
     },
+    "/api/v1/projects/{project_key}/available-repositories": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "tracker_available_project_repositories",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskRepositoryLink"
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Forge unavailable, not an empty catalog"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/projects/{project_key}/backlog": {
       "get": {
         "tags": [
@@ -7790,6 +7844,135 @@
           },
           "404": {
             "description": "Member not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_key}/repositories": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "tracker_project_repository_links",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskRepositoryLink"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "tracker_link_project_repository",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryRef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Repository linked; repeated link is a no-op"
+          },
+          "409": {
+            "description": "Archived project"
+          },
+          "503": {
+            "description": "Forge unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v1/projects/{project_key}/repositories/{forge_instance_id}/{repository_id}": {
+      "delete": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "tracker_unlink_project_repository",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "forge_instance_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "repository_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Repository link removed"
+          },
+          "409": {
+            "description": "Archived project"
           }
         },
         "security": [
