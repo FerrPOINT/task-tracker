@@ -13,14 +13,15 @@
     "test:e2e": "playwright test",
     "preview": "vite preview --port 4173",
     "generate:api": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts",
-    "lint": "eslint . --max-warnings=0 && pnpm lint:semantic",
+    "lint": "eslint . --max-warnings=0 && pnpm lint:semantic && pnpm shell:check",
     "lint:semantic": "node scripts/pdlc-semantic-classes-check.mjs --css src/index.css --src src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "openapi:check": "node node_modules/@pdlc/ui/scripts/pdlc-openapi-check.mjs --spec ../openapi/openapi.json --schema src/api/generated.ts",
     "openapi:compat": "node scripts/base-openapi-compat.mjs",
     "postinstall": "openapi-typescript ../openapi/openapi.json -o src/api/generated.ts",
-    "theme:check": "node ../../services-base/base-modules/ui/scripts/pdlc-effective-theme-check.mjs"
+    "theme:check": "node ../../services-base/base-modules/ui/scripts/pdlc-effective-theme-check.mjs",
+    "shell:check": "node ../../services-base/base-modules/ui/scripts/check-ui-contract.mjs --repo .. --shell-only --shell frontend/src/widgets/app-shell.tsx --tooling-from package.json"
   },
   "dependencies": {
     "@hookform/resolvers": "^4.1.3",
