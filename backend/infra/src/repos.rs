@@ -788,6 +788,68 @@ impl ProjectRepository for ProjectRepo {
         Ok(project.id)
     }
 
+    async fn repository_links(
+        &self,
+        project: ProjectId,
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        let rows = self
+            .db
+            .query_all(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "SELECT snapshot FROM project_repository_links WHERE project_id=$1 ORDER BY created_at,repository_id LIMIT 100",
+                [project.as_uuid().into()],
+            ))
+            .await
+            .map_err(AppError::database)?;
+        rows.into_iter()
+            .map(|row| row.try_get("", "snapshot").map_err(AppError::database))
+            .collect()
+    }
+
+    async fn link_repository(
+        &self,
+        project: ProjectId,
+        actor: UserId,
+        repository: &domain::task_repositories::RepositoryRef,
+        snapshot: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        self.db
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "INSERT INTO project_repository_links(project_id,forge_instance_id,repository_id,snapshot,created_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(project_id,forge_instance_id,repository_id) DO NOTHING",
+                vec![
+                    project.as_uuid().into(),
+                    repository.forge_instance_id.into(),
+                    repository.repository_id.into(),
+                    snapshot.clone().into(),
+                    actor.as_uuid().into(),
+                ],
+            ))
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+
+    async fn unlink_repository(
+        &self,
+        project: ProjectId,
+        repository: &domain::task_repositories::RepositoryRef,
+    ) -> Result<(), AppError> {
+        self.db
+            .execute(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "DELETE FROM project_repository_links WHERE project_id=$1 AND forge_instance_id=$2 AND repository_id=$3",
+                vec![
+                    project.as_uuid().into(),
+                    repository.forge_instance_id.into(),
+                    repository.repository_id.into(),
+                ],
+            ))
+            .await
+            .map_err(AppError::database)?;
+        Ok(())
+    }
+
     async fn delete(&self, id: ProjectId) -> Result<(), AppError> {
         let txn = self.db.as_ref().begin().await.map_err(AppError::database)?;
         txn.execute(sea_orm::Statement::from_sql_and_values(

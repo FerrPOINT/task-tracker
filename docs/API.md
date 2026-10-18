@@ -1938,3 +1938,7 @@ See [strict contract and failure states](SDLC_CONFIGURATION_PREFLIGHT_V1.md).
 ## Сквозной Namespace
 
 Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).
+
+## Project repository catalogue
+
+GET/POST `/api/v1/projects/{project_key}/repositories`, GET `/api/v1/projects/{project_key}/available-repositories` и DELETE `/api/v1/projects/{project_key}/repositories/{forge_instance_id}/{repository_id}` сохраняют проектную принадлежность связей и проверяют проектный доступ/edit. POST/DELETE возвращают 204. Прежний task route остаётся alias каталога owning project и сохраняет опубликованный DTO/200 POST. Он не назначает immutable source binding; его создаёт только штатный SDLC confirmation/enrollment.

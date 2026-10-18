@@ -2205,3 +2205,7 @@ tasks or rewriting their IDs, hashes, receipts or business data.
 ## Сквозной Namespace
 
 Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).
+
+## Project repository compatibility
+
+`project_repository_links` хранит каталог проекта с ключом `(project_id, forge_instance_id, repository_id)`. `task_repository_links` в source-binding контуре хранит отдельные явно проверенные snapshots задачи, на которые ссылается 0097. Legacy lineage сохраняет исходную 0096; отдельная forward migration создаёт пустую task relation, не назначая существующие проектные связи задачам. Published/fresh lineage получает проектный каталог через 0098 без переписывания task history. Неизвестные ledger entries продолжают блокировать запуск.
