@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import unittest
 import re
+import shlex
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,6 +13,22 @@ WORKFLOW = ROOT / ".github/workflows/release.yml"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_ordinary_ci_builds_only_runtime_and_contract_targets(self) -> None:
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8')
+        backend = workflow.split('\n  backend:\n', 1)[1].split('\n  frontend:\n', 1)[0]
+        build = backend.split('- name: Build changed application after isolated units', 1)[1].split('- name:', 1)[0]
+        command = next(line.strip().removeprefix('run: ') for line in build.splitlines() if 'run: cargo build' in line)
+        self.assertEqual(shlex.split(command), [
+            'cargo', 'build', '--locked', '-p', 'server', '--bin', 'server', '-p', 'api', '--bin', 'gen-openapi',
+        ])
+        condition = "if: needs.changes.outputs.backend_build == 'true'"
+        self.assertIn(condition, build)
+        contract = backend.split('- name: OpenAPI drift gate', 1)[1]
+        self.assertIn(condition, contract)
+        self.assertIn('debug/gen-openapi', contract)
+        release = WORKFLOW.read_text(encoding='utf-8')
+        self.assertIn('cargo test --locked --workspace -- --test-threads=1', release)
+
     def test_automatic_units_do_not_prepare_postgres_and_http_mode_stays_manual(self) -> None:
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         backend = workflow.split("\n  backend:\n", 1)[1].split("\n  frontend:\n", 1)[0]

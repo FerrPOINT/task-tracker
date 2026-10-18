@@ -406,3 +406,9 @@ CLI `task-tracker`, migration и OpenAPI остаются отдельными c
 `backend:quality` сохраняет полные workspace clippy/tests в ручном release;
 MSRV/features/OpenAPI и необходимые integration gates не сокращаются.
 Fresh target между source exports и registry/compiler-cache policy Base сохраняются.
+
+Обычный CI собирает `server/server` и `api/gen-openapi`, необходимые текущему
+build и drift gate; CLI/migration binaries не добавляются через `--workspace`.
+Build/drift имеют одно условие `backend_build`; ручной release сохраняет полный
+workspace. `python -m unittest scripts.tests.test_ci_contract_checks` проверяет
+source contract; actual locked targets/OpenAPI — отдельная native веха.

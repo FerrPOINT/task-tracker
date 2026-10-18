@@ -190,7 +190,7 @@ jobs:
           cargo test --locked -p domain --lib
       - name: Build changed application after isolated units
         if: needs.changes.outputs.backend_build == 'true'
-        run: cargo build --locked --workspace
+        run: cargo build --locked -p server --bin server -p api --bin gen-openapi
         env:
           SQLX_OFFLINE: "true"
       - name: OpenAPI drift gate
