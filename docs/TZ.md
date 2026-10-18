@@ -1663,3 +1663,10 @@ Draft допускает явный выбор источника в той же
 проекта неизменяемый. Кастомные поля находятся на второй вкладке, добавление
 поля открывается отдельной кнопкой. Переходы сохраняют Namespace и фильтр
 «Все проекты». Ошибка сохранения не сбрасывает введённые данные.
+## Bounded Initial PM Recovery
+
+An initial single-task PM execution with a never-submitted native run may recover
+its expired lease only through independent trusted Fleet barrier readback and
+the scheduler-only execution-lease recovery API. This preserves the same task,
+execution, assignment, lease ID, original claim and history. It does not reset
+the task, fabricate terminal/checkpoint evidence or authorize runtime dispatch.

@@ -568,3 +568,14 @@ email, username, дата создания и исторические ссыл�
 При отсутствии проверенного имени запрос отклоняется; настроенный центральный
 вход не переходит к историческому локальному паролю при ошибке.
 Действующая политика равных пользовательских прав не меняется.
+## Unsubmitted PM Recovery Boundary
+
+Initial unsubmitted lease recovery extends the existing SdlcService/repository
+and configured Fleet reader. It preflights scheduler authority before HTTP and
+revalidates task/owner/ACL/lease under Tracker locks after the readback, keeping
+network IO outside the transaction. Exact historical replay bypasses Fleet IO.
+Only the trusted configured Fleet witness can attest its durable no-submission
+barrier; a missing dispatch journal or an expired lease alone is not proof.
+The integrator owns the atomic Fleet submission barrier and authenticated witness
+endpoint; Tracker owns guarded renewal and immutable operation history. There is
+no new planner, service, task, native terminal or owner confirmation.

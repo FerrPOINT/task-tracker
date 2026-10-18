@@ -202,6 +202,52 @@ fn compare(
 }
 
 impl FleetConfigurationReader {
+    pub async fn read_unsubmitted_pm(
+        &self,
+        run: Uuid,
+        barrier: Uuid,
+    ) -> Result<domain::sdlc_execution_lease::UnsubmittedPmWitness, AppError> {
+        let mut url = self.origin.clone();
+        url.set_path(&format!("/internal/runtime/v1/pm/runs/{run}/unsubmitted"));
+        url.query_pairs_mut()
+            .append_pair("barrier_id", &barrier.to_string());
+        let mut response = self
+            .client
+            .get(url)
+            .header(header::AUTHORIZATION, self.authorization.clone())
+            .header(header::CACHE_CONTROL, "no-cache, no-store")
+            .header(header::ACCEPT_ENCODING, "identity")
+            .send()
+            .await
+            .map_err(|_| unavailable())?;
+        if response.status() != reqwest::StatusCode::OK
+            || response
+                .headers()
+                .get(header::CONTENT_ENCODING)
+                .is_some_and(|v| v != "identity")
+            || !response
+                .headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|v| {
+                    v.split(';')
+                        .next()
+                        .is_some_and(|v| v.trim().eq_ignore_ascii_case("application/json"))
+                })
+            || response.content_length().is_some_and(|n| n > 65_536)
+        {
+            return Err(unavailable());
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|_| unavailable())? {
+            if body.len().saturating_add(chunk.len()) > 65_536 {
+                return Err(unavailable());
+            }
+            body.extend_from_slice(&chunk);
+        }
+        serde_json::from_slice(&body).map_err(|_| unavailable())
+    }
+
     pub fn new(origin: &str, token: &str) -> Result<Self, AppError> {
         let url = Url::parse(origin).map_err(|_| unavailable())?;
         if origin.len() > 512

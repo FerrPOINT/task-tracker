@@ -5,6 +5,8 @@ use domain::sdlc_source::{SetSourcePolicy, TaskSourceRepository};
 mod artifact_tests;
 #[path = "sdlc_critical_blockers_pg_tests.rs"]
 mod critical_blocker_tests;
+#[path = "sdlc_pm_unsubmitted_pg_tests.rs"]
+mod unsubmitted_recovery_tests;
 use domain::sdlc_execution_lease::ClaimExecutionLease;
 use domain::sdlc_lifecycle::*;
 use domain::sdlc_reservation::CompletePmDraft;

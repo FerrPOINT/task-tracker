@@ -2205,3 +2205,22 @@ tasks or rewriting their IDs, hashes, receipts or business data.
 ## Сквозной Namespace
 
 Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).
+## Initial PM Recovery Evidence
+
+Forward migration `0098_pm_unsubmitted_recovery` adds nullable `recovery` JSON to
+the existing immutable `sdlc_pm_lease_operations`; no new table or backfill.
+Original claim/heartbeat rows retain NULL and the original holder/actor gate.
+Scheduler recovery rows retain the exact command, independently obtained strict
+Fleet witness and current PostgreSQL transaction ID, plus the existing canonical
+request hash, result and unique execution/lease-version identity. The holder stays
+the original PM machine; the recovery actor is the separate authorized scheduler.
+Current-source lease validation already reads this operation ledger.
+
+An insert trigger checks the exact initial reserved task/owner/assignment, expiry,
+old/new lease CAS and all witness identity fields against stored reservation.
+Expired update is permitted only when a matching recovery row was inserted in
+that same transaction; historical evidence cannot renew another generation.
+A deferred constraint rejects an evidence-only commit without its lease update.
+The existing trusted resume exception remains unchanged. SQL validates durable
+evidence consistency; independent authenticated HTTP provenance is enforced by
+the application boundary, not by a JSON assertion supplied by the caller.
