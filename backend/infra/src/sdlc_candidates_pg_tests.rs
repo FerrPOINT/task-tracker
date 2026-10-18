@@ -63,6 +63,10 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::new_with_migration_steps(None).await
+    }
+
+    async fn new_with_migration_steps(steps: Option<u32>) -> Self {
         let url = std::env::var("TT_CANDIDATES_TEST_DATABASE_URL")
             .expect("fresh disposable candidates DB required");
         let db = Database::connect(&url).await.unwrap();
@@ -77,7 +81,7 @@ impl Fixture {
             row.try_get::<bool>("", "fresh").unwrap(),
             "use a fresh disposable database"
         );
-        migration::Migrator::up(&db, None).await.unwrap();
+        migration::Migrator::up(&db, steps).await.unwrap();
         let owner_id = Uuid::new_v4();
         let project = Uuid::new_v4();
         for (subject, id) in [

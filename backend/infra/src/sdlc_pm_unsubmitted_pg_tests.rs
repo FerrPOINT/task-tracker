@@ -1,11 +1,34 @@
-//! Disposable PostgreSQL only; Fleet witness below is explicitly synthetic.
+//! Recovery regressions; PostgreSQL cases use disposable DBs and synthetic Fleet evidence.
 use super::*;
 use domain::sdlc_execution_lease::*;
+
+#[tokio::test]
+async fn unsubmitted_pm_migration_0098_order_and_down_refusal_without_database() {
+    let migrations = migration::Migrator::migrations();
+    let names: Vec<_> = migrations.iter().map(|m| m.name()).collect();
+    assert_eq!(names.len(), 29);
+    assert_eq!(names[27], "m20261017_0000097_task_source_binding");
+    assert_eq!(names[28], "m20261018_0000098_pm_unsubmitted_recovery");
+    let db = sea_orm::MockDatabase::new(sea_orm::DbBackend::Postgres).into_connection();
+    let error = migrations[28]
+        .down(&sea_orm_migration::SchemaManager::new(&db))
+        .await
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("PM recovery history is immutable; destructive rollback is disabled")
+    );
+    assert!(db.into_transaction_log().is_empty());
+}
 
 struct InitialPm {
     task: Uuid,
     pm: Principal,
     reservation: PmDraftReservation,
+    claim: ExecutionLeaseReceipt,
+    claim_hash: String,
+    heartbeat_hash: String,
     lease: ExecutionLeaseReceipt,
     command: RecoverUnsubmittedPmExecutionLease,
     witness: UnsubmittedPmWitness,
@@ -30,19 +53,43 @@ async fn initial(f: &Fixture, key: &str) -> InitialPm {
         agent_id: r.assignment.agent_id,
         assignment_version: r.assignment.version,
     };
-    let (lease, _) = f
+    let claim_command = ClaimExecutionLease {
+        expected_owner_version: r.owner_cas.version,
+        fence: fence.clone(),
+        idempotency_key: "original-claim".into(),
+    };
+    let claim_hash = app::sdlc::canonical_hash(
+        &json!({"operation":"claim_pm_execution_lease","payload":claim_command}),
+    )
+    .unwrap();
+    let (claim, replayed) = f
         .repo
-        .claim_execution_lease(
-            task,
-            &pm,
-            ClaimExecutionLease {
-                expected_owner_version: r.owner_cas.version,
-                fence: fence.clone(),
-                idempotency_key: "original-claim".into(),
-            },
-        )
+        .claim_execution_lease(task, &pm, claim_command)
         .await
         .unwrap();
+    assert!(!replayed);
+    assert_eq!(claim.lease.version, 1);
+    let heartbeat_command = HeartbeatExecutionLease {
+        expected_owner_version: r.owner_cas.version,
+        fence: fence.clone(),
+        lease_id: claim.lease.lease_id,
+        expected_lease_version: claim.lease.version,
+        idempotency_key: "original-heartbeat".into(),
+    };
+    let heartbeat_hash = app::sdlc::canonical_hash(
+        &json!({"operation":"heartbeat_pm_execution_lease","payload":heartbeat_command}),
+    )
+    .unwrap();
+    let (lease, replayed) = f
+        .repo
+        .heartbeat_execution_lease(task, &pm, heartbeat_command)
+        .await
+        .unwrap();
+    assert!(!replayed);
+    assert_eq!(lease.lease.version, 2);
+    assert_eq!(lease.lease.lease_id, claim.lease.lease_id);
+    assert_eq!(lease.lease.holder_subject, claim.lease.holder_subject);
+    assert_eq!(lease.lease.claimed_at, claim.lease.claimed_at);
     let c = RecoverUnsubmittedPmExecutionLease {
         expected_owner_version: r.owner_cas.version,
         fence,
@@ -76,10 +123,61 @@ async fn initial(f: &Fixture, key: &str) -> InitialPm {
         task,
         pm,
         reservation: r,
+        claim,
+        claim_hash,
+        heartbeat_hash,
         lease,
         command: c,
         witness,
     }
+}
+
+async fn original_operations(f: &Fixture, p: &InitialPm) -> Json {
+    let mut operations = Vec::new();
+    for (key, hash, expected) in [
+        ("original-claim", &p.claim_hash, &p.claim),
+        ("original-heartbeat", &p.heartbeat_hash, &p.lease),
+    ] {
+        let operation = f
+            .repo
+            .execution_lease(p.task, &p.pm, Some(key))
+            .await
+            .unwrap()
+            .operation
+            .unwrap();
+        assert_eq!(operation.idempotency_key, key);
+        assert_eq!(&operation.request_sha256, hash);
+        assert_eq!(
+            serde_json::to_value(&operation.result).unwrap(),
+            serde_json::to_value(expected).unwrap()
+        );
+        operations.push(serde_json::to_value(operation).unwrap());
+    }
+    json!(operations)
+}
+
+async fn upgrade_snapshot(f: &Fixture, p: &InitialPm) -> Json {
+    // Only the additive nullable column is normalized; every original row field is retained.
+    f.db.query_one(statement("SELECT jsonb_build_object('task',to_jsonb(t),
+        'issue',(SELECT to_jsonb(i) FROM issues i WHERE i.id=t.task_id),
+        'reservation',(SELECT to_jsonb(e) FROM sdlc_pm_executions e WHERE execution_id=$2),
+        'assignments',(SELECT jsonb_agg(to_jsonb(a) ORDER BY version) FROM sdlc_assignments a WHERE task_id=$1),
+        'lease',(SELECT to_jsonb(l) FROM sdlc_pm_execution_leases l WHERE execution_id=$2),
+        'operations',(SELECT jsonb_agg(to_jsonb(o)-'recovery' ORDER BY lease_version) FROM sdlc_pm_lease_operations o WHERE execution_id=$2),
+        'outbox',(SELECT jsonb_agg(to_jsonb(o) ORDER BY sequence) FROM sdlc_outbox o WHERE task_id=$1)) AS v FROM sdlc_tasks t WHERE task_id=$1",
+        vec![p.task.into(),p.command.fence.execution_id.into()])).await.unwrap().unwrap().try_get("","v").unwrap()
+}
+
+async fn migration_versions(f: &Fixture) -> Vec<String> {
+    f.db.query_all(statement(
+        "SELECT version FROM seaql_migrations ORDER BY version",
+        vec![],
+    ))
+    .await
+    .unwrap()
+    .iter()
+    .map(|row| row.try_get("", "version").unwrap())
+    .collect()
 }
 
 async fn snapshot(f: &Fixture, p: &InitialPm) -> Json {
@@ -91,11 +189,73 @@ async fn snapshot(f: &Fixture, p: &InitialPm) -> Json {
 }
 
 #[tokio::test]
-#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; waits one real lease TTL"]
+#[ignore = "requires fresh disposable TT_CANDIDATES_TEST_DATABASE_URL ending in _candidates_test; populated 0097->0098 upgrade and one real lease TTL"]
 async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
-    let f = Box::pin(Fixture::new()).await;
+    let migrations = migration::Migrator::migrations();
+    let recovery_index = migrations
+        .iter()
+        .position(|m| m.name() == "m20261018_0000098_pm_unsubmitted_recovery")
+        .unwrap();
+    assert_eq!(recovery_index, 28);
+    assert_eq!(
+        migrations[recovery_index - 1].name(),
+        "m20261017_0000097_task_source_binding"
+    );
+    let f = Box::pin(Fixture::new_with_migration_steps(Some(
+        recovery_index.try_into().unwrap(),
+    )))
+    .await;
+    let prior_versions = migration_versions(&f).await;
+    assert_eq!(prior_versions.len(), recovery_index);
+    assert_eq!(
+        prior_versions.last().unwrap(),
+        "m20261017_0000097_task_source_binding"
+    );
+    let column = f.db.query_one(statement("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='sdlc_pm_lease_operations' AND column_name='recovery') AS present",vec![])).await.unwrap().unwrap();
+    assert!(!column.try_get::<bool>("", "present").unwrap());
     let p = initial(&f, "unsubmitted-recovery").await;
     let q = initial(&f, "different-key-race").await;
+    let mut preserved = Vec::new();
+    for pm in [&p, &q] {
+        let saved = upgrade_snapshot(&f, pm).await;
+        assert_eq!(saved["lease"]["version"], json!(2));
+        assert_eq!(saved["operations"].as_array().unwrap().len(), 2);
+        assert_eq!(saved["operations"][0]["lease_version"], json!(1));
+        assert_eq!(saved["operations"][1]["lease_version"], json!(2));
+        preserved.push((saved, original_operations(&f, pm).await));
+    }
+    migration::Migrator::up(&f.db, Some(1)).await.unwrap();
+    let upgraded_versions = migration_versions(&f).await;
+    assert_eq!(
+        &upgraded_versions[..recovery_index],
+        prior_versions.as_slice()
+    );
+    assert_eq!(upgraded_versions.len(), recovery_index + 1);
+    assert_eq!(
+        upgraded_versions.last().unwrap(),
+        "m20261018_0000098_pm_unsubmitted_recovery"
+    );
+    for (pm, (saved, operations)) in [&p, &q].into_iter().zip(&preserved) {
+        assert_eq!(&upgrade_snapshot(&f, pm).await, saved);
+        assert_eq!(&original_operations(&f, pm).await, operations);
+    }
+    let counts = f.db.query_one(statement("SELECT (SELECT count(*) FROM sdlc_pm_execution_leases) AS leases,
+        count(*) AS operations,count(*) FILTER (WHERE recovery IS NOT NULL) AS recovery_operations FROM sdlc_pm_lease_operations",vec![])).await.unwrap().unwrap();
+    assert_eq!(counts.try_get::<i64>("", "leases").unwrap(), 2);
+    assert_eq!(counts.try_get::<i64>("", "operations").unwrap(), 4);
+    assert_eq!(counts.try_get::<i64>("", "recovery_operations").unwrap(), 0);
+    let error = migration::Migrator::down(&f.db, Some(1)).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("PM recovery history is immutable; destructive rollback is disabled")
+    );
+    migration::Migrator::up(&f.db, None).await.unwrap();
+    assert_eq!(migration_versions(&f).await, upgraded_versions);
+    for (pm, (saved, operations)) in [&p, &q].into_iter().zip(&preserved) {
+        assert_eq!(&upgrade_snapshot(&f, pm).await, saved);
+        assert_eq!(&original_operations(&f, pm).await, operations);
+    }
     let before = snapshot(&f, &p).await;
     assert!(
         f.repo
@@ -233,17 +393,7 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
         serde_json::to_value(&a.0).unwrap()
     );
     assert_eq!(snapshot(&f, &p).await, after);
-    let claim = f
-        .repo
-        .execution_lease(p.task, &p.pm, Some("original-claim"))
-        .await
-        .unwrap()
-        .operation
-        .unwrap();
-    assert_eq!(
-        serde_json::to_value(claim.result).unwrap(),
-        serde_json::to_value(&p.lease).unwrap()
-    );
+    assert_eq!(original_operations(&f, &p).await, preserved[0].1);
     let mut changed = p.command.clone();
     changed.barrier_id = Uuid::new_v4();
     assert!(
@@ -265,6 +415,7 @@ async fn unsubmitted_pm_recovery_cas_witness_replay_and_history() {
             .recover_unsubmitted_pm_execution_lease(q.task, &f.writer, other, q.witness.clone())
     );
     assert_ne!(a.is_ok(), b.is_ok()); // exactly one CAS, different keys cannot create another lease
+    assert_eq!(original_operations(&f, &q).await, preserved[1].1);
     assert_eq!(
         p.reservation.assignment.execution_id,
         p.command.fence.execution_id

@@ -1,5 +1,27 @@
 # Стратегия тестирования Task Tracker
 
+## PM Recovery: Миграция0098
+
+В PR169 подготовлен отдельный сценарий непустого PM upgrade: fixture доходит
+до0097, обычные repository/API пути создают две lease и четыре claim/heartbeat
+операции. Затем реальный0098 up должен сохранить полные строки, IDs, holder,
+timestamps, версии, hashes, original-key receipts и outbox; новый nullable
+`recovery` проверяется отдельно. Down обязан отказать без потери истории.
+Далее тот же тест проверяет recovery v2→v3 после настоящего истечения TTL.
+
+Точный ignored selector:
+`sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history`.
+Он требует свежую disposable `TT_CANDIDATES_TEST_DATABASE_URL` с суффиксом
+`_candidates_test`, без migration ledger; нельзя pre-migrate или делить DB
+с другим сценарием. Отдельный legacy populated test использует свежую
+`TT_DRAFT_FLOW_TEST_DATABASE_URL` с суффиксом `_draft_flow_test` и теперь
+проверяет0097→0098. Его данные сами по себе не доказывают PM lease history.
+
+Оба сценария и новая mock-проверка down-refusal пока только подготовлены и
+reviewed; Cargo/PG выполнение ещё не подтверждено. Fmt и статический review
+не заменяют migrations/integration gate. Fake witness не является live Fleet
+или Hermes evidence.
+
 Регрессии для непустой установки проверяют Todo-колонку доски, когда другие
 workflow добавляют более ранние Todo-статусы в общий каталог. Счётчики доски
 и бэклога должны совпадать, новая задача без спринта должна оставаться в бэклоге.
