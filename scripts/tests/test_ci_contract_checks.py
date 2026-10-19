@@ -6,6 +6,7 @@ from __future__ import annotations
 import unittest
 import re
 import shlex
+import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,6 +29,34 @@ RUST_TEST = r"#\[(?:tokio::)?test\]"
 
 
 class CiContractChecksTest(unittest.TestCase):
+    def test_normal_seaorm_consumers_do_not_enable_the_mock_driver(self) -> None:
+        workspace = tomllib.loads((ROOT / 'backend/Cargo.toml').read_text(encoding='utf-8'))['workspace']
+        seaorm = workspace['dependencies']['sea-orm']
+        self.assertIs(seaorm['default-features'], False)
+        self.assertNotIn('mock', seaorm['features'])
+        self.assertTrue({'sqlx-postgres', 'runtime-tokio-rustls', 'macros', 'with-json',
+                         'with-uuid', 'with-chrono'}.issubset(seaorm['features']))
+        for member in workspace['members']:
+            manifest = tomllib.loads((ROOT / 'backend' / member / 'Cargo.toml').read_text(encoding='utf-8'))
+            tables = [manifest, *manifest.get('target', {}).values()]
+            for table in tables:
+                for kind in ('dependencies', 'build-dependencies'):
+                    for alias, dependency in table.get(kind, {}).items():
+                        if alias == 'sea-orm' or (isinstance(dependency, dict) and dependency.get('package') == 'sea-orm'):
+                            with self.subTest(member=member, kind=kind, alias=alias):
+                                self.assertIsInstance(dependency, dict)
+                                self.assertIs(dependency.get('workspace'), True)
+                                self.assertNotIn('mock', dependency.get('features', []))
+            for values in manifest.get('features', {}).values():
+                self.assertNotIn('sea-orm/mock', values)
+
+    def test_infra_mock_driver_is_owned_by_its_existing_dev_dependency(self) -> None:
+        infra = tomllib.loads((ROOT / 'backend/infra/Cargo.toml').read_text(encoding='utf-8'))
+        dependency = infra['dev-dependencies'].get('sea-orm', {})
+        self.assertIs(dependency.get('workspace'), True)
+        self.assertEqual(dependency.get('features'), ['mock'])
+        self.assertNotIn('version', dependency, 'The test driver must keep the same locked SeaORM package')
+
     def test_frontend_uses_ui_pin_and_backend_retains_sdk_pin(self) -> None:
         workflow = WORKFLOW.read_text(encoding="utf-8")
         frontend = re.split(r"\n  [a-zA-Z0-9_-]+:\n", workflow.split("\n  frontend:\n", 1)[1], 1)[0]

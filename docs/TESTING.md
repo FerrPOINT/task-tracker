@@ -344,6 +344,33 @@ Legacy assignment/native admission не создаёт Tracker reservation: HTTP
 
 Backend: `cargo test --locked -p domain --lib` из backend/.
 
+SeaORM `mock` включён только в dev-dependency `infra`, а не в workspace
+production features. Normal server/migration consumers сохраняют PostgreSQL,
+runtime, macros и типы JSON/UUID/chrono. Существующий `infra/tests/repos_mock.rs`,
+его fixtures/assertions и инвентарь Root из 59 тестов в 9 test-only файлах сохранены.
+Два static TOML guard находятся в `scripts.tests.test_ci_contract_checks`:
+`CiContractChecksTest.test_normal_seaorm_consumers_do_not_enable_the_mock_driver`
+и `CiContractChecksTest.test_infra_mock_driver_is_owned_by_its_existing_dev_dependency`.
+Они не запускают Cargo и не доказывают resolved transitive graph.
+
+На согласованной native вехе отдельно проверить из backend/ под существующим
+Base admission/fresh-target owner, при готовом cache без install/fetch:
+
+```bash
+cargo tree --locked --offline -p server -e normal,build,features -f '{p} {f}'
+cargo tree --locked --offline -p migration -e normal,build,features -f '{p} {f}'
+cargo build --locked --offline --release -p server --bin server
+cargo test --locked --offline -p infra --test repos_mock
+```
+
+Оба normal resolved graph должны исключать SeaORM `mock`; существующий infra
+test target должен получить его через dev feature и сохранить все 17 сценариев.
+Ручные workspace/all-targets/test проверки могут законно объединять test features:
+это не normal production graph. Полный release inventory не сужается.
+Эта finite qualification пока NOT RUN; прежние Tracker59/9-case controls относятся
+к test-only inputs и не повторяются ради feature split. Lockfile и независимые
+SDK/UI pins прежние; экономия CPU/RAM/времени без измерения не заявляется.
+
 Frontend из frontend/: `pnpm test:unit`, `pnpm build` включает unit.
 `pnpm test` — unit alias, `pnpm test:all` — прежний полный набор.
 Playwright, packed-consumer и effective-theme проверки — ручной release.
