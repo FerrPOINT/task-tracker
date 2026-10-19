@@ -3,7 +3,15 @@ import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Trash2 } from 'lucide-react'
-import { Button, ConfirmDialog, ErrorState, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import {
+  Input,
+  Select,
+  Button,
+  ConfirmDialog,
+  ErrorState,
+  ResourceList,
+  ResourceListRow,
+} from '@pdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
 import {
   useCreateCustomField,
@@ -66,9 +74,8 @@ export function ProjectCustomFieldsPage() {
                     {t('customFields.createError')}
                   </p>
                 )}
-                <input
+                <Input
                   aria-label={t('customFields.fieldName')}
-                  className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
                   placeholder={t('customFields.fieldName')}
                   required
                   value={draft.name}
@@ -77,9 +84,9 @@ export function ProjectCustomFieldsPage() {
                     setDraft({ ...draft, name: e.target.value })
                   }}
                 />
-                <select
+                <Select
                   aria-label={t('customFields.fieldType')}
-                  className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
+                  className="w-auto"
                   value={draft.field_type}
                   onChange={(e) => {
                     create.reset()
@@ -91,11 +98,10 @@ export function ProjectCustomFieldsPage() {
                       {t(`customFields.types.${type}`)}
                     </option>
                   ))}
-                </select>
+                </Select>
                 {needsOptions && (
-                  <input
+                  <Input
                     aria-label={t('customFields.options')}
-                    className="min-h-11 rounded border border-border bg-background p-2 sm:min-h-10"
                     placeholder={t('customFields.options')}
                     value={optionsText}
                     onChange={(e) => {

@@ -1,4 +1,4 @@
-import { ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import { Select, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link2, Plus, X } from 'lucide-react'
@@ -100,10 +100,10 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
               }
             }}
           />
-          <select
+          <Select
             value={linkType}
             onChange={(e) => setLinkType(e.target.value as (typeof LINK_TYPES)[number])}
-            className="min-h-10 rounded-md border border-border bg-background px-2 text-xs"
+            className="w-auto"
             aria-label={t('links.typeLabel')}
           >
             {LINK_TYPES.map((lt) => (
@@ -111,7 +111,7 @@ export function LinkEditor({ issueId, currentKey }: { issueId: string; currentKe
                 {t(`links.type.${lt}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <Button
             type="button"
             size="sm"

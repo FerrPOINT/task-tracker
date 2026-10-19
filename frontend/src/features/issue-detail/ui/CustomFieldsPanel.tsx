@@ -1,3 +1,4 @@
+import { Input, Select } from '@pdlc/ui/ui'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -55,26 +56,22 @@ export function CustomFieldValueInput({
 
   if (field.field_type === 'select') {
     return (
-      <select
-        className="w-full rounded border border-border bg-background p-2"
-        value={current}
-        onChange={(e) => onSave(e.target.value)}
-      >
+      <Select className="w-full" value={current} onChange={(e) => onSave(e.target.value)}>
         <option value="">{t('customFields.selectPlaceholder')}</option>
         {field.options.map((option) => (
           <option key={option} value={option}>
             {option}
           </option>
         ))}
-      </select>
+      </Select>
     )
   }
   if (field.field_type === 'multi-select') {
     const selected = Array.isArray(value) ? value.map(String) : []
     return (
-      <select
+      <Select
         multiple
-        className="w-full rounded border border-border bg-background p-2"
+        className="w-full"
         value={selected}
         onChange={(e) => onSave(Array.from(e.target.selectedOptions, (o) => o.value))}
       >
@@ -83,15 +80,14 @@ export function CustomFieldValueInput({
             {option}
           </option>
         ))}
-      </select>
+      </Select>
     )
   }
   const type =
     field.field_type === 'number' ? 'number' : field.field_type === 'date' ? 'date' : 'text'
   if (commit === 'change') {
     return (
-      <input
-        className="w-full rounded border border-border bg-background p-2"
+      <Input
         type={type}
         value={current}
         onChange={(e) => onSave(customFieldValueFromInput(field, e.target.value))}
@@ -99,8 +95,7 @@ export function CustomFieldValueInput({
     )
   }
   return (
-    <input
-      className="w-full rounded border border-border bg-background p-2"
+    <Input
       type={type}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}

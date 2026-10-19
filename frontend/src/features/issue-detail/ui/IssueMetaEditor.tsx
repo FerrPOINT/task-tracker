@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { useMemo } from 'react'
-import { Button } from '@pdlc/ui/ui'
+import { Select, Button } from '@pdlc/ui/ui'
 import type { Issue } from '@/api/issue'
 import type { Sprint } from '@/api/sprint'
 import type { Board } from '@/api/board'
@@ -73,66 +73,63 @@ export function IssueMetaEditor({
     ]
   }, [issue.assignee_id, issue.assignee_name, t, usersQuery.data])
 
-  const selectClass =
-    'h-10 w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent disabled:opacity-50'
-
   return (
     <div className="space-y-4 text-sm">
       <div className="space-y-1.5">
         <label htmlFor="issue-status" className="block text-text-muted">
           {t('issue.status')}
         </label>
-        <select
+        <Select
           id="issue-status"
           value={issue.status_id}
           onChange={(e) => onChange({ status_id: e.target.value })}
           disabled={disabled}
-          className={selectClass}
+          className="w-full"
         >
           {statusOptions.map((s) => (
             <option key={s.id} value={s.id}>
               {statusLabel(s.name, t)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="space-y-1.5">
         <label htmlFor="issue-priority" className="block text-text-muted">
           {t('issue.priority')}
         </label>
-        <select
+        <Select
           id="issue-priority"
           value={issue.priority}
           onChange={(e) => onChange({ priority: e.target.value })}
           disabled={disabled}
-          className={selectClass}
+          className="w-full"
         >
           {priorities.map((p) => (
             <option key={p} value={p}>
               {t(`priority.${p.toLowerCase()}`, { defaultValue: p })}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="space-y-1.5">
         <label htmlFor="issue-assignee" className="block text-text-muted">
           {t('issue.assignee')}
         </label>
-        <select
+        <Select
           id="issue-assignee"
           value={issue.assignee_id ?? ''}
           onChange={(e) => onChange({ assignee_id: e.target.value || null })}
           disabled={disabled || (!usersQuery.data && (usersQuery.isLoading || usersQuery.isError))}
-          className={selectClass}
+          className="w-full"
         >
           {assigneeOptions.map((opt) => (
             <option key={opt.value} value={opt.value} disabled={opt.disabled}>
               {opt.label}
             </option>
           ))}
-        </select>
+        </Select>
         {usersQuery.isError && (
           <div className="flex flex-wrap items-center gap-2">
             <p role="alert" className="text-xs text-danger">
@@ -161,12 +158,12 @@ export function IssueMetaEditor({
           <label htmlFor="issue-sprint" className="block text-text-muted">
             {t('issue.sprint')}
           </label>
-          <select
+          <Select
             id="issue-sprint"
             value={issue.sprint_id ?? ''}
             onChange={(e) => onChange({ sprint_id: e.target.value || null })}
             disabled={disabled}
-            className={selectClass}
+            className="w-full"
           >
             <option value="">{t('issue.noSprint')}</option>
             {sprints.map((s) => (
@@ -174,7 +171,7 @@ export function IssueMetaEditor({
                 {s.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       )}
     </div>

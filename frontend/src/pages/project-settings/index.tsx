@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { Outlet, useOutletContext, useParams, useLocation } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Button, ErrorState, Input, LoadingState, ProjectAvatar } from '@pdlc/ui/ui'
+import { Textarea, Button, ErrorState, Input, LoadingState, ProjectAvatar } from '@pdlc/ui/ui'
 import { useProjectDetails, useUpdateProject } from '@/shared/api/hooks'
 import { ProjectLink } from '@/shared/lib/project-navigation'
 import type { Project } from '@/api/project'
@@ -113,9 +113,9 @@ function ProjectPropertiesForm({ project }: { project: Project }) {
       </div>
       <div className="space-y-2 text-sm">
         <label htmlFor={`${id}-description`}>{t('projects.description')}</label>
-        <textarea
+        <Textarea
           id={`${id}-description`}
-          className="min-h-28 w-full rounded-md border border-border bg-background p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+          className="w-full min-h-28"
           value={description}
           disabled={update.isPending}
           onChange={(event) => {

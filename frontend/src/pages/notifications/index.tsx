@@ -14,7 +14,7 @@ import {
   useNotifications,
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
-import { Button, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import { Select, Button, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
 import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
 import { ErrorState } from '@pdlc/ui/ui'
 import { Label } from '@pdlc/ui/ui'
@@ -383,9 +383,9 @@ export function NotificationsPage() {
               >
                 <div className="space-y-2">
                   <Label htmlFor="notification-frequency">{t('notifications.frequency')}</Label>
-                  <select
+                  <Select
                     id="notification-frequency"
-                    className="flex min-h-11 w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:min-h-10"
+                    className="w-full"
                     value={displayedSettings.email_frequency}
                     onChange={(event) =>
                       updatePreference({
@@ -398,7 +398,7 @@ export function NotificationsPage() {
                     <option value="hourly">{t('notifications.frequencyHourly')}</option>
                     <option value="daily">{t('notifications.frequencyDaily')}</option>
                     <option value="never">{t('notifications.frequencyNone')}</option>
-                  </select>
+                  </Select>
                 </div>
                 <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-10">
                   <input

@@ -1,5 +1,5 @@
 import { CreateProjectAction } from '@/features/projects/ui/CreateProjectAction'
-import { ProjectPicker, EmptyState } from '@pdlc/ui/ui'
+import { Select, Textarea, ProjectPicker, EmptyState } from '@pdlc/ui/ui'
 import { useQuery } from '@tanstack/react-query'
 import { getProject } from '@/api/project'
 import { useSessionCommand } from '@pdlc/ui/lib'
@@ -279,9 +279,9 @@ export function IssueCreatePage() {
             <label htmlFor="issue-type" className="text-sm font-medium">
               {t('issueCreate.type')} *
             </label>
-            <select
+            <Select
               id="issue-type"
-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+              className="w-full"
               value={selectedType}
               onChange={(e) => setType(e.target.value)}
               disabled={issueTypesQuery.isLoading || issueTypes.length === 0 || isPending}
@@ -294,7 +294,7 @@ export function IssueCreatePage() {
                   })}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -321,9 +321,9 @@ export function IssueCreatePage() {
           <label htmlFor="issue-description" className="text-sm font-medium">
             {t('issueCreate.description')}
           </label>
-          <textarea
+          <Textarea
             id="issue-description"
-            className="min-h-[120px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
+            className="w-full min-h-[120px]"
             placeholder={t('issueCreate.descriptionPlaceholder')}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -336,9 +336,9 @@ export function IssueCreatePage() {
             <label htmlFor="issue-priority" className="text-sm font-medium">
               {t('issueCreate.priority')}
             </label>
-            <select
+            <Select
               id="issue-priority"
-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+              className="w-full"
               value={priority}
               onChange={(e) => setPriority(e.target.value)}
               disabled={isPending}
@@ -348,15 +348,15 @@ export function IssueCreatePage() {
               <option value="High">{t('priority.high')}</option>
               <option value="Low">{t('priority.low')}</option>
               <option value="Lowest">{t('priority.lowest')}</option>
-            </select>
+            </Select>
           </div>
           <div className="space-y-2">
             <label htmlFor="issue-assignee" className="text-sm font-medium">
               {t('issueCreate.assignee')}
             </label>
-            <select
+            <Select
               id="issue-assignee"
-              className="h-11 w-full rounded-md border border-border-strong bg-background px-3 text-sm text-text-primary sm:h-10"
+              className="w-full"
               value={assignee_id}
               onChange={(e) => setAssigneeId(e.target.value)}
               disabled={
@@ -372,7 +372,7 @@ export function IssueCreatePage() {
                   {u.display_name || u.username}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
 
