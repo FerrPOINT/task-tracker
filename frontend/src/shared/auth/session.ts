@@ -1,6 +1,7 @@
 import { applySsoSession, restoreSso, type SsoSession } from '@pdlc/ui/sso'
 import { apiBaseUrl } from '@/api/client'
 import { ssoConfig, useAuthStore } from './store'
+import { acceptSpaceSession } from './space-session'
 
 export async function loadSsoSession(session: SsoSession, canApply = () => true): Promise<boolean> {
   const response = await fetch(`${apiBaseUrl}/api/v1/users/me`, {
@@ -12,17 +13,19 @@ export async function loadSsoSession(session: SsoSession, canApply = () => true)
     email: string
     username: string
     display_name: string
+    is_system_admin?: boolean
   }
   if (!canApply()) return false
-  applySsoSession(session, () =>
+  applySsoSession(session, () => {
     useAuthStore.getState().setAuth({
       token: session.accessToken,
       userId: user.id,
       email: user.email,
       username: user.username,
       displayName: user.display_name,
-    }),
-  )
+    })
+    acceptSpaceSession(session, user)
+  })
   return true
 }
 let pending: Promise<void> | null = null
