@@ -39,3 +39,33 @@ generator и полный manifest определяют его cache key. Неп
 ошибка generation блокируют результат, включая прогретый compile cache.
 
 CI Rust target после restore готовится через `python3 ../scripts/vendor/base_rust_target_cache.py` из `backend/`; версия и checksum включены в отдельный Base quality packet.
+
+## 2026-10-19: test-only inputs для всех 59 domain units
+
+Четыре terminal inline модуля `jql::tests` (15 cases),
+`sdlc_execution_lease::tests` (1), `sdlc_native_admission::tests` (4) и
+`sdlc_pm_draft::tests` (3) перенесены в отдельные `src/tests/*.rs` через
+`#[cfg(test)]` и `#[path]`. Имена test paths, helpers/imports, assertions и private
+access сохранены; production bytes до прежних модулей не меняются. Остальные
+36 cases остаются в прежних внешних test modules; всего domain inventory — 59.
+
+Оба backend Dockerfile сохраняют полный unit COPY, но production COPY исключает
+ровно девять test-only файлов. Четыре прежних пути `entities/tests.rs`,
+`repositories/tests.rs`, `stubs/memory/tests.rs`, `value_objects/tests.rs` явно
+включены в artifact exclusions и `backend_unit_inputs`: directory pattern
+`**/tests/**` сам по себе не покрывает basename `tests.rs`. Новые четыре файла и
+прежний `tests/project_directory.rs` покрыты существующим directory pattern.
+
+Scoped pure source controls проверяют inventory, cfg declarations, обе COPY
+границы, artifact input projection, selector и CI classification для всех девяти
+файлов и production neighbors. Source checks не заменяют native qualification.
+Existing CI module доступен отдельно как `tooling:build-contracts` в unit/build
+profiles. Изменение только этого script не выбирает frontend tests или Cargo;
+ordinary CI по-прежнему вызывает существующий module один раз.
+
+Одна integrated native веха нового tuple остаётся PENDING: полные 59 domain units,
+normal production build без test-only файлов, unit-only edit с older mtime при
+сохранении dependency/application layers и ELF, failing-unit rejection,
+production-neighbor invalidation и runtime payload. SDK/UI/tooling pins, manual
+integration/release gates, caches и общий host slot сохраняются. Прежние native
+proofs относятся к прежним source/recipe tuples; CPU/RAM/time savings не заявлены.

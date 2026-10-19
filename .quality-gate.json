@@ -2,6 +2,9 @@
   "schema": "base-quality-product/v1",
   "product": "task-tracker",
   "components": {
+    "tooling": [
+      "scripts/tests/test_ci_contract_checks.py"
+    ],
     "docs": [
       "docs/**",
       "*.md",
@@ -27,6 +30,27 @@
     ]
   },
   "gates": [
+    {
+      "id": "tooling:build-contracts",
+      "component": "tooling",
+      "profiles": ["fast", "unit", "build", "integrated", "release"],
+      "argv": ["{python}", "-B", "-m", "unittest", "scripts.tests.test_ci_contract_checks"],
+      "cwd": ".",
+      "inputs": [
+        ".quality-gate.json",
+        ".quality-tooling-revision",
+        "scripts/tests/test_ci_contract_checks.py",
+        "scripts/vendor/base_quality_selection.py",
+        "scripts/vendor/base-quality-tooling.json",
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+        "backend/Dockerfile",
+        "backend/Dockerfile.umbrella",
+        "backend/domain/**"
+      ],
+      "cacheable": true,
+      "test_tier": "static"
+    },
     {
       "id": "docs:readme",
       "component": "docs",
@@ -365,7 +389,11 @@
       "kind": "artifact",
       "exclude_inputs": [
         "backend/tests/**",
-        "backend/**/tests/**"
+        "backend/**/tests/**",
+        "backend/domain/src/entities/tests.rs",
+        "backend/domain/src/repositories/tests.rs",
+        "backend/domain/src/stubs/memory/tests.rs",
+        "backend/domain/src/value_objects/tests.rs"
       ],
       "artifact_outputs": [
         "server"
@@ -444,6 +472,10 @@
   },
   "backend_unit_inputs": [
     "backend/tests/**",
-    "backend/**/tests/**"
+    "backend/**/tests/**",
+    "backend/domain/src/entities/tests.rs",
+    "backend/domain/src/repositories/tests.rs",
+    "backend/domain/src/stubs/memory/tests.rs",
+    "backend/domain/src/value_objects/tests.rs"
   ]
 }
