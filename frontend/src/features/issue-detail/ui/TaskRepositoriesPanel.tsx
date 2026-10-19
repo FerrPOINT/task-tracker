@@ -1,4 +1,4 @@
-import { ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import { Select, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
 import { useState } from 'react'
 import { useLocation } from 'react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -187,8 +187,8 @@ export function TaskRepositoriesPanel({
             <>
               <label className="block text-sm">
                 Добавить репозиторий
-                <select
-                  className="mt-2 min-h-10 w-full rounded-md border border-border bg-surface px-3"
+                <Select
+                  className="mt-2 w-full"
                   value={selected}
                   onChange={(event) => setSelected(event.target.value)}
                 >
@@ -201,7 +201,7 @@ export function TaskRepositoriesPanel({
                       {repository.public_name}
                     </option>
                   ))}
-                </select>
+                </Select>
               </label>
               <div className="flex flex-wrap gap-2">
                 <Button

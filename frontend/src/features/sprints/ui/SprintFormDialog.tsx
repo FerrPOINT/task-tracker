@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@pdlc/ui/ui'
+import { Textarea, Button } from '@pdlc/ui/ui'
 import { Input } from '@pdlc/ui/ui'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@pdlc/ui/ui'
 import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
@@ -87,9 +87,9 @@ export function SprintFormDialog({
             <label htmlFor="sprint-form-goal" className="text-sm font-medium">
               {t('sprints.goal')}
             </label>
-            <textarea
+            <Textarea
               id="sprint-form-goal"
-              className="min-h-[80px] w-full rounded-md border border-border-strong bg-background p-3 text-sm text-text-primary"
+              className="w-full"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               placeholder={t('sprints.goalPlaceholder')}

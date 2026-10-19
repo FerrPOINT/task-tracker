@@ -1,4 +1,4 @@
-import { ProjectPicker } from '@pdlc/ui/ui'
+import { Select, ProjectPicker } from '@pdlc/ui/ui'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useSearchParams } from 'react-router'
@@ -215,14 +215,14 @@ export function ReportsPage() {
         {tab === 'burndown' && projectKey && (
           <div className="flex min-w-0 flex-col gap-1.5">
             <Label htmlFor="report-sprint">{t('reports.sprint')}</Label>
-            <select
+            <Select
               id="report-sprint"
               disabled={
                 (sprintsQuery.isLoading || Boolean(sprintsQuery.error)) && sprints.length === 0
               }
               value={selectedSprintId}
               onChange={(e) => updateParams({ sprint_id: e.target.value || undefined })}
-              className="min-h-11 max-w-full rounded-md border border-border-strong bg-surface px-3 text-sm text-text-primary sm:min-h-10 sm:w-64"
+              className="w-auto max-w-full sm:w-64"
             >
               <option value="">
                 {sprintsQuery.isLoading && sprints.length === 0
@@ -236,7 +236,7 @@ export function ReportsPage() {
                   {sprint.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
 

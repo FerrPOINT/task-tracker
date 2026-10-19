@@ -28,6 +28,36 @@ function wrapper(children: React.ReactNode) {
 }
 
 describe('CustomFieldsPanel', () => {
+  it('saves the full multi-selection through the shared Base listbox', () => {
+    const onSave = vi.fn()
+    render(
+      wrapper(
+        <label>
+          Priority
+          <CustomFieldValueInput
+            field={{
+              id: 'multi',
+              project_id: 'p1',
+              name: 'Priority',
+              field_type: 'multi-select',
+              options: ['Low', 'Medium', 'High'],
+              is_required: false,
+              created_at: '2026-08-01T00:00:00Z',
+            }}
+            value={['Low', 'High']}
+            onSave={onSave}
+          />
+        </label>,
+      ),
+    )
+    const select = screen.getByRole('listbox', { name: 'Priority' }) as HTMLSelectElement
+    expect(Array.from(select.selectedOptions, (option) => option.value)).toEqual(['Low', 'High'])
+    for (const option of Array.from(select.options))
+      option.selected = option.value === 'Medium' || option.value === 'High'
+    fireEvent.change(select)
+    expect(onSave).toHaveBeenLastCalledWith(['Medium', 'High'])
+  })
+
   afterEach(() => {
     mockFields.mockReset()
     mockValues.mockReset()
