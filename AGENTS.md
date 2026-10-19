@@ -97,3 +97,29 @@ keys and shared caches are preserved. Base owns tools and LOCAL_GROUPS rules.
 Перед изменением платформенных имён прочитайте [интеграцию с Base](docs/PDLC_BASE_INTEGRATION.md) и канонические TERMS/BRANDING.
 Для UI: `pnpm --dir frontend exec pdlc-ui search "задача"` → `show ExportName` → один нужный `example`. В Workflow SSR используйте штатный exporter Base.
 Не переносите продуктовые запросы, DTO и права в общий UI. SDK/UI/skills pins независимы; новое имя платформы не меняет SDLC IDs/scopes или Hermes upstream.
+
+## Единое пространство PDLC
+
+[Согласованный план](docs/plans/unified-spaces-20261019.md) вводит M:N и общий read admission. До полного
+совместимого cohort это цель, не установленное поведение. Строгие V1/V2 и
+applied migrations сохранять; ProjectRef/SpaceRef/V3 отдельны. Полный gate на
+интегрированной вехе, в ходе реализации scoped checks. Runtime не активировать
+по готовности одного продукта; не выбирать первый Project/Space неявно.
+
+
+Контекст центрального запроса содержит immutable identity, свежую глобальную
+роль, product scopes и исходный срок допуска. Не повышать роль в JIT и не
+использовать исторический `is_system_admin` как доказательство роли платформы.
+Task-local proof не передаётся в spawned jobs автоматически; потоки используют
+явно захваченный исходный proof, а фоновые операции — свой ограниченный протокол.
+Исторические уведомления и аудит не сохраняют доступ к данным отозванного
+проекта. Ограничивать выборку и счётчики до pagination; неизвестный ресурс не
+считать глобальным. События пользователей и system settings классифицировать
+по их существующим глобальным правилам, отдельно от проектного содержимого.
+
+Правила текущей транзакционной записи:
+[PROJECT_CONTENT_AUTHORIZATION_V2](docs/PROJECT_CONTENT_AUTHORIZATION_V2.md).
+Не использовать raw concrete connection как обход ordinary content guards.
+Owner/reconcile и machine artifact/job ports имеют отдельные typed proofs;
+read-only proof не становится правом записи. После owner-v2 adoption legacy
+writer не считается совместимым даже до включения общего policy flag.

@@ -2227,3 +2227,19 @@ Insert trigger проверяет первоначальные задачу/вл
 commit доказательства без изменения lease. Прежнее trusted resume исключение
 сохраняется. SQL проверяет согласованность evidence; подлинность независимого
 HTTP обеспечивается приложением, а не JSON-утверждением вызывающей стороны.
+
+
+## Единое пространство: canonical M:N
+
+[Контракт, транзакции и durable проекция](PROJECT_SPACES_V2.md).
+
+
+## Независимый Project lifecycle: source-кандидат
+
+Аддитивная 0099 добавляет `projects.archived_at`, `project_lifecycle_revision` и
+`tracker_project_lifecycle_operations`. Ревизия M:N остаётся отдельной. Receipt
+содержит исходный ключ/command/actor identity и исторический deadline; сам receipt
+не является действующим полномочием. Schema/commit guards сохраняют согласованность
+и не переписывают старую lineage. [Протокол и ограничения](PROJECT_LIFECYCLE_V2.md).
+
+Правила транзакционной записи при общем допуске: [PROJECT_CONTENT_AUTHORIZATION_V2.md](PROJECT_CONTENT_AUTHORIZATION_V2.md).

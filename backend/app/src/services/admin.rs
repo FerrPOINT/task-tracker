@@ -28,6 +28,7 @@ const SAFE_SETTING_KEYS: &[&str] = &["instance.name", "instance.base_url", "limi
 
 pub struct AdminServiceImpl {
     users: Arc<dyn UserRepository>,
+    projects: Arc<dyn domain::ProjectRepository>,
     audit_logs: Arc<dyn AuditLogRepository>,
     system_settings: Arc<dyn SystemSettingRepository>,
 }
@@ -35,10 +36,12 @@ pub struct AdminServiceImpl {
 impl AdminServiceImpl {
     pub fn new(
         users: Arc<dyn UserRepository>,
+        projects: Arc<dyn domain::ProjectRepository>,
         audit_logs: Arc<dyn AuditLogRepository>,
         system_settings: Arc<dyn SystemSettingRepository>,
     ) -> Self {
         Self {
+            projects,
             users,
             audit_logs,
             system_settings,
@@ -56,7 +59,11 @@ impl AdminServiceImpl {
     /// Legacy user-management service calls are not exposed by the router.
     async fn require_admin(&self, requester_id: UserId) -> Result<User, AppError> {
         let user = self.require_active_user(requester_id).await?;
-        if !user.is_system_admin {
+        if let Some(frame) = crate::space_access::current_request_for(requester_id)? {
+            if !frame.is_global_admin() {
+                return Err(AppError::Forbidden);
+            }
+        } else if std::env::var_os("TT_AUTH__CENTRAL_JWKS_URI").is_some() || !user.is_system_admin {
             return Err(AppError::Forbidden);
         }
         Ok(user)
@@ -200,7 +207,18 @@ impl AdminService for AdminServiceImpl {
         offset: u64,
     ) -> Result<Vec<AuditLogDto>, AppError> {
         self.require_active_user(requester_id).await?;
-        let entries = self.audit_logs.list(None, limit, offset).await?;
+        let entries = if let Some(actor) =
+            crate::space_access::request_space_actor(requester_id, self.projects.as_ref()).await?
+        {
+            let entries = self
+                .audit_logs
+                .list_space_visible(&actor.readable_spaces()?, limit, offset)
+                .await?;
+            actor.readable_spaces()?;
+            entries
+        } else {
+            self.audit_logs.list(None, limit, offset).await?
+        };
         Ok(entries.into_iter().map(AuditLogDto::from).collect())
     }
 
@@ -320,8 +338,12 @@ mod tests {
     ) {
         let audit_logs = Arc::new(MemoryAuditLogRepository::default());
         let system_settings = Arc::new(MemorySystemSettingRepository::default());
-        let service =
-            AdminServiceImpl::new(users.clone(), audit_logs.clone(), system_settings.clone());
+        let service = AdminServiceImpl::new(
+            users.clone(),
+            Arc::new(domain::MemoryProjectRepository::default()),
+            audit_logs.clone(),
+            system_settings.clone(),
+        );
         (service, audit_logs, system_settings)
     }
 

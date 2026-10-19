@@ -1991,3 +1991,42 @@ barrier. Существующие контракты claim/heartbeat/resume со
 
 POST и DELETE связей архивного проекта возвращают 409 `namespace_resource_read_only`,
 включая повторное удаление уже отсутствующей связи. Чтение сохранённых связей остаётся доступным.
+
+
+## Project/Space v2: source-кандидат
+
+- POST `/api/v2/projects`: key/name/description и обязательный непустой spaces[];
+  до1000 уникальных ненулевых SpaceRef. Project/default board/первые links атомарны.
+- GET `/api/v2/projects/{project_key}/spaces`: canonical ProjectRef, revision,
+  полный links-набор и original Tracker validity; ANY admission открывает Project,
+  но не документы других Space.
+- PUT того же пути: expected_revision + непустой полный spaces[]. Существующий
+  owner role, разрешённое активное Space прежнего Project и активный допуск ко
+  всем новым links обязательны. Срок/owner/catalog проверяются после row wait;
+  catalog locks удерживаются до commit. Ни primary, ни первый Space не выбираются.
+
+Сервер получает admission через общий SDK; TT_SPACES__ADMISSION_URL/TOKEN —
+операторская конфигурация с зарегистрированным узким Admin machine PAT. Exact
+central-subject/local-user mapping подтверждается по profiles, не email. PAT
+scopes остаются дополнительным ограничением. Success ответы no-store.
+После активации storage guard старый POST v1 без spaces возвращает понятный отказ
+project_spaces_required_use_v2. До общего compatible cohort activation запрещена.
+Новые source API ещё требуют native/API/UI/migration qualification; это не live
+поставка и не завершённый общий фильтр всех прежних Tracker routes.
+
+
+## Единое пространство: API v2
+
+[Контракт, транзакции и durable проекция](PROJECT_SPACES_V2.md).
+
+
+Project lifecycle v2: GET/PUT `/api/v2/projects/{project_key}/lifecycle`;
+[поля, оригинальный ключ, CAS, полномочия и совместимость](PROJECT_LIFECYCLE_V2.md).
+Это source-кандидат, не установленный общий доступ.
+
+Правила транзакционной записи при общем допуске: [PROJECT_CONTENT_AUTHORIZATION_V2.md](PROJECT_CONTENT_AUTHORIZATION_V2.md).
+
+
+Каталог текущего пользователя: GET /api/v2/spaces/visible; строгая bounded
+pagination и server-only original-actor relay описаны в
+[PROJECT_SPACES_V2](PROJECT_SPACES_V2.md#каталог-доступных-пространств).

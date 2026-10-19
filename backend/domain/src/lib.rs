@@ -3,6 +3,7 @@ pub mod email_port;
 pub mod entities;
 pub mod events;
 pub mod jql;
+pub mod project_spaces;
 pub mod repositories;
 pub mod sdlc;
 pub mod sdlc_candidates;

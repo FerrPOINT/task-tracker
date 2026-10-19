@@ -9579,6 +9579,495 @@
         ]
       }
     },
+    "/api/v2/project-contexts/query": {
+      "post": {
+        "tags": [
+          "routes::project_contexts"
+        ],
+        "operationId": "query_project_contexts_v2",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectSpaceContextQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSpaceContextBatch"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Registered exact-scope reader and original actor admission required"
+          },
+          "409": {
+            "description": "Policy revision changed"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/projects": {
+      "post": {
+        "tags": [
+          "routes::project_spaces"
+        ],
+        "operationId": "create_project_in_spaces_v2",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectInSpaces"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project or space set"
+          },
+          "401": {
+            "description": "Central human required"
+          },
+          "403": {
+            "description": "Project write admission denied"
+          },
+          "409": {
+            "description": "Project key or lifecycle conflict"
+          },
+          "422": {
+            "description": "Invalid strict request"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/projects/{project_key}/lifecycle": {
+      "get": {
+        "tags": [
+          "routes::project_lifecycle"
+        ],
+        "operationId": "get_project_lifecycle_v2",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectLifecycle"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Space admission denied"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "routes::project_lifecycle"
+        ],
+        "operationId": "change_project_lifecycle_v2",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeProjectLifecycle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectLifecycle"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Project management denied"
+          },
+          "409": {
+            "description": "Revision or original operation conflict"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/projects/{project_key}/spaces": {
+      "get": {
+        "tags": [
+          "routes::project_spaces"
+        ],
+        "operationId": "get_project_spaces_v2",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmedProjectSpaces"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project key"
+          },
+          "401": {
+            "description": "Central human required"
+          },
+          "403": {
+            "description": "Project read admission denied"
+          },
+          "404": {
+            "description": "Project unavailable"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "routes::project_spaces"
+        ],
+        "operationId": "replace_project_spaces_v2",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceProjectSpaces"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmedProjectSpaces"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Link revision or lifecycle conflict"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/projects/{project_key}/spaces/projection": {
+      "get": {
+        "tags": [
+          "routes::project_spaces"
+        ],
+        "operationId": "get_project_space_projection_v2",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSpaceProjectionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/projects/{project_key}/spaces/projection/reconcile": {
+      "post": {
+        "tags": [
+          "routes::project_spaces"
+        ],
+        "operationId": "reconcile_project_space_projection_v2",
+        "parameters": [
+          {
+            "name": "project_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSpaceProjectionStatus"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Durable delivery remains pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSpaceProjectionStatus"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/spaces/visible": {
+      "get": {
+        "tags": [
+          "routes::space_catalog"
+        ],
+        "operationId": "get_visible_spaces_v2",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "maximum": 10,
+              "minimum": 1
+            },
+            "example": 10
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            },
+            "example": 0
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisibleSpaceCatalogV2"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed catalog query or bounds"
+          },
+          "401": {
+            "description": "Central human identity required"
+          },
+          "403": {
+            "description": "Product read/original context denied"
+          },
+          "503": {
+            "description": "Fresh owner confirmation unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/v2/spaces/{registry}/{space}/owner-state": {
+      "put": {
+        "tags": [
+          "spaces-v2"
+        ],
+        "operationId": "tracker_space_owner_v2",
+        "parameters": [
+          {
+            "name": "registry",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "space",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpaceOwnerCommandV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpaceOwnerReadbackV2"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Registered owner PAT with exact Tracker write scope required"
+          },
+          "409": {
+            "description": "Operation/revision conflict"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -9670,6 +10159,25 @@
             "type": "string"
           }
         }
+      },
+      "AdmissionValidity": {
+        "type": "object",
+        "description": "Absolute Unix seconds from the original owner. Relays may only shorten this interval.",
+        "required": [
+          "observed_at",
+          "valid_until"
+        ],
+        "properties": {
+          "observed_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "valid_until": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
       },
       "AnalysisAdmissionState": {
         "type": "string",
@@ -10703,6 +11211,44 @@
           "reserve"
         ]
       },
+      "CentralIdentity": {
+        "type": "object",
+        "required": [
+          "issuer",
+          "subject"
+        ],
+        "properties": {
+          "issuer": {
+            "type": "string"
+          },
+          "subject": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ChangeProjectLifecycle": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_revision",
+          "archived"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
       "ClaimExecutionLease": {
         "type": "object",
         "required": [
@@ -10974,6 +11520,35 @@
           }
         }
       },
+      "ConfirmedProjectSpaces": {
+        "type": "object",
+        "description": "A versioned full-set link response from the canonical Tracker owner.",
+        "required": [
+          "project",
+          "revision",
+          "spaces",
+          "validity"
+        ],
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/ProjectRef"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "spaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpaceRef"
+            }
+          },
+          "validity": {
+            "$ref": "#/components/schemas/AdmissionValidity"
+          }
+        },
+        "additionalProperties": false
+      },
       "ControlChartPointResponse": {
         "type": "object",
         "required": [
@@ -11149,6 +11724,37 @@
             "type": "string"
           }
         }
+      },
+      "CreateProjectInSpaces": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "spaces"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "spaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpaceRef"
+            },
+            "maxItems": 1000,
+            "minItems": 1
+          }
+        },
+        "additionalProperties": false
       },
       "CreateProjectRequest": {
         "type": "object",
@@ -12188,6 +12794,13 @@
           "reviewer",
           "tester",
           "devops"
+        ]
+      },
+      "DesiredSpaceState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "archived"
         ]
       },
       "DirectoryUserResponse": {
@@ -17511,6 +18124,62 @@
         },
         "additionalProperties": false
       },
+      "ProjectContextSelector": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "projects",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "projects"
+                ]
+              },
+              "projects": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ProjectRef"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "space",
+              "limit",
+              "offset",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "space"
+                ]
+              },
+              "limit": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "offset": {
+                "type": "integer",
+                "format": "int32",
+                "minimum": 0
+              },
+              "space": {
+                "$ref": "#/components/schemas/SpaceRef"
+              }
+            }
+          }
+        ],
+        "description": "Read selectors are explicit; a Space never implies a first/default Project."
+      },
       "ProjectDirectory": {
         "type": "object",
         "required": [
@@ -17566,6 +18235,34 @@
         },
         "additionalProperties": false
       },
+      "ProjectLifecycle": {
+        "type": "object",
+        "description": "Independent Tracker-owned archive state. Space restoration never alters it.\nMetadata only; this is not a write permit or a claim that a job has stopped.",
+        "required": [
+          "schema_version",
+          "project",
+          "revision",
+          "archived"
+        ],
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectRef"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
       "ProjectListResponse": {
         "type": "object",
         "required": [
@@ -17617,6 +18314,24 @@
             "type": "string"
           }
         }
+      },
+      "ProjectRef": {
+        "type": "object",
+        "required": [
+          "tracker_instance_id",
+          "project_id"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tracker_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
       },
       "ProjectResponse": {
         "type": "object",
@@ -17714,6 +18429,136 @@
           },
           "verification": {
             "$ref": "#/components/schemas/VerifiedSource"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectSpaceContextBatch": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "actor",
+          "policy_revision",
+          "total",
+          "has_more",
+          "projects"
+        ],
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/SpaceReadDelegation"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "policy_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectSpaceReadContext"
+            },
+            "description": "Missing/denied ID selectors are both omitted. Space totals require access to that Space."
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectSpaceContextQuery": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "tracker_instance_id",
+          "actor",
+          "policy_revision",
+          "selector"
+        ],
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/SpaceReadDelegation"
+          },
+          "policy_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "selector": {
+            "$ref": "#/components/schemas/ProjectContextSelector"
+          },
+          "tracker_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectSpaceProjectionStatus": {
+        "type": "object",
+        "description": "Delivery status contains durable metadata, never an admission or write grant.",
+        "required": [
+          "operation_id",
+          "project",
+          "revision",
+          "confirmed"
+        ],
+        "properties": {
+          "confirmed": {
+            "type": "boolean"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project": {
+            "$ref": "#/components/schemas/ProjectRef"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectSpaceReadContext": {
+        "type": "object",
+        "required": [
+          "key",
+          "name",
+          "links",
+          "lifecycle"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/ProjectLifecycle"
+          },
+          "links": {
+            "$ref": "#/components/schemas/ConfirmedProjectSpaces"
+          },
+          "name": {
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -18117,6 +18962,31 @@
             "type": "string"
           }
         }
+      },
+      "ReplaceProjectSpaces": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "expected_revision",
+          "spaces"
+        ],
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "spaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpaceRef"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "RepositoryCheckRef": {
         "type": "object",
@@ -19077,6 +19947,199 @@
           }
         },
         "additionalProperties": false
+      },
+      "SpaceCatalogEntry": {
+        "type": "object",
+        "required": [
+          "space",
+          "revision",
+          "state",
+          "metadata"
+        ],
+        "properties": {
+          "metadata": {
+            "$ref": "#/components/schemas/SpaceMetadata"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "space": {
+            "$ref": "#/components/schemas/SpaceRef"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SpaceState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpaceMetadata": {
+        "type": "object",
+        "required": [
+          "slug",
+          "name",
+          "description",
+          "responsible_subject"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "responsible_subject": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpaceOwnerCommandV2": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "space",
+          "participant_instance_id",
+          "operation_id",
+          "revision",
+          "desired_state",
+          "metadata"
+        ],
+        "properties": {
+          "desired_state": {
+            "$ref": "#/components/schemas/DesiredSpaceState"
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/SpaceMetadata"
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "participant_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "space": {
+            "$ref": "#/components/schemas/SpaceRef"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpaceOwnerReadbackV2": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "space",
+          "participant_instance_id",
+          "operation_id",
+          "revision",
+          "state",
+          "drained"
+        ],
+        "properties": {
+          "drained": {
+            "type": "boolean"
+          },
+          "local_resource": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ResourceRef",
+                "description": "Wiki returns its persistent local UUID. Barrier-only participants have no local resource."
+              }
+            ]
+          },
+          "operation_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "participant_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "space": {
+            "$ref": "#/components/schemas/SpaceRef"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DesiredSpaceState"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpaceReadDelegation": {
+        "type": "object",
+        "description": "Original actor window for a registered server-side READ processor. This is\nmetadata, not a bearer credential; never accept it on a human-facing route.\nThe source must derive it from its verified request, not frontend JSON.",
+        "required": [
+          "schema_version",
+          "identity",
+          "validity"
+        ],
+        "properties": {
+          "identity": {
+            "$ref": "#/components/schemas/CentralIdentity"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "validity": {
+            "$ref": "#/components/schemas/AdmissionValidity"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpaceRef": {
+        "type": "object",
+        "required": [
+          "registry_instance_id",
+          "space_id"
+        ],
+        "properties": {
+          "registry_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "space_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SpaceState": {
+        "type": "string",
+        "enum": [
+          "active",
+          "archived",
+          "provisioning",
+          "archiving",
+          "restoring"
+        ]
       },
       "SprintListResponse": {
         "type": "object",
@@ -20386,6 +21449,59 @@
             "type": "boolean"
           }
         }
+      },
+      "VisibleSpaceCatalogV2": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "identity",
+          "policy_revision",
+          "validity",
+          "spaces",
+          "total",
+          "limit",
+          "offset",
+          "has_more"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/CentralIdentity"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "policy_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "spaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpaceCatalogEntry"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/AdmissionValidity"
+          }
+        },
+        "additionalProperties": false
       },
       "VoteCountResponse": {
         "type": "object",

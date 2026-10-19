@@ -24,6 +24,7 @@ pub mod sdlc_reservation;
 pub mod sdlc_routing;
 pub mod sdlc_source;
 pub mod services;
+pub mod space_access;
 pub mod totp;
 
 pub use auth::*;

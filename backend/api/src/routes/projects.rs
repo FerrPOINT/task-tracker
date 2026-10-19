@@ -45,7 +45,7 @@ pub async fn list_projects(
     }))
 }
 
-fn map_project_response(dto: app::dto::ProjectDto) -> ProjectResponse {
+pub(crate) fn map_project_response(dto: app::dto::ProjectDto) -> ProjectResponse {
     ProjectResponse {
         id: dto.id,
         key: dto.key,

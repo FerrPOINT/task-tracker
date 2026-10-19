@@ -8,6 +8,7 @@ pub mod health;
 pub mod issues;
 pub mod members;
 pub mod namespace;
+pub mod project_spaces;
 pub mod projects;
 pub mod search;
 pub mod sprints;
@@ -34,3 +35,8 @@ pub mod watchers_votes;
 pub mod workflow;
 
 pub mod project_repositories;
+
+pub mod project_contexts;
+
+pub mod project_lifecycle;
+pub mod space_catalog;
