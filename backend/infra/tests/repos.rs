@@ -109,6 +109,120 @@ fn test_sprint(project_id: ProjectId) -> Sprint {
 }
 
 #[tokio::test]
+#[ignore = "requires fresh owned TT_PROJECT_LINK_TEST_DATABASE_URL ending in _project_links_test"]
+async fn project_repository_link_paging_preserves_scope_and_order() {
+    let url = std::env::var("TT_PROJECT_LINK_TEST_DATABASE_URL")
+        .expect("explicit disposable project links database required");
+    let db = Database::connect(url.clone()).await.unwrap();
+    let guard = db.query_one(sea_orm::Statement::from_string(sea_orm::DbBackend::Postgres,
+        "SELECT current_database() AS name,current_schema() AS schema,to_regclass('public.seaql_migrations') IS NULL AS fresh".to_owned()))
+        .await.unwrap().unwrap();
+    assert!(
+        guard
+            .try_get::<String>("", "name")
+            .unwrap()
+            .ends_with("_project_links_test")
+    );
+    assert_eq!(guard.try_get::<String>("", "schema").unwrap(), "public");
+    assert!(guard.try_get::<bool>("", "fresh").unwrap());
+    migration::Migrator::up(&db, None).await.unwrap();
+    let repos = to_domain_repositories(SeaOrmRepositories::new(
+        Database::connect(url).await.unwrap(),
+    ));
+    let user = test_user();
+    repos.users.save(&user).await.unwrap();
+    let project = test_project(user.id);
+    let other = test_project(user.id);
+    for item in [&project, &other] {
+        repos
+            .projects
+            .save_with_board(item, &test_board(item.id, item.default_board_id))
+            .await
+            .unwrap();
+    }
+    let first_forge = Uuid::from_u128(11);
+    let second_forge = Uuid::from_u128(12);
+    let duplicate = domain::task_repositories::RepositoryRef {
+        forge_instance_id: second_forge,
+        repository_id: Uuid::from_u128(1),
+    };
+    repos.projects.link_repository(project.id, user.id, &duplicate,
+        &serde_json::json!({"forge_instance_id":second_forge,"repository_id":duplicate.repository_id,"public_name":"second-forge-tie"})).await.unwrap();
+    for index in 1..=101 {
+        let reference = domain::task_repositories::RepositoryRef {
+            forge_instance_id: first_forge,
+            repository_id: Uuid::from_u128(index),
+        };
+        repos.projects.link_repository(project.id, user.id, &reference,
+            &serde_json::json!({"forge_instance_id":first_forge,"repository_id":reference.repository_id,"public_name":format!("repository-{index:03}")})).await.unwrap();
+    }
+    repos
+        .projects
+        .link_repository(
+            other.id,
+            user.id,
+            &duplicate,
+            &serde_json::json!({"public_name":"foreign-project-only"}),
+        )
+        .await
+        .unwrap();
+    db.execute(sea_orm::Statement::from_sql_and_values(sea_orm::DbBackend::Postgres,
+        "UPDATE project_repository_links SET created_at=TIMESTAMPTZ '2026-01-01 00:00:00+00' WHERE project_id=$1",[project.id.as_uuid().into()]))
+        .await.unwrap();
+    let first = repos
+        .projects
+        .repository_links(project.id, 0)
+        .await
+        .unwrap();
+    let second = repos
+        .projects
+        .repository_links(project.id, 100)
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 100);
+    assert_eq!(second.len(), 2);
+    let links: Vec<_> = first.into_iter().chain(second).collect();
+    assert_eq!(links[0]["forge_instance_id"], first_forge.to_string());
+    assert_eq!(links[1]["forge_instance_id"], second_forge.to_string());
+    let identities: std::collections::HashSet<_> = links
+        .iter()
+        .map(|link| {
+            (
+                link["forge_instance_id"].as_str().unwrap(),
+                link["repository_id"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        identities.len(),
+        102,
+        "pages must neither duplicate nor omit links"
+    );
+    assert!(
+        links
+            .iter()
+            .all(|link| link["public_name"] != "foreign-project-only")
+    );
+    assert_eq!(
+        repos
+            .projects
+            .repository_links(other.id, 0)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        repos
+            .projects
+            .repository_links(project.id, u32::MAX)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 #[ignore = "requires docker test stack"]
 async fn user_repo_crud() {
     let repos = setup().await;

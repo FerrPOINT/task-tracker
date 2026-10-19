@@ -127,7 +127,41 @@ jobs:
         run: cargo clippy --locked -p server --test drafts --test sdlc -- -D warnings
       - run: cargo test --locked --workspace -- --test-threads=1
         if: ${{ !inputs.http_only }}
-      - name: Populated 0033 through 0096 upgrade and strict EOL guards (isolated PostgreSQL)
+      - name: Initial PM 0097 to 0098 upgrade and expired lease recovery (isolated PostgreSQL)
+        env:
+          TT_CANDIDATES_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_pm_candidates_test
+        run: |
+          set -euo pipefail
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_pm_candidates_test
+          cargo test --locked -p infra --lib sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/pm-unsubmitted-recovery.log"
+          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/pm-unsubmitted-recovery.log"
+      - name: Project repository lineage and PM recovery compatibility (isolated PostgreSQL)
+        run: |
+          set -euo pipefail
+          cases=(
+            'tracker_legacy_pdlc4_compat_test:project_compat_legacy_preserves_links_and_ledger_without_invented_task_links'
+            'tracker_published_pdlc4_compat_test:project_compat_published_source_history_remains_valid'
+            'tracker_fresh_pdlc4_compat_test:project_compat_fresh_and_unknown_history'
+            'tracker_catalog_pm_pdlc4_compat_test:project_compat_catalog_before_pm_history_remains_valid'
+            'tracker_legacy_catalog_pm_pdlc4_compat_test:project_compat_legacy_catalog_before_pm_history_remains_valid'
+          )
+          for entry in "${cases[@]}"; do
+            database="${entry%%:*}"
+            case_name="${entry#*:}"
+            docker exec ${{ job.services.postgres.id }} createdb -U tasktracker "$database"
+            TT_PROJECT_COMPAT_TEST_DATABASE_URL="postgres://tasktracker@127.0.0.1:5432/$database" \
+              cargo test --locked -p migration --lib "project_repository_tests::$case_name" -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/$database.log"
+            grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/$database.log"
+          done
+      - name: Project links pagination and project isolation (isolated PostgreSQL)
+        env:
+          TT_PROJECT_LINK_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_paging_project_links_test
+        run: |
+          set -euo pipefail
+          docker exec ${{ job.services.postgres.id }} createdb -U tasktracker tracker_paging_project_links_test
+          cargo test --locked -p infra --test repos project_repository_link_paging_preserves_scope_and_order -- --exact --ignored --test-threads=1 | tee "$RUNNER_TEMP/project-links-pagination.log"
+          grep -F 'test result: ok. 1 passed; 0 failed; 0 ignored;' "$RUNNER_TEMP/project-links-pagination.log"
+      - name: Populated 0033 through both 0098 migrations and strict EOL guards (isolated PostgreSQL)
         if: ${{ !inputs.http_only }}
         env:
           TT_DRAFT_FLOW_TEST_DATABASE_URL: postgres://tasktracker@127.0.0.1:5432/tracker_upgrade_draft_flow_test

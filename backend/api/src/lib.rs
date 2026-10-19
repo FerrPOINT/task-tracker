@@ -133,6 +133,8 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::sdlc::execution_lease,
         routes::sdlc::resume_execution_lease,
         routes::sdlc::resume_execution_lease_operation,
+        routes::sdlc::recover_unsubmitted_execution_lease,
+        routes::sdlc::unsubmitted_execution_lease_operation,
         routes::sdlc::bind,
         routes::sdlc::assign,
         routes::sdlc::questions,
@@ -156,6 +158,10 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::namespace::context,
         routes::namespace::documents,
         routes::namespace::repositories,
+        routes::project_repositories::list,
+        routes::project_repositories::available,
+        routes::project_repositories::link,
+        routes::project_repositories::unlink,
         routes::namespace::delivery_evidence,
         routes::namespace::link_repository,
         routes::namespace::available_repositories,
@@ -495,6 +501,18 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         ));
 
     let protected = Router::new()
+        .route(
+            "/projects/{project_key}/repositories",
+            get(routes::project_repositories::list).post(routes::project_repositories::link),
+        )
+        .route(
+            "/projects/{project_key}/available-repositories",
+            get(routes::project_repositories::available),
+        )
+        .route(
+            "/projects/{project_key}/repositories/{forge_instance_id}/{repository_id}",
+            axum::routing::delete(routes::project_repositories::unlink),
+        )
         .route("/tasks/{id}/documents", get(routes::namespace::documents))
         .route(
             "/tasks/{id}/delivery-evidence",
@@ -850,6 +868,46 @@ pub async fn serve(ctx: Arc<app::AppContext>) {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[test]
+    fn unsubmitted_pm_recovery_schema_is_scheduler_only_and_has_no_caller_witness() {
+        let doc = serde_json::to_value(ApiDoc::openapi()).unwrap();
+        let snapshot: serde_json::Value =
+            serde_json::from_str(include_str!("../../../openapi/openapi.json")).unwrap();
+        let root = "/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted";
+        for (path, method) in [
+            (root.to_string(), "post"),
+            (format!("{root}/operations/{{idempotency_key}}"), "get"),
+        ] {
+            let operation = &doc["paths"][&path][method];
+            assert_eq!(operation, &snapshot["paths"][&path][method]);
+            assert_eq!(operation["security"], serde_json::json!([{"bearer":[]}]));
+            for status in ["200", "401", "403", "404", "409", "422", "503"] {
+                assert!(operation["responses"][status].is_object());
+            }
+        }
+        let schema = &doc["components"]["schemas"]["RecoverUnsubmittedPmExecutionLease"];
+        assert_eq!(
+            schema,
+            &snapshot["components"]["schemas"]["RecoverUnsubmittedPmExecutionLease"]
+        );
+        assert_eq!(schema["additionalProperties"], false);
+        assert_eq!(schema["required"].as_array().unwrap().len(), 7);
+        for field in [
+            "expected_owner_version",
+            "fence",
+            "lease_id",
+            "expected_lease_version",
+            "session_run_id",
+            "barrier_id",
+            "idempotency_key",
+        ] {
+            assert!(schema["properties"][field].is_object());
+        }
+        for field in ["witness", "terminal", "checkpoint", "never_submitted"] {
+            assert!(schema["properties"][field].is_null());
+        }
+    }
 
     #[test]
     fn project_access_schema_is_strict_and_read_authenticated() {

@@ -2205,3 +2205,25 @@ tasks or rewriting their IDs, hashes, receipts or business data.
 ## Сквозной Namespace
 
 Версионированные API, данные, ownership и совместимость описаны в [Namespace](NAMESPACE.md).
+
+## Project repository compatibility
+
+`project_repository_links` хранит каталог проекта с ключом `(project_id, forge_instance_id, repository_id)`. `task_repository_links` в source-binding контуре хранит отдельные явно проверенные snapshots задачи, на которые ссылается 0097. Legacy lineage сохраняет исходную 0096; отдельная forward migration создаёт пустую task relation, не назначая существующие проектные связи задачам. Published/fresh lineage получает проектный каталог через `m20261018_0000098_project_repository_catalog` без переписывания task history. Неизвестные ledger entries продолжают блокировать запуск.
+
+## Доказательства Восстановления PM
+
+Forward migration `0098_pm_unsubmitted_recovery` добавляет nullable JSON `recovery`
+в существующую неизменяемую `sdlc_pm_lease_operations`, без новой таблицы/backfill.
+Первоначальные claim/heartbeat сохраняют NULL и прежние проверки holder/actor.
+Восстановление сохраняет точную команду, независимо полученное свидетельство Fleet,
+ID транзакции PostgreSQL, прежние canonical hash/result и уникальную пару execution
+с версией lease. Holder остаётся прежней PM machine; actor — отдельный разрешённый
+планировщик. Текущая проверка lease уже читает этот ledger.
+
+Insert trigger проверяет первоначальные задачу/владельца/назначение, expiry,
+старую/новую версию CAS и все координаты свидетельства. Продление истёкшего lease
+допустимо только с совпадающей recovery-записью в той же транзакции: историческое
+доказательство не продлевает следующую версию. Отложенный constraint запрещает
+commit доказательства без изменения lease. Прежнее trusted resume исключение
+сохраняется. SQL проверяет согласованность evidence; подлинность независимого
+HTTP обеспечивается приложением, а не JSON-утверждением вызывающей стороны.

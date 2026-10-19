@@ -167,6 +167,8 @@ pub fn router() -> Router<Arc<app::AppContext>> {
             "/issues/{id}/sdlc/pm-draft-execution-lease/resume/operations/{idempotency_key}",
             get(resume_execution_lease_operation),
         )
+        .route("/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted", post(recover_unsubmitted_execution_lease))
+        .route("/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted/operations/{idempotency_key}", get(unsubmitted_execution_lease_operation))
         .route(
             "/issues/{id}/sdlc/pm-draft-assignment",
             get(pm_draft_assignment).post(reserve_pm_draft),
@@ -487,6 +489,50 @@ pub async fn resume_execution_lease_operation(
     Ok((
         [(axum::http::header::CACHE_CONTROL, "no-store")],
         Json(receipt),
+    )
+        .into_response())
+}
+
+#[utoipa::path(post,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted",tag="sdlc",
+    params(("id"=Uuid,Path)),request_body=RecoverUnsubmittedPmExecutionLease,
+    responses((status=201,body=ExecutionLeaseReceipt),(status=200,description="Exact historical replay; never dispatch authority",body=ExecutionLeaseReceipt),
+        (status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn recover_unsubmitted_execution_lease(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path(id): Path<Uuid>,
+    Json(command): Json<RecoverUnsubmittedPmExecutionLease>,
+) -> Result<Response, AppError> {
+    let (receipt, replayed) = service(&ctx)?
+        .recover_unsubmitted_pm_execution_lease(id, &actor, command)
+        .await?;
+    let status = if replayed {
+        axum::http::StatusCode::OK
+    } else {
+        axum::http::StatusCode::CREATED
+    };
+    Ok((
+        status,
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(receipt),
+    )
+        .into_response())
+}
+
+#[utoipa::path(get,path="/api/v1/issues/{id}/sdlc/pm-draft-execution-lease/recover-unsubmitted/operations/{idempotency_key}",tag="sdlc",
+    params(("id"=Uuid,Path),("idempotency_key"=String,Path)),
+    responses((status=200,body=ExecutionLeaseOperation),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn unsubmitted_execution_lease_operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(actor): Extension<Principal>,
+    Path((id, key)): Path<(Uuid, String)>,
+) -> Result<Response, AppError> {
+    let operation = service(&ctx)?
+        .unsubmitted_pm_recovery_operation(id, &actor, &key)
+        .await?;
+    Ok((
+        [(axum::http::header::CACHE_CONTROL, "no-store")],
+        Json(operation),
     )
         .into_response())
 }

@@ -1,5 +1,44 @@
 # Стратегия тестирования Task Tracker
 
+## PM Recovery: Миграция0098
+
+В PR169 подготовлен отдельный сценарий непустого PM upgrade: fixture доходит
+до0097, обычные repository/API пути создают две lease и четыре claim/heartbeat
+операции. Затем реальный0098 up должен сохранить полные строки, IDs, holder,
+timestamps, версии, hashes, original-key receipts и outbox; новый nullable
+`recovery` проверяется отдельно. Down обязан отказать без потери истории.
+Далее тот же тест проверяет recovery v2→v3 после настоящего истечения TTL.
+
+Точный ignored selector:
+`sdlc::candidates::tests::unsubmitted_recovery_tests::unsubmitted_pm_recovery_cas_witness_replay_and_history`.
+Он требует свежую disposable `TT_CANDIDATES_TEST_DATABASE_URL` с суффиксом
+`_candidates_test`, без migration ledger; нельзя pre-migrate или делить DB
+с другим сценарием. Отдельный legacy populated test использует свежую
+`TT_DRAFT_FLOW_TEST_DATABASE_URL` с суффиксом `_draft_flow_test` и теперь
+проверяет0097→0098. Его данные сами по себе не доказывают PM lease history.
+
+Workflow CI явно запускает PM selector с `--exact --ignored` в отдельной свежей
+`tracker_pm_candidates_test`; она не используется legacy upgrade или HTTP fixtures.
+Гейт выполняется также при addressed `workflow_dispatch` с `http_only=true`.
+Проверка результата требует `1 passed; 0 failed; 0 ignored`: пустая выборка,
+пропущенный ignored-тест или отсутствующая БД не дают успешную приёмку.
+
+Локальный scoped Linux gate от 18 октября 2026 года на исходниках
+`407d058a0ca4800d62f8dfa6af5d79e523429a66`: fmt, strict Clippy, typed build,
+9 точных тестов и фактический OpenAPI generator проходят. В девять входят
+3 app identity, 2 loopback HTTP, API schema, mock migration, оба указанных
+populated PG сценария. Базы были отдельными свежими disposable fixtures;
+пропуск из-за отсутствующего env не допускался. Cleanup подтверждён.
+
+Result receipt SHA256:
+`6a6ab4fe311861e5541a53be6248cf22461e81f78375c652e9ddadd180d10cb2`.
+Generated OpenAPI SHA256:
+`2f35bf3bbc12c3e4b711216f453c2d0f139b40c40e7ede1fcb3b0248a9e9724f`.
+Retained compiler cache не является доказательством будущих проверок;
+initial-cohort standalone binaries отмечены только compiled, не executed.
+Server image, real Auth, установка и live Fleet/Hermes flow этим прогоном
+не проверялись. Fake witness не является live runtime evidence.
+
 Регрессии для непустой установки проверяют Todo-колонку доски, когда другие
 workflow добавляют более ранние Todo-статусы в общий каталог. Счётчики доски
 и бэклога должны совпадать, новая задача без спринта должна оставаться в бэклоге.
@@ -335,3 +374,30 @@ Lefthook (`lefthook.yml`):
 Подключение версий, границы контрактов и проверки описаны в [BASE_INTEGRATION](BASE_INTEGRATION.md).
 
 Legacy assignment/native admission не создаёт Tracker reservation: HTTP/PG сценарий проверяет отказ claim без lease/completion и сохраняет blocker Analysis. Успешный PM completion проверяется отдельно после настоящего reservation, финальной публикации и подтверждения exact revision. Полная интеграция с Fleet требует отдельной приёмки.
+
+## Совместимость каталога проекта и восстановления PM
+
+Кандидат PR170 сохраняет оба полных имени миграции 0098 и выполняет их
+раздельно в populated upgrade. Отказ rollback PM проверяется до применения
+каталога; затем отдельно проверяются отказ rollback каталога и idempotent up.
+Пять `migration::project_repository_tests` используют разные свежие БД с
+суффиксом `_pdlc4_compat_test`: legacy, published, fresh/unknown, уже применённый
+каталог до PM и тот же порядок на legacy lineage. Тесты не правят ledger ради
+совместимости, а сравнивают сохранённые строки и прежние применённые записи.
+
+CI содержит явный exact/ignored gate с отдельной БД на случай и проверкой
+`1 passed; 0 failed; 0 ignored`. Наличие gate не означает его успешное исполнение:
+для объединённого кандидата требуется отдельный run на точном source.
+
+Project links pagination: ignored infra integration test
+`project_repository_link_paging_preserves_scope_and_order` требует явную свежую
+`TT_PROJECT_LINK_TEST_DATABASE_URL` с суффиксом `_project_links_test`. CI отдельно
+исполняет его с exact selector и проверяет один выполненный тест. Production
+repository создаёт 102 связи, включая одинаковый repository ID в двух Forge,
+и связь другого проекта; страницы 100+2 не теряют, не дублируют и не смешивают
+записи, большой uint32 offset безопасен. UI проверяет переход вперёд/назад и
+сброс страницы при смене проекта. Рабочие БД не используются.
+
+HTTP fixture дополнительно проверяет 409 для создания и удаления существующей/отсутствующей
+связи архивного проекта, доступность чтения и возврат к обычному идемпотентному DELETE
+после следующего active generation. Fixture не уменьшает generation и не меняет lease timestamps.

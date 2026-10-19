@@ -48,6 +48,8 @@ async fn history(
         assert!(name.chars().all(|c| c.is_ascii_lowercase() || c == '_'));
         let row = if upgraded && name == "sdlc_analysis_intents" {
             "to_jsonb(t)-'routing_generation'-'review_routing_snapshot_id'"
+        } else if name == "sdlc_pm_lease_operations" {
+            "to_jsonb(t)-'recovery'"
         } else {
             "to_jsonb(t)"
         };
@@ -641,11 +643,19 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         .position(|n| n == "m20261012_0000095_pm_completion")
         .unwrap()
         + 1;
-    assert_eq!((accepted, predecessor, names.len()), (19, 26, 28));
+    assert_eq!((accepted, predecessor, names.len()), (19, 26, 30));
     assert_eq!(names[predecessor], "m20261013_0000096_single_task_delivery");
     assert_eq!(
-        names.last().unwrap(),
+        names[predecessor + 1],
         "m20261017_0000097_task_source_binding"
+    );
+    assert_eq!(
+        names[predecessor + 2],
+        "m20261018_0000098_pm_unsubmitted_recovery"
+    );
+    assert_eq!(
+        names.last().unwrap(),
+        "m20261018_0000098_project_repository_catalog"
     );
     let url = std::env::var("TT_DRAFT_FLOW_TEST_DATABASE_URL")
         .expect("fresh isolated upgrade database required");
@@ -840,7 +850,7 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
     let tables_096 = tables(&db).await;
     let history_096 = history(&db, &tables_096, false).await;
     migration::Migrator::up(&db, Some(1)).await.unwrap();
-    let ledger_097 = ledger(&db, &names).await;
+    let ledger_097 = ledger(&db, &names[..predecessor + 2]).await;
     for entry in ledger_096.as_array().unwrap() {
         assert!(ledger_097.as_array().unwrap().contains(entry));
     }
@@ -983,9 +993,49 @@ async fn populated_0033_through_095_to_096_preserves_original_ids_hashes_and_his
         legacy_history_snapshot(&db, draft.task_id).await,
         legacy_projection
     );
+    let before_pm_recovery = history(&db, &all_tables, false).await;
+    migration::Migrator::up(&db, Some(1)).await.unwrap();
+    let ledger_pm_recovery = ledger(&db, &names[..names.len() - 1]).await;
+    for entry in ledger_097.as_array().unwrap() {
+        assert!(ledger_pm_recovery.as_array().unwrap().contains(entry));
+    }
+    assert_eq!(tables(&db).await, all_tables);
+    assert_eq!(history(&db, &all_tables, false).await, before_pm_recovery);
+    assert_eq!(scalar_json(&db,
+        "SELECT to_jsonb(count(*)) AS value FROM sdlc_pm_lease_operations WHERE recovery IS NOT NULL",
+        vec![]).await, json!(0));
+    let error = migration::Migrator::down(&db, Some(1)).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("PM recovery history is immutable; destructive rollback is disabled")
+    );
+    assert_eq!(
+        ledger(&db, &names[..names.len() - 1]).await,
+        ledger_pm_recovery
+    );
+    assert_eq!(history(&db, &all_tables, false).await, before_pm_recovery);
+    let before_catalog = history(&db, &all_tables, false).await;
+    migration::Migrator::up(&db, Some(1)).await.unwrap();
+    let ledger_catalog = ledger(&db, &names).await;
+    for entry in ledger_pm_recovery.as_array().unwrap() {
+        assert!(ledger_catalog.as_array().unwrap().contains(entry));
+    }
+    assert_eq!(tables(&db).await, all_tables);
+    assert_eq!(history(&db, &all_tables, false).await, before_catalog);
+    assert_eq!(count(&db, "project_repository_links").await, 0);
+    assert_eq!(original.snapshot(&db, true).await, business_0033);
+    let error = migration::Migrator::down(&db, Some(1)).await.unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("project repository associations must be preserved")
+    );
+    assert_eq!(ledger(&db, &names).await, ledger_catalog);
+    assert_eq!(history(&db, &all_tables, false).await, before_catalog);
     let before_rerun = history(&db, &all_tables, false).await;
     migration::Migrator::up(&db, None).await.unwrap();
-    assert_eq!(ledger(&db, &names).await, ledger_097);
+    assert_eq!(ledger(&db, &names).await, ledger_catalog);
     assert_eq!(history(&db, &all_tables, false).await, before_rerun);
     assert_eq!(original.snapshot(&db, true).await, business_0033);
     assert_eq!(count(&db, "issues").await, 3);
