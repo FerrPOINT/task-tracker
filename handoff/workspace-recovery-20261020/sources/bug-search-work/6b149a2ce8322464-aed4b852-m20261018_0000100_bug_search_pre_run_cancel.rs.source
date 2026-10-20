@@ -1,0 +1,22 @@
+use sea_orm_migration::prelude::*;
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager.get_connection().execute_unprepared(
+            "ALTER TABLE sdlc_bug_search_commands DROP CONSTRAINT sdlc_bug_search_commands_kind_check;
+             ALTER TABLE sdlc_bug_search_commands ADD CONSTRAINT sdlc_bug_search_commands_kind_check
+              CHECK(kind IN ('policy','reserve','admit','register','terminal','intake','cancel'));
+             DROP TRIGGER namespace_write_guard ON sdlc_bug_search_commands;
+             CREATE TRIGGER namespace_write_guard BEFORE INSERT ON sdlc_bug_search_commands
+              FOR EACH ROW WHEN (NEW.kind NOT IN ('terminal','cancel')) EXECUTE FUNCTION tracker_namespace_write_guard();"
+        ).await?;
+        Ok(())
+    }
+    async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
+        Err(DbErr::Custom(
+            "Pre-run cancellation evidence is retained; use forward migration".into(),
+        ))
+    }
+}

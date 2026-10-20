@@ -1,0 +1,195 @@
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+index 4e59bd1..b7a4dfe 100644
+--- a/docs/UI_ACCEPTANCE_EVIDENCE.md
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -2,6 +2,12 @@
+ 
+ ## Latest Source Checkpoint
+ 
++Current source reconciliation and remaining release scope:
++[2026-10-02 evidence](uiux-source-evidence-2026-10-02.md).
++The source checkpoints below are historical, not current image acceptance.
++
++## Historical Notification Page Checkpoint
++
+ The notification page now uses the Base detail composition. Earlier source
+ checkpoints below are historical, not runtime release evidence.
+ 
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index e232630..74cb037 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -5,6 +5,11 @@ Route patterns, роли, fixtures и обязательные acceptance states
+ [ui-routes.json](ui-routes.json). Это целевая матрица приёмки, а не доказательство
+ реализации всех состояний. Release acceptance остаётся `pending`.
+ 
++Текущий source reconciliation: `e49bfdde68928c3fd5def877efcbd04f9cdf8d92`,
++Base `6f63595a891f78b96b665889f80e6eb5cf34381a`.
++[Проверки и оставшаяся приёмка](uiux-source-evidence-2026-10-02.md).
++Предыдущие source checkpoints ниже исторические, не доказательства текущих images.
++
+ ## Ownership
+ 
+ - Base владеет AppShell, header, sidebar/drawer, аккаунтом, темами, PageFrame,
+@@ -98,7 +103,7 @@ Frozen offline install, 287 tests (46 files), lint/semantic, build/typecheck,
+ 
+ ## Remaining Acceptance
+ 
+-Текущий source checkpoint: `29c405f084058965a6f8894cacd2362b2d8fa791`, Base
++Исторический notification checkpoint: `29c405f084058965a6f8894cacd2362b2d8fa791`, Base
+ `26a9523bf739c2fb4aafa343fdbc194d02a78e6a`. 371 unit tests (47 files), lint,
+ build/typecheck, installed gate и 10 Chromium tests (222 PNG) прошли. Menu и
+ notifications page проверены в трёх темах на десяти ширинах; page main scope
+diff --git a/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md b/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md
+new file mode 100644
+index 0000000..bbbe056
+--- /dev/null
++++ b/docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md
+@@ -0,0 +1,68 @@
++# Task Tracker: Base Reconciliation And Remaining UI
++
++## Scope
++
++Полный UI/UX-контракт принадлежит соседнему Base:
++`docs/platform/UI_UX_STANDARD.md`. Этот документ фиксирует продуктовую миграцию
++и незавершённую приёмку, не копирует нормативные правила.
++
++Owned branch: `feat/base-ui-standard`, исходный clean HEAD
++`76b0aac700640e21d232a59ef0014fdd31126df6`. Согласуется сохранённый локальный
++`origin/main` `fd3337b200d1ec3ec6626900a9c96e2046cbed19` (30 incoming commits).
++GitHub/fetch/push не используются; исходный dirty checkout не меняется.
++
++Общий Base pin: `6f63595a891f78b96b665889f80e6eb5cf34381a`.
++Incoming pin `c083783a37791e277db796361203884b87828a7d` является его ancestor.
++Новые CLI/API fixes сохранённой default-ветки не отменяются UI-миграцией.
++Собственные изменения этого reconciliation не добавляют доменных endpoint,
++миграций, auth store или новой session policy.
++
++## Reconciliation
++
++- Сохранить incoming SSO interruption/explicit-login recovery и их tests.
++- Использовать общие Base i18n namespaces, telemetry/config/id/time и CLI core.
++  Удалённые default-веткой локальные theme/utils не восстанавливать.
++- Frozen force install доказывает совпадение source/installed UI; pin и
++  package content должны проверяться отдельно от факта успешной установки.
++- Выполнить frontend, backend, real PostgreSQL и browser regression gates
++  на согласованных источниках. Mocked HTTP/OIDC не заменяют live image QA.
++- Создать отдельный локальный merge commit после проверки. Default refs и
++  canonical pinned images этим source checkpoint не изменяются.
++
++## Remaining Product Migration
++
++1. Завершить Base compositions на board, backlog, trash, settings, search,
++   reports, admin и create. Общие list/form/detail patterns уже внедрённых
++   экранов не считаются доказательством полного route coverage.
++2. Завершить независимые состояния вспомогательных issue sources: comments,
++   worklogs, labels, links, attachments, custom fields и engagement.
++   Проверить stale/cached/terminal данные и действия, pending, validation,
++   focus и draft safety. Не отображать ошибку пустым результатом.
++3. Проверить ownership глобальных/локальных действий, проектный и board
++   контекст, все URL filters/sort/pagination/tabs и Back/Forward.
++   Локализовать технические API errors без изменения публичных ответов API.
++4. Проверить весь route manifest: прямое открытие/reload/SSO, эффективные права,
++   loading/empty/403/404/5xx/partial, длинные значения и большие списки.
++5. Выполнить desktop/responsive/theme матрицу действующего Base контракта,
++   keyboard/focus/targets/local scroll и console/network assertions.
++
++## Release
++
++- До общей выпускной приёмки исправить оставшиеся противоречия Base DoD:
++  пункты 9/12 ещё требуют push, хотя пункт 10 и UI/UX-контракт разрешают
++  локальную программу. Не выдавать source checkpoint за полный DoD.
++- Общий fingerprint gate должен одинаково учитывать текстовый Cargo.lock
++  в Windows checkout и Git archive. Подтверждено: local CRLF, index LF,
++  raw hashes различаются, нормализованный текст совпадает. Нужны Base regression
++  tests и согласованный snapshot consumers, а не пропуск mismatch в acceptance.
++- Immutable images обязаны соответствовать принятым product/Base источникам
++  и fingerprints. Проверить реальные assets, health, SSO и no-mock browser
++  smoke через штатный launcher; не подменять их Windows dist/source smoke.
++- README получает только реальные desktop full-page представители используемых
++  modes, default theme и viewport 1920x1080. Текущая историческая галерея не
++  подтверждает новый runtime; мобильные/mock screenshots в неё не добавлять.
++- Manifest/evidence содержат фактические SHA, digests, capture time, viewport,
++  theme, route и QA. Только после этой приёмки интегрировать default и mirror.
++- Все 14 исходных findings остаются открытыми до release evidence. Общая цель
++  охватывает все семь web-продуктов, а не только Task Tracker. Pulse вне mirror,
++  Java Agent вне web-shell scope. Защищённые runtime/data/secrets сохраняются.
+diff --git a/docs/uiux-source-evidence-2026-10-02.md b/docs/uiux-source-evidence-2026-10-02.md
+new file mode 100644
+index 0000000..f247d00
+--- /dev/null
++++ b/docs/uiux-source-evidence-2026-10-02.md
+@@ -0,0 +1,73 @@
++# Task Tracker Source Reconciliation Evidence
++
++Это source/mock checkpoint, не выпускная приёмка продукта или всей платформы.
++Остаток: [Remaining UI And Release](plans/2026-10-02-base-reconciliation-and-remaining-ui.md).
++Исходный dirty checkout, default refs, canonical images/data/secrets не менялись.
++Git refs из сети не обновлялись; GitHub Actions и push не использовались.
++
++## Provenance
++
++| Поле | Значение |
++|---|---|
++| Runtime source / merge | `e49bfdde68928c3fd5def877efcbd04f9cdf8d92` |
++| Owned parent | `76b0aac700640e21d232a59ef0014fdd31126df6` |
++| Saved default parent | `fd3337b200d1ec3ec6626900a9c96e2046cbed19` |
++| Tested source tree | `eea17cc9d919d835247e989ac77ec8e48fa04b0e` |
++| Base pin | `6f63595a891f78b96b665889f80e6eb5cf34381a` |
++| Base source/installed fingerprint | `a383932722c73aa8ed540a416b2ec0def375d97c967ab64b23daeb9d9abf3e30` |
++| Windows product fingerprint | `eb4c4f4ba33b90ef6ca7e7b33ad7b612651f89c75795dd8ada04a91d018edd43` |
++| Runtime image digest | Не заявляется |
++
++Incoming SSO interruption/explicit-login, CLI/API fixes, shared config/telemetry,
++Base i18n namespaces и frozen tooling сохранены. Локальные theme/utils, удалённые
++default-веткой, не восстановлены. Собственная правка pin не добавляет API или DB
++миграций. Incoming Base `c083783` является ancestor принятого `6f63595`.
++
++## Gates
++
++- Frozen offline force install: 503 reused, zero downloads. Lock/schema content
++  соответствует согласованной default-версии; postinstall не внёс нового drift.
++- Frontend: 375 tests / 47 files (99 suites), lint/semantic, typecheck/build,
++  full format, installed Base/16-pattern contract, exact pin, packed consumer,
++  OpenAPI schema/compat, effective theme contrast, README validator и 5 Python
++  script tests passed. Compose config syntax passed; не считается runtime health.
++- Rust 1.88: fmt, strict workspace/all-target/all-feature clippy, workspace
++  511 passed / 21 ignored. Все 21 отдельно выполнены: 19 PostgreSQL repository/FK
++  tests и 2 real production-server/PG tests. Проверены реальные миграции, HTTP
++  операции и health после 31 секунд работы. CLI lifecycle использует реальный
++  application HTTP API с memory repositories, не live SSO/production database.
++- Browser Chromium: 10 passed / 0 skipped / 0 flaky / retries=0, 5.7 min.
++  222 full-page PNG: shared modes, notification page/menu, project modal,
++  partial/terminal states, URL/history, pending/draft/focus. Три темы и десять
++  widths; scope не равен полной route/role/state matrix. Source HTTP/OIDC mocked.
++- Metadata содержит actual dimensions/digests/mtime 222 PNG и 36 Windows dist
++  assets. Нормальные именованные fixtures имеют viewport из теста; state captures
++  без имени темы не получают выдуманных theme/viewport. Product/QA/Base/installed
++  source attestation не содержит расхождений. Desktop detail/project modal и
++  mobile project modal просмотрены без overlap.
++
++## Open Release Issues
++
++Подтверждены два общих недочёта, которые не скрываются зелёным source smoke:
++Base DoD 9/12 ещё требует push при разрешённой локальной программе; общий product
++fingerprint хеширует Cargo.lock с CRLF/LF по-разному. Отдельный isolated probe
++подтвердил разные fingerprints при одинаковом нормализованном содержимом.
++Не обходить mismatch; исправить Base с regression tests и согласовать consumers.
++
++Release build/coverage, immutable images, all routes/roles/states/themes/SSO,
++актуальная реальная desktop README gallery, local default integration и mirror
++остаются обязательными. Все 14 исходных findings открыты до release evidence.
++
++## Evidence And Cleanup
++
++Workspace `audit-artifacts/base-standard-2026-10-01/`: final
++`task-default-reconcile-{units,browser}.json`, `task-default-reconcile-*.log`,
++`task-default-reconcile-browser/metadata.json`,
++`task-cargo-lock-line-ending-proof.json`, `base-cargo-lock-fingerprint-regression.json`.
++noMock=false, imageDigest=null, releaseAcceptance=false, defaultIntegrated=false,
++readmeGalleryAccepted=false, mirrorSynced=false, canonicalRuntimeChanged=false.
++
++Own temporary PostgreSQL `uiux-task-pg-20261002` и network `uiux-task-qa-20261002`
++удалены после terminal PG/server checks; preview остановлен. Own cache volumes
++сохранены. Source merge только в task branch, не в default. Historical README
++не заменён mocked captures; Pulse вне mirror, Java Agent вне web-shell scope.

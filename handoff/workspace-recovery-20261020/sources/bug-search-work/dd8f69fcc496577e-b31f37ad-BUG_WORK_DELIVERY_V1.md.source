@@ -1,0 +1,79 @@
+# Подтверждение исправленной доставки Bug
+
+Статус: source-срез после frozen Tracker `bf14714e9036`; Cargo/PG/HTTP этого среза ещё не запущены. Additive105 подключает candidate CAS и business-команду; её Rust/PG/HTTP ещё не квалифицированы. Исходная проверка `bf147` не квалифицирует эти последующие изменения.
+
+Tracker получает от Fleet только original operation locators, assignment SHA/fence и ожидаемый Git commit B. Proof JSON, URL, shell, роль и permission/success flags от вызывающей стороны не принимаются. Закрытый `BugWorkDeliveryProof` использует согласованную схему `forge/bug-work-delivery-proof/v1`; общий synthetic wire vector сохранён в `backend/domain/tests/fixtures/bug-work-delivery-v1.json` и побайтово совпадает с вектором CI. Это тестовый контракт, не доказательство настоящего deployment.
+
+Проверка связывает canonical Tracker/project/Bug, exact retained103 assignment/hash/fence, runtime binding SHA, original104 source context SHA, полный verification report SHA и отдельный dedup basis SHA. Configuration/repository/base commit A должны соответствовать исходному source context. Candidate B отличается от A. Отсутствующий настоящий runtime binding не даёт положительного candidate.
+
+Original accepted pipeline может ещё собираться: такой candidate не равен доставке. Для `confirmed` нужны actual artifact/job/attempt, размер и digest, exact B, неизменённая generation/manifest identity и реальные serving body hashes. Старый A, иной artifact или изменившийся pointer не подтверждают исправление. Наблюдения владельца и serving probe должны быть не старше 60 секунд с допуском часов +5 секунд. Проверка исходных hashes и состояния повторяется внутри транзакции перед будущим бизнес-переходом.
+
+`ForgeBugWorkDeliveryReader` читает fixed server root `TT_NAMESPACE__FORGE_URL` и отдельный приватный `TT_BUG_DELIVERY__FORGE_TOKEN_FILE`. Redirect запрещён, таймаут 10 секунд, ответ ограничен 64 КиБ; typed scope/configuration/target сверяются. Файл credentials перечитывается до и после HTTP; удаление/ротация отклоняет новый результат. Чтение выполняется вне SQL locks. В source105 клиент подключён к бизнес-сервису; без этого reader новые effects дают503, а original receipt recovery остаётся доступным. Runtime capability этим не включается.
+
+Для CI → Tracker добавлен optional `TASKTRACKER_BUG_WORK__CI_READER_SUBJECT`. Это отдельная machine identity с единственным `task-tracker:read`. Разрешены только существующие GET assignment `grant` и `origin` с canonical UUID. Нельзя использовать human APIs, selectors, Search grants, текущую очередь работ, claims, bind/close или legacy SDLC. Обычные fresh owner/consent/source проверки сохраняются; отозванный owner блокирует новый CI effect. Fleet/Workflow и Namespace identities не заменяют этот reader. Прежний original CI operation GET для защитного восстановления не должен зависеть от нового grant.
+
+Source105 ниже реализует сохранение candidate B с revision CAS и original-key receipt, затем explicit verification для того же candidate/scenario/delivery через существующие workflow/WIP/status/history механизмы. Inconclusive, остановка агента, освобождение capacity и CI Accepted не закрывают Bug. До Cargo/PG/HTTP и сквозной квалификации capability остаётся выключенной.
+
+## Source105: candidate и business acceptance
+
+Пути под `/api/v1/projects/{project_id}/sdlc/bug-intake`:
+
+- `POST /assignments/{assignment_id}/candidate`: закрытый `PinBugWorkCandidate`
+  (`contract_version:1`, original `idempotency_key`, `expected_candidate_revision`,
+  `target_ref`, `locator:BugWorkDeliveryLocator`). Configuration/repository выводятся
+  только из original104 и checked commit A. Несколько подходящих исходных targets
+  блокируются как неоднозначные. Target — opaque locator: существующий QA allowlist
+  сохраняется, а actual mapping/environment подтверждает фиксированный CI owner.
+- `GET /bugs/{bug_id}/candidate`: текущая закреплённая ревизия и original Accepted.
+- `POST /bugs/{bug_id}/apply-verification`: закрытый `ApplyBugWorkVerification`
+  (`contract_version:1`, original key, `expected_candidate_revision`,
+  `verification_execution_id`, `expected_status_id`, `expected_updated_at`,
+  `target_status_id`). Proof/URL/verified flag от caller не принимаются.
+- `GET /business-operations/{idempotency_key}`: original receipt своего exact
+  configured Fleet machine и Fleet UUID, включая восстановление после owner revoke.
+
+Новый `BugBusinessReceipt.outcome` — закрытый `kind/result`:
+`candidate_pinned` либо `verification_applied`. Общий command journal использует
+`kind:bug_business`. Один ключ с другим body/action/project отклоняется. Accepted
+с `artifact:null`/`delivery:null` закрепляет pipeline B и не меняет Bug status.
+
+`sdlc_bug_candidates` хранит immutable payload/hash по `(bug_id,revision)`.
+`sdlc_bug_candidate_heads` обеспечивает indexed текущую ревизию и CAS +1. Это не
+очередь: timers, retries, outbox и автоматический assignment не добавлены.
+Original receipts продолжают возвращать прежнюю ревизию после нового candidate.
+Down105 отказывается безусловно, включая пустые таблицы; исправление выполняется
+следующей миграцией. Откат binary до версии, которая не понимает retained
+`kind=bug_business`, не совместим с original receipt recovery: нужны совместимый
+reader и сохранённая база. Принятый переход Bug отменяется только обычным
+авторизованным legal workflow переходом с историей; heads, receipts и history
+для отката не удаляются.
+
+CI HTTP выполняется между двумя короткими repository-наблюдениями. До и после
+него проверяются active owner/project/Namespace, exact103 consent/config/binding,
+raw assignment SHA, canonical104 origin/source и current candidate revision.
+Существующие QA targets policy проверяются для original repository_ref выбранного repository UUID и base A: цель другого репозитория не разрешает этот кандидат. Отдельного
+Tracker environment editor не вводится. Без reader/configured CI mapping новый
+эффект недоступен; original receipt recovery не требует работающего CI.
+
+Verification execution должна быть создана **после pin текущего candidate**.
+Tracker читает собственную retained technical result/terminal row, проверяет её
+хэши, исходный Bug/source/full scenario, explicit verdict, complete coverage,
+current B и deliveryRef. Свежий independent CI proof обязан совпасть с actual
+before/after observations по repository/config/environment/target, generation,
+publication key, manifest, artifact ID/digest и serving body hashes. Старые A,
+старый candidate и ABA того же B не принимаются. Inconclusive не выполняет
+business-переход. Failed допускает только разрешённый незакрытый target status.
+
+Target status задаётся явно и обязан иметь существующий legal workflow edge и
+реальный default board column. Используется общее тело ordinary
+`change_status_atomic` в caller transaction: прежний target WIP advisory lock,
+свежий count, status+updatedAt CAS, history actor = verified delegated owner.
+Candidate/result proof и original command receipt коммитятся с этим переходом;
+unchecked status UPDATE отсутствует. Двойная конкурентная приёмка оставляет
+одну history entry. Physical close103 не зависит от наличия candidate/CI.
+
+Проверки source написаны: real-PG candidate races/owner revoke/original replay,
+retained verdict and WIP/history rollback, stale-candidate/ABA refusal; actual
+HTTP pin/auth/closed DTO/CI Accepted without artifact/revoke recovery и positive apply после physical close103, с проверкой единственной history entry. CI owner и
+runtime evidence в этих fixtures synthetic: они не квалифицируют deployment.
+До отдельного Cargo/PG/HTTP gate capabilities/runtime остаются выключенными.

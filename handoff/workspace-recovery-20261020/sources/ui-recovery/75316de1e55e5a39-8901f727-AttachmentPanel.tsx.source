@@ -1,0 +1,525 @@
+import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
+import {
+  Paperclip,
+  Download,
+  Trash2,
+  FileText,
+  File as FileIcon,
+  RotateCcw,
+  LoaderCircle,
+  X,
+} from 'lucide-react'
+import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
+import { AttachmentUploadError, downloadAttachment, type Attachment } from '@/api/attachment'
+import { Button, ConfirmDialog } from '@sdlc/ui/ui'
+import { toast } from 'sonner'
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+type UploadItem = {
+  id: number
+  file?: File
+  fileName: string
+  loaded: number
+  total: number
+  status: 'pending' | 'uploaded' | 'rejected' | 'unknown'
+  checked: boolean
+  attachmentId?: string
+}
+
+export function AttachmentPanel({
+  issueId,
+  onProtectionChange,
+  focusRef: providedFocusRef,
+}: {
+  issueId: string
+  onProtectionChange?: (state: { dirty: boolean; pending: boolean }) => void
+  focusRef?: RefObject<HTMLDivElement | null>
+}) {
+  const { t } = useTranslation()
+  const { data, isLoading, isFetching, error, refetch } = useAttachments(issueId)
+  const attachments = data ?? []
+  const upload = useUploadAttachment(issueId)
+  const remove = useDeleteAttachment(issueId)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const localFocusRef = useRef<HTMLDivElement>(null)
+  const focusRef = providedFocusRef ?? localFocusRef
+  const nextUploadId = useRef(0)
+  const [uploads, setUploads] = useState<UploadItem[]>([])
+  const uploadingRef = useRef(false)
+  const [uploading, setUploading] = useState(false)
+  const checkingRef = useRef(false)
+  const [checking, setChecking] = useState(false)
+  const [checkError, setCheckError] = useState(false)
+  const removingRef = useRef(false)
+  const [removing, setRemoving] = useState(false)
+  const [deleteError, setDeleteError] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null)
+  const [pendingDiscard, setPendingDiscard] = useState<number | null>(null)
+  const [pendingRetry, setPendingRetry] = useState<number | null>(null)
+  const [retryError, setRetryError] = useState(false)
+  const activeDownloads = useRef(new Set<string>())
+  const [downloads, setDownloads] = useState<Record<string, 'pending' | 'error' | 'success'>>({})
+  const busy = uploading || checking || removing || remove.isPending
+  const dirty = uploads.some((item) => item.file !== undefined)
+  const pending = busy || Object.values(downloads).includes('pending')
+  useEffect(() => {
+    onProtectionChange?.({ dirty, pending })
+  }, [dirty, pending, onProtectionChange])
+  useEffect(
+    () => () => onProtectionChange?.({ dirty: false, pending: false }),
+    [onProtectionChange],
+  )
+
+  const refreshList = async () => {
+    if (checkingRef.current) return false
+    checkingRef.current = true
+    setChecking(true)
+    setCheckError(false)
+    try {
+      const result = await refetch()
+      const confirmed = !result.isError && Array.isArray(result.data)
+      setCheckError(!confirmed)
+      setUploads((current) =>
+        current.map((item) => (item.status === 'unknown' ? { ...item, checked: confirmed } : item)),
+      )
+      return confirmed
+    } catch {
+      setCheckError(true)
+      setUploads((current) =>
+        current.map((item) => (item.status === 'unknown' ? { ...item, checked: false } : item)),
+      )
+      return false
+    } finally {
+      checkingRef.current = false
+      setChecking(false)
+    }
+  }
+
+  const onDownload = async (attachment: Attachment) => {
+    if (activeDownloads.current.has(attachment.id)) return
+    activeDownloads.current.add(attachment.id)
+    setDownloads((current) => ({ ...current, [attachment.id]: 'pending' }))
+    try {
+      await downloadAttachment(attachment)
+      setDownloads((current) => ({ ...current, [attachment.id]: 'success' }))
+    } catch {
+      setDownloads((current) => ({ ...current, [attachment.id]: 'error' }))
+    } finally {
+      activeDownloads.current.delete(attachment.id)
+    }
+  }
+
+  const runUploads = async (selected: UploadItem[]) => {
+    if (uploadingRef.current || checkingRef.current || removingRef.current || !selected.length)
+      return false
+    uploadingRef.current = true
+    setUploading(true)
+    setRetryError(false)
+    const ids = new Set(selected.map((item) => item.id))
+    setUploads((current) => [
+      ...current.filter((item) => !ids.has(item.id)),
+      ...selected.map((item) => ({
+        ...item,
+        status: 'pending' as const,
+        loaded: 0,
+        checked: false,
+      })),
+    ])
+    try {
+      const results = await Promise.allSettled(
+        selected.map(async (item) => {
+          try {
+            if (!item.file) throw new AttachmentUploadError()
+            const attachment = await upload.mutateAsync({
+              file: item.file,
+              onProgress: (loaded, total) =>
+                setUploads((current) =>
+                  current.map((entry) =>
+                    entry.id === item.id ? { ...entry, loaded, total } : entry,
+                  ),
+                ),
+            })
+            setUploads((current) =>
+              current.map((entry) =>
+                entry.id === item.id
+                  ? {
+                      ...entry,
+                      status: 'uploaded',
+                      file: undefined,
+                      loaded: entry.total,
+                      attachmentId: attachment.id,
+                    }
+                  : entry,
+              ),
+            )
+          } catch (failure) {
+            const status = failure instanceof AttachmentUploadError ? failure.outcome : 'unknown'
+            setUploads((current) =>
+              current.map((entry) => (entry.id === item.id ? { ...entry, status } : entry)),
+            )
+            throw failure
+          }
+        }),
+      )
+      await refreshList()
+      const confirmed = results.every((result) => result.status === 'fulfilled')
+      setUploads((current) => (current.every((item) => item.status === 'uploaded') ? [] : current))
+      if (confirmed) toast.success(t('attachments.uploaded'))
+      return confirmed
+    } finally {
+      uploadingRef.current = false
+      setUploading(false)
+    }
+  }
+
+  const onPick = (files: FileList | null) => {
+    if (!files || uploadingRef.current || checkingRef.current || removingRef.current) return
+    const selected = Array.from(files).map((file): UploadItem => ({
+      id: nextUploadId.current++,
+      file,
+      fileName: file.name,
+      loaded: 0,
+      total: file.size,
+      status: 'pending',
+      checked: false,
+    }))
+    void runUploads(selected)
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDelete || removingRef.current || uploadingRef.current || checkingRef.current) return
+    removingRef.current = true
+    setRemoving(true)
+    setDeleteError(false)
+    try {
+      await remove.mutateAsync(pendingDelete)
+      setUploads((current) => current.filter((item) => item.attachmentId !== pendingDelete))
+      setPendingDelete(null)
+      toast.success(t('attachments.deleted'))
+    } catch {
+      setDeleteError(true)
+    } finally {
+      removingRef.current = false
+      setRemoving(false)
+    }
+  }
+
+  return (
+    <div
+      ref={focusRef}
+      tabIndex={-1}
+      role="region"
+      aria-label={t('attachments.title')}
+      className="space-y-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
+      data-testid="attachment-panel"
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <Paperclip className="h-4 w-4" aria-hidden />
+          {t('attachments.title')}
+          {attachments.length > 0 && (
+            <span className="text-muted-foreground">({attachments.length})</span>
+          )}
+        </h3>
+        <div>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            className="hidden"
+            data-testid="attachment-input"
+            onChange={(e) => {
+              void onPick(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-11 sm:min-h-10"
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            aria-label={t('attachments.upload')}
+          >
+            <Paperclip className="mr-1 h-4 w-4" aria-hidden />
+            {uploading ? t('attachments.uploading') : t('attachments.upload')}
+          </Button>
+        </div>
+      </div>
+
+      {uploads.length > 0 && (
+        <ul className="space-y-3" aria-label={t('attachments.uploadQueue')}>
+          {uploads.map((item) => {
+            const percent =
+              item.total > 0
+                ? Math.max(0, Math.min(100, Math.round((item.loaded / item.total) * 100)))
+                : 0
+            return (
+              <li
+                key={item.id}
+                data-testid="upload-item"
+                data-upload-status={item.status}
+                className="space-y-1"
+              >
+                <div
+                  className="flex flex-wrap items-start justify-between gap-2"
+                  data-testid={uploading ? 'upload-progress' : undefined}
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-medium">{item.fileName}</p>
+                    <p
+                      role={
+                        item.status === 'rejected' || item.status === 'unknown' ? 'alert' : 'status'
+                      }
+                      className={
+                        item.status === 'rejected' || item.status === 'unknown'
+                          ? 'text-sm text-danger'
+                          : 'text-sm text-text-secondary'
+                      }
+                    >
+                      {t(`attachments.uploadState.${item.status}`)}
+                    </p>
+                    {item.status === 'pending' && (
+                      <span className="text-xs text-text-muted">
+                        {formatSize(item.loaded)} / {formatSize(item.total)}
+                      </span>
+                    )}
+                  </div>
+                  {item.file && item.status !== 'pending' && (
+                    <div className="flex shrink-0 gap-1">
+                      {item.status === 'rejected' || item.checked ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+                          disabled={busy}
+                          aria-label={t('attachments.retryUpload', { name: item.fileName })}
+                          title={t('attachments.retryUpload', { name: item.fileName })}
+                          onClick={() => {
+                            if (item.status === 'unknown') {
+                              setRetryError(false)
+                              setPendingRetry(item.id)
+                            } else void runUploads([item])
+                          }}
+                        >
+                          <RotateCcw className="h-4 w-4" aria-hidden />
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="min-h-11 sm:min-h-10"
+                          disabled={busy || isFetching}
+                          onClick={() => void refreshList()}
+                        >
+                          {t('attachments.checkList')}
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+                        disabled={busy}
+                        aria-label={t('attachments.discardUpload', { name: item.fileName })}
+                        title={t('attachments.discardUpload', { name: item.fileName })}
+                        onClick={() => setPendingDiscard(item.id)}
+                      >
+                        <X className="h-4 w-4" aria-hidden />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                {item.status === 'pending' && (
+                  <div
+                    role="progressbar"
+                    aria-label={t('attachments.uploadProgress', { name: item.fileName })}
+                    aria-valuenow={percent}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    className="h-1.5 w-full overflow-hidden rounded-full bg-surface-raised"
+                  >
+                    <div
+                      className="h-full bg-accent transition-all"
+                      style={{ width: `${percent}%` }}
+                    />
+                  </div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {isLoading && <p className="text-sm text-muted-foreground">{t('common.loading')}</p>}
+
+      {(error || checkError) && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-danger">
+          <span>
+            {t(data !== undefined ? 'attachments.refreshFailed' : 'attachments.loadFailed')}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-11 sm:min-h-10"
+            disabled={isFetching || busy}
+            onClick={() => void refreshList()}
+          >
+            <RotateCcw className="mr-1 h-4 w-4" aria-hidden />
+            {t('common.retry')}
+          </Button>
+        </div>
+      )}
+
+      {!isLoading && !error && !checkError && attachments.length === 0 && (
+        <p className="text-sm text-muted-foreground">{t('attachments.empty')}</p>
+      )}
+
+      {attachments.length > 0 && (
+        <ul className="divide-y divide-border rounded-md border">
+          {attachments.map((a) => (
+            <li
+              key={a.id}
+              className="flex flex-wrap items-center justify-between gap-2 px-3 py-2"
+              data-testid="attachment-row"
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                {a.content_type.startsWith('text/') ? (
+                  <FileText className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                ) : (
+                  <FileIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium" title={a.file_name}>
+                    {a.file_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{formatSize(a.size_bytes)}</p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+                  aria-label={t(
+                    downloads[a.id] === 'error'
+                      ? 'attachments.retryDownload'
+                      : 'attachments.download',
+                    { name: a.file_name },
+                  )}
+                  aria-busy={downloads[a.id] === 'pending'}
+                  disabled={downloads[a.id] === 'pending'}
+                  onClick={() => void onDownload(a)}
+                >
+                  {downloads[a.id] === 'pending' ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : downloads[a.id] === 'error' ? (
+                    <RotateCcw className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <Download className="h-4 w-4" aria-hidden />
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('attachments.delete', { name: a.file_name })}
+                  className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+                  onClick={() => {
+                    remove.reset()
+                    setDeleteError(false)
+                    setPendingDelete(a.id)
+                  }}
+                  disabled={busy || downloads[a.id] === 'pending'}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </Button>
+              </div>
+              {downloads[a.id] === 'error' && (
+                <p role="alert" className="w-full text-sm text-danger">
+                  {t('attachments.downloadFailed', { name: a.file_name })}
+                </p>
+              )}
+              {downloads[a.id] === 'success' && (
+                <p role="status" className="w-full text-sm text-text-secondary">
+                  {t('attachments.downloadStarted', { name: a.file_name })}
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {uploads.some((item) => item.status === 'rejected' || item.status === 'unknown') && (
+        <p role="alert" className="text-sm text-danger" data-testid="attachment-error">
+          {t('attachments.uploadSummary', {
+            uploaded: uploads.filter((item) => item.status === 'uploaded').length,
+            rejected: uploads.filter((item) => item.status === 'rejected').length,
+            unknown: uploads.filter((item) => item.status === 'unknown').length,
+          })}
+        </p>
+      )}
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => !open && !removingRef.current && setPendingDelete(null)}
+        isPending={removing || remove.isPending}
+        fallbackFocusRef={focusRef}
+        error={deleteError ? t('attachments.deleteFailed') : undefined}
+        title={t('attachments.deleteTitle', 'Удалить файл?')}
+        description={t(
+          'attachments.deleteConfirm',
+          'Файл будет удалён без возможности восстановления.',
+        )}
+        onConfirm={() => void confirmDelete()}
+      />
+      <ConfirmDialog
+        open={pendingDiscard !== null}
+        onOpenChange={(open) => !open && setPendingDiscard(null)}
+        isPending={busy}
+        returnFocusRef={focusRef}
+        title={t('attachments.discardUploadTitle')}
+        description={t('attachments.discardUploadDescription')}
+        onConfirm={() => {
+          if (busy) return
+          setUploads((current) => {
+            const next = current.filter((item) => item.id !== pendingDiscard)
+            return next.every((item) => item.status === 'uploaded') ? [] : next
+          })
+          setPendingDiscard(null)
+        }}
+      />
+      <ConfirmDialog
+        open={pendingRetry !== null}
+        onOpenChange={(open) => !open && !uploadingRef.current && setPendingRetry(null)}
+        isPending={uploading || checking}
+        returnFocusRef={focusRef}
+        title={t('attachments.retryUploadTitle')}
+        confirmVariant="default"
+        description={t('attachments.retryUploadDescription')}
+        error={retryError ? t('attachments.retryUploadError') : undefined}
+        onConfirm={() => {
+          const item = uploads.find((entry) => entry.id === pendingRetry)
+          if (!item?.file || uploadingRef.current || checkingRef.current) return
+          if (item.status === 'unknown' && !item.checked) {
+            setRetryError(true)
+            return
+          }
+          void runUploads([item]).then((confirmed) => {
+            if (confirmed) setPendingRetry(null)
+            else setRetryError(true)
+          })
+        }}
+      />
+    </div>
+  )
+}

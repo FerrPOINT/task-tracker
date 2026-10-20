@@ -1,0 +1,154 @@
+import { act, render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ThemeProvider } from '@sdlc/ui/lib'
+import type { NotificationItem, NotificationList } from '@/api/notifications'
+import { DashboardPage } from './'
+
+const { listNotifications, markNotificationRead, markAllNotificationsRead } = vi.hoisted(() => ({
+  listNotifications: vi.fn<() => Promise<NotificationList>>(),
+  markNotificationRead: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
+}))
+vi.mock('@/api/notifications', () => ({
+  listNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+}))
+vi.mock('@/api/dashboard', () => ({
+  getDashboard: vi.fn(() => Promise.resolve({ assigned_issues: [] })),
+}))
+vi.mock('@/api/project', () => ({ listProjects: vi.fn(() => Promise.resolve([])) }))
+
+const issueId = '8e16d276-0c17-412c-a2d0-251e795c6789'
+function event(index = 0, overrides: Partial<NotificationItem> = {}): NotificationItem {
+  return {
+    id: `event-${index}`,
+    created_at: `2026-10-05T10:0${5 - index}:00Z`,
+    entity_type: 'issue',
+    entity_id: issueId,
+    event_type: 'issue_updated',
+    metadata: { issue_key: `TT-${index + 1}` },
+    title: `TT-${index + 1} updated`,
+    body: null,
+    is_read: index === 0,
+    action_url: `/issues/TT-${index + 1}`,
+    ...overrides,
+  }
+}
+function mount(qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+  render(
+    <ThemeProvider>
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <DashboardPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </ThemeProvider>,
+  )
+  return qc
+}
+function activity() {
+  return screen.getByRole('region', { name: 'Последние события для вас' })
+}
+
+describe('Dashboard personal activity', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    listNotifications.mockResolvedValue({ notifications: [], unread_count: 0 })
+  })
+
+  it('uses the shared recipient catalogue, includes read events and bounds the preview', async () => {
+    listNotifications.mockResolvedValue({
+      notifications: Array.from({ length: 6 }, (_, index) => event(index)),
+      unread_count: 5,
+    })
+    mount()
+    await screen.findByText('Задача TT-1 обновлена')
+    expect(listNotifications).toHaveBeenCalledWith({ includeRead: true, limit: 5, offset: 0 })
+    const rows = within(activity()).getAllByRole('listitem')
+    expect(rows).toHaveLength(5)
+    expect(rows[0]).toHaveTextContent('Задача TT-1 обновлена')
+    expect(rows[4]).toHaveTextContent('Задача TT-5 обновлена')
+    expect(screen.queryByText('Задача TT-6 обновлена')).not.toBeInTheDocument()
+    expect(within(activity()).getByRole('link', { name: 'Все события' })).toHaveAttribute(
+      'href',
+      '/notifications',
+    )
+    expect(rows[0]?.querySelector('time')).toHaveAttribute('datetime', '2026-10-05T10:05:00Z')
+  })
+
+  it('uses UUID targets without marking events read on render or navigation', async () => {
+    listNotifications.mockResolvedValue({ notifications: [event()], unread_count: 0 })
+    const user = userEvent.setup()
+    mount()
+    const link = await screen.findByRole('link', { name: /Задача TT-1 обновлена/ })
+    expect(link).toHaveAttribute('href', `/issues/${issueId}`)
+    await user.click(link)
+    expect(markNotificationRead).not.toHaveBeenCalled()
+    expect(markAllNotificationsRead).not.toHaveBeenCalled()
+  })
+
+  it('preserves user text and renders events without targets as non-interactive rows', async () => {
+    listNotifications.mockResolvedValue({
+      notifications: [
+        event(0, { title: 'Custom task text', body: 'In Progress', action_url: null }),
+      ],
+      unread_count: 0,
+    })
+    mount()
+    await screen.findByText('Custom task text')
+    expect(within(activity()).getByText('Custom task text')).toHaveClass('line-clamp-2')
+    expect(within(activity()).getByText('In Progress')).toBeInTheDocument()
+    expect(within(activity()).getByText('In Progress')).toHaveClass('line-clamp-2')
+    expect(within(activity()).getAllByRole('link')).toHaveLength(1)
+  })
+
+  it('distinguishes initial loading from an empty received-event list', async () => {
+    let resolve!: (data: NotificationList) => void
+    listNotifications.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done
+      }),
+    )
+    mount()
+    expect(within(activity()).getByRole('status')).toHaveAccessibleName('Загрузка событий…')
+    expect(screen.queryByText('Пока нет событий для вас.')).not.toBeInTheDocument()
+    await act(async () => resolve({ notifications: [], unread_count: 0 }))
+    await screen.findByText('Пока нет событий для вас.')
+    expect(within(activity()).queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('keeps other widgets available and retries only the failed activity request', async () => {
+    listNotifications.mockRejectedValueOnce(new Error('Service unavailable'))
+    const user = userEvent.setup()
+    mount()
+    await screen.findByText('Не удалось загрузить события. Повторите попытку.')
+    expect(screen.getByText('На вас нет назначенных задач.')).toBeInTheDocument()
+    expect(screen.getByText('Пока нет проектов.')).toBeInTheDocument()
+    expect(screen.queryByText('Пока нет событий для вас.')).not.toBeInTheDocument()
+    await user.click(within(activity()).getByRole('button', { name: /повторить/i }))
+    await screen.findByText('Пока нет событий для вас.')
+    expect(listNotifications).toHaveBeenCalledTimes(2)
+  })
+
+  it('retains valid cached rows on a refetch error and recovers through the shared query', async () => {
+    listNotifications.mockResolvedValueOnce({ notifications: [event()], unread_count: 0 })
+    const user = userEvent.setup()
+    const qc = mount()
+    await screen.findByText('Задача TT-1 обновлена')
+    listNotifications.mockRejectedValueOnce(new Error('Refresh failed'))
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: ['notifications'] })
+    })
+    await screen.findByText('Не удалось загрузить события. Повторите попытку.')
+    expect(within(activity()).getByText('Задача TT-1 обновлена')).toBeInTheDocument()
+    listNotifications.mockResolvedValueOnce({ notifications: [event(1)], unread_count: 0 })
+    await user.click(within(activity()).getByRole('button', { name: /повторить/i }))
+    await screen.findByText('Задача TT-2 обновлена')
+    expect(within(activity()).queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText('Задача TT-1 обновлена')).not.toBeInTheDocument()
+  })
+})

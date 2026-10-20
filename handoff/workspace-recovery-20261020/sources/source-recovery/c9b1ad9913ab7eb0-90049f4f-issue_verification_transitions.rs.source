@@ -1,0 +1,74 @@
+//! A single bounded bulk projection; no per-status count queries or mutation.
+use super::*;
+use domain::issue_verification_transitions::*;
+use serde::Deserialize;
+#[derive(Deserialize)]
+struct Choice {
+    status_id: Uuid,
+    name: String,
+    is_closed: bool,
+    wip_limit: Option<u32>,
+    count: u64,
+}
+pub(super) async fn read(
+    db: &DatabaseConnection,
+    id: IssueId,
+    project: ProjectId,
+) -> Result<IssueVerificationTransitions, AppError> {
+    let row = db.query_one(Statement::from_sql_and_values(DbBackend::Postgres, r#"
+WITH context AS (
+ SELECT i.id,i.project_id,i.status_id,i.updated_at,s.name AS status_name,b.columns
+ FROM issues i JOIN projects p ON p.id=i.project_id
+ JOIN boards b ON b.id=p.default_board_id AND b.project_id=p.id
+ JOIN statuses s ON s.id=i.status_id
+ WHERE i.id=$1 AND i.project_id=$2 AND i.issue_type='bug' AND i.deleted_at IS NULL
+ AND jsonb_typeof(b.columns)='array' AND jsonb_array_length(b.columns)<=128
+), targets AS (
+ SELECT DISTINCT s.id AS status_id,s.name,s.is_closed,c.wip_limit,s.position
+ FROM context ctx CROSS JOIN LATERAL jsonb_to_recordset(ctx.columns) AS c(id uuid,wip_limit bigint)
+ JOIN statuses s ON s.id=c.id
+ WHERE s.id<>ctx.status_id AND EXISTS(SELECT 1 FROM workflow_transitions t
+ WHERE t.from_status_id=ctx.status_id AND t.to_status_id=s.id)
+), counts AS (
+ SELECT status_id,count(*) AS count FROM issues WHERE project_id=$2 AND deleted_at IS NULL
+ AND status_id IN(SELECT status_id FROM targets) GROUP BY status_id
+)
+SELECT ctx.id,ctx.project_id,ctx.status_id,ctx.status_name,ctx.updated_at,
+ COALESCE((SELECT jsonb_agg(jsonb_build_object('status_id',t.status_id,'name',t.name,
+ 'is_closed',t.is_closed,'wip_limit',t.wip_limit,'count',COALESCE(c.count,0)) ORDER BY t.position,t.status_id)
+ FROM targets t LEFT JOIN counts c USING(status_id)), '[]'::jsonb) AS choices FROM context ctx
+"#, [id.as_uuid().into(),project.as_uuid().into()])).await.map_err(AppError::database)?
+    .ok_or_else(||AppError::not_found("bug default board",id))?;
+    let raw: serde_json::Value = row.try_get("", "choices").map_err(AppError::database)?;
+    let choices: Vec<Choice> = serde_json::from_value(raw).map_err(AppError::internal)?;
+    if choices.len() > 128 {
+        return Err(AppError::Unavailable(
+            "verification transitions exceed limit".into(),
+        ));
+    }
+    let transitions = choices
+        .into_iter()
+        .filter(|c| {
+            domain::TransitionGuard {
+                wip_limit: c.wip_limit,
+                target_count: c.count,
+                column_name: c.name.clone(),
+            }
+            .ensure_wip_ok()
+            .is_ok()
+        })
+        .map(|c| IssueVerificationTransition {
+            status_id: c.status_id,
+            name: c.name,
+            is_closed: c.is_closed,
+        })
+        .collect();
+    Ok(IssueVerificationTransitions {
+        project_id: row.try_get("", "project_id").map_err(AppError::database)?,
+        bug_id: row.try_get("", "id").map_err(AppError::database)?,
+        status_id: row.try_get("", "status_id").map_err(AppError::database)?,
+        status_name: row.try_get("", "status_name").map_err(AppError::database)?,
+        updated_at: row.try_get("", "updated_at").map_err(AppError::database)?,
+        transitions,
+    })
+}

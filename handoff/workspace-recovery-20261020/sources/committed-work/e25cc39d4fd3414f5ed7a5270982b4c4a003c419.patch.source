@@ -1,0 +1,2095 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9dade6e..d734d1c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,18 @@
+ 
+ ## [Unreleased]
+ 
++- Доска проекта использует Base ListPage/Tabs/FormField/Select и targets40/44.
++  Создание задачи принадлежит одному action header; колонки больше не создают
++  карточки-контейнеры вокруг карточек задач. Плотность ограничивает summary до
++  4/2 строк, не уменьшает controls; полный текст остаётся в ссылке и tooltip.
++  Density/status сохраняют внешний query/hash и Back/Forward. Ошибки доски
++  и transition rules различаются; cached403/404 и неповторяемые ошибки скрывают
++  недоступные данные, временный сбой оставляет partial view без writes.
++  Keyboard и native drag/drop используют общую same-tick защиту; pending/refresh
++  блокируют перенос. После сбоя нужна явная сверка доски и правил без auto-retry
++  записи и без ложного success; фокус получает стабильный именованный region.
++  Доменные API, backend, auth, DB и dependency locks не меняются.
++
+ - Корзина проекта использует Base ListPage, общие состояния и controls40/44.
+   HTTP403/404 и неповторяемые ошибки скрывают cached строки; временный сбой
+   сохраняет данные с partial-error и блокирует запись. Pagination/history/reload
+diff --git a/docs/UI_ACCEPTANCE_EVIDENCE.md b/docs/UI_ACCEPTANCE_EVIDENCE.md
+index aab2dfc..4104e57 100644
+--- a/docs/UI_ACCEPTANCE_EVIDENCE.md
++++ b/docs/UI_ACCEPTANCE_EVIDENCE.md
+@@ -412,3 +412,73 @@ API/OIDC mocked. Это не immutable-image, operational SSO/roles, README gall
+ или весь16-pattern manifest acceptance. Native backend gate для frontend-only
+ delta не повторяется; полный продуктовый выпускной gate остаётся обязательным.
+ Canonical runtime/pins, default refs и mirror этим checkpoint не изменяются.
++
++## 2026-10-03: Board Source Checkpoint
++
++Parent: `b4e00346efa952baab8507772b042a396f27382d`; Base:
++`c3cbb6bfcebfea021720cfe76f42631e1d9854f9`. Frontend/docs delta только;
++backend, OpenAPI, auth, DB, locks и Base pin не изменяются.
++
++Board использует ListPage, реальные Tabs panels для density, FormField/Select
++для мобильного status и Base controls40/44. Одна project-aware create action
++в header вместо повторения в каждой колонке. Колонки unframed; cards сохраняют
++metadata, ссылки, native drag/drop и keyboard menu. Summary4/2 lines задаёт
++плотность без уменьшения targets; полный текст сохраняется в доступном содержимом
++и title. URL density/status/history/reload/backlog сохраняет внешний query/hash.
++
++API wrappers сохраняют status, отличают malformed success от пустой доски/правил,
++не дублируют identifier normalization сервера. Rules loading/errors независимы
++от чтения доски. Cached403/404 и неповторяемые ошибки скрывают stale данные;
++retryable cached failure оставляет partial content с блокировкой writes.
++Pending/refetch/error запрещают moves. Перенос принимает только существующее
++issue и разрешённый переход; внешние и отменённые drags не запускают запись.
++Promise/imperative locks защищают same-tick requests. После сбоя требуется
++явный GET доски И rules перед новым действием; background recovery и failed
++readback не снимают lock. Changed/missing issue не считается success.
++Сверка доступна и после удаления всех колонок. Фокус возвращается стабильному
++именованному region после keyboard move или readback.
++
++API preflight:2/17 passed,15 failed. Первый component/API run:33/34 passed;
++failed test обнаружил, что disabled на anchor не запрещает navigation.
++Недоступная create action теперь native disabled Button, не disabled Link.
++Corrected focused run:34/34; полный source Vitest:496/496 в48files,0 pending.
++Первый browser run:17/18; keyboard fixture отправлял Enter до deferred focus
++после End и выбирал первый пункт вместо последнего. Test теперь ждёт фактический
++focus требуемого menu item. Reports сохранены отдельно, не перезаписаны.
++Первый browser запуск пересекался с завершением build и предшествовал финальной
++summary clamp correction; не используется как приёмка окончательного bundle.
++
++Полный Chromium run до финального own-property guard завершился0:58/58,0 unexpected/skipped/flaky,
++без retries. Board matrix:120 observations (2densities x3themes x10widths
++xdirect/reload), main axe375/1920 в каждой density/theme. Cold/cached403/404/422/
++503, independent rules403/422/503, loading/empty, URL/hash/history, pending,
++keyboard focus, unknown move applied/not-applied и native drag/drop прошли.
++Geometry captures:18full-page375/1920/2560 +18first-viewport, также15board state/
++action frames. Просмотрены окончательные dark1920 comfortable, gray2560 compact
++и light375 compact first-viewport; просмотр всего набора не заявляется.
++Финальная проверка нашла, что допустимые ProjectKey `toString`/`valueOf` могли
++ошибочно наследовать failure из Object.prototype. Component preflight18/20
++воспроизвёл2 failures; lookup теперь проверяет собственную запись, без изменения
++server key contract. Новый focused run прошёл43/43. Отдельный Board20 run
++завершился0:20/20,0 unexpected/skipped/flaky, без retries;120 observations,
++51 PNG (36geometry full-page/viewport +15states/actions). Проверен окончательный
++bundle, все прежние18 сценариев доски и2 новых ключа. Latest dark1920 comfortable,
++gray2560 compact и light375 compact first-viewport открыты и просмотрены.
++Full58 не объявляется повторённым после этого guard. Другие runtime
++paths не менялись. Full58 + fresh20 не являются78 уникальными сценариями.
++Статус12 штатных source gates и точные source/bundle digests фиксирует отдельный
++receipt; commit допустим только при success и неизменном проверенном delta.
++Evidence: `task-board-final-browser.json`, `task-board-alias-final-browser.json`,
++соответствующие PNG/matrix, `task-board-base-source-final-verification.json`,
++`task-board-base-source-alias-final-verification.json` и
++`task-board-base-{precommit,committed}-source-verification.json` в workspace
++`audit-artifacts/base-standard-2026-10-01/`. Replay scripts:
++`verify-task-board-source.ps1 -Checkpoint <fresh-name>` и
++`record-task-board-source.mjs`. Build snapshot сравнивается с bundle после gates.
++
++API/OIDC mocked: не immutable-image, operational SSO/roles, README или весь
++16-pattern route manifest acceptance. Backend gate для frontend-only delta
++не повторяется; полный продуктовый gate остаётся обязательным перед выпуском.
++Canonical runtime/pins, default refs и mirror не изменяются. Read-only штатный
++launcher `-Workspace sdlc2 -Status` завершился0: приложения healthy, но это не
++подтверждение публикации текущего source/Base snapshot.
+diff --git a/docs/UI_UX_MAP.md b/docs/UI_UX_MAP.md
+index f789221..874f77a 100644
+--- a/docs/UI_UX_MAP.md
++++ b/docs/UI_UX_MAP.md
+@@ -142,8 +142,20 @@ region. Результат записи не выводится из отсут
+ Source evidence: [Trash checkpoint](UI_ACCEPTANCE_EVIDENCE.md#2026-10-03-trash-source-checkpoint).
+ Actual-image/role/SSO acceptance этой страницы остаётся обязательной.
+ 
+-1. Мигрировать остальные list/form/audit/log compositions: board,
+-   backlog, settings, reports и admin. Для create, search и trash завершить
++Доска проекта мигрирована в source на Base ListPage/Tabs/FormField/Select.
++Create action один и локальный; unframed columns содержат самостоятельные issue
++cards. Density/status используют общий URL helper и сохраняют query/hash/history.
++Rules имеют независимые loading/error состояния; ошибки не выглядят отсутствием
++переходов.403/404 и неповторяемые board failures скрывают stale data; partial
++failures оставляют чтение, блокируя writes. Keyboard/native drag/drop сохраняют
++server transition contract, same-tick lock и безопасный fallback focus.
++Сбой переноса требует явного readback доски И правил; background recovery не
++разрешает повтор, отсутствие/изменение issue не объявляется успешной записью.
++Source evidence: [Board checkpoint](UI_ACCEPTANCE_EVIDENCE.md#2026-10-03-board-source-checkpoint).
++Actual-image/role/SSO acceptance остаётся обязательной.
++
++1. Мигрировать остальные list/form/audit/log compositions:
++   backlog, settings, reports и admin. Для create, search, trash и board завершить
+    actual-image/role/SSO приёмку после source regression checkpoint.
+ 2. Довести независимые states вспомогательных issue sources; не считать ошибки
+    custom fields/labels/links/notifications пустым результатом. Завершить draft,
+diff --git a/frontend/e2e/smoke.spec.ts b/frontend/e2e/smoke.spec.ts
+index 2e94352..e3d855d 100644
+--- a/frontend/e2e/smoke.spec.ts
++++ b/frontend/e2e/smoke.spec.ts
+@@ -2,6 +2,499 @@ import { generateKeyPairSync, sign } from 'node:crypto'
+ import { test, expect, type Page, type Route } from '@playwright/test'
+ import AxeBuilder from '@axe-core/playwright'
+ 
++async function installBoardFixtures(page: Page, count = 20, projectKey = 'DEMO') {
++  await installTrackerMocks(page)
++  const statuses = [
++    { id: 'todo', name: 'To Do' },
++    { id: 'inprogress', name: 'In Progress' },
++    { id: 'review', name: 'Review' },
++    { id: 'done', name: 'Done' },
++  ]
++  const rows = Array.from({ length: count }, (_, index) => ({
++    ...searchIssue(index + 1),
++    key: `${projectKey}-${index + 1}`,
++    project_key: projectKey,
++    status_id: statuses[index % statuses.length].id,
++    status: statuses[index % statuses.length].name,
++  }))
++  const transitions = statuses.flatMap((from) =>
++    statuses
++      .filter((to) => from.id !== to.id)
++      .map((to) => ({
++        id: `${from.id}-${to.id}`,
++        from_status_id: from.id,
++        to_status_id: to.id,
++        name: null,
++      })),
++  )
++  const control = {
++    rows,
++    readStatus: 200,
++    rulesStatus: 200,
++    writeStatus: 200,
++    applyWrite: true,
++    reads: 0,
++    ruleReads: 0,
++    writes: 0,
++    readBarrier: null as Promise<void> | null,
++    writeBarrier: null as Promise<void> | null,
++  }
++  function board() {
++    return {
++      project_id: 'fixture-demo',
++      project_key: projectKey,
++      backlog_total: 0,
++      columns: statuses.map((status) => ({
++        ...status,
++        wip_limit: null,
++        issue_ids: rows.filter((issue) => issue.status_id === status.id).map((issue) => issue.id),
++      })),
++      issues: rows,
++      sprint: {
++        id: 'sprint-1',
++        name: 'Safe fixture sprint',
++        goal: '',
++        state: 'active',
++        velocity: 0,
++        remaining_days: 10,
++        issue_ids: rows.map((issue) => issue.id),
++        start_date: null,
++        end_date: null,
++      },
++    }
++  }
++  await page.route('**/api/v1/projects/*/board', async (route) => {
++    control.reads++
++    if (control.readBarrier) await control.readBarrier
++    return routeJson(
++      route,
++      control.readStatus === 200 ? board() : { error: { message: 'private board diagnostic' } },
++      control.readStatus,
++    )
++  })
++  await page.route('**/api/v1/transitions', (route) => {
++    control.ruleReads++
++    return routeJson(
++      route,
++      control.rulesStatus === 200
++        ? transitions
++        : { error: { message: 'private rules diagnostic' } },
++      control.rulesStatus,
++    )
++  })
++  await page.route('**/api/v1/projects/*/board/move', async (route) => {
++    control.writes++
++    if (control.writeBarrier) await control.writeBarrier
++    const input = route.request().postDataJSON() as { issue_id: string; status_id: string }
++    const issue = rows.find((row) => row.id === input.issue_id)
++    if (issue && control.applyWrite) {
++      issue.status_id = input.status_id
++      issue.status = statuses.find((status) => status.id === input.status_id)?.name ?? issue.status
++    }
++    return routeJson(
++      route,
++      control.writeStatus === 200 ? board() : { error: { message: 'private move diagnostic' } },
++      control.writeStatus,
++    )
++  })
++  return control
++}
++
++test.describe('Base project board', () => {
++  for (const projectKey of ['toString', 'valueOf']) {
++    test(`valid project key ${projectKey} does not inherit a failed-move state`, async ({
++      page,
++      baseURL,
++    }) => {
++      const fixture = await installBoardFixtures(page, 1, projectKey)
++      await page.goto(`${baseURL}/projects/${projectKey}/board`)
++      await page
++        .getByRole('button', { name: `Изменить статус ${projectKey}-1`, exact: true })
++        .click()
++      await page.getByRole('menuitem', { name: 'Переместить: Готово', exact: true }).click()
++      await expect.poll(() => fixture.writes).toBe(1)
++      await expect(
++        page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
++      ).toHaveCount(1)
++    })
++  }
++  test('fits both densities, long cards and controls in every theme and shell boundary', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    test.setTimeout(300_000)
++    await installBoardFixtures(page)
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    const failures: string[] = []
++    const observations: Array<Record<string, unknown>> = []
++    page.on('pageerror', (error) => failures.push(error.message))
++    page.on('console', (message) => {
++      if (message.type() === 'error') failures.push(message.text())
++    })
++    page.on('requestfailed', (request) => failures.push(`${request.method()} ${request.url()}`))
++    page.on('response', (response) => {
++      if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`)
++    })
++    for (const theme of ['dark', 'gray', 'light']) {
++      await page.goto(`${app}/projects/DEMO/board`)
++      await expect(page.locator('main article')).toHaveCount(20)
++      await page.evaluate((value) => localStorage.setItem('theme', value), theme)
++      for (const density of ['comfortable', 'compact']) {
++        for (const width of [375, 767, 768, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
++          await page.setViewportSize({ width, height: 1080 })
++          for (const entry of ['direct', 'reload']) {
++            if (entry === 'direct')
++              await page.goto(
++                `${app}/projects/DEMO/board?source=qa${density === 'compact' ? '&density=compact' : ''}#context`,
++              )
++            else await page.reload()
++            await expect(page.locator('main article')).toHaveCount(20)
++            await expect(
++              page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
++            ).toBeEnabled()
++            await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
++            await expect(
++              page.getByRole('tab', {
++                name: density === 'compact' ? 'Компактная' : 'Обычная',
++                exact: true,
++              }),
++            ).toHaveAttribute('aria-selected', 'true')
++            await expect(page.locator('main h1')).toHaveCount(1)
++            await expect(
++              page.getByRole('link', { name: 'Создать задачу', exact: true }),
++            ).toHaveCount(1)
++            const layout = page.locator('[data-page-layout]')
++            await expect(layout).toHaveAttribute('data-page-layout', 'wide')
++            const geometry = await layout.evaluate((element) => {
++              const parent = element.parentElement!
++              const style = getComputedStyle(parent)
++              const pageHeader = element.querySelector('.base-page-header')!.getBoundingClientRect()
++              const grid = element.querySelector('[aria-label="Колонки доски"]')!
++              const slots = Array.from(document.querySelectorAll('[data-platform-header-slot]'))
++                .map((slot) => slot.getBoundingClientRect())
++                .filter((rect) => rect.width > 0)
++              return {
++                viewportWidth: innerWidth,
++                viewportHeight: innerHeight,
++                width: element.getBoundingClientRect().width,
++                expectedWidth:
++                  parent.clientWidth -
++                  Number.parseFloat(style.paddingLeft) -
++                  Number.parseFloat(style.paddingRight),
++                gutter: Number.parseFloat(style.paddingLeft),
++                gap: Number.parseFloat(getComputedStyle(grid).gap),
++                titleSize: Number.parseFloat(
++                  getComputedStyle(element.querySelector('h1')!).fontSize,
++                ),
++                headerHeight: document
++                  .querySelector('[data-platform-header]')!
++                  .getBoundingClientRect().height,
++                sidebarWidth: document.querySelector('.base-shell-sidebar')!.getBoundingClientRect()
++                  .width,
++                documentFits:
++                  document.documentElement.scrollWidth <= document.documentElement.clientWidth,
++                localFits: element.scrollWidth <= element.clientWidth,
++                gridAfterHeader: grid.getBoundingClientRect().top >= pageHeader.bottom,
++                headerFits: slots.every(
++                  (rect, index) => index === 0 || rect.left >= slots[index - 1].right,
++                ),
++              }
++            })
++            expect(geometry.viewportWidth).toBe(width)
++            expect(geometry.viewportHeight).toBe(1080)
++            expect(Math.abs(geometry.width - geometry.expectedWidth)).toBeLessThan(1)
++            expect(
++              Math.abs(geometry.gutter - Math.min(32, Math.max(16, width * 0.02))),
++            ).toBeLessThan(1)
++            expect(geometry.gap).toBe(20)
++            expect(geometry.titleSize).toBe(24)
++            expect(geometry.headerHeight).toBe(60)
++            expect(geometry.sidebarWidth).toBe(width < 768 ? 0 : width < 1280 ? 72 : 264)
++            expect(
++              geometry.documentFits &&
++                geometry.localFits &&
++                geometry.gridAfterHeader &&
++                geometry.headerFits,
++            ).toBe(true)
++            const undersized = await page.locator('main button, main a, main select').evaluateAll(
++              (elements, minimum) =>
++                elements.flatMap((element) => {
++                  const rect = element.getBoundingClientRect()
++                  return rect.width > 0 &&
++                    rect.height > 0 &&
++                    (rect.height + 0.5 < minimum || rect.width + 0.5 < minimum)
++                    ? [{ html: element.outerHTML, width: rect.width, height: rect.height }]
++                    : []
++                }),
++              width < 768 ? 44 : 40,
++            )
++            expect(undersized).toEqual([])
++            observations.push({
++              theme,
++              density,
++              entry,
++              mode: 'wide',
++              viewport: { width, height: 1080 },
++              ...geometry,
++            })
++          }
++          if (width === 375 || width === 1920)
++            expect((await new AxeBuilder({ page }).include('main').analyze()).violations).toEqual(
++              [],
++            )
++          if ([375, 1920, 2560].includes(width)) {
++            await page.screenshot({
++              path: testInfo.outputPath(`board-${theme}-${density}-${width}.png`),
++              fullPage: true,
++            })
++            await page.evaluate(() => window.scrollTo(0, 0))
++            await page.screenshot({
++              path: testInfo.outputPath(`board-${theme}-${density}-${width}-viewport.png`),
++            })
++          }
++        }
++      }
++    }
++    expect(failures).toEqual([])
++    await testInfo.attach('board-geometry', {
++      body: JSON.stringify({ mockedApi: true, actualImage: false, observations }),
++      contentType: 'application/json',
++    })
++  })
++
++  test('restores URL modes and status through reload and Back/Forward without losing hash', async ({
++    page,
++    baseURL,
++  }) => {
++    await installBoardFixtures(page)
++    await page.setViewportSize({ width: 375, height: 1080 })
++    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
++    await page.goto(`${app}/projects/DEMO/board?source=qa&density=invalid#context`)
++    await expect(page).toHaveURL(`${app}/projects/DEMO/board?source=qa#context`)
++    await page.getByRole('tab', { name: 'Компактная', exact: true }).click()
++    await page.getByRole('combobox', { name: 'Статус задач', exact: true }).selectOption('done')
++    await expect(page).toHaveURL(
++      `${app}/projects/DEMO/board?source=qa&density=compact&status=done#context`,
++    )
++    await page.reload()
++    await expect(page.getByRole('combobox', { name: 'Статус задач', exact: true })).toHaveValue(
++      'done',
++    )
++    await expect(page.getByRole('tab', { name: 'Компактная', exact: true })).toHaveAttribute(
++      'aria-selected',
++      'true',
++    )
++    await page.goBack()
++    await expect(page.getByRole('combobox', { name: 'Статус задач', exact: true })).toHaveValue(
++      'todo',
++    )
++    await page.goForward()
++    await expect(page.getByRole('combobox', { name: 'Статус задач', exact: true })).toHaveValue(
++      'done',
++    )
++    await expect(page.getByRole('link', { name: 'Бэклог', exact: true })).toHaveAttribute(
++      'href',
++      '/projects/DEMO/backlog?source=qa&density=compact&status=done#context',
++    )
++  })
++
++  test('distinguishes loading and an empty board while preserving the Base header', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    const fixture = await installBoardFixtures(page, 0)
++    let release!: () => void
++    fixture.readBarrier = new Promise<void>((done) => {
++      release = done
++    })
++    await page.goto(`${baseURL}/projects/DEMO/board`)
++    await expect(page.getByText('Загрузка доски…', { exact: true })).toBeVisible()
++    await expect(page.locator('main h1')).toHaveCount(1)
++    await expect(page.getByRole('link', { name: 'Создать задачу', exact: true })).toHaveCount(0)
++    release()
++    await expect(page.getByText('В этом статусе нет задач', { exact: true })).toHaveCount(4)
++    await expect(page.locator('main article')).toHaveCount(0)
++    await page.screenshot({ path: testInfo.outputPath('board-empty.png'), fullPage: true })
++  })
++
++  for (const status of [403, 404, 422, 503]) {
++    test(`cold board HTTP ${status} does not invent an empty board or expose CRUD`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(60_000)
++      const fixture = await installBoardFixtures(page)
++      fixture.readStatus = status
++      await page.goto(`${baseURL}/projects/DEMO/board`)
++      await expect.poll(() => fixture.reads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
++      const main = page.locator('main')
++      if (status === 403 || status === 404)
++        await expect(
++          main.locator(`[data-page-state="${status === 403 ? 'permission-denied' : 'not-found'}"]`),
++        ).toBeVisible()
++      else await expect(main.getByRole('alert')).toBeVisible()
++      await expect(main.locator('article')).toHaveCount(0)
++      await expect(main.getByRole('link', { name: 'Создать задачу', exact: true })).toHaveCount(0)
++      await expect(main.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
++        status === 503 ? 1 : 0,
++      )
++      await expect(main.getByText('private board diagnostic', { exact: true })).toHaveCount(0)
++      await page.screenshot({
++        path: testInfo.outputPath(`board-cold-${status}.png`),
++        fullPage: true,
++      })
++    })
++
++    test(`cached board HTTP ${status} enforces privacy and write freshness`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(60_000)
++      const fixture = await installBoardFixtures(page)
++      await page.goto(`${baseURL}/projects/DEMO/board`)
++      await expect(page.locator('main article')).toHaveCount(20)
++      fixture.readStatus = status
++      const previousReads = fixture.reads
++      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++      await expect
++        .poll(() => fixture.reads - previousReads, { timeout: 30_000 })
++        .toBe(status === 503 ? 5 : 1)
++      if (status === 503) {
++        await expect(page.locator('main [data-page-state="partial-error"]')).toBeVisible()
++        await expect(page.locator('main article')).toHaveCount(20)
++        await expect(
++          page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
++        ).toBeDisabled()
++        await expect(
++          page.getByRole('button', { name: 'Создать задачу', exact: true }),
++        ).toBeDisabled()
++      } else {
++        await expect(page.locator('main article')).toHaveCount(0)
++        await expect(
++          page.getByRole('tablist', { name: 'Плотность доски', exact: true }),
++        ).toHaveCount(0)
++      }
++      expect(fixture.writes).toBe(0)
++      await page.screenshot({
++        path: testInfo.outputPath(`board-cached-${status}.png`),
++        fullPage: true,
++      })
++    })
++  }
++
++  for (const status of [403, 422, 503]) {
++    test(`independent transition HTTP ${status} keeps the board readable but disables moves`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      test.setTimeout(60_000)
++      const fixture = await installBoardFixtures(page)
++      fixture.rulesStatus = status
++      await page.goto(`${baseURL}/projects/DEMO/board`)
++      await expect.poll(() => fixture.ruleReads, { timeout: 30_000 }).toBe(status === 503 ? 5 : 1)
++      await expect(
++        page.getByText('Не удалось загрузить правила переходов. Перенос задач недоступен.', {
++          exact: true,
++        }),
++      ).toBeVisible()
++      await expect(page.locator('main article')).toHaveCount(20)
++      await expect(
++        page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
++      ).toBeDisabled()
++      await expect(page.getByRole('button', { name: 'Повторить', exact: true })).toHaveCount(
++        status === 503 ? 1 : 0,
++      )
++      await expect(page.getByText('private rules diagnostic', { exact: true })).toHaveCount(0)
++      expect(fixture.writes).toBe(0)
++      await page.screenshot({
++        path: testInfo.outputPath(`board-rules-${status}.png`),
++        fullPage: true,
++      })
++    })
++  }
++
++  test('keyboard move holds pending controls and returns focus after the card changes column', async ({
++    page,
++    baseURL,
++  }, testInfo) => {
++    const fixture = await installBoardFixtures(page, 1)
++    let release!: () => void
++    fixture.writeBarrier = new Promise<void>((done) => {
++      release = done
++    })
++    await page.goto(`${baseURL}/projects/DEMO/board`)
++    const trigger = page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true })
++    await expect(trigger).toBeEnabled()
++    await trigger.focus()
++    await page.keyboard.press('Enter')
++    await expect(page.getByRole('menu')).toBeVisible()
++    await page.keyboard.press('End')
++    await expect(
++      page.getByRole('menuitem', { name: 'Переместить: Готово', exact: true }),
++    ).toBeFocused()
++    await page.keyboard.press('Enter')
++    await expect.poll(() => fixture.writes).toBe(1)
++    await expect(trigger).toBeDisabled()
++    await expect(page.locator('main article')).toHaveAttribute('draggable', 'false')
++    release()
++    await expect(
++      page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
++    ).toHaveCount(1)
++    await expect(page.getByRole('region', { name: 'Доска задач', exact: true })).toBeFocused()
++    expect(fixture.writes).toBe(1)
++    await page.screenshot({ path: testInfo.outputPath('board-keyboard-focus.png'), fullPage: true })
++  })
++
++  for (const applied of [false, true]) {
++    test(`unknown move applied=${applied} requires an explicit readback and never silently retries`, async ({
++      page,
++      baseURL,
++    }, testInfo) => {
++      const fixture = await installBoardFixtures(page, 1)
++      fixture.writeStatus = 503
++      fixture.applyWrite = applied
++      await page.goto(`${baseURL}/projects/DEMO/board`)
++      const trigger = page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true })
++      await trigger.click()
++      await page.getByRole('menuitem', { name: 'Переместить: Готово', exact: true }).click()
++      await expect(page.getByText(/Результат переноса DEMO-1 неизвестен/)).toBeVisible()
++      await expect(trigger).toBeDisabled()
++      await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')))
++      await expect(trigger).toBeDisabled()
++      expect(fixture.writes).toBe(1)
++      await expect(page.getByText('Статус задачи изменён', { exact: true })).toHaveCount(0)
++      await page.getByRole('button', { name: 'Проверить состояние', exact: true }).click()
++      await expect(trigger).toBeEnabled()
++      if (applied) {
++        await expect(
++          page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
++        ).toHaveCount(1)
++        await expect(page.getByText(/результат предыдущего переноса не подтверждён/)).toBeVisible()
++      }
++      expect(fixture.writes).toBe(1)
++      await page.screenshot({
++        path: testInfo.outputPath(`board-unknown-applied-${applied}.png`),
++        fullPage: true,
++      })
++    })
++  }
++
++  test('native drag/drop performs a single allowed move', async ({ page, baseURL }) => {
++    const fixture = await installBoardFixtures(page, 1)
++    await page.goto(`${baseURL}/projects/DEMO/board`)
++    await expect(
++      page.getByRole('button', { name: 'Изменить статус DEMO-1', exact: true }),
++    ).toBeEnabled()
++    await page
++      .locator('main article')
++      .dragTo(page.getByRole('region', { name: 'Готово', exact: true }))
++    await expect.poll(() => fixture.writes).toBe(1)
++    await expect(
++      page.getByRole('region', { name: 'Готово', exact: true }).locator('article'),
++    ).toHaveCount(1)
++  })
++})
++
+ async function installCreateFixtures(page: Page) {
+   await installTrackerMocks(page)
+   await page.route('**/api/v1/projects', (route) =>
+@@ -1129,6 +1622,9 @@ async function installTrackerMocks(page: Page) {
+   )
+   await page.route('**/api/v1/projects/*/board', (route) =>
+     routeJson(route, {
++      project_id: '00000000-0000-0000-0000-000000000010',
++      project_key: mockUser.key,
++      backlog_total: 0,
+       columns: [
+         { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: [mockUser.issueId] },
+         { id: 'inprogress', name: 'In Progress', wip_limit: null, issue_ids: [] },
+@@ -1142,6 +1638,7 @@ async function installTrackerMocks(page: Page) {
+           description: '',
+           issue_type: 'Task',
+           status: 'To Do',
++          status_id: 'todo',
+           priority: 'Medium',
+           labels: [],
+           assignee_id: null,
+diff --git a/frontend/src/api/board.test.ts b/frontend/src/api/board.test.ts
+new file mode 100644
+index 0000000..65c4719
+--- /dev/null
++++ b/frontend/src/api/board.test.ts
+@@ -0,0 +1,84 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import { getBoard, moveIssue } from './board'
++import { listTransitions } from './workflow'
++
++const GET = vi.hoisted(() => vi.fn())
++const POST = vi.hoisted(() => vi.fn())
++vi.mock('./client', () => ({ api: { GET, POST } }))
++
++const board = {
++  project_key: 'TT',
++  columns: [{ id: 'todo', name: 'To Do', issue_ids: [] }],
++  issues: [],
++  sprint: { name: 'Sprint 1' },
++  backlog_total: 0,
++}
++
++describe('board transport contracts', () => {
++  beforeEach(() => {
++    GET.mockReset()
++    POST.mockReset()
++  })
++
++  it.each([403, 404, 422, 503])('preserves HTTP status %s for reads and moves', async (status) => {
++    const failure = { error: { message: 'Private diagnostic' }, response: { status } }
++    GET.mockResolvedValue(failure)
++    POST.mockResolvedValue(failure)
++    await expect(getBoard('TT')).rejects.toMatchObject({ status })
++    await expect(moveIssue('TT', { issue_id: 'i1', status_id: 'done' })).rejects.toMatchObject({
++      status,
++    })
++  })
++
++  it.each([
++    undefined,
++    {},
++    { ...board, columns: null },
++    { ...board, issues: 'bad' },
++    { ...board, columns: [null] },
++    { ...board, columns: [{ id: 'todo', name: 'To Do' }] },
++    { ...board, issues: [null] },
++    { ...board, issues: [{ id: 'i1' }] },
++  ])('does not infer successful loading or moving from malformed response', async (data) => {
++    GET.mockResolvedValue({ data, response: { status: 200 } })
++    POST.mockResolvedValue({ data, response: { status: 200 } })
++    await expect(getBoard('TT')).rejects.toMatchObject({ name: 'InvalidResponseError' })
++    await expect(moveIssue('TT', { issue_id: 'i1', status_id: 'done' })).rejects.toMatchObject({
++      name: 'InvalidResponseError',
++    })
++  })
++
++  it('keeps project paths and the domain payload unchanged', async () => {
++    GET.mockResolvedValue({ data: board, response: { status: 200 } })
++    POST.mockResolvedValue({ data: board, response: { status: 200 } })
++    await expect(getBoard('tt')).resolves.toEqual(board)
++    const input = { issue_id: 'i1', status_id: 'done' }
++    await expect(moveIssue('tt', input)).resolves.toEqual(board)
++    expect(GET).toHaveBeenCalledWith('/api/v1/projects/{project_key}/board', {
++      params: { path: { project_key: 'tt' } },
++    })
++    expect(POST).toHaveBeenCalledWith('/api/v1/projects/{project_key}/board/move', {
++      params: { path: { project_key: 'tt' } },
++      body: input,
++    })
++  })
++})
++
++describe('workflow transition transport', () => {
++  beforeEach(() => GET.mockReset())
++  it.each([403, 404, 422, 503])('preserves transition failure status %s', async (status) => {
++    GET.mockResolvedValue({ error: {}, response: { status } })
++    await expect(listTransitions()).rejects.toMatchObject({ status })
++  })
++  it.each([undefined, {}, 'invalid', [null], [{ from_status_id: 'todo' }]])(
++    'rejects missing or malformed rules',
++    async (data) => {
++      GET.mockResolvedValue({ data, response: { status: 200 } })
++      await expect(listTransitions()).rejects.toMatchObject({ name: 'InvalidResponseError' })
++    },
++  )
++  it('distinguishes an actual empty set of rules from a load failure', async () => {
++    GET.mockResolvedValue({ data: [], response: { status: 200 } })
++    await expect(listTransitions()).resolves.toEqual([])
++  })
++})
+diff --git a/frontend/src/api/board.ts b/frontend/src/api/board.ts
+index 9410d8b..d209449 100644
+--- a/frontend/src/api/board.ts
++++ b/frontend/src/api/board.ts
+@@ -1,16 +1,46 @@
+ import { api } from './client'
++import { ApiError, InvalidResponseError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ export type MoveIssueInput = components['schemas']['MoveIssueRequest']
+ export type Board = components['schemas']['BoardResponse']
+ export type Backlog = components['schemas']['BacklogResponse']
+ 
++function requireBoard(data: Board | undefined, status: number | undefined): Board {
++  if (
++    !data ||
++    typeof data.project_key !== 'string' ||
++    !data.project_key ||
++    !Array.isArray(data.columns) ||
++    !Array.isArray(data.issues) ||
++    !data.columns.every(
++      (column) =>
++        column &&
++        typeof column.id === 'string' &&
++        typeof column.name === 'string' &&
++        Array.isArray(column.issue_ids) &&
++        column.issue_ids.every((id) => typeof id === 'string'),
++    ) ||
++    !data.issues.every(
++      (issue) =>
++        issue &&
++        ['id', 'key', 'summary', 'priority', 'issue_type', 'status_id'].every(
++          (field) => typeof issue[field as keyof typeof issue] === 'string',
++        ),
++    )
++  )
++    throw new InvalidResponseError(status ?? 0)
++  return data
++}
++
+ export async function getBoard(projectKey: string): Promise<Board> {
+-  const { data, error } = await api.GET('/api/v1/projects/{project_key}/board', {
++  const { data, error, response } = await api.GET('/api/v1/projects/{project_key}/board', {
+     params: { path: { project_key: projectKey } },
+   })
+-  if (error || !data) throw new Error('Failed to load board')
+-  return data
++  const status = response?.status
++  if (error || (status !== undefined && status >= 400))
++    throw new ApiError(status, 'Failed to load board', error)
++  return requireBoard(data, status)
+ }
+ 
+ const BACKLOG_PAGE_SIZE = 100
+@@ -31,10 +61,12 @@ export async function getBacklog(
+ }
+ 
+ export async function moveIssue(projectKey: string, input: MoveIssueInput): Promise<Board> {
+-  const { data, error } = await api.POST('/api/v1/projects/{project_key}/board/move', {
++  const { data, error, response } = await api.POST('/api/v1/projects/{project_key}/board/move', {
+     params: { path: { project_key: projectKey } },
+     body: input,
+   })
+-  if (error || !data) throw new Error('Failed to move issue')
+-  return data
++  const status = response?.status
++  if (error || (status !== undefined && status >= 400))
++    throw new ApiError(status, 'Failed to move issue', error)
++  return requireBoard(data, status)
+ }
+diff --git a/frontend/src/api/workflow.ts b/frontend/src/api/workflow.ts
+index 5a69af3..ad94001 100644
+--- a/frontend/src/api/workflow.ts
++++ b/frontend/src/api/workflow.ts
+@@ -1,5 +1,5 @@
+ import { api } from './client'
+-import { ApiError } from '@sdlc/ui/lib'
++import { ApiError, InvalidResponseError } from '@sdlc/ui/lib'
+ import type { components } from './generated'
+ 
+ export type Status = components['schemas']['StatusResponse']
+@@ -13,8 +13,18 @@ export async function listStatuses(): Promise<Status[]> {
+ }
+ 
+ export async function listTransitions(): Promise<Transition[]> {
+-  const { data, error } = await api.GET('/api/v1/transitions')
+-  if (error || !data) throw new Error('Failed to load transitions')
++  const { data, error, response } = await api.GET('/api/v1/transitions')
++  const status = response?.status
++  if (error || (status !== undefined && status >= 400))
++    throw new ApiError(status, 'Failed to load transitions', error)
++  if (
++    !Array.isArray(data) ||
++    !data.every(
++      (rule) =>
++        rule && typeof rule.from_status_id === 'string' && typeof rule.to_status_id === 'string',
++    )
++  )
++    throw new InvalidResponseError(status ?? 0)
+   return data
+ }
+ 
+diff --git a/frontend/src/pages/project-board/index.tsx b/frontend/src/pages/project-board/index.tsx
+index 300dad4..7f554aa 100644
+--- a/frontend/src/pages/project-board/index.tsx
++++ b/frontend/src/pages/project-board/index.tsx
+@@ -1,15 +1,26 @@
+-import { Link, useParams, useSearchParams } from 'react-router'
+-import { List, MoreHorizontal } from 'lucide-react'
++import { Link, useLocation, useParams } from 'react-router'
++import { AlertTriangle, List, MoreHorizontal, Plus, RotateCcw } from 'lucide-react'
+ import { useTranslation } from 'react-i18next'
+-import { useState } from 'react'
++import { useEffect, useRef, useState } from 'react'
+ import {
+   Button,
+   DropdownMenu,
+   DropdownMenuContent,
+   DropdownMenuItem,
+   DropdownMenuTrigger,
++  ErrorState,
++  FormField,
++  ListPage,
++  ResourceStateView,
++  Select,
++  Tabs,
++  TabsContent,
++  TabsList,
++  TabsTrigger,
++  resourceErrorState,
++  type ResourceState,
+ } from '@sdlc/ui/ui'
+-import { ErrorState, LoadingState } from '@sdlc/ui/ui'
++import { enumQuery, isUnknownWriteOutcome, updateQuery, useUrlSearchParams } from '@sdlc/ui/lib'
+ import { useBoard, useMoveIssue, useTransitions } from '@/shared/api/hooks'
+ import { UserAvatar } from '@/shared/ui/user-avatar'
+ import type { components } from '@/api/generated'
+@@ -17,32 +28,26 @@ import { toast } from 'sonner'
+ import { statusLabel } from '@/shared/lib/status-label'
+ 
+ export type Issue = components['schemas']['IssueResponse']
+-
+-type DragState = {
+-  issueId: string | null
+-  sourceColumnId: string | null
+-  dragging: boolean
+-}
++const densities = ['comfortable', 'compact'] as const
++const densityCodec = enumQuery(densities, 'comfortable')
++type DragState = { issueId: string; sourceColumnId: string }
++type FailedMove = { issueId: string; key: string; sourceStatus: string; unknown: boolean }
+ 
+ function PriorityBadge({ priority }: { priority: string }) {
+-  const normalizedPriority = priority.toLowerCase()
++  const { t } = useTranslation()
++  const normalized = priority.toLowerCase()
+   const color =
+-    normalizedPriority === 'high' || normalizedPriority === 'highest'
++    normalized === 'high' || normalized === 'highest'
+       ? 'bg-danger'
+-      : normalizedPriority === 'medium'
++      : normalized === 'medium'
+         ? 'bg-warning'
+         : 'bg-success'
+-  const labels: Record<string, string> = {
+-    highest: 'Наивысший',
+-    high: 'Высокий',
+-    medium: 'Средний',
+-    low: 'Низкий',
+-    lowest: 'Наинизший',
+-  }
+   return (
+-    <span className="inline-flex items-center gap-1 text-xs font-medium text-text-primary">
+-      <span aria-hidden className={`h-2 w-2 rounded-full ${color}`} />
+-      {labels[normalizedPriority] ?? priority}
++    <span className="inline-flex min-w-0 items-center gap-1 text-xs font-medium text-text-primary">
++      <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${color}`} />
++      <span className="[overflow-wrap:anywhere]">
++        {t(`priority.${normalized}`, { defaultValue: priority })}
++      </span>
+     </span>
+   )
+ }
+@@ -52,41 +57,44 @@ function IssueCard({
+   columnId,
+   compact,
+   onDragStart,
++  onDragEnd,
+   destinations,
+   onMove,
+-  isMoving,
++  disabled,
+ }: {
+   issue: Issue
+   columnId: string
+   compact: boolean
+-  onDragStart: (issueId: string, columnId: string) => void
++  onDragStart: (issueId: string, columnId: string) => boolean
++  onDragEnd: () => void
+   destinations: Array<{ id: string; name: string }>
+-  onMove: (issueId: string, statusId: string) => void
+-  isMoving: boolean
++  onMove: (issueId: string, statusId: string) => Promise<void>
++  disabled: boolean
+ }) {
+   const { t } = useTranslation()
+-  function handleDragStart(e: React.DragEvent) {
+-    onDragStart(issue.id, columnId)
+-    e.dataTransfer.effectAllowed = 'move'
+-    e.dataTransfer.setData('text/plain', issue.id)
+-  }
+-
+   return (
+     <article
+-      draggable
+-      onDragStart={handleDragStart}
+-      className={`cursor-grab rounded-md border border-border bg-surface-raised hover:border-border-strong active:cursor-grabbing ${
+-        compact ? 'p-2' : 'p-2 md:p-3'
+-      }`}
++      draggable={!disabled && destinations.length > 0}
++      onDragStart={(event) => {
++        if (!onDragStart(issue.id, columnId)) {
++          event.preventDefault()
++          return
++        }
++        event.dataTransfer.effectAllowed = 'move'
++        event.dataTransfer.setData('text/plain', issue.id)
++      }}
++      onDragEnd={onDragEnd}
++      className={`min-w-0 rounded-md border border-border bg-surface-raised hover:border-border-strong ${!disabled && destinations.length > 0 ? 'cursor-grab active:cursor-grabbing' : ''} ${compact ? 'p-2' : 'p-3'}`}
+     >
+       <div className="flex items-start gap-2">
+         <Link
+-          to={`/issues/${issue.id}`}
+-          className="min-w-0 flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
++          to={`/issues/${encodeURIComponent(issue.id)}`}
++          className="base-control min-w-0 flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+         >
+-          <div className="text-xs text-text-muted">{issue.key}</div>
++          <div className="text-xs text-text-muted [overflow-wrap:anywhere]">{issue.key}</div>
+           <div
+-            className={`${compact ? 'my-0.5' : 'my-0.5 md:my-1'} break-words text-sm font-medium`}
++            title={issue.summary}
++            className={`my-1 text-sm font-medium [overflow-wrap:anywhere] ${compact ? 'line-clamp-2' : 'line-clamp-4'}`}
+           >
+             {issue.summary}
+           </div>
+@@ -97,17 +105,22 @@ function IssueCard({
+               type="button"
+               variant="ghost"
+               size="icon"
+-              className="h-10 w-10 shrink-0"
+-              aria-label={`Изменить статус ${issue.key}`}
+-              disabled={isMoving}
++              className="shrink-0"
++              aria-label={t('board.issueActions', { key: issue.key })}
++              title={t('board.issueActions', { key: issue.key })}
++              disabled={disabled}
+             >
+-              <MoreHorizontal className="h-4 w-4" />
++              <MoreHorizontal className="h-4 w-4" aria-hidden />
+             </Button>
+           </DropdownMenuTrigger>
+-          <DropdownMenuContent align="end" className="w-52">
++          <DropdownMenuContent align="end">
+             {destinations.length > 0 ? (
+               destinations.map((status) => (
+-                <DropdownMenuItem key={status.id} onClick={() => onMove(issue.id, status.id)}>
++                <DropdownMenuItem
++                  key={status.id}
++                  onSelect={() => void onMove(issue.id, status.id)}
++                  disabled={disabled}
++                >
+                   {t('board.moveTo', { status: statusLabel(status.name, t) })}
+                 </DropdownMenuItem>
+               ))
+@@ -117,10 +130,10 @@ function IssueCard({
+           </DropdownMenuContent>
+         </DropdownMenu>
+       </div>
+-      <div className="flex items-center justify-between">
+-        <div className="flex items-center gap-2">
++      <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
++        <div className="flex min-w-0 flex-wrap items-center gap-2">
+           <PriorityBadge priority={issue.priority} />
+-          <span className="rounded bg-border px-1.5 py-0.5 text-[10px] text-text-secondary">
++          <span className="rounded bg-border px-1.5 py-0.5 text-xs text-text-secondary [overflow-wrap:anywhere]">
+             {t(`issueType.${issue.issue_type.toLowerCase()}`, { defaultValue: issue.issue_type })}
+           </span>
+         </div>
+@@ -133,246 +146,386 @@ function IssueCard({
+ export function ProjectBoardPage() {
+   const { t } = useTranslation()
+   const { projectKey } = useParams<{ projectKey?: string }>()
+-  const [searchParams, setSearchParams] = useSearchParams()
+   const key = projectKey ?? ''
+-  const { data: board, isLoading, error } = useBoard(key)
++  const location = useLocation()
++  const [searchParams, setSearchParams] = useUrlSearchParams()
++  const density = densityCodec.parse(searchParams.get('density'))
++  const boardQuery = useBoard(key)
++  const { data: board, isLoading, isFetching, error, refetch } = boardQuery
++  const rules = useTransitions()
+   const move = useMoveIssue(key)
+-  // Workflow transitions gate DnD client-side; the backend still enforces
+-  // them atomically, this only prevents obviously-invalid drops.
+-  const { data: transitions = [] } = useTransitions()
+-  const [drag, setDrag] = useState<DragState>({
+-    issueId: null,
+-    sourceColumnId: null,
+-    dragging: false,
+-  })
++  const [drag, setDrag] = useState<DragState | null>(null)
+   const [dropTarget, setDropTarget] = useState<string | null>(null)
+-
+-  if (isLoading) return <LoadingState message={t('issue.loading')} />
+-  if (error || !board) return <ErrorState message={error?.message ?? t('issue.notFound')} />
+-
+-  const { columns, issues, sprint } = board
+-  const density = searchParams.get('density') === 'compact' ? 'compact' : 'comfortable'
++  const [failedMoves, setFailedMoves] = useState<Record<string, FailedMove>>({})
++  const [writing, setWriting] = useState(false)
++  const [verifying, setVerifying] = useState(false)
++  const writeLock = useRef(false)
++  const verifyLock = useRef(false)
++  const unverifiedKeys = useRef(new Set<string>())
++  const regionRef = useRef<HTMLDivElement>(null)
++  const currentKey = useRef(key)
++  currentKey.current = key
++  const failure = Object.hasOwn(failedMoves, key) ? failedMoves[key] : undefined
++  const columns = board?.columns ?? []
++  const issues = board?.issues ?? []
+   const requestedColumn = searchParams.get('status')
+   const activeColumnId = columns.some((column) => column.id === requestedColumn)
+     ? requestedColumn!
+     : columns[0]?.id
++  const rulesLoading = rules.isLoading || (!rules.data && !rules.error)
++  const busy = writing || move.isPending || verifying
++  const canMove = Boolean(
++    key &&
++    board &&
++    !error &&
++    !isLoading &&
++    !isFetching &&
++    !rulesLoading &&
++    !rules.error &&
++    !rules.isFetching &&
++    !busy &&
++    !failure,
++  )
+ 
+-  function issuesByColumn(columnId: string) {
+-    return issues.filter((i) => columns.find((c) => c.id === columnId)?.issue_ids.includes(i.id))
+-  }
+-
+-  function transitionAllowed(fromStatusId: string, toStatusId: string): boolean {
+-    if (fromStatusId === toStatusId) return false
+-    return transitions.some(
+-      (tr) => tr.from_status_id === fromStatusId && tr.to_status_id === toStatusId,
+-    )
+-  }
+-
+-  function statusIdOfColumn(columnId: string): string | undefined {
+-    // Column ids ARE status ids on this board (see board DTO).
+-    return columnId
+-  }
+-
+-  function handleDragStart(issueId: string, columnId: string) {
+-    setDrag({ issueId, sourceColumnId: columnId, dragging: true })
+-  }
+-
+-  function handleDragOver(e: React.DragEvent, columnId: string) {
+-    e.preventDefault()
+-    if (columnId === drag.sourceColumnId) return
+-    setDropTarget(columnId)
+-  }
++  useEffect(() => {
++    const normalized = densityCodec.format(density)
++    if (searchParams.get('density') !== normalized)
++      setSearchParams((current) => updateQuery(current, { density: normalized }), { replace: true })
++  }, [density, searchParams, setSearchParams])
++  useEffect(() => {
++    if (!canMove) {
++      setDrag(null)
++      setDropTarget(null)
++    }
++  }, [canMove, key])
+ 
+-  function handleDrop(e: React.DragEvent, targetColumnId: string) {
+-    e.preventDefault()
+-    const issueId = e.dataTransfer.getData('text/plain') || drag.issueId
+-    const sourceColumnId = drag.sourceColumnId
+-    if (issueId && targetColumnId && targetColumnId !== sourceColumnId) {
+-      const issue = issues.find((i) => i.id === issueId)
+-      const fromStatusId = issue
+-        ? issue.status_id
+-        : statusIdOfColumn(sourceColumnId ?? targetColumnId)
+-      if (fromStatusId && transitionAllowed(fromStatusId, targetColumnId)) {
+-        moveIssue(issueId, targetColumnId)
+-      }
++  let state: ResourceState = { kind: 'ready' }
++  if (!key) state = { kind: 'not-found' }
++  else if (error)
++    state = resourceErrorState(error, () => void refetch(), {
++      hasData: board !== undefined,
++      message: t('board.loadError'),
++    })
++  else if (isLoading) state = { kind: 'loading', message: t('board.loading') }
++  else if (!board) state = { kind: 'error', message: t('board.loadError') }
++  else if (!columns.length) state = { kind: 'empty', message: t('board.noColumns') }
++  const visible = state.kind === 'ready' || state.kind === 'partial-error'
++  if (state.kind === 'not-found' || state.kind === 'permission-denied')
++    state = {
++      ...state,
++      message: undefined,
++      back: (
++        <Button variant="outline" asChild>
++          <Link to="/projects">{t('search.backToProjects')}</Link>
++        </Button>
++      ),
+     }
+-    setDrag({ issueId: null, sourceColumnId: null, dragging: false })
+-    setDropTarget(null)
+-  }
++  const ruleState: ResourceState = rules.error
++    ? resourceErrorState(rules.error, () => void rules.refetch(), {
++        message: t('board.rulesError'),
++      })
++    : rulesLoading
++      ? { kind: 'loading', message: t('board.rulesLoading') }
++      : { kind: 'ready' }
++  const contextQuery = searchParams.toString()
+ 
+-  function handleDragLeave() {
++  function transitionAllowed(fromStatus: string, toStatus: string) {
++    return (
++      fromStatus !== toStatus &&
++      Boolean(
++        rules.data?.some(
++          (transition) =>
++            transition.from_status_id === fromStatus && transition.to_status_id === toStatus,
++        ),
++      )
++    )
++  }
++  function resetDrag() {
++    setDrag(null)
+     setDropTarget(null)
+   }
+-
+-  function moveIssue(issueId: string, statusId: string) {
+-    move.mutate(
+-      { issue_id: issueId, status_id: statusId },
+-      {
+-        onSuccess: () => toast.success(t('board.statusChanged')),
+-        onError: (moveError) => toast.error(moveError.message),
+-      },
++  async function moveIssue(issueId: string, statusId: string) {
++    const issue = issues.find((candidate) => candidate.id === issueId)
++    if (
++      !canMove ||
++      writeLock.current ||
++      unverifiedKeys.current.has(key) ||
++      !issue ||
++      !columns.some((column) => column.id === statusId) ||
++      !transitionAllowed(issue.status_id, statusId)
+     )
++      return
++    writeLock.current = true
++    setWriting(true)
++    resetDrag()
++    try {
++      await move.mutateAsync({ issue_id: issueId, status_id: statusId })
++      toast.success(t('board.statusChanged'))
++    } catch (failure) {
++      unverifiedKeys.current.add(key)
++      setFailedMoves((current) => ({
++        ...current,
++        [key]: {
++          issueId,
++          key: issue.key,
++          sourceStatus: issue.status_id,
++          unknown: isUnknownWriteOutcome(failure),
++        },
++      }))
++      toast.error(t('board.moveError'))
++    } finally {
++      writeLock.current = false
++      setWriting(false)
++      if (currentKey.current === key) regionRef.current?.focus()
++    }
+   }
+-
+-  function setDensity(nextDensity: 'comfortable' | 'compact') {
+-    const next = new URLSearchParams(searchParams)
+-    if (nextDensity === 'compact') next.set('density', 'compact')
+-    else next.delete('density')
+-    setSearchParams(next, { replace: true })
++  async function verifyMove() {
++    if (!failure || verifyLock.current || writeLock.current) return
++    verifyLock.current = true
++    setVerifying(true)
++    try {
++      const checkedBoard = await refetch()
++      const checkedRules = await rules.refetch()
++      if (checkedBoard.error || !checkedBoard.data || checkedRules.error || !checkedRules.data)
++        return
++      const issue = checkedBoard.data.issues.find((candidate) => candidate.id === failure.issueId)
++      if (!issue || issue.status_id !== failure.sourceStatus)
++        toast.info(t('board.stateChanged', { key: failure.key }))
++      unverifiedKeys.current.delete(key)
++      setFailedMoves((current) => {
++        const next = { ...current }
++        if (next[key] === failure) delete next[key]
++        return next
++      })
++      move.reset()
++    } catch {
++      toast.error(t('board.loadError'))
++    } finally {
++      verifyLock.current = false
++      setVerifying(false)
++      if (currentKey.current === key) regionRef.current?.focus()
++    }
+   }
+ 
+-  return (
+-    <div className="min-w-0">
+-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+-        <div className="min-w-0">
+-          <h1 className="truncate text-lg font-bold sm:text-xl">
+-            {t('board.title', { projectName: key, sprintName: sprint?.name ?? t('board.backlog') })}
+-          </h1>
+-          <div className="text-sm text-text-muted">
+-            {t('board.subtitle', {
+-              backlog: board.backlog_total,
+-              remainingDays: sprint?.remaining_days ?? t('board.notAvailable'),
+-            })}
+-          </div>
+-        </div>
+-        <div className="flex flex-wrap items-center gap-2">
+-          <div
+-            className="hidden grid-cols-2 rounded-md border border-border bg-surface p-1 md:inline-grid"
+-            role="group"
+-            aria-label={t('board.density')}
+-          >
+-            {(['comfortable', 'compact'] as const).map((option) => (
+-              <button
+-                key={option}
+-                type="button"
+-                aria-pressed={density === option}
+-                onClick={() => setDensity(option)}
+-                className={`min-h-10 rounded px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+-                  density === option
+-                    ? 'bg-surface-raised text-text-primary shadow-sm'
+-                    : 'text-text-muted hover:text-text-secondary'
+-                }`}
+-              >
+-                {t(`board.density${option === 'compact' ? 'Compact' : 'Comfortable'}`)}
+-              </button>
+-            ))}
+-          </div>
+-          <Button
+-            variant="outline"
+-            size="sm"
+-            className="gap-1"
+-            asChild
+-            aria-label={t('board.backlog')}
+-          >
+-            <Link to={`/projects/${key}/backlog`}>
+-              <List className="h-4 w-4" />
+-              <span className="hidden sm:inline">{t('board.backlog')}</span>
+-            </Link>
+-          </Button>
+-        </div>
+-      </div>
+-
+-      <div
+-        className="mb-3 grid grid-cols-2 gap-1 rounded-md border border-border bg-surface p-1 md:hidden"
+-        aria-label="Статус задач"
+-      >
+-        {columns.map((column) => (
+-          <button
+-            key={column.id}
+-            type="button"
+-            aria-pressed={activeColumnId === column.id}
+-            onClick={() => {
+-              const next = new URLSearchParams(searchParams)
+-              next.set('status', column.id)
+-              setSearchParams(next, { replace: true })
+-            }}
+-            className={`min-h-10 min-w-0 rounded px-2 text-sm font-medium ${
+-              activeColumnId === column.id
+-                ? 'bg-accent text-accent-foreground'
+-                : 'text-text-secondary hover:bg-surface-raised'
+-            }`}
+-          >
+-            <span className="block truncate">{statusLabel(column.name, t)}</span>
+-          </button>
+-        ))}
++  const verification = failure && (
++    <div className="base-page-stack">
++      <ErrorState
++        message={t(failure.unknown ? 'board.writeUnknown' : 'board.writeRejected', {
++          key: failure.key,
++        })}
++      />
++      <div className="base-page-actions">
++        <Button
++          variant="outline"
++          onClick={() => void verifyMove()}
++          disabled={busy || isFetching || rules.isFetching}
++        >
++          <RotateCcw className="h-4 w-4" aria-hidden />
++          {t('board.recheck')}
++        </Button>
+       </div>
++    </div>
++  )
++  if (state.kind === 'empty' && verification) state = { ...state, action: verification }
+ 
+-      <div
+-        role="region"
+-        aria-label={t('board.columns')}
+-        tabIndex={0}
+-        className={`grid min-w-0 grid-cols-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:grid-cols-2 xl:grid-cols-4 ${
+-          density === 'compact' ? 'gap-2' : 'gap-2 md:gap-4'
+-        }`}
+-      >
+-        {columns.map((column) => {
+-          const wipLimit = column.wip_limit ?? null
+-          const colIssues = issuesByColumn(column.id)
+-          const overLimit = wipLimit !== null && colIssues.length >= wipLimit
+-          const isDropTarget = dropTarget === column.id && drag.dragging
+-          return (
+-            <div
+-              key={column.id}
+-              onDragOver={(e) => handleDragOver(e, column.id)}
+-              onDrop={(e) => handleDrop(e, column.id)}
+-              onDragLeave={handleDragLeave}
+-              className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col rounded-lg border bg-surface transition-colors md:flex ${
+-                isDropTarget ? 'border-accent ring-1 ring-accent' : 'border-border'
+-              }`}
+-            >
+-              <div
+-                className={`flex items-center justify-between border-b border-border ${
+-                  density === 'compact' ? 'p-2' : 'p-2 md:p-3'
+-                }`}
++  function renderBoard(compact: boolean) {
++    return (
++      <div className="base-page-stack">
++        <ResourceStateView state={ruleState} />
++        {verification}
++        <div
++          role="region"
++          aria-label={t('board.columns')}
++          tabIndex={0}
++          className="grid min-w-0 grid-cols-1 gap-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:grid-cols-2 xl:grid-cols-4"
++        >
++          {columns.map((column) => {
++            const columnIssues = issues.filter((issue) => column.issue_ids.includes(issue.id))
++            const overLimit = column.wip_limit != null && columnIssues.length >= column.wip_limit
++            return (
++              <section
++                key={column.id}
++                aria-label={statusLabel(column.name, t)}
++                onDragOver={(event) => {
++                  if (!canMove || !drag || !transitionAllowed(drag.sourceColumnId, column.id))
++                    return
++                  event.preventDefault()
++                  event.dataTransfer.dropEffect = 'move'
++                  setDropTarget(column.id)
++                }}
++                onDragLeave={() => setDropTarget(null)}
++                onDrop={(event) => {
++                  event.preventDefault()
++                  const draggedId = event.dataTransfer.getData('text/plain')
++                  if (
++                    drag &&
++                    draggedId === drag.issueId &&
++                    issues.some(
++                      (issue) => issue.id === draggedId && issue.status_id === drag.sourceColumnId,
++                    )
++                  )
++                    void moveIssue(draggedId, column.id)
++                  resetDrag()
++                }}
++                className={`${activeColumnId === column.id ? 'flex' : 'hidden'} min-w-0 flex-col gap-3 md:flex ${dropTarget === column.id ? 'ring-2 ring-accent' : ''}`}
+               >
+-                <div className="min-w-0">
+-                  <div className="truncate text-sm font-semibold">
++                <div className="min-w-0 border-b border-border pb-2">
++                  <h2 className="text-sm font-semibold [overflow-wrap:anywhere]">
+                     {statusLabel(column.name, t)}
+-                  </div>
+-                  <div className="text-xs text-text-muted">
+-                    {colIssues.length} · {t('board.wip')}: {wipLimit ?? '—'}
+-                    {overLimit && <span className="ml-1 text-danger">{t('board.wipWarning')}</span>}
++                  </h2>
++                  <div className="flex flex-wrap items-center gap-1 text-xs text-text-muted">
++                    <span>
++                      {columnIssues.length} · {t('board.wip')}: {column.wip_limit ?? '\u2014'}
++                    </span>
++                    {overLimit && (
++                      <span className="inline-flex items-center gap-1 text-danger">
++                        <AlertTriangle className="h-3 w-3" aria-hidden />
++                        {t('board.wipReached')}
++                      </span>
++                    )}
+                   </div>
+                 </div>
+-              </div>
+-
+-              <div
+-                className={`min-h-24 flex-1 ${
+-                  density === 'compact' ? 'space-y-1 p-1.5' : 'space-y-1 p-1.5 md:space-y-2 md:p-2'
+-                }`}
+-              >
+-                {colIssues.map((issue) => (
+-                  <IssueCard
+-                    key={issue.id}
+-                    issue={issue}
+-                    columnId={column.id}
+-                    compact={density === 'compact'}
+-                    onDragStart={handleDragStart}
+-                    destinations={columns.filter((candidate) =>
+-                      transitionAllowed(issue.status_id, candidate.id),
+-                    )}
+-                    onMove={moveIssue}
+-                    isMoving={move.isPending}
+-                  />
+-                ))}
+-                {colIssues.length === 0 && (
+-                  <p className="px-2 py-6 text-center text-sm text-text-muted">
+-                    {t('board.emptyStatus')}
+-                  </p>
+-                )}
+-              </div>
++                <div className={`min-h-24 min-w-0 flex-1 ${compact ? 'space-y-2' : 'space-y-3'}`}>
++                  {columnIssues.map((issue) => (
++                    <IssueCard
++                      key={issue.id}
++                      issue={issue}
++                      columnId={column.id}
++                      compact={compact}
++                      onDragStart={(issueId, sourceColumnId) => {
++                        if (!canMove || writeLock.current || unverifiedKeys.current.has(key))
++                          return false
++                        setDrag({ issueId, sourceColumnId })
++                        return true
++                      }}
++                      onDragEnd={resetDrag}
++                      destinations={columns.filter((candidate) =>
++                        transitionAllowed(issue.status_id, candidate.id),
++                      )}
++                      onMove={moveIssue}
++                      disabled={!canMove}
++                    />
++                  ))}
++                  {!columnIssues.length && (
++                    <p className="py-6 text-sm text-text-muted">{t('board.emptyStatus')}</p>
++                  )}
++                </div>
++              </section>
++            )
++          })}
++        </div>
++      </div>
++    )
++  }
+ 
+-              <Link
+-                to={`/issues/create?project_key=${encodeURIComponent(key)}`}
+-                state={{ project_key: key }}
+-                className={`${density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'} flex min-h-10 items-center justify-center rounded-md border border-dashed border-border-strong px-2 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary`}
+-              >
+-                + {t('board.create')}
+-              </Link>
+-            </div>
++  return (
++    <div
++      ref={regionRef}
++      role="region"
++      aria-label={t('board.region')}
++      tabIndex={-1}
++      aria-busy={Boolean(isFetching || busy)}
++      className="min-w-0 focus-visible:ring-2 focus-visible:ring-focus"
++    >
++      <Tabs
++        value={density}
++        onValueChange={(next) =>
++          setSearchParams((current) =>
++            updateQuery(current, { density: densityCodec.format(densityCodec.parse(next)) }),
+           )
+-        })}
+-      </div>
++        }
++      >
++        <ListPage
++          title={t('board.title', {
++            projectName: key,
++            sprintName: visible ? (board?.sprint?.name ?? t('board.backlog')) : t('board.backlog'),
++          })}
++          context={
++            visible &&
++            t('board.subtitle', {
++              backlog: board?.backlog_total,
++              remainingDays: board?.sprint?.remaining_days ?? t('board.notAvailable'),
++            })
++          }
++          state={state}
++          actions={
++            <>
++              <Button variant="outline" size="icon" asChild>
++                <Link
++                  to={{
++                    pathname: `/projects/${encodeURIComponent(key)}/backlog`,
++                    search: contextQuery ? `?${contextQuery}` : '',
++                    hash: location.hash,
++                  }}
++                  aria-label={t('board.backlog')}
++                  title={t('board.backlog')}
++                >
++                  <List className="h-4 w-4" aria-hidden />
++                </Link>
++              </Button>
++              {(visible || state.kind === 'empty') &&
++                (error || busy || isFetching ? (
++                  <Button disabled>
++                    <Plus className="h-4 w-4" aria-hidden />
++                    {t('backlog.createIssue')}
++                  </Button>
++                ) : (
++                  <Button asChild>
++                    <Link
++                      to={`/issues/create?project_key=${encodeURIComponent(key)}`}
++                      state={{ project_key: key }}
++                    >
++                      <Plus className="h-4 w-4" aria-hidden />
++                      {t('backlog.createIssue')}
++                    </Link>
++                  </Button>
++                ))}
++            </>
++          }
++          filters={
++            visible && (
++              <>
++                <TabsList aria-label={t('board.density')}>
++                  {densities.map((option) => (
++                    <TabsTrigger key={option} value={option}>
++                      {t(
++                        option === 'compact' ? 'board.densityCompact' : 'board.densityComfortable',
++                      )}
++                    </TabsTrigger>
++                  ))}
++                </TabsList>
++                <div className="w-full min-w-0 md:hidden">
++                  <FormField id="board-status" label={t('board.statusFilter')}>
++                    {(attrs) => (
++                      <Select
++                        {...attrs}
++                        value={activeColumnId ?? ''}
++                        onChange={(event) =>
++                          setSearchParams((current) =>
++                            updateQuery(current, { status: event.target.value }),
++                          )
++                        }
++                      >
++                        {columns.map((column) => (
++                          <option key={column.id} value={column.id}>
++                            {statusLabel(column.name, t)}
++                          </option>
++                        ))}
++                      </Select>
++                    )}
++                  </FormField>
++                </div>
++              </>
++            )
++          }
++        >
++          {densities.map((option) => (
++            <TabsContent key={option} value={option} className="m-0 min-w-0">
++              {renderBoard(option === 'compact')}
++            </TabsContent>
++          ))}
++        </ListPage>
++      </Tabs>
+     </div>
+   )
+ }
+diff --git a/frontend/src/pages/project-board/project-board.test.tsx b/frontend/src/pages/project-board/project-board.test.tsx
+index 252225e..a0bd89c 100644
+--- a/frontend/src/pages/project-board/project-board.test.tsx
++++ b/frontend/src/pages/project-board/project-board.test.tsx
+@@ -1,93 +1,344 @@
+-import { describe, it, expect, vi } from 'vitest'
+-import { render, screen } from '@testing-library/react'
++import { beforeEach, describe, it, expect, vi } from 'vitest'
++import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+ import userEvent from '@testing-library/user-event'
+-import { MemoryRouter, Routes, Route } from 'react-router'
+-
++import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router'
++import { ThemeProvider, ApiError } from '@sdlc/ui/lib'
+ import { ProjectBoardPage } from './'
+-import { ThemeProvider } from '@sdlc/ui/lib'
+ 
+-vi.mock('@/shared/api/hooks', () => ({
+-  useBoard: () => ({
+-    data: {
+-      project_key: 'TT',
+-      sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
+-      columns: [
+-        { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
+-        { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
+-      ],
+-      issues: [
+-        {
+-          id: 'i1',
+-          key: 'TT-1',
+-          summary: 'Do work',
+-          priority: 'High',
+-          issue_type: 'Task',
+-          status_id: 'todo',
+-          assignee_name: 'me',
+-        },
+-      ],
+-    },
++const mocks = vi.hoisted(() => ({
++  board: {
++    data: undefined as unknown,
++    error: null as Error | null,
++    isLoading: false,
++    isFetching: false,
++    refetch: vi.fn(),
++  },
++  rules: {
++    data: undefined as unknown,
++    error: null as Error | null,
+     isLoading: false,
+-    error: null,
+-  }),
+-  useMoveIssue: () => ({ mutate: vi.fn(), isPending: false }),
+-  useTransitions: () => ({ data: [], isLoading: false }),
++    isFetching: false,
++    refetch: vi.fn(),
++  },
++  move: { mutateAsync: vi.fn(), isPending: false, reset: vi.fn() },
++  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+ }))
++vi.mock('@/shared/api/hooks', () => ({
++  useBoard: () => mocks.board,
++  useMoveIssue: () => mocks.move,
++  useTransitions: () => mocks.rules,
++}))
++vi.mock('sonner', () => ({ toast: mocks.toast }))
+ 
+-function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board') {
++const board = {
++  project_key: 'TT',
++  backlog_total: 0,
++  sprint: { id: 's1', name: 'Sprint 1', remaining_days: 10 },
++  columns: [
++    { id: 'todo', name: 'To Do', wip_limit: null, issue_ids: ['i1'] },
++    { id: 'done', name: 'Done', wip_limit: null, issue_ids: [] },
++  ],
++  issues: [
++    {
++      id: 'i1',
++      key: 'TT-1',
++      summary: 'Do work',
++      priority: 'High',
++      issue_type: 'Task',
++      status_id: 'todo',
++      assignee_name: 'me',
++    },
++  ],
++}
++const transitions = [{ from_status_id: 'todo', to_status_id: 'done' }]
++
++function LocationProbe() {
++  const location = useLocation()
++  const navigate = useNavigate()
++  return (
++    <>
++      <output data-testid="location">
++        {location.pathname}
++        {location.search}
++        {location.hash}
++      </output>
++      <button onClick={() => void navigate(-1)}>History back</button>
++      <button onClick={() => void navigate(1)}>History forward</button>
++    </>
++  )
++}
++function wrapper(initialEntry = '/projects/TT/board') {
+   return (
+     <ThemeProvider>
+       <MemoryRouter initialEntries={[initialEntry]}>
++        <LocationProbe />
+         <Routes>
+-          <Route path="/projects/:projectKey/board" element={children} />
++          <Route path="/projects/:projectKey/board" element={<ProjectBoardPage />} />
+         </Routes>
+       </MemoryRouter>
+     </ThemeProvider>
+   )
+ }
++function deferred() {
++  let resolve!: (value: unknown) => void
++  let reject!: (error: Error) => void
++  const promise = new Promise((res, rej) => {
++    resolve = res
++    reject = rej
++  })
++  return { promise, resolve, reject }
++}
++async function chooseMove() {
++  const user = userEvent.setup()
++  await user.click(screen.getByRole('button', { name: 'Изменить статус TT-1' }))
++  await user.click(screen.getByRole('menuitem', { name: 'Переместить: Готово' }))
++}
+ 
+-describe('ProjectBoardPage', () => {
+-  it('renders board columns and issue card', async () => {
+-    render(wrapper(<ProjectBoardPage />))
+-    const board = screen.getByRole('region', { name: 'Колонки доски' })
+-    expect(board).toHaveAttribute('tabindex', '0')
+-    expect(board).toHaveClass('md:grid-cols-2', 'xl:grid-cols-4')
+-    expect(board).not.toHaveClass('overflow-x-auto')
+-    const columns = await screen.findAllByText(/К выполнению/i)
+-    expect(columns.length).toBeGreaterThanOrEqual(1) // single responsive tree
+-    expect(screen.getAllByText('Do work').length).toBeGreaterThanOrEqual(1)
+-    expect(screen.queryByRole('button', { name: /участники|members/i })).not.toBeInTheDocument()
+-    for (const link of screen.getAllByRole('link', { name: /Создать/ })) {
+-      expect(link).toHaveAttribute('href', '/issues/create?project_key=TT')
+-    }
++describe('ProjectBoardPage Base composition', () => {
++  beforeEach(() => {
++    vi.clearAllMocks()
++    Object.assign(mocks.board, { data: board, isLoading: false, isFetching: false, error: null })
++    Object.assign(mocks.rules, {
++      data: transitions,
++      isLoading: false,
++      isFetching: false,
++      error: null,
++    })
++    mocks.board.refetch.mockResolvedValue({ data: board, error: null })
++    mocks.rules.refetch.mockResolvedValue({ data: transitions, error: null })
++    mocks.move.isPending = false
++    mocks.move.mutateAsync.mockResolvedValue(board)
++  })
++
++  it('uses one page header and one project-aware create action, without framed columns', () => {
++    render(wrapper())
++    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
++    expect(screen.getByRole('heading', { level: 1 })).toHaveClass('base-page-title')
++    const region = screen.getByRole('region', { name: 'Колонки доски' })
++    expect(region).toHaveClass('md:grid-cols-2', 'xl:grid-cols-4', 'gap-5')
++    expect(region).not.toHaveClass('overflow-x-auto')
++    expect(screen.getByRole('region', { name: 'К выполнению' })).not.toHaveClass(
++      'rounded-lg',
++      'bg-surface',
++    )
++    expect(screen.getAllByRole('link', { name: 'Создать задачу' })).toHaveLength(1)
++    expect(screen.getByRole('link', { name: 'Создать задачу' })).toHaveAttribute(
++      'href',
++      '/issues/create?project_key=TT',
++    )
++    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toHaveClass('base-control')
++    expect(screen.getByText('Do work').closest('a')).toHaveClass('base-control')
++    expect(screen.getByText('Do work')).toHaveClass('line-clamp-4')
++    expect(screen.getByText('Do work')).toHaveAttribute('title', 'Do work')
+   })
+ 
+-  it('switches to compact density without shrinking issue actions', async () => {
++  it('uses real density tabs and keeps foreign query, fragment and browser history', async () => {
+     const user = userEvent.setup()
+-    render(wrapper(<ProjectBoardPage />))
++    render(wrapper('/projects/TT/board?context=keep#issue-1'))
++    expect(screen.getByRole('tab', { name: 'Обычная' })).toHaveAttribute('aria-selected', 'true')
++    await user.click(screen.getByRole('tab', { name: 'Компактная' }))
++    expect(screen.getByRole('tab', { name: 'Компактная' })).toHaveAttribute('aria-selected', 'true')
++    expect(screen.getByRole('tabpanel')).toHaveAttribute(
++      'aria-labelledby',
++      screen.getByRole('tab', { name: 'Компактная' }).id,
++    )
++    expect(screen.getByTestId('location')).toHaveTextContent(
++      '/projects/TT/board?context=keep&density=compact#issue-1',
++    )
++    expect(screen.getByText('Do work').closest('article')).toHaveClass('p-2')
++    await user.click(screen.getByRole('button', { name: 'History back' }))
++    expect(screen.getByRole('tab', { name: 'Обычная' })).toHaveAttribute('aria-selected', 'true')
++    await user.click(screen.getByRole('button', { name: 'History forward' }))
++    expect(screen.getByRole('tab', { name: 'Компактная' })).toHaveAttribute('aria-selected', 'true')
++    expect(screen.getByRole('link', { name: 'Бэклог' })).toHaveAttribute(
++      'href',
++      '/projects/TT/backlog?context=keep&density=compact#issue-1',
++    )
++  })
+ 
+-    const compact = screen.getByRole('button', { name: 'Компактная' })
+-    const comfortable = screen.getByRole('button', { name: 'Обычная' })
+-    const issueCard = screen.getByText('Do work').closest('article')
++  it.each(['toString', 'valueOf'])(
++    'does not mistake the valid project key %s for a failed move',
++    async (projectKey) => {
++      mocks.board.data = { ...board, project_key: projectKey }
++      render(wrapper(`/projects/${projectKey}/board`))
++      expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeEnabled()
++      await chooseMove()
++      expect(mocks.move.mutateAsync).toHaveBeenCalledTimes(1)
++    },
++  )
+ 
+-    expect(comfortable).toHaveAttribute('aria-pressed', 'true')
+-    expect(issueCard).toHaveClass('p-2', 'md:p-3')
++  it('restores compact density and canonicalizes invalid density without losing context', async () => {
++    const mounted = render(wrapper('/projects/TT/board?context=keep&density=invalid#fragment'))
++    await waitFor(() =>
++      expect(screen.getByTestId('location')).toHaveTextContent(
++        '/projects/TT/board?context=keep#fragment',
++      ),
++    )
++    mounted.unmount()
++    render(wrapper('/projects/TT/board?density=compact&status=done#fragment'))
++    expect(screen.getByRole('tab', { name: 'Компактная' })).toHaveAttribute('aria-selected', 'true')
++    expect(screen.getByRole('combobox', { name: 'Статус задач' })).toHaveValue('done')
++  })
+ 
+-    await user.click(compact)
++  it('keeps the mobile status selection in the URL without discarding unrelated context', async () => {
++    const user = userEvent.setup()
++    render(wrapper('/projects/TT/board?context=keep&density=compact#fragment'))
++    await user.selectOptions(screen.getByRole('combobox', { name: 'Статус задач' }), 'done')
++    expect(screen.getByTestId('location')).toHaveTextContent(
++      '/projects/TT/board?context=keep&density=compact&status=done#fragment',
++    )
++  })
+ 
+-    expect(compact).toHaveAttribute('aria-pressed', 'true')
+-    expect(issueCard).toHaveClass('p-2')
+-    expect(issueCard).not.toHaveClass('md:p-3')
+-    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toHaveClass('h-10', 'w-10')
++  it.each([403, 404, 422])('hides stale content, columns and CRUD on cached %s', (status) => {
++    mocks.board.error = new ApiError(status, 'Private diagnostic')
++    render(wrapper())
++    expect(screen.queryByText('Do work')).not.toBeInTheDocument()
++    expect(screen.queryByRole('link', { name: 'Создать задачу' })).not.toBeInTheDocument()
++    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
++    expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument()
++    expect(screen.queryByText('Private diagnostic')).not.toBeInTheDocument()
++    expect(screen.getByRole('heading', { level: 1 })).not.toHaveTextContent('Sprint 1')
+   })
+ 
+-  it('restores compact density from the board URL', () => {
+-    render(wrapper(<ProjectBoardPage />, '/projects/TT/board?density=compact'))
++  it('keeps partial data readable but disables moves and creation until refresh succeeds', async () => {
++    mocks.board.error = new ApiError(503, 'Private diagnostic')
++    render(wrapper())
++    expect(screen.getByText('Do work')).toBeInTheDocument()
++    expect(document.querySelector('[data-page-state="partial-error"]')).toBeInTheDocument()
++    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeDisabled()
++    expect(screen.getByText('Do work').closest('article')).toHaveAttribute('draggable', 'false')
++    expect(screen.queryByRole('link', { name: 'Создать задачу' })).not.toBeInTheDocument()
++    expect(screen.getByRole('button', { name: 'Создать задачу' })).toBeDisabled()
++    await userEvent.click(screen.getByRole('button', { name: 'Повторить' }))
++    expect(mocks.board.refetch).toHaveBeenCalledTimes(1)
++  })
+ 
+-    expect(screen.getByRole('button', { name: 'Компактная' })).toHaveAttribute(
+-      'aria-pressed',
+-      'true',
++  it('keeps the common header in loading and empty states', () => {
++    Object.assign(mocks.board, { data: undefined, isLoading: true })
++    const mounted = render(wrapper())
++    expect(screen.getByRole('heading', { level: 1 })).toHaveClass('base-page-title')
++    expect(screen.getByText('Загрузка доски…')).toBeInTheDocument()
++    expect(screen.queryByRole('link', { name: 'Создать задачу' })).not.toBeInTheDocument()
++    Object.assign(mocks.board, { data: { ...board, columns: [], issues: [] }, isLoading: false })
++    mounted.rerender(wrapper())
++    expect(screen.getByText('На доске нет колонок.')).toBeInTheDocument()
++    expect(screen.getByRole('link', { name: 'Создать задачу' })).toBeInTheDocument()
++  })
++
++  it.each([403, 422, 503])(
++    'explains independent rule failure %s without turning it into no transitions',
++    (status) => {
++      mocks.rules.error = new ApiError(status, 'Private rules diagnostic')
++      render(wrapper())
++      expect(screen.getByText('Do work')).toBeInTheDocument()
++      expect(
++        screen.getByText('Не удалось загрузить правила переходов. Перенос задач недоступен.'),
++      ).toBeInTheDocument()
++      expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeDisabled()
++      expect(screen.queryByText('Private rules diagnostic')).not.toBeInTheDocument()
++      expect(screen.queryByText('Нет доступных переходов')).not.toBeInTheDocument()
++      expect(screen.queryByRole('button', { name: 'Повторить' }) !== null).toBe(status === 503)
++    },
++  )
++
++  it('blocks moves while rules are loading or either query refreshes', () => {
++    Object.assign(mocks.rules, { data: undefined, isLoading: true })
++    const mounted = render(wrapper())
++    expect(screen.getByText('Загрузка правил переходов…')).toBeInTheDocument()
++    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeDisabled()
++    Object.assign(mocks.rules, { data: transitions, isLoading: false, isFetching: true })
++    mounted.rerender(wrapper())
++    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeDisabled()
++  })
++
++  it('supports keyboard menu moves, holds pending controls and returns focus to a stable region', async () => {
++    const pending = deferred()
++    mocks.move.mutateAsync.mockReturnValue(pending.promise)
++    render(wrapper())
++    const user = userEvent.setup()
++    screen.getByRole('button', { name: 'Изменить статус TT-1' }).focus()
++    await user.keyboard('{Enter}{ArrowDown}{Enter}')
++    expect(mocks.move.mutateAsync).toHaveBeenCalledTimes(1)
++    expect(mocks.move.mutateAsync).toHaveBeenCalledWith({ issue_id: 'i1', status_id: 'done' })
++    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeDisabled()
++    await act(async () => pending.resolve(board))
++    expect(mocks.toast.success).toHaveBeenCalledTimes(1)
++    await waitFor(() => expect(screen.getByRole('region', { name: 'Доска задач' })).toHaveFocus())
++  })
++
++  it('requires explicit fresh board AND rules after an unknown move; background recovery does not unlock writes', async () => {
++    mocks.move.mutateAsync.mockRejectedValue(new Error('Private network diagnostic'))
++    const mounted = render(wrapper())
++    await chooseMove()
++    expect(screen.getByText(/Результат переноса TT-1 неизвестен/)).toBeInTheDocument()
++    expect(mocks.toast.success).not.toHaveBeenCalled()
++    expect(screen.queryByText('Private network diagnostic')).not.toBeInTheDocument()
++    mounted.rerender(wrapper())
++    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeDisabled()
++    mocks.rules.refetch.mockResolvedValueOnce({
++      data: transitions,
++      error: new ApiError(503, 'Failed'),
++    })
++    await userEvent.click(screen.getByRole('button', { name: 'Проверить состояние' }))
++    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeDisabled()
++    await userEvent.click(screen.getByRole('button', { name: 'Проверить состояние' }))
++    expect(mocks.board.refetch).toHaveBeenCalledTimes(2)
++    expect(mocks.rules.refetch).toHaveBeenCalledTimes(2)
++    expect(screen.getByRole('button', { name: 'Изменить статус TT-1' })).toBeEnabled()
++    expect(mocks.move.mutateAsync).toHaveBeenCalledTimes(1)
++  })
++
++  it('does not call a changed or missing issue a successful move', async () => {
++    mocks.move.mutateAsync.mockRejectedValue(new ApiError(503, 'Failed'))
++    mocks.board.refetch.mockResolvedValue({ data: { ...board, issues: [] }, error: null })
++    render(wrapper())
++    await chooseMove()
++    await userEvent.click(screen.getByRole('button', { name: 'Проверить состояние' }))
++    expect(mocks.toast.info).toHaveBeenCalledWith(
++      expect.stringContaining('результат предыдущего переноса не подтверждён'),
+     )
+-    expect(screen.getByText('Do work').closest('article')).toHaveClass('p-2')
++    expect(mocks.toast.success).not.toHaveBeenCalled()
++    expect(mocks.move.mutateAsync).toHaveBeenCalledTimes(1)
++  })
++
++  it('keeps explicit reconciliation available if refresh removes all board columns', async () => {
++    mocks.move.mutateAsync.mockRejectedValue(new Error('Network failure'))
++    const mounted = render(wrapper())
++    await chooseMove()
++    mocks.board.data = { ...board, columns: [], issues: [] }
++    mounted.rerender(wrapper())
++    expect(screen.getByText('На доске нет колонок.')).toBeInTheDocument()
++    expect(screen.getByRole('button', { name: 'Проверить состояние' })).toBeEnabled()
++    await userEvent.click(screen.getByRole('button', { name: 'Проверить состояние' }))
++    expect(mocks.board.refetch).toHaveBeenCalledTimes(1)
++    expect(mocks.rules.refetch).toHaveBeenCalledTimes(1)
++    expect(mocks.move.mutateAsync).toHaveBeenCalledTimes(1)
++  })
++
++  it('accepts only internal valid drags, locks same-tick drops and clears drag state on cancel', async () => {
++    const pending = deferred()
++    mocks.move.mutateAsync.mockReturnValue(pending.promise)
++    render(wrapper())
++    const card = screen.getByText('Do work').closest('article')!
++    const target = screen.getByRole('region', { name: 'Готово' })
++    const dataTransfer = {
++      effectAllowed: '',
++      dropEffect: '',
++      setData: vi.fn(),
++      getData: () => 'i1',
++    }
++    fireEvent.drop(target, { dataTransfer })
++    expect(mocks.move.mutateAsync).not.toHaveBeenCalled()
++    fireEvent.dragStart(card, { dataTransfer })
++    fireEvent.dragEnd(card, { dataTransfer })
++    fireEvent.drop(target, { dataTransfer })
++    expect(mocks.move.mutateAsync).not.toHaveBeenCalled()
++    fireEvent.dragStart(card, { dataTransfer })
++    act(() => {
++      fireEvent.drop(target, { dataTransfer })
++      fireEvent.drop(target, { dataTransfer })
++    })
++    expect(mocks.move.mutateAsync).toHaveBeenCalledTimes(1)
++    await act(async () => pending.resolve(board))
+   })
+ })
+diff --git a/frontend/src/shared/i18n/locales/en.json b/frontend/src/shared/i18n/locales/en.json
+index e912beb..7f222a7 100644
+--- a/frontend/src/shared/i18n/locales/en.json
++++ b/frontend/src/shared/i18n/locales/en.json
+@@ -153,6 +153,20 @@
+     "noMatches": "No projects match your search."
+   },
+   "board": {
++    "region": "Issue board",
++    "loading": "Loading board…",
++    "loadError": "Could not load the board.",
++    "rulesLoading": "Loading transition rules…",
++    "rulesError": "Could not load transition rules. Moving issues is unavailable.",
++    "issueActions": "Change status for {{key}}",
++    "statusFilter": "Issue status",
++    "noColumns": "This board has no columns.",
++    "wipReached": "Limit reached",
++    "moveError": "Could not confirm the issue move.",
++    "writeUnknown": "The outcome of moving {{key}} is unknown. Check the current state before taking another action.",
++    "writeRejected": "Moving {{key}} was rejected. Check the current board and transition rules before taking another action.",
++    "recheck": "Check current state",
++    "stateChanged": "The state of {{key}} changed. The board is updated; the previous move is not confirmed.",
+     "columns": "Board columns",
+     "density": "Board density",
+     "densityComfortable": "Comfortable",
+diff --git a/frontend/src/shared/i18n/locales/ru.json b/frontend/src/shared/i18n/locales/ru.json
+index bd09a4b..7b7e803 100644
+--- a/frontend/src/shared/i18n/locales/ru.json
++++ b/frontend/src/shared/i18n/locales/ru.json
+@@ -153,6 +153,20 @@
+     "noMatches": "По вашему запросу проекты не найдены."
+   },
+   "board": {
++    "region": "Доска задач",
++    "loading": "Загрузка доски…",
++    "loadError": "Не удалось загрузить доску.",
++    "rulesLoading": "Загрузка правил переходов…",
++    "rulesError": "Не удалось загрузить правила переходов. Перенос задач недоступен.",
++    "issueActions": "Изменить статус {{key}}",
++    "statusFilter": "Статус задач",
++    "noColumns": "На доске нет колонок.",
++    "wipReached": "Лимит достигнут",
++    "moveError": "Не удалось подтвердить перенос задачи.",
++    "writeUnknown": "Результат переноса {{key}} неизвестен. Проверьте актуальное состояние перед новым действием.",
++    "writeRejected": "Перенос {{key}} отклонён. Проверьте актуальную доску и правила переходов перед новым действием.",
++    "recheck": "Проверить состояние",
++    "stateChanged": "Состояние {{key}} изменилось. Доска обновлена; результат предыдущего переноса не подтверждён.",
+     "columns": "Колонки доски",
+     "density": "Плотность доски",
+     "densityComfortable": "Обычная",

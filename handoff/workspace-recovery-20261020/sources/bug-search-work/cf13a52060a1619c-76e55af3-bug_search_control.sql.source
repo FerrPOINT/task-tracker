@@ -1,0 +1,37 @@
+-- Desired Fleet drafts become accepted owner policy only in this transaction.
+CREATE TABLE sdlc_bug_search_policy_revisions (
+ project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+ revision bigint NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ owner_subject text NOT NULL CHECK(octet_length(owner_subject) BETWEEN 1 AND 256),
+ payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object' AND octet_length(payload::text)<=73728),
+ PRIMARY KEY(project_id,revision)
+);
+CREATE TABLE sdlc_bug_search_policy_heads (
+ project_id uuid PRIMARY KEY REFERENCES projects(id) ON DELETE RESTRICT,
+ revision bigint NOT NULL,
+ next_due_at timestamptz,
+ FOREIGN KEY(project_id,revision) REFERENCES sdlc_bug_search_policy_revisions(project_id,revision) ON DELETE RESTRICT
+);
+CREATE TABLE sdlc_bug_search_commands (
+ actor_subject text NOT NULL CHECK(octet_length(actor_subject) BETWEEN 1 AND 256),
+ idempotency_key text NOT NULL CHECK(octet_length(idempotency_key) BETWEEN 1 AND 128),
+ project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+ owner_subject text NOT NULL CHECK(octet_length(owner_subject) BETWEEN 1 AND 256),
+ kind text NOT NULL CHECK(kind IN ('policy','reserve','admit','register')),
+ request_sha256 text NOT NULL CHECK(request_sha256 ~ '^[0-9a-f]{64}$'),
+ receipt jsonb NOT NULL CHECK(jsonb_typeof(receipt)='object' AND octet_length(receipt::text)<=131072),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(actor_subject,idempotency_key)
+);
+INSERT INTO sdlc_bug_search_commands(actor_subject,idempotency_key,project_id,owner_subject,kind,request_sha256,receipt)
+ SELECT o.actor_subject,o.idempotency_key,o.project_id,e.owner_subject,'register',o.request_sha256,
+ jsonb_build_object('kind','register','result',o.receipt)
+ FROM sdlc_bug_registration_operations o JOIN sdlc_bug_search_executions e USING(execution_id);
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['sdlc_bug_search_policy_revisions','sdlc_bug_search_commands'] LOOP
+  EXECUTE format('CREATE TRIGGER sdlc_history_immutable BEFORE UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION sdlc_history_immutable()',t);
+ END LOOP;
+ FOREACH t IN ARRAY ARRAY['sdlc_bug_search_policy_revisions','sdlc_bug_search_policy_heads','sdlc_bug_search_commands'] LOOP
+  EXECUTE format('CREATE TRIGGER namespace_write_guard BEFORE INSERT OR UPDATE OR DELETE ON %I FOR EACH ROW EXECUTE FUNCTION tracker_namespace_write_guard()',t);
+ END LOOP;
+END $$;

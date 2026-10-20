@@ -1,0 +1,402 @@
+//! A protected not-started end receipt is distinct from an actual runtime terminal.
+use crate::{bug_search::*, bug_search_control::validate_key, sdlc::MAX_SAFE_VERSION};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugNativeDispatchDisposition {
+    NeverSubmitted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugPreRunCustodyDisposition {
+    NeverProvisioned,
+    NamespaceExited,
+    NeverStartedRemoved,
+    UnpreparedSuccessorCancelled,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugPreRunRuntimeCustody {
+    pub contract_version: u8,
+    pub disposition: BugPreRunCustodyDisposition,
+    pub context_id: Option<Uuid>,
+    pub stop_proof: Option<Value>,
+    pub stop_proof_sha256: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BaseNamespaceStopProof {
+    contract_version: u8,
+    operation_id: Uuid,
+    container_id: String,
+    generation: Uuid,
+    resource_id: Uuid,
+    snapshot_sha256: String,
+    state: String,
+    observation: String,
+}
+
+/// Positive original created-container removal, distinct from a runtime exit.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BaseNeverStartedRemovedProof {
+    contract_version: u8,
+    operation_id: Uuid,
+    resource_id: Uuid,
+    context_id: Uuid,
+    generation: Uuid,
+    container_id: String,
+    registration_sha256: String,
+    request_sha256: String,
+    state: String,
+    observation: String,
+}
+
+/// Positive same native creation/family CAS; never an initial cancellation or exit.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BaseUnpreparedSuccessorCancelledProof {
+    pub contract_version: u8,
+    pub state: String,
+    pub observation: String,
+    pub operation_id: Uuid,
+    pub resource_id: Uuid,
+    pub context_id: Uuid,
+    pub generation: Uuid,
+    pub command_sha256: String,
+    pub intent_sha256: String,
+    pub origin_sha256: String,
+    pub family_manifest_sha256: String,
+    pub predecessor_sha256: String,
+    pub execution_sources_sha256: String,
+    pub creation_request_sha256: String,
+}
+impl BaseUnpreparedSuccessorCancelledProof {
+    pub fn validate(&self, agent: Uuid, context: Uuid) -> Result<(), AppError> {
+        if self.contract_version != 1
+            || self.state != "cancelled"
+            || self.observation != "unprepared_successor_cancelled"
+            || self.operation_id.is_nil()
+            || self.resource_id != agent
+            || self.context_id != context
+            || context.is_nil()
+            || self.generation.is_nil()
+            || [
+                &self.command_sha256,
+                &self.intent_sha256,
+                &self.origin_sha256,
+                &self.family_manifest_sha256,
+                &self.predecessor_sha256,
+                &self.execution_sources_sha256,
+                &self.creation_request_sha256,
+            ]
+            .iter()
+            .any(|h| !sha256(h))
+        {
+            return Err(AppError::validation(
+                "positive original unprepared successor cancellation required",
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl BugPreRunRuntimeCustody {
+    pub fn validate(&self, agent: Uuid) -> Result<(), AppError> {
+        if self.contract_version != 1 {
+            return Err(AppError::validation("unsupported pre-run custody evidence"));
+        }
+        match self.disposition {
+            BugPreRunCustodyDisposition::NeverProvisioned
+                if self.context_id.is_none()
+                    && self.stop_proof.is_none()
+                    && self.stop_proof_sha256.is_none() =>
+            {
+                Ok(())
+            }
+            BugPreRunCustodyDisposition::NamespaceExited => {
+                let invalid = || AppError::validation("original namespace exit proof required");
+                let proof = self.stop_proof.as_ref().ok_or_else(invalid)?;
+                if !self.context_id.is_some_and(|id| !id.is_nil())
+                    || !self.stop_proof_sha256.as_deref().is_some_and(sha256)
+                    || !serde_json::to_vec_pretty(proof).is_ok_and(|b| b.len() <= 8192)
+                {
+                    return Err(invalid());
+                }
+                let proof: BaseNamespaceStopProof =
+                    serde_json::from_value(proof.clone()).map_err(|_| invalid())?;
+                if !matches!(proof.contract_version, 3 | 4)
+                    || proof.operation_id.is_nil()
+                    || proof.generation.is_nil()
+                    || proof.resource_id != agent
+                    || !sha256(&proof.container_id)
+                    || !sha256(&proof.snapshot_sha256)
+                    || proof.state != "observed"
+                    || proof.observation != "namespace_exited"
+                {
+                    return Err(invalid());
+                }
+                Ok(())
+            }
+            BugPreRunCustodyDisposition::NeverStartedRemoved => {
+                let invalid =
+                    || AppError::validation("positive original created disposal required");
+                let raw = self.stop_proof.as_ref().ok_or_else(invalid)?;
+                if !serde_json::to_vec_pretty(raw).is_ok_and(|b| b.len() <= 8192)
+                    || !self.stop_proof_sha256.as_deref().is_some_and(sha256)
+                {
+                    return Err(invalid());
+                }
+                let proof: BaseNeverStartedRemovedProof =
+                    serde_json::from_value(raw.clone()).map_err(|_| invalid())?;
+                if proof.contract_version != 1
+                    || proof.operation_id.is_nil()
+                    || proof.resource_id != agent
+                    || proof.context_id.is_nil()
+                    || proof.generation.is_nil()
+                    || self.context_id != Some(proof.context_id)
+                    || [
+                        &proof.container_id,
+                        &proof.registration_sha256,
+                        &proof.request_sha256,
+                    ]
+                    .iter()
+                    .any(|s| !sha256(s))
+                    || proof.state != "observed"
+                    || proof.observation != "never_started_removed"
+                {
+                    return Err(invalid());
+                }
+                Ok(())
+            }
+            BugPreRunCustodyDisposition::UnpreparedSuccessorCancelled => {
+                let invalid = || {
+                    AppError::validation(
+                        "positive original unprepared successor cancellation required",
+                    )
+                };
+                let raw = self.stop_proof.as_ref().ok_or_else(invalid)?;
+                if !self.stop_proof_sha256.as_deref().is_some_and(sha256)
+                    || !serde_json::to_vec_pretty(raw).is_ok_and(|b| b.len() <= 8192)
+                {
+                    return Err(invalid());
+                }
+                let proof: BaseUnpreparedSuccessorCancelledProof =
+                    serde_json::from_value(raw.clone()).map_err(|_| invalid())?;
+                proof.validate(agent, self.context_id.ok_or_else(invalid)?)?;
+                if serde_json::to_value(&proof).map_err(AppError::internal)? != *raw {
+                    return Err(invalid());
+                }
+                Ok(())
+            }
+            _ => Err(AppError::validation("ambiguous pre-run custody evidence")),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugNotStartedObservation {
+    pub contract_version: u8,
+    pub execution_id: Uuid,
+    pub agent_id: Uuid,
+    pub snapshot_sha256: String,
+    pub journal_ref: String,
+    pub disposition: BugNativeDispatchDisposition,
+    pub observed_at: DateTime<Utc>,
+    pub runtime_custody: BugPreRunRuntimeCustody,
+}
+impl BugNotStartedObservation {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.contract_version != 1
+            || self.execution_id.is_nil()
+            || self.agent_id.is_nil()
+            || !sha256(&self.snapshot_sha256)
+            || !bounded_text(&self.journal_ref, 512)
+            || self.journal_ref.chars().any(char::is_control)
+        {
+            return Err(AppError::validation(
+                "invalid not-started journal observation",
+            ));
+        }
+        self.runtime_custody.validate(self.agent_id)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CancelBugSearchBeforeStart {
+    pub idempotency_key: String,
+    pub expected_fence: i64,
+    pub not_started_observation: BugNotStartedObservation,
+}
+impl CancelBugSearchBeforeStart {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        self.not_started_observation.validate()?;
+        if !(1..=MAX_SAFE_VERSION).contains(&self.expected_fence) {
+            return Err(AppError::validation("invalid cancellation fence"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugPreRunEndKind {
+    CancelledBeforeStart,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugSearchCancellationReceipt {
+    pub contract_version: u8,
+    pub kind: BugPreRunEndKind,
+    pub operation_id: Uuid,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub execution_id: Uuid,
+    pub fence: i64,
+    pub not_started_observation: BugNotStartedObservation,
+    pub custody_released: bool,
+    pub accepted_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn created_disposal_is_closed_positive_custody_and_never_an_unknown_runtime_exit() {
+        let agent = Uuid::new_v4();
+        let context = Uuid::new_v4();
+        let proof = json!({"contract_version":1,"operation_id":Uuid::new_v4(),
+            "resource_id":agent,"context_id":context,"generation":Uuid::new_v4(),"container_id":"a".repeat(64),
+            "registration_sha256":"b".repeat(64),"request_sha256":"c".repeat(64),
+            "state":"observed","observation":"never_started_removed"});
+        let custody = BugPreRunRuntimeCustody {
+            contract_version: 1,
+            disposition: BugPreRunCustodyDisposition::NeverStartedRemoved,
+            context_id: Some(context),
+            stop_proof: Some(proof.clone()),
+            stop_proof_sha256: Some("d".repeat(64)),
+        };
+        custody.validate(agent).unwrap();
+        for field in [
+            "contract_version",
+            "context_id",
+            "resource_id",
+            "generation",
+            "registration_sha256",
+            "request_sha256",
+            "state",
+            "observation",
+            "unknown",
+        ] {
+            let mut bad = custody.clone();
+            bad.stop_proof.as_mut().unwrap()[field] = json!("unconfirmed");
+            assert!(bad.validate(agent).is_err(), "{field}");
+        }
+        let mut bad = custody.clone();
+        bad.context_id = Some(Uuid::new_v4());
+        assert!(bad.validate(agent).is_err());
+        let mut bad = custody.clone();
+        bad.disposition = BugPreRunCustodyDisposition::NamespaceExited;
+        assert!(bad.validate(agent).is_err());
+        let now = chrono::Utc::now();
+        let unbound=crate::bug_search_unbound::BugUnboundObservation {contract_version:1,execution_id:Uuid::new_v4(),agent_id:agent,
+            snapshot_sha256:"e".repeat(64),journal_ref:"fleet:sealed-attempt".into(),observed_at:now,
+            native_submission:crate::bug_search_unbound::BugUnboundNativeSubmission{operation_key:"native:original".into(),body_sha256:"f".repeat(64),submitted_at:now,acceptance:crate::bug_search_unbound::BugUnknownNativeAcceptance::Unknown,actual_run_ref:()},
+            workflow_handoff:crate::bug_search_unbound::BugUnboundWorkflowHandoff{disposition:crate::bug_search_unbound::BugUnboundHandoffDisposition::BindAndHandoffNeverSubmitted,bind_journal_ref:"fleet:bind".into(),handoff_journal_ref:"fleet:handoff".into(),observed_at:now},
+            runtime_custody:custody};
+        assert!(
+            unbound.validate().is_err(),
+            "101 still requires an actual namespace exit"
+        );
+    }
+    #[test]
+    fn not_submitted_requires_no_custody_or_original_confirmed_namespace_exit() {
+        let agent = Uuid::new_v4();
+        let mut c = BugPreRunRuntimeCustody {
+            contract_version: 1,
+            disposition: BugPreRunCustodyDisposition::NeverProvisioned,
+            context_id: None,
+            stop_proof: None,
+            stop_proof_sha256: None,
+        };
+        c.validate(agent).unwrap();
+        c.context_id = Some(Uuid::new_v4());
+        assert!(c.validate(agent).is_err());
+        c.disposition = BugPreRunCustodyDisposition::NamespaceExited;
+        c.stop_proof = Some(json!({"contract_version":4,"operation_id":Uuid::new_v4(),
+            "container_id":"a".repeat(64),"generation":Uuid::new_v4(),"resource_id":agent,
+            "snapshot_sha256":"b".repeat(64),"state":"observed","observation":"namespace_exited"}));
+        c.stop_proof_sha256 = Some("c".repeat(64));
+        c.validate(agent).unwrap();
+        for field in ["state", "observation", "resource_id", "unknown"] {
+            let mut wrong = c.clone();
+            wrong.stop_proof.as_mut().unwrap()[field] = json!("unconfirmed");
+            assert!(wrong.validate(agent).is_err(), "{field}");
+        }
+        let encoded = serde_json::to_value(&c).unwrap();
+        let mut wrong = encoded;
+        wrong["disposition"] = json!("ttl_expired");
+        assert!(serde_json::from_value::<BugPreRunRuntimeCustody>(wrong).is_err());
+    }
+}
+
+#[cfg(test)]
+mod unprepared_successor_tests {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn unprepared_successor_carrier_is_closed_context_bound_and_never_a_runtime_exit() {
+        let raw:Value=serde_json::from_str(r#"{"contract_version":1,"state":"cancelled","observation":"unprepared_successor_cancelled","operation_id":"11111111-1111-4111-8111-111111111111","resource_id":"22222222-2222-4222-8222-222222222222","context_id":"33333333-3333-4333-8333-333333333333","generation":"44444444-4444-4444-8444-444444444444","command_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","intent_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","origin_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","family_manifest_sha256":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","predecessor_sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee","execution_sources_sha256":"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff","creation_request_sha256":"0000000000000000000000000000000000000000000000000000000000000000"}"#).unwrap();
+        let p: BaseUnpreparedSuccessorCancelledProof = serde_json::from_value(raw.clone()).unwrap();
+        p.validate(p.resource_id, p.context_id).unwrap();
+        let c = BugPreRunRuntimeCustody {
+            contract_version: 1,
+            disposition: BugPreRunCustodyDisposition::UnpreparedSuccessorCancelled,
+            context_id: Some(p.context_id),
+            stop_proof: Some(raw.clone()),
+            stop_proof_sha256: Some("a".repeat(64)),
+        };
+        c.validate(p.resource_id).unwrap();
+        assert!(p.validate(Uuid::new_v4(), p.context_id).is_err());
+        assert!(p.validate(p.resource_id, Uuid::new_v4()).is_err());
+        for field in [
+            "observation",
+            "generation",
+            "family_manifest_sha256",
+            "extra",
+        ] {
+            let mut bad = c.clone();
+            bad.stop_proof.as_mut().unwrap()[field] = json!("namespace_exited");
+            assert!(bad.validate(p.resource_id).is_err());
+        }
+        let mut bad = c.clone();
+        bad.disposition = BugPreRunCustodyDisposition::NamespaceExited;
+        assert!(bad.validate(p.resource_id).is_err());
+        bad.disposition = BugPreRunCustodyDisposition::NeverProvisioned;
+        assert!(bad.validate(p.resource_id).is_err());
+        // Original NeverProvisioned/null layout is unchanged by this new variant.
+        let old = BugPreRunRuntimeCustody {
+            contract_version: 1,
+            disposition: BugPreRunCustodyDisposition::NeverProvisioned,
+            context_id: None,
+            stop_proof: None,
+            stop_proof_sha256: None,
+        };
+        assert_eq!(
+            serde_json::to_value(old).unwrap(),
+            json!({"contract_version":1,"disposition":"never_provisioned","context_id":null,"stop_proof":null,"stop_proof_sha256":null})
+        );
+    }
+}

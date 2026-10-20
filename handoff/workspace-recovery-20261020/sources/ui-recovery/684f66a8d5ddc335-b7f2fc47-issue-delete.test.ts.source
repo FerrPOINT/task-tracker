@@ -1,0 +1,117 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { api } from './client'
+import {
+  deleteIssue,
+  IssueDeleteError,
+  purgeIssue,
+  restoreIssue,
+  TrashMutationError,
+} from './issue'
+
+vi.mock('./client', () => ({ api: { DELETE: vi.fn(), POST: vi.fn() } }))
+
+describe('issue deletion confirmation', () => {
+  beforeEach(() => {
+    vi.mocked(api.DELETE).mockReset()
+  })
+
+  it('accepts bodyless 204 only after HTTP confirmation', async () => {
+    vi.mocked(api.DELETE).mockResolvedValue({ response: new Response(null, { status: 204 }) })
+    await expect(deleteIssue('issue-id')).resolves.toBeUndefined()
+    expect(api.DELETE).toHaveBeenCalledWith('/api/v1/issues/{id}', {
+      params: { path: { id: 'issue-id' } },
+    })
+  })
+
+  it.each([400, 401, 403, 409, 422, 429])(
+    'retains explicit rejection %s without server diagnostics',
+    async (status) => {
+      vi.mocked(api.DELETE).mockResolvedValue({
+        error: { diagnostic: 'private detail' },
+        response: new Response(null, { status }),
+      })
+      await expect(deleteIssue('issue-id')).rejects.toMatchObject({ status, outcome: 'rejected' })
+    },
+  )
+
+  it.each([404, 500, 503])('does not mistake an empty %s response for success', async (status) => {
+    vi.mocked(api.DELETE).mockResolvedValue({ response: new Response(null, { status }) })
+    await expect(deleteIssue('issue-id')).rejects.toMatchObject({ status, outcome: 'unknown' })
+  })
+
+  it('treats loss of the response as unknown without retrying', async () => {
+    vi.mocked(api.DELETE).mockRejectedValue(new Error('private detail'))
+    await expect(deleteIssue('issue-id')).rejects.toBeInstanceOf(IssueDeleteError)
+    expect(api.DELETE).toHaveBeenCalledOnce()
+  })
+})
+
+describe('permanent issue deletion confirmation', () => {
+  beforeEach(() => {
+    vi.mocked(api.DELETE).mockReset()
+  })
+
+  it('accepts a confirmed bodyless 204', async () => {
+    vi.mocked(api.DELETE).mockResolvedValue({ response: new Response(null, { status: 204 }) })
+    await expect(purgeIssue('issue-id')).resolves.toBeUndefined()
+    expect(api.DELETE).toHaveBeenCalledWith('/api/v1/issues/{id}/trash', {
+      params: { path: { id: 'issue-id' } },
+    })
+  })
+
+  it.each([400, 401, 403, 404, 409, 429, 500, 503])(
+    'rejects a bodyless HTTP %s instead of reporting permanent deletion',
+    async (status) => {
+      vi.mocked(api.DELETE).mockResolvedValue({ response: new Response(null, { status }) })
+      await expect(purgeIssue('issue-id')).rejects.toMatchObject({
+        status,
+        outcome: [400, 401, 403, 409, 429].includes(status) ? 'rejected' : 'unknown',
+      })
+      expect(api.DELETE).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('does not retry a transport failure', async () => {
+    vi.mocked(api.DELETE).mockRejectedValue(new Error('network unavailable'))
+    await expect(purgeIssue('issue-id')).rejects.toBeInstanceOf(TrashMutationError)
+    expect(api.DELETE).toHaveBeenCalledOnce()
+  })
+})
+
+describe('trash restoration confirmation', () => {
+  beforeEach(() => {
+    vi.mocked(api.POST).mockReset()
+  })
+
+  it('accepts a confirmed response only for the requested issue', async () => {
+    const data = { id: 'issue-id' }
+    vi.mocked(api.POST).mockResolvedValue({ data, response: new Response(null, { status: 200 }) })
+    await expect(restoreIssue('issue-id')).resolves.toEqual(data)
+  })
+
+  it.each([400, 401, 403, 404, 409, 422, 429, 500, 503])(
+    'rejects an empty HTTP %s',
+    async (status) => {
+      vi.mocked(api.POST).mockResolvedValue({ response: new Response(null, { status }) })
+      await expect(restoreIssue('issue-id')).rejects.toMatchObject({
+        status,
+        outcome: [400, 401, 403, 409, 422, 429].includes(status) ? 'rejected' : 'unknown',
+      })
+      expect(api.POST).toHaveBeenCalledOnce()
+    },
+  )
+
+  it.each([undefined, { id: 'another-issue' }])(
+    'does not accept missing or unrelated data',
+    async (data) => {
+      vi.mocked(api.POST).mockResolvedValue({ data, response: new Response(null, { status: 200 }) })
+      await expect(restoreIssue('issue-id')).rejects.toMatchObject({ outcome: 'unknown' })
+    },
+  )
+
+  it('does not expose or automatically retry a transport failure', async () => {
+    vi.mocked(api.POST).mockRejectedValue(new Error('private credential'))
+    await expect(restoreIssue('issue-id')).rejects.toThrow('Trash change was not confirmed')
+    expect(api.POST).toHaveBeenCalledOnce()
+  })
+})

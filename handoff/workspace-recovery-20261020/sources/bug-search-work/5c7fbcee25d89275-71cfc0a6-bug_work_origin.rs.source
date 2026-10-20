@@ -1,0 +1,131 @@
+//! Bounded owner projection of an existing canonical Bug's source occurrence.
+use crate::bug_search::{bounded_text, sha256};
+use crate::bug_search_control::{
+    BugResolvedTarget, BugSearchMode, BugSearchSnapshot, BugSnapshotProject, bounded_json, paths,
+};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkOriginRef {
+    pub contract_version: u8,
+    pub execution_id: Uuid,
+    pub finding_id: Uuid,
+    pub snapshot_sha256: String,
+    pub source_context_sha256: String,
+}
+impl BugWorkOriginRef {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.contract_version != 1
+            || self.execution_id.is_nil()
+            || self.finding_id.is_nil()
+            || !sha256(&self.snapshot_sha256)
+            || !sha256(&self.source_context_sha256)
+        {
+            return Err(AppError::validation("invalid Bug work source origin"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkSourceContext {
+    pub contract_version: u8,
+    pub project: BugSnapshotProject,
+    pub mode: BugSearchMode,
+    pub targets: Vec<BugResolvedTarget>,
+    pub scope: Vec<String>,
+    pub excluded_paths: Vec<String>,
+}
+impl BugWorkSourceContext {
+    pub fn from_snapshot(snapshot: &BugSearchSnapshot) -> Result<Self, AppError> {
+        snapshot.validate()?;
+        let result = Self {
+            contract_version: 1,
+            project: snapshot.project.clone(),
+            mode: snapshot.mode,
+            targets: snapshot.targets.clone(),
+            scope: snapshot.scope.clone(),
+            excluded_paths: snapshot.excluded_paths.clone(),
+        };
+        result.validate()?;
+        Ok(result)
+    }
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.contract_version != 1
+            || self.project.project_id.is_nil()
+            || !bounded_text(&self.project.tracker_instance_id, 128)
+            || self.targets.is_empty()
+            || self.targets.len() > 16
+            || !paths(&self.scope, false)
+            || !paths(&self.excluded_paths, true)
+            || !bounded_json(self)
+        {
+            return Err(AppError::validation(
+                "invalid bounded Bug work source context",
+            ));
+        }
+        for target in &self.targets {
+            target.validate(self.mode)?;
+            if target
+                .source
+                .as_ref()
+                .is_some_and(|s| s.project.project_id != self.project.project_id)
+            {
+                return Err(AppError::validation(
+                    "Bug source context project differs from provenance",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkOriginReadback {
+    pub contract_version: u8,
+    pub assignment_id: Uuid,
+    pub assignment_sha256: String,
+    pub origin: BugWorkOriginRef,
+    pub source_context: BugWorkSourceContext,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn source_projection_preserves_multirepo_pins_and_rejects_paths_and_unresolved_targets() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../app/tests/fixtures/bug_search_v1.json"))
+                .unwrap();
+        let snapshot: BugSearchSnapshot =
+            serde_json::from_value(fixture["vectors"][1]["value"].clone()).unwrap();
+        let mut context = BugWorkSourceContext::from_snapshot(&snapshot).unwrap();
+        context.targets.push(BugResolvedTarget {
+            repository_ref: "catalog:second".into(),
+            commit_sha: "a".repeat(40),
+            target_ref: None,
+            deployment_ref: None,
+            source: None,
+        });
+        context.validate().unwrap();
+        assert_eq!(context.targets[0], snapshot.targets[0]);
+        for mode in 0..5 {
+            let mut bad = context.clone();
+            match mode {
+                0 => bad.targets[1].commit_sha = "main".into(),
+                1 => bad.scope = vec!["../secrets".into()],
+                2 => bad.mode = BugSearchMode::Qa,
+                3 => bad.targets = vec![bad.targets[0].clone(); 17],
+                _ => bad.excluded_paths = vec!["x".repeat(512); 128],
+            }
+            assert!(bad.validate().is_err());
+        }
+        let mut value = serde_json::to_value(context).unwrap();
+        value["credential"] = serde_json::json!("forbidden");
+        assert!(serde_json::from_value::<BugWorkSourceContext>(value).is_err());
+    }
+}

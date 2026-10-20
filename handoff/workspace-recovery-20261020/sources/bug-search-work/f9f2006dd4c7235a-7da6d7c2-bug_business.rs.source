@@ -1,0 +1,332 @@
+//! Actual HTTP consumer; synthetic CI owner asserts no build/deployment success.
+use super::*;
+use axum::extract::{Path, Query};
+pub(super) struct Owner {
+    pub origin: String,
+    pub token_file: std::path::PathBuf,
+    handle: tokio::task::JoinHandle<()>,
+}
+impl Drop for Owner {
+    fn drop(&mut self) {
+        self.handle.abort();
+        let _ = std::fs::remove_file(&self.token_file);
+    }
+}
+pub(super) async fn owner(database_url: &str) -> Owner {
+    let db = Arc::new(Database::connect(database_url).await.unwrap());
+    let router = Router::new()
+        .route(
+            "/api/v1/projects/{configuration}/bug-work-operations/{key}/delivery-proof/{target}",
+            get(proof),
+        )
+        .with_state(db);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let handle = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let token_file = std::env::temp_dir().join(format!("tt-bug-business-owner-{}", Uuid::new_v4()));
+    std::fs::write(&token_file, "synthetic-delivery-owner-token").unwrap();
+    Owner {
+        origin,
+        token_file,
+        handle,
+    }
+}
+async fn proof(
+    State(db): State<Arc<DatabaseConnection>>,
+    Path((configuration, key, target)): Path<(Uuid, String, String)>,
+    Query(q): Query<HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, StatusCode> {
+    if headers.get("authorization").and_then(|v| v.to_str().ok())
+        != Some("Bearer synthetic-delivery-owner-token")
+        || target != "qa:business"
+    {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let id = q
+        .get("assignment_id")
+        .and_then(|v| Uuid::parse_str(v).ok())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    let row=db.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,"SELECT payload,payload_sha256,binding FROM sdlc_bug_work_assignments WHERE assignment_id=$1",[id.into()])).await.unwrap().ok_or(StatusCode::NOT_FOUND)?;
+    let g: Value = row.try_get("", "payload").unwrap();
+    let binding: Value = row.try_get("", "binding").unwrap();
+    let source_exec: Uuid = g["origin"]["execution_id"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    let original = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT snapshot FROM sdlc_bug_search_executions WHERE execution_id=$1",
+            [source_exec.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let snapshot: Value = original.try_get("", "snapshot").unwrap();
+    let source = &snapshot["targets"][0]["source"];
+    let candidate = "b".repeat(40);
+    if source["configuration_id"] != json!(configuration)
+        || q.get("candidate_commit_sha").map(String::as_str) != Some(candidate.as_str())
+    {
+        return Err(StatusCode::CONFLICT);
+    }
+    let mut fixture: Value = serde_json::from_str(include_str!(
+        "../../../domain/tests/fixtures/bug-work-delivery-v1.json"
+    ))
+    .unwrap();
+    let p = &mut fixture["proof"];
+    p["observedAt"] = json!(shared::now());
+    p["project"] =
+        json!({"trackerInstanceId":g["tracker_instance_uuid"],"projectId":g["project_id"]});
+    p["configurationId"] = json!(configuration);
+    p["repositoryId"] = source["repository_id"].clone();
+    p["targetRef"] = json!(target);
+    p["operation"]["operationKey"] = json!(key);
+    p["operation"]["requestSha256"] = json!(q.get("request_sha256").unwrap());
+    p["bugWork"] = json!({"bugId":g["bug_id"],"assignmentId":id,"assignmentSha256":row.try_get::<String>("","payload_sha256").unwrap(),"fence":g["fence"],
+        "ownerSubject":g["owner_subject"],"runtimeBindingSha256":app::bug_search::canonical_hash(&binding).unwrap(),"sourceContextSha256":g["origin"]["source_context_sha256"],
+        "verificationBasisSha256":g["verification_basis_sha256"],"canonicalBasisSha256":g["canonical_basis_sha256"],"baseCommitSha":g["verification_basis"]["checked_version"],"candidateCommitSha":"b".repeat(40)});
+    let technical = db.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,
+        "SELECT r.execution_id FROM sdlc_bug_search_results r JOIN sdlc_bug_search_executions e USING(execution_id,project_id) WHERE e.project_id=$1 AND e.snapshot->>'bug_id'=$2 LIMIT 1",
+        [g["project_id"].as_str().unwrap().parse::<Uuid>().unwrap().into(),g["bug_id"].as_str().unwrap().into()])).await.unwrap();
+    if technical.is_none() {
+        p["artifact"] = Value::Null;
+        p["delivery"] = Value::Null;
+        p["status"] = json!("unavailable");
+        p["blockedReasons"] = json!(["pipeline_pending"]);
+    } else {
+        p["delivery"]["servingIdentity"]["observedAt"] = json!(shared::now());
+    }
+    Ok(Json(p.clone()))
+}
+
+/// Positive HTTP business acceptance consumes retained technical rows. These
+/// producer/runtime observations are synthetic; the real SQL and handlers are not.
+pub(super) async fn apply(
+    client: &Client,
+    base: &str,
+    db: &DatabaseConnection,
+    project: Uuid,
+    assignment: &str,
+    bug: Uuid,
+) {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT payload FROM sdlc_bug_work_assignments WHERE assignment_id=$1",
+            [assignment.parse::<Uuid>().unwrap().into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let g: Value = row.try_get("", "payload").unwrap();
+    let original = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT snapshot FROM sdlc_bug_search_executions WHERE execution_id=$1",
+            [g["origin"]["execution_id"]
+                .as_str()
+                .unwrap()
+                .parse::<Uuid>()
+                .unwrap()
+                .into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut snapshot: Value = original.try_get("", "snapshot").unwrap();
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../domain/tests/fixtures/bug-work-delivery-v1.json"
+    ))
+    .unwrap();
+    let delivered = &fixture["proof"]["delivery"];
+    snapshot["kind"] = json!("verification");
+    snapshot["mode"] = json!("qa");
+    snapshot["bug_id"] = json!(bug);
+    snapshot["agent_id"] = json!(Uuid::new_v4());
+    snapshot["expected_fixed_deployment_ref"] = delivered["deliveryRef"].clone();
+    let mut basis = g["verification_basis"].clone();
+    basis["source"] = g["source_identity"].clone();
+    basis["source_identity"] = g["source_sha256"].clone();
+    snapshot["verification_basis"] = basis.clone();
+    snapshot["targets"][0]["commit_sha"] = json!("b".repeat(40));
+    snapshot["targets"][0]["source"]["observed_head_sha"] = json!("b".repeat(40));
+    snapshot["targets"][0]["target_ref"] = json!("qa:business");
+    snapshot["targets"][0]["deployment_ref"] = delivered["deliveryRef"].clone();
+    let typed: domain::bug_search_control::BugSearchSnapshot =
+        serde_json::from_value(snapshot.clone()).unwrap();
+    app::bug_search_verification::require_basis(&typed).unwrap();
+    let execution = Uuid::new_v4();
+    let hash = app::bug_search::canonical_hash(&snapshot).unwrap();
+    let runtime = json!({"contract_version":1,"execution_id":execution,"agent_id":snapshot["agent_id"],"session_id":Uuid::new_v4(),"session_run_id":Uuid::new_v4(),"hermes_run_ref":"hermes:synthetic-business-verification","terminal_status":"succeeded","observed_at":shared::now()});
+    let result = json!({"coverage":"complete","findings":[],"verification":{"bug_id":bug,"basis_sha256":app::bug_search::canonical_hash(&basis).unwrap(),"delivery_ref":delivered["deliveryRef"],"verdict":"passed","actual":"Original scenario succeeds on expected B","evidence_refs":["evidence:synthetic-http-scenario"]}});
+    app::bug_search_verification::require_result(
+        &typed,
+        &serde_json::from_value(result.clone()).unwrap(),
+    )
+    .unwrap();
+    let mut target = delivered.clone();
+    target["targetUrl"] = json!("https://qa.example.test/");
+    let source = &snapshot["targets"][0]["source"];
+    let observed = json!({"schema":"forge/delivered-target/v1","producerVersion":"test-owner","project":{"trackerInstanceId":g["tracker_instance_uuid"],"projectId":project},"configurationId":source["configuration_id"],"repositoryId":source["repository_id"],"environmentId":fixture["proof"]["environmentId"],"targetRef":"qa:business","status":"confirmed","blockedReasons":[],"target":target});
+    let workflow = json!({"contract_version":1,"state":"completed","phase_index":3,"execution_id":execution,"snapshot_sha256":hash,"session_id":runtime["session_id"],"session_run_id":runtime["session_run_id"],"hermes_run_ref":runtime["hermes_run_ref"],"result":result,"result_qualification":"qa_same_version","target_observations":{"before":[observed.clone()],"after":[observed]}});
+    let fence = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT max(fence)+1 AS fence FROM sdlc_bug_search_executions",
+        ))
+        .await
+        .unwrap()
+        .unwrap()
+        .try_get::<i64>("", "fence")
+        .unwrap();
+    let result_hash = app::bug_search::canonical_hash(&result).unwrap();
+    let terminal = json!({"contract_version":1,"operation_id":Uuid::new_v4(),"tracker_instance_id":g["tracker_instance_id"],"project_id":project,"execution_id":execution,"fence":fence,"runtime_observation":runtime,"custody_released":true,"result_sha256":result_hash,"result_available":true,"accepted_at":shared::now()});
+    let expected_delivery_ref = typed.expected_fixed_deployment_ref.clone().unwrap();
+    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,"INSERT INTO sdlc_bug_search_executions(execution_id,tracker_instance_id,tracker_instance_uuid,project_id,owner_subject,agent_id,purpose,snapshot_sha256,snapshot,policy_revision,fence,machine_subject,grant_ref,admission_state,workflow_receipt,expires_at,capacity_held,terminal_receipt,bug_id,expected_delivery_ref) VALUES($1,$2,$3,$4,'owner',$5,'verification',$6,$7,1,$8,$12,$9,'admitted',$10,now()+interval '1 hour',false,$11,$13,$14)",
+        vec![execution.into(),g["tracker_instance_id"].as_str().unwrap().into(),g["tracker_instance_uuid"].as_str().unwrap().parse::<Uuid>().unwrap().into(),project.into(),typed.agent_id.into(),hash.into(),snapshot.into(),fence.into(),Uuid::new_v4().into(),workflow.clone().into(),terminal.into(),g["machine_subject"].as_str().unwrap().into(),bug.into(),expected_delivery_ref.into()])).await.unwrap();
+    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,"INSERT INTO sdlc_bug_search_results(execution_id,project_id,result_sha256,result,workflow_receipt_sha256,workflow_receipt) VALUES($1,$2,$3,$4,$5,$6)",vec![execution.into(),project.into(),result_hash.into(),result.into(),app::bug_search::canonical_hash(&workflow).unwrap().into(),workflow.into()])).await.unwrap();
+    let issue = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT status_id,updated_at FROM issues WHERE id=$1",
+            [bug.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let status = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT id,name FROM statuses WHERE is_closed LIMIT 1",
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let from: Uuid = issue.try_get("", "status_id").unwrap();
+    let to: Uuid = status.try_get("", "id").unwrap();
+    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,"INSERT INTO workflow_transitions(id,from_status_id,to_status_id) VALUES($1,$2,$3) ON CONFLICT DO NOTHING",[Uuid::new_v4().into(),from.into(),to.into()])).await.unwrap();
+    db.execute(Statement::from_sql_and_values(DatabaseBackend::Postgres,"UPDATE boards SET columns=$2 WHERE project_id=$1",[project.into(),json!([{"id":to,"name":status.try_get::<String>("","name").unwrap(),"category":"Done","wip_limit":null,"position":0}]).into()])).await.unwrap();
+    let body = json!({"contract_version":1,"idempotency_key":"http-business-apply","expected_candidate_revision":1,"verification_execution_id":execution,"expected_status_id":from,"expected_updated_at":issue.try_get::<shared::Timestamp>("","updated_at").unwrap(),"target_status_id":to});
+    let url =
+        format!("{base}/api/v1/projects/{project}/sdlc/bug-intake/bugs/{bug}/apply-verification");
+    for token in ["sdlc_pat_bugs_workflow", "sdlc_pat_bugs_fleet_read"] {
+        post(client, &url, token, &body, 403).await;
+    }
+    let accepted = post(client, &url, "sdlc_pat_bugs_fleet", &body, 201).await;
+    assert_eq!(accepted["outcome"]["kind"], "verification_applied");
+    assert_eq!(accepted["outcome"]["result"]["target_status_id"], json!(to));
+    assert_eq!(
+        post(client, &url, "sdlc_pat_bugs_fleet", &body, 200).await,
+        accepted
+    );
+    let changed=db.query_one(Statement::from_sql_and_values(DatabaseBackend::Postgres,"SELECT status_id,(SELECT count(*) FROM issue_status_history WHERE issue_id=$1 AND to_status_id=$2) AS transitions FROM issues WHERE id=$1",[bug.into(),to.into()])).await.unwrap().unwrap();
+    assert_eq!(changed.try_get::<Uuid>("", "status_id").unwrap(), to);
+    assert_eq!(changed.try_get::<i64>("", "transitions").unwrap(), 1);
+}
+#[allow(clippy::too_many_arguments)]
+pub(super) async fn verify(
+    client: &Client,
+    base: &str,
+    db: &DatabaseConnection,
+    project: Uuid,
+    owner: &str,
+    assignment: &str,
+    fence: &i64,
+    hash: &Value,
+    bug: Uuid,
+) {
+    let root = format!("{base}/api/v1/projects/{project}/sdlc/bug-intake");
+    let url = format!("{root}/assignments/{assignment}/candidate");
+    let command = json!({"contract_version":1,"idempotency_key":"http-business-pin","expected_candidate_revision":0,"target_ref":"qa:business","locator":{
+        "operation_key":"ci:http-business","request_sha256":"a".repeat(64),"assignment_id":assignment,"assignment_sha256":hash,"expected_fence":fence,"candidate_commit_sha":"b".repeat(40)}});
+    for token in [
+        owner,
+        "sdlc_pat_bugs_workflow",
+        "sdlc_pat_bugs_ci_reader",
+        "sdlc_pat_bugs_wrong_scope",
+    ] {
+        post(client, &url, token, &command, 403).await;
+    }
+    let mut unknown = command.clone();
+    unknown["proof"] = json!({"verified":true});
+    post(client, &url, "sdlc_pat_bugs_fleet", &unknown, 422).await;
+    let accepted = post(client, &url, "sdlc_pat_bugs_fleet", &command, 201).await;
+    assert_eq!(accepted["outcome"]["kind"], "candidate_pinned");
+    assert!(accepted["outcome"]["result"]["accepted_proof"]["artifact"].is_null());
+    assert_eq!(
+        post(client, &url, "sdlc_pat_bugs_fleet", &command, 200).await,
+        accepted
+    );
+    let current_url = format!("{root}/bugs/{bug}/candidate");
+    for token in [owner, "sdlc_pat_bugs_workflow", "sdlc_pat_bugs_fleet_read"] {
+        assert_eq!(
+            client
+                .get(&current_url)
+                .bearer_auth(token)
+                .send()
+                .await
+                .unwrap()
+                .status(),
+            403
+        );
+    }
+    let current = client
+        .get(&current_url)
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(current.status(), 200);
+    assert_eq!(current.headers()["cache-control"], "no-store");
+    assert_eq!(
+        current.json::<Value>().await.unwrap(),
+        accepted["outcome"]["result"]
+    );
+    let target = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT status_id,updated_at FROM issues WHERE id=$1",
+            [bug.into()],
+        ))
+        .await
+        .unwrap()
+        .unwrap();
+    let moved = json!({"contract_version":1,"idempotency_key":"http-business-no-proof","expected_candidate_revision":1,"verification_execution_id":Uuid::new_v4(),"expected_status_id":target.try_get::<Uuid>("","status_id").unwrap(),
+        "expected_updated_at":target.try_get::<shared::Timestamp>("","updated_at").unwrap(),"target_status_id":Uuid::new_v4()});
+    post(
+        client,
+        &format!("{root}/bugs/{bug}/apply-verification"),
+        "sdlc_pat_bugs_fleet",
+        &moved,
+        409,
+    )
+    .await;
+    let mut stale = command.clone();
+    stale["idempotency_key"] = json!("http-business-stale");
+    post(client, &url, "sdlc_pat_bugs_fleet", &stale, 409).await;
+    db.execute_unprepared("UPDATE users SET is_active=false WHERE central_sub='owner'")
+        .await
+        .unwrap();
+    assert_eq!(
+        post(client, &url, "sdlc_pat_bugs_fleet", &command, 200).await,
+        accepted
+    );
+    let response = client
+        .get(format!("{root}/business-operations/http-business-pin"))
+        .bearer_auth("sdlc_pat_bugs_fleet")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.json::<Value>().await.unwrap(), accepted);
+    let mut fresh = command;
+    fresh["idempotency_key"] = json!("http-business-revoked");
+    fresh["expected_candidate_revision"] = json!(1);
+    post(client, &url, "sdlc_pat_bugs_fleet", &fresh, 403).await;
+    db.execute_unprepared("UPDATE users SET is_active=true WHERE central_sub='owner'")
+        .await
+        .unwrap();
+}

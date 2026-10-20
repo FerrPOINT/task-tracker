@@ -1,0 +1,171 @@
+import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import { ThemeProvider } from '@sdlc/ui/lib'
+import i18n from '@/shared/i18n/config'
+import { WorklogTab } from './WorklogTab'
+import type { Worklog } from '@/entities/worklog/model'
+
+beforeAll(() => {
+  i18n.changeLanguage('en')
+})
+
+function wrapper(children: React.ReactNode) {
+  return (
+    <ThemeProvider>
+      <MemoryRouter>{children}</MemoryRouter>
+    </ThemeProvider>
+  )
+}
+
+const worklogs: Worklog[] = [
+  {
+    id: 'w1',
+    issueId: 'i1',
+    userId: 'u1',
+    userDisplayName: 'Alice',
+    timeSpentSeconds: 3600,
+    startedAt: '2026-08-01T10:00:00Z',
+    comment: 'Fixed the bug',
+    createdAt: '2026-08-01T10:00:00Z',
+    updatedAt: '2026-08-01T10:00:00Z',
+  },
+  {
+    id: 'w2',
+    issueId: 'i1',
+    userId: 'u2',
+    userDisplayName: 'Bob',
+    timeSpentSeconds: 1800,
+    startedAt: '2026-08-02T10:00:00Z',
+    comment: null,
+    createdAt: '2026-08-02T10:00:00Z',
+    updatedAt: '2026-08-02T10:00:00Z',
+  },
+]
+
+describe('WorklogTab', () => {
+  it('renders worklog entries', () => {
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
+    // Names appear in both desktop table and mobile card
+    expect(screen.getAllByText('Alice').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Bob').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('Fixed the bug').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('renders total logged time', () => {
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
+    expect(screen.getByText(/total logged/i)).toBeInTheDocument()
+    // 3600 + 1800 = 5400s = 1h 30m
+    expect(screen.getByText('1h 30m')).toBeInTheDocument()
+  })
+
+  it('renders empty state when no worklogs', () => {
+    render(
+      wrapper(<WorklogTab worklogs={[]} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />),
+    )
+    expect(screen.getByText(/no entries yet/i)).toBeInTheDocument()
+  })
+
+  it('shows edit button only for current user worklogs', () => {
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
+    // Alice's worklog (u1 === currentUserId) should have edit buttons (desktop + mobile)
+    expect(screen.getAllByLabelText(/edit worklog/i)).toHaveLength(2)
+  })
+
+  it('keeps delete confirmation open when the request fails', async () => {
+    const onDelete = vi.fn().mockRejectedValue(new Error('Server rejected deletion'))
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={onDelete} currentUserId="u1" />,
+      ),
+    )
+    fireEvent.click(screen.getAllByLabelText(/delete worklog/i)[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith('w1'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not delete the time entry')
+    expect(screen.queryByText('Server rejected deletion')).not.toBeInTheDocument()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+  })
+
+  it('does not offer a per-entry remaining estimate that the API does not provide', () => {
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={vi.fn()} currentUserId="u1" />,
+      ),
+    )
+    expect(screen.queryByRole('columnheader', { name: /Remaining/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Remaining$/i)).not.toBeInTheDocument()
+  })
+
+  it('waits for delete, blocks duplicates and clears old failure on a new confirmation', async () => {
+    let resolve!: () => void
+    const onDelete = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('failed'))
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((r) => {
+            resolve = r
+          }),
+      )
+    render(
+      wrapper(
+        <WorklogTab worklogs={worklogs} onEdit={vi.fn()} onDelete={onDelete} currentUserId="u1" />,
+      ),
+    )
+    fireEvent.click(screen.getAllByLabelText(/delete worklog/i)[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
+    fireEvent.click(screen.getAllByLabelText(/delete worklog/i)[0]!)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    const confirm = screen.getByRole('button', { name: /confirm/i })
+    await act(async () => {
+      fireEvent.click(confirm)
+      fireEvent.click(confirm)
+    })
+    expect(onDelete).toHaveBeenCalledTimes(2)
+    expect(confirm).toBeDisabled()
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled()
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    await act(async () => {
+      resolve()
+    })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+  })
+
+  it('keeps a pending confirmation when the collection becomes empty, then focuses the safe region', async () => {
+    let resolve!: () => void
+    const onDelete = vi.fn(
+      () =>
+        new Promise<void>((r) => {
+          resolve = r
+        }),
+    )
+    const props = { onEdit: vi.fn(), onDelete, currentUserId: 'u1' }
+    const view = render(wrapper(<WorklogTab worklogs={worklogs} {...props} />))
+    const initiator = screen.getAllByLabelText(/delete worklog/i)[0]!
+    initiator.focus()
+    fireEvent.click(initiator)
+    fireEvent.click(screen.getByRole('button', { name: /confirm/i }))
+    view.rerender(wrapper(<WorklogTab worklogs={[]} {...props} />))
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    await act(async () => {
+      resolve()
+    })
+    await waitFor(() => expect(screen.getByRole('region', { name: /^Worklog$/i })).toHaveFocus())
+    expect(screen.getByText(/No entries yet/i)).toBeInTheDocument()
+  })
+})

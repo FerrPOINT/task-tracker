@@ -1,0 +1,38 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { describe, expect, it, vi } from 'vitest'
+import { endSso } from '@sdlc/ui/sso'
+import { useLogout } from './hooks'
+
+const auth = vi.hoisted(() => ({ token: 'test-token', logout: vi.fn() }))
+vi.mock('@sdlc/ui/sso', () => ({ endSso: vi.fn() }))
+vi.mock('@/shared/auth/store', () => ({
+  ssoConfig: { issuer: 'http://localhost:7701', clientId: 'task-tracker' },
+  useAuthStore: Object.assign((selector: (state: typeof auth) => unknown) => selector(auth), {
+    getState: () => auth,
+  }),
+}))
+
+describe('central logout', () => {
+  it('does not trigger an anonymous route or clear queries before central navigation', async () => {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    client.setQueryData(['me'], { id: 'test-user' })
+    const { result } = renderHook(useLogout, {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    })
+    vi.mocked(endSso).mockImplementationOnce(() => {
+      expect(auth.token).toBe('test-token')
+      expect(auth.logout).not.toHaveBeenCalled()
+    })
+    await act(async () => {
+      await result.current.mutateAsync()
+    })
+    expect(endSso).toHaveBeenCalledWith(expect.objectContaining({ clientId: 'task-tracker' }))
+    expect(auth.logout).not.toHaveBeenCalled()
+    expect(client.getQueryData(['me'])).toEqual({ id: 'test-user' })
+    client.clear()
+  })
+})

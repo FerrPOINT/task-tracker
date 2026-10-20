@@ -1,0 +1,98 @@
+-- Existing Bug issue is the real work item. No PM/Analysis state, queue or outbox.
+CREATE SEQUENCE sdlc_bug_work_fence MAXVALUE 9007199254740991;
+CREATE TABLE sdlc_bug_work_assignments (
+ assignment_id uuid PRIMARY KEY CHECK(assignment_id<>'00000000-0000-0000-0000-000000000000'),
+ project_id uuid NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+ bug_id uuid NOT NULL REFERENCES issues(id) ON DELETE RESTRICT,
+ owner_subject text NOT NULL CHECK(octet_length(owner_subject) BETWEEN 1 AND 256),
+ machine_subject text NOT NULL CHECK(octet_length(machine_subject) BETWEEN 1 AND 256 AND machine_subject<>owner_subject),
+ fleet_instance_id uuid NOT NULL CHECK(fleet_instance_id<>'00000000-0000-0000-0000-000000000000'),
+ worker_id uuid NOT NULL CHECK(worker_id<>'00000000-0000-0000-0000-000000000000'),
+ preference_revision bigint NOT NULL CHECK(preference_revision BETWEEN 1 AND 9007199254740991),
+ fence bigint NOT NULL UNIQUE CHECK(fence BETWEEN 1 AND 9007199254740991),
+ payload jsonb NOT NULL CHECK(jsonb_typeof(payload)='object' AND octet_length(payload::text)<=73728),
+ payload_sha256 text NOT NULL CHECK(payload_sha256 ~ '^[0-9a-f]{64}$'),
+ binding jsonb CHECK(jsonb_typeof(binding)='object' AND octet_length(binding::text)<=8192),
+ closure jsonb CHECK(jsonb_typeof(closure)='object' AND octet_length(closure::text)<=16384),
+ capacity_held boolean NOT NULL DEFAULT true,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ CHECK((closure IS NULL)=capacity_held),
+ CHECK((payload->>'assignment_id'=assignment_id::text AND payload->>'project_id'=project_id::text
+  AND payload->>'bug_id'=bug_id::text AND payload->>'owner_subject'=owner_subject
+  AND payload->>'machine_subject'=machine_subject AND payload->'fence'=to_jsonb(fence)
+  AND payload->'preference_revision'=to_jsonb(preference_revision)
+  AND payload->'worker_runtime'->>'agent_id'=worker_id::text
+  AND payload->'worker_runtime'->>'fleet_instance_id'=fleet_instance_id::text
+  AND payload->>'purpose'='bug_fix' AND payload->>'role'='developer' AND payload->>'mode'='initial') IS TRUE),
+ UNIQUE(bug_id,fleet_instance_id,worker_id,owner_subject,preference_revision)
+);
+CREATE UNIQUE INDEX sdlc_bug_work_worker_capacity ON sdlc_bug_work_assignments(worker_id) WHERE capacity_held;
+CREATE UNIQUE INDEX sdlc_bug_work_issue_capacity ON sdlc_bug_work_assignments(bug_id) WHERE capacity_held;
+CREATE INDEX sdlc_bug_work_owner ON sdlc_bug_work_assignments(project_id,owner_subject,fleet_instance_id,worker_id,created_at);
+CREATE INDEX sdlc_bug_work_candidates ON issues(project_id,created_at,id) WHERE issue_type='bug' AND deleted_at IS NULL;
+CREATE INDEX sdlc_bug_work_source_occurrences ON sdlc_bug_occurrences(project_id,source_sha256);
+
+CREATE FUNCTION sdlc_bug_work_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Bug work history is retained' USING ERRCODE='23514'; END IF;
+ IF TG_OP='UPDATE' THEN
+  IF (to_jsonb(NEW)-ARRAY['binding','closure','capacity_held']) IS DISTINCT FROM
+     (to_jsonb(OLD)-ARRAY['binding','closure','capacity_held'])
+    OR (OLD.binding IS NOT NULL AND NEW.binding IS DISTINCT FROM OLD.binding)
+    OR (OLD.closure IS NOT NULL AND NEW IS DISTINCT FROM OLD)
+    OR (OLD.closure IS NOT NULL AND NEW.closure IS DISTINCT FROM OLD.closure)
+    OR (NEW.closure IS NOT NULL AND NEW.binding IS DISTINCT FROM OLD.binding) THEN
+   RAISE EXCEPTION 'Bug work immutable identity/binding/custody changed' USING ERRCODE='23514';
+  END IF;
+ END IF;
+ IF TG_OP='INSERT' THEN
+  PERFORM id FROM issues WHERE id=NEW.bug_id AND project_id=NEW.project_id AND issue_type='bug' AND deleted_at IS NULL FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Bug work requires live existing Bug' USING ERRCODE='23514'; END IF;
+  IF NEW.binding IS NOT NULL OR NEW.closure IS NOT NULL OR NOT NEW.capacity_held THEN
+   RAISE EXCEPTION 'Bug work must begin reserved' USING ERRCODE='23514'; END IF;
+ END IF;
+ IF NEW.capacity_held THEN
+  PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
+  IF EXISTS(SELECT 1 FROM sdlc_analysis_capacity_holds WHERE agent_id=NEW.worker_id OR root_task_id=NEW.bug_id)
+    OR EXISTS(SELECT 1 FROM sdlc_assignments a JOIN sdlc_tasks t USING(task_id)
+      WHERE (a.payload->>'agent_id'=NEW.worker_id::text OR t.task_id=NEW.bug_id)
+      AND (t.pm_execution_id IS NULL OR t.pm_admission_state IS DISTINCT FROM 'completed'))
+    OR EXISTS(SELECT 1 FROM sdlc_bug_search_executions WHERE agent_id=NEW.worker_id AND capacity_held) THEN
+   RAISE EXCEPTION 'Bug worker capacity belongs to existing work' USING ERRCODE='23514'; END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_bug_work_guard BEFORE INSERT OR UPDATE OR DELETE ON sdlc_bug_work_assignments FOR EACH ROW EXECUTE FUNCTION sdlc_bug_work_guard();
+CREATE TRIGGER namespace_write_guard BEFORE INSERT ON sdlc_bug_work_assignments FOR EACH ROW EXECUTE FUNCTION tracker_namespace_write_guard();
+CREATE TRIGGER namespace_binding_guard BEFORE UPDATE ON sdlc_bug_work_assignments FOR EACH ROW
+ WHEN (NEW.binding IS DISTINCT FROM OLD.binding) EXECUTE FUNCTION tracker_namespace_write_guard();
+
+-- Add reciprocal checks; retain every old gate and the task->capacity lock order.
+CREATE FUNCTION sdlc_bug_work_feature_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE worker uuid; task uuid;
+BEGIN
+ IF TG_TABLE_NAME='sdlc_bug_search_executions' THEN
+  IF NOT NEW.capacity_held THEN RETURN NEW; END IF;
+  worker:=NEW.agent_id; task:=NULL;
+ ELSE
+  task:=COALESCE((to_jsonb(NEW)->>'root_task_id')::uuid,(to_jsonb(NEW)->>'task_id')::uuid);
+  PERFORM task_id FROM sdlc_tasks WHERE task_id=task FOR UPDATE;
+  worker:=CASE WHEN TG_TABLE_NAME='sdlc_analysis_capacity_holds' THEN (to_jsonb(NEW)->>'agent_id')::uuid ELSE (to_jsonb(NEW)->'payload'->>'agent_id')::uuid END;
+ END IF;
+ PERFORM singleton FROM sdlc_reservation_capacity WHERE singleton FOR UPDATE;
+ IF EXISTS(SELECT 1 FROM sdlc_bug_work_assignments WHERE capacity_held AND (worker_id=worker OR bug_id=task)) THEN
+  RAISE EXCEPTION 'Agent/issue capacity belongs to Bug work' USING ERRCODE='23514'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER sdlc_bug_work_capacity BEFORE INSERT ON sdlc_analysis_capacity_holds FOR EACH ROW EXECUTE FUNCTION sdlc_bug_work_feature_guard();
+CREATE TRIGGER sdlc_bug_work_capacity BEFORE INSERT ON sdlc_assignments FOR EACH ROW EXECUTE FUNCTION sdlc_bug_work_feature_guard();
+CREATE TRIGGER sdlc_bug_work_capacity BEFORE INSERT OR UPDATE ON sdlc_bug_search_executions FOR EACH ROW EXECUTE FUNCTION sdlc_bug_work_feature_guard();
+
+ALTER TABLE sdlc_bug_search_commands DROP CONSTRAINT sdlc_bug_search_commands_kind_check;
+ALTER TABLE sdlc_bug_search_commands ADD CONSTRAINT sdlc_bug_search_commands_kind_check
+ CHECK(kind IN ('policy','reserve','admit','register','terminal','intake','cancel','abort_unbound','defer_due','bug_work'));
+DROP TRIGGER namespace_write_guard ON sdlc_bug_search_commands;
+CREATE TRIGGER namespace_write_guard BEFORE INSERT ON sdlc_bug_search_commands FOR EACH ROW
+ WHEN (NEW.kind NOT IN ('terminal','cancel','abort_unbound') AND
+  (NEW.kind<>'bug_work' OR NEW.receipt->'result'->'outcome'->>'kind' IS DISTINCT FROM 'closed'))
+ EXECUTE FUNCTION tracker_namespace_write_guard();

@@ -1,0 +1,3861 @@
+{
+  "schema": "pdlc/workspace-source-recovery/v1",
+  "repository": "task-tracker",
+  "status": "inert source recovery; not installed; not merge qualification",
+  "base": "d1c39aad4662fb916a663b3e30808726012b2d0c",
+  "normalization": "CRLF to LF, otherwise exact original bytes",
+  "versions": [
+    {
+      "original_path": "AGENTS.md",
+      "sha256": "b37580d2df8fc7e3ea81083f88b4989c58fb9ba964ca4909dbcf5748a43c9279",
+      "payload": "sources/source-recovery/b37580d2df8fc7e3-a54ff182-AGENTS.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        },
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/package.json",
+      "sha256": "9069eab53fb2a2465313b243e0fe275b4809c9bd1dc3c2413472b8e754cb0f12",
+      "payload": "sources/ui-recovery/9069eab53fb2a246-da649826-package.json.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        },
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/app/router.tsx",
+      "sha256": "43bf0e94e54aa3aa0a4722ea9723d86dccf2f462a85a373ee8fc369379606c29",
+      "payload": "sources/ui-recovery/43bf0e94e54aa3aa-9a9373f4-router.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        },
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/widgets/app-shell.test.tsx",
+      "sha256": "4088c2dcf2006ba74cbd15d74fedb9e0eb4d8bc5cac58dd8055282bf15bce4cb",
+      "payload": "sources/ui-recovery/4088c2dcf2006ba7-2143d156-app-shell.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/widgets/app-shell.tsx",
+      "sha256": "7c930d7c9e03cda5bc6556b91fb6aef06558a0eac29c7f6fdfdb46eafee825e5",
+      "payload": "sources/ui-recovery/7c930d7c9e03cda5-278cc8b4-app-shell.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/UI_UX_MAP.md",
+      "sha256": "2afb62d66ea49a502c8eed6517c729597a23459b01daf1b840b88027fe26cb84",
+      "payload": "sources/source-recovery/2afb62d66ea49a50-fcdf4459-UI_UX_MAP.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        },
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/ui-routes.json",
+      "sha256": "09b4446dcfb5d54de88d981fd1faa4aac10089af0298fd44c43132e7c250fcc2",
+      "payload": "sources/source-recovery/09b4446dcfb5d54d-35a0d76d-ui-routes.json.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        },
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": ".env.example",
+      "sha256": "54255f777777bee004f4676b07b5caa2a066ec01528292872f00adc82140135d",
+      "payload": "sources/source-recovery/54255f777777bee0-a3046da0-.env.example.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/lib.rs",
+      "sha256": "e0fa35859adec6a3a7cb75a361cd86bdd18d0f663b9f863b87dcd17f2be771d8",
+      "payload": "sources/source-recovery/e0fa35859adec6a3-1dfcb815-lib.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/middleware/sdlc_auth.rs",
+      "sha256": "de346d5e99521ec5ed0eeee2a83bfbbf1bd8e8bb162dca8b1f468978a3d2b076",
+      "payload": "sources/source-recovery/de346d5e99521ec5-86986e45-sdlc_auth.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/mod.rs",
+      "sha256": "fbfb79109e466d1373053cdc20cd9d93eea99a03c01af0dec5c1dd9f91d37795",
+      "payload": "sources/source-recovery/fbfb79109e466d13-a420bc8c-mod.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/namespace.rs",
+      "sha256": "e5e9fff106f00fa5fdd64959f0f429e400f4b60cd8c35e1e66ace1597b0c54da",
+      "payload": "sources/source-recovery/e5e9fff106f00fa5-a3aa4631-namespace.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/sdlc.rs",
+      "sha256": "b740fb7f86a473a05d2e7c5bfad4781b7e683a1880827b0993982ad2c2736c66",
+      "payload": "sources/source-recovery/b740fb7f86a473a0-f394861f-sdlc.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/context/mod.rs",
+      "sha256": "2676f57ac910e43fe2055d962ce048dfd0653b16ef580ef9a046bb1a0bf27b3c",
+      "payload": "sources/source-recovery/2676f57ac910e43f-572daa05-mod.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/context/traits.rs",
+      "sha256": "2d8b181b6e6e15e9c92f30e694a70f60f263dcb3466f17526f37347983c9a9aa",
+      "payload": "sources/source-recovery/2d8b181b6e6e15e9-75a62dc7-traits.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/lib.rs",
+      "sha256": "4470b37ce9d8beecb3deea3fcc7d83b39181799259cdd8c2a6558d5e4b540b5a",
+      "payload": "sources/source-recovery/4470b37ce9d8beec-fc5c3c76-lib.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/services/issue.rs",
+      "sha256": "3173107e3e9ee1f63c946752e7483b0d5beffb621f3d4215db0952e12eafe1b1",
+      "payload": "sources/source-recovery/3173107e3e9ee1f6-bc8dbc7a-issue.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/lib.rs",
+      "sha256": "6992aba150ba853e0067798a02a7bb4518de631291a1f5527acecfe8191cc867",
+      "payload": "sources/source-recovery/6992aba150ba853e-4d69b20b-lib.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/repositories.rs",
+      "sha256": "1375531aec1263bb8fcb0b8a3e7dcfaa411989407d8b0ff288854e1e01c8cd1a",
+      "payload": "sources/source-recovery/1375531aec1263bb-c0586555-repositories.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/lib.rs",
+      "sha256": "ea24a2a4e6826336e4b629c3e3d024b549527c637939a8633a4a3f3045a3d155",
+      "payload": "sources/source-recovery/ea24a2a4e6826336-37691c95-lib.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/repos.rs",
+      "sha256": "d94187cc6340cc21c6722a0535e5c2fb4d5c9786a5314f4861a56a58d193061e",
+      "payload": "sources/source-recovery/d94187cc6340cc21-cdcd8439-repos.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/repos_namespace.rs",
+      "sha256": "f5a119ace0a1387f3c5a12137ecd6a91995f1532bd4a966b4ca4af19bcaecdba",
+      "payload": "sources/source-recovery/f5a119ace0a1387f-5cf25ee2-repos_namespace.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/lib.rs",
+      "sha256": "deb45b48a6354f96367d84015b6edd5c146fa01f5c98f66e6f149601f4a0c50c",
+      "payload": "sources/source-recovery/deb45b48a6354f96-a6573dc5-lib.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/src/lib.rs",
+      "sha256": "823626af58584fe86872be2ae13ab8695add7e9683d15a56ebd82439908bf32e",
+      "payload": "sources/source-recovery/823626af58584fe8-732d5148-lib.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/tests/sdlc.rs",
+      "sha256": "6e2bdd555353543b4f7c3f74c180638f71b581ce052c950b4ace3e1c92f26240",
+      "payload": "sources/source-recovery/6e2bdd555353543b-2c7506e1-sdlc.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/API.md",
+      "sha256": "61724032f243a59aa7251a8c20b55ed399b92ea39df55dd5abe6e424f50cab6f",
+      "payload": "sources/source-recovery/61724032f243a59a-b5759096-API.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/ARCHITECTURE.md",
+      "sha256": "bb4b1c5918192f00a5d1f659a8ec39f9a9f9752b96fc3be8a73951ebc62db3b4",
+      "payload": "sources/source-recovery/bb4b1c5918192f00-ff21b6b9-ARCHITECTURE.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/DATA_MODEL.md",
+      "sha256": "7d0f5306573244473da907753b498ee11a87aaadb8d8336d6995ba90982f0736",
+      "payload": "sources/source-recovery/7d0f530657324447-3bfbbae4-DATA_MODEL.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/TZ.md",
+      "sha256": "4d4fbe9a1af82bed5d78f4977099b6d150104a690738a8f23c96fc8b41da4470",
+      "payload": "sources/source-recovery/4d4fbe9a1af82bed-73e27af0-TZ.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/bug_intake.rs",
+      "sha256": "0c60248c71119b179a4c99046921daff2c62da4bab0f5fd0e166667a889b1dac",
+      "payload": "sources/bug-search-work/0c60248c71119b17-4186775c-bug_intake.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/bug_search.rs",
+      "sha256": "fb6102d27d393d532aa9fa2e9105c9eec3c88da469e1f07cb8513510d75cbb7f",
+      "payload": "sources/bug-search-work/fb6102d27d393d53-e52534dc-bug_search.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/bug_search_due.rs",
+      "sha256": "57bac921b9379bd7281d13a511e1656b65bd06359e24258b2cce1d8460546690",
+      "payload": "sources/bug-search-work/57bac921b9379bd7-f46ccd71-bug_search_due.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/bug_work.rs",
+      "sha256": "834db3c5777b2b91670326ea7a6a7d8252b05918552b9501b6c762530057de74",
+      "payload": "sources/bug-search-work/834db3c5777b2b91-2c60bc7e-bug_work.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/bug_work_business.rs",
+      "sha256": "b5df184f7b0d476c7d1f60666e24cadf9d6eed24832d97283cb0feac4ed66b03",
+      "payload": "sources/bug-search-work/b5df184f7b0d476c-10186965-bug_work_business.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/api/src/routes/issue_verification_transitions.rs",
+      "sha256": "9eb2ddba1f1a45077b050623bf713fc45f83576d95ded0bea79776ae82da06cf",
+      "payload": "sources/source-recovery/9eb2ddba1f1a4507-c9e25d09-issue_verification_transitions.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/bug_search.rs",
+      "sha256": "6b301490a08d025324f5a2e10a35acdb5e3ef928209bd0022060fbb36ed9ccf1",
+      "payload": "sources/bug-search-work/6b301490a08d0253-042cbe2e-bug_search.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/bug_search_intake.rs",
+      "sha256": "d0f413756e30cac7b944d69ea7505416e5f3093a1b3408eeaf813aa89068893c",
+      "payload": "sources/bug-search-work/d0f413756e30cac7-718c9f26-bug_search_intake.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/bug_search_namespace_exit.rs",
+      "sha256": "2ac1c26fdb0163c2122df5b7012b1bfd98a17fe94241097fcffc501cde971ad1",
+      "payload": "sources/bug-search-work/2ac1c26fdb0163c2-88d5c649-bug_search_namespace_exit.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/bug_search_verification.rs",
+      "sha256": "9b87181d80e1347557a45d90ccbbacc4973fa04950f373b6a20aa863f1165bee",
+      "payload": "sources/bug-search-work/9b87181d80e13475-705d10c0-bug_search_verification.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/bug_work.rs",
+      "sha256": "ea5c2839ed731d9577c51ee049b6c1c86ab1a513fb98915eaf57f65afccb0d0c",
+      "payload": "sources/bug-search-work/ea5c2839ed731d95-c44d121c-bug_work.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/bug_work_business.rs",
+      "sha256": "606510ee35e9a52362bc13aa4aa2644311ffcbd4303a88a0fff7d6ab04167b36",
+      "payload": "sources/bug-search-work/606510ee35e9a523-3f50c556-bug_work_business.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/tests/bug_work_origin_alias.rs",
+      "sha256": "003cec884127ae79a64c74aece95b9ddff58d072a1122087c5e4f7f61daee692",
+      "payload": "sources/bug-search-work/003cec884127ae79-f418c55a-bug_work_origin_alias.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/tests/fixtures/bug-finding-source-repository-v1.json",
+      "sha256": "8826acca2c211499bda993126824c2f25b07f3cf77e9134bb923818cd34b0ac4",
+      "payload": "sources/bug-search-work/8826acca2c211499-45d81259-bug-finding-source-repository-v1.json.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/tests/fixtures/bug-target-source-v1.json",
+      "sha256": "270e15fffe59d35ef821acbd67d6aab71d52bc191358e9b27cfad0de4a8e337e",
+      "payload": "sources/bug-search-work/270e15fffe59d35e-823efc98-bug-target-source-v1.json.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/tests/fixtures/bug_search_v1.json",
+      "sha256": "ac5838bcca5dbed20cc4b32d3907fa4240e7099ebcd7408cc8120d43aae8ac52",
+      "payload": "sources/bug-search-work/ac5838bcca5dbed2-009f869d-bug_search_v1.json.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/tests/fixtures/bug_verification_basis_v1.json",
+      "sha256": "004189a632253aec4ee729db5702cad4a640d0d26024769071ffe408e4a53a22",
+      "payload": "sources/bug-search-work/004189a632253aec-e47532a2-bug_verification_basis_v1.json.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search.rs",
+      "sha256": "c458d04b86b5f24fb83f06649187977003824a563f8fe9ff110beacde558776f",
+      "payload": "sources/bug-search-work/c458d04b86b5f24f-f536e6ea-bug_search.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_cancel.rs",
+      "sha256": "e17ef9de403d335b67b5f5ff4c88f7b6129503f9cf7ea31f2e29359e1f62749e",
+      "payload": "sources/bug-search-work/e17ef9de403d335b-95b77fd3-bug_search_cancel.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_control.rs",
+      "sha256": "1cb91932b905275b1a8a6c49749425fc19224f2abb634ff6afb385de54a992ca",
+      "payload": "sources/bug-search-work/1cb91932b905275b-2655b7ec-bug_search_control.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_due.rs",
+      "sha256": "b687035aa8551e9324a6a1c541414dc94c4bd361f1fb33e4a3f04e2063f47f90",
+      "payload": "sources/bug-search-work/b687035aa8551e93-f325d60a-bug_search_due.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_guidance.rs",
+      "sha256": "6dc793ba770d91d9144ffb19478c85de03f27a1c95212fb67b85df1b3f70c158",
+      "payload": "sources/bug-search-work/6dc793ba770d91d9-32543e82-bug_search_guidance.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_intake.rs",
+      "sha256": "194ef66dd12c54ecbb4fd95495d72ad7df7608c1220c978d748944ed00d2849d",
+      "payload": "sources/bug-search-work/194ef66dd12c54ec-cef96559-bug_search_intake.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_namespace_exit.rs",
+      "sha256": "f0bb6b499716f7744fab49c9e81b7ea422a827422c29b0fc44223b31cb7e1d07",
+      "payload": "sources/bug-search-work/f0bb6b499716f774-7c99ba41-bug_search_namespace_exit.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_source.rs",
+      "sha256": "8342959551edaaac80bdf5a1051128f261f1d0ab4700d95e40def272b66b373d",
+      "payload": "sources/bug-search-work/8342959551edaaac-de9e5206-bug_search_source.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_terminal.rs",
+      "sha256": "abe306d8633a050075418749e9662c9ec2c1a5fa76a447d8c1d3c0c86c057473",
+      "payload": "sources/bug-search-work/abe306d8633a0500-f24caffa-bug_search_terminal.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_unbound.rs",
+      "sha256": "364b55a643e6f25e0f034568c6098ae4209d85eb2b17351933f1626ffcbc4a44",
+      "payload": "sources/bug-search-work/364b55a643e6f25e-c72af18d-bug_search_unbound.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_search_verification.rs",
+      "sha256": "1bdaab2601eac8aab6f6c49aa36ee9b1186ba4e229d45f05927c01a8a253e076",
+      "payload": "sources/bug-search-work/1bdaab2601eac8aa-d9354a6e-bug_search_verification.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_work.rs",
+      "sha256": "7369ebc743bcad5074de52043ff22e504192a47e30e544c125606e4971c2ec98",
+      "payload": "sources/bug-search-work/7369ebc743bcad50-1432b77e-bug_work.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_work_business.rs",
+      "sha256": "64ae6cef4e1576408cea93b034717acf9490207b82ce8c71f47b90b75a9a384f",
+      "payload": "sources/bug-search-work/64ae6cef4e157640-24d6176a-bug_work_business.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_work_delivery.rs",
+      "sha256": "04559be2f7179804eaa3a00c523eb55cab499d99c6fa73dfab0a986a7b6fccde",
+      "payload": "sources/bug-search-work/04559be2f7179804-7eb435c1-bug_work_delivery.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/bug_work_origin.rs",
+      "sha256": "5c7fbcee25d89275dd8ee171099e28b4983879ddfbcc9d7b926a8b57473db589",
+      "payload": "sources/bug-search-work/5c7fbcee25d89275-71cfc0a6-bug_work_origin.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/src/issue_verification_transitions.rs",
+      "sha256": "0e9b405856ad5639b528deb9db0ddc6bd4b424ba9ba8e7a7bb9b9ee47df598dd",
+      "payload": "sources/source-recovery/0e9b405856ad5639-9ae42372-issue_verification_transitions.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/tests/fixtures/bug-known-run-namespace-exit-v1.json",
+      "sha256": "98d43a2449ed815c8d97357e783e5cfc5d9680d5b9ce78d33cdc53c855a2fecc",
+      "payload": "sources/bug-search-work/98d43a2449ed815c-68c8d4ac-bug-known-run-namespace-exit-v1.json.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/domain/tests/fixtures/bug-work-delivery-v1.json",
+      "sha256": "d0eacb318252fc45dc254c7d19c36c184059714a45c85a695db95af87ba03b47",
+      "payload": "sources/bug-search-work/d0eacb318252fc45-253f8492-bug-work-delivery-v1.json.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search.rs",
+      "sha256": "0a715418d81ebb47bdd3e223fcc8169eb437029af1b215aaef9e296d11f77f7c",
+      "payload": "sources/bug-search-work/0a715418d81ebb47-14964b00-bug_search.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search_cancel.rs",
+      "sha256": "685535eb327a1f5ba55fbac5bd4eca54792dee2bec864c0ed8346cfdc8095b49",
+      "payload": "sources/bug-search-work/685535eb327a1f5b-9f202ae6-bug_search_cancel.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search_control.rs",
+      "sha256": "7e33a043d1508430f87cb28f1dcd5f4814b4651fac850e249106a4953d777220",
+      "payload": "sources/bug-search-work/7e33a043d1508430-8988e129-bug_search_control.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search_due.rs",
+      "sha256": "c106e63e6baed98ba0cc214a461a00d775a6887810aacb1e747a28f8d1fd0aa6",
+      "payload": "sources/bug-search-work/c106e63e6baed98b-a753ebd0-bug_search_due.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search_intake.rs",
+      "sha256": "92d46ecc3b6c554c52f7cb92b37913e1c8dc0b16514610179cd2b53420c79dc0",
+      "payload": "sources/bug-search-work/92d46ecc3b6c554c-07ea0eca-bug_search_intake.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search_repeat.rs",
+      "sha256": "cb64d36b78cd131693f217b19b9fb6be7f39c1d28bbaef98a0d3e9c5d78572b0",
+      "payload": "sources/bug-search-work/cb64d36b78cd1316-30665b6e-bug_search_repeat.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search_terminal.rs",
+      "sha256": "aa83bacf72fe9b61a311e3134c6edd39cfb10988a709d8983849fcb37f0efccf",
+      "payload": "sources/bug-search-work/aa83bacf72fe9b61-09906508-bug_search_terminal.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search_unbound.rs",
+      "sha256": "bdaacc0697067d3650c009393d432fba58ac38c6f099346c3a42637757a1878e",
+      "payload": "sources/bug-search-work/bdaacc0697067d36-1af25662-bug_search_unbound.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_search_verification.rs",
+      "sha256": "a5f5e56551e90d7ae62bde2391760a3602f42be70f62925c71a2ba5e3a01a60c",
+      "payload": "sources/bug-search-work/a5f5e56551e90d7a-d5207085-bug_search_verification.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_work.rs",
+      "sha256": "9d9b541a4848f7ea482f0b03db47b21520dc0edc42b221a9e6d7fdb07cb32a41",
+      "payload": "sources/bug-search-work/9d9b541a4848f7ea-5751aa76-bug_work.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_work_business.rs",
+      "sha256": "c6fcf72da1444897fa46201fda43c24dce85a36e8baef74eeaf3a80cd7eb8bcd",
+      "payload": "sources/bug-search-work/c6fcf72da1444897-7741dfda-bug_work_business.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/bug_work_delivery_reader.rs",
+      "sha256": "5a9748e942014beb56e32e5dbbe1735e1cd73e7901448bc176ba14c6778056a4",
+      "payload": "sources/bug-search-work/5a9748e942014beb-0a314c9d-bug_work_delivery_reader.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": true
+    },
+    {
+      "original_path": "backend/infra/src/bug_work_origin.rs",
+      "sha256": "7c129655b33376f30830122f071436182619bfeeef9c55f46431764c6b0564f2",
+      "payload": "sources/bug-search-work/7c129655b33376f3-cf604fb3-bug_work_origin.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/issue_verification_transitions.rs",
+      "sha256": "c9b1ad9913ab7eb0f73fd207e0d1a6b0e04c84321c03e4d8f876a25eb496b193",
+      "payload": "sources/source-recovery/c9b1ad9913ab7eb0-90049f4f-issue_verification_transitions.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/bug_search.rs",
+      "sha256": "908cd57d39158dd4e7cbe2994bac87311c1199b3bad6aabc63d6961b2f9dcb01",
+      "payload": "sources/bug-search-work/908cd57d39158dd4-540661ec-bug_search.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_search_cancel.rs",
+      "sha256": "13faf5732d794e82f29143368310f7c673a9594b6574e7269d47f0d6112efaf4",
+      "payload": "sources/bug-search-work/13faf5732d794e82-0de82703-bug_search_cancel.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_search_due.rs",
+      "sha256": "db84ac2064c0463bbedbec23c3bfe4bf2e8593d5059c2a33a72535b7ca89af27",
+      "payload": "sources/bug-search-work/db84ac2064c0463b-3a6f7b17-bug_search_due.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_search_intake.rs",
+      "sha256": "3ed955e6db5f1bd5a823802369778e31da3f8a01beb304038549447485623d3d",
+      "payload": "sources/bug-search-work/3ed955e6db5f1bd5-6f7be9db-bug_search_intake.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_search_namespace_exit.rs",
+      "sha256": "f701a27aed484165ea7f05c2cddebbe945190251e08a8e41d41c793f19f40a73",
+      "payload": "sources/bug-search-work/f701a27aed484165-c33d302d-bug_search_namespace_exit.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_search_repeat.rs",
+      "sha256": "abc50e44552276bb13b5cfaeb8caf36707c49f670214c260903417efa48f29b0",
+      "payload": "sources/bug-search-work/abc50e44552276bb-e00888da-bug_search_repeat.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_search_unbound.rs",
+      "sha256": "b59eaa80b900db0d218df0c4f188db180a43f765b17d9cba03ceed5956d0b4da",
+      "payload": "sources/bug-search-work/b59eaa80b900db0d-6ee210da-bug_search_unbound.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_search_verification.rs",
+      "sha256": "968cd66caeb5f7f11f69d682c448661f94bd8cdf149416918b2b9c15bd278eab",
+      "payload": "sources/bug-search-work/968cd66caeb5f7f1-b66d6f00-bug_search_verification.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_work.rs",
+      "sha256": "5ff433784476a388fd01d73197603dbb5d69b6a9e334d2d5e790bf44946c4b8f",
+      "payload": "sources/bug-search-work/5ff433784476a388-db4d79fc-bug_work.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_work_business.rs",
+      "sha256": "102a0477b8f740716f0899c56dafb67369904167724e928be9a79d7d4452ce9b",
+      "payload": "sources/bug-search-work/102a0477b8f74071-a62046fa-bug_work_business.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/bug_work_origin.rs",
+      "sha256": "d7a34b4775dcffdc8fdefc2faa46474efa33d8b6901d242d082b7da767edc2e3",
+      "payload": "sources/bug-search-work/d7a34b4775dcffdc-4cde1bbf-bug_work_origin.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/support/issue_verification_transitions.rs",
+      "sha256": "b8f4dd1b566091e0c221518b8ec106ab6e044bc2d39532a69035fdf96b272ab1",
+      "payload": "sources/source-recovery/b8f4dd1b566091e0-3d22ea2c-issue_verification_transitions.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/bug_search.sql",
+      "sha256": "b6ade1b6d57eec4b16c8b89090bd34b5a6b8a9cd53c5634f56e7f23ffd52a068",
+      "payload": "sources/bug-search-work/b6ade1b6d57eec4b-d756f13d-bug_search.sql.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/bug_search_control.sql",
+      "sha256": "cf13a52060a1619cd3ec5271165eea1c8ee12cb98ea87a4d623e0df9eeeebdbf",
+      "payload": "sources/bug-search-work/cf13a52060a1619c-76e55af3-bug_search_control.sql.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/bug_search_intake.sql",
+      "sha256": "e6879d774084a8143c5c3a829353156b1aad7249fb90b8ba000923132f6ca195",
+      "payload": "sources/bug-search-work/e6879d774084a814-e04f3123-bug_search_intake.sql.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/bug_search_terminal.sql",
+      "sha256": "00bbf335dec6948396a5355f0b92c4788e959512e6a075c66690439b6f64818b",
+      "payload": "sources/bug-search-work/00bbf335dec69483-e7b0452e-bug_search_terminal.sql.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/bug_work.sql",
+      "sha256": "fa08f43f483e6a061598f955f007403b0041851ecfe0759df51798cd7c1c0aaf",
+      "payload": "sources/bug-search-work/fa08f43f483e6a06-5966916e-bug_work.sql.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/bug_work_business.sql",
+      "sha256": "303d0a76bafb9c9daef79b4d261fd1d11b6fd84d9a976c2ef635aa5cdcdcc1e7",
+      "payload": "sources/bug-search-work/303d0a76bafb9c9d-6ea75846-bug_work_business.sql.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000096_bug_search.rs",
+      "sha256": "bfa2daf144a78d5beda5fa887eb713f2cb1e990fe93db36351923437e4488832",
+      "payload": "sources/bug-search-work/bfa2daf144a78d5b-da6ed568-m20261018_0000096_bug_search.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000097_bug_search_control.rs",
+      "sha256": "d15d9934bf61326f2b3179db8382be133f7b8301fda9fcd6ac86111d0c92cb1e",
+      "payload": "sources/bug-search-work/d15d9934bf61326f-d5e06116-m20261018_0000097_bug_search_control.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000098_bug_search_terminal.rs",
+      "sha256": "6af02b8cebce368dc447627c903e9f175cb02ec35d1dd1df8b84b536a118f566",
+      "payload": "sources/bug-search-work/6af02b8cebce368d-0d498492-m20261018_0000098_bug_search_terminal.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000099_bug_search_intake.rs",
+      "sha256": "d7f90a39c7ee088073c71643e85410aee603b3e9a08c9669bcffa3b61bdf047b",
+      "payload": "sources/bug-search-work/d7f90a39c7ee0880-107882f0-m20261018_0000099_bug_search_intake.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000100_bug_search_pre_run_cancel.rs",
+      "sha256": "6b149a2ce8322464c1a5977e3533628632487cdcc28521531f42c062a19ec6d1",
+      "payload": "sources/bug-search-work/6b149a2ce8322464-aed4b852-m20261018_0000100_bug_search_pre_run_cancel.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000101_bug_search_unbound_abort.rs",
+      "sha256": "7c0659b35ba43d3f35f1ce4f1531a1c8b78a8b8edec256fcc29c1465c9abf51a",
+      "payload": "sources/bug-search-work/7c0659b35ba43d3f-9e9ff2ff-m20261018_0000101_bug_search_unbound_abort.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000102_bug_search_due.rs",
+      "sha256": "6a83b144d36963c95edfb2cf8376c9c6528431a15ad1056726f058048d754678",
+      "payload": "sources/bug-search-work/6a83b144d36963c9-2d700c28-m20261018_0000102_bug_search_due.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000103_bug_work.rs",
+      "sha256": "c7373231eb20ead67467543e8c7e7bee382e007e961ca9c49ff484a04850e142",
+      "payload": "sources/bug-search-work/c7373231eb20ead6-0fa1f199-m20261018_0000103_bug_work.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000104_bug_work_origin.rs",
+      "sha256": "a39a15d45bc2923af10799a7db750e80ffa0d19a7547c2c3829490ff0cd79459",
+      "payload": "sources/bug-search-work/a39a15d45bc2923a-01f5f5d3-m20261018_0000104_bug_work_origin.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261018_0000105_bug_business.rs",
+      "sha256": "0e2f8986b30113bd1c3d11b8291ff324500ee2398917b8bee9826dfecf3b419a",
+      "payload": "sources/bug-search-work/0e2f8986b30113bd-a2fbe800-m20261018_0000105_bug_business.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/tests/support/bug_business.rs",
+      "sha256": "f9f2006dd4c7235a98cd7f6b285c95c0b0c911748a5b08173ff86f21b80865ca",
+      "payload": "sources/bug-search-work/f9f2006dd4c7235a-7da6d7c2-bug_business.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/tests/support/bug_intake.rs",
+      "sha256": "304b149f41e9335b7a3903c67722e97d60fb87c698dec75629fa374f9b07e03f",
+      "payload": "sources/bug-search-work/304b149f41e9335b-8b806f83-bug_intake.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/tests/support/bug_search.rs",
+      "sha256": "3a7eeb50b6bf97b32fdc05c222087a574b4ba910a10dcede95e337006a0cd1d9",
+      "payload": "sources/bug-search-work/3a7eeb50b6bf97b3-958891ed-bug_search.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/tests/support/bug_search_verification.rs",
+      "sha256": "5f23473978f1b5ec6ebe758b7efaf4abbf815c02a9b2b9f22e897e6a8a144534",
+      "payload": "sources/bug-search-work/5f23473978f1b5ec-a2aa5fad-bug_search_verification.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/tests/support/bug_work.rs",
+      "sha256": "7d640eac79ef6e884be7c00c2cf8d9d9ad1c11e478e5a64bd7e5dc1834f4d559",
+      "payload": "sources/bug-search-work/7d640eac79ef6e88-477010af-bug_work.rs.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/tests/support/issue_verification_transitions.rs",
+      "sha256": "6af47717e558733b6074677e7ff9e8eb03b90ab0ed593676ab0b86c633d43d12",
+      "payload": "sources/source-recovery/6af47717e558733b-ee197bdb-issue_verification_transitions.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/BUG_INTAKE_V1.md",
+      "sha256": "b28cc5de7c9b1d07bfe1398a35ae1a03146e7ff8ae7cec7965980704da5f2dce",
+      "payload": "sources/bug-search-work/b28cc5de7c9b1d07-c9f6c2ee-BUG_INTAKE_V1.md.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/BUG_SEARCH_GUIDANCE.md",
+      "sha256": "acbe85f1b4953f50f4bbd7ad06657e99d6a7463e247a4bedc4df42741f06b3a0",
+      "payload": "sources/bug-search-work/acbe85f1b4953f50-3cb7df79-BUG_SEARCH_GUIDANCE.md.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/BUG_SEARCH_KNOWN_RUN_EXIT.md",
+      "sha256": "a2bf057b61b0ebb34e8105e81090195c36eadaddce5746fb48b19389a584fa3f",
+      "payload": "sources/bug-search-work/a2bf057b61b0ebb3-eb62f352-BUG_SEARCH_KNOWN_RUN_EXIT.md.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/BUG_SEARCH_V1.md",
+      "sha256": "a8c16f12541b2566aba0f255ad796410947d784f188659e30694a58d234a2374",
+      "payload": "sources/bug-search-work/a8c16f12541b2566-e86aec8e-BUG_SEARCH_V1.md.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/BUG_WORK_DELIVERY_V1.md",
+      "sha256": "dd8f69fcc496577e9249ecbaf313c35fedd45b6a1d778681e87efc3ad8e2f0ba",
+      "payload": "sources/bug-search-work/dd8f69fcc496577e-b31f37ad-BUG_WORK_DELIVERY_V1.md.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/BUG_WORK_V1.md",
+      "sha256": "666b5916962209ee5d057ca56f3693555fe27c591c8515316549de185a9f4d32",
+      "payload": "sources/bug-search-work/666b5916962209ee-e363e8b8-BUG_WORK_V1.md.source",
+      "group": "bug-search-work",
+      "origins": [
+        {
+          "worktree": "sdlc3/task-tracker",
+          "head": "08904259060ce75b936197b1a745b0b46212cb08"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/auth.rs",
+      "sha256": "ea68555ef62fe1d9a7282ffa196fe692d1513035c2b7aca53f86538c4adbe434",
+      "payload": "sources/source-recovery/ea68555ef62fe1d9-0c8e9b83-auth.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/central_login.rs",
+      "sha256": "ff5a0dc85843399410f34886eaa353e07ae410cade6a89938e8c1fde6a8a17de",
+      "payload": "sources/source-recovery/ff5a0dc858433994-9baa76be-central_login.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/context/mod.rs",
+      "sha256": "ba91ca6ee63d2f16601591b608f7abf60894df92aba8588071992ba9cd542966",
+      "payload": "sources/source-recovery/ba91ca6ee63d2f16-572daa05-mod.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/services/board.rs",
+      "sha256": "fd9d1faa29a8725a4f1458ecac99c800597331a7887fba4060d1db188044f6ee",
+      "payload": "sources/source-recovery/fd9d1faa29a8725a-0076f873-board.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/app/src/services/tests.rs",
+      "sha256": "99d5072452c43f9f7eca6c4ea9200a79c13fe47f6b402fe1ccd14308ce359452",
+      "payload": "sources/source-recovery/99d5072452c43f9f-c0df0706-tests.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/src/repos.rs",
+      "sha256": "4de5a33a3863027144c284b9114fa9f81dcedd3f6de54c6e6eb86e8810f1d8ce",
+      "payload": "sources/source-recovery/4de5a33a38630271-cdcd8439-repos.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/infra/tests/repos.rs",
+      "sha256": "297f93a98b2d3463cee0e920482b73b0c1160fd8c4ccc463c94f84528f6dab84",
+      "payload": "sources/source-recovery/297f93a98b2d3463-a4c690b6-repos.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/ARCHITECTURE.md",
+      "sha256": "53b3b3d103c4ce5dd400255a336ee62a804e000c6e16ed3f7332b64535ea56e7",
+      "payload": "sources/source-recovery/53b3b3d103c4ce5d-ff21b6b9-ARCHITECTURE.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/DATA_MODEL.md",
+      "sha256": "91783aab01db6449ad0b80a58f59510a2a818f7b3fde275577c06ca9490202d0",
+      "payload": "sources/source-recovery/91783aab01db6449-3bfbbae4-DATA_MODEL.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/TZ.md",
+      "sha256": "5ee806ee7f211e6357c18689a1ee47e83659eaf2c22eebafb7f239c55ce1fdfe",
+      "payload": "sources/source-recovery/5ee806ee7f211e63-73e27af0-TZ.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/attachment.test.ts",
+      "sha256": "05b2fabba9dce87028da2a130772ed27eacd743941be1d389f98212673a0fa17",
+      "payload": "sources/ui-recovery/05b2fabba9dce870-196f1a50-attachment.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/attachment.ts",
+      "sha256": "b29e73787e90b421f061fc00b27b47b44c49c2db0cbc7c16152b92056cf1bc33",
+      "payload": "sources/ui-recovery/b29e73787e90b421-00165b74-attachment.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/custom-fields.ts",
+      "sha256": "7d9f837b61dc47e2a12892711027dfd4c1f35dcd9e7f3c3b620d8b82a30fa3cf",
+      "payload": "sources/ui-recovery/7d9f837b61dc47e2-69b6d6eb-custom-fields.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/issue.ts",
+      "sha256": "37d92c50954996e27bd18ac29c07f0e3866ad5712d0ea066f8cfc54bd3730529",
+      "payload": "sources/ui-recovery/37d92c50954996e2-97dd9074-issue.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/label.ts",
+      "sha256": "0bad9c2cc30beb7a94b32340e53b8eddcf0f4519c7257d8f46822e360f07d744",
+      "payload": "sources/ui-recovery/0bad9c2cc30beb7a-a9692fcd-label.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/link.ts",
+      "sha256": "45482fe62b5f9774062e7586c34310e93a1aecf820a4cb2d97390342b321cb3d",
+      "payload": "sources/ui-recovery/45482fe62b5f9774-2a5be9f6-link.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/notifications.test.ts",
+      "sha256": "867e543aa2a08f6e572d1893ca975a96f906655b8826511c2cbad4805ff20e8b",
+      "payload": "sources/ui-recovery/867e543aa2a08f6e-e5ad6be9-notifications.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/notifications.ts",
+      "sha256": "3ca0d92d2412947febdd3a0725a813d77e31a5f790f813644a228196e2861b04",
+      "payload": "sources/ui-recovery/3ca0d92d2412947f-9d75efaa-notifications.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/comments/model/use-comments.ts",
+      "sha256": "acbd14b0aa01cb3b1dc16adf2c9b9921b628ad47f74e152f1c8fa806e13d4bc2",
+      "payload": "sources/ui-recovery/acbd14b0aa01cb3b-d5f9cc21-use-comments.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/comments/ui/CommentList.test.tsx",
+      "sha256": "01df38340dc1a52b6005af4d6a508397930ccd685129f480252997dc1ff3883a",
+      "payload": "sources/ui-recovery/01df38340dc1a52b-e04ea7de-CommentList.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/comments/ui/CommentList.tsx",
+      "sha256": "927c6af9a3acd29b717538665d5d07b2b7326fb0801525dd30471298295bb7ec",
+      "payload": "sources/ui-recovery/927c6af9a3acd29b-f8d68423-CommentList.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/AttachmentPanel.test.tsx",
+      "sha256": "22fcbd94f2f5d9ff1e6648b686ac118e0ce2a99e4ab01f72f657b88cd4e27d34",
+      "payload": "sources/ui-recovery/22fcbd94f2f5d9ff-77a52934-AttachmentPanel.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/AttachmentPanel.tsx",
+      "sha256": "75316de1e55e5a39cfc00954862964a3a802a5be6c53a4befc818811cc501983",
+      "payload": "sources/ui-recovery/75316de1e55e5a39-8901f727-AttachmentPanel.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx",
+      "sha256": "312bc06f37b5783cce46a0fb4d14341cf09f730d67e098ace7bab2ff38ef57cf",
+      "payload": "sources/ui-recovery/312bc06f37b5783c-0f5d8e17-CustomFieldsPanel.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx",
+      "sha256": "e631a47c5732c0e71aa987d94b9f326ac297f3f8ad7dc81fc411745c8a62ca53",
+      "payload": "sources/ui-recovery/e631a47c5732c0e7-d040d9f0-CustomFieldsPanel.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/IssueDescriptionEditor.test.tsx",
+      "sha256": "7a7d548f1b3a85ce9df7a557e9855c87e762ff50772addf9a815b3c4e0494e18",
+      "payload": "sources/ui-recovery/7a7d548f1b3a85ce-d272cf3e-IssueDescriptionEditor.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx",
+      "sha256": "0ff30a1cf2c61e378429cf2524cd44573a14b624811655fb4b8781ec06f5779f",
+      "payload": "sources/ui-recovery/0ff30a1cf2c61e37-3a4713b7-IssueDescriptionEditor.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/LabelEditor.test.tsx",
+      "sha256": "3f223d72e3b82bdb2fe26e7502c0e448a36cb6dbfc14b763bc79d1626bb4068f",
+      "payload": "sources/ui-recovery/3f223d72e3b82bdb-f5a048ac-LabelEditor.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/LabelEditor.tsx",
+      "sha256": "500b0fa46d151cc854a0b763d092640963b7967687fad0be935f15c812672d1a",
+      "payload": "sources/ui-recovery/500b0fa46d151cc8-19083cd8-LabelEditor.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/LinkEditor.test.tsx",
+      "sha256": "1ecb1c32a47e27bdb5588ec7196ac8214ba2e6fa9e3787743205b08f4a36473b",
+      "payload": "sources/ui-recovery/1ecb1c32a47e27bd-f9e0c992-LinkEditor.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/issue-detail/ui/LinkEditor.tsx",
+      "sha256": "53cc78662369594f460c97d6e1c881953cc1ea84bcedb3006436dadce261e20c",
+      "payload": "sources/ui-recovery/53cc78662369594f-e443b3d1-LinkEditor.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/projects/ui/ProjectFormDialog.test.tsx",
+      "sha256": "f5be5a4e63ec4864a4b486c83263e7eaa89d2a5be51de52b759c87bb97448764",
+      "payload": "sources/ui-recovery/f5be5a4e63ec4864-bfe6a29e-ProjectFormDialog.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/projects/ui/ProjectFormDialog.tsx",
+      "sha256": "41332854529c77fc5022647840d153d70d8fc7e5fcdc379b17573815d099becd",
+      "payload": "sources/ui-recovery/41332854529c77fc-3eb28801-ProjectFormDialog.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/sprints/ui/SprintFormDialog.test.tsx",
+      "sha256": "1f6d72e8a18ff9ca12114e3c667afd5d30ba6d21aa5bb651974f259c639937a1",
+      "payload": "sources/ui-recovery/1f6d72e8a18ff9ca-44aab8f6-SprintFormDialog.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/sprints/ui/SprintFormDialog.tsx",
+      "sha256": "d983eb1042a4a0cb8dacca0582e40612a34dd3a4b0abfe57bc3d8d1e7a069cc1",
+      "payload": "sources/ui-recovery/d983eb1042a4a0cb-bed6401e-SprintFormDialog.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/time-tracking/ui/LogWorkDialog.test.tsx",
+      "sha256": "a91e1121bc2142488e1fa232bb2e007642d58376750ed6857dee6a9b8a42245d",
+      "payload": "sources/ui-recovery/a91e1121bc214248-5d195dff-LogWorkDialog.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/time-tracking/ui/LogWorkDialog.tsx",
+      "sha256": "438b23b91fa52cf83fc9238c96fde63c49037aeeb7fa69548e577b56ebb13b02",
+      "payload": "sources/ui-recovery/438b23b91fa52cf8-e6174335-LogWorkDialog.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/time-tracking/ui/TimeTrackingPanel.test.tsx",
+      "sha256": "e7927112fab2c32ee407d15a7e80b756e47fe4f8761b5387a72c5c56800e463f",
+      "payload": "sources/ui-recovery/e7927112fab2c32e-02126e32-TimeTrackingPanel.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/time-tracking/ui/TimeTrackingPanel.tsx",
+      "sha256": "3ad788ec46deb109ef91e2abaadd4877bc576edc5296696a1342670f382d0f07",
+      "payload": "sources/ui-recovery/3ad788ec46deb109-2b623fa4-TimeTrackingPanel.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/time-tracking/ui/WorklogTab.test.tsx",
+      "sha256": "ab7a8941cc54491f7e658872c55bdc694acad0ea55d0e87575a9bf9b55322488",
+      "payload": "sources/ui-recovery/ab7a8941cc54491f-f7c95795-WorklogTab.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/time-tracking/ui/WorklogTab.tsx",
+      "sha256": "d8c8e2909855811c148be135cc6a8ac2d6aebc80cc1203532453e4112d7fdcf1",
+      "payload": "sources/ui-recovery/d8c8e2909855811c-8bbf76ef-WorklogTab.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/main.tsx",
+      "sha256": "b04f36099fb30e1b63e030f3b6155d08dce47d8b3237f28682a91b1c6ef7e144",
+      "payload": "sources/ui-recovery/b04f36099fb30e1b-f687de21-main.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/dashboard/dashboard.test.tsx",
+      "sha256": "26d1e5a5a47739f4e0afc019f8e57e53533922fce417248cf97cdeb84f64355d",
+      "payload": "sources/ui-recovery/26d1e5a5a47739f4-0da114ba-dashboard.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/dashboard/index.tsx",
+      "sha256": "f8b3c973983f65480a6385106da7c917b4e08e292bbff7baaabfed649b1ab26b",
+      "payload": "sources/ui-recovery/f8b3c973983f6548-31de551c-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/issue-create/index.tsx",
+      "sha256": "25ce8f63d68464c77df4e5d85bcab1cecdee7d6c792ffb72d716f15666376f73",
+      "payload": "sources/ui-recovery/25ce8f63d68464c7-d7aeca1c-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/issue-create/issue-create.test.tsx",
+      "sha256": "44853c0331cd20da7e86017ae852b00d1173764bd10b38b3a8a8c7f8ec7382e8",
+      "payload": "sources/ui-recovery/44853c0331cd20da-a53582c1-issue-create.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/issue-detail/index.tsx",
+      "sha256": "4c3be95548a1e6a2cb771fd07af0f293ba73b9aed7bc193d8f200bd8372efb99",
+      "payload": "sources/ui-recovery/4c3be95548a1e6a2-ba02c33e-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/issue-detail/issue-detail.test.tsx",
+      "sha256": "2af638df6c9865b55b35f7983953af3b5d2b7f04a6381430141d9022ab7e489e",
+      "payload": "sources/ui-recovery/2af638df6c9865b5-368b1b98-issue-detail.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/notifications/index.tsx",
+      "sha256": "dd47ee385047b798aaf1a6258cf3952911ecc87d0e0b3a9dfaf4f3f03d1844b5",
+      "payload": "sources/ui-recovery/dd47ee385047b798-fb578b00-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/notifications/notifications.test.tsx",
+      "sha256": "9378e54992486e2b57e59ec6c739eee28c0341fc336a94c0d9263ce4dd918194",
+      "payload": "sources/ui-recovery/9378e54992486e2b-93eca744-notifications.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-backlog/index.tsx",
+      "sha256": "390d470a734e10a44a2cb5f2c9278c163cf7c77b57d9673196cb0a60ab3b1e34",
+      "payload": "sources/ui-recovery/390d470a734e10a4-36720d90-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-backlog/project-backlog.test.tsx",
+      "sha256": "0517f9b9d33ba66ea28026f5e83c67ead5022b4dd2c36decf5e4a7560fb37b92",
+      "payload": "sources/ui-recovery/0517f9b9d33ba66e-62e555ab-project-backlog.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-custom-fields/index.tsx",
+      "sha256": "676ce0c37e41ff1555bf8a1f95b6bfe330062709fb0bc2b2a225a194963e597f",
+      "payload": "sources/ui-recovery/676ce0c37e41ff15-d289c6a3-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-custom-fields/project-custom-fields.test.tsx",
+      "sha256": "97bf8f71e4e85a6baf2052dfa725caf0ce249d0395936ebe0eb4e3b46a27a071",
+      "payload": "sources/ui-recovery/97bf8f71e4e85a6b-e06607ea-project-custom-fields.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-trash/index.tsx",
+      "sha256": "33b1f4aed1f0a593a571be1ddeeb18d4eb5e1ef70c30a2e39a8f7e010d1bb1fa",
+      "payload": "sources/ui-recovery/33b1f4aed1f0a593-00e1946f-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-trash/project-trash.test.tsx",
+      "sha256": "1d5240e358a6771017b090ebabce94c8d4e515e24bc606bd02214b39f3db3db5",
+      "payload": "sources/ui-recovery/1d5240e358a67710-0387b247-project-trash.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/projects/index.tsx",
+      "sha256": "59e4a6fb57ef6ee55841108aecdfff52ead626208e082f656497e8f2c7574b2b",
+      "payload": "sources/ui-recovery/59e4a6fb57ef6ee5-3bd1885f-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/projects/projects.test.tsx",
+      "sha256": "25fdea6e98f8479bf17c150cda29dc43a77698205393f988e1fba9687d92b174",
+      "payload": "sources/ui-recovery/25fdea6e98f8479b-526d47b8-projects.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/reports/index.test.tsx",
+      "sha256": "f5a6a85f76692a5bb5ac5f79c86682eee932b863cd927e1b96120f7d346e5889",
+      "payload": "sources/ui-recovery/f5a6a85f76692a5b-6b5722dc-index.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/reports/index.tsx",
+      "sha256": "75b9b37cd70912a0b4b503dc5f70bc3fbf07d67cf95f706bcb12166dac393a65",
+      "payload": "sources/ui-recovery/75b9b37cd70912a0-4cd29c17-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/sso-callback/index.tsx",
+      "sha256": "ba459274370cfa3f0b68e6bb33c870df1c7c41042b16bfe1dc320f4feb59ccba",
+      "payload": "sources/ui-recovery/ba459274370cfa3f-2430dbf7-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/sso-callback/sso-callback.test.tsx",
+      "sha256": "c643099826e201c0f043670dd370c7f675b851d5a3a33da61d43f15e93275216",
+      "payload": "sources/ui-recovery/c643099826e201c0-e83145db-sso-callback.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/hooks.test.tsx",
+      "sha256": "61f21b16203d8cafc8683b6c30a8b4b5606d904b74e89238d7f769b3dcaac14c",
+      "payload": "sources/ui-recovery/61f21b16203d8caf-39a46190-hooks.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/hooks.ts",
+      "sha256": "9870cacfa8d16ef681647ce0a215870a993f737bcadc23301952c05964400eb2",
+      "payload": "sources/ui-recovery/9870cacfa8d16ef6-67786264-hooks.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/useTrackerEvents.test.tsx",
+      "sha256": "22e7f8158404db2c3f4df463439af9073becc13150c99159418c0e708bdc4f1d",
+      "payload": "sources/ui-recovery/22e7f8158404db2c-64999bc0-useTrackerEvents.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/useTrackerEvents.ts",
+      "sha256": "158755cc3a7c181eb9ee171dd9a1d9de0c52a084f7db5728d8b2e4a8e85ff206",
+      "payload": "sources/ui-recovery/158755cc3a7c181e-e5a9a3f2-useTrackerEvents.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/i18n/locales/en.json",
+      "sha256": "ea6fe0f099b7a89f0ccaa221ba5eeb4f78b3a4dde5b60eb135215477331acba5",
+      "payload": "sources/ui-recovery/ea6fe0f099b7a89f-c263d4af-en.json.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/i18n/locales/ru.json",
+      "sha256": "f2bc1de534429a6542824b3e562e53d6ef0f43ff80e192cde2bca5175a890ac2",
+      "payload": "sources/ui-recovery/f2bc1de534429a65-f249e938-ru.json.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/lib/time.test.ts",
+      "sha256": "76cb84df46033ede311fe417e4ab587c4bfcbddb018a5e8b116ed8fdb365b7ea",
+      "payload": "sources/ui-recovery/76cb84df46033ede-d89283ee-time.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/lib/time.ts",
+      "sha256": "98efaf0e83bc8cef6276917c978c857c18e2c686570fc3392d38634a92aa07a7",
+      "payload": "sources/ui-recovery/98efaf0e83bc8cef-09d5343c-time.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/widgets/app-shell.test.tsx",
+      "sha256": "4abdf05a742bd63b95e98e5031ecd25045dd6505e636d256b702de109afb56b1",
+      "payload": "sources/ui-recovery/4abdf05a742bd63b-2143d156-app-shell.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/widgets/app-shell.tsx",
+      "sha256": "451a26bc0f057227dec6e32ff8b8823e33c6b6b6e57ebcc58315f21e3580d572",
+      "payload": "sources/ui-recovery/451a26bc0f057227-278cc8b4-app-shell.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        },
+        {
+          "worktree": "sdlc/.local/branding-publish-20261007/task-tracker",
+          "head": "04e14917aa70136fe9fc95071ca18bd1875c4165"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/AGENTS.md",
+      "sha256": "48965b0f8d68342fcaa3a163e84fe3647a8fbcd51c55b339d796337cea3a415b",
+      "payload": "sources/ui-recovery/48965b0f8d68342f-bd492002-AGENTS.md.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/custom-fields.test.ts",
+      "sha256": "da6d6444dcca3f3959f578b555e9bd7fbc879033f7378fa51f31278626b86dd2",
+      "payload": "sources/ui-recovery/da6d6444dcca3f39-91b13261-custom-fields.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/issue-delete.test.ts",
+      "sha256": "684f66a8d5ddc3357e4a2b6133cd950a79729a5939831096595cf06e9ab5d630",
+      "payload": "sources/ui-recovery/684f66a8d5ddc335-b7f2fc47-issue-delete.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/label.test.ts",
+      "sha256": "e16efdb36f9969b29475335cc1c3501fbdeddaea6a78ac4309ebdee94202a3eb",
+      "payload": "sources/ui-recovery/e16efdb36f9969b2-6e49801e-label.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/link.test.ts",
+      "sha256": "9c05d4955a5cdceb6771c98316f1058b3fbb489bdaac27246fc5cd51d12098ff",
+      "payload": "sources/ui-recovery/9c05d4955a5cdceb-564e7dba-link.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/dashboard/dashboard-activity.test.tsx",
+      "sha256": "271c16f33b165d6f1653e4f37476d9f8aa22fb380e668dc1e348679255af3970",
+      "payload": "sources/ui-recovery/271c16f33b165d6f-750d05ca-dashboard-activity.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/dashboard/recent-activity.tsx",
+      "sha256": "bc22f7760ae43805448ebe982a257d23cf98b890cc27bad3f5e68c03f03047c4",
+      "payload": "sources/ui-recovery/bc22f7760ae43805-c9aee33f-recent-activity.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/reports/report-formatters.test.ts",
+      "sha256": "278da50ca9f96de054e15f3f72648c0b7a777105f29b4fb31f9ea62ee6adffc1",
+      "payload": "sources/ui-recovery/278da50ca9f96de0-d929de70-report-formatters.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/reports/report-formatters.ts",
+      "sha256": "72ab001ada299f5d86f921fb1e54fcfb29b1ec32fe6b4aaa204161c7dd03bdd8",
+      "payload": "sources/ui-recovery/72ab001ada299f5d-d8f71d5b-report-formatters.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/attachment-hooks.test.tsx",
+      "sha256": "408ab550506735fbff5568486bb6657ac1c51d2486ae118444ac2a85bc92b378",
+      "payload": "sources/ui-recovery/408ab550506735fb-483a9a12-attachment-hooks.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/custom-field-hooks.test.tsx",
+      "sha256": "f64efb0ed9bd0604f8c03ad87b9f177dc71afb8a78798009478a55f3432c3c80",
+      "payload": "sources/ui-recovery/f64efb0ed9bd0604-820df503-custom-field-hooks.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/label-hooks.test.tsx",
+      "sha256": "c3e938a9ff88b994ebae3d22e8d4bf4d5bae65c7e6a7ad41cf83061c5c9fd41f",
+      "payload": "sources/ui-recovery/c3e938a9ff88b994-92b20dbe-label-hooks.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/link-hooks.test.tsx",
+      "sha256": "d637711675ea5512510ea9f0b1bace15ea3ba5a00b517fff09264f9121f7784a",
+      "payload": "sources/ui-recovery/d637711675ea5512-56027694-link-hooks.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/api/logout.test.tsx",
+      "sha256": "1d7f654ae34371f6d912e159501212967a77f025a6e17bbb423873ae08fcda7b",
+      "payload": "sources/ui-recovery/1d7f654ae34371f6-7fcbc23b-logout.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/lib/notification-target.test.ts",
+      "sha256": "6cd156a7fb46a8af02590b55e30d6a05d15aef616d046f9683e6570225520f0f",
+      "payload": "sources/ui-recovery/6cd156a7fb46a8af-c52f4870-notification-target.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/lib/notification-target.ts",
+      "sha256": "47a3b2fbb7a90c82ef26ab0cf7f5a8a01d3906ec992b0b14b720f4ae26472083",
+      "payload": "sources/ui-recovery/47a3b2fbb7a90c82-cc5d9677-notification-target.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/lib/notification-title.test.ts",
+      "sha256": "e50c84ca3dd6e22d0cc60aacc93ce3208acb68db38e4cc56b7e1e7749ccccaa3",
+      "payload": "sources/ui-recovery/e50c84ca3dd6e22d-e1cdec08-notification-title.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/lib/notification-title.ts",
+      "sha256": "a63cfde32b34980f6d5af3a413fc1119dbe29973fafa7135161e3fac771bdac8",
+      "payload": "sources/ui-recovery/a63cfde32b34980f-e84d45f0-notification-title.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/task-tracker",
+          "head": "0d57e303b71f54eb26e64bcee0da0ea75d69f227"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-settings/project-settings.review.test.tsx",
+      "sha256": "63398ed75b065a2f1e01ce36422402673758f7202e18dc7bd1258b5bda9e60e6",
+      "payload": "sources/ui-recovery/63398ed75b065a2f-578e46f0-project-settings.review.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/refresh-20261014/ui/task-tracker",
+          "head": "e760d89e597ac396d0b6d88996f8f8e5d25c2e1b"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": ".github/workflows/ci.yml",
+      "sha256": "31b6700595d87d2114d5bfa562488ba03655eb752f5fcd97e47bbc017b4291a0",
+      "payload": "sources/source-recovery/31b6700595d87d21-b803fcb7-ci.yml.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker-lease-gate",
+          "head": "878a8a2623290ae7ad8ed22389909e6317b276c8"
+        },
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker137",
+          "head": "c9068ae21874b406d0496edb4d1d1f60e94feb87"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/lib.rs",
+      "sha256": "ff7be41a56af925766c9d2b05ac9889369e713fb7be68831558daad2eec5a901",
+      "payload": "sources/source-recovery/ff7be41a56af9257-a6573dc5-lib.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker-lease-gate",
+          "head": "878a8a2623290ae7ad8ed22389909e6317b276c8"
+        },
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker137",
+          "head": "c9068ae21874b406d0496edb4d1d1f60e94feb87"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/migration/src/m20261012_0000095_pm_lease_state_gate.rs",
+      "sha256": "099a155f1098795ef8fe8d29aa3256888a397d88f4d9d186f1824efbd85eaaa2",
+      "payload": "sources/source-recovery/099a155f1098795e-7178ab35-m20261012_0000095_pm_lease_state_gate.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker-lease-gate",
+          "head": "878a8a2623290ae7ad8ed22389909e6317b276c8"
+        },
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker137",
+          "head": "c9068ae21874b406d0496edb4d1d1f60e94feb87"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "backend/server/tests/support/execution_lease.rs",
+      "sha256": "d8ddacb431321399f43e655c86fe9a44226e72702fa7ed84be5b9d571e5615cc",
+      "payload": "sources/source-recovery/d8ddacb431321399-2809e7f5-execution_lease.rs.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker-lease-gate",
+          "head": "878a8a2623290ae7ad8ed22389909e6317b276c8"
+        },
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker137",
+          "head": "c9068ae21874b406d0496edb4d1d1f60e94feb87"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/DATA_MODEL.md",
+      "sha256": "89660901293f0751c0bf622c0f125bbb7bc3b4a70052e4b34b429895f1a2982a",
+      "payload": "sources/source-recovery/89660901293f0751-3bfbbae4-DATA_MODEL.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker-lease-gate",
+          "head": "878a8a2623290ae7ad8ed22389909e6317b276c8"
+        },
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker137",
+          "head": "c9068ae21874b406d0496edb4d1d1f60e94feb87"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/PM_NATIVE_ADMISSION.md",
+      "sha256": "016d651870625fa708e5ebb333f5ed2464c8b405d6856cb02a7beb9d8b5981c2",
+      "payload": "sources/source-recovery/016d651870625fa7-14dd5ab8-PM_NATIVE_ADMISSION.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker-lease-gate",
+          "head": "878a8a2623290ae7ad8ed22389909e6317b276c8"
+        },
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker137",
+          "head": "c9068ae21874b406d0496edb4d1d1f60e94feb87"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/TESTING.md",
+      "sha256": "861ad7feb74173964dbbc1aae567b1d7569b8e01ebacdbc8c94607fdd7c9663d",
+      "payload": "sources/source-recovery/861ad7feb7417396-63e3617f-TESTING.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker-lease-gate",
+          "head": "878a8a2623290ae7ad8ed22389909e6317b276c8"
+        },
+        {
+          "worktree": "sdlc2/.local/sdlc2-final-20261012/tracker137",
+          "head": "c9068ae21874b406d0496edb4d1d1f60e94feb87"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/widgets/app-shell.test.tsx",
+      "sha256": "ee9c5e8c35c882d349a5ee2bc2a3bfbcbdcecf91f1674288fbeced2f84b149b1",
+      "payload": "sources/ui-recovery/ee9c5e8c35c882d3-2143d156-app-shell.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/branding-publish-20261007/task-tracker",
+          "head": "04e14917aa70136fe9fc95071ca18bd1875c4165"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "CHANGELOG.md",
+      "sha256": "a38c645539fe6933c127419e55ea0833eb59b917296e088a9d4b5e380ea02646",
+      "payload": "sources/source-recovery/a38c645539fe6933-06572a96-CHANGELOG.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/UI_ACCEPTANCE_EVIDENCE.md",
+      "sha256": "61d99739f7bdf7e68cdec8434e5fac9a546ede250ad5634f4c9c25ac70440aab",
+      "payload": "sources/source-recovery/61d99739f7bdf7e6-71708f15-UI_ACCEPTANCE_EVIDENCE.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "docs/UI_UX_MAP.md",
+      "sha256": "e242985086f4987d1afd2e0d91daef449f7ba223d6e18e795729a9268c26b85f",
+      "payload": "sources/source-recovery/e242985086f4987d-fcdf4459-UI_UX_MAP.md.source",
+      "group": "source-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/e2e/smoke.spec.ts",
+      "sha256": "f5ddb697f59fe4e0f47230503c14a73d1dbfb3447fee125836183119254ca9f2",
+      "payload": "sources/ui-recovery/f5ddb697f59fe4e0-41620153-smoke.spec.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/sprint.ts",
+      "sha256": "7fa2c16fe03305771fd2802cc25ae79673df24ea69a6832ead1ca300ff25ceba",
+      "payload": "sources/ui-recovery/7fa2c16fe0330577-a9c000a9-sprint.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/sprints/ui/SprintFormDialog.test.tsx",
+      "sha256": "e538097b2ca75ebea9ff7822a7f18caf9788a20ca7620312e7f5eddfb567eeaf",
+      "payload": "sources/ui-recovery/e538097b2ca75ebe-44aab8f6-SprintFormDialog.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/features/sprints/ui/SprintFormDialog.tsx",
+      "sha256": "e1f12640602de146e4d591dbae6ab7e82f45c544def97af5338498a59f5c0ead",
+      "payload": "sources/ui-recovery/e1f12640602de146-bed6401e-SprintFormDialog.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-backlog/index.tsx",
+      "sha256": "1fd957049b20a21f448af1d20f672ff04adaef7a4f898f5f5320a26bb3f55c30",
+      "payload": "sources/ui-recovery/1fd957049b20a21f-36720d90-index.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/i18n/locales/en.json",
+      "sha256": "2ae2545d479281427e6fc413189666c8b222fe1a005537d103e36bb95cb4beb9",
+      "payload": "sources/ui-recovery/2ae2545d47928142-c263d4af-en.json.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/shared/i18n/locales/ru.json",
+      "sha256": "a03935c9c44b47d89890c1e61a2c6b92948b02037f5ab12c9ed43d91ba1406d2",
+      "payload": "sources/ui-recovery/a03935c9c44b47d8-f249e938-ru.json.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/api/sprint.test.ts",
+      "sha256": "b45eed29f967f073919f28ab77bb62e918019211c959f6d4fd34c28de02acaf8",
+      "payload": "sources/ui-recovery/b45eed29f967f073-1c8fdbcc-sprint.test.ts.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "frontend/src/pages/project-backlog/sprint-dialog-integration.test.tsx",
+      "sha256": "1803bf8d6b8847991bb2c574f60a47eed03171425d48149de13d8e6ea2c41181",
+      "payload": "sources/ui-recovery/1803bf8d6b884799-fe5fd4d0-sprint-dialog-integration.test.tsx.source",
+      "group": "ui-recovery",
+      "origins": [
+        {
+          "worktree": "sdlc/.local/uiux-standard-workspace/task-tracker",
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false
+    },
+    {
+      "original_path": "commit/2d1323b337b4ec912c33da7e56e2d8630ec5500e",
+      "sha256": "989bd6c8c4eb9fb0936829ec3398aed5ae7b26db497bb0757033000a799f1f07",
+      "payload": "sources/committed-work/2d1323b337b4ec912c33da7e56e2d8630ec5500e.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "2d1323b337b4ec912c33da7e56e2d8630ec5500e",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision"
+      ],
+      "commit_subject": "chore(ui): pin shared SSR provider snapshot"
+    },
+    {
+      "original_path": "commit/931eada01abe02bf7a3877b475bd3b7e7333b905",
+      "sha256": "e53b6838e6457e8d5efc69f985022362dbc20d460176317fee5770e5bb489f07",
+      "payload": "sources/committed-work/931eada01abe02bf7a3877b475bd3b7e7333b905.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "931eada01abe02bf7a3877b475bd3b7e7333b905",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision"
+      ],
+      "commit_subject": "chore(ui): pin verified shared Base snapshot"
+    },
+    {
+      "original_path": "commit/21e4a44ae6d80d696de4d0788ac9dd643ca9d3be",
+      "sha256": "7f10fa62c1888e1a2e7777d7a766871e5f78f4d538d88e9443445256191fb2f8",
+      "payload": "sources/committed-work/21e4a44ae6d80d696de4d0788ac9dd643ca9d3be.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "21e4a44ae6d80d696de4d0788ac9dd643ca9d3be",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision",
+        "frontend/AGENTS.md"
+      ],
+      "commit_subject": "chore(ui): adopt shared frontend rules and Base context snapshot"
+    },
+    {
+      "original_path": "commit/e25cc39d4fd3414f5ed7a5270982b4c4a003c419",
+      "sha256": "9779cbf74958d1332b94e71623fa55fa52198c1e1932a57298e6fac8252b575d",
+      "payload": "sources/committed-work/e25cc39d4fd3414f5ed7a5270982b4c4a003c419.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "e25cc39d4fd3414f5ed7a5270982b4c4a003c419",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "CHANGELOG.md",
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md",
+        "frontend/e2e/smoke.spec.ts",
+        "frontend/src/api/board.test.ts",
+        "frontend/src/api/board.ts",
+        "frontend/src/api/workflow.ts",
+        "frontend/src/pages/project-board/index.tsx",
+        "frontend/src/pages/project-board/project-board.test.tsx",
+        "frontend/src/shared/i18n/locales/en.json",
+        "frontend/src/shared/i18n/locales/ru.json"
+      ],
+      "commit_subject": "refactor(board): adopt Base composition and safe moves"
+    },
+    {
+      "original_path": "commit/b4e00346efa952baab8507772b042a396f27382d",
+      "sha256": "d946053b38c15da7f7c82a4d9ae6c6ee94eb8c7bcfe7ebc0551ddf9550c0f54d",
+      "payload": "sources/committed-work/b4e00346efa952baab8507772b042a396f27382d.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "b4e00346efa952baab8507772b042a396f27382d",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "CHANGELOG.md",
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md",
+        "frontend/e2e/smoke.spec.ts",
+        "frontend/src/api/issue.test.ts",
+        "frontend/src/api/issue.ts",
+        "frontend/src/pages/project-trash/index.tsx",
+        "frontend/src/pages/project-trash/project-trash.test.tsx",
+        "frontend/src/shared/i18n/locales/en.json",
+        "frontend/src/shared/i18n/locales/ru.json"
+      ],
+      "commit_subject": "fix(ui): migrate project trash to Base list and safe actions"
+    },
+    {
+      "original_path": "commit/ee83d2368ff510530bd8eac908048480e4201642",
+      "sha256": "a5771b17e74b29a077bb41cf0a3235e0b608cd72adc26c6b342b5cc10fa14c9b",
+      "payload": "sources/committed-work/ee83d2368ff510530bd8eac908048480e4201642.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "ee83d2368ff510530bd8eac908048480e4201642",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision"
+      ],
+      "commit_subject": "fix(ui): pin Base form text wrapping snapshot"
+    },
+    {
+      "original_path": "commit/1012c701cde3c10216687cb4e5ed2b371c8f4e57",
+      "sha256": "d4e3c65a22789d258a3086231e42f0a9811f957093585e2f84e8f06520b44f9e",
+      "payload": "sources/committed-work/1012c701cde3c10216687cb4e5ed2b371c8f4e57.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "1012c701cde3c10216687cb4e5ed2b371c8f4e57",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "CHANGELOG.md",
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md",
+        "docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md",
+        "frontend/e2e/smoke.spec.ts",
+        "frontend/src/pages/search/index.tsx",
+        "frontend/src/pages/search/search.test.tsx",
+        "frontend/src/shared/i18n/locales/en.json",
+        "frontend/src/shared/i18n/locales/ru.json"
+      ],
+      "commit_subject": "refactor(search): adopt Base page and resource patterns"
+    },
+    {
+      "original_path": "commit/4785447d9b428803395e3a43bbda6b1d49cbb0c7",
+      "sha256": "ef62403a47df0d0eb3091eaf62a6e37522a61fd0f8d6bcc1ddc362a62c6aa88e",
+      "payload": "sources/committed-work/4785447d9b428803395e3a43bbda6b1d49cbb0c7.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "4785447d9b428803395e3a43bbda6b1d49cbb0c7",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "CHANGELOG.md",
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md",
+        "docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md",
+        "frontend/e2e/smoke.spec.ts",
+        "frontend/src/api/auth.ts",
+        "frontend/src/api/custom-fields.ts",
+        "frontend/src/api/members.ts",
+        "frontend/src/api/read-states.test.ts",
+        "frontend/src/api/workflow.ts",
+        "frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx",
+        "frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx",
+        "frontend/src/pages/issue-create/index.tsx",
+        "frontend/src/pages/issue-create/issue-create.test.tsx",
+        "frontend/src/shared/i18n/locales/en.json",
+        "frontend/src/shared/i18n/locales/ru.json"
+      ],
+      "commit_subject": "feat(ui): migrate issue creation to Base form patterns"
+    },
+    {
+      "original_path": "commit/4b82dd615479cfbc5674db70050747d9d4458256",
+      "sha256": "e663e38f26eaaeb1dee2127f48d3c633630aac626baad421c36da984df8059ea",
+      "payload": "sources/committed-work/4b82dd615479cfbc5674db70050747d9d4458256.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "4b82dd615479cfbc5674db70050747d9d4458256",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "CHANGELOG.md",
+        "backend/Cargo.lock",
+        "backend/Cargo.toml",
+        "docs/BASE_INTEGRATION.md"
+      ],
+      "commit_subject": "fix(build): vendor Swagger UI assets for local acceptance"
+    },
+    {
+      "original_path": "commit/90e3d5865918c1bc79d07238b4eb715ad5d01ec7",
+      "sha256": "390342de6e82d9de9b18ea9f7bfc061080a9ad0c9083734c2753c9e8bc51bdd5",
+      "payload": "sources/committed-work/90e3d5865918c1bc79d07238b4eb715ad5d01ec7.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "90e3d5865918c1bc79d07238b4eb715ad5d01ec7",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "CHANGELOG.md",
+        "docs/BASE_INTEGRATION.md",
+        "frontend/Dockerfile.umbrella"
+      ],
+      "commit_subject": "build(ui): align Task umbrella image provenance"
+    },
+    {
+      "original_path": "commit/0e9451f6ed0251bf0529e938ff3f333b787d348e",
+      "sha256": "1a5efc7c2fd84c7f969d73a4825eaa46ef2a9b89a01328d271b0b011d2a35a55",
+      "payload": "sources/committed-work/0e9451f6ed0251bf0529e938ff3f333b787d348e.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "0e9451f6ed0251bf0529e938ff3f333b787d348e",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "CHANGELOG.md",
+        "docs/BASE_INTEGRATION.md",
+        "docs/ui-routes.json",
+        "frontend/Dockerfile"
+      ],
+      "commit_subject": "build(ui): attest packaged Task Tracker frontend assets"
+    },
+    {
+      "original_path": "commit/1ac3c137b01212d108c5024137d9ce47d32a23b5",
+      "sha256": "2dc1fbdae69dc7b78e7abf280404046414445144096121e6881b76e564a8f1af",
+      "payload": "sources/committed-work/1ac3c137b01212d108c5024137d9ce47d32a23b5.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "1ac3c137b01212d108c5024137d9ce47d32a23b5",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision"
+      ],
+      "commit_subject": "chore(ui): pin Base reconciliation controls"
+    },
+    {
+      "original_path": "commit/cc0f344edc49eaa60de65eb5ca1b5d081ddbc997",
+      "sha256": "c1d96e5d716801c01f7d8d1764f07045e884d2839deaa054f3a21bb02b4b0228",
+      "payload": "sources/committed-work/cc0f344edc49eaa60de65eb5ca1b5d081ddbc997.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "cc0f344edc49eaa60de65eb5ca1b5d081ddbc997",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision"
+      ],
+      "commit_subject": "chore(ui): pin confirmation lifecycle Base snapshot"
+    },
+    {
+      "original_path": "commit/a0236611e97f0f3037f51d3585d9fc61bbccddb5",
+      "sha256": "0ba21d8a46a9d6e90a5e7adb6c165b887728d34234772c6c9e2727e0ac64d926",
+      "payload": "sources/committed-work/a0236611e97f0f3037f51d3585d9fc61bbccddb5.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "a0236611e97f0f3037f51d3585d9fc61bbccddb5",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision"
+      ],
+      "commit_subject": "chore(ui): sync Base non-submitting retry controls"
+    },
+    {
+      "original_path": "commit/02f3bad72da0aa61de9c0e3917b4487e24e5e795",
+      "sha256": "f1f5113127af9ab53aac4f26607fcb423e2352b9c82366402c2999847b02787a",
+      "payload": "sources/committed-work/02f3bad72da0aa61de9c0e3917b4487e24e5e795.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "02f3bad72da0aa61de9c0e3917b4487e24e5e795",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision"
+      ],
+      "commit_subject": "chore(ui): pin Base validation focus and SSO history fixes"
+    },
+    {
+      "original_path": "commit/56a45ccf909864801d2b2051aef17c4a3ab7a832",
+      "sha256": "64a3e6e0c17020af80eb4bc2cdf0674c7c153067c8eb3714bbfe055986b8d698",
+      "payload": "sources/committed-work/56a45ccf909864801d2b2051aef17c4a3ab7a832.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "56a45ccf909864801d2b2051aef17c4a3ab7a832",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision"
+      ],
+      "commit_subject": "chore(ui): pin Base focus and CLI reliability snapshot"
+    },
+    {
+      "original_path": "commit/e79beb178fcc04a19442386b94652b7ddb399098",
+      "sha256": "1ddbce236c4a71d627ea9285572b9b66ec7ee5c3c091c41b6d4699b0b8ee56e5",
+      "payload": "sources/committed-work/e79beb178fcc04a19442386b94652b7ddb399098.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "e79beb178fcc04a19442386b94652b7ddb399098",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision",
+        "CHANGELOG.md"
+      ],
+      "commit_subject": "chore(ui): align verified Base draft and editor snapshot"
+    },
+    {
+      "original_path": "commit/29414354cb7fa5351cf64e1035475ea19e31a05f",
+      "sha256": "69a8a6b0ecf4b8b05983d0089516b80fc69d5c1fdd5c7df93757a4a7b25bfee3",
+      "payload": "sources/committed-work/29414354cb7fa5351cf64e1035475ea19e31a05f.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "29414354cb7fa5351cf64e1035475ea19e31a05f",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        ".base-revision",
+        "AGENTS.md",
+        "CHANGELOG.md"
+      ],
+      "commit_subject": "chore(ui): pin shared Base and defer delivery policy to its DoD"
+    },
+    {
+      "original_path": "commit/4bbdb823c86e33abab63a381898e5787b210fec9",
+      "sha256": "269c8f317b31b6464755843e616f2cd2286301334151900e8534c20cb3fcaac4",
+      "payload": "sources/committed-work/4bbdb823c86e33abab63a381898e5787b210fec9.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "4bbdb823c86e33abab63a381898e5787b210fec9",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md",
+        "docs/plans/2026-10-02-base-reconciliation-and-remaining-ui.md",
+        "docs/uiux-source-evidence-2026-10-02.md"
+      ],
+      "commit_subject": "docs(ui): record Task reconciliation evidence and release gaps"
+    },
+    {
+      "original_path": "commit/76b0aac700640e21d232a59ef0014fdd31126df6",
+      "sha256": "face855cc8c059c8aa53bfc2eafd49f7709df266d7556dcc927e91595847de04",
+      "payload": "sources/committed-work/76b0aac700640e21d232a59ef0014fdd31126df6.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "76b0aac700640e21d232a59ef0014fdd31126df6",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md"
+      ],
+      "commit_subject": "docs(ui): record notification page and tab history source evidence"
+    },
+    {
+      "original_path": "commit/29c405f084058965a6f8894cacd2362b2d8fa791",
+      "sha256": "a2a4ed75c0d08fb17615b90b908f8c3e7fb572754eeaa368c8a734c37decc5c8",
+      "payload": "sources/committed-work/29c405f084058965a6f8894cacd2362b2d8fa791.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "29c405f084058965a6f8894cacd2362b2d8fa791",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "docs/ui-routes.json",
+        "frontend/e2e/smoke.spec.ts",
+        "frontend/src/pages/notifications/index.tsx",
+        "frontend/src/pages/notifications/notifications.test.tsx",
+        "frontend/src/shared/i18n/locales/en.json",
+        "frontend/src/shared/i18n/locales/ru.json",
+        "frontend/src/widgets/app-shell.tsx"
+      ],
+      "commit_subject": "feat(ui): migrate notification preferences and list to Base detail pattern"
+    },
+    {
+      "original_path": "commit/a30b46047a21f0b650b302cafd01a8d72b2451df",
+      "sha256": "24e6b4268e8f55b22e7081b43289f0e0700beb99e486987dcdb66c1dc45d691a",
+      "payload": "sources/committed-work/a30b46047a21f0b650b302cafd01a8d72b2451df.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "a30b46047a21f0b650b302cafd01a8d72b2451df",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md"
+      ],
+      "commit_subject": "docs(ui): record notification source acceptance evidence"
+    },
+    {
+      "original_path": "commit/8b8f05c33ae7b1d76621dc4b7e51522ba39ef2d1",
+      "sha256": "0ae3b10e471ab23de3514784a2d371e1559112d9e0be727a96b1932c2379fd5f",
+      "payload": "sources/committed-work/8b8f05c33ae7b1d76621dc4b7e51522ba39ef2d1.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "8b8f05c33ae7b1d76621dc4b7e51522ba39ef2d1",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "frontend/e2e/smoke.spec.ts",
+        "frontend/src/api/notifications.test.ts",
+        "frontend/src/api/notifications.ts",
+        "frontend/src/shared/i18n/locales/en.json",
+        "frontend/src/shared/i18n/locales/ru.json",
+        "frontend/src/widgets/app-shell.test.tsx",
+        "frontend/src/widgets/notification-menu.test.tsx",
+        "frontend/src/widgets/notification-menu.tsx"
+      ],
+      "commit_subject": "fix(ui): preserve notification states and pending menu focus"
+    },
+    {
+      "original_path": "commit/3591a4c581b89f22c166bb68cd34879e8b8deede",
+      "sha256": "9bea02105fca8280f6e0068ae4dc4c56dac9dcf9402a5499e83b6ca5ae6cea56",
+      "payload": "sources/committed-work/3591a4c581b89f22c166bb68cd34879e8b8deede.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "3591a4c581b89f22c166bb68cd34879e8b8deede",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md"
+      ],
+      "commit_subject": "docs(ui): record project catalog source acceptance"
+    },
+    {
+      "original_path": "commit/5e6168151bc5dd950d41bbd2adbc0cc82f194ef1",
+      "sha256": "4710f6a7e4f8ddc2865b39fa258da6f888868fe1bab62593048dac548802b154",
+      "payload": "sources/committed-work/5e6168151bc5dd950d41bbd2adbc0cc82f194ef1.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "5e6168151bc5dd950d41bbd2adbc0cc82f194ef1",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "frontend/e2e/smoke.spec.ts",
+        "frontend/src/features/projects/ui/ProjectFormDialog.test.tsx",
+        "frontend/src/features/projects/ui/ProjectFormDialog.tsx",
+        "frontend/src/pages/login/index.tsx",
+        "frontend/src/pages/login/login.test.tsx",
+        "frontend/src/pages/projects/index.tsx",
+        "frontend/src/pages/projects/projects.test.tsx",
+        "frontend/src/shared/api/hooks.test.tsx",
+        "frontend/src/shared/api/hooks.ts"
+      ],
+      "commit_subject": "feat(ui): adopt Base project catalog and guarded forms"
+    },
+    {
+      "original_path": "commit/7ac38d5535ec524574fcee21d3738d6ea6006e89",
+      "sha256": "30ed0e8952c941536cd7428f81cfce31ade94731463a8b517d9adab60d6457d4",
+      "payload": "sources/committed-work/7ac38d5535ec524574fcee21d3738d6ea6006e89.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "7ac38d5535ec524574fcee21d3738d6ea6006e89",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "docs/UI_ACCEPTANCE_EVIDENCE.md",
+        "docs/UI_UX_MAP.md"
+      ],
+      "commit_subject": "docs(ui): record Task source acceptance and remaining scope"
+    },
+    {
+      "original_path": "commit/7b4320718687825ec229c01853242f0c81050ad7",
+      "sha256": "89a4bf208ed79bb2a2b292e3b54c9e8d80d9249fe84d8493ee166bf5a7ba26b5",
+      "payload": "sources/committed-work/7b4320718687825ec229c01853242f0c81050ad7.patch.source",
+      "group": "committed-work",
+      "origins": [
+        {
+          "head": "7b4320718687825ec229c01853242f0c81050ad7",
+          "worktree": "task-tracker"
+        }
+      ],
+      "unresolved_markers": false,
+      "synthetic_credential_fixture_reviewed": false,
+      "included_paths": [
+        "docs/ui-routes.json",
+        "frontend/e2e/smoke.spec.ts",
+        "frontend/package.json",
+        "frontend/src/api/dashboard.ts",
+        "frontend/src/api/issue.ts",
+        "frontend/src/api/project.ts",
+        "frontend/src/api/read-states.test.ts",
+        "frontend/src/app/router.tsx",
+        "frontend/src/features/comments/model/use-comments.ts",
+        "frontend/src/features/issue-detail/ui/CustomFieldsPanel.test.tsx",
+        "frontend/src/features/issue-detail/ui/CustomFieldsPanel.tsx",
+        "frontend/src/features/issue-detail/ui/IssueDescriptionEditor.test.tsx",
+        "frontend/src/features/issue-detail/ui/IssueDescriptionEditor.tsx",
+        "frontend/src/features/issue-detail/ui/IssueMetaEditor.tsx",
+        "frontend/src/features/issue-detail/ui/LinkEditor.tsx",
+        "frontend/src/features/time-tracking/model/use-worklogs.ts",
+        "frontend/src/features/time-tracking/ui/TimeTrackingPanel.tsx",
+        "frontend/src/pages/dashboard/dashboard.test.tsx",
+        "frontend/src/pages/dashboard/index.tsx",
+        "frontend/src/pages/issue-create/index.tsx",
+        "frontend/src/pages/issue-detail/index.tsx",
+        "frontend/src/pages/issue-detail/issue-detail.test.tsx",
+        "frontend/src/pages/project-board/index.tsx",
+        "frontend/src/pages/project-board/project-board.test.tsx",
+        "frontend/src/widgets/app-shell.test.tsx",
+        "frontend/src/widgets/app-shell.tsx",
+        "frontend/src/widgets/notification-menu.tsx"
+      ],
+      "commit_subject": "feat(ui): adopt Base shell and Task page compositions"
+    }
+  ]
+}

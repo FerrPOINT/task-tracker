@@ -1,0 +1,111 @@
+//! Candidate pin and business verification use the exact delegated Fleet boundary.
+use axum::{
+    Extension, Json, Router,
+    extract::{Path, State},
+    http::{HeaderMap, HeaderValue, StatusCode, header},
+    routing::{get, post},
+};
+use domain::{bug_work_business::*, sdlc::Principal};
+use shared::AppError;
+use std::sync::Arc;
+use uuid::Uuid;
+pub(super) fn router() -> Router<Arc<app::AppContext>> {
+    Router::new()
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/candidate",
+            post(pin),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/bugs/{bug_id}/candidate",
+            get(current),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/bugs/{bug_id}/apply-verification",
+            post(apply),
+        )
+        .route(
+            "/projects/{project_id}/sdlc/bug-intake/business-operations/{idempotency_key}",
+            get(operation),
+        )
+        .layer(axum::extract::DefaultBodyLimit::max(16384))
+}
+fn service(
+    ctx: &app::AppContext,
+) -> Result<&app::bug_work_business::BugWorkBusinessService, AppError> {
+    ctx.bug_business
+        .as_ref()
+        .ok_or_else(|| AppError::Unavailable("Bug business owner is unavailable".into()))
+}
+fn no_store() -> HeaderMap {
+    let mut h = HeaderMap::new();
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    h
+}
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-intake/assignments/{assignment_id}/candidate",tag="bug-search",params(("project_id"=Uuid,Path),("assignment_id"=Uuid,Path)),request_body=PinBugWorkCandidate,responses((status=201,body=BugBusinessReceipt),(status=200,body=BugBusinessReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn pin(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, id)): Path<(Uuid, Uuid)>,
+    Json(c): Json<PinBugWorkCandidate>,
+) -> Result<(StatusCode, HeaderMap, Json<BugBusinessReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.pin(p, id, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+#[utoipa::path(post,path="/api/v1/projects/{project_id}/sdlc/bug-intake/bugs/{bug_id}/apply-verification",tag="bug-search",params(("project_id"=Uuid,Path),("bug_id"=Uuid,Path)),request_body=ApplyBugWorkVerification,responses((status=201,body=BugBusinessReceipt),(status=200,body=BugBusinessReceipt),(status=401),(status=403),(status=404),(status=409),(status=422),(status=503)),security(("bearer"=[])))]
+pub async fn apply(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, id)): Path<(Uuid, Uuid)>,
+    Json(c): Json<ApplyBugWorkVerification>,
+) -> Result<(StatusCode, HeaderMap, Json<BugBusinessReceipt>), AppError> {
+    let (r, replay) = service(&ctx)?.apply(p, id, &a, c).await?;
+    Ok((
+        if replay {
+            StatusCode::OK
+        } else {
+            StatusCode::CREATED
+        },
+        no_store(),
+        Json(r),
+    ))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-intake/bugs/{bug_id}/candidate",tag="bug-search",params(("project_id"=Uuid,Path),("bug_id"=Uuid,Path)),responses((status=200,body=Option<BugWorkCandidate>),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn current(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, b)): Path<(Uuid, Uuid)>,
+) -> Result<(HeaderMap, Json<Option<BugWorkCandidate>>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .repository
+                .current_candidate(p, b, &a)
+                .await?,
+        ),
+    ))
+}
+#[utoipa::path(get,path="/api/v1/projects/{project_id}/sdlc/bug-intake/business-operations/{idempotency_key}",tag="bug-search",params(("project_id"=Uuid,Path),("idempotency_key"=String,Path)),responses((status=200,body=BugBusinessReceipt),(status=401),(status=403),(status=404),(status=503)),security(("bearer"=[])))]
+pub async fn operation(
+    State(ctx): State<Arc<app::AppContext>>,
+    Extension(a): Extension<Principal>,
+    Path((p, key)): Path<(Uuid, String)>,
+) -> Result<(HeaderMap, Json<BugBusinessReceipt>), AppError> {
+    Ok((
+        no_store(),
+        Json(
+            service(&ctx)?
+                .repository
+                .business_operation(p, &key, &a)
+                .await?,
+        ),
+    ))
+}

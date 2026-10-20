@@ -1,0 +1,442 @@
+import { useId, useRef, useState, type FormEvent } from 'react'
+import { useParams } from 'react-router'
+import { useTranslation } from 'react-i18next'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { toast } from 'sonner'
+import { Plus, Trash2, RefreshCw, X } from 'lucide-react'
+import {
+  Button,
+  ConfirmDialog,
+  ErrorState,
+  Input,
+  Label,
+  LoadingState,
+  UnsavedChangesGuard,
+} from '@sdlc/ui/ui'
+import {
+  useCreateCustomField,
+  useDeleteCustomField,
+  useProjectCustomFields,
+} from '@/shared/api/hooks'
+import {
+  CustomFieldMutationError,
+  type CustomFieldInput,
+  type CustomField,
+} from '@/api/custom-fields'
+
+const types = ['text', 'number', 'select', 'multi-select', 'date'] as const
+const initial = { name: '', field_type: 'text' as const, optionsText: '', is_required: false }
+type FormData = {
+  name: string
+  field_type: (typeof types)[number]
+  optionsText: string
+  is_required: boolean
+}
+type UnknownCreate = { input: CustomFieldInput; beforeIds: string[] }
+
+function matchesDefinition(field: CustomField, input: CustomFieldInput) {
+  return (
+    field.name === input.name &&
+    field.field_type === input.field_type &&
+    field.is_required === input.is_required &&
+    JSON.stringify(field.options) === JSON.stringify(input.options)
+  )
+}
+
+export function ProjectCustomFieldsPage() {
+  const { t } = useTranslation()
+  const { projectKey = '' } = useParams()
+  const fields = useProjectCustomFields(projectKey)
+  const create = useCreateCustomField(projectKey)
+  const remove = useDeleteCustomField(projectKey)
+  const [pendingDelete, setPendingDelete] = useState<CustomField | null>(null)
+  const [deleteUnknown, setDeleteUnknown] = useState(false)
+  const [unknownCreate, setUnknownCreate] = useState<UnknownCreate | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [discardOpen, setDiscardOpen] = useState(false)
+  const lock = useRef(false)
+  const nameRef = useRef<HTMLInputElement>(null)
+  const regionRef = useRef<HTMLDivElement>(null)
+  const deleteInitiator = useRef<HTMLButtonElement | null>(null)
+  const id = useId()
+  const schema = z
+    .object({
+      name: z.string().trim().min(1, t('customFields.nameRequired')),
+      field_type: z.enum(types),
+      optionsText: z.string(),
+      is_required: z.boolean(),
+    })
+    .superRefine((value, context) => {
+      if (!['select', 'multi-select'].includes(value.field_type)) return
+      const options = value.optionsText.split(',').map((option) => option.trim())
+      if (options.some((option) => !option))
+        context.addIssue({
+          code: 'custom',
+          path: ['optionsText'],
+          message: t('customFields.optionsRequired'),
+        })
+      else if (new Set(options).size !== options.length)
+        context.addIssue({
+          code: 'custom',
+          path: ['optionsText'],
+          message: t('customFields.optionsUnique'),
+        })
+    })
+  const form = useForm<FormData>({ defaultValues: initial, resolver: zodResolver(schema) })
+  const fieldType = form.watch('field_type')
+  const needsOptions = fieldType === 'select' || fieldType === 'multi-select'
+  const busy = submitting || create.isPending || remove.isPending
+  const unavailable = fields.isLoading || Boolean(fields.error) || !fields.data
+  const protectedDraft = form.formState.isDirty || unknownCreate !== null || deleteUnknown
+  const finishCreate = () => {
+    form.reset(initial)
+    setUnknownCreate(null)
+    setError(null)
+    toast.success(t('customFields.created'))
+  }
+  const finishDelete = () => {
+    const name = pendingDelete?.name
+    setPendingDelete(null)
+    setDeleteUnknown(false)
+    setDeleteError(null)
+    toast.success(t('customFields.deleted', { name }))
+  }
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (busy || lock.current || pendingDelete) return
+    lock.current = true
+    setSubmitting(true)
+    setError(null)
+    try {
+      if (unknownCreate) {
+        const result = await fields.refetch()
+        if (result.error || !result.data) {
+          setError(t('customFields.verifyError'))
+          return
+        }
+        const matches = result.data.filter(
+          (field) =>
+            !unknownCreate.beforeIds.includes(field.id) &&
+            matchesDefinition(field, unknownCreate.input),
+        )
+        if (matches.length === 1) finishCreate()
+        else if (matches.length > 1) setError(t('customFields.ambiguousCreate'))
+        else {
+          setUnknownCreate(null)
+          setError(t('customFields.notCreated'))
+        }
+      } else {
+        if (unavailable) return
+        await form.handleSubmit(async (values) => {
+          const input: CustomFieldInput = {
+            name: values.name,
+            field_type: values.field_type,
+            options: needsOptions
+              ? values.optionsText.split(',').map((option) => option.trim())
+              : [],
+            is_required: values.is_required,
+          }
+          const beforeIds = (fields.data ?? []).map((field) => field.id)
+          try {
+            await create.mutateAsync(input)
+            finishCreate()
+          } catch (cause) {
+            if (!(cause instanceof CustomFieldMutationError) || cause.outcome === 'unknown') {
+              setUnknownCreate({ input, beforeIds })
+              setError(t('customFields.unknownCreate'))
+            } else setError(t('customFields.createError'))
+          }
+        })(event)
+      }
+    } catch {
+      setError(t('customFields.verifyError'))
+    } finally {
+      lock.current = false
+      setSubmitting(false)
+    }
+  }
+  const confirmDelete = async () => {
+    if (!pendingDelete || busy || lock.current) return
+    lock.current = true
+    setSubmitting(true)
+    setDeleteError(null)
+    try {
+      if (deleteUnknown) {
+        const result = await fields.refetch()
+        if (result.error || !result.data) {
+          setDeleteError(t('customFields.verifyError'))
+          return
+        }
+        if (result.data.some((field) => field.id === pendingDelete.id)) {
+          setDeleteUnknown(false)
+          setDeleteError(t('customFields.notDeleted'))
+          return
+        }
+      } else {
+        if (unavailable) {
+          setDeleteError(t('customFields.loadError'))
+          return
+        }
+        await remove.mutateAsync(pendingDelete.id)
+      }
+      finishDelete()
+    } catch (cause) {
+      const unknown =
+        !(cause instanceof CustomFieldMutationError) ||
+        cause.outcome === 'unknown' ||
+        cause.status === 404
+      setDeleteUnknown(unknown)
+      setDeleteError(t(unknown ? 'customFields.unknownDelete' : 'customFields.deleteError'))
+    } finally {
+      lock.current = false
+      setSubmitting(false)
+    }
+  }
+  const discard = () => {
+    if (busy || lock.current) return
+    form.reset(initial)
+    setUnknownCreate(null)
+    setError(null)
+    setDiscardOpen(false)
+  }
+  const nameField = form.register('name')
+  const locked = busy || unknownCreate !== null || pendingDelete !== null
+  return (
+    <div
+      ref={regionRef}
+      role="region"
+      aria-label={t('customFields.title')}
+      tabIndex={-1}
+      className="min-w-0 space-y-5"
+    >
+      <UnsavedChangesGuard
+        when={protectedDraft}
+        isPending={busy}
+        returnFocusRef={{
+          get current() {
+            const target = pendingDelete
+              ? document.querySelector<HTMLElement>('[role="alertdialog"] button:not(:disabled)')
+              : nameRef.current
+            return target?.isConnected && !target.matches(':disabled') ? target : regionRef.current
+          },
+        }}
+      />
+      <h1 className="text-2xl font-semibold">{t('customFields.title')}</h1>
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] lg:items-start">
+        <section className="min-w-0 space-y-3" aria-labelledby={id + '-create-title'}>
+          <h2 id={id + '-create-title'} className="text-base font-semibold">
+            {t('customFields.addTitle')}
+          </h2>
+          <form
+            onSubmit={(event) => void submit(event)}
+            noValidate
+            aria-busy={busy}
+            className="min-w-0 space-y-3"
+            data-testid="custom-field-create-form"
+          >
+            <fieldset disabled={locked} className="min-w-0 space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor={id + '-name'}>{t('customFields.fieldName')}</Label>
+                <Input
+                  {...nameField}
+                  id={id + '-name'}
+                  ref={(element) => {
+                    nameField.ref(element)
+                    nameRef.current = element
+                  }}
+                  aria-required="true"
+                  aria-invalid={Boolean(form.formState.errors.name)}
+                  aria-describedby={form.formState.errors.name ? id + '-name-error' : undefined}
+                  className="min-h-11 min-w-0 sm:min-h-10"
+                />
+                {form.formState.errors.name && (
+                  <p id={id + '-name-error'} role="alert" className="text-sm text-danger">
+                    {form.formState.errors.name.message}
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor={id + '-type'}>{t('customFields.fieldType')}</Label>
+                <select
+                  {...form.register('field_type')}
+                  id={id + '-type'}
+                  className="min-h-11 w-full min-w-0 rounded-md border border-border-strong bg-background p-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus sm:min-h-10"
+                >
+                  {types.map((type) => (
+                    <option key={type} value={type}>
+                      {t('customFields.types.' + type)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {needsOptions && (
+                <div className="space-y-1">
+                  <Label htmlFor={id + '-options'}>{t('customFields.options')}</Label>
+                  <Input
+                    {...form.register('optionsText')}
+                    id={id + '-options'}
+                    aria-required="true"
+                    aria-invalid={Boolean(form.formState.errors.optionsText)}
+                    aria-describedby={
+                      form.formState.errors.optionsText ? id + '-options-error' : undefined
+                    }
+                    className="min-h-11 min-w-0 sm:min-h-10"
+                  />
+                  {form.formState.errors.optionsText && (
+                    <p id={id + '-options-error'} role="alert" className="text-sm text-danger">
+                      {form.formState.errors.optionsText.message}
+                    </p>
+                  )}
+                </div>
+              )}
+              <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-10">
+                <input type="checkbox" {...form.register('is_required')} className="h-4 w-4" />
+                {t('customFields.required')}
+              </label>
+            </fieldset>
+            {error && (
+              <p role="alert" className="text-sm text-danger">
+                {error}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="submit"
+                disabled={busy || pendingDelete !== null || (unavailable && !unknownCreate)}
+                className="min-h-11 sm:min-h-10"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+                {busy
+                  ? t('customFields.adding')
+                  : unknownCreate
+                    ? t('customFields.verify')
+                    : t('customFields.addButton')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || pendingDelete !== null || !protectedDraft}
+                className="min-h-11 sm:min-h-10"
+                onClick={() => {
+                  if (protectedDraft && !lock.current) setDiscardOpen(true)
+                }}
+              >
+                <X className="h-4 w-4" aria-hidden />
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </form>
+        </section>
+        <section className="min-w-0 space-y-3" aria-labelledby={id + '-list-title'}>
+          <div className="flex items-center justify-between gap-2">
+            <h2 id={id + '-list-title'} className="text-base font-semibold">
+              {t('customFields.configuredTitle')}
+            </h2>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t('customFields.refresh')}
+              title={t('customFields.refresh')}
+              className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+              disabled={busy || fields.isFetching}
+              onClick={() => {
+                if (!busy && !lock.current) void fields.refetch()
+              }}
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
+          {fields.isLoading && <LoadingState message={t('customFields.loading')} />}
+          {fields.error && (
+            <ErrorState
+              message={t('customFields.loadError')}
+              onRetry={() => {
+                if (!busy && !lock.current) void fields.refetch()
+              }}
+            />
+          )}
+          <ul className="divide-y divide-border">
+            {(fields.data ?? []).map((field) => (
+              <li
+                key={field.id}
+                className="flex min-w-0 items-start justify-between gap-3 py-3"
+                data-custom-field={field.id}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium [overflow-wrap:anywhere]">
+                    {field.name}
+                    {field.is_required ? ' *' : ''}
+                  </p>
+                  <p className="text-sm text-text-muted [overflow-wrap:anywhere]">
+                    {types.some((type) => type === field.field_type)
+                      ? t('customFields.types.' + field.field_type)
+                      : t('customFields.unsupportedType')}
+                    {field.options.length ? ': ' + field.options.join(', ') : ''}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t('customFields.deleteField', { name: field.name })}
+                  title={t('customFields.deleteField', { name: field.name })}
+                  className="min-h-11 min-w-11 shrink-0 text-danger hover:text-danger sm:min-h-10 sm:min-w-10"
+                  disabled={busy || unavailable || unknownCreate !== null || pendingDelete !== null}
+                  onClick={(event) => {
+                    if (lock.current) return
+                    deleteInitiator.current = event.currentTarget
+                    setDeleteError(null)
+                    setDeleteUnknown(false)
+                    setPendingDelete(field)
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                </Button>
+              </li>
+            ))}
+          </ul>
+          {!unavailable && !fields.data?.length && (
+            <p className="text-sm text-text-muted">{t('customFields.noFields')}</p>
+          )}
+        </section>
+      </div>
+      <ConfirmDialog
+        open={discardOpen}
+        onOpenChange={setDiscardOpen}
+        title={t('customFields.discardTitle')}
+        description={t('customFields.discardDescription')}
+        isPending={busy}
+        returnFocusRef={nameRef}
+        onConfirm={discard}
+      />
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy && !lock.current) {
+            setPendingDelete(null)
+            setDeleteError(null)
+            setDeleteUnknown(false)
+          }
+        }}
+        isPending={busy}
+        error={deleteError}
+        title={t('customFields.deleteTitle')}
+        description={t('customFields.deleteConfirm', { name: pendingDelete?.name })}
+        onConfirm={() => void confirmDelete()}
+        confirmLabel={deleteUnknown ? t('customFields.verify') : undefined}
+        returnFocusRef={{
+          get current() {
+            const button = deleteInitiator.current
+            return button?.isConnected && !button.disabled ? button : regionRef.current
+          },
+        }}
+        fallbackFocusRef={regionRef}
+      />
+    </div>
+  )
+}

@@ -1,0 +1,328 @@
+//! Genuine existing-Issue work, independent of PM/Search execution authority.
+use crate::{
+    bug_search::{BugFindingReport, BugSourceIdentity, bounded_text, sha256},
+    bug_search_cancel::BugNotStartedObservation,
+    bug_search_control::validate_key,
+    bug_search_intake::{BugIntakeWorkerRuntime, validate_scope},
+    bug_search_terminal::BugRuntimeObservation,
+    bug_search_unbound::BugUnboundObservation,
+    sdlc::MAX_SAFE_VERSION,
+};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+fn text(v: &str) -> bool {
+    bounded_text(v, 512) && !v.chars().any(char::is_control)
+}
+fn version(v: i64) -> bool {
+    (1..=MAX_SAFE_VERSION).contains(&v)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ClaimBugWork {
+    pub contract_version: u8,
+    pub idempotency_key: String,
+    pub owner_subject: String,
+    pub expected_preference_revision: i64,
+    pub worker_runtime: BugIntakeWorkerRuntime,
+    pub fleet_journal_ref: String,
+}
+impl ClaimBugWork {
+    pub fn validate(&self, project: Uuid, worker: Uuid) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        validate_scope(project, &self.owner_subject, worker)?;
+        self.worker_runtime.validate(worker)?;
+        if self.contract_version != 1
+            || !version(self.expected_preference_revision)
+            || !text(&self.fleet_journal_ref)
+        {
+            return Err(AppError::validation("invalid Bug work claim"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkAssignment {
+    pub contract_version: u8,
+    pub assignment_id: Uuid,
+    pub tracker_instance_id: String,
+    pub tracker_instance_uuid: Uuid,
+    pub project_id: Uuid,
+    pub bug_id: Uuid,
+    pub owner_subject: String,
+    pub machine_subject: String,
+    pub worker_runtime: BugIntakeWorkerRuntime,
+    pub fleet_journal_ref: String,
+    pub preference_revision: i64,
+    pub fence: i64,
+    pub purpose: BugWorkPurpose,
+    pub role: BugWorkRole,
+    pub mode: BugWorkMode,
+    pub source_identity: BugSourceIdentity,
+    pub source_sha256: String,
+    pub verification_basis: BugFindingReport,
+    /// Hash of the exact complete retained report, distinct from dedup basis.
+    pub verification_basis_sha256: String,
+    pub canonical_basis_sha256: String,
+    /// Missing on retained v1 grants; absence never permits guessed checkout.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<crate::bug_work_origin::BugWorkOriginRef>,
+    pub created_at: DateTime<Utc>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugWorkPurpose {
+    BugFix,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugWorkRole {
+    Developer,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BugWorkMode {
+    Initial,
+}
+impl BugWorkAssignment {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_scope(
+            self.project_id,
+            &self.owner_subject,
+            self.worker_runtime.agent_id,
+        )?;
+        self.worker_runtime.validate(self.worker_runtime.agent_id)?;
+        self.source_identity.validate()?;
+        self.verification_basis.validate()?;
+        if let Some(origin) = &self.origin {
+            origin.validate()?;
+        }
+        if self.contract_version != 1
+            || self.assignment_id.is_nil()
+            || self.bug_id.is_nil()
+            || self.tracker_instance_uuid.is_nil()
+            || !bounded_text(&self.tracker_instance_id, 128)
+            || !text(&self.machine_subject)
+            || self.machine_subject == self.owner_subject
+            || !text(&self.fleet_journal_ref)
+            || !version(self.preference_revision)
+            || !version(self.fence)
+            || ![
+                &self.source_sha256,
+                &self.verification_basis_sha256,
+                &self.canonical_basis_sha256,
+            ]
+            .iter()
+            .all(|v| sha256(v))
+        {
+            return Err(AppError::validation(
+                "invalid immutable Bug work assignment",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Exact real run and Workflow assignment references, attested by configured Fleet.
+/// This is a retained binding, not a Workflow success or admission receipt.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkRuntimeBinding {
+    pub runtime_context_id: Uuid,
+    pub runtime_generation: Uuid,
+    pub session_id: Uuid,
+    pub session_run_id: Uuid,
+    pub hermes_run_ref: String,
+    pub workflow_task_id: i64,
+    pub workflow_assignment_revision: i64,
+    pub workflow_operation_key: String,
+    pub workflow_binding_ref: String,
+}
+impl BugWorkRuntimeBinding {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.workflow_operation_key)?;
+        if self.runtime_context_id.is_nil()
+            || self.runtime_generation.is_nil()
+            || self.session_id.is_nil()
+            || self.session_run_id.is_nil()
+            || !text(&self.hermes_run_ref)
+            || !text(&self.workflow_binding_ref)
+            || !version(self.workflow_task_id)
+            || !version(self.workflow_assignment_revision)
+        {
+            return Err(AppError::validation(
+                "invalid actual Bug work runtime binding",
+            ));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BindBugWork {
+    pub idempotency_key: String,
+    pub expected_fence: i64,
+    pub binding: BugWorkRuntimeBinding,
+}
+impl BindBugWork {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        self.binding.validate()?;
+        if !version(self.expected_fence) {
+            return Err(AppError::validation("invalid Bug work fence"));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(
+    tag = "kind",
+    content = "observation",
+    rename_all = "snake_case",
+    deny_unknown_fields
+)]
+pub enum BugWorkCloseProof {
+    NeverSubmitted(BugNotStartedObservation),
+    UnboundStopped(BugUnboundObservation),
+    ActualTerminal(BugWorkTerminalObservation),
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkTerminalObservation {
+    pub runtime: BugRuntimeObservation,
+    pub journal_ref: String,
+    pub runtime_custody: crate::bug_search_cancel::BugPreRunRuntimeCustody,
+}
+impl BugWorkTerminalObservation {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.runtime.observation_source.is_some() {
+            return Err(AppError::validation(
+                "Bug-search SDK cessation source is not a BugWork terminal contract",
+            ));
+        }
+        self.runtime.validate()?;
+        self.runtime_custody.validate(self.runtime.agent_id)?;
+        if !text(&self.journal_ref)
+            || self.runtime_custody.disposition
+                != crate::bug_search_cancel::BugPreRunCustodyDisposition::NamespaceExited
+        {
+            return Err(AppError::validation(
+                "actual terminal requires original namespace exit custody",
+            ));
+        }
+        Ok(())
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CloseBugWork {
+    pub idempotency_key: String,
+    pub expected_fence: i64,
+    pub proof: BugWorkCloseProof,
+}
+impl CloseBugWork {
+    pub fn validate(&self) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        if !version(self.expected_fence) {
+            return Err(AppError::validation("invalid Bug work fence"));
+        }
+        match &self.proof {
+            BugWorkCloseProof::NeverSubmitted(v) => v.validate(),
+            BugWorkCloseProof::UnboundStopped(v) => v.validate(),
+            BugWorkCloseProof::ActualTerminal(v) => v.validate(),
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkState {
+    pub assignment: BugWorkAssignment,
+    pub assignment_sha256: String,
+    pub binding: Option<BugWorkRuntimeBinding>,
+    pub closure: Option<BugWorkCloseProof>,
+    pub capacity_held: bool,
+    pub can_take_bugs: bool,
+    pub blocked_reasons: Vec<String>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum BugWorkOutcome {
+    Claimed {
+        assignment: Option<Box<BugWorkState>>,
+        blocked_reasons: Vec<String>,
+    },
+    Bound {
+        assignment: Box<BugWorkState>,
+    },
+    Closed {
+        assignment: Box<BugWorkState>,
+    },
+}
+impl BugWorkOutcome {
+    pub fn assignment(&self) -> Option<&BugWorkState> {
+        match self {
+            Self::Claimed { assignment, .. } => assignment.as_deref(),
+            Self::Bound { assignment } | Self::Closed { assignment } => Some(assignment),
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugWorkReceipt {
+    pub contract_version: u8,
+    pub operation_id: Uuid,
+    pub project_id: Uuid,
+    pub owner_subject: String,
+    pub worker_runtime: BugIntakeWorkerRuntime,
+    pub outcome: BugWorkOutcome,
+    pub accepted_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ordinary_bug_work_has_no_client_role_rework_or_fake_runtime_success() {
+        let p = Uuid::new_v4();
+        let w = Uuid::new_v4();
+        let c = ClaimBugWork {
+            contract_version: 1,
+            idempotency_key: "claim:1".into(),
+            owner_subject: "owner".into(),
+            expected_preference_revision: 3,
+            fleet_journal_ref: "fleet:bug-work:claim:1".into(),
+            worker_runtime: BugIntakeWorkerRuntime {
+                fleet_instance_id: Uuid::new_v4(),
+                agent_id: w,
+                agent_config_revision: 2,
+            },
+        };
+        c.validate(p, w).unwrap();
+        let mut v = serde_json::to_value(&c).unwrap();
+        v["role"] = serde_json::json!("project_manager");
+        assert!(serde_json::from_value::<ClaimBugWork>(v).is_err());
+        assert!(serde_json::from_value::<BugWorkMode>(serde_json::json!("rework")).is_err());
+        assert!(
+            serde_json::from_value::<BugWorkCloseProof>(serde_json::json!({"kind":"ttl_expired"}))
+                .is_err()
+        );
+        let b = BugWorkRuntimeBinding {
+            runtime_context_id: Uuid::new_v4(),
+            runtime_generation: Uuid::new_v4(),
+            session_id: Uuid::new_v4(),
+            session_run_id: Uuid::nil(),
+            hermes_run_ref: "actual".into(),
+            workflow_task_id: 1,
+            workflow_assignment_revision: 1,
+            workflow_operation_key: "bind:1".into(),
+            workflow_binding_ref: "workflow:binding:1".into(),
+        };
+        assert!(b.validate().is_err());
+    }
+}

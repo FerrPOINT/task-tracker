@@ -1,0 +1,106 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  getNotificationSettings,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  updateNotificationSettings,
+} from './notifications'
+
+const { GET, PATCH, POST } = vi.hoisted(() => ({ GET: vi.fn(), PATCH: vi.fn(), POST: vi.fn() }))
+
+vi.mock('./client', () => ({ api: { GET, PATCH, POST } }))
+
+describe('notification API wrapper', () => {
+  beforeEach(() => {
+    GET.mockReset()
+    PATCH.mockReset()
+    POST.mockReset()
+  })
+
+  it('passes list query options and preserves unread_count', async () => {
+    const response = {
+      notifications: [
+        {
+          id: 'notification-1',
+          event_type: 'issue_assigned',
+          entity_type: 'issue',
+          entity_id: 'issue-1',
+          actor_id: null,
+          title: 'Assigned to you',
+          body: null,
+          is_read: false,
+          action_url: '/issues/TT-1',
+          metadata: null,
+          created_at: '2026-09-01T10:00:00Z',
+        },
+      ],
+      unread_count: 12,
+    }
+    GET.mockResolvedValueOnce({ data: response, response: new Response(null, { status: 200 }) })
+
+    await expect(listNotifications({ includeRead: true, limit: 50, offset: 10 })).resolves.toEqual(
+      response,
+    )
+    expect(GET).toHaveBeenCalledWith('/api/v1/notifications', {
+      params: { query: { include_read: true, limit: 50, offset: 10 } },
+    })
+  })
+
+  it.each([400, 403, 404, 500, 503])(
+    'rejects bodyless HTTP %s for both read actions',
+    async (status) => {
+      PATCH.mockResolvedValue({ response: new Response(null, { status }) })
+      POST.mockResolvedValue({ response: new Response(null, { status }) })
+      await expect(markNotificationRead('notification-1')).rejects.toThrow()
+      await expect(markAllNotificationsRead()).rejects.toThrow()
+      expect(PATCH).toHaveBeenCalledOnce()
+      expect(POST).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('requires HTTP confirmation even when an error body is missing', async () => {
+    PATCH.mockResolvedValue({})
+    POST.mockResolvedValue({})
+    await expect(markNotificationRead('notification-1')).rejects.toThrow()
+    await expect(markAllNotificationsRead()).rejects.toThrow()
+  })
+
+  it('accepts confirmed bodyless read actions', async () => {
+    PATCH.mockResolvedValue({ response: new Response(null, { status: 204 }) })
+    POST.mockResolvedValue({ response: new Response(null, { status: 204 }) })
+    await expect(markNotificationRead('notification-1')).resolves.toBeUndefined()
+    await expect(markAllNotificationsRead()).resolves.toBeUndefined()
+  })
+
+  it('does not expose server diagnostics or retry a read mutation', async () => {
+    POST.mockResolvedValue({
+      error: { diagnostic: 'private detail' },
+      response: new Response(null, { status: 500 }),
+    })
+    await expect(markAllNotificationsRead()).rejects.not.toThrow('private detail')
+    expect(POST).toHaveBeenCalledOnce()
+  })
+
+  it.each([undefined, 500])(
+    'rejects data without a successful HTTP response (%s)',
+    async (status) => {
+      const response = status ? new Response(null, { status }) : undefined
+      GET.mockResolvedValue({ data: { notifications: [], unread_count: 0 }, response })
+      await expect(listNotifications()).rejects.toThrow()
+      const data = { email_frequency: 'daily', disabled_event_types: [], notify_own_changes: false }
+      GET.mockResolvedValue({ data, response })
+      await expect(getNotificationSettings()).rejects.toThrow()
+      PATCH.mockResolvedValue({ data, response })
+      await expect(updateNotificationSettings(data)).rejects.toThrow()
+    },
+  )
+
+  it('preserves a confirmed settings response', async () => {
+    const data = { email_frequency: 'daily', disabled_event_types: [], notify_own_changes: false }
+    GET.mockResolvedValue({ data, response: new Response(null, { status: 200 }) })
+    PATCH.mockResolvedValue({ data, response: new Response(null, { status: 200 }) })
+    await expect(getNotificationSettings()).resolves.toEqual(data)
+    await expect(updateNotificationSettings(data)).resolves.toEqual(data)
+  })
+})

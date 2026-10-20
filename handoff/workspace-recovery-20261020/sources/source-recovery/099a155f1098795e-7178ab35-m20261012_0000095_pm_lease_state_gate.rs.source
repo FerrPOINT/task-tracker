@@ -1,0 +1,306 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+// The repository authorizes the actor and rechecks the current execution lease
+// before issuing this exact, transaction-scoped permit. Historical Fleet
+// admission is neither required for a new write nor forged by this migration.
+const LEASE_GATE: &str = r#"
+CREATE OR REPLACE FUNCTION sdlc_pm_reservation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.pm_execution_id IS NOT NULL THEN
+    IF NEW.pm_owner_version IS DISTINCT FROM OLD.pm_owner_version
+      OR NEW.pm_execution_id IS DISTINCT FROM OLD.pm_execution_id
+      OR NEW.pm_admission_state IS DISTINCT FROM OLD.pm_admission_state
+      OR NEW.state->'assignment' IS DISTINCT FROM OLD.state->'assignment'
+      OR NEW.state->'task_id' IS DISTINCT FROM OLD.state->'task_id'
+      OR NEW.state->'root_task_id' IS DISTINCT FROM OLD.state->'root_task_id'
+      OR NEW.state->'project_id' IS DISTINCT FROM OLD.state->'project_id'
+      OR NEW.state->'tracker_instance_id' IS DISTINCT FROM OLD.state->'tracker_instance_id'
+      OR NEW.state->'owner_subject' IS DISTINCT FROM OLD.state->'owner_subject' THEN
+      RAISE EXCEPTION 'SDLC reserved PM ownership is immutable' USING ERRCODE='23514';
+    END IF;
+    IF NEW.state IS DISTINCT FROM OLD.state THEN
+      IF NOT EXISTS(
+        SELECT 1 FROM sdlc_pm_state_write_permits p WHERE p.task_id=OLD.task_id
+          AND p.transaction_id=pg_current_xact_id() AND p.next_state=NEW.state) THEN
+        RAISE EXCEPTION 'SDLC reserved PM requires an authorized state write' USING ERRCODE='23514';
+      END IF;
+      DELETE FROM sdlc_pm_state_write_permits WHERE task_id=OLD.task_id
+        AND transaction_id=pg_current_xact_id() AND next_state=NEW.state;
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+"#;
+
+// Exact previous 000092 definition, retained locally so historic migration
+// sources remain immutable and a downgrade restores their protection.
+const PREVIOUS_GATE: &str = r#"
+CREATE OR REPLACE FUNCTION sdlc_pm_reservation_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD.pm_execution_id IS NOT NULL THEN
+    IF NEW.pm_owner_version IS DISTINCT FROM OLD.pm_owner_version
+      OR NEW.pm_execution_id IS DISTINCT FROM OLD.pm_execution_id
+      OR NEW.pm_admission_state IS DISTINCT FROM OLD.pm_admission_state
+      OR NEW.state->'assignment' IS DISTINCT FROM OLD.state->'assignment'
+      OR NEW.state->'task_id' IS DISTINCT FROM OLD.state->'task_id'
+      OR NEW.state->'root_task_id' IS DISTINCT FROM OLD.state->'root_task_id'
+      OR NEW.state->'project_id' IS DISTINCT FROM OLD.state->'project_id'
+      OR NEW.state->'tracker_instance_id' IS DISTINCT FROM OLD.state->'tracker_instance_id'
+      OR NEW.state->'owner_subject' IS DISTINCT FROM OLD.state->'owner_subject' THEN
+      RAISE EXCEPTION 'SDLC reserved PM ownership is immutable' USING ERRCODE='23514';
+    END IF;
+    IF NEW.state IS DISTINCT FROM OLD.state THEN
+      IF NOT EXISTS(
+        SELECT 1 FROM sdlc_pm_native_admissions a WHERE a.execution_id=OLD.pm_execution_id
+          AND a.assignment_id::text=OLD.state #>> '{assignment,assignment_id}'
+          AND a.assignment_version::text=OLD.state #>> '{assignment,version}'
+          AND a.proof #>> '{identity,task_ref}'=OLD.task_id::text) THEN
+        RAISE EXCEPTION 'SDLC reserved PM requires verified admission' USING ERRCODE='23514';
+      END IF;
+      IF NOT EXISTS(
+        SELECT 1 FROM sdlc_pm_state_write_permits p WHERE p.task_id=OLD.task_id
+          AND p.transaction_id=pg_current_xact_id() AND p.next_state=NEW.state) THEN
+        RAISE EXCEPTION 'SDLC reserved PM requires an authorized state write' USING ERRCODE='23514';
+      END IF;
+      DELETE FROM sdlc_pm_state_write_permits WHERE task_id=OLD.task_id
+        AND transaction_id=pg_current_xact_id() AND next_state=NEW.state;
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+"#;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared(LEASE_GATE)
+            .await?;
+        Ok(())
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+DO $$ BEGIN
+  IF EXISTS(SELECT 1 FROM sdlc_pm_state_write_permits) THEN
+    RAISE EXCEPTION 'pending PM state-write permits require reconciliation before downgrade'
+      USING ERRCODE='23514';
+  END IF;
+  IF EXISTS(
+    SELECT 1 FROM sdlc_tasks t WHERE t.pm_execution_id IS NOT NULL AND NOT EXISTS(
+      SELECT 1 FROM sdlc_pm_native_admissions a WHERE a.execution_id=t.pm_execution_id
+        AND a.assignment_id::text=t.state #>> '{assignment,assignment_id}'
+        AND a.assignment_version::text=t.state #>> '{assignment,version}'
+        AND a.proof #>> '{identity,task_ref}'=t.task_id::text)) THEN
+    RAISE EXCEPTION 'lease-based PM state requires reconciliation before downgrade'
+      USING ERRCODE='23514';
+  END IF;
+END $$;
+"#,
+            )
+            .await?;
+        manager
+            .get_connection()
+            .execute_unprepared(PREVIOUS_GATE)
+            .await?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::TransactionTrait;
+
+    async fn transaction(db: &sea_orm::DatabaseConnection) -> sea_orm::DatabaseTransaction {
+        let tx = db.begin().await.unwrap();
+        tx.execute_unprepared("SET LOCAL search_path TO tracker_pm_lease_gate_test")
+            .await
+            .unwrap();
+        tx
+    }
+
+    #[tokio::test]
+    #[ignore = "requires clean disposable TRACKER_PM_LEASE_GATE_TEST_URL database"]
+    async fn populated_upgrade_preserves_identity_and_exact_transaction_permits() {
+        let db =
+            sea_orm::Database::connect(std::env::var("TRACKER_PM_LEASE_GATE_TEST_URL").unwrap())
+                .await
+                .unwrap();
+        let name = db
+            .query_one(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT current_database() AS name",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<String>("", "name")
+            .unwrap();
+        assert_eq!(name, "tracker_pm_lease_gate_test");
+        db.execute_unprepared("CREATE SCHEMA tracker_pm_lease_gate_test")
+            .await
+            .unwrap();
+        let tx = transaction(&db).await;
+        tx.execute_unprepared(
+            r#"
+CREATE TABLE sdlc_tasks(task_id uuid PRIMARY KEY, pm_owner_version integer NOT NULL,
+  pm_execution_id uuid, pm_admission_state text, state jsonb NOT NULL);
+CREATE TABLE sdlc_pm_native_admissions(execution_id uuid, assignment_id uuid,
+  assignment_version bigint, proof jsonb);
+CREATE TABLE sdlc_pm_state_write_permits(task_id uuid NOT NULL, transaction_id xid8 NOT NULL,
+  next_state jsonb NOT NULL, PRIMARY KEY(task_id,transaction_id));
+INSERT INTO sdlc_tasks VALUES('00000000-0000-4000-8000-000000000101',1,
+  '00000000-0000-4000-8000-000000000102','reserved',
+  '{"assignment":{"assignment_id":"00000000-0000-4000-8000-000000000103","version":1},
+    "task_id":"00000000-0000-4000-8000-000000000101","revisions":[]}');
+"#,
+        )
+        .await
+        .unwrap();
+        tx.execute_unprepared(PREVIOUS_GATE).await.unwrap();
+        tx.execute_unprepared("CREATE TRIGGER sdlc_pm_reservation_gate BEFORE UPDATE ON sdlc_tasks FOR EACH ROW EXECUTE FUNCTION sdlc_pm_reservation_gate()")
+            .await.unwrap();
+        tx.commit().await.unwrap();
+
+        let permit = "INSERT INTO sdlc_pm_state_write_permits SELECT task_id,pg_current_xact_id(),jsonb_set(state,'{revisions}','[{\"revision\":1}]') FROM sdlc_tasks";
+        let write =
+            "UPDATE sdlc_tasks SET state=jsonb_set(state,'{revisions}','[{\"revision\":1}]')";
+        let tx = transaction(&db).await;
+        tx.execute_unprepared(permit).await.unwrap();
+        let old_error = tx.execute_unprepared(write).await.unwrap_err();
+        assert!(
+            old_error
+                .to_string()
+                .contains("requires verified admission")
+        );
+        tx.rollback().await.unwrap();
+
+        let tx = transaction(&db).await;
+        Migration.up(&SchemaManager::new(&tx)).await.unwrap();
+        let count = tx.query_one(sea_orm::Statement::from_string(
+            sea_orm::DatabaseBackend::Postgres,
+            "SELECT count(*) AS total FROM sdlc_tasks WHERE jsonb_array_length(state->'revisions')=0",
+        )).await.unwrap().unwrap().try_get::<i64>("", "total").unwrap();
+        assert_eq!(count, 1);
+        tx.commit().await.unwrap();
+
+        let tx = transaction(&db).await;
+        assert!(
+            tx.execute_unprepared(write)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("authorized state write")
+        );
+        tx.rollback().await.unwrap();
+
+        let tx = transaction(&db).await;
+        tx.execute_unprepared(permit).await.unwrap();
+        assert!(
+            tx.execute_unprepared(
+                "UPDATE sdlc_tasks SET state=jsonb_set(state,'{revisions}','[{\"revision\":2}]')"
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("authorized state write")
+        );
+        tx.rollback().await.unwrap();
+
+        let tx = transaction(&db).await;
+        tx.execute_unprepared(permit).await.unwrap();
+        assert!(
+            tx.execute_unprepared("UPDATE sdlc_tasks SET pm_owner_version=2")
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("ownership is immutable")
+        );
+        tx.rollback().await.unwrap();
+
+        let tx = transaction(&db).await;
+        tx.execute_unprepared(permit).await.unwrap();
+        tx.commit().await.unwrap();
+        let tx = transaction(&db).await;
+        assert!(
+            tx.execute_unprepared(write)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("authorized state write")
+        );
+        tx.rollback().await.unwrap();
+        let tx = transaction(&db).await;
+        tx.execute_unprepared("DELETE FROM sdlc_pm_state_write_permits")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let tx = transaction(&db).await;
+        tx.execute_unprepared(permit).await.unwrap();
+        tx.execute_unprepared(write).await.unwrap();
+        let remaining = tx
+            .query_one(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                "SELECT count(*) AS total FROM sdlc_pm_state_write_permits",
+            ))
+            .await
+            .unwrap()
+            .unwrap()
+            .try_get::<i64>("", "total")
+            .unwrap();
+        assert_eq!(remaining, 0);
+        tx.commit().await.unwrap();
+
+        let tx = transaction(&db).await;
+        assert!(
+            Migration
+                .down(&SchemaManager::new(&tx))
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("lease-based PM state requires reconciliation")
+        );
+        tx.rollback().await.unwrap();
+
+        let tx = transaction(&db).await;
+        assert!(
+            tx.execute_unprepared(
+                "UPDATE sdlc_tasks SET state=jsonb_set(state,'{revisions}','[{\"revision\":2}]')"
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("authorized state write")
+        );
+        tx.rollback().await.unwrap();
+
+        let tx = transaction(&db).await;
+        tx.execute_unprepared("INSERT INTO sdlc_pm_native_admissions SELECT pm_execution_id,(state #>> '{assignment,assignment_id}')::uuid,1,jsonb_build_object('identity',jsonb_build_object('task_ref',task_id)) FROM sdlc_tasks").await.unwrap();
+        Migration.down(&SchemaManager::new(&tx)).await.unwrap();
+        tx.execute_unprepared("DELETE FROM sdlc_pm_native_admissions")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let tx = transaction(&db).await;
+        tx.execute_unprepared("INSERT INTO sdlc_pm_state_write_permits SELECT task_id,pg_current_xact_id(),jsonb_set(state,'{revisions}','[{\"revision\":2}]') FROM sdlc_tasks").await.unwrap();
+        assert!(
+            tx.execute_unprepared(
+                "UPDATE sdlc_tasks SET state=jsonb_set(state,'{revisions}','[{\"revision\":2}]')"
+            )
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("requires verified admission")
+        );
+        tx.rollback().await.unwrap();
+    }
+}

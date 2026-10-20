@@ -1,0 +1,1481 @@
+use async_trait::async_trait;
+use std::sync::Arc;
+
+#[cfg(test)]
+#[path = "repositories/tests.rs"]
+mod tests;
+
+use crate::{
+    AuditLog, Board, Comment, Issue, IssueLink, IssueQuery, IssueStatusHistory, IssueTypeEntity,
+    IssueVote, IssueWatcher, Label, Notification, NotificationUserSettings, OidcAuthState,
+    OidcIdentity, PasswordResetToken, Project, ProjectComponent, ProjectMember, ProjectVersion,
+    Sprint, Status, SystemSetting, TotpConfig, User, WorkflowTransition, Worklog,
+};
+use shared::IssueTypeId;
+use shared::{
+    AppError, AttachmentId, BoardId, CommentId, CustomFieldId, IssueId, IssueKey, IssueLinkId,
+    LabelId, ProjectComponentId, ProjectId, ProjectKey, ProjectVersionId, SprintId, StatusId,
+    Timestamp, UserId, WorklogId,
+};
+
+#[async_trait]
+pub trait AuditLogRepository: Send + Sync {
+    async fn save(&self, entry: &AuditLog) -> Result<(), AppError>;
+    async fn list(
+        &self,
+        actor_id: Option<UserId>,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<AuditLog>, AppError>;
+}
+
+#[async_trait]
+pub trait SystemSettingRepository: Send + Sync {
+    async fn get(&self, key: &str) -> Result<SystemSetting, AppError>;
+    async fn list(&self) -> Result<Vec<SystemSetting>, AppError>;
+    async fn save(&self, setting: &SystemSetting) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait TotpRepository: Send + Sync {
+    /// Existing row or a disabled default (enrollment not started).
+    async fn get(&self, user_id: UserId) -> Result<TotpConfig, AppError>;
+    /// Insert/overwrite the encrypted secret as unconfirmed.
+    async fn upsert_unconfirmed(
+        &self,
+        user_id: UserId,
+        secret_cipher: &str,
+    ) -> Result<(), AppError>;
+    /// Flip enabled with recovery codes and replay cursor.
+    async fn confirm_enable(
+        &self,
+        user_id: UserId,
+        recovery_codes_json: &str,
+        step: i64,
+    ) -> Result<(), AppError>;
+    async fn mark_used_step(&self, user_id: UserId, step: i64) -> Result<(), AppError>;
+    async fn update_recovery_codes(&self, user_id: UserId, json: &str) -> Result<(), AppError>;
+    async fn disable(&self, user_id: UserId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait PasswordResetRepository: Send + Sync {
+    /// Replace any previous token for the user with a fresh one.
+    async fn upsert(
+        &self,
+        user_id: UserId,
+        token_hash: &str,
+        expires_at: Timestamp,
+    ) -> Result<(), AppError>;
+    /// Active (unused, unexpired) token by hash, or NotFound.
+    async fn find_active(&self, token_hash: &str) -> Result<PasswordResetToken, AppError>;
+    /// Mark the token consumed; returns NotFound when already used/expired.
+    async fn mark_used(&self, token_hash: &str) -> Result<(), AppError>;
+}
+
+/// OIDC identities and single-use authorization states (SYSTEM_ADMIN 4.2).
+#[async_trait]
+pub trait OidcRepository: Send + Sync {
+    async fn find_identity(&self, provider: &str, subject: &str) -> Result<OidcIdentity, AppError>;
+    async fn link_identity(&self, identity: &OidcIdentity) -> Result<OidcIdentity, AppError>;
+    async fn put_state(&self, state: &OidcAuthState) -> Result<(), AppError>;
+    /// Consume (delete) the state row; NotFound when unknown or already used.
+    async fn take_state(&self, state: &str) -> Result<OidcAuthState, AppError>;
+}
+
+#[async_trait]
+pub trait UserRepository: Send + Sync {
+    /// Read existing subject bindings, including inactive historical profiles.
+    async fn central_profiles(
+        &self,
+        _subjects: &[String],
+    ) -> Result<std::collections::HashMap<String, User>, AppError> {
+        Ok(std::collections::HashMap::new())
+    }
+    async fn find_or_create_central_user(
+        &self,
+        _sub: &str,
+        _email: &str,
+        _display_name: &str,
+    ) -> Result<User, AppError> {
+        Err(AppError::Unauthorized)
+    }
+    async fn get_by_id(&self, id: UserId) -> Result<User, AppError>;
+    async fn get_by_email(&self, email: &str) -> Result<User, AppError>;
+    async fn get_by_refresh_token(&self, token_hash: &str) -> Result<User, AppError>;
+    /// Atomic single-use rotation: replace the stored refresh-token hash
+    /// with `new_hash` ONLY if the row still holds `expected_hash`.
+    /// Returns Ok(()) on success and Unauthorized when the token was
+    /// already rotated (replay) or revoked.
+    async fn rotate_refresh_token(
+        &self,
+        user_id: UserId,
+        expected_hash: &str,
+        new_hash: &str,
+    ) -> Result<(), AppError>;
+    /// Atomic logout: NULL the stored refresh-token hash without a
+    /// read-before-write, so it cannot race with concurrent rotation.
+    async fn clear_refresh_token(&self, user_id: UserId) -> Result<(), AppError>;
+    async fn save(&self, user: &User) -> Result<UserId, AppError>;
+    async fn list(&self) -> Result<Vec<User>, AppError>;
+}
+
+#[derive(Debug, Clone)]
+pub struct IssueCreationTicket {
+    pub issue_id: IssueId,
+    pub number: u32,
+    pub completed: bool,
+}
+
+#[async_trait]
+pub trait ProjectRepository: Send + Sync {
+    async fn namespace_task_catalog(
+        &self,
+        _namespace: &shared::resource_context::NamespaceRef,
+        _offset: i64,
+    ) -> Result<Vec<shared::resource_context::TaskCatalogItem>, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_catalog_not_supported".into(),
+        ))
+    }
+    async fn namespace_available_resources(
+        &self,
+        _accessible_projects: &[ProjectId],
+        _limit: i64,
+        _offset: i64,
+    ) -> Result<Vec<shared::resource_context::ResourceCatalogItem>, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_catalog_not_supported".into(),
+        ))
+    }
+    async fn namespace_stats(
+        &self,
+        _project: ProjectId,
+    ) -> Result<shared::resource_context::ResourceStats, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_stats_not_supported".into(),
+        ))
+    }
+    async fn namespace_contexts(
+        &self,
+        _namespace: Option<&shared::resource_context::NamespaceRef>,
+        _limit: i64,
+        _offset: i64,
+    ) -> Result<Vec<shared::resource_context::ResourceContextSummary>, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_catalog_not_supported".into(),
+        ))
+    }
+    async fn issue_creation_ticket(
+        &self,
+        _project: ProjectId,
+        _actor: UserId,
+        _operation: uuid::Uuid,
+        _payload: &serde_json::Value,
+        _allocate: bool,
+    ) -> Result<Option<IssueCreationTicket>, AppError> {
+        Err(AppError::Unavailable(
+            "issue_idempotency_not_supported".into(),
+        ))
+    }
+    async fn advance_issue_creation_ticket(
+        &self,
+        _project: ProjectId,
+        _actor: UserId,
+        _operation: uuid::Uuid,
+        _payload: &serde_json::Value,
+        _issue_id: IssueId,
+        _expected_number: u32,
+    ) -> Result<IssueCreationTicket, AppError> {
+        Err(AppError::Unavailable(
+            "issue_idempotency_not_supported".into(),
+        ))
+    }
+
+    async fn list_accessible_page(
+        &self,
+        ids: &[ProjectId],
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Project>, AppError> {
+        let mut projects = self
+            .list(ProjectQuery::default())
+            .await?
+            .into_iter()
+            .filter(|p| ids.contains(&p.id))
+            .collect::<Vec<_>>();
+        projects.sort_by(|a, b| {
+            a.key
+                .as_str()
+                .cmp(b.key.as_str())
+                .then_with(|| a.id.to_string().cmp(&b.id.to_string()))
+        });
+        Ok(projects
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
+    async fn namespace_binding(
+        &self,
+        _id: ProjectId,
+    ) -> Result<Option<shared::resource_context::OwnerReadback>, AppError> {
+        Ok(None)
+    }
+    async fn apply_namespace(
+        &self,
+        _command: &shared::resource_context::OwnerCommand,
+    ) -> Result<shared::resource_context::OwnerReadback, AppError> {
+        Err(AppError::Unavailable(
+            "namespace_owner_not_implemented".into(),
+        ))
+    }
+    async fn require_writable(&self, id: ProjectId) -> Result<(), AppError> {
+        if self
+            .namespace_binding(id)
+            .await?
+            .is_some_and(|binding| binding.state != "active")
+        {
+            return Err(AppError::conflict("namespace_resource_read_only"));
+        }
+        Ok(())
+    }
+    async fn get_by_id(&self, id: ProjectId) -> Result<Project, AppError>;
+    async fn get_by_key(&self, key: &ProjectKey) -> Result<Project, AppError>;
+    async fn list(&self, query: ProjectQuery) -> Result<Vec<Project>, AppError>;
+    async fn save(&self, project: &Project) -> Result<ProjectId, AppError>;
+    /// Atomically persist a new project together with its default board.
+    /// A crash between the two writes would leave a project whose
+    /// `default_board_id` points at nothing, breaking board reads and issue
+    /// creation.
+    async fn save_with_board(
+        &self,
+        project: &Project,
+        board: &crate::Board,
+    ) -> Result<ProjectId, AppError>;
+    async fn delete(&self, id: ProjectId) -> Result<(), AppError>;
+    async fn next_issue_number(&self, project_id: ProjectId) -> Result<u32, AppError>;
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ProjectQuery {
+    pub owner_id: Option<UserId>,
+    pub limit: u64,
+    pub offset: u64,
+}
+
+#[async_trait]
+pub trait IssueRepository: Send + Sync {
+    async fn verification_transitions(
+        &self,
+        _issue: shared::IssueId,
+        _project: ProjectId,
+    ) -> Result<crate::issue_verification_transitions::IssueVerificationTransitions, AppError> {
+        Err(AppError::Unavailable(
+            "verification_transitions_unavailable".into(),
+        ))
+    }
+
+    async fn repository_links(&self, _task: IssueId) -> Result<Vec<serde_json::Value>, AppError> {
+        Err(AppError::Unavailable(
+            "repository_links_not_implemented".into(),
+        ))
+    }
+    async fn link_repository(
+        &self,
+        _task: IssueId,
+        _actor: UserId,
+        _repository: &crate::task_repositories::RepositoryRef,
+        _snapshot: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        Err(AppError::Unavailable(
+            "repository_links_not_implemented".into(),
+        ))
+    }
+    async fn status_category_counts(
+        &self,
+        projects: &[ProjectId],
+        statuses: &[crate::Status],
+    ) -> Result<std::collections::HashMap<ProjectId, [i64; 3]>, AppError> {
+        let mut result = std::collections::HashMap::new();
+        for project in projects {
+            let mut counts = [0, 0, 0];
+            for status in statuses {
+                let index = match status.category {
+                    crate::StatusCategory::Todo => 0,
+                    crate::StatusCategory::InProgress => 1,
+                    crate::StatusCategory::Done => 2,
+                };
+                counts[index] += self.count_by_project_status(*project, status.id).await? as i64;
+            }
+            result.insert(*project, counts);
+        }
+        Ok(result)
+    }
+    /// Fetch a live (non-deleted) issue by id. Returns `NotFound` for
+    /// soft-deleted issues — use [`get_by_id_include_deleted`] to access
+    /// trashed issues.
+    ///
+    /// [`get_by_id_include_deleted`]: IssueRepository::get_by_id_include_deleted
+    async fn get_by_id(&self, id: IssueId) -> Result<Issue, AppError>;
+    /// Fetch an issue by id regardless of soft-delete state. Used by restore
+    /// and permanent-delete operations that need to act on trashed issues.
+    async fn get_by_id_include_deleted(&self, id: IssueId) -> Result<Issue, AppError>;
+    async fn get_by_key(&self, key: &IssueKey) -> Result<Issue, AppError>;
+    async fn get_by_key_include_deleted(&self, key: &IssueKey) -> Result<Issue, AppError> {
+        self.get_by_key(key).await
+    }
+    /// Atomically re-validate WIP and persist the status change together
+    /// with its history entry. Implementations MUST count the target column
+    /// and update the issue inside the same transaction (or critical
+    /// section), so concurrent movers cannot both observe free capacity.
+    async fn change_status_atomic(
+        &self,
+        issue_id: IssueId,
+        project_id: ProjectId,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+        actor_id: UserId,
+        guard: &TransitionGuard,
+    ) -> Result<(), AppError>;
+    async fn list(&self, query: IssueQuery) -> Result<Vec<Issue>, AppError>;
+    async fn list_unbounded(&self, mut query: IssueQuery) -> Result<Vec<Issue>, AppError> {
+        query.limit = IssueQuery::NO_LIMIT;
+        query.offset = 0;
+        self.list(query).await
+    }
+    async fn count_by_project_status(
+        &self,
+        project_id: ProjectId,
+        status_id: StatusId,
+    ) -> Result<u64, AppError> {
+        Ok(self
+            .list_unbounded(IssueQuery {
+                project_id: Some(project_id),
+                status_id: Some(status_id),
+                ..Default::default()
+            })
+            .await?
+            .len() as u64)
+    }
+    async fn count_backlog(
+        &self,
+        project_id: ProjectId,
+        todo_status_id: StatusId,
+    ) -> Result<u64, AppError> {
+        Ok(self
+            .list_unbounded(IssueQuery {
+                project_id: Some(project_id),
+                status_id: Some(todo_status_id),
+                ..Default::default()
+            })
+            .await?
+            .into_iter()
+            .filter(|issue| issue.sprint_id.is_none())
+            .count() as u64)
+    }
+    async fn list_backlog_page(
+        &self,
+        project_id: ProjectId,
+        todo_status_id: StatusId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Issue>, AppError> {
+        Ok(self
+            .list_unbounded(IssueQuery {
+                project_id: Some(project_id),
+                status_id: Some(todo_status_id),
+                sort_by: Some("created".to_string()),
+                sort_order: Some("desc".to_string()),
+                ..Default::default()
+            })
+            .await?
+            .into_iter()
+            .filter(|issue| issue.sprint_id.is_none())
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
+    async fn save(&self, issue: &Issue) -> Result<IssueId, AppError>;
+    async fn create_with_initial_data(
+        &self,
+        issue: &Issue,
+        status_history: &IssueStatusHistory,
+        custom_field_values: &[(CustomFieldId, serde_json::Value)],
+    ) -> Result<IssueId, AppError> {
+        let _ = status_history;
+        let _ = custom_field_values;
+        self.save(issue).await
+    }
+    /// Soft-delete: set `deleted_at` to the current timestamp. The row is
+    /// kept and can be restored via [`restore`] or permanently removed via
+    /// [`purge`].
+    ///
+    /// [`restore`]: IssueRepository::restore
+    /// [`purge`]: IssueRepository::purge
+    async fn delete(&self, id: IssueId) -> Result<(), AppError>;
+    /// Restore a soft-deleted issue: clear `deleted_at`.
+    async fn restore(&self, id: IssueId) -> Result<(), AppError>;
+    /// Permanently delete an issue row from the database. Only works on
+    /// already soft-deleted (trashed) issues; returns `InvalidInput` for
+    /// live issues to prevent accidental hard deletes.
+    async fn purge(&self, id: IssueId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait StatusRepository: Send + Sync {
+    async fn get_by_id(&self, id: StatusId) -> Result<Status, AppError>;
+    async fn list_all(&self) -> Result<Vec<Status>, AppError>;
+    async fn get_default(&self) -> Result<Status, AppError>;
+}
+
+#[async_trait]
+pub trait WorkflowTransitionRepository: Send + Sync {
+    async fn list_all(&self) -> Result<Vec<WorkflowTransition>, AppError>;
+    async fn is_allowed(
+        &self,
+        from_status_id: StatusId,
+        to_status_id: StatusId,
+    ) -> Result<bool, AppError>;
+}
+
+#[async_trait]
+pub trait IssueTypeRepository: Send + Sync {
+    async fn get_by_id(&self, id: IssueTypeId) -> Result<IssueTypeEntity, AppError>;
+    async fn list_all(&self) -> Result<Vec<IssueTypeEntity>, AppError>;
+}
+
+/// Guard used by every status-changing path (board move, dedicated
+/// transition endpoint, PATCH `status_id`). Centralizing the WIP check
+/// here makes the limit a domain invariant instead of a board-only rule.
+#[derive(Debug, Clone)]
+pub struct TransitionGuard {
+    pub wip_limit: Option<u32>,
+    pub target_count: u64,
+    pub column_name: String,
+}
+
+impl TransitionGuard {
+    /// Returns `Err(conflict)` when moving one more issue into the target
+    /// column would exceed its configured WIP limit.
+    pub fn ensure_wip_ok(&self) -> Result<(), AppError> {
+        if let Some(limit) = self.wip_limit
+            && self.target_count >= limit as u64
+        {
+            return Err(AppError::conflict(format!(
+                "WIP limit ({limit}) reached for {}",
+                self.column_name
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait IssueStatusHistoryRepository: Send + Sync {
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueStatusHistory>, AppError>;
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<IssueStatusHistory>, AppError>;
+    async fn save(&self, entry: &IssueStatusHistory) -> Result<(), AppError>;
+    /// Persist a history entry with its owning project. The SQL backend
+    /// derives the project from the issue row; in-memory backends need it
+    /// explicitly so project-scoped report queries stay truthful.
+    async fn save_for_project(
+        &self,
+        entry: &IssueStatusHistory,
+        _project_id: ProjectId,
+    ) -> Result<(), AppError> {
+        self.save(entry).await
+    }
+}
+
+pub struct StubIssueStatusHistoryRepository;
+#[async_trait]
+impl IssueStatusHistoryRepository for StubIssueStatusHistoryRepository {
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueStatusHistory>, AppError> {
+        Ok(vec![])
+    }
+
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<IssueStatusHistory>, AppError> {
+        Ok(vec![])
+    }
+
+    async fn save(&self, _entry: &IssueStatusHistory) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait BoardRepository: Send + Sync {
+    async fn get_by_id(&self, id: BoardId) -> Result<Board, AppError>;
+    async fn get_default_by_project(&self, project_id: ProjectId) -> Result<Board, AppError>;
+    async fn get_default_by_project_key(&self, key: &ProjectKey) -> Result<Board, AppError>;
+    async fn save(&self, board: &Board) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait SprintRepository: Send + Sync {
+    async fn get_active_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Option<Sprint>, AppError>;
+    async fn get_by_id(&self, id: SprintId) -> Result<Sprint, AppError>;
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<Sprint>, AppError>;
+    async fn save(&self, sprint: &Sprint) -> Result<SprintId, AppError>;
+}
+
+#[async_trait]
+pub trait CommentRepository: Send + Sync {
+    /// Bounded page query — callers must NOT load full comment threads.
+    async fn list_by_issue_page(
+        &self,
+        issue_id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Comment>, AppError>;
+    async fn get_by_id(&self, id: CommentId) -> Result<Comment, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Comment>, AppError>;
+    async fn save(&self, comment: &Comment) -> Result<CommentId, AppError>;
+    async fn delete(&self, id: CommentId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait WorklogRepository: Send + Sync {
+    async fn get_by_id(&self, id: WorklogId) -> Result<Worklog, AppError>;
+    async fn list_by_issue_page(
+        &self,
+        issue_id: IssueId,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Worklog>, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<Worklog>, AppError>;
+    async fn save(&self, worklog: &Worklog) -> Result<WorklogId, AppError>;
+    async fn delete(&self, id: WorklogId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait AttachmentRepository: Send + Sync {
+    async fn get_by_id(&self, id: AttachmentId) -> Result<crate::Attachment, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError>;
+    async fn save(&self, attachment: &crate::Attachment) -> Result<AttachmentId, AppError>;
+    async fn delete(&self, id: AttachmentId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait UnitOfWork: Send + Sync {
+    async fn with_transaction<F, T>(&self, f: F) -> Result<T, AppError>
+    where
+        F: for<'a> FnOnce(
+                &'a Repositories,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<T, AppError>> + Send + 'a>,
+            > + Send
+            + 'static,
+        T: Send + 'static;
+}
+
+#[async_trait]
+pub trait EventBus: Send + Sync {
+    async fn publish(&self, event: crate::ProjectEvent) -> Result<(), AppError>;
+}
+
+#[derive(Clone)]
+pub struct Repositories {
+    pub users: Arc<dyn UserRepository>,
+    pub totp: Arc<dyn TotpRepository>,
+    pub password_resets: Arc<dyn PasswordResetRepository>,
+    pub audit_logs: Arc<dyn AuditLogRepository>,
+    pub system_settings: Arc<dyn SystemSettingRepository>,
+    pub projects: Arc<dyn ProjectRepository>,
+    pub issues: Arc<dyn IssueRepository>,
+    pub boards: Arc<dyn BoardRepository>,
+    pub sprints: Arc<dyn SprintRepository>,
+    pub comments: Arc<dyn CommentRepository>,
+    pub worklogs: Arc<dyn WorklogRepository>,
+    pub members: Arc<dyn ProjectMemberRepository>,
+    pub statuses: Arc<dyn StatusRepository>,
+    pub transitions: Arc<dyn WorkflowTransitionRepository>,
+    pub issue_types: Arc<dyn IssueTypeRepository>,
+    pub attachments: Arc<dyn AttachmentRepository>,
+    pub labels: Arc<dyn LabelRepository>,
+    pub issue_links: Arc<dyn IssueLinkRepository>,
+    pub notifications: Arc<dyn NotificationRepository>,
+    pub notification_settings: Arc<dyn UserNotificationSettingsRepository>,
+    pub issue_status_history: Arc<dyn IssueStatusHistoryRepository>,
+    pub watchers: Arc<dyn WatcherRepository>,
+    pub votes: Arc<dyn VoteRepository>,
+    pub components: Arc<dyn ProjectComponentRepository>,
+    pub versions: Arc<dyn ProjectVersionRepository>,
+    pub custom_fields: Arc<dyn CustomFieldRepository>,
+    pub oidc: Arc<dyn OidcRepository>,
+}
+
+impl Default for Repositories {
+    fn default() -> Self {
+        Self {
+            users: Arc::new(StubUserRepository),
+            totp: Arc::new(StubTotpRepository),
+            oidc: Arc::new(StubOidcRepository),
+            password_resets: Arc::new(StubPasswordResetRepository),
+            audit_logs: Arc::new(StubAuditLogRepository),
+            system_settings: Arc::new(StubSystemSettingRepository),
+            projects: Arc::new(StubProjectRepository),
+            issues: Arc::new(StubIssueRepository),
+            boards: Arc::new(StubBoardRepository),
+            sprints: Arc::new(StubSprintRepository),
+            comments: Arc::new(StubCommentRepository),
+            worklogs: Arc::new(StubWorklogRepository),
+            members: Arc::new(StubProjectMemberRepository),
+            statuses: Arc::new(StubStatusRepository),
+            transitions: Arc::new(StubWorkflowTransitionRepository),
+            issue_types: Arc::new(StubIssueTypeRepository),
+            attachments: Arc::new(StubAttachmentRepository),
+            labels: Arc::new(StubLabelRepository),
+            issue_links: Arc::new(StubIssueLinkRepository),
+            notifications: Arc::new(StubNotificationRepository),
+            notification_settings: Arc::new(StubUserNotificationSettingsRepository),
+            issue_status_history: Arc::new(StubIssueStatusHistoryRepository),
+            watchers: Arc::new(StubWatcherRepository),
+            votes: Arc::new(StubVoteRepository),
+            components: Arc::new(StubProjectComponentRepository),
+            versions: Arc::new(StubProjectVersionRepository),
+            custom_fields: Arc::new(StubCustomFieldRepository),
+        }
+    }
+}
+
+pub struct StubProjectMemberRepository;
+#[async_trait]
+impl ProjectMemberRepository for StubProjectMemberRepository {
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<ProjectMember>, AppError> {
+        Ok(vec![])
+    }
+    async fn list_by_user(&self, _user_id: UserId) -> Result<Vec<ProjectMember>, AppError> {
+        Ok(vec![])
+    }
+    async fn get(
+        &self,
+        _project_id: ProjectId,
+        _user_id: UserId,
+    ) -> Result<ProjectMember, AppError> {
+        Err(AppError::not_found("project member", _project_id))
+    }
+    async fn save(&self, _member: &ProjectMember) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn delete(&self, _project_id: ProjectId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubAttachmentRepository;
+#[async_trait]
+impl AttachmentRepository for StubAttachmentRepository {
+    async fn get_by_id(&self, _id: AttachmentId) -> Result<crate::Attachment, AppError> {
+        Err(AppError::not_found("attachment", "stub"))
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<crate::Attachment>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _attachment: &crate::Attachment) -> Result<AttachmentId, AppError> {
+        Ok(AttachmentId::new())
+    }
+    async fn delete(&self, _id: AttachmentId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubLabelRepository;
+#[async_trait]
+impl LabelRepository for StubLabelRepository {
+    async fn get_by_id(&self, _id: LabelId) -> Result<Label, AppError> {
+        Err(AppError::not_found("label", "stub"))
+    }
+    async fn list_by_project(&self, _project_id: ProjectId) -> Result<Vec<Label>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _label: &Label) -> Result<LabelId, AppError> {
+        Ok(LabelId::new())
+    }
+    async fn delete(&self, _id: LabelId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn list_ids_by_issue(&self, _issue_id: IssueId) -> Result<Vec<LabelId>, AppError> {
+        Ok(vec![])
+    }
+    async fn list_issue_ids_by_label(&self, _label_id: LabelId) -> Result<Vec<IssueId>, AppError> {
+        Ok(vec![])
+    }
+    async fn attach(&self, _issue_id: IssueId, _label_id: LabelId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn detach(&self, _issue_id: IssueId, _label_id: LabelId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubCommentRepository;
+#[async_trait]
+impl CommentRepository for StubCommentRepository {
+    async fn list_by_issue_page(
+        &self,
+        _issue_id: IssueId,
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<Vec<Comment>, AppError> {
+        Ok(Vec::new())
+    }
+    async fn get_by_id(&self, _id: CommentId) -> Result<Comment, AppError> {
+        Err(AppError::not_found("comment", "stub"))
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<Comment>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _comment: &Comment) -> Result<CommentId, AppError> {
+        Ok(CommentId::new())
+    }
+    async fn delete(&self, _id: CommentId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubWorklogRepository;
+#[async_trait]
+impl WorklogRepository for StubWorklogRepository {
+    async fn get_by_id(&self, _id: WorklogId) -> Result<Worklog, AppError> {
+        Err(AppError::not_found("worklog", "stub"))
+    }
+
+    async fn list_by_issue_page(
+        &self,
+        _issue_id: IssueId,
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<Vec<Worklog>, AppError> {
+        Ok(vec![])
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<Worklog>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _worklog: &Worklog) -> Result<WorklogId, AppError> {
+        Ok(WorklogId::new())
+    }
+    async fn delete(&self, _id: WorklogId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubUserRepository;
+#[async_trait]
+impl UserRepository for StubUserRepository {
+    async fn rotate_refresh_token(
+        &self,
+        _user_id: UserId,
+        _expected_hash: &str,
+        _new_hash: &str,
+    ) -> Result<(), AppError> {
+        Err(AppError::Unauthorized)
+    }
+
+    async fn clear_refresh_token(&self, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    async fn get_by_id(&self, _id: UserId) -> Result<User, AppError> {
+        Err(AppError::not_found("user", "stub"))
+    }
+    async fn get_by_email(&self, _email: &str) -> Result<User, AppError> {
+        Err(AppError::not_found("user", "stub"))
+    }
+    async fn get_by_refresh_token(&self, _token_hash: &str) -> Result<User, AppError> {
+        Err(AppError::not_found("user", "stub"))
+    }
+    async fn save(&self, _user: &User) -> Result<UserId, AppError> {
+        Ok(UserId::new())
+    }
+
+    async fn list(&self) -> Result<Vec<User>, AppError> {
+        Ok(vec![])
+    }
+}
+
+pub struct StubTotpRepository;
+#[async_trait]
+impl TotpRepository for StubTotpRepository {
+    async fn get(&self, _user_id: UserId) -> Result<TotpConfig, AppError> {
+        Ok(TotpConfig {
+            user_id: _user_id,
+            secret_cipher: "".into(),
+            enabled: false,
+            confirmed_at: None,
+            last_used_step: 0,
+            recovery_codes: "[]".into(),
+        })
+    }
+    async fn upsert_unconfirmed(
+        &self,
+        _user_id: UserId,
+        _secret_cipher: &str,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn confirm_enable(
+        &self,
+        _user_id: UserId,
+        _recovery_codes_json: &str,
+        _step: i64,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn mark_used_step(&self, _user_id: UserId, _step: i64) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn update_recovery_codes(&self, _user_id: UserId, _json: &str) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn disable(&self, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubPasswordResetRepository;
+#[async_trait]
+impl PasswordResetRepository for StubPasswordResetRepository {
+    async fn upsert(
+        &self,
+        _user_id: UserId,
+        _token_hash: &str,
+        _expires_at: Timestamp,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn find_active(&self, _token_hash: &str) -> Result<PasswordResetToken, AppError> {
+        Err(AppError::not_found("password_reset", "stub"))
+    }
+    async fn mark_used(&self, _token_hash: &str) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubOidcRepository;
+#[async_trait]
+impl OidcRepository for StubOidcRepository {
+    async fn find_identity(
+        &self,
+        _provider: &str,
+        _subject: &str,
+    ) -> Result<OidcIdentity, AppError> {
+        Err(AppError::not_found("oidc", "stub"))
+    }
+    async fn link_identity(&self, _identity: &OidcIdentity) -> Result<OidcIdentity, AppError> {
+        Err(AppError::not_found("oidc", "stub"))
+    }
+    async fn put_state(&self, _state: &OidcAuthState) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn take_state(&self, _state: &str) -> Result<OidcAuthState, AppError> {
+        Err(AppError::not_found("oidc", "stub"))
+    }
+}
+
+pub struct StubProjectRepository;
+#[async_trait]
+impl ProjectRepository for StubProjectRepository {
+    async fn get_by_id(&self, _id: ProjectId) -> Result<Project, AppError> {
+        Err(AppError::not_found("project", "stub"))
+    }
+    async fn get_by_key(&self, _key: &ProjectKey) -> Result<Project, AppError> {
+        Err(AppError::not_found("project", "stub"))
+    }
+    async fn list(&self, _query: ProjectQuery) -> Result<Vec<Project>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _project: &Project) -> Result<ProjectId, AppError> {
+        Ok(ProjectId::new())
+    }
+    async fn save_with_board(
+        &self,
+        _project: &Project,
+        _board: &crate::Board,
+    ) -> Result<ProjectId, AppError> {
+        Ok(ProjectId::new())
+    }
+    async fn next_issue_number(&self, _project_id: ProjectId) -> Result<u32, AppError> {
+        Ok(1)
+    }
+
+    async fn delete(&self, _id: ProjectId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubIssueRepository;
+#[async_trait]
+impl IssueRepository for StubIssueRepository {
+    async fn change_status_atomic(
+        &self,
+        _issue_id: IssueId,
+        _project_id: ProjectId,
+        _from_status_id: StatusId,
+        _to_status_id: StatusId,
+        _actor_id: UserId,
+        _guard: &TransitionGuard,
+    ) -> Result<(), AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+    async fn get_by_id(&self, _id: IssueId) -> Result<Issue, AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+    async fn get_by_id_include_deleted(&self, _id: IssueId) -> Result<Issue, AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+    async fn get_by_key(&self, _key: &shared::IssueKey) -> Result<Issue, AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+    async fn list(&self, _query: IssueQuery) -> Result<Vec<Issue>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _issue: &Issue) -> Result<IssueId, AppError> {
+        Ok(IssueId::new())
+    }
+    async fn delete(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+    async fn restore(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+    async fn purge(&self, _id: IssueId) -> Result<(), AppError> {
+        Err(AppError::not_found("issue", "stub"))
+    }
+}
+
+pub struct StubBoardRepository;
+#[async_trait]
+impl BoardRepository for StubBoardRepository {
+    async fn get_by_id(&self, _id: BoardId) -> Result<Board, AppError> {
+        Err(AppError::not_found("board", "stub"))
+    }
+    async fn get_default_by_project(&self, _project_id: ProjectId) -> Result<Board, AppError> {
+        Err(AppError::not_found("board", "stub"))
+    }
+    async fn get_default_by_project_key(&self, _key: &ProjectKey) -> Result<Board, AppError> {
+        Err(AppError::not_found("board", "stub"))
+    }
+    async fn save(&self, _board: &Board) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubSprintRepository;
+#[async_trait]
+impl SprintRepository for StubSprintRepository {
+    async fn get_active_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Option<Sprint>, AppError> {
+        Ok(None)
+    }
+    async fn get_by_id(&self, _id: SprintId) -> Result<Sprint, AppError> {
+        Err(AppError::not_found("sprint", "stub"))
+    }
+    async fn list_by_project(&self, _project_id: ProjectId) -> Result<Vec<Sprint>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _sprint: &Sprint) -> Result<SprintId, AppError> {
+        Ok(SprintId::new())
+    }
+}
+
+pub struct StubStatusRepository;
+#[async_trait]
+impl StatusRepository for StubStatusRepository {
+    async fn get_by_id(&self, _id: StatusId) -> Result<Status, AppError> {
+        Err(AppError::not_found("status", "stub"))
+    }
+    async fn list_all(&self) -> Result<Vec<Status>, AppError> {
+        Ok(vec![])
+    }
+    async fn get_default(&self) -> Result<Status, AppError> {
+        Err(AppError::not_found("status", "stub"))
+    }
+}
+
+pub struct StubWorkflowTransitionRepository;
+#[async_trait]
+impl WorkflowTransitionRepository for StubWorkflowTransitionRepository {
+    async fn list_all(&self) -> Result<Vec<WorkflowTransition>, AppError> {
+        Ok(vec![])
+    }
+    async fn is_allowed(
+        &self,
+        _from_status_id: StatusId,
+        _to_status_id: StatusId,
+    ) -> Result<bool, AppError> {
+        Ok(true)
+    }
+}
+
+pub struct StubIssueTypeRepository;
+#[async_trait]
+impl IssueTypeRepository for StubIssueTypeRepository {
+    async fn get_by_id(&self, _id: IssueTypeId) -> Result<IssueTypeEntity, AppError> {
+        Err(AppError::not_found("issue type", "stub"))
+    }
+    async fn list_all(&self) -> Result<Vec<IssueTypeEntity>, AppError> {
+        Ok(vec![])
+    }
+}
+
+pub struct StubUnitOfWork;
+#[async_trait]
+impl UnitOfWork for StubUnitOfWork {
+    async fn with_transaction<F, T>(&self, f: F) -> Result<T, AppError>
+    where
+        F: for<'a> FnOnce(
+                &'a Repositories,
+            ) -> std::pin::Pin<
+                Box<dyn std::future::Future<Output = Result<T, AppError>> + Send + 'a>,
+            > + Send
+            + 'static,
+        T: Send + 'static,
+    {
+        f(&Repositories::default()).await
+    }
+}
+
+pub struct StubEventBus;
+#[async_trait]
+impl EventBus for StubEventBus {
+    async fn publish(&self, _event: crate::ProjectEvent) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait ProjectMemberRepository: Send + Sync {
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<ProjectMember>, AppError>;
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<ProjectMember>, AppError>;
+    async fn get(&self, project_id: ProjectId, user_id: UserId) -> Result<ProjectMember, AppError>;
+    async fn save(&self, member: &ProjectMember) -> Result<(), AppError>;
+    async fn delete(&self, project_id: ProjectId, user_id: UserId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait FileStorage: Send + Sync {
+    async fn put(&self, issue_id: &str, key: &str, bytes: Vec<u8>) -> Result<(), AppError>;
+    async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError>;
+    async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError>;
+}
+
+/// In-memory FileStorage for tests.
+#[derive(Default)]
+pub struct InMemoryStorage {
+    files: std::sync::Mutex<std::collections::HashMap<(String, String), Vec<u8>>>,
+}
+
+#[async_trait]
+impl FileStorage for InMemoryStorage {
+    async fn put(&self, issue_id: &str, key: &str, bytes: Vec<u8>) -> Result<(), AppError> {
+        if bytes.is_empty() {
+            return Err(AppError::invalid_input("file is empty"));
+        }
+        self.files
+            .lock()
+            .unwrap()
+            .insert((issue_id.to_string(), key.to_string()), bytes);
+        Ok(())
+    }
+    async fn get(&self, issue_id: &str, key: &str) -> Result<Vec<u8>, AppError> {
+        self.files
+            .lock()
+            .unwrap()
+            .get(&(issue_id.to_string(), key.to_string()))
+            .cloned()
+            .ok_or_else(|| AppError::not_found("attachment file", key))
+    }
+    async fn delete(&self, issue_id: &str, key: &str) -> Result<(), AppError> {
+        self.files
+            .lock()
+            .unwrap()
+            .remove(&(issue_id.to_string(), key.to_string()));
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait LabelRepository: Send + Sync {
+    async fn get_by_id(&self, id: LabelId) -> Result<Label, AppError>;
+    async fn list_by_project(&self, project_id: ProjectId) -> Result<Vec<Label>, AppError>;
+    async fn save(&self, label: &Label) -> Result<LabelId, AppError>;
+    async fn delete(&self, id: LabelId) -> Result<(), AppError>;
+    async fn list_ids_by_issue(&self, issue_id: IssueId) -> Result<Vec<LabelId>, AppError>;
+    async fn list_issue_ids_by_label(&self, label_id: LabelId) -> Result<Vec<IssueId>, AppError>;
+    async fn list_by_issues(
+        &self,
+        issue_ids: &[IssueId],
+    ) -> Result<std::collections::HashMap<IssueId, Vec<Label>>, AppError> {
+        let mut labels_by_issue = std::collections::HashMap::new();
+        for issue_id in issue_ids {
+            let mut labels = Vec::new();
+            for label_id in self.list_ids_by_issue(*issue_id).await? {
+                labels.push(self.get_by_id(label_id).await?);
+            }
+            labels_by_issue.insert(*issue_id, labels);
+        }
+        Ok(labels_by_issue)
+    }
+    async fn attach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError>;
+    async fn detach(&self, issue_id: IssueId, label_id: LabelId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait IssueLinkRepository: Send + Sync {
+    async fn save(&self, link: &IssueLink) -> Result<IssueLinkId, AppError>;
+    async fn get_by_id(&self, id: IssueLinkId) -> Result<IssueLink, AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueLink>, AppError>;
+    async fn delete(&self, id: IssueLinkId) -> Result<(), AppError>;
+}
+
+pub struct StubIssueLinkRepository;
+#[async_trait]
+impl IssueLinkRepository for StubIssueLinkRepository {
+    async fn save(&self, _link: &IssueLink) -> Result<IssueLinkId, AppError> {
+        Ok(IssueLinkId::new())
+    }
+    async fn get_by_id(&self, _id: IssueLinkId) -> Result<IssueLink, AppError> {
+        Err(AppError::not_found("issue link", _id))
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueLink>, AppError> {
+        Ok(vec![])
+    }
+    async fn delete(&self, _id: IssueLinkId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubAuditLogRepository;
+#[async_trait]
+impl AuditLogRepository for StubAuditLogRepository {
+    async fn save(&self, _entry: &AuditLog) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn list(
+        &self,
+        _actor_id: Option<UserId>,
+        _limit: u64,
+        _offset: u64,
+    ) -> Result<Vec<AuditLog>, AppError> {
+        Ok(vec![])
+    }
+}
+
+pub struct StubSystemSettingRepository;
+#[async_trait]
+impl SystemSettingRepository for StubSystemSettingRepository {
+    async fn get(&self, key: &str) -> Result<SystemSetting, AppError> {
+        Err(AppError::not_found("system setting", key))
+    }
+    async fn list(&self) -> Result<Vec<SystemSetting>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _setting: &SystemSetting) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait NotificationRepository: Send + Sync {
+    /// Mark exactly these notifications read (idempotent, ignores others).
+    async fn mark_read_batch(&self, ids: &[shared::NotificationId]) -> Result<(), AppError>;
+    async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError>;
+    async fn list_for_recipient(
+        &self,
+        recipient_id: UserId,
+        include_read: bool,
+        limit: u64,
+        offset: u64,
+    ) -> Result<Vec<Notification>, AppError> {
+        let _ = include_read;
+        let mut notifications = self.list_unread(recipient_id).await?;
+        notifications.sort_by_key(|notification| std::cmp::Reverse(notification.created_at));
+        Ok(notifications
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
+    }
+    async fn count_unread(&self, recipient_id: UserId) -> Result<u64, AppError> {
+        Ok(self.list_unread(recipient_id).await?.len() as u64)
+    }
+    async fn list_unread(&self, recipient_id: UserId) -> Result<Vec<Notification>, AppError>;
+    async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError>;
+    async fn mark_read(
+        &self,
+        id: shared::NotificationId,
+        recipient_id: UserId,
+    ) -> Result<(), AppError>;
+    async fn mark_all_read(&self, recipient_id: UserId) -> Result<(), AppError>;
+}
+
+#[async_trait]
+pub trait UserNotificationSettingsRepository: Send + Sync {
+    async fn get_settings(&self, user_id: UserId) -> Result<NotificationUserSettings, AppError>;
+    async fn save_settings(&self, settings: &NotificationUserSettings) -> Result<(), AppError>;
+    async fn mark_email_digest_sent(
+        &self,
+        user_id: UserId,
+        sent_at: shared::Timestamp,
+    ) -> Result<(), AppError>;
+}
+
+pub struct StubNotificationRepository;
+#[async_trait]
+impl NotificationRepository for StubNotificationRepository {
+    async fn mark_read_batch(&self, _ids: &[shared::NotificationId]) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn save(&self, notification: &Notification) -> Result<shared::NotificationId, AppError> {
+        Ok(notification.id)
+    }
+
+    async fn list_unread(&self, _recipient_id: UserId) -> Result<Vec<Notification>, AppError> {
+        Ok(vec![])
+    }
+
+    async fn list_all_unread(&self) -> Result<Vec<Notification>, AppError> {
+        Ok(vec![])
+    }
+
+    async fn mark_read(
+        &self,
+        id: shared::NotificationId,
+        _recipient_id: UserId,
+    ) -> Result<(), AppError> {
+        Err(AppError::not_found("notification", id))
+    }
+
+    async fn mark_all_read(&self, _recipient_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+pub struct StubUserNotificationSettingsRepository;
+#[async_trait]
+impl UserNotificationSettingsRepository for StubUserNotificationSettingsRepository {
+    async fn get_settings(&self, user_id: UserId) -> Result<NotificationUserSettings, AppError> {
+        Err(AppError::not_found("notification settings", user_id))
+    }
+
+    async fn save_settings(&self, _settings: &NotificationUserSettings) -> Result<(), AppError> {
+        Ok(())
+    }
+
+    async fn mark_email_digest_sent(
+        &self,
+        _user_id: UserId,
+        _sent_at: shared::Timestamp,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait WatcherRepository: Send + Sync {
+    async fn add(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn remove(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueWatcher>, AppError>;
+    async fn is_watching(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
+    async fn list_by_user(&self, user_id: UserId) -> Result<Vec<IssueWatcher>, AppError>;
+}
+
+pub struct StubWatcherRepository;
+#[async_trait]
+impl WatcherRepository for StubWatcherRepository {
+    async fn add(&self, _issue_id: IssueId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn remove(&self, _issue_id: IssueId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueWatcher>, AppError> {
+        Ok(vec![])
+    }
+    async fn is_watching(&self, _issue_id: IssueId, _user_id: UserId) -> Result<bool, AppError> {
+        Ok(false)
+    }
+    async fn list_by_user(&self, _user_id: UserId) -> Result<Vec<IssueWatcher>, AppError> {
+        Ok(vec![])
+    }
+}
+
+#[async_trait]
+pub trait VoteRepository: Send + Sync {
+    async fn add(&self, issue_id: IssueId, user_id: UserId) -> Result<IssueVote, AppError>;
+    async fn remove(&self, issue_id: IssueId, user_id: UserId) -> Result<(), AppError>;
+    async fn list_by_issue(&self, issue_id: IssueId) -> Result<Vec<IssueVote>, AppError>;
+    async fn count_by_issue(&self, issue_id: IssueId) -> Result<u64, AppError>;
+    async fn has_voted(&self, issue_id: IssueId, user_id: UserId) -> Result<bool, AppError>;
+}
+
+pub struct StubVoteRepository;
+#[async_trait]
+impl VoteRepository for StubVoteRepository {
+    async fn add(&self, issue_id: IssueId, _user_id: UserId) -> Result<IssueVote, AppError> {
+        Ok(IssueVote {
+            issue_id,
+            user_id: _user_id,
+            voted_at: shared::now(),
+        })
+    }
+    async fn remove(&self, _issue_id: IssueId, _user_id: UserId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn list_by_issue(&self, _issue_id: IssueId) -> Result<Vec<IssueVote>, AppError> {
+        Ok(vec![])
+    }
+    async fn count_by_issue(&self, _issue_id: IssueId) -> Result<u64, AppError> {
+        Ok(0)
+    }
+    async fn has_voted(&self, _issue_id: IssueId, _user_id: UserId) -> Result<bool, AppError> {
+        Ok(false)
+    }
+}
+
+#[async_trait]
+pub trait ProjectComponentRepository: Send + Sync {
+    async fn get_by_id(&self, id: ProjectComponentId) -> Result<ProjectComponent, AppError>;
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<ProjectComponent>, AppError>;
+    async fn save(&self, component: &ProjectComponent) -> Result<ProjectComponentId, AppError>;
+    async fn delete(&self, id: ProjectComponentId) -> Result<(), AppError>;
+}
+
+pub struct StubProjectComponentRepository;
+#[async_trait]
+impl ProjectComponentRepository for StubProjectComponentRepository {
+    async fn get_by_id(&self, _id: ProjectComponentId) -> Result<ProjectComponent, AppError> {
+        Err(AppError::not_found("component", "stub"))
+    }
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<ProjectComponent>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _component: &ProjectComponent) -> Result<ProjectComponentId, AppError> {
+        Ok(ProjectComponentId::new())
+    }
+    async fn delete(&self, _id: ProjectComponentId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait ProjectVersionRepository: Send + Sync {
+    async fn get_by_id(&self, id: ProjectVersionId) -> Result<ProjectVersion, AppError>;
+    async fn list_by_project(&self, project_id: ProjectId)
+    -> Result<Vec<ProjectVersion>, AppError>;
+    async fn save(&self, version: &ProjectVersion) -> Result<ProjectVersionId, AppError>;
+    async fn delete(&self, id: ProjectVersionId) -> Result<(), AppError>;
+}
+
+pub struct StubProjectVersionRepository;
+#[async_trait]
+impl ProjectVersionRepository for StubProjectVersionRepository {
+    async fn get_by_id(&self, _id: ProjectVersionId) -> Result<ProjectVersion, AppError> {
+        Err(AppError::not_found("version", "stub"))
+    }
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<ProjectVersion>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _version: &ProjectVersion) -> Result<ProjectVersionId, AppError> {
+        Ok(ProjectVersionId::new())
+    }
+    async fn delete(&self, _id: ProjectVersionId) -> Result<(), AppError> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+pub trait CustomFieldRepository: Send + Sync {
+    async fn get_by_id(&self, id: shared::CustomFieldId) -> Result<crate::CustomField, AppError>;
+    async fn list_by_project(
+        &self,
+        project_id: ProjectId,
+    ) -> Result<Vec<crate::CustomField>, AppError>;
+    async fn save(&self, field: &crate::CustomField) -> Result<shared::CustomFieldId, AppError>;
+    async fn delete(&self, id: shared::CustomFieldId) -> Result<(), AppError>;
+    async fn set_value(
+        &self,
+        issue_id: IssueId,
+        field_id: shared::CustomFieldId,
+        value: &serde_json::Value,
+    ) -> Result<(), AppError>;
+    async fn delete_value(
+        &self,
+        issue_id: IssueId,
+        field_id: shared::CustomFieldId,
+    ) -> Result<(), AppError>;
+    async fn get_values_for_issue(
+        &self,
+        issue_id: IssueId,
+    ) -> Result<Vec<crate::CustomFieldValue>, AppError>;
+    async fn delete_values_for_issue(&self, issue_id: IssueId) -> Result<(), AppError>;
+}
+
+pub struct StubCustomFieldRepository;
+#[async_trait]
+impl CustomFieldRepository for StubCustomFieldRepository {
+    async fn get_by_id(&self, _id: shared::CustomFieldId) -> Result<crate::CustomField, AppError> {
+        Err(AppError::not_found("custom field", "stub"))
+    }
+    async fn list_by_project(
+        &self,
+        _project_id: ProjectId,
+    ) -> Result<Vec<crate::CustomField>, AppError> {
+        Ok(vec![])
+    }
+    async fn save(&self, _field: &crate::CustomField) -> Result<shared::CustomFieldId, AppError> {
+        Ok(shared::CustomFieldId::new())
+    }
+    async fn delete(&self, _id: shared::CustomFieldId) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn set_value(
+        &self,
+        _issue_id: IssueId,
+        _field_id: shared::CustomFieldId,
+        _value: &serde_json::Value,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn delete_value(
+        &self,
+        _issue_id: IssueId,
+        _field_id: shared::CustomFieldId,
+    ) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn get_values_for_issue(
+        &self,
+        _issue_id: IssueId,
+    ) -> Result<Vec<crate::CustomFieldValue>, AppError> {
+        Ok(vec![])
+    }
+    async fn delete_values_for_issue(&self, _issue_id: IssueId) -> Result<(), AppError> {
+        Ok(())
+    }
+}

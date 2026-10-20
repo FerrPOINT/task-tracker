@@ -1,0 +1,88 @@
+import { Link } from 'react-router'
+import { useTranslation } from 'react-i18next'
+import { ErrorState, LoadingState } from '@sdlc/ui/ui'
+import { useNotifications } from '@/shared/api/hooks'
+import { notificationTarget } from '@/shared/lib/notification-target'
+import { notificationTitle } from '@/shared/lib/notification-title'
+
+const PREVIEW_LIMIT = 5
+
+export function DashboardRecentActivity() {
+  const { t, i18n } = useTranslation()
+  const events = useNotifications({ includeRead: true, limit: PREVIEW_LIMIT })
+  const notifications = events.data?.notifications.slice(0, PREVIEW_LIMIT) ?? []
+  const dateFormat = new Intl.DateTimeFormat(i18n.language, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  return (
+    <section
+      aria-labelledby="dashboard-activity-title"
+      className="min-w-0 border-t border-border pt-4"
+    >
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <h2 id="dashboard-activity-title" className="text-sm font-semibold">
+          {t('dashboard.personalRecentActivity')}
+        </h2>
+        <Link
+          to="/notifications"
+          className="inline-flex min-h-11 items-center text-sm text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        >
+          {t('dashboard.viewAllActivity')}
+        </Link>
+      </div>
+      {events.isLoading && <LoadingState message={t('dashboard.loadingActivity')} />}
+      {events.isError && (
+        <ErrorState message={t('dashboard.activityError')} onRetry={() => void events.refetch()} />
+      )}
+      {!events.isLoading && !events.isError && notifications.length === 0 && (
+        <p className="text-sm text-text-muted">{t('dashboard.noActivity')}</p>
+      )}
+      {notifications.length > 0 && (
+        <ul className="divide-y divide-border">
+          {notifications.map((notification) => {
+            const target = notificationTarget(notification)
+            const content = (
+              <>
+                <div className="min-w-0 space-y-0.5 [overflow-wrap:anywhere]">
+                  <p className="line-clamp-2 text-sm font-medium">
+                    {notificationTitle(notification, t)}
+                  </p>
+                  {notification.body && (
+                    <p className="line-clamp-2 text-xs text-text-secondary">{notification.body}</p>
+                  )}
+                </div>
+                <time
+                  dateTime={notification.created_at}
+                  className="text-xs text-text-muted"
+                  title={new Date(notification.created_at).toLocaleString(i18n.language)}
+                >
+                  {dateFormat.format(new Date(notification.created_at))}
+                </time>
+              </>
+            )
+            const rowClass =
+              'grid min-h-11 min-w-0 gap-1 py-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-3'
+            return (
+              <li key={notification.id} className="min-w-0">
+                {target ? (
+                  <Link
+                    to={target}
+                    className={`${rowClass} rounded-sm hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus`}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div className={rowClass}>{content}</div>
+                )}
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </section>
+  )
+}

@@ -1,0 +1,5 @@
+# Immutable repeat guidance
+
+Source only, unqualified. Snapshot optional omitted-None `user_guidance:{parent_execution_id:UUID,text:string}` is closed, manual-only and bounded to nonblank/NUL-free 4096 UTF-8 bytes. Exact text and parent enter canonical snapshot hash; historical None serialization stays unchanged.
+
+New reserve with guidance must identify the same owner/project terminal released retained Tracker execution, same purpose/Bug and (for verification) same canonical original basis. Current policy/targets/source/CI delivery are new authority, never cloned parent authority. Existing exact original operation replay occurs before this new-effect check. No Task/PM identity, queue, table or migration is added.

@@ -1,0 +1,326 @@
+import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { useTranslation } from 'react-i18next'
+import { Play, Square } from 'lucide-react'
+import { ConfirmDialog, Dialog, DialogContent, DialogHeader, DialogTitle } from '@sdlc/ui/ui'
+import { Button } from '@sdlc/ui/ui'
+import { Input } from '@sdlc/ui/ui'
+import { Label } from '@sdlc/ui/ui'
+import { parseDuration, formatDuration } from '@/shared/lib/time'
+import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
+
+interface LogWorkDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSubmit: (input: LogWorkInput) => void | Promise<unknown>
+  worklog?: Worklog
+  isPending?: boolean
+  error?: Error | null
+  onProtectionChange?: (state: { dirty: boolean; pending: boolean }) => void
+  inputRef?: RefObject<HTMLInputElement | null>
+}
+
+export function LogWorkDialog({
+  open,
+  onOpenChange,
+  onSubmit,
+  worklog,
+  isPending = false,
+  error,
+  onProtectionChange,
+  inputRef: providedInputRef,
+}: LogWorkDialogProps) {
+  const { t } = useTranslation()
+  const isEdit = Boolean(worklog)
+  const [timerRunning, setTimerRunning] = useState(false)
+  const [timerSeconds, setTimerSeconds] = useState(0)
+  const timerStartedAt = useRef<number | null>(null)
+  const submitting = useRef(false)
+  const pending = useRef(isPending)
+  const [submitFailed, setSubmitFailed] = useState(false)
+  const [discardOpen, setDiscardOpen] = useState(false)
+  const localInputRef = useRef<HTMLInputElement | null>(null)
+  const inputRef = providedInputRef ?? localInputRef
+
+  useEffect(() => {
+    pending.current = isPending
+  }, [isPending])
+
+  const schema = z.object({
+    timeSpent: z
+      .string()
+      .min(1, t('timeTracking.validation.timeSpentRequired'))
+      .refine(
+        (v) => {
+          const parsed = parseDuration(v)
+          return parsed !== null && parsed > 0
+        },
+        {
+          message: t('timeTracking.validation.invalidFormat'),
+        },
+      )
+      .refine(
+        (value) => {
+          const duration = parseDuration(value)
+          return duration === null || duration <= 86400
+        },
+        { message: t('timeTracking.validation.durationTooLong') },
+      ),
+    startedAt: z.string().refine(
+      (value) => {
+        const date = new Date(value)
+        return (
+          /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+          Number.isFinite(date.getTime()) &&
+          date.toISOString().slice(0, 10) === value
+        )
+      },
+      { message: t('timeTracking.validation.invalidDate') },
+    ),
+    comment: z.string(),
+  })
+
+  const form = useForm<{
+    timeSpent: string
+    startedAt: string
+    comment: string
+  }>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      timeSpent: '',
+      startedAt: new Date().toISOString().slice(0, 10),
+      comment: '',
+    },
+  })
+
+  useEffect(() => {
+    if (open) {
+      setSubmitFailed(false)
+      const wl = worklog
+      form.reset({
+        timeSpent: wl ? formatDuration(wl.timeSpentSeconds) : '',
+        startedAt: wl
+          ? new Date(wl.startedAt).toISOString().slice(0, 10)
+          : new Date().toISOString().slice(0, 10),
+        comment: wl?.comment ?? '',
+      })
+    } else {
+      setDiscardOpen(false)
+      setTimerRunning(false)
+      setTimerSeconds(0)
+      timerStartedAt.current = null
+    }
+  }, [open, worklog, form])
+
+  const elapsedSeconds = useCallback(() => {
+    return timerStartedAt.current === null
+      ? 0
+      : Math.max(0, Math.floor((performance.now() - timerStartedAt.current) / 1000))
+  }, [])
+
+  useEffect(() => {
+    if (!timerRunning || !open) return
+    const interval = setInterval(() => setTimerSeconds(elapsedSeconds()), 1000)
+    return () => clearInterval(interval)
+  }, [timerRunning, open, elapsedSeconds])
+
+  const busy = isPending || form.formState.isSubmitting
+  const dirty = form.formState.isDirty || timerRunning
+  useEffect(() => {
+    onProtectionChange?.({ dirty: open && dirty, pending: open && busy })
+  }, [open, dirty, busy, onProtectionChange])
+  useEffect(
+    () => () => onProtectionChange?.({ dirty: false, pending: false }),
+    [onProtectionChange],
+  )
+  const timeField = form.register('timeSpent')
+
+  const stopTimer = () => {
+    const current = parseDuration(form.getValues('timeSpent')) ?? 0
+    form.setValue('timeSpent', formatDuration(current + elapsedSeconds()), { shouldDirty: true })
+    timerStartedAt.current = null
+    setTimerRunning(false)
+    setTimerSeconds(0)
+  }
+
+  const toggleTimer = () => {
+    if (busy || submitting.current) return
+    if (timerRunning) {
+      stopTimer()
+    } else {
+      const value = form.getValues('timeSpent')
+      if (value.trim() && parseDuration(value) === null) {
+        form.setError('timeSpent', { message: t('timeTracking.validation.invalidFormat') })
+        return
+      }
+      form.clearErrors('timeSpent')
+      timerStartedAt.current = performance.now()
+      setTimerRunning(true)
+    }
+  }
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (isPending || submitting.current) return
+    submitting.current = true
+    setSubmitFailed(false)
+    if (timerRunning) stopTimer()
+    try {
+      await form.handleSubmit(async (values) => {
+        if (pending.current) return
+        await onSubmit({
+          timeSpent: values.timeSpent,
+          startedAt: new Date(values.startedAt).toISOString(),
+          comment: values.comment,
+        })
+      })(event)
+    } catch {
+      setSubmitFailed(true)
+    } finally {
+      submitting.current = false
+    }
+  }
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (busy || submitting.current) return
+    if (!nextOpen && dirty) {
+      if (timerRunning) stopTimer()
+      setDiscardOpen(true)
+      return
+    }
+    onOpenChange(nextOpen)
+  }
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent dismissible={!busy} aria-busy={busy} aria-describedby={undefined}>
+          <DialogHeader>
+            <DialogTitle>
+              {isEdit ? t('timeTracking.editWorklog') : t('timeTracking.logWork')}
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {(error || submitFailed) && (
+              <p role="alert" className="text-sm text-danger">
+                {t('timeTracking.saveError')}
+              </p>
+            )}
+            <fieldset disabled={busy} className="min-w-0 space-y-4">
+              <div className="space-y-1">
+                <Label htmlFor="timeSpent">{t('timeTracking.fields.timeSpent')}</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="timeSpent"
+                    {...timeField}
+                    ref={(node) => {
+                      timeField.ref(node)
+                      inputRef.current = node
+                    }}
+                    placeholder="1h 30m"
+                    className="min-h-11 min-w-0 sm:min-h-10"
+                    disabled={timerRunning}
+                    aria-invalid={Boolean(form.formState.errors.timeSpent)}
+                    aria-describedby={
+                      form.formState.errors.timeSpent ? 'timeSpent-error' : undefined
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    className="min-h-11 min-w-11 sm:min-h-10 sm:min-w-10"
+                    onClick={toggleTimer}
+                    aria-label={
+                      timerRunning ? t('timeTracking.timer.stop') : t('timeTracking.timer.start')
+                    }
+                  >
+                    {timerRunning ? (
+                      <Square className="h-4 w-4" aria-hidden />
+                    ) : (
+                      <Play className="h-4 w-4" aria-hidden />
+                    )}
+                  </Button>
+                </div>
+                {timerRunning && (
+                  <p
+                    role="timer"
+                    aria-label={t('timeTracking.timer.elapsed')}
+                    className="text-xs text-text-muted"
+                  >
+                    {formatDuration(timerSeconds)}
+                  </p>
+                )}
+                {form.formState.errors.timeSpent && (
+                  <p id="timeSpent-error" role="alert" className="text-xs text-danger">
+                    {form.formState.errors.timeSpent.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="startedAt">{t('timeTracking.fields.startedAt')}</Label>
+                <Input
+                  id="startedAt"
+                  type="date"
+                  {...form.register('startedAt')}
+                  className="min-h-11 sm:min-h-10"
+                  aria-invalid={Boolean(form.formState.errors.startedAt)}
+                  aria-describedby={form.formState.errors.startedAt ? 'startedAt-error' : undefined}
+                />
+                {form.formState.errors.startedAt && (
+                  <p id="startedAt-error" role="alert" className="text-xs text-danger">
+                    {form.formState.errors.startedAt.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="comment">{t('timeTracking.fields.comment')}</Label>
+                <Input
+                  id="comment"
+                  className="min-h-11 sm:min-h-10"
+                  {...form.register('comment')}
+                  placeholder={t('timeTracking.fields.commentPlaceholder')}
+                />
+              </div>
+            </fieldset>
+
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => handleOpenChange(false)}
+                disabled={busy}
+                className="min-h-11 sm:min-h-10"
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={busy} className="min-h-11 sm:min-h-10">
+                {busy ? t('common.saving') : t('common.save')}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog
+        open={open && discardOpen}
+        onOpenChange={(next) => {
+          if (!busy) setDiscardOpen(next)
+        }}
+        title={t('timeTracking.discardTitle')}
+        description={t('timeTracking.discardDescription')}
+        returnFocusRef={inputRef}
+        isPending={busy}
+        onConfirm={() => {
+          if (busy || submitting.current) return
+          setDiscardOpen(false)
+          onOpenChange(false)
+        }}
+      />
+    </>
+  )
+}

@@ -1,0 +1,121 @@
+//! Accepted own preferences only. No worker assignment or Bug transition authority.
+use crate::{bug_search::bounded_text, bug_search_control::validate_key, sdlc::MAX_SAFE_VERSION};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use shared::AppError;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugIntakeWorkerRuntime {
+    pub fleet_instance_id: Uuid,
+    pub agent_id: Uuid,
+    pub agent_config_revision: i64,
+}
+impl BugIntakeWorkerRuntime {
+    pub fn validate(&self, worker: Uuid) -> Result<(), AppError> {
+        if worker.is_nil()
+            || self.agent_id != worker
+            || self.fleet_instance_id.is_nil()
+            || !(1..=MAX_SAFE_VERSION).contains(&self.agent_config_revision)
+        {
+            return Err(AppError::validation(
+                "invalid concrete intake worker runtime",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ApplyBugIntake {
+    pub contract_version: u8,
+    pub idempotency_key: String,
+    pub expected_revision: i64,
+    pub desired_revision: i64,
+    pub enabled: bool,
+    pub worker_runtime: BugIntakeWorkerRuntime,
+}
+impl ApplyBugIntake {
+    pub fn validate(&self, worker: Uuid) -> Result<(), AppError> {
+        validate_key(&self.idempotency_key)?;
+        self.worker_runtime.validate(worker)?;
+        if self.contract_version != 1
+            || !(0..MAX_SAFE_VERSION).contains(&self.expected_revision)
+            || !(1..=MAX_SAFE_VERSION).contains(&self.desired_revision)
+            || self.desired_revision <= self.expected_revision
+        {
+            return Err(AppError::validation(
+                "invalid monotonic intake preference command",
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub fn validate_scope(project: Uuid, owner: &str, worker: Uuid) -> Result<(), AppError> {
+    if project.is_nil()
+        || worker.is_nil()
+        || !bounded_text(owner, 256)
+        || owner.chars().any(|c| c.is_control() || c.is_whitespace())
+    {
+        return Err(AppError::validation("invalid intake preference scope"));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BugIntakeApplied {
+    pub contract_version: u8,
+    pub operation_id: Uuid,
+    pub tracker_instance_id: String,
+    pub project_id: Uuid,
+    pub owner_subject: String,
+    pub worker_runtime: BugIntakeWorkerRuntime,
+    pub revision: i64,
+    pub enabled: bool,
+    pub accepted_at: DateTime<Utc>,
+    /// Saving this preference does not create an assignment consumer.
+    pub can_take_bugs: bool,
+    pub blocked_reasons: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn command() -> ApplyBugIntake {
+        ApplyBugIntake {
+            contract_version: 1,
+            idempotency_key: "intake:command".into(),
+            expected_revision: 2,
+            desired_revision: 7,
+            enabled: true,
+            worker_runtime: BugIntakeWorkerRuntime {
+                fleet_instance_id: Uuid::new_v4(),
+                agent_id: Uuid::new_v4(),
+                agent_config_revision: 3,
+            },
+        }
+    }
+    #[test]
+    fn superseded_desired_revisions_may_skip_but_never_rewind_or_equal() {
+        let mut c = command();
+        c.validate(c.worker_runtime.agent_id).unwrap();
+        for revision in [0, 1, 2, MAX_SAFE_VERSION + 1] {
+            c.desired_revision = revision;
+            assert!(c.validate(c.worker_runtime.agent_id).is_err());
+        }
+    }
+    #[test]
+    fn worker_runtime_is_concrete_and_cannot_choose_a_different_path_worker() {
+        let mut c = command();
+        assert!(c.validate(Uuid::new_v4()).is_err());
+        c.worker_runtime.fleet_instance_id = Uuid::nil();
+        assert!(c.validate(c.worker_runtime.agent_id).is_err());
+        c.worker_runtime.fleet_instance_id = Uuid::new_v4();
+        c.worker_runtime.agent_config_revision = 0;
+        assert!(c.validate(c.worker_runtime.agent_id).is_err());
+    }
+}

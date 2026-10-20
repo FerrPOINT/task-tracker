@@ -1,0 +1,68 @@
+import type { TFunction } from 'i18next'
+import type { NotificationItem } from '@/api/notifications'
+import { statusLabel } from './status-label'
+
+const issueKey = /^[A-Za-z0-9-]{1,10}-\d+$/
+
+export function notificationTitle(
+  notification: Pick<NotificationItem, 'title' | 'event_type' | 'entity_type' | 'metadata'>,
+  t: TFunction,
+): string {
+  const metadata = notification.metadata
+  if (
+    notification.entity_type !== 'issue' ||
+    !metadata ||
+    typeof metadata !== 'object' ||
+    Array.isArray(metadata)
+  )
+    return notification.title
+  const values = metadata as Record<string, unknown>
+  const key = values.issue_key
+  if (typeof key !== 'string' || !issueKey.test(key)) return notification.title
+  const params: Record<string, string> = { issueKey: key }
+  let source: string
+  switch (notification.event_type) {
+    case 'issue_assigned':
+      source = `You were assigned to ${key}`
+      break
+    case 'issue_updated':
+      source = `${key} updated`
+      break
+    case 'issue_commented':
+      source = `New comment on ${key}`
+      break
+    case 'issue_comment_edited':
+      source = `Comment edited on ${key}`
+      break
+    case 'issue_comment_deleted':
+      source = `Comment deleted on ${key}`
+      break
+    case 'issue_worklog_logged':
+      source = `Work logged on ${key}`
+      break
+    case 'issue_attachment_added':
+      source = `Attachment added to ${key}`
+      break
+    case 'issue_moved': {
+      const status = values.status
+      if (typeof status !== 'string' || !status.trim()) return notification.title
+      source = `${key} moved to ${status}`
+      params.status = statusLabel(status, t)
+      break
+    }
+    case 'issue_link_created':
+    case 'issue_link_deleted': {
+      const linkedKey = values.linked_issue_key
+      if (typeof linkedKey !== 'string' || !issueKey.test(linkedKey)) return notification.title
+      source = `${key} ${notification.event_type === 'issue_link_created' ? 'linked to' : 'unlinked from'} ${linkedKey}`
+      params.linkedIssueKey = linkedKey
+      break
+    }
+    default:
+      return notification.title
+  }
+  // Only known backend templates are system text, never arbitrary user titles.
+  return notification.title === source
+    ? t(`notifications.messages.${notification.event_type}`, params)
+    : notification.title
+}

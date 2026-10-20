@@ -1,0 +1,592 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router'
+import { ThemeProvider } from '@sdlc/ui/lib'
+
+import { AppShell } from './app-shell'
+
+const useCurrentUser = vi.hoisted(() => vi.fn())
+const useIssue = vi.hoisted(() => vi.fn())
+const useProjects = vi.hoisted(() => vi.fn())
+const useLogout = vi.hoisted(() => vi.fn())
+const useNotifications = vi.hoisted(() => vi.fn())
+const useMarkNotificationRead = vi.hoisted(() => vi.fn())
+const useMarkAllNotificationsRead = vi.hoisted(() => vi.fn())
+const useNotificationWritesPending = vi.hoisted(() => vi.fn())
+
+vi.mock('@/shared/api/hooks', () => ({
+  useCurrentUser,
+  useLogout,
+  useNotifications,
+  useMarkNotificationRead,
+  useMarkAllNotificationsRead,
+  useNotificationWritesPending,
+  useIssue,
+  useProjects,
+}))
+vi.mock('@/shared/api/useTrackerEvents', () => ({ useTrackerEvents: vi.fn() }))
+
+type Notification = {
+  id: string
+  title: string
+  body?: string | null
+  is_read: boolean
+  action_url?: string | null
+  created_at: string
+  event_type?: string
+  entity_type?: string
+  metadata?: unknown
+}
+
+function mockHooks(notifications: Notification[] | undefined, unreadCount?: number) {
+  useNotificationWritesPending.mockReturnValue(false)
+  useCurrentUser.mockReturnValue({ data: { email: 'user@example.test', display_name: 'User' } })
+  useIssue.mockReturnValue({ data: undefined })
+  useProjects.mockReturnValue({ data: [] })
+  useLogout.mockReturnValue({ mutate: vi.fn() })
+  useNotifications.mockReturnValue({
+    data: notifications
+      ? {
+          notifications,
+          unread_count:
+            unreadCount ?? notifications.filter((notification) => !notification.is_read).length,
+        }
+      : undefined,
+    isLoading: false,
+  })
+  useMarkNotificationRead.mockReturnValue({ mutate: vi.fn() })
+  useMarkAllNotificationsRead.mockReturnValue({ mutate: vi.fn() })
+}
+
+describe('AppShell notifications', () => {
+  it('localizes the generated bell title and mark-read accessible name without translating user content', async () => {
+    const user = userEvent.setup()
+    mockHooks([
+      {
+        id: 'assigned',
+        title: 'You were assigned to qa-test-1',
+        body: 'Keep this user summary unchanged',
+        is_read: false,
+        entity_type: 'issue',
+        event_type: 'issue_assigned',
+        metadata: { issue_key: 'qa-test-1' },
+        action_url: '/issues/assigned',
+        created_at: '2026-10-05T07:00:00Z',
+      },
+    ])
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    await user.click(screen.getByTestId('notification-trigger'))
+    expect(screen.getByText('Вам назначена задача qa-test-1')).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', {
+        name: 'Отметить прочитанным: Вам назначена задача qa-test-1',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Keep this user summary unchanged')).toBeInTheDocument()
+  })
+  beforeEach(() => {
+    window.localStorage.removeItem('tt-sidebar-collapsed')
+  })
+
+  it('uses the common header slot order and one service switcher without duplicate search', () => {
+    mockHooks([])
+    const { container } = render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    const header = screen.getByRole('banner')
+    expect(container.querySelectorAll('[data-platform-header]')).toHaveLength(1)
+    expect(
+      [...header.querySelectorAll('[data-platform-header-slot]')].map((slot) =>
+        slot.getAttribute('data-platform-header-slot'),
+      ),
+    ).toEqual(['leading', 'services', 'context', 'actions'])
+    expect(within(header).getAllByRole('button', { name: /Открыть список сервисов/ })).toHaveLength(
+      1,
+    )
+    expect(within(header).queryByRole('link', { name: 'Поиск' })).not.toBeInTheDocument()
+    expect(
+      within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('link', {
+        name: 'Поиск',
+      }),
+    ).toHaveAttribute('href', '/search')
+  })
+
+  it('keeps contextual task creation reachable in the mobile drawer and closes it on navigation', async () => {
+    mockHooks([])
+    const user = userEvent.setup()
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/XP/board']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    const trigger = screen.getByRole('button', { name: 'Открыть меню' })
+    await user.click(trigger)
+    const dialog = await screen.findByRole('dialog')
+    const create = within(dialog).getByRole('link', { name: 'Создать' })
+    expect(create).toHaveAttribute('href', '/issues/create?project_key=XP')
+    await user.click(create)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('keeps a named project picker and preserves the full long project name', () => {
+    mockHooks([])
+    const name = 'Очень длинное название проекта без потери выбранного контекста'
+    useProjects.mockReturnValue({ data: [{ key: 'XP', name }] })
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/XP/board']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    const picker = within(screen.getByRole('banner')).getByRole('button', { name: 'Проекты' })
+    expect(picker).toHaveAttribute('title', name)
+    expect(picker).toHaveTextContent(name)
+  })
+
+  it('does not duplicate email in the account menu and blocks repeated pending logout', async () => {
+    mockHooks([])
+    const mutate = vi.fn()
+    useCurrentUser.mockReturnValue({ data: { email: 'user@example.test', display_name: null } })
+    useLogout.mockReturnValue({ mutate, isPending: true })
+    const user = userEvent.setup()
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    await user.click(screen.getByRole('button', { name: 'Аккаунт' }))
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getAllByText('user@example.test')).toHaveLength(1)
+    const logout = within(menu).getByRole('menuitem', { name: 'Выйти' })
+    expect(logout).toHaveAttribute('aria-disabled', 'true')
+    await user.click(logout)
+    expect(mutate).not.toHaveBeenCalled()
+  })
+
+  it('keeps global navigation available on desktop outside a project', () => {
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const navigation = screen.getByRole('navigation', { name: 'Основная навигация' })
+    expect(within(navigation).getByRole('link', { name: 'Дашборд' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Отчёты' })).toHaveAttribute(
+      'href',
+      '/reports',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Администрирование' })).toHaveAttribute(
+      'href',
+      '/admin',
+    )
+  })
+
+  it('highlights only the current project destination', () => {
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/XP/board']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const navigation = screen.getByRole('navigation', { name: 'Основная навигация' })
+    expect(within(navigation).getByRole('link', { name: 'Доска' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Бэклог' })).not.toHaveAttribute(
+      'aria-current',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Корзина' })).not.toHaveAttribute(
+      'aria-current',
+    )
+    expect(within(navigation).getByRole('link', { name: 'Настройки проекта' })).not.toHaveAttribute(
+      'aria-current',
+    )
+  })
+
+  it('retains project navigation and selects project reports for filtered reports', () => {
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/reports?project_key=XP']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const projectNavigation = screen.getByRole('navigation', { name: 'Основная навигация' })
+    expect(within(projectNavigation).getByRole('link', { name: 'Отчёты проекта' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(
+      within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('link', {
+        name: 'Отчёты',
+      }),
+    ).not.toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Создать' })).toHaveAttribute(
+      'href',
+      '/issues/create?project_key=XP',
+    )
+    expect(screen.getByRole('link', { name: 'Создать' })).not.toHaveClass('hidden')
+  })
+
+  it('closes the mobile navigation dialog with Escape and after choosing a link', async () => {
+    const user = userEvent.setup()
+    mockHooks([])
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/projects/XP/board']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const trigger = screen.getByRole('button', { name: 'Открыть навигацию' })
+    await user.click(trigger)
+    let dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByRole('link', { name: 'Доска' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(trigger).toHaveFocus()
+
+    await user.click(trigger)
+    dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('link', { name: 'Бэклог' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('does not resolve an issue context on the create issue route', () => {
+    mockHooks([])
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/issues/create']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    expect(useIssue).toHaveBeenCalledWith('')
+    expect(useIssue).not.toHaveBeenCalledWith('create')
+  })
+
+  it('uses the query project key for create issue navigation context', () => {
+    mockHooks([])
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/issues/create?project_key=XP']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    expect(useIssue).toHaveBeenCalledWith('')
+    expect(useIssue).not.toHaveBeenCalledWith('create')
+    expect(screen.getByRole('link', { name: /бэклог|backlog/i })).toHaveAttribute(
+      'href',
+      '/projects/XP/backlog',
+    )
+    expect(screen.getByRole('link', { name: /доска|board/i })).toHaveAttribute(
+      'href',
+      '/projects/XP/board',
+    )
+  })
+
+  it('uses the shared readable mode for issue creation', () => {
+    mockHooks([])
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/issues/create']}>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="*" element={<div>Create issue content</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByText('Create issue content').parentElement).toHaveAttribute(
+      'data-page-layout',
+      'reading',
+    )
+  })
+
+  it('uses router state project key for create issue navigation context', () => {
+    mockHooks([])
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter
+          initialEntries={[{ pathname: '/issues/create', state: { project_key: 'XP' } }]}
+        >
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    expect(useIssue).toHaveBeenCalledWith('')
+    expect(useIssue).not.toHaveBeenCalledWith('create')
+    expect(screen.getByRole('link', { name: /бэклог|backlog/i })).toHaveAttribute(
+      'href',
+      '/projects/XP/backlog',
+    )
+    expect(screen.getByRole('link', { name: /доска|board/i })).toHaveAttribute(
+      'href',
+      '/projects/XP/board',
+    )
+  })
+
+  it('shows product settings in shared navigation to every signed-in user', () => {
+    mockHooks([])
+    useCurrentUser.mockReturnValue({
+      data: { email: 'member@example.test', display_name: 'Member', is_system_admin: false },
+    })
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    expect(screen.getByRole('link', { name: /администрирование|administration/i })).toHaveAttribute(
+      'href',
+      '/admin',
+    )
+  })
+
+  it('opens an empty notification dropdown without a badge', async () => {
+    const user = userEvent.setup()
+    mockHooks([])
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const trigger = screen.getByTestId('notification-trigger')
+    expect(trigger).not.toHaveTextContent('0')
+    await user.click(trigger)
+
+    expect(await screen.findByText(/нет уведомлений|no notifications yet/i)).toBeInTheDocument()
+  })
+
+  it('shows unread notifications and invokes mark-read and mark-all actions', async () => {
+    const user = userEvent.setup()
+    const success = (
+      _input: unknown,
+      callbacks: { onSuccess: () => void; onSettled: () => void },
+    ) => {
+      callbacks.onSuccess()
+      callbacks.onSettled()
+    }
+    const markRead = vi.fn(success)
+    const markAll = vi.fn(success)
+    mockHooks(
+      [
+        {
+          id: 'notification-1',
+          title: 'Issue updated',
+          body: 'TT-12 has moved to done',
+          is_read: false,
+          action_url: '/issues/12',
+          created_at: '2026-08-24T10:00:00Z',
+        },
+      ],
+      12,
+    )
+    useMarkNotificationRead.mockReturnValue({ mutate: markRead })
+    useMarkAllNotificationsRead.mockReturnValue({ mutate: markAll })
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const trigger = screen.getByTestId('notification-trigger')
+    expect(trigger).toHaveTextContent('12')
+    await user.click(trigger)
+
+    expect(await screen.findByText('Issue updated')).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: /отметить прочитанным: Issue updated/i }))
+    expect(markRead).toHaveBeenCalledWith('notification-1', expect.any(Object))
+
+    await user.click(screen.getByRole('menuitem', { name: /прочитать все|mark all as read/i }))
+    await waitFor(() => expect(markAll).toHaveBeenCalledTimes(1))
+    const viewAllLink = screen.getByRole('menuitem', {
+      name: /все уведомления|view all notifications/i,
+    })
+    expect(viewAllLink).toHaveAttribute('href', '/notifications')
+  })
+
+  function renderNotifications() {
+    return render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+  }
+
+  function oneNotification() {
+    mockHooks([
+      {
+        id: 'one',
+        title: 'Assigned task',
+        is_read: false,
+        action_url: '/issues/one',
+        created_at: '2026-10-04T12:00:00Z',
+      },
+    ])
+  }
+
+  it('opens a notification target without an implicit write', async () => {
+    const user = userEvent.setup()
+    oneNotification()
+    const mark = vi.fn()
+    useMarkNotificationRead.mockReturnValue({ mutate: mark })
+    renderNotifications()
+    await user.click(screen.getByTestId('notification-trigger'))
+    await user.click(screen.getByRole('menuitem', { name: 'Assigned task' }))
+    expect(mark).not.toHaveBeenCalled()
+  })
+
+  it('keeps the bell open while pending, rejects duplicates and retains failed target for explicit retry', async () => {
+    const user = userEvent.setup()
+    oneNotification()
+    type Callbacks = { onSuccess: () => void; onError: () => void; onSettled: () => void }
+    let callbacks!: Callbacks
+    const mark = vi.fn((_id: string, options: Callbacks) => {
+      callbacks = options
+    })
+    useMarkNotificationRead.mockReturnValue({ mutate: mark })
+    renderNotifications()
+    await user.click(screen.getByTestId('notification-trigger'))
+    const action = screen.getByRole('menuitem', { name: /отметить прочитанным: Assigned task/i })
+    await user.dblClick(action)
+    expect(mark).toHaveBeenCalledTimes(1)
+    expect(action).toHaveAttribute('aria-disabled', 'true')
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Отмечаем уведомление прочитанным')
+    const reload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(reload)
+    expect(reload.defaultPrevented).toBe(true)
+    await act(async () => {
+      callbacks.onError()
+      callbacks.onSettled()
+    })
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Не удалось отметить уведомление прочитанным',
+    )
+    expect(mark).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('menuitem', { name: 'Повторить' }))
+    expect(mark).toHaveBeenCalledTimes(2)
+    expect(mark).toHaveBeenLastCalledWith('one', expect.any(Object))
+    await act(async () => {
+      callbacks.onSuccess()
+      callbacks.onSettled()
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Уведомление прочитано')
+    const settledReload = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(settledReload)
+    expect(settledReload.defaultPrevented).toBe(false)
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    expect(screen.getByTestId('notification-trigger')).toHaveFocus()
+  })
+
+  it('disables bell writes while the page owns a notification mutation', async () => {
+    const user = userEvent.setup()
+    oneNotification()
+    useNotificationWritesPending.mockReturnValue(true)
+    renderNotifications()
+    await user.click(screen.getByTestId('notification-trigger'))
+    expect(
+      screen.getByRole('menuitem', { name: /отметить прочитанным: Assigned task/i }),
+    ).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByRole('menuitem', { name: 'Прочитать все' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    expect(screen.getByRole('menuitem', { name: 'Все уведомления' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
+    expect(useMarkNotificationRead().mutate).not.toHaveBeenCalled()
+  })
+
+  it('keeps cached bell rows read-only on GET failure with retry, not an empty state', async () => {
+    const user = userEvent.setup()
+    oneNotification()
+    const refetch = vi.fn()
+    useNotifications.mockReturnValue({
+      ...useNotifications(),
+      error: new Error('GET failure'),
+      refetch,
+    })
+    renderNotifications()
+    await user.click(screen.getByTestId('notification-trigger'))
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Assigned task' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: /отметить прочитанным: Assigned task/i }),
+    ).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.queryByText('Пока нет уведомлений.')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'Повторить' }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
+
+  it('distinguishes loading from an empty bell', async () => {
+    const user = userEvent.setup()
+    mockHooks(undefined)
+    useNotifications.mockReturnValue({ isLoading: true })
+    renderNotifications()
+    await user.click(screen.getByTestId('notification-trigger'))
+    expect(screen.getByRole('status')).toHaveTextContent('Загрузка уведомлений')
+    expect(screen.queryByText('Пока нет уведомлений.')).not.toBeInTheDocument()
+  })
+})

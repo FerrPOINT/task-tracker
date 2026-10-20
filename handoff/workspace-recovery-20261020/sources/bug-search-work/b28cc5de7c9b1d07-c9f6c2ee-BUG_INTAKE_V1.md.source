@@ -1,0 +1,56 @@
+# Личное предпочтение приёма багов: source candidate
+
+Контракт сохраняет предпочтение пользователя; назначения Bug, fix execution и
+business verification отсутствуют. `can_take_bugs` всегда false. Миграция099 и
+новые endpoints пока не прошли canonical compilation/PG/HTTP gate; rollout не выполнен.
+
+Fleet принимает existing `/me` запрос только от verified human, извлекает owner
+из проверенной identity и проверяет свежий project READ. PUT также требует Fleet
+service write; глобальная service scope проверка не обходится. Пользователь не передаёт
+owner или runtime identity. Административный фильтр Чатов не меняет owner.
+Fleet доставляет принятую команду через свой retained journal без хранения
+человеческого PAT. Tracker доверяет только отдельно настроенному Fleet machine
+subject с точным набором `task-tracker:read`, `task-tracker:write`.
+
+Delegated producer endpoints:
+
+- `PUT /api/v1/projects/{project_id}/sdlc/bug-intake/workers/{worker_id}/preferences/{owner_subject}`
+- `GET` того же path — последний принятый результат или404, без синтетической revision0.
+- `GET /api/v1/projects/{project_id}/sdlc/bug-intake/operations/{idempotency_key}` — исходный receipt.
+
+PUT DTO `ApplyBugIntake`: `contract_version=1`, `idempotency_key`,
+`expected_revision` (последняя подтверждённая producer revision, initial0),
+`desired_revision`, `enabled`, `worker_runtime {fleet_instance_id, agent_id,
+agent_config_revision}`. `agent_id` равен worker path; UUID не nil, revision
+положительна и ограничена JS safe integer. Desired revision может пропускать
+замещённые drafts, но строго больше expected и текущей producer revision.
+
+Tracker заново проверяет active owner и project membership/read, включая обычного
+viewer; project-management не требуется, admin bypass отсутствует. Отсутствующая
+managed Namespace projection, inactive Namespace/user и чужая Fleet identity
+отвергаются. Fresh authorization предшествует original-key replay; точный старый
+key/body возвращает прежний immutable receipt до текущего CAS. Иной scope/body
+с тем же actor/key даёт409. Head и receipt записываются атомарно; HTTP под DB locks
+не выполняется. История использует прежний `sdlc_bug_search_commands`, kind intake.
+
+`BugIntakeApplied` содержит project/owner/runtime identity, `operation_id`,
+`revision`, `enabled`, `accepted_at`, `can_take_bugs=false` и причину
+`bug_intake_assignment_not_available`. Это подтверждение хранения предпочтения,
+не выдачи задачи и не фактической занятости worker.
+
+Operator-only `TASKTRACKER_BUG_INTAKE__FLEET_INSTANCE_ID` закрепляет одну canonical
+Fleet UUID. Omission сохраняет intake disabled, nil/некорректное значение не
+принимается. Общие Bug Search service identities также должны быть настроены.
+Новая identity не угадывается из Namespace/Tracker ID и не включает producer
+сама по себе. Конфигурация действующих стендов не изменялась.
+
+Project capability содержит can_set_own_intake и optional intake_fleet_instance_id:
+готовность preference допускается только при configured UUID и active Namespace
+для текущего project READ пользователя. Management для собственной preference не
+нужен; это не capability назначения. Старый producer может не иметь UUID поля.
+
+Source tests: domain revision/runtime validation; disposable PG member preference,
+old replay after newer head, conflicting body/owner, wrong service/runtime,
+inactive user/Namespace; actual HTTP PUT/read/original replay и scope denials.
+Тяжёлые проверки выполняются только через согласованный Base helper v2 gate с
+synthetic DB и собственным Fleet UUID в environment; результаты ещё ожидаются.

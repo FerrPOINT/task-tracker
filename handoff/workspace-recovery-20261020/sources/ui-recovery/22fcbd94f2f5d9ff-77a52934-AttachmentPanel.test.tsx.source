@@ -1,0 +1,420 @@
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
+import { ThemeProvider } from '@sdlc/ui/lib'
+import i18n from '@/shared/i18n/config'
+import { AttachmentPanel } from './AttachmentPanel'
+import { AttachmentUploadError } from '@/api/attachment'
+
+beforeAll(() => {
+  i18n.changeLanguage('en')
+})
+
+const mockAttachments = vi.hoisted(() => vi.fn())
+const mockUpload = vi.hoisted(() => vi.fn())
+const mockDownload = vi.hoisted(() => vi.fn())
+const mockRefetch = vi.hoisted(() => vi.fn())
+const mockDelete = vi.hoisted(() => vi.fn())
+const attachment = {
+  id: 'a1',
+  issue_id: 'i1',
+  author_id: 'u1',
+  file_name: 'report.pdf',
+  content_type: 'application/pdf',
+  size_bytes: 2048,
+  created_at: '2026-08-01T10:00:00Z',
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockUpload.mockReset().mockResolvedValue(attachment)
+  mockDownload.mockReset().mockResolvedValue(undefined)
+  mockDelete.mockReset().mockResolvedValue(undefined)
+  mockRefetch.mockReset().mockResolvedValue({ data: [], isError: false })
+  mockAttachments.mockReturnValue({ data: [], isLoading: false, error: null, refetch: mockRefetch })
+})
+
+vi.mock('@/shared/api/hooks', () => ({
+  useAttachments: (...args: unknown[]) => mockAttachments(...args),
+  useUploadAttachment: () => ({
+    mutateAsync: mockUpload,
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+  useDeleteAttachment: () => ({ mutateAsync: mockDelete, reset: vi.fn(), isPending: false }),
+}))
+
+vi.mock('@/api/attachment', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/api/attachment')>()),
+  downloadAttachment: mockDownload,
+}))
+
+function wrapper(children: React.ReactNode) {
+  return (
+    <ThemeProvider>
+      <MemoryRouter>{children}</MemoryRouter>
+    </ThemeProvider>
+  )
+}
+
+describe('AttachmentPanel', () => {
+  it('renders attachment list and upload button', () => {
+    mockAttachments.mockReturnValue({
+      data: [
+        {
+          id: 'a1',
+          issue_id: 'i1',
+          author_id: 'u1',
+          file_name: 'report.pdf',
+          content_type: 'application/pdf',
+          size_bytes: 2048,
+          created_at: '2026-08-01T10:00:00Z',
+        },
+      ],
+      isLoading: false,
+      error: null,
+    })
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    expect(screen.getByTestId('attachment-panel')).toBeInTheDocument()
+  })
+
+  it('shows empty state when no attachments', () => {
+    mockAttachments.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+    })
+    render(wrapper(<AttachmentPanel issueId="i2" />))
+    expect(screen.getByText(/no files/i)).toBeInTheDocument()
+  })
+
+  it('keeps the upload control available after a failed request', async () => {
+    mockAttachments.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    })
+    mockUpload.mockRejectedValueOnce(new Error('network failed'))
+    render(wrapper(<AttachmentPanel issueId="i3" />))
+    fireEvent.change(screen.getByTestId('attachment-input'), {
+      target: { files: [new File(['qa'], 'qa.txt', { type: 'text/plain' })] },
+    })
+    expect(await screen.findByTestId('attachment-error')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /attach file/i })).toBeEnabled()
+  })
+
+  it('tracks same-named files independently until every upload settles', async () => {
+    mockAttachments.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    })
+    const resolvers: Array<() => void> = []
+    mockUpload.mockImplementation(
+      () => new Promise<typeof attachment>((resolve) => resolvers.push(() => resolve(attachment))),
+    )
+    render(wrapper(<AttachmentPanel issueId="i4" />))
+    fireEvent.change(screen.getByTestId('attachment-input'), {
+      target: {
+        files: [
+          new File(['one'], 'same.txt', { type: 'text/plain' }),
+          new File(['two'], 'same.txt', { type: 'text/plain' }),
+        ],
+      },
+    })
+    expect(screen.getAllByTestId('upload-progress')).toHaveLength(2)
+    fireEvent.change(screen.getByTestId('attachment-input'), {
+      target: { files: [new File(['extra'], 'extra.txt')] },
+    })
+    await waitFor(() => expect(resolvers).toHaveLength(2))
+    resolvers[0]?.()
+    expect(screen.getAllByTestId('upload-progress')).toHaveLength(2)
+    expect(mockRefetch).not.toHaveBeenCalled()
+    resolvers[1]?.()
+    await waitFor(() => expect(screen.queryAllByTestId('upload-progress')).toHaveLength(0))
+    expect(mockRefetch).toHaveBeenCalledTimes(1)
+    expect(mockUpload).toHaveBeenCalledTimes(2)
+  })
+
+  it('retains the original File after rejection and retries only when requested', async () => {
+    const file = new File(['retained'], 'retained.txt', { type: 'text/plain' })
+    mockUpload.mockRejectedValueOnce(new AttachmentUploadError(400))
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.change(screen.getByTestId('attachment-input'), { target: { files: [file] } })
+    expect(await screen.findByTestId('attachment-error')).toHaveTextContent('Rejected: 1')
+    expect(screen.getByTestId('upload-item')).toHaveAttribute('data-upload-status', 'rejected')
+    expect(mockUpload).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry upload of retained.txt' }))
+    await waitFor(() => expect(screen.queryByTestId('upload-item')).not.toBeInTheDocument())
+    expect(mockUpload).toHaveBeenCalledTimes(2)
+    expect(mockUpload.mock.calls[1]?.[0].file).toBe(file)
+  })
+
+  it('requires confirmation before replaying an unknown outcome and keeps the draft on cancel', async () => {
+    const file = new File(['retained'], 'unknown.txt', { type: 'text/plain' })
+    mockUpload.mockRejectedValueOnce(new AttachmentUploadError(500))
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.change(screen.getByTestId('attachment-input'), { target: { files: [file] } })
+    const retry = await screen.findByRole('button', { name: 'Retry upload of unknown.txt' })
+    fireEvent.click(retry)
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('retry can create a duplicate')
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(mockUpload).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('upload-item')).toHaveAttribute('data-upload-status', 'unknown')
+    fireEvent.click(retry)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(mockUpload).toHaveBeenCalledTimes(2)
+    expect(mockUpload.mock.calls[1]?.[0].file).toBe(file)
+  })
+
+  it('requires a successful GET before enabling unknown-outcome replay', async () => {
+    mockUpload.mockRejectedValueOnce(new AttachmentUploadError())
+    mockRefetch.mockResolvedValueOnce({ data: undefined, isError: true })
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.change(screen.getByTestId('attachment-input'), {
+      target: { files: [new File(['x'], 'unknown.txt')] },
+    })
+    expect(await screen.findByRole('button', { name: 'Refresh attachment list' })).toBeEnabled()
+    expect(
+      screen.queryByRole('button', { name: 'Retry upload of unknown.txt' }),
+    ).not.toBeInTheDocument()
+    expect(mockUpload).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh attachment list' }))
+    await screen.findByRole('button', { name: 'Retry upload of unknown.txt' })
+    expect(mockRefetch).toHaveBeenCalledTimes(2)
+    expect(mockUpload).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves independent outcomes for same-named files and does not resend a confirmed file', async () => {
+    const first = new File(['first'], 'same.txt', { type: 'text/plain' })
+    const second = new File(['second'], 'same.txt', { type: 'text/plain' })
+    mockUpload
+      .mockResolvedValueOnce(attachment)
+      .mockRejectedValueOnce(new AttachmentUploadError(400))
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.change(screen.getByTestId('attachment-input'), { target: { files: [first, second] } })
+    expect(await screen.findByTestId('attachment-error')).toHaveTextContent(
+      'Uploaded: 1. Rejected: 1. Unconfirmed: 0.',
+    )
+    const items = screen.getAllByTestId('upload-item')
+    expect(items[0]).toHaveAttribute('data-upload-status', 'uploaded')
+    expect(items[1]).toHaveAttribute('data-upload-status', 'rejected')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry upload of same.txt' }))
+    await waitFor(() => expect(screen.queryByTestId('upload-item')).not.toBeInTheDocument())
+    expect(mockUpload).toHaveBeenCalledTimes(3)
+    expect(mockUpload.mock.calls[2]?.[0].file).toBe(second)
+  })
+
+  it('does not overwrite a failed File when new files are selected and discards locally only after confirmation', async () => {
+    const file = new File(['x'], 'retained.txt')
+    mockUpload.mockRejectedValueOnce(new AttachmentUploadError(400))
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.change(screen.getByTestId('attachment-input'), { target: { files: [file] } })
+    await screen.findByTestId('attachment-error')
+    fireEvent.change(screen.getByTestId('attachment-input'), {
+      target: { files: [new File(['y'], 'new.txt')] },
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('attachment-error')).toHaveTextContent('Uploaded: 1. Rejected: 1'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Remove selected file retained.txt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(screen.getAllByTestId('upload-item')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove selected file retained.txt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(screen.queryByTestId('upload-item')).not.toBeInTheDocument())
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(mockUpload).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports dirty and pending protection, retains dirty after failure, and clears it after discard', async () => {
+    const protection = vi.fn()
+    let fail!: (error: Error) => void
+    mockUpload.mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          fail = reject
+        }),
+    )
+    render(wrapper(<AttachmentPanel issueId="i1" onProtectionChange={protection} />))
+    fireEvent.change(screen.getByTestId('attachment-input'), {
+      target: { files: [new File(['x'], 'draft.txt')] },
+    })
+    expect(protection).toHaveBeenLastCalledWith({ dirty: true, pending: true })
+    await act(async () => fail(new AttachmentUploadError(400)))
+    expect(protection).toHaveBeenLastCalledWith({ dirty: true, pending: false })
+    fireEvent.click(screen.getByRole('button', { name: 'Remove selected file draft.txt' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() =>
+      expect(protection).toHaveBeenLastCalledWith({ dirty: false, pending: false }),
+    )
+  })
+
+  it('distinguishes a failed refresh of a previously empty list from initial loading failure', () => {
+    mockAttachments.mockReturnValue({
+      data: [],
+      isLoading: false,
+      error: new Error('500'),
+      refetch: mockRefetch,
+    })
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    expect(screen.getByRole('alert')).toHaveTextContent('Showing the last received list')
+    expect(screen.queryByText('No files')).not.toBeInTheDocument()
+  })
+
+  it('retains delete confirmation on error and focuses the region after the last row is deleted', async () => {
+    mockAttachments.mockReturnValue({
+      data: [attachment],
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    })
+    mockDelete.mockRejectedValueOnce(new Error('500')).mockImplementationOnce(async () => {
+      mockAttachments.mockReturnValue({
+        data: [],
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      })
+    })
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete report.pdf' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(await within(screen.getByRole('alertdialog')).findByRole('alert')).toHaveTextContent(
+      'delete',
+    )
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Attachments' })).toHaveFocus())
+    expect(screen.getByText('No files')).toBeInTheDocument()
+    expect(mockDelete).toHaveBeenCalledTimes(2)
+  })
+
+  it('blocks duplicate delete, fields and dismiss until the mutation settles', async () => {
+    let finish!: () => void
+    mockAttachments.mockReturnValue({
+      data: [attachment],
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    })
+    mockDelete.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete report.pdf' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(screen.getByRole('button', { name: 'Confirm' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' })
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+    expect(mockDelete).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    await act(async () => finish())
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+  })
+
+  it('distinguishes an initial GET error from an empty list and retries explicitly', () => {
+    mockAttachments.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('GET failed'),
+      refetch: mockRefetch,
+    })
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    expect(screen.getByRole('alert')).toHaveTextContent('Could not load attachments')
+    expect(screen.queryByText('No files')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(mockRefetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('labels retained rows after a failed refetch instead of silently treating them as fresh', () => {
+    mockAttachments.mockReturnValue({
+      data: [attachment],
+      isLoading: false,
+      error: new Error('GET failed'),
+      refetch: mockRefetch,
+    })
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('Showing the last received list')
+    expect(screen.queryByText('No files')).not.toBeInTheDocument()
+  })
+
+  it('does not repeat a pending list retry', () => {
+    mockAttachments.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isFetching: true,
+      error: new Error('GET failed'),
+      refetch: mockRefetch,
+    })
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDisabled()
+  })
+
+  it('catches a failed download and allows a row-specific successful retry', async () => {
+    mockAttachments.mockReturnValue({ data: [attachment], isLoading: false, error: null })
+    mockDownload.mockRejectedValueOnce(new Error('404'))
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.click(screen.getByRole('button', { name: 'Download report.pdf' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not download report.pdf')
+    expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry downloading report.pdf' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('passed to the browser')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(mockDownload).toHaveBeenCalledTimes(2)
+  })
+
+  it('blocks repeated downloads and deletion until the same file finishes', async () => {
+    mockAttachments.mockReturnValue({ data: [attachment], isLoading: false, error: null })
+    let finish!: () => void
+    mockDownload.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    const download = screen.getByRole('button', { name: 'Download report.pdf' })
+    fireEvent.click(download)
+    fireEvent.click(download)
+    expect(download).toBeDisabled()
+    expect(download).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getByRole('button', { name: 'Delete report.pdf' })).toBeDisabled()
+    expect(mockDownload).toHaveBeenCalledTimes(1)
+    await act(async () => finish())
+    expect(download).toBeEnabled()
+    expect(await screen.findByRole('status')).toHaveTextContent('report.pdf')
+  })
+
+  it('does not block another file while one download is pending', async () => {
+    const other = { ...attachment, id: 'a2', file_name: 'other.pdf' }
+    mockAttachments.mockReturnValue({ data: [attachment, other], isLoading: false, error: null })
+    let finish!: () => void
+    mockDownload.mockImplementation((file) =>
+      file.id === 'a1'
+        ? new Promise<void>((resolve) => {
+            finish = resolve
+          })
+        : Promise.resolve(),
+    )
+    render(wrapper(<AttachmentPanel issueId="i1" />))
+    fireEvent.click(screen.getByRole('button', { name: 'Download report.pdf' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Download other.pdf' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('other.pdf')
+    expect(screen.getByRole('button', { name: 'Download report.pdf' })).toBeDisabled()
+    await act(async () => finish())
+  })
+})

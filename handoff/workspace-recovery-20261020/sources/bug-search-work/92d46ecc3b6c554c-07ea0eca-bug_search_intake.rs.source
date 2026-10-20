@@ -1,0 +1,188 @@
+//! Own preference delegation from the one configured Fleet producer. No assignment.
+use crate::bug_search::{PostgresBugSearchRepository, db_error, decode, exec, field, stmt};
+use crate::bug_search_control::{locks, save, saved};
+use app::bug_search_intake::BugIntakeRepository;
+use domain::{bug_search_control::BugSearchCommandReceipt, bug_search_intake::*, sdlc::Principal};
+use sea_orm::{ConnectionTrait, DatabaseTransaction, TransactionTrait};
+use shared::AppError;
+use uuid::Uuid;
+
+impl PostgresBugSearchRepository {
+    /// Operator-only exact resource identity; omitted configuration keeps intake unavailable.
+    pub fn with_intake_fleet_instance(mut self, id: Uuid) -> Result<Self, AppError> {
+        if id.is_nil() {
+            return Err(AppError::validation("invalid intake Fleet instance"));
+        }
+        self.intake_fleet_instance = Some(id);
+        Ok(self)
+    }
+    pub(super) fn intake_producer(&self, actor: &Principal) -> Result<Uuid, AppError> {
+        self.fleet(actor, true)?;
+        if actor.scopes.len() != 2 || !actor.scopes.contains("task-tracker:read") {
+            return Err(AppError::Forbidden);
+        }
+        self.intake_fleet_instance
+            .ok_or_else(|| AppError::Unavailable("bug intake producer not configured".into()))
+    }
+    pub(super) async fn intake_owner(
+        &self,
+        tx: &DatabaseTransaction,
+        project: Uuid,
+        owner: &str,
+    ) -> Result<(), AppError> {
+        self.owner_access(tx, project, owner, false).await?;
+        // Own preference needs membership/read, never project-management authority.
+        // The shared owner helper retains this namespace lock, including missing
+        // managed projection detection; lifecycle must still be explicitly active.
+        if tx.query_one(stmt("SELECT resource_id FROM tracker_namespace_bindings WHERE resource_id=$1 AND state<>'active'",vec![project.into()])).await.map_err(db_error)?.is_some() {
+            return Err(AppError::conflict("namespace_resource_read_only"));
+        }
+        Ok(())
+    }
+    pub(super) fn intake_receipt(
+        &self,
+        value: BugSearchCommandReceipt,
+        project: Uuid,
+        fleet: Uuid,
+    ) -> Result<BugIntakeApplied, AppError> {
+        let BugSearchCommandReceipt::Intake(receipt) = value else {
+            return Err(AppError::conflict("intake operation kind differs"));
+        };
+        validate_scope(
+            project,
+            &receipt.owner_subject,
+            receipt.worker_runtime.agent_id,
+        )?;
+        receipt
+            .worker_runtime
+            .validate(receipt.worker_runtime.agent_id)?;
+        if receipt.contract_version != 1
+            || receipt.project_id != project
+            || receipt.worker_runtime.fleet_instance_id != fleet
+            || receipt.tracker_instance_id != self.config.tracker_instance_id
+            || receipt.operation_id.is_nil()
+            || receipt.revision < 1
+            || receipt.revision > domain::sdlc::MAX_SAFE_VERSION
+            || receipt.can_take_bugs
+            || receipt.blocked_reasons != ["bug_intake_assignment_not_available"]
+        {
+            return Err(AppError::conflict("retained intake receipt scope differs"));
+        }
+        Ok(receipt)
+    }
+}
+
+#[async_trait::async_trait]
+impl BugIntakeRepository for PostgresBugSearchRepository {
+    async fn apply_intake(
+        &self,
+        project: Uuid,
+        owner: &str,
+        worker: Uuid,
+        actor: &Principal,
+        command: ApplyBugIntake,
+    ) -> Result<(BugIntakeApplied, bool), AppError> {
+        validate_scope(project, owner, worker)?;
+        command.validate(worker)?;
+        let fleet = self.intake_producer(actor)?;
+        if command.worker_runtime.fleet_instance_id != fleet {
+            return Err(AppError::Forbidden);
+        }
+        let hash = app::bug_search_intake::request_hash(project, owner, worker, &command)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        locks(&tx, actor, &command.idempotency_key, project).await?;
+        self.intake_owner(&tx, project, owner).await?;
+        if let Some(original) = saved(
+            &tx,
+            project,
+            actor,
+            &command.idempotency_key,
+            "intake",
+            &hash,
+        )
+        .await?
+        {
+            let original = self.intake_receipt(original, project, fleet)?;
+            tx.commit().await.map_err(db_error)?;
+            return Ok((original, true));
+        }
+        let previous = tx.query_one(stmt("SELECT revision FROM sdlc_bug_intake_preferences WHERE project_id=$1 AND owner_subject=$2 AND fleet_instance_id=$3 AND worker_id=$4 FOR UPDATE",vec![project.into(),owner.into(),fleet.into(),worker.into()])).await.map_err(db_error)?;
+        let revision = previous
+            .as_ref()
+            .map(|row| field::<i64>(row, "revision"))
+            .transpose()?
+            .unwrap_or(0);
+        if revision != command.expected_revision {
+            return Err(AppError::conflict("intake preference revision changed"));
+        }
+        let now = tx
+            .query_one(stmt("SELECT clock_timestamp() AS now", vec![]))
+            .await
+            .map_err(db_error)?
+            .ok_or_else(|| AppError::internal("database clock unavailable"))?;
+        let receipt = BugIntakeApplied {
+            contract_version: 1,
+            operation_id: Uuid::now_v7(),
+            tracker_instance_id: self.config.tracker_instance_id.clone(),
+            project_id: project,
+            owner_subject: owner.into(),
+            worker_runtime: command.worker_runtime,
+            revision: command.desired_revision,
+            enabled: command.enabled,
+            accepted_at: field(&now, "now")?,
+            can_take_bugs: false,
+            blocked_reasons: vec!["bug_intake_assignment_not_available".into()],
+        };
+        let payload = serde_json::to_value(&receipt).map_err(AppError::internal)?;
+        exec(&tx,"INSERT INTO sdlc_bug_intake_preferences(project_id,owner_subject,fleet_instance_id,worker_id,revision,enabled,payload) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(project_id,owner_subject,fleet_instance_id,worker_id) DO UPDATE SET revision=EXCLUDED.revision,enabled=EXCLUDED.enabled,payload=EXCLUDED.payload",vec![project.into(),owner.into(),fleet.into(),worker.into(),receipt.revision.into(),receipt.enabled.into(),payload.into()]).await?;
+        save(
+            &tx,
+            project,
+            actor,
+            &command.idempotency_key,
+            owner,
+            &hash,
+            &BugSearchCommandReceipt::Intake(receipt.clone()),
+        )
+        .await?;
+        tx.commit().await.map_err(db_error)?;
+        Ok((receipt, false))
+    }
+    async fn intake(
+        &self,
+        project: Uuid,
+        owner: &str,
+        worker: Uuid,
+        actor: &Principal,
+    ) -> Result<BugIntakeApplied, AppError> {
+        validate_scope(project, owner, worker)?;
+        let fleet = self.intake_producer(actor)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        self.intake_owner(&tx, project, owner).await?;
+        let row = tx.query_one(stmt("SELECT payload FROM sdlc_bug_intake_preferences WHERE project_id=$1 AND owner_subject=$2 AND fleet_instance_id=$3 AND worker_id=$4",vec![project.into(),owner.into(),fleet.into(),worker.into()])).await.map_err(db_error)?.ok_or_else(||AppError::not_found("bug_intake_preference",worker))?;
+        let receipt: BugIntakeApplied = decode(&row, "payload")?;
+        let receipt =
+            self.intake_receipt(BugSearchCommandReceipt::Intake(receipt), project, fleet)?;
+        if receipt.owner_subject != owner || receipt.worker_runtime.agent_id != worker {
+            return Err(AppError::conflict("intake preference identity differs"));
+        }
+        tx.commit().await.map_err(db_error)?;
+        Ok(receipt)
+    }
+    async fn intake_operation(
+        &self,
+        project: Uuid,
+        key: &str,
+        actor: &Principal,
+    ) -> Result<BugIntakeApplied, AppError> {
+        domain::bug_search_control::validate_key(key)?;
+        let fleet = self.intake_producer(actor)?;
+        let tx = self.db.begin().await.map_err(db_error)?;
+        let row = tx.query_one(stmt("SELECT owner_subject,receipt FROM sdlc_bug_search_commands WHERE project_id=$1 AND actor_subject=$2 AND idempotency_key=$3 AND kind='intake'",vec![project.into(),actor.subject.clone().into(),key.into()])).await.map_err(db_error)?.ok_or_else(|| AppError::not_found("bug_intake_operation",key))?;
+        self.intake_owner(&tx, project, &field::<String>(&row, "owner_subject")?)
+            .await?;
+        let receipt = self.intake_receipt(decode(&row, "receipt")?, project, fleet)?;
+        tx.commit().await.map_err(db_error)?;
+        Ok(receipt)
+    }
+}
