@@ -186,6 +186,7 @@ fn rate_per_second_period(rate_per_second: u64) -> std::time::Duration {
         routes::projects::list_projects,
         routes::projects::create_project,
         routes::project_spaces::create,
+        routes::project_catalog::visible,
         routes::project_contexts::query,
         routes::project_lifecycle::get,
         routes::project_lifecycle::change,
@@ -802,7 +803,10 @@ pub fn router(ctx: Arc<app::AppContext>) -> Router<Arc<app::AppContext>> {
         ));
     let space_api = Router::new()
         .route("/spaces/visible", get(routes::space_catalog::visible))
-        .route("/projects", post(routes::project_spaces::create))
+        .route(
+            "/projects",
+            post(routes::project_spaces::create).get(routes::project_catalog::visible),
+        )
         .route(
             "/projects/{project_key}/lifecycle",
             get(routes::project_lifecycle::get).put(routes::project_lifecycle::change),

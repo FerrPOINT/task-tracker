@@ -333,6 +333,27 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
         "a second verification must not renew the response body"
     );
     println!("Native staged V2 original-window preservation PASS");
+    state.until.store(chrono_now() + 3, Ordering::SeqCst);
+    let short = http
+        .get(format!("{api_origin}/api/v2/projects/READAB/spaces"))
+        .bearer_auth("sdlc_pat_synthetic-human-read")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(short.status(), StatusCode::OK);
+    let short_header = short.headers()["x-pdlc-admission-valid-until"]
+        .to_str()
+        .unwrap()
+        .parse::<i64>()
+        .unwrap();
+    let short_links: ConfirmedProjectSpaces = short.json().await.unwrap();
+    assert!(
+        short_header <= short_links.validity.valid_until,
+        "outer middleware must not renew the shorter staged owner proof"
+    );
+    println!("Native staged V2 shorter-owner header preservation PASS");
+    tokio::time::sleep(std::time::Duration::from_millis(3100)).await;
+
     db.execute_unprepared("UPDATE tracker_space_admission_state SET active=true")
         .await
         .unwrap();
@@ -403,6 +424,82 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
     assert!(confirmed.validity.valid_until <= state.until.load(Ordering::SeqCst));
     assert!(header_until <= state.until.load(Ordering::SeqCst));
     assert!(confirmed.validity.valid_until > chrono_now());
+    for (suffix, total, length) in [
+        ("?limit=1&offset=0", 2, 1),
+        ("?limit=1&offset=1", 2, 1),
+        ("?limit=1&offset=99", 2, 0),
+        ("?q=READ&limit=1", 1, 1),
+        ("?project_key=READAB&limit=1", 1, 1),
+        ("?project_key=READB&limit=1", 0, 0),
+        ("?q=%25_&limit=1", 0, 0),
+    ] {
+        let response = http
+            .get(format!("{api_origin}/api/v2/projects{suffix}"))
+            .bearer_auth("sdlc_pat_synthetic-human-read")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let until = response.headers()["x-pdlc-admission-valid-until"]
+            .to_str()
+            .unwrap()
+            .parse::<i64>()
+            .unwrap();
+        let page: serde_json::Value = response.json().await.unwrap();
+        assert_eq!(page["schema_version"], 2);
+        assert_eq!(page["total"], total);
+        assert_eq!(page["projects"].as_array().unwrap().len(), length);
+        assert!(
+            page["projects"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|p| p["key"] != "READB")
+        );
+        assert!(until <= page["validity"]["valid_until"].as_i64().unwrap());
+        assert_eq!(page["identity"]["subject"], target.to_string());
+        assert_eq!(page["policy_revision"], 3);
+    }
+    let selected = http
+        .get(format!("{api_origin}/api/v2/projects"))
+        .query(&[
+            ("registry_instance_id", a.registry_instance_id.to_string()),
+            ("space_id", a.space_id.to_string()),
+        ])
+        .bearer_auth("sdlc_pat_synthetic-human-read")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(selected.status(), StatusCode::OK);
+    let selected: serde_json::Value = selected.json().await.unwrap();
+    assert_eq!(selected["space"], serde_json::to_value(&a).unwrap());
+    assert_eq!(selected["total"], 2);
+    let hidden_space = http
+        .get(format!("{api_origin}/api/v2/projects"))
+        .query(&[
+            ("registry_instance_id", b.registry_instance_id.to_string()),
+            ("space_id", b.space_id.to_string()),
+        ])
+        .bearer_auth("sdlc_pat_synthetic-human-read")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(hidden_space.status(), StatusCode::FORBIDDEN);
+    for suffix in [
+        "?limit=0",
+        "?limit=101",
+        "?namespace_id=legacy",
+        "?space_id=00000000-0000-4000-8000-000000000001",
+    ] {
+        let response = http
+            .get(format!("{api_origin}/api/v2/projects{suffix}"))
+            .bearer_auth("sdlc_pat_synthetic-human-read")
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+    println!("Native human project catalog original actor/space/search/page PASS");
     let denied_change=http.put(format!("{api_origin}/api/v2/projects/READAB/spaces"))
         .bearer_auth("sdlc_pat_synthetic-human-read")
         .json(&serde_json::json!({"operation_id":Uuid::new_v4(),"expected_revision":confirmed.revision,"spaces":[a]}))

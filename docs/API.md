@@ -1995,6 +1995,15 @@ POST и DELETE связей архивного проекта возвращаю
 
 ## Project/Space v2: source-кандидат
 
+- GET /api/v2/projects: собственный human каталог VisibleProjectCatalogV2 с
+  tracker_instance_id, identity/policy_revision/original validity и count/page.
+  limit1…100, offset, literal q до200 символов; optional project_key — точное
+  совпадение, не поиск/первый результат. registry_instance_id/space_id принимаются
+  только вместе; partial/duplicate/legacy namespace context отклоняются.
+  ANY admission и Space/q/key применяются до count/page, M:N без дублей.
+  Count/page и последующее чтение Project rows используют один RR snapshot;
+  beyond-end страница сохраняет настоящий total. Недоступное выбранное Space
+  даёт403; отсутствие доступных проектов — пустой каталог. Нет legacy fallback.
 - POST `/api/v2/projects`: key/name/description и обязательный непустой spaces[];
   до1000 уникальных ненулевых SpaceRef. Project/default board/первые links атомарны.
 - GET `/api/v2/projects/{project_key}/spaces`: canonical ProjectRef, revision,
@@ -2041,3 +2050,11 @@ Project lifecycle v2: GET/PUT `/api/v2/projects/{project_key}/lifecycle`;
 Каталог текущего пользователя: GET /api/v2/spaces/visible; строгая bounded
 pagination и server-only original-actor relay описаны в
 [PROJECT_SPACES_V2](PROJECT_SPACES_V2.md#каталог-доступных-пространств).
+
+
+Human V2 project/space ответы используют typed response deadline из SpaceActor,
+включая staging до общего flag. Header/body stream не получают новое окно от
+внешнего middleware, если owner admission короче identity/session. DTO V1/V2
+не расширяются; policy revision/read-only hint — отдельные bounded headers.
+Глобальная UI страница /admin имеет независимую route classification; доступ к
+ней определяют её прежние серверные глобальные полномочия, не Project catalog.

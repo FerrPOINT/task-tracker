@@ -297,3 +297,28 @@ impl ProjectSpaceOperationReceipt {
             && self.validity.valid()
     }
 }
+
+/// Internal catalog query; it does not alter the legacy ProjectQuery wire contract.
+#[derive(Debug, Clone)]
+pub struct ProjectCatalogQuery {
+    pub limit: u64,
+    pub offset: u64,
+    pub search: String,
+    pub project_key: Option<shared::ProjectKey>,
+}
+impl ProjectCatalogQuery {
+    pub fn validate(&self) -> Result<(), AppError> {
+        if !(1..=100).contains(&self.limit)
+            || self.offset > i64::MAX as u64
+            || self.search.chars().count() > 200
+            || self.project_key.as_ref().is_some_and(|key| !key.is_valid())
+        {
+            return Err(AppError::invalid_input("invalid_project_catalog_query"));
+        }
+        Ok(())
+    }
+}
+pub struct VisibleProjectPage {
+    pub projects: Vec<crate::Project>,
+    pub total: u64,
+}

@@ -375,20 +375,12 @@ pub async fn catalog_refs<C: ConnectionTrait>(db: &C) -> Result<Vec<SpaceRef>, A
     }
     Ok(result)
 }
-/// Paired registry/space predicates prevent accidental cross-registry combinations.
-pub async fn visible_project_ids<C: ConnectionTrait>(
-    db: &C,
-    spaces: &[SpaceRef],
-    limit: u64,
-    offset: u64,
-) -> Result<Vec<ProjectId>, AppError> {
+const VISIBLE_PROJECT_PREDICATE: &str = "EXISTS(SELECT 1 FROM tracker_project_spaces l JOIN unnest($1::uuid[],$2::uuid[]) allowed(registry,id) ON l.registry_instance_id=allowed.registry AND l.space_id=allowed.id WHERE l.project_id=p.id)";
+fn visibility_values(spaces: &[SpaceRef]) -> Result<Vec<Value>, AppError> {
     if spaces.len() > 10000 || spaces.iter().any(|s| !s.valid()) {
         return Err(AppError::invalid_input("invalid_space_filter"));
     }
-    if spaces.is_empty() {
-        return Ok(Vec::new());
-    }
-    let regs = spaces
+    let registries = spaces
         .iter()
         .map(|s| Value::Uuid(Some(Box::new(s.registry_instance_id))))
         .collect();
@@ -396,11 +388,62 @@ pub async fn visible_project_ids<C: ConnectionTrait>(
         .iter()
         .map(|s| Value::Uuid(Some(Box::new(s.space_id))))
         .collect();
-    let mut values = vec![
-        Value::Array(sea_orm::sea_query::ArrayType::Uuid, Some(Box::new(regs))),
+    Ok(vec![
+        Value::Array(
+            sea_orm::sea_query::ArrayType::Uuid,
+            Some(Box::new(registries)),
+        ),
         Value::Array(sea_orm::sea_query::ArrayType::Uuid, Some(Box::new(ids))),
-    ];
-    let mut query="SELECT p.id FROM projects p WHERE EXISTS(SELECT 1 FROM tracker_project_spaces l JOIN unnest($1::uuid[],$2::uuid[]) allowed(registry,id) ON l.registry_instance_id=allowed.registry AND l.space_id=allowed.id WHERE l.project_id=p.id) ORDER BY p.key,p.id".to_owned();
+    ])
+}
+/// Count and page share one SQL snapshot, including an empty page after offset.
+pub async fn visible_project_catalog_ids<C: ConnectionTrait>(
+    db: &C,
+    spaces: &[SpaceRef],
+    query: &domain::project_spaces::ProjectCatalogQuery,
+) -> Result<(u64, Vec<ProjectId>), AppError> {
+    query.validate()?;
+    let mut values = visibility_values(spaces)?;
+    if spaces.is_empty() {
+        return Ok((0, Vec::new()));
+    }
+    values.extend([
+        query.search.clone().into(),
+        (query.limit as i64).into(),
+        (query.offset as i64).into(),
+    ]);
+    values.push(query.project_key.as_ref().map(|key| key.to_string()).into());
+    let sql = format!(
+        "WITH visible AS (SELECT p.id,p.key FROM projects p WHERE {VISIBLE_PROJECT_PREDICATE} AND ($3='' OR strpos(lower(p.key || ' ' || p.name),lower($3))>0) AND ($6::text IS NULL OR p.key=$6)), page AS (SELECT id,key FROM visible ORDER BY key,id LIMIT $4 OFFSET $5) SELECT (SELECT count(*) FROM visible) AS total,coalesce((SELECT jsonb_agg(id ORDER BY key,id) FROM page),'[]'::jsonb) AS ids"
+    );
+    let row = db
+        .query_one(statement(&sql, values))
+        .await
+        .map_err(crate::db_error::map)?
+        .ok_or_else(|| AppError::Unavailable("project_catalog_snapshot_missing".into()))?;
+    let total: i64 = row.try_get("", "total").map_err(crate::db_error::map)?;
+    let ids: serde_json::Value = row.try_get("", "ids").map_err(crate::db_error::map)?;
+    let ids: Vec<Uuid> = serde_json::from_value(ids)
+        .map_err(|_| AppError::Unavailable("invalid_project_catalog_page".into()))?;
+    let total = u64::try_from(total)
+        .map_err(|_| AppError::Unavailable("invalid_project_catalog_total".into()))?;
+    Ok((total, ids.into_iter().map(ProjectId::from_uuid).collect()))
+}
+
+/// Paired registry/space predicates prevent accidental cross-registry combinations.
+pub async fn visible_project_ids<C: ConnectionTrait>(
+    db: &C,
+    spaces: &[SpaceRef],
+    limit: u64,
+    offset: u64,
+) -> Result<Vec<ProjectId>, AppError> {
+    let mut values = visibility_values(spaces)?;
+    if spaces.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut query = format!(
+        "SELECT p.id FROM projects p WHERE {VISIBLE_PROJECT_PREDICATE} ORDER BY p.key,p.id"
+    );
     if limit > 0 {
         values.push(
             i64::try_from(limit)

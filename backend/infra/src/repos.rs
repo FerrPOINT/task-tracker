@@ -554,6 +554,44 @@ impl ProjectRepository for ProjectRepo {
     async fn space_catalog_refs(&self) -> Result<Vec<shared::space_access::SpaceRef>, AppError> {
         crate::project_spaces::catalog_refs(self.db.as_ref()).await
     }
+    async fn list_space_accessible_catalog(
+        &self,
+        spaces: &[shared::space_access::SpaceRef],
+        query: &domain::project_spaces::ProjectCatalogQuery,
+    ) -> Result<domain::project_spaces::VisibleProjectPage, AppError> {
+        query.validate()?;
+        let tx = self
+            .db
+            .begin_with_config(
+                Some(sea_orm::IsolationLevel::RepeatableRead),
+                Some(sea_orm::AccessMode::ReadOnly),
+            )
+            .await
+            .map_err(crate::db_error::map)?;
+        let (total, ids) =
+            crate::project_spaces::visible_project_catalog_ids(&tx, spaces, query).await?;
+        let rows = if ids.is_empty() {
+            Vec::new()
+        } else {
+            project::Entity::find()
+                .filter(project::Column::Id.is_in(ids.iter().map(|id| id.as_uuid())))
+                .order_by_asc(project::Column::Key)
+                .order_by_asc(project::Column::Id)
+                .all(&tx)
+                .await
+                .map_err(crate::db_error::map)?
+        };
+        if rows.len() != ids.len() {
+            return Err(AppError::Unavailable(
+                "project_catalog_snapshot_changed".into(),
+            ));
+        }
+        tx.commit().await.map_err(crate::db_error::map)?;
+        Ok(domain::project_spaces::VisibleProjectPage {
+            projects: rows.into_iter().map(map_project).collect(),
+            total,
+        })
+    }
     async fn list_space_accessible_page(
         &self,
         spaces: &[shared::space_access::SpaceRef],

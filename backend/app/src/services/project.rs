@@ -101,6 +101,47 @@ impl ProjectServiceImpl {
         ))
     }
 
+    async fn project_dtos(
+        &self,
+        projects: Vec<domain::Project>,
+    ) -> Result<Vec<ProjectDto>, AppError> {
+        if projects.is_empty() {
+            return Ok(Vec::new());
+        }
+        let statuses = self.statuses.list_all().await?;
+        // One user-list fetch instead of a per-project owner lookup (N+1).
+        let owner_names: std::collections::HashMap<_, _> = self
+            .users
+            .list()
+            .await?
+            .into_iter()
+            .map(|u| (u.id, u.display_name.as_ref().to_string()))
+            .collect();
+        let counts = self
+            .issues
+            .status_category_counts(
+                &projects.iter().map(|p| p.id).collect::<Vec<_>>(),
+                &statuses,
+            )
+            .await?;
+        let mut dtos = Vec::new();
+        for project in projects {
+            let [todo, in_progress, done] = counts.get(&project.id).copied().unwrap_or([0, 0, 0]);
+            let owner_name = owner_names
+                .get(&project.owner_id)
+                .cloned()
+                .unwrap_or_default();
+            dtos.push(ProjectDto::from_project(
+                project,
+                owner_name,
+                todo,
+                in_progress,
+                done,
+            ));
+        }
+        Ok(dtos)
+    }
+
     async fn count_by_status_categories(
         &self,
         project_id: ProjectId,
@@ -255,6 +296,28 @@ impl crate::context::ProjectService for ProjectServiceImpl {
         actor.confirm_links(links)
     }
 
+    async fn visible_catalog(
+        &self,
+        query: domain::project_spaces::ProjectCatalogQuery,
+        space: Option<&shared::space_access::SpaceRef>,
+        actor: &crate::space_access::SpaceActor,
+    ) -> Result<(Vec<ProjectDto>, u64), AppError> {
+        query.validate()?;
+        let mut allowed = actor.readable_spaces()?;
+        if let Some(space) = space {
+            if !space.valid() || !allowed.contains(space) {
+                return Err(AppError::Forbidden);
+            }
+            allowed = vec![space.clone()];
+        }
+        let page = self
+            .projects
+            .list_space_accessible_catalog(&allowed, &query)
+            .await?;
+        let dtos = self.project_dtos(page.projects).await?;
+        actor.readable_spaces()?;
+        Ok((dtos, page.total))
+    }
     async fn list(
         &self,
         query: crate::commands::ProjectQueryDto,
@@ -290,38 +353,7 @@ impl crate::context::ProjectService for ProjectServiceImpl {
                 .list_accessible_page(&accessible, limit, query.offset)
                 .await?
         };
-        let statuses = self.statuses.list_all().await?;
-        // One user-list fetch instead of a per-project owner lookup (N+1).
-        let owner_names: std::collections::HashMap<_, _> = self
-            .users
-            .list()
-            .await?
-            .into_iter()
-            .map(|u| (u.id, u.display_name.as_ref().to_string()))
-            .collect();
-        let counts = self
-            .issues
-            .status_category_counts(
-                &projects.iter().map(|p| p.id).collect::<Vec<_>>(),
-                &statuses,
-            )
-            .await?;
-        let mut dtos = Vec::new();
-        for project in projects {
-            let [todo, in_progress, done] = counts.get(&project.id).copied().unwrap_or([0, 0, 0]);
-            let owner_name = owner_names
-                .get(&project.owner_id)
-                .cloned()
-                .unwrap_or_default();
-            dtos.push(ProjectDto::from_project(
-                project,
-                owner_name,
-                todo,
-                in_progress,
-                done,
-            ));
-        }
-        Ok(dtos)
+        self.project_dtos(projects).await
     }
 
     async fn get_by_key(

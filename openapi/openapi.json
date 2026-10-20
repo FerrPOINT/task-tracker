@@ -9636,6 +9636,117 @@
       }
     },
     "/api/v2/projects": {
+      "get": {
+        "tags": [
+          "routes::project_catalog"
+        ],
+        "operationId": "get_visible_projects_v2",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "maximum": 100,
+              "minimum": 1
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "project_key",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "registry_instance_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "space_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisibleProjectCatalogV2"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bounds or explicit space context"
+          },
+          "401": {
+            "description": "Central human required"
+          },
+          "403": {
+            "description": "Project or selected space reading denied"
+          },
+          "503": {
+            "description": "Current owner confirmation unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
       "post": {
         "tags": [
           "routes::project_spaces"
@@ -21663,6 +21774,77 @@
             "type": "boolean"
           }
         }
+      },
+      "VisibleProjectCatalogV2": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "tracker_instance_id",
+          "identity",
+          "policy_revision",
+          "validity",
+          "total",
+          "offset",
+          "limit",
+          "has_more",
+          "projects"
+        ],
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/CentralIdentity"
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "policy_revision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectResponse"
+            }
+          },
+          "schema_version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "space": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SpaceRef"
+              }
+            ]
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "tracker_instance_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "validity": {
+            "$ref": "#/components/schemas/AdmissionValidity"
+          }
+        },
+        "additionalProperties": false
       },
       "VisibleSpaceCatalogV2": {
         "type": "object",

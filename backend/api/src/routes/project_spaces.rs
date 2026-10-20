@@ -8,6 +8,7 @@ use axum::{
     Extension, Json,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
 };
 use domain::project_spaces::ReplaceProjectSpaces;
 use pdlc_auth_core::service_bridge::SpaceAdmissionClient;
@@ -121,11 +122,22 @@ pub(crate) async fn actor(
 }
 pub(crate) fn no_store<T: serde::Serialize>(
     value: T,
-) -> ([(axum::http::header::HeaderName, &'static str); 1], Json<T>) {
-    (
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(value),
-    )
+    actor: &app::space_access::SpaceActor,
+) -> Result<Response, AppError> {
+    if !actor.is_current() {
+        return Err(AppError::Forbidden);
+    }
+    let mut response = Json(value).into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        "private, no-store".parse().unwrap(),
+    );
+    crate::middleware::auth::restrict_response(
+        &mut response,
+        actor.valid_until(),
+        actor.monotonic_deadline(),
+    );
+    Ok(response)
 }
 
 #[utoipa::path(operation_id="create_project_in_spaces_v2",post,path="/api/v2/projects",request_body=CreateProjectInSpaces,responses((status=201,body=ProjectResponse),(status=400,description="Invalid project or space set"),(status=401,description="Central human required"),(status=403,description="Project write admission denied"),(status=409,description="Project key or lifecycle conflict"),(status=422,description="Invalid strict request"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
@@ -134,14 +146,7 @@ pub async fn create(
     Extension(claims): Extension<UserClaims>,
     headers: HeaderMap,
     Json(request): Json<CreateProjectInSpaces>,
-) -> Result<
-    (
-        StatusCode,
-        [(axum::http::header::HeaderName, &'static str); 1],
-        Json<ProjectResponse>,
-    ),
-    AppError,
-> {
+) -> Result<Response, AppError> {
     bounded_set(&request.spaces)?;
     let key = key(&request.key)?;
     let actor = actor(&ctx, &headers, &claims, "POST", &request.spaces).await?;
@@ -154,10 +159,11 @@ pub async fn create(
     let result = ctx
         .services
         .project
-        .create_in_spaces(command, request.spaces, actor)
+        .create_in_spaces(command, request.spaces, actor.clone())
         .await?;
-    let (headers, value) = no_store(map_project_response(result));
-    Ok((StatusCode::CREATED, headers, value))
+    let mut response = no_store(map_project_response(result), &actor)?;
+    *response.status_mut() = StatusCode::CREATED;
+    Ok(response)
 }
 
 #[utoipa::path(operation_id="get_project_spaces_v2",get,path="/api/v2/projects/{project_key}/spaces",params(("project_key"=String,Path)),responses((status=200,body=ConfirmedProjectSpaces,headers(("x-pdlc-project-spaces-can-change"=bool,description="Bounded UI hint; PUT rechecks all authority"),("x-pdlc-admission-policy-revision"=i64,description="Original policy revision for this same bounded proof"))),(status=400,description="Invalid project key"),(status=401,description="Central human required"),(status=403,description="Project read admission denied"),(status=404,description="Project unavailable"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
@@ -166,7 +172,7 @@ pub async fn get(
     Extension(claims): Extension<UserClaims>,
     headers: HeaderMap,
     Path(value): Path<String>,
-) -> Result<(HeaderMap, Json<ConfirmedProjectSpaces>), AppError> {
+) -> Result<Response, AppError> {
     let key = key(&value)?;
     let project = ctx.repos.projects.get_by_key(&key).await?;
     let links = ctx.repos.projects.project_spaces(project.id).await?;
@@ -184,7 +190,8 @@ pub async fn get(
     let can_change = project.owner_id == actor.user()
         && !lifecycle.archived
         && actor.require_project_write(&confirmed).is_ok();
-    let mut response_headers = HeaderMap::new();
+    let mut response = no_store(confirmed, &actor)?;
+    let response_headers = response.headers_mut();
     response_headers.insert(
         axum::http::header::CACHE_CONTROL,
         "private, no-store".parse().unwrap(),
@@ -197,7 +204,7 @@ pub async fn get(
         "x-pdlc-admission-policy-revision",
         actor.policy_revision().to_string().parse().unwrap(),
     );
-    Ok((response_headers, Json(confirmed)))
+    Ok(response)
 }
 
 #[utoipa::path(operation_id="replace_project_spaces_v2",put,path="/api/v2/projects/{project_key}/spaces",params(("project_key"=String,Path)),request_body=ReplaceProjectSpaces,responses((status=200,body=ConfirmedProjectSpaces),(status=409,description="Link revision or lifecycle conflict"),(status=400,description="Invalid identifier or command"),(status=401,description="Fresh central token required"),(status=403,description="Admission or operation scope denied"),(status=404,description="Requested resource unavailable"),(status=422,description="Invalid strict request schema"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
@@ -207,13 +214,7 @@ pub async fn replace(
     headers: HeaderMap,
     Path(value): Path<String>,
     Json(change): Json<ReplaceProjectSpaces>,
-) -> Result<
-    (
-        [(axum::http::header::HeaderName, &'static str); 1],
-        Json<ConfirmedProjectSpaces>,
-    ),
-    AppError,
-> {
+) -> Result<Response, AppError> {
     change.validate()?;
     bounded_set(&change.spaces)?;
     let key = key(&value)?;
@@ -223,12 +224,13 @@ pub async fn replace(
     spaces.sort_by_key(|space| (space.registry_instance_id, space.space_id));
     spaces.dedup();
     let actor = actor(&ctx, &headers, &claims, "PUT", &spaces).await?;
-    Ok(no_store(
+    no_store(
         ctx.services
             .project
             .replace_spaces(&key, change, &actor)
             .await?,
-    ))
+        &actor,
+    )
 }
 
 #[cfg(test)]
@@ -261,13 +263,7 @@ pub async fn projection_status(
     Extension(claims): Extension<UserClaims>,
     headers: HeaderMap,
     Path(value): Path<String>,
-) -> Result<
-    (
-        [(axum::http::header::HeaderName, &'static str); 1],
-        Json<domain::project_spaces::ProjectSpaceProjectionStatus>,
-    ),
-    AppError,
-> {
+) -> Result<Response, AppError> {
     let key = key(&value)?;
     let project = ctx.repos.projects.get_by_key(&key).await?;
     let links = ctx.repos.projects.project_spaces(project.id).await?;
@@ -279,7 +275,7 @@ pub async fn projection_status(
         .project_space_projection_status(project.id)
         .await?;
     actor.require_read(&links)?;
-    Ok(no_store(status))
+    no_store(status, &actor)
 }
 #[utoipa::path(operation_id="reconcile_project_space_projection_v2",post,path="/api/v2/projects/{project_key}/spaces/projection/reconcile",params(("project_key"=String,Path)),responses((status=200,body=domain::project_spaces::ProjectSpaceProjectionStatus),(status=202,body=domain::project_spaces::ProjectSpaceProjectionStatus,description="Durable delivery remains pending"),(status=400,description="Invalid identifier or command"),(status=401,description="Fresh central token required"),(status=403,description="Admission or operation scope denied"),(status=404,description="Requested resource unavailable"),(status=409,description="Revision or lifecycle conflict"),(status=503,description="Fresh owner confirmation unavailable")),security(("bearer"=[])))]
 pub async fn reconcile_projection(
@@ -287,14 +283,7 @@ pub async fn reconcile_projection(
     Extension(claims): Extension<UserClaims>,
     headers: HeaderMap,
     Path(value): Path<String>,
-) -> Result<
-    (
-        StatusCode,
-        [(axum::http::header::HeaderName, &'static str); 1],
-        Json<domain::project_spaces::ProjectSpaceProjectionStatus>,
-    ),
-    AppError,
-> {
+) -> Result<Response, AppError> {
     let key = key(&value)?;
     let project = ctx.repos.projects.get_by_key(&key).await?;
     let links = ctx.repos.projects.project_spaces(project.id).await?;
@@ -309,16 +298,14 @@ pub async fn reconcile_projection(
         .reconcile_project_spaces(project.id, &actor.permit()?)
         .await?;
     actor.require_read(&links)?;
-    let (headers, body) = no_store(status.clone());
-    Ok((
-        if status.confirmed {
-            StatusCode::OK
-        } else {
-            StatusCode::ACCEPTED
-        },
-        headers,
-        body,
-    ))
+    let code = if status.confirmed {
+        StatusCode::OK
+    } else {
+        StatusCode::ACCEPTED
+    };
+    let mut response = no_store(status, &actor)?;
+    *response.status_mut() = code;
+    Ok(response)
 }
 
 /// Read-only reconciliation is valid even when archive has closed new writes.
@@ -336,13 +323,7 @@ pub async fn operation_receipt(
     Extension(claims): Extension<UserClaims>,
     headers: HeaderMap,
     Path((value, operation)): Path<(String, uuid::Uuid)>,
-) -> Result<
-    (
-        [(axum::http::header::HeaderName, &'static str); 1],
-        Json<domain::project_spaces::ProjectSpaceOperationReceipt>,
-    ),
-    AppError,
-> {
+) -> Result<Response, AppError> {
     if operation.is_nil() {
         return Err(AppError::invalid_input("invalid_project_space_operation"));
     }
@@ -350,10 +331,11 @@ pub async fn operation_receipt(
     let project = ctx.repos.projects.get_by_key(&key).await?;
     let links = ctx.repos.projects.project_spaces(project.id).await?;
     let actor = actor(&ctx, &headers, &claims, "GET", &links.spaces).await?;
-    Ok(no_store(
+    no_store(
         ctx.services
             .project
             .space_operation(&key, operation, &actor)
             .await?,
-    ))
+        &actor,
+    )
 }

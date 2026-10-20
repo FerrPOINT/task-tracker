@@ -157,6 +157,18 @@ impl SpaceActor {
         }
         Ok(links)
     }
+    pub fn read_validity(&self) -> Result<AdmissionValidity, AppError> {
+        if !self.is_current() {
+            return Err(AppError::Forbidden);
+        }
+        self.admission
+            .validity
+            .attenuate(self.valid_until())
+            .ok_or(AppError::Forbidden)
+    }
+    pub fn monotonic_deadline(&self) -> std::time::Instant {
+        self.window.monotonic_deadline()
+    }
     pub fn policy_revision(&self) -> i64 {
         self.admission.policy_revision
     }

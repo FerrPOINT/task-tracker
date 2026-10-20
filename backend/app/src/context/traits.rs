@@ -167,6 +167,16 @@ pub trait ProjectService: Send + Sync {
     ) -> Result<shared::space_access::ConfirmedProjectSpaces, AppError> {
         Err(AppError::Unavailable("project_spaces_not_supported".into()))
     }
+    async fn visible_catalog(
+        &self,
+        _query: domain::project_spaces::ProjectCatalogQuery,
+        _space: Option<&shared::space_access::SpaceRef>,
+        _actor: &crate::space_access::SpaceActor,
+    ) -> Result<(Vec<ProjectDto>, u64), AppError> {
+        Err(AppError::Unavailable(
+            "project_catalog_not_supported".into(),
+        ))
+    }
     async fn list(
         &self,
         query: ProjectQueryDto,

@@ -200,6 +200,103 @@ async fn verify(db: &Arc<DatabaseConnection>) {
             .unwrap()
             .is_empty()
     );
+    let query = |search: &str, offset: u64| domain::project_spaces::ProjectCatalogQuery {
+        limit: 1,
+        offset,
+        search: search.into(),
+        project_key: None,
+    };
+    let first = repos
+        .projects
+        .list_space_accessible_catalog(&[a.clone(), b.clone()], &query("", 0))
+        .await
+        .unwrap();
+    let second = repos
+        .projects
+        .list_space_accessible_catalog(&[a.clone(), b.clone()], &query("", 1))
+        .await
+        .unwrap();
+    assert_eq!((first.total, second.total), (2, 2));
+    assert_eq!((first.projects.len(), second.projects.len()), (1, 1));
+    assert_ne!(
+        first.projects[0].id, second.projects[0].id,
+        "M:N never duplicates a project across pages"
+    );
+    let beyond = repos
+        .projects
+        .list_space_accessible_catalog(&[a.clone(), b.clone()], &query("", 99))
+        .await
+        .unwrap();
+    assert_eq!(beyond.total, 2);
+    assert!(beyond.projects.is_empty());
+    let matched = repos
+        .projects
+        .list_space_accessible_catalog(&[a.clone()], &query("same DISPLAY", 0))
+        .await
+        .unwrap();
+    assert_eq!(matched.total, 1);
+    assert_eq!(matched.projects[0].id, project);
+    let hidden = repos
+        .projects
+        .list_space_accessible_catalog(&[a.clone()], &query("QA2", 0))
+        .await
+        .unwrap();
+    assert_eq!(hidden.total, 0);
+    assert!(
+        hidden.projects.is_empty(),
+        "search must not reveal the hidden B project"
+    );
+    for literal in ["%_", "'"] {
+        let page = repos
+            .projects
+            .list_space_accessible_catalog(&[a.clone(), b.clone()], &query(literal, 0))
+            .await
+            .unwrap();
+        assert_eq!(
+            page.total, 0,
+            "search treats wildcard and shell-like characters literally"
+        );
+    }
+    let none = repos
+        .projects
+        .list_space_accessible_catalog(&[], &query("", 0))
+        .await
+        .unwrap();
+    assert_eq!(none.total, 0);
+    assert!(none.projects.is_empty());
+    let foreign = SpaceRef {
+        registry_instance_id: Uuid::new_v4(),
+        space_id: a.space_id,
+    };
+    let none = repos
+        .projects
+        .list_space_accessible_catalog(&[foreign], &query("", 0))
+        .await
+        .unwrap();
+    assert_eq!(
+        none.total, 0,
+        "space UUID alone cannot match a foreign registry"
+    );
+    let mut exact = query("same display", 0);
+    exact.project_key = Some(shared::ProjectKey::new("QA1"));
+    let page = repos
+        .projects
+        .list_space_accessible_catalog(&[a.clone(), b.clone()], &exact)
+        .await
+        .unwrap();
+    assert_eq!(page.total, 1);
+    assert_eq!(page.projects[0].id, project);
+    exact.project_key = Some(shared::ProjectKey::new("QA2"));
+    let page = repos
+        .projects
+        .list_space_accessible_catalog(&[a.clone()], &exact)
+        .await
+        .unwrap();
+    assert_eq!(
+        page.total, 0,
+        "an exact key does not reveal a hidden project"
+    );
+    println!("Native project catalog count/page/literal search/hidden/M:N PASS");
     resource_history::verify(&repos, db.as_ref(), user, &a, &b).await;
     drop(repos);
     let initial = infra::project_spaces::get(db.as_ref(), project)

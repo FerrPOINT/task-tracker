@@ -8,6 +8,7 @@ pub mod health;
 pub mod issues;
 pub mod members;
 pub mod namespace;
+pub mod project_catalog;
 pub mod project_spaces;
 pub mod projects;
 pub mod search;

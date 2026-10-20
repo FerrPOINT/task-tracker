@@ -34,7 +34,7 @@ pub async fn reader_auth(mut req: Request, next: Next) -> Result<Response, AppEr
     req.extensions_mut().insert(reader);
     Ok(next.run(req).await)
 }
-fn instance() -> Result<uuid::Uuid, AppError> {
+pub(crate) fn instance() -> Result<uuid::Uuid, AppError> {
     std::env::var("TT_NAMESPACE__INSTANCE_ID")
         .ok()
         .and_then(|v| v.parse().ok())

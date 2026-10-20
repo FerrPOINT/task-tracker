@@ -176,6 +176,15 @@ pub trait ProjectRepository: Send + Sync {
     async fn space_catalog_refs(&self) -> Result<Vec<shared::space_access::SpaceRef>, AppError> {
         Err(AppError::Unavailable("space_catalog_not_supported".into()))
     }
+    async fn list_space_accessible_catalog(
+        &self,
+        _spaces: &[shared::space_access::SpaceRef],
+        _query: &crate::project_spaces::ProjectCatalogQuery,
+    ) -> Result<crate::project_spaces::VisibleProjectPage, AppError> {
+        Err(AppError::Unavailable(
+            "space_project_catalog_not_supported".into(),
+        ))
+    }
     async fn list_space_accessible_page(
         &self,
         _spaces: &[shared::space_access::SpaceRef],
