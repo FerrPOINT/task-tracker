@@ -35,7 +35,7 @@ fn status_mapping_recognizes_retained_in_progress_without_defaulting_to_todo() {
             position: 0,
             is_default: false,
             is_closed: false,
-            created_at: shared::now().into(),
+            created_at: shared::now(),
         });
         assert_eq!(mapped.category, expected);
     }
