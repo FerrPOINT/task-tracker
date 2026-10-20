@@ -84,3 +84,13 @@ read-only recipient/delegation proof не заменяет это полномо
 активные неклассифицированные SDLC content writes закрыты. Все machine read,
 terminal/control, artifact и остальные consumer поверхности остаются открытым
 cohort gate. Этот документ не разрешает активацию или откат на старые образы.
+
+## Read-only POST export
+
+POST /api/v1/export/csv и /api/v1/export/json передают структурированный запрос
+на чтение. Human PAT требует task-tracker:read; общий middleware сохраняет
+RequestOperation::Read до service/repository и ограничивает ответ исходным proof.
+Сервис проверяет допуск именно к запрошенному проекту; POST не даёт допуск к B.
+Write-only PAT и machine principal не заменяют human read. Остальные POST
+сохраняют write классификацию, включая похожие prefix/path. Это правило только
+двух зарегистрированных export operations, не общий обход scope по URL prefix.

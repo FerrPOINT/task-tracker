@@ -755,6 +755,9 @@ password/register/refresh endpoints являются legacy-контрактом
 
 Оба пути принимают `{ "project_key": "TT" }`, требуют обычный project-access и
 возвращают attachment с детерминированным порядком задач (`created_at DESC`).
+Это read-only POST: human PAT требует task-tracker:read, а не write. Допуск
+проверяется к запрошенному проекту; write-only PAT и машинный principal не дают
+human export. Ответ ограничен исходным admission deadline, без продления TTL.
 
 ### Real-time (SSE)
 

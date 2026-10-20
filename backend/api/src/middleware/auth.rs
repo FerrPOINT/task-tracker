@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Request, State},
+    extract::{OriginalUri, Request, State},
     http::StatusCode,
     middleware::Next,
     response::Response,
@@ -28,6 +28,14 @@ pub async fn bearer_auth(
         .space_admission_enabled()
         .await
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    // Axum nest strips /api/v1 from the working URI before route middleware.
+    // Classify the original registered operation, not the stripped inner path.
+    let path = req
+        .extensions()
+        .get::<OriginalUri>()
+        .map(|uri| uri.0.path())
+        .unwrap_or_else(|| req.uri().path());
+    let operation = request_operation(req.method(), path);
     // Central profile and role are fresh; a signed role hint or PAT principal must
     // not be silently converted into a human administrator during JIT.
     match super::central_auth::BRIDGE.try_verified_token(&token).await {
@@ -40,7 +48,11 @@ pub async fn bearer_auth(
             {
                 return Err(StatusCode::FORBIDDEN);
             }
-            if !central.allows_service("task-tracker", req.method().as_str()) {
+            let scope_method = match operation {
+                app::space_access::RequestOperation::Read => "GET",
+                app::space_access::RequestOperation::Write => req.method().as_str(),
+            };
+            if !central.allows_service("task-tracker", scope_method) {
                 return Err(StatusCode::FORBIDDEN);
             }
             let user = find_or_link_central_user(&ctx, central, verified.display_name.as_deref())
@@ -68,11 +80,6 @@ pub async fn bearer_auth(
                 )
             } else {
                 None
-            };
-            let operation = if matches!(req.method().as_str(), "GET" | "HEAD" | "OPTIONS") {
-                app::space_access::RequestOperation::Read
-            } else {
-                app::space_access::RequestOperation::Write
             };
             let frame = Arc::new(
                 app::space_access::CentralRequestContext::verified(
@@ -313,5 +320,44 @@ mod response_deadline_tests {
             base + std::time::Duration::from_secs(600),
         );
         assert_eq!(response_deadline(&mut response, 160, base), (160, base));
+    }
+}
+
+/// Export uses POST only to carry a structured query. It never authorizes a write.
+fn request_operation(
+    method: &axum::http::Method,
+    path: &str,
+) -> app::space_access::RequestOperation {
+    if matches!(method.as_str(), "GET" | "HEAD" | "OPTIONS")
+        || (method == axum::http::Method::POST
+            && matches!(path, "/api/v1/export/csv" | "/api/v1/export/json"))
+    {
+        app::space_access::RequestOperation::Read
+    } else {
+        app::space_access::RequestOperation::Write
+    }
+}
+
+#[cfg(test)]
+mod request_operation_tests {
+    use super::request_operation;
+    use app::space_access::RequestOperation::{Read, Write};
+    use axum::http::Method;
+    #[test]
+    fn read_exports_do_not_turn_mutating_post_routes_into_reads() {
+        for path in ["/api/v1/export/csv", "/api/v1/export/json"] {
+            assert_eq!(request_operation(&Method::POST, path), Read);
+            assert_eq!(request_operation(&Method::PUT, path), Write);
+            assert_eq!(request_operation(&Method::DELETE, path), Write);
+        }
+        for path in [
+            "/api/v1/projects",
+            "/api/v1/issues",
+            "/api/v1/export/json/other",
+            "/api/v1/export/json-extra",
+        ] {
+            assert_eq!(request_operation(&Method::POST, path), Write);
+            assert_eq!(request_operation(&Method::GET, path), Read);
+        }
     }
 }

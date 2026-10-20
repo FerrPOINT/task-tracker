@@ -242,6 +242,8 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
                     (state.target.to_string(),"recipient@example.test","member",vec!["task-tracker:read"])
                 }else if token=="Bearer sdlc_pat_synthetic-human-read"{
                     (state.target.to_string(),"recipient@example.test","member",vec!["task-tracker:read"])
+                }else if token=="Bearer sdlc_pat_synthetic-human-write-only"{
+                    (state.target.to_string(),"recipient@example.test","member",vec!["task-tracker:write"])
                 }else if token=="Bearer sdlc_pat_synthetic-human-write"{
                     (state.target.to_string(),"recipient@example.test","member",vec!["task-tracker:read","task-tracker:write"])
                 }else{return (StatusCode::UNAUTHORIZED,Json(serde_json::json!({})))};
@@ -580,6 +582,74 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
     println!("Native human project catalog original actor/space/search/page PASS");
+
+    for format in ["csv", "json"] {
+        let exported = http
+            .post(format!("{api_origin}/api/v1/export/{format}"))
+            .bearer_auth("sdlc_pat_synthetic-human-read")
+            .json(&serde_json::json!({"project_key":"READAB"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            exported.status(),
+            StatusCode::OK,
+            "read PAT exports {format}"
+        );
+        assert_eq!(
+            exported.headers()["cache-control"],
+            "private, no-store, no-transform"
+        );
+        if format == "json" {
+            let data: serde_json::Value = exported.json().await.unwrap();
+            assert_eq!(data["issues"], serde_json::json!([]));
+        } else {
+            assert!(exported.text().await.unwrap().starts_with("key,summary,"));
+        }
+        let hidden = http
+            .post(format!("{api_origin}/api/v1/export/{format}"))
+            .bearer_auth("sdlc_pat_synthetic-human-read")
+            .json(&serde_json::json!({"project_key":"READB"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(
+            hidden.status(),
+            StatusCode::FORBIDDEN,
+            "export cannot disclose B"
+        );
+        for token in [
+            "sdlc_pat_synthetic-human-write-only",
+            "sdlc_pat_synthetic-context-reader",
+        ] {
+            let denied = http
+                .post(format!("{api_origin}/api/v1/export/{format}"))
+                .bearer_auth(token)
+                .json(&serde_json::json!({"project_key":"READAB"}))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(
+                denied.status(),
+                StatusCode::FORBIDDEN,
+                "export requires human read scope"
+            );
+        }
+    }
+    let mutation = http
+        .post(format!("{api_origin}/api/v1/projects"))
+        .bearer_auth("sdlc_pat_synthetic-human-read")
+        .json(&serde_json::json!({"key":"FORBIDDEN","name":"Must not create"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        mutation.status(),
+        StatusCode::FORBIDDEN,
+        "POST mutation still requires write"
+    );
+    println!("Native read PAT export/hidden-space/machine/write isolation PASS");
+
     let denied_change=http.put(format!("{api_origin}/api/v2/projects/READAB/spaces"))
         .bearer_auth("sdlc_pat_synthetic-human-read")
         .json(&serde_json::json!({"operation_id":Uuid::new_v4(),"expected_revision":confirmed.revision,"spaces":[a]}))
