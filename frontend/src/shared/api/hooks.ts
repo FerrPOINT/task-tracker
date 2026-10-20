@@ -229,7 +229,7 @@ export function useDeleteAttachment(issueId: string) {
   })
 }
 
-const projectKeys = {
+export const projectKeys = {
   all: ['projects'] as const,
   detail: (key: string) => ['project', key] as const,
   info: (key: string) => ['project-info', key] as const,

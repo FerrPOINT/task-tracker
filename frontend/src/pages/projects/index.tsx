@@ -9,6 +9,7 @@ import { ErrorState, LoadingState } from '@pdlc/ui/ui'
 import { Input } from '@pdlc/ui/ui'
 import { useProjects, useCreateProject, useDeleteProject } from '@/shared/api/hooks'
 import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
+import { CreateProjectInSpacesDialog } from '@/features/projects/ui/CreateProjectInSpacesDialog'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,19 +64,23 @@ export function ProjectsPage() {
           Далее
         </Button>
       </div>
-      <ProjectFormDialog
-        open={formOpen}
-        onOpenChange={(open) => {
-          setFormOpen(open)
-        }}
-        onSubmit={(values) => {
-          create.mutate(values as import('@/api/project').CreateProjectRequest, {
-            onSuccess: () => setFormOpen(false),
-          })
-        }}
-        isPending={create.isPending}
-        error={create.error}
-      />
+      {import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true' ? (
+        <CreateProjectInSpacesDialog open={formOpen} onOpenChange={setFormOpen} />
+      ) : (
+        <ProjectFormDialog
+          open={formOpen}
+          onOpenChange={(open) => {
+            setFormOpen(open)
+          }}
+          onSubmit={(values) => {
+            create.mutate(values as import('@/api/project').CreateProjectRequest, {
+              onSuccess: () => setFormOpen(false),
+            })
+          }}
+          isPending={create.isPending}
+          error={create.error}
+        />
+      )}
 
       <AlertDialog
         open={!!deletingProject}

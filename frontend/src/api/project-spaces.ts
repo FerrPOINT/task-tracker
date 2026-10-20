@@ -23,7 +23,7 @@ const spacesSchema = z
   .min(1)
   .max(1000)
   .refine((spaces) => new Set(spaces.map(spaceKey)).size === spaces.length)
-const createSchema = z
+export const createProjectInSpacesSchema = z
   .object({
     key: keySchema,
     name: z.string().refine((s) => s.trim().length > 0 && Array.from(s.trim()).length <= 200),
@@ -92,7 +92,7 @@ export async function replaceProjectSpaces(
   return checkedLinks(data, project)
 }
 export async function createProjectInSpaces(input: CreateProjectInSpaces): Promise<Project> {
-  const body = createSchema.parse(input)
+  const body = createProjectInSpacesSchema.parse(input)
   const { data, error, response } = await api.POST('/api/v2/projects', { body })
   if (error || !data) throw new SpaceRequestError(response.status)
   if (!nonNilUuid.safeParse(data.id).success || data.key !== body.key)

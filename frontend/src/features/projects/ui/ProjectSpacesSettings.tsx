@@ -1,4 +1,4 @@
-import { Component, useEffect, useLayoutEffect, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, ErrorState, LoadingState } from '@pdlc/ui/ui'
 import { useSessionCommand } from '@pdlc/ui/lib'
@@ -21,20 +21,8 @@ import {
   type SpaceSession,
 } from '@/shared/auth/space-session'
 import { SpaceSetField } from './SpaceSetField'
+import { ProjectCommandRecovery } from './ProjectCommandRecovery'
 
-class JournalRecovery extends Component<{ children: ReactNode }, { broken: boolean }> {
-  state = { broken: false }
-  static getDerivedStateFromError() {
-    return { broken: true }
-  }
-  render() {
-    return this.state.broken ? (
-      <ErrorState message="Не удалось открыть настройки связей. Сохранённый журнал не удалён; требуется проверка ошибки." />
-    ) : (
-      this.props.children
-    )
-  }
-}
 export function ProjectSpacesSettings({ project }: { project: Project }) {
   const session = useSpaceSession((state) => state.session)
   if (import.meta.env.VITE_SPACE_ACCESS_ENABLED !== 'true') return null
@@ -47,9 +35,9 @@ export function ProjectSpacesSettings({ project }: { project: Project }) {
     project.id,
   ])
   return (
-    <JournalRecovery key={identityKey}>
+    <ProjectCommandRecovery key={identityKey}>
       <Management project={project} session={session} />
-    </JournalRecovery>
+    </ProjectCommandRecovery>
   )
 }
 function sameSet(a: SpaceRef[], b: SpaceRef[]): boolean {
