@@ -100,18 +100,20 @@ pub(crate) async fn actor(
     {
         return Err(AppError::Unauthorized);
     }
-    let mut admission = client()
+    let proof = client()
         .await?
-        .confirm_many(&BRIDGE, &verified, spaces)
+        .confirm_many_read(&BRIDGE, &verified, spaces)
         .await
         .map_err(|_| AppError::Unavailable("space_admission_unavailable".into()))?;
+    let mut admission = proof.admission().map_err(|_| AppError::Forbidden)?.clone();
     if let Some(frame) = &frame {
         admission.validity = admission
             .validity
             .attenuate(frame.valid_until())
             .ok_or(AppError::Forbidden)?;
     }
-    let mut actor = app::space_access::SpaceActor::verified(user, &verified, admission)?;
+    let mut actor = app::space_access::SpaceActor::verified(user, &verified, admission)?
+        .restrict_deadline(proof.monotonic_deadline());
     if let Some(frame) = frame {
         actor = actor.restrict_deadline(frame.monotonic_deadline());
     }

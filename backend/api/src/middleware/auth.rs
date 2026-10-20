@@ -56,14 +56,14 @@ pub async fn bearer_auth(
                     .space_catalog_refs()
                     .await
                     .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-                let admission = crate::routes::project_spaces::client()
+                let proof = crate::routes::project_spaces::client()
                     .await
                     .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
-                    .confirm_many(&super::central_auth::BRIDGE, &verified, &refs)
+                    .confirm_many_read(&super::central_auth::BRIDGE, &verified, &refs)
                     .await
                     .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
                 Some(
-                    app::space_access::SpaceActor::verified(user.id, &verified, admission)
+                    app::space_access::SpaceActor::from_read_proof(user.id, &verified, &proof)
                         .map_err(|_| StatusCode::FORBIDDEN)?,
                 )
             } else {

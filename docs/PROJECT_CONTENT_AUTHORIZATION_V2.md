@@ -1,5 +1,7 @@
 # Запись проектного содержимого при общем допуске
 
+Human admission adapters используют общий confirm_many_read и сохраняют его fixed source/token/owner deadline в SpaceActor. Копия DTO SpaceAdmission не восстанавливает окно кеша. Read-only project-context RPC передаёт bounded_admission после SQL; более короткий wire срок не меняет revision или права. Catalog relay ограничивает исходную validity до передачи и не продлевает её на ответе. Это source candidate; serving cohort и остальные machine/job surfaces ещё требуют общей квалификации.
+
 Статус: частичный source-кандидат. Новый режим в dev не активирован. Human
 content boundary квалифицирован отдельно; готовность машинных заданий и всего
 совместимого cohort этим не подтверждается.

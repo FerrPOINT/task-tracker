@@ -103,6 +103,20 @@ impl SpaceActor {
             may_write: actor.context.allows_service("task-tracker", "PATCH"),
         })
     }
+    /// The adapter verifies product scopes/profile; this preserves the SDK owner clock.
+    pub fn from_read_proof(
+        user: UserId,
+        actor: &VerifiedCentralToken,
+        proof: &pdlc_auth_core::service_bridge::ConfirmedSpaceRead,
+    ) -> Result<Self, AppError> {
+        let value = proof.admission().map_err(|_| AppError::Forbidden)?.clone();
+        let result =
+            Self::verified(user, actor, value)?.restrict_deadline(proof.monotonic_deadline());
+        if !result.is_current() {
+            return Err(AppError::Forbidden);
+        }
+        Ok(result)
+    }
     pub fn user(&self) -> UserId {
         self.user
     }

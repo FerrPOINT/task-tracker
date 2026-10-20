@@ -212,7 +212,7 @@ pub async fn query(
     }
     let result = visible(
         &request,
-        proof.admission().map_err(|_| AppError::Forbidden)?,
+        &proof.bounded_admission().map_err(|_| AppError::Forbidden)?,
         contexts,
         total,
     )?;
