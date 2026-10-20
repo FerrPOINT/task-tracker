@@ -25,7 +25,7 @@ pub async fn reader_auth(mut req: Request, next: Next) -> Result<Response, AppEr
             }
             _ => AppError::Unauthorized,
         })?;
-    let reader = RegisteredSpaceReader::verified(
+    let reader = RegisteredSpaceReader::verified_machine(
         verified,
         "task-tracker",
         &std::env::var("TT_SPACES__CONTEXT_READER_SUBJECTS").unwrap_or_default(),
@@ -140,13 +140,7 @@ pub async fn query(
     State(ctx): State<Arc<app::AppContext>>,
     Extension(reader): Extension<RegisteredSpaceReader>,
     Json(request): Json<ProjectSpaceContextQuery>,
-) -> Result<
-    (
-        [(axum::http::header::HeaderName, &'static str); 1],
-        Json<ProjectSpaceContextBatch>,
-    ),
-    AppError,
-> {
+) -> Result<axum::response::Response, AppError> {
     let issuer = reader.issuer();
     if !reader.is_for("task-tracker")
         || !request
@@ -158,30 +152,34 @@ pub async fn query(
         return Err(AppError::invalid_input("invalid_project_context_query"));
     }
     let client = super::project_spaces::client().await?;
-    let (admission, contexts, total) = match &request.selector {
+    let (proof, contexts, total) = match &request.selector {
         ProjectContextSelector::Space {
             space,
             limit,
             offset,
         } => {
-            let admission = client
-                .confirm_delegated_many(
+            let proof = client
+                .confirm_delegated_many_at_revision(
                     &crate::middleware::central_auth::BRIDGE,
                     &reader,
                     &request.actor,
                     &[space.clone()],
+                    request.policy_revision,
                 )
                 .await
                 .map_err(|_| {
                     AppError::Unavailable("original_space_admission_unavailable".into())
                 })?;
-            checked_admission(&request, &admission)?;
+            checked_admission(
+                &request,
+                proof.admission().map_err(|_| AppError::Forbidden)?,
+            )?;
             let page = ctx
                 .repos
                 .projects
                 .project_space_context_page(space, *limit, *offset)
                 .await?;
-            (admission, page.projects, Some(page.total))
+            (proof, page.projects, Some(page.total))
         }
         ProjectContextSelector::Projects { projects } => {
             let contexts = ctx.repos.projects.project_space_contexts(projects).await?;
@@ -194,24 +192,30 @@ pub async fn query(
                 .collect();
             spaces.sort_by_key(|s| (s.registry_instance_id, s.space_id));
             spaces.dedup();
-            let admission = client
-                .confirm_delegated_many(
+            let proof = client
+                .confirm_delegated_many_at_revision(
                     &crate::middleware::central_auth::BRIDGE,
                     &reader,
                     &request.actor,
                     &spaces,
+                    request.policy_revision,
                 )
                 .await
                 .map_err(|_| {
                     AppError::Unavailable("original_space_admission_unavailable".into())
                 })?;
-            (admission, contexts, None)
+            (proof, contexts, None)
         }
     };
     if contexts.iter().map(|c| c.links.spaces.len()).sum::<usize>() > 10000 {
         return Err(AppError::invalid_input("project_context_batch_too_large"));
     }
-    let result = visible(&request, &admission, contexts, total)?;
+    let result = visible(
+        &request,
+        proof.admission().map_err(|_| AppError::Forbidden)?,
+        contexts,
+        total,
+    )?;
     if serde_json::to_vec(&result)
         .map_err(|_| AppError::Internal("project_context_serialization_failed".into()))?
         .len()
@@ -225,9 +229,20 @@ pub async fn query(
     if !reader.is_for("task-tracker") {
         return Err(AppError::Forbidden);
     }
-    Ok((
-        [(axum::http::header::CACHE_CONTROL, "no-store")],
-        Json(result),
+    use axum::response::IntoResponse;
+    if !proof.is_current() {
+        return Err(AppError::Forbidden);
+    }
+    let deadline = proof.monotonic_deadline();
+    let mut response = Json(result).into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("private, no-store"),
+    );
+    let (parts, body) = response.into_parts();
+    Ok(axum::response::Response::from_parts(
+        parts,
+        crate::middleware::auth::guard_admission_body(body, deadline, move || proof.is_current()),
     ))
 }
 

@@ -47,7 +47,7 @@ pub async fn notification_reader()
         .try_verified_token(&token)
         .await
         .map_err(|_| AppError::Unavailable("notification_reader_not_confirmed".into()))?;
-    pdlc_auth_core::service_bridge::RegisteredSpaceReader::verified(
+    pdlc_auth_core::service_bridge::RegisteredSpaceReader::verified_machine(
         actor,
         "admin-panel",
         &registration,

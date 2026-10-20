@@ -231,6 +231,10 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
                 let token=headers.get("authorization").and_then(|v|v.to_str().ok()).unwrap_or("");
                 let (subject,email,role,scopes)=if authorized(&headers){
                     ("notification-machine".to_string(),"machine@example.test","service_account",vec!["admin-panel:read"])
+                }else if token=="Bearer sdlc_pat_synthetic-context-reader"{
+                    ("context-machine".to_string(),"context-machine@example.test","service_account",vec!["task-tracker:read"])
+                }else if token=="Bearer sdlc_pat_synthetic-human-context-reader"{
+                    ("registered-human-reader".to_string(),"human-reader@example.test","member",vec!["task-tracker:read"])
                 }else if token=="Bearer sdlc_pat_synthetic-shadow-read"{
                     if state.shadow_checks.fetch_add(1,Ordering::SeqCst)>0 {
                         tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
@@ -284,6 +288,10 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
         std::env::set_var(
             "TT_SPACES__ADMISSION_READER_SUBJECTS",
             "notification-machine",
+        );
+        std::env::set_var(
+            "TT_SPACES__CONTEXT_READER_SUBJECTS",
+            "context-machine,registered-human-reader",
         );
     }
     let ctx = Arc::new(ctx);
@@ -424,6 +432,78 @@ async fn digest_delivery_preserves_denied_messages_and_rechecks_recipient_before
     assert!(confirmed.validity.valid_until <= state.until.load(Ordering::SeqCst));
     assert!(header_until <= state.until.load(Ordering::SeqCst));
     assert!(confirmed.validity.valid_until > chrono_now());
+    // A registered human PAT is still a human, not a v2 processor identity.
+    let context_query = shared::project_spaces::ProjectSpaceContextQuery {
+        schema_version: 1,
+        tracker_instance_id: confirmed.project.tracker_instance_id,
+        actor: shared::space_access::SpaceReadDelegation {
+            schema_version: 1,
+            identity: CentralIdentity {
+                issuer: origin.clone(),
+                subject: target.to_string(),
+            },
+            validity: confirmed.validity,
+        },
+        policy_revision: state.revision.load(Ordering::SeqCst),
+        selector: shared::project_spaces::ProjectContextSelector::Space {
+            space: a.clone(),
+            limit: 10,
+            offset: 0,
+        },
+    };
+    let human = http
+        .post(format!("{api_origin}/api/v2/project-contexts/query"))
+        .bearer_auth("sdlc_pat_synthetic-human-context-reader")
+        .json(&context_query)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        human.status(),
+        StatusCode::FORBIDDEN,
+        "allowlisted human PAT cannot act as a machine reader"
+    );
+    let machine = http
+        .post(format!("{api_origin}/api/v2/project-contexts/query"))
+        .bearer_auth("sdlc_pat_synthetic-context-reader")
+        .json(&context_query)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(machine.status(), StatusCode::OK);
+    let batch: shared::project_spaces::ProjectSpaceContextBatch = machine.json().await.unwrap();
+    assert!(batch.valid_for(&context_query, chrono_now()));
+    assert!(batch.actor.validity.valid_until <= context_query.actor.validity.valid_until);
+
+    let mut stale_query = context_query.clone();
+    stale_query.policy_revision -= 1;
+    let stale = http
+        .post(format!("{api_origin}/api/v2/project-contexts/query"))
+        .bearer_auth("sdlc_pat_synthetic-context-reader")
+        .json(&stale_query)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        stale.status(),
+        StatusCode::CONFLICT,
+        "real owner revision mismatch remains a conflict, not a fabricated matching decision"
+    );
+    assert!(
+        stale
+            .text()
+            .await
+            .unwrap()
+            .contains("space_policy_revision_changed")
+    );
+
+    assert!(!batch.projects.is_empty());
+    assert_eq!(
+        batch.actor.identity.subject,
+        target.to_string(),
+        "machine reads for the original subject without becoming that human"
+    );
+
     for (suffix, total, length) in [
         ("?limit=1&offset=0", 2, 1),
         ("?limit=1&offset=1", 2, 1),

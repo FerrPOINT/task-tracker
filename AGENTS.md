@@ -123,3 +123,9 @@ Task-local proof не передаётся в spawned jobs автоматиче�
 Owner/reconcile и machine artifact/job ports имеют отдельные typed proofs;
 read-only proof не становится правом записи. После owner-v2 adoption legacy
 writer не считается совместимым даже до включения общего policy flag.
+
+Для новых v2 machine context/recipient readers использовать authoritative
+service_account factory и сохранять исходный proof до конца IO:
+[PROJECT_SPACES_V2](docs/PROJECT_SPACES_V2.md#machine-context-reader-kind-revision-и-http-lifetime).
+Legacy registered reader не заменяет эту проверку kind. Known policy revision
+выбирает cache entry, но не является полномочием или owner revision.

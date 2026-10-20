@@ -148,3 +148,23 @@ spaces/total/limit/offset/has_more; hidden spaces не попадают в count
 единственный проект. Downstream catalog validity сужает middleware header и
 body guard через внутренний typed proof; чтение raw header не расширяет срок.
 UI и полная межсервисная/live квалификация остаются отдельными gates.
+
+## Machine context reader: kind, revision и HTTP lifetime
+
+POST /api/v2/project-contexts/query — отдельная read operation для
+зарегистрированного service account PAT с exact task-tracker:read. HTTP POST
+здесь не выдаёт write; browser session/human PAT/admin hint не подходят даже
+при ошибочном включении human subject в allowlist. Authoritative kind берётся
+из свежего SDK subject_role. Original actor задаёт проверивший его серверный
+потребитель; UI не получает processor credential и не выбирает identity.
+
+Known policy revision используется как cache selector общего SDK:
+несовпадающий cache entry требует одного свежего owner read. Caller не задаёт
+истинную revision: если authoritative owner result отличается, ответ409.
+Original delegation/expiry не продлеваются после этого чтения. Legacy reader
+factory сохраняет свой контракт и не заменяет machine factory v2.
+
+Private ConfirmedSpaceRead хранит immutable clock до окончания ответа. Handler
+не теряет proof при преобразовании в JSON: header/idle-body guard использует
+исходный source/token/owner deadline. No-store не является grant. Старые DTO,
+NamespaceRef/ExecutionContextV2 и operation keys не меняются.

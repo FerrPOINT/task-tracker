@@ -231,7 +231,7 @@ fn response_deadline(
 
 // A response can outlive its handler (SSE/downloads). Polling a delayed body may
 // not renew or bypass the fixed request proof, even while the source is idle.
-fn guard_admission_body(
+pub(crate) fn guard_admission_body(
     body: axum::body::Body,
     deadline: std::time::Instant,
     current: impl Fn() -> bool + Send + Sync + 'static,
