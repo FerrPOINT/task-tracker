@@ -42,6 +42,22 @@ fn status_mapping_recognizes_retained_in_progress_without_defaulting_to_todo() {
     assert_eq!(map_status_category("foreign"), None);
 }
 
+#[test]
+fn status_mapping_round_trips_current_writer_and_wire_categories() {
+    for category in [
+        StatusCategory::Todo,
+        StatusCategory::InProgress,
+        StatusCategory::Done,
+    ] {
+        assert_eq!(
+            map_status_category(&format!("{category:?}")),
+            Some(category)
+        );
+        let wire = serde_json::to_value(category).unwrap();
+        assert_eq!(map_status_category(wire.as_str().unwrap()), Some(category));
+    }
+}
+
 #[tokio::test]
 async fn batch_counts_sum_both_in_progress_spellings_and_keep_other_projects_separate() {
     let first = ProjectId::new();
@@ -49,8 +65,11 @@ async fn batch_counts_sum_both_in_progress_spellings_and_keep_other_projects_sep
     for aliases in [
         [("inprogress", 3), ("in_progress", 4)],
         [("in_progress", 4), ("inprogress", 3)],
+        [("InProgress", 3), ("in_progress", 4)],
+        [("in_progress", 4), ("InProgress", 3)],
+        [("INPROGRESS", 3), ("in_progress", 4)],
     ] {
-        let mut rows = vec![row(first, "todo", 2), row(first, "done", 5)];
+        let mut rows = vec![row(first, "Todo", 2), row(first, "Done", 5)];
         rows.extend(aliases.map(|(category, count)| row(first, category, count)));
         rows.push(row(second, "in_progress", 1));
         let repository = repo(rows);

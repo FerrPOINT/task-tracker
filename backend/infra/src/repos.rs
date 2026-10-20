@@ -40,7 +40,7 @@ use crate::entities::{
 };
 
 fn map_status_category(category: &str) -> Option<StatusCategory> {
-    match category {
+    match category.to_ascii_lowercase().as_str() {
         "todo" => Some(StatusCategory::Todo),
         "inprogress" | "in_progress" => Some(StatusCategory::InProgress),
         "done" => Some(StatusCategory::Done),
