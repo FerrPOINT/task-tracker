@@ -1,3 +1,5 @@
+import { isCurrentSpaceActor, useSpaceSession } from '@/shared/auth/space-session'
+import { useScopedMutation } from '@/shared/api/useScopedMutation'
 import { ProjectPicker } from '@pdlc/ui/ui'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
@@ -106,7 +108,6 @@ export function ReportsPage() {
   const projects = projectsQuery.data ?? []
   const requestedProjectKey = searchParams.get('project_key') ?? ''
   const sprintId = searchParams.get('sprint_id') ?? ''
-  const [exporting, setExporting] = useState<IssueExportFormat | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [failedExport, setFailedExport] = useState<IssueExportFormat | null>(null)
   const requestedTab = searchParams.get('tab')
@@ -155,25 +156,33 @@ export function ReportsPage() {
     updateParams({ tab: nextTab === 'velocity' ? undefined : nextTab })
   }
 
-  async function downloadExport(format: IssueExportFormat) {
-    if (!projectKey) return
-    setExporting(format)
-    setExportError(null)
-    setFailedExport(null)
-    try {
-      const file = await fetchIssueExport(projectKey, format)
+  const operationActor = useSpaceSession((state) => state.session)
+  const exportRequest = useScopedMutation({
+    mutationFn: ({ projectKey, format }: { projectKey: string; format: IssueExportFormat }) =>
+      import.meta.env.VITE_SPACE_ACCESS_ENABLED === 'true'
+        ? fetchIssueExport(projectKey, format, {
+            isCurrent: () => Boolean(operationActor && isCurrentSpaceActor(operationActor)),
+          })
+        : fetchIssueExport(projectKey, format),
+    onSuccess: (file) => {
       const url = URL.createObjectURL(file.blob)
       const anchor = document.createElement('a')
       anchor.href = url
       anchor.download = file.filename
       anchor.click()
       URL.revokeObjectURL(url)
-    } catch {
+    },
+    onError: (_error, request) => {
       setExportError(t('reports.exportError'))
-      setFailedExport(format)
-    } finally {
-      setExporting(null)
-    }
+      setFailedExport(request.format)
+    },
+  })
+  const exporting = exportRequest.isPending ? (exportRequest.variables?.format ?? null) : null
+  function downloadExport(format: IssueExportFormat) {
+    if (!projectKey || exportRequest.isPending) return
+    setExportError(null)
+    setFailedExport(null)
+    exportRequest.mutate({ projectKey, format })
   }
 
   const velocity = useVelocityReport(tab === 'velocity' ? projectId || undefined : undefined)

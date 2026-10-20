@@ -35,3 +35,19 @@ export function withSpaceContext(to: To, search: string): To {
     ? (parts?.[1] ?? '') + '?' + params.toString() + (parts?.[3] ?? '')
     : { ...to, search: '?' + params.toString() }
 }
+
+/** Use URL resource identity; an asynchronously resolved issue project must not form a reset loop. */
+export function workspaceContextKey(pathname: string, search: string): string {
+  const params = new URLSearchParams(search),
+    keys = params.getAll('project_key')
+  const project = pathname.match(/^\/projects\/([^/]+)(?:\/|$)/)
+  const issue = pathname.match(/^\/issues\/([^/]+)(?:\/|$)/)
+  const resource = project
+    ? ['project', project[1]]
+    : issue && issue[1] !== 'create'
+      ? ['issue', issue[1]]
+      : keys.length === 1
+        ? ['project', keys[0]]
+        : ['route', pathname]
+  return JSON.stringify([spaceContextKey(search), resource])
+}

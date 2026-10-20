@@ -1,6 +1,7 @@
+import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
 import { visibleProjectKeys } from '@/api/project-catalog'
 import { useEffect, useLayoutEffect, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button, ErrorState, LoadingState } from '@pdlc/ui/ui'
 import { useSessionCommand } from '@pdlc/ui/lib'
 import type { Project } from '@/api/project'

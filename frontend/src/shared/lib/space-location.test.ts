@@ -4,6 +4,7 @@ import {
   spaceContextKey,
   spaceProjectLocation,
   withSpaceContext,
+  workspaceContextKey,
 } from './space-location'
 const registry = '00000000-0000-4000-8000-000000000001'
 const space = { registry_instance_id: registry, space_id: '00000000-0000-4000-8000-000000000002' }
@@ -54,4 +55,22 @@ describe('explicit SpaceRef navigation', () => {
       ),
     ).toBe(spaceContextKey('?' + new URLSearchParams(hex)))
   })
+})
+
+it('tracks explicit project/issue identity while ignoring tabs and asynchronous project resolution', () => {
+  expect(workspaceContextKey('/projects/QA/board', search)).toBe(
+    workspaceContextKey('/projects/QA/settings', search),
+  )
+  expect(workspaceContextKey('/projects/QA/board', search)).not.toBe(
+    workspaceContextKey('/projects/OTHER/board', search),
+  )
+  expect(workspaceContextKey('/reports', search + '&project_key=QA&tab=burndown')).toBe(
+    workspaceContextKey('/projects/QA/board', search),
+  )
+  expect(workspaceContextKey('/issues/one', search)).not.toBe(
+    workspaceContextKey('/issues/two', search),
+  )
+  expect(workspaceContextKey('/issues/one', search + '&tab=history')).toBe(
+    workspaceContextKey('/issues/one', search),
+  )
 })

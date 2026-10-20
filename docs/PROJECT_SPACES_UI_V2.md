@@ -125,6 +125,28 @@ effects. Token refresh той же identity сохраняет context. Original
 independent владельцем route и сохраняет собственные правила, включая outage
 каталога. Это не даёт дополнительных API полномочий.
 
-Scope этого этапа — Tracker navigation и его HTTP catalog. Cross-product service
-switcher, все legacy mutation callbacks после смены actor/context и машинные/V3
-surfaces требуют общей квалификации до activation; UI source tests не заменяют IAB.
+## Императивные операции и смена контекста
+
+Под новым flag content mutations используют общий useScopedMutation поверх
+TanStack Query. Каждый вызов сохраняет исходные identity/role/policy/context epochs
+в private variables envelope; wire payload не меняется. Одна очистка QueryClient
+не предотвращает поздний onSuccess, который снова запишет старые данные.
+Проверка выполняется до RPC, после его исхода и перед callback; поздний ответ
+прежнего пользователя/проекта/пространства не заселяет новый кеш и не открывает файл.
+Автоматического повтора нет; unknown outcome остаётся у original-key протокола.
+Это UI lifetime guard, не право сервера и не отмена уже начавшейся записи.
+
+Login/register/logout сохраняют штатный identity lifecycle. Обновление токена
+того же пользователя сохраняет допустимую операцию. Async callbacks, записывающие
+private data после собственного await, также обязаны проверить исходный scope
+непосредственно перед записью; wrapper не отменяет произвольный callback.
+
+URL resource identity отличает проекты и задачи в одном Space; переход board →
+backlog/settings того же проекта не создаёт новый проектный контекст.
+Экспорт захватывает исходный project/format и проверяет scope перед скачиванием.
+Единственный 401 refresh допускается для того же пользователя и действующего
+контекста; ответ прежней identity не повторяется новым токеном.
+
+Cross-product service switcher, оставшиеся legacy selectors, машинные/V3 и полная
+серверная поверхность, включая read PAT export, требуют общей квалификации до
+activation. Source tests не заменяют IAB и проверку поставленного cohort.

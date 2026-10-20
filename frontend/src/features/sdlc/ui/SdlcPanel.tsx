@@ -1,5 +1,6 @@
+import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
 import { useRef, useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, Check, RefreshCw } from 'lucide-react'
 import {

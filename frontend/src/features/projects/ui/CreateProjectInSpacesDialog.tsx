@@ -1,8 +1,9 @@
+import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
 import { visibleProjectKeys } from '@/api/project-catalog'
 import { useEffect, useId, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router'
 import {
   AlertDialog,

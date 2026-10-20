@@ -1,9 +1,15 @@
+import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
 import { useVisibleProjects } from './useVisibleProjects'
 import { readSpaceLocation } from '@/shared/lib/space-location'
 import { SpaceRequestError } from '@/api/space-catalog'
 import { useLocation } from 'react-router'
 import { parseNamespaceLocation } from '@pdlc/ui/lib'
-import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import {
+  useQuery,
+  useMutation as useIdentityMutation,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query'
 import { useNavigate } from 'react-router'
 import { endSso } from '@pdlc/ui/sso'
 import {
@@ -434,7 +440,7 @@ export function useDashboard() {
 export function useLogin() {
   const setAuth = useAuthStore((s) => s.setAuth)
   const qc = useQueryClient()
-  return useMutation({
+  return useIdentityMutation({
     mutationFn: login,
     onSuccess: (data) => {
       setAuth({
@@ -450,7 +456,7 @@ export function useLogin() {
 export function useRegister() {
   const setAuth = useAuthStore((s) => s.setAuth)
   const qc = useQueryClient()
-  return useMutation({
+  return useIdentityMutation({
     mutationFn: register,
     onSuccess: (data) => {
       setAuth({
@@ -503,7 +509,7 @@ export function useCurrentUser() {
 }
 
 export function useLogout() {
-  return useMutation({
+  return useIdentityMutation({
     mutationFn: async () => {},
     onSuccess: () => {
       endSso(ssoConfig)

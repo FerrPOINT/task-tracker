@@ -1,11 +1,15 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryRouter, RouterProvider } from 'react-router'
 import { ThemeProvider } from '@pdlc/ui/lib'
 import { AppShell } from './app-shell'
 import { SpaceSessionBoundary } from '@/shared/auth/space-session-boundary'
-import { acceptSpaceSession, useSpaceSession } from '@/shared/auth/space-session'
+import {
+  acceptSpaceSession,
+  isCurrentSpaceActor,
+  useSpaceSession,
+} from '@/shared/auth/space-session'
 import { ssoConfig, useAuthStore } from '@/shared/auth/store'
 import { SpaceRequestError, type VisibleSpaceCatalog } from '@/api/space-catalog'
 import type { VisibleProjectCatalog, VisibleProjectQuery } from '@/api/project-catalog'
@@ -46,6 +50,7 @@ function mount(initial: string) {
         element: <AppShell />,
         children: [
           { path: '/projects/QA/board', element: <h1>Verified project body</h1> },
+          { path: '/projects/OTHER/board', element: <h1>Other project body</h1> },
           {
             path: '/admin',
             handle: { spaceAdmission: 'independent' },
@@ -56,7 +61,7 @@ function mount(initial: string) {
     ],
     { initialEntries: [initial] },
   )
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <ThemeProvider>
         <SpaceSessionBoundary enabled>
@@ -65,6 +70,7 @@ function mount(initial: string) {
       </ThemeProvider>
     </QueryClientProvider>,
   )
+  return { ...view, router }
 }
 beforeEach(() => {
   vi.stubEnv('VITE_SPACE_ACCESS_ENABLED', 'true')
@@ -161,4 +167,16 @@ it('does not apply project catalog outage as the authorization rule for the glob
   calls.spaces.mockRejectedValue(new SpaceRequestError(503))
   mount('/admin')
   expect(await screen.findByRole('heading', { name: 'Global admin body' })).toBeInTheDocument()
+})
+
+it('retires the initiating operation context when moving to another project in the same space', async () => {
+  const { router } = mount('/projects/QA/board?' + new URLSearchParams(space))
+  await screen.findByRole('heading', { name: 'Verified project body' })
+  const initiating = useSpaceSession.getState().session!
+  await act(async () => {
+    await router.navigate('/projects/OTHER/board?' + new URLSearchParams(space))
+  })
+  await screen.findByText('Проект недоступен в выбранном пространстве.')
+  expect(isCurrentSpaceActor(initiating)).toBe(false)
+  expect(screen.queryByRole('heading', { name: 'Verified project body' })).not.toBeInTheDocument()
 })

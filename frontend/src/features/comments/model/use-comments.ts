@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useScopedMutation as useMutation } from '@/shared/api/useScopedMutation'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { listComments, createComment, updateComment, deleteComment } from '@/api/comment'
 import type { Comment, CreateCommentInput, UpdateCommentInput } from '@/entities/comment/model'
 

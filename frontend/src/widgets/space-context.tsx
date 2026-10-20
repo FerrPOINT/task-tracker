@@ -3,7 +3,7 @@ import { ErrorState, LoadingState, SearchableSelect } from '@pdlc/ui/ui'
 import { observeSpaceContext, useSpaceSession } from '@/shared/auth/space-session'
 import {
   readSpaceLocation,
-  spaceContextKey,
+  workspaceContextKey,
   spaceProjectLocation,
 } from '@/shared/lib/space-location'
 import { Link, useLocation, useNavigate, useMatches } from 'react-router'
@@ -22,7 +22,7 @@ export function SpaceContextBoundary({
 }) {
   const location = useLocation()
   const session = useSpaceSession((state) => state.session)
-  const key = spaceContextKey(location.search)
+  const key = workspaceContextKey(location.pathname, location.search)
   const context = readSpaceLocation(location.search)
   const projectKeys = new URLSearchParams(location.search).getAll('project_key')
   const invalidProject =
