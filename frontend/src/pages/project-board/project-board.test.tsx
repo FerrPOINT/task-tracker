@@ -1,10 +1,26 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router'
 
 import { ProjectBoardPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
+
+const navigateToFleet = vi.hoisted(() => vi.fn())
+vi.mock('@pdlc/ui/platform', async (original) => ({
+  ...(await original<object>()),
+  platformNavigate: navigateToFleet,
+}))
+vi.mock('@pdlc/ui/ui', async (original) => ({
+  ...(await original<object>()),
+  usePlatformServices: () => ({
+    source: 'runtime',
+    services: [{ key: 'fleet-control', ui_url: 'https://fleet.test' }],
+  }),
+}))
+vi.mock('@/api/project', () => ({
+  getProject: async (key: string) => ({ key, id: '68be198d-aabb-4d81-91bc-ac51ff621643' }),
+}))
 
 vi.mock('@/shared/api/hooks', () => ({
   useBoard: () => ({
@@ -47,6 +63,18 @@ function wrapper(children: React.ReactNode, initialEntry = '/projects/TT/board')
 }
 
 describe('ProjectBoardPage', () => {
+  it('opens empty PM chat with the same immutable project from every board column', async () => {
+    navigateToFleet.mockClear()
+    const user = userEvent.setup()
+    render(wrapper(<ProjectBoardPage />))
+    const actions = screen.getAllByRole('button', { name: 'Создать' })
+    expect(actions).toHaveLength(2)
+    for (const action of actions) await user.click(action)
+    await waitFor(() => expect(navigateToFleet).toHaveBeenCalledTimes(2))
+    expect(navigateToFleet).toHaveBeenCalledWith(
+      'https://fleet.test/chats/new?project=68be198d-aabb-4d81-91bc-ac51ff621643',
+    )
+  })
   it('renders board columns and issue card', async () => {
     render(wrapper(<ProjectBoardPage />))
     const board = screen.getByRole('region', { name: 'Колонки доски' })

@@ -55,10 +55,8 @@ test.describe('integration against live backend', () => {
     await expect(page.getByText('Smoke issue').first()).toBeVisible({ timeout: 10_000 })
 
     const issueSummary = `Integration test issue ${Date.now()}`
-    await page
-      .getByRole('link', { name: /создать|create/i })
-      .first()
-      .click()
+    // Compatibility form remains directly routable; visible create actions open PM.
+    await page.goto('/issues/create?project_key=DEMO')
     await expect(page.getByRole('heading', { name: /создать задачу|new issue/i })).toBeVisible()
     await page.getByRole('combobox').first().selectOption('DEMO')
     await page.getByRole('textbox').nth(0).fill(issueSummary)

@@ -1,11 +1,22 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
-import {ProjectAvatar, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ErrorState, LoadingState, UserAvatar, toast} from '@pdlc/ui/ui'
+import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
+import {
+  ProjectAvatar,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  ErrorState,
+  LoadingState,
+  UserAvatar,
+  toast,
+} from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { List, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
-
 
 import { useBoard, useMoveIssue, useTransitions } from '@/shared/api/hooks'
 
@@ -339,13 +350,14 @@ export function ProjectBoardPage() {
                 )}
               </div>
 
-              <Link
-                to="/issues/create"
-                state={{ project_key: key }}
+              <CreateTaskAction
+                projectKey={key}
+                aria-label={t('board.create')}
+                variant="ghost"
                 className={`${density === 'compact' ? 'm-1.5' : 'm-1.5 md:m-2'} flex min-h-10 items-center justify-center rounded-md border border-dashed border-border-strong px-2 text-center text-sm text-text-muted hover:border-text-muted hover:text-text-secondary`}
               >
-                + {t('board.create')}
-              </Link>
+                {t('board.create')}
+              </CreateTaskAction>
             </div>
           )
         })}
