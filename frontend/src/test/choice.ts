@@ -1,5 +1,8 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 export async function choiceOptions(field: HTMLElement) {
+  await waitFor(() => {
+    if (field.matches(':disabled')) throw Error('Choice is not ready')
+  })
   fireEvent.keyDown(field, { key: 'Enter' })
   const popup = await screen.findByRole('listbox')
   const items = screen.queryAllByRole('option')
@@ -14,6 +17,9 @@ export async function choiceOptions(field: HTMLElement) {
   return options
 }
 export async function chooseValue(field: HTMLElement, value: string | string[]) {
+  await waitFor(() => {
+    if (field.matches(':disabled')) throw Error('Choice is not ready')
+  })
   fireEvent.keyDown(field, { key: 'Enter' })
   const multiple = Array.isArray(value)
   const items = await screen.findAllByRole(multiple ? 'menuitemcheckbox' : 'option')
