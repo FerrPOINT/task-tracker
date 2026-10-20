@@ -8,6 +8,7 @@ import {
   useSidebarDisclosure,
 } from '@pdlc/ui/ui'
 import { ProjectActions } from './project-actions'
+import { CreateTaskAction } from '@/features/issues/ui/CreateTaskAction'
 import {
   NamespaceShellContext,
   useNamespaceCatalog,
@@ -25,7 +26,6 @@ import {
   Columns2,
   Bell,
   User,
-  Plus,
   ChevronDown,
   LogOut,
   BarChart3,
@@ -76,8 +76,14 @@ function useCurrentProjectKey() {
       : undefined
   // On the issue page the project is not part of the URL; resolve it from
   // the loaded issue so sidebar Board/Backlog/Trash keep their context.
-  const { data: issue } = useIssue(issueId ?? '')
-  return match?.[1] ?? createIssueProjectKey ?? reportsProjectKey ?? issue?.project_key
+  const issue = useIssue(issueId ?? '')
+  return {
+    key: match?.[1] ?? createIssueProjectKey ?? reportsProjectKey ?? issue.data?.project_key,
+    pending: Boolean(issueId && issue.isPending),
+    unavailable: Boolean(
+      issueId && !issue.isPending && (issue.isError || !issue.data?.project_key),
+    ),
+  }
 }
 
 function SidebarLink({
@@ -212,7 +218,8 @@ function ProjectNavigation({
 export function AppShell() {
   const { t } = useTranslation()
   const location = useLocation()
-  const routeProjectKey = useCurrentProjectKey()
+  const routeProject = useCurrentProjectKey()
+  const routeProjectKey = routeProject.key
   const namespace = useNamespaceContext()
   const namespaceEnabled = import.meta.env.VITE_NAMESPACE_ENABLED === 'true'
   const allProjects = !namespace.malformed && isAllProjects(location.search)
@@ -221,7 +228,16 @@ export function AppShell() {
     ? namespace.query.isError
       ? undefined
       : namespace.query.data?.resource_key
-    : routeProjectKey
+    : routeProject.key
+  const createContextPending = namespace.ref ? namespace.query.isPending : routeProject.pending
+  const createContextError =
+    namespace.malformed ||
+    (namespace.ref
+      ? !namespace.query.isPending &&
+        (namespace.query.isError || !namespace.query.data?.resource_key)
+      : routeProject.unavailable)
+      ? 'Контекст проекта недоступен. Выберите проект ещё раз.'
+      : undefined
   const projectDisclosures = useProjectDisclosures(collapsedProjectsStorageKey)
   const collapsedProjects = new Set(projectDisclosures.collapsed)
   const { data: projects = [] } = useProjects()
@@ -319,16 +335,14 @@ export function AppShell() {
       renderNavigation={({ compact, mobile, onNavigate }) => (
         <>
           {mobile && (
-            <Button asChild className="mb-3 min-h-11 w-full gap-2">
-              <Link
-                to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
-                onClick={onNavigate}
-                aria-label={t('navigation.create')}
-              >
-                <Plus className="h-4 w-4" aria-hidden />
-                {t('navigation.create')}
-              </Link>
-            </Button>
+            <CreateTaskAction
+              projectKey={projectKey}
+              contextPending={createContextPending}
+              contextError={createContextError}
+              className="mb-3 min-h-11 w-full gap-2"
+            >
+              {t('navigation.create')}
+            </CreateTaskAction>
           )}
           <nav className="base-sidebar-list" aria-label={t('navigation.mainNav')}>
             {navItems.map((item) => (
@@ -422,15 +436,15 @@ export function AppShell() {
           }
           actions={
             <>
-              <Button asChild size="sm" className="min-h-10 min-w-10 gap-1 px-2.5 text-xs">
-                <Link
-                  to={projectKey ? `/issues/create?project_key=${projectKey}` : '/issues/create'}
-                  aria-label={t('navigation.create')}
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  <span className="hidden xl:inline">{t('navigation.create')}</span>
-                </Link>
-              </Button>
+              <CreateTaskAction
+                projectKey={projectKey}
+                contextPending={createContextPending}
+                contextError={createContextError}
+                size="sm"
+                className="min-h-10 min-w-10 gap-1 px-2.5 text-xs"
+              >
+                <span className="hidden xl:inline">{t('navigation.create')}</span>
+              </CreateTaskAction>
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                   <Button

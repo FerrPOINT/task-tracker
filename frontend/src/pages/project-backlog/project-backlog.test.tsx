@@ -6,6 +6,22 @@ import { MemoryRouter, Routes, Route, useLocation } from 'react-router'
 import { ProjectBacklogPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
 
+const navigateToFleet = vi.hoisted(() => vi.fn())
+vi.mock('@pdlc/ui/platform', async (original) => ({
+  ...(await original<object>()),
+  platformNavigate: navigateToFleet,
+}))
+vi.mock('@pdlc/ui/ui', async (original) => ({
+  ...(await original<object>()),
+  usePlatformServices: () => ({
+    source: 'runtime',
+    services: [{ key: 'fleet-control', ui_url: 'https://fleet.test' }],
+  }),
+}))
+vi.mock('@/api/project', () => ({
+  getProject: async (key: string) => ({ key, id: '68be198d-aabb-4d81-91bc-ac51ff621643' }),
+}))
+
 const mockBacklog = vi.hoisted(() => vi.fn())
 const mockSprints = vi.hoisted(() => vi.fn())
 const mockMoveIssue = vi.hoisted(() => vi.fn())
@@ -231,16 +247,19 @@ describe('ProjectBacklogPage', () => {
     expect(screen.getAllByText('Future sprint issue')).toHaveLength(1)
   })
 
-  it('preserves project key on every issue create link', async () => {
+  it('opens empty PM chat with immutable project ID from every task create action', async () => {
     render(wrapper(<ProjectBacklogPage />))
-    const links = await screen.findAllByRole('link')
-    const createLinks = links.filter((link) =>
-      link.getAttribute('href')?.startsWith('/issues/create'),
+    const actions = screen.getAllByRole('button', { name: /^Создать$|Создать задачу/ })
+    expect(actions).toHaveLength(2)
+    for (const action of actions) {
+      fireEvent.click(action)
+      await waitFor(() => expect(action).not.toBeDisabled())
+    }
+    expect(navigateToFleet).toHaveBeenCalledTimes(2)
+    expect(navigateToFleet).toHaveBeenCalledWith(
+      'https://fleet.test/chats/new?project=68be198d-aabb-4d81-91bc-ac51ff621643',
     )
-    expect(createLinks).toHaveLength(2)
-    createLinks.forEach((link) => {
-      expect(link).toHaveAttribute('href', '/issues/create?project_key=TT')
-    })
+    expect(screen.queryByRole('link', { name: /Создать/ })).not.toBeInTheDocument()
   })
 
   it('does not render active sprint actions for the backlog sentinel', async () => {

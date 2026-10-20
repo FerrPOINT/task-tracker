@@ -8,6 +8,22 @@ import { ThemeProvider } from '@pdlc/ui/lib'
 
 import { AppShell } from './app-shell'
 
+const navigateToFleet = vi.hoisted(() => vi.fn())
+vi.mock('@pdlc/ui/platform', async (original) => ({
+  ...(await original<object>()),
+  platformNavigate: navigateToFleet,
+}))
+vi.mock('@pdlc/ui/ui', async (original) => ({
+  ...(await original<object>()),
+  usePlatformServices: () => ({
+    source: 'runtime',
+    services: [{ key: 'fleet-control', ui_url: 'https://fleet.test' }],
+  }),
+}))
+vi.mock('@/api/project', () => ({
+  getProject: async (key: string) => ({ key, id: '68be198d-aabb-4d81-91bc-ac51ff621643' }),
+}))
+
 function render(view: ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return renderView(<QueryClientProvider client={client}>{view}</QueryClientProvider>)
@@ -92,7 +108,7 @@ describe('AppShell notifications', () => {
     ).toHaveAttribute('href', '/search')
   })
 
-  it('keeps contextual task creation reachable in the mobile drawer and closes it on navigation', async () => {
+  it('requests contextual PM chat from the mobile drawer without treating void as navigation acceptance', async () => {
     mockHooks([])
     const user = userEvent.setup()
     render(
@@ -105,11 +121,14 @@ describe('AppShell notifications', () => {
     const trigger = screen.getByRole('button', { name: 'Открыть навигацию' })
     await user.click(trigger)
     const dialog = await screen.findByRole('dialog')
-    const create = within(dialog).getByRole('link', { name: 'Создать' })
-    expect(create).toHaveAttribute('href', '/issues/create?project_key=XP')
+    const create = within(dialog).getByRole('button', { name: 'Создать' })
     await user.click(create)
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    await waitFor(() => expect(trigger).toHaveFocus())
+    await waitFor(() =>
+      expect(navigateToFleet).toHaveBeenCalledWith(
+        'https://fleet.test/chats/new?project=68be198d-aabb-4d81-91bc-ac51ff621643',
+      ),
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('keeps a named project picker and preserves the full long project name', () => {
@@ -204,7 +223,7 @@ describe('AppShell notifications', () => {
     ).not.toHaveAttribute('aria-current')
   })
 
-  it('retains project navigation and selects project reports for filtered reports', () => {
+  it('retains project navigation and selects project reports for filtered reports', async () => {
     mockHooks([])
     render(
       <ThemeProvider>
@@ -220,11 +239,14 @@ describe('AppShell notifications', () => {
       'page',
     )
     expect(screen.queryByRole('link', { name: 'Отчёты' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Создать' })).toHaveAttribute(
-      'href',
-      '/issues/create?project_key=XP',
+    const create = screen.getByRole('button', { name: 'Создать' })
+    expect(create).not.toHaveClass('hidden')
+    fireEvent.click(create)
+    await waitFor(() =>
+      expect(navigateToFleet).toHaveBeenCalledWith(
+        'https://fleet.test/chats/new?project=68be198d-aabb-4d81-91bc-ac51ff621643',
+      ),
     )
-    expect(screen.getByRole('link', { name: 'Создать' })).not.toHaveClass('hidden')
   })
 
   it('closes the mobile navigation dialog with Escape and after choosing a link', async () => {
@@ -266,6 +288,19 @@ describe('AppShell notifications', () => {
 
     expect(useIssue).toHaveBeenCalledWith('')
     expect(useIssue).not.toHaveBeenCalledWith('create')
+  })
+
+  it('does not drop the project while resolving an existing issue context', () => {
+    mockHooks([])
+    useIssue.mockReturnValue({ data: undefined, isPending: true })
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/issues/issue-1']}>
+          <AppShell />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+    expect(screen.getByRole('button', { name: 'Создать' })).toBeDisabled()
   })
 
   it('uses the query project key for create issue navigation context', () => {

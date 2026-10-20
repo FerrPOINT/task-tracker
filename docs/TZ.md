@@ -1,5 +1,14 @@
 # Полное техническое задание Task Tracker (Jira-like)
 
+Видимые действия создания задачи в header/mobile navigation, backlog (включая
+пустой список) и колонках board открывают пустой чат PM в Fleet. Выбранный ключ
+проекта разрешается через существующий GET проекта в immutable UUID для
+`/chats/new?project=<UUID>`. Адрес Fleet берётся только из публичного каталога
+Base или настроенного host bridge; недоступный mapping показывает ошибку без
+ручного fallback. До первого сообщения пользователя задача не создаётся.
+Прежние `/issues/create` и API создания остаются для совместимости. Отправка
+navigation request не считается подтверждением принятого host маршрута.
+
 Bounded source candidate: [Task Source Binding](SDLC_TASK_SOURCE_BINDING.md).
 Single-task candidate refs are server allocated under owner project policy and
 frozen at existing exact requirements confirmation, without a new business step.
