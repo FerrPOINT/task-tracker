@@ -161,8 +161,12 @@ test.describe('smoke', () => {
       .locator('main')
       .getByRole('button', { name: /^Создать$|Создать задачу|^Create$|Create issue/i })
     await expect(actions).toHaveCount(2)
-    for (const width of [375, 1920, 2560]) {
-      await page.setViewportSize({ width, height: 1080 })
+    for (const [width, height] of [
+      [375, 812],
+      [1920, 1080],
+      [2560, 1440],
+    ] as const) {
+      await page.setViewportSize({ width, height })
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
         true,
       )
