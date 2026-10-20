@@ -86,6 +86,97 @@ async function installSsoMocks(page: Page) {
 }
 
 test.describe('smoke', () => {
+  test('new task entry opens empty PM chat without creating a Draft', async ({
+    page,
+    baseURL,
+  }, testInfo) => {
+    await installSsoMocks(page)
+    const app = (baseURL ?? 'http://localhost:4173').replace('127.0.0.1', 'localhost')
+    const project = {
+      id: '00000000-0000-0000-0000-000000000010',
+      key: 'DEMO',
+      name: 'Demo Project',
+    }
+    let writes = 0
+    await page.route('**/api/v1/**', async (route) => {
+      const request = route.request()
+      const path = new URL(request.url()).pathname
+      if (request.method() !== 'GET') {
+        writes++
+        return routeJson(route, { error: 'Read-only entry fixture' }, 405)
+      }
+      if (path === '/api/v1/runtime/services')
+        return routeJson(route, {
+          services: [
+            {
+              key: 'fleet-control',
+              label: 'Fleet',
+              url: 'https://fleet.example.test',
+              ui_url: 'https://fleet.example.test',
+              health: 'unknown',
+              capabilities: [],
+              contract_version: '1.1',
+            },
+          ],
+        })
+      if (path === '/api/v1/users/me')
+        return routeJson(route, { id: mockUser.id, username: 'demo', display_name: 'Demo User' })
+      if (path === '/api/v1/projects') return routeJson(route, { projects: [project] })
+      if (path === '/api/v1/projects/DEMO') return routeJson(route, project)
+      if (path === '/api/v1/projects/DEMO/backlog')
+        return routeJson(route, {
+          project_id: project.id,
+          project_key: project.key,
+          sprint: {
+            id: 'none',
+            name: 'Backlog',
+            state: 'closed',
+            issue_ids: [],
+            velocity: 0,
+            remaining_days: null,
+          },
+          sprint_issues: [],
+          backlog_issues: [],
+          backlog_total: 0,
+          backlog_offset: 0,
+          backlog_limit: 100,
+        })
+      if (path === '/api/v1/projects/DEMO/sprints') return routeJson(route, { sprints: [] })
+      if (path === '/api/v1/notifications')
+        return routeJson(route, { notifications: [], unread_count: 0 })
+      if (path === '/api/v1/namespace-contexts') return routeJson(route, [])
+      if (path === '/api/v1/events')
+        return route.fulfill({ contentType: 'text/event-stream', body: ': fixture\n\n' })
+      return routeJson(route, {})
+    })
+    await page.route('https://fleet.example.test/**', (route) =>
+      route.fulfill({
+        contentType: 'text/html',
+        body: '<p>Fleet navigation fixture only</p>',
+      }),
+    )
+    await page.goto(`${app}/projects/DEMO/backlog`)
+    await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
+    const actions = page
+      .locator('main')
+      .getByRole('button', { name: /^Создать$|Создать задачу|^Create$|Create issue/i })
+    await expect(actions).toHaveCount(2)
+    for (const width of [375, 1920, 2560]) {
+      await page.setViewportSize({ width, height: 1080 })
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      )
+      await page.screenshot({
+        path: testInfo.outputPath(`new-task-entry-${width}.png`),
+        fullPage: true,
+      })
+    }
+    expect(writes).toBe(0)
+    await actions.last().click()
+    await expect(page).toHaveURL(`https://fleet.example.test/chats/new?project=${project.id}`)
+    expect(writes).toBe(0)
+  })
+
   for (const outcome of ['validation400', 'validation422', 'unknown'] as const) {
     test(`issue creation preserves safe retry semantics after ${outcome}`, async ({
       page,
@@ -688,16 +779,13 @@ test.describe('smoke', () => {
       `${appBaseURL}/projects/${mockUser.key}/backlog${namespaceEnabled ? `?registry_instance_id=${registryId}&namespace_id=${namespaceId}` : ''}`,
     )
     await expect(page.getByRole('heading', { name: /backlog|бэклог/i })).toBeVisible()
-    const createLinks = page.locator('main a[href^="/issues/create"]')
-    await expect(createLinks).toHaveCount(2)
-    await createLinks.last().click()
-    await expect.poll(() => new URL(page.url()).pathname).toBe('/issues/create')
-    expect(new URL(page.url()).searchParams.get('project_key')).toBe(mockUser.key)
-    expect(new URL(page.url()).searchParams.get('registry_instance_id')).toBe(
-      namespaceEnabled ? registryId : null,
-    )
-    expect(new URL(page.url()).searchParams.get('namespace_id')).toBe(
-      namespaceEnabled ? namespaceId : null,
+    const createActions = page
+      .locator('main')
+      .getByRole('button', { name: /^Создать$|Создать задачу|^Create$|Create issue/i })
+    await expect(createActions).toHaveCount(2)
+    // The legacy form remains a compatibility route, not a visible create entry.
+    await page.goto(
+      `${appBaseURL}/issues/create?project_key=${mockUser.key}${namespaceEnabled ? `&registry_instance_id=${registryId}&namespace_id=${namespaceId}` : ''}`,
     )
     await expect(page.locator('#issue-project')).toHaveAttribute('value', mockUser.key)
 

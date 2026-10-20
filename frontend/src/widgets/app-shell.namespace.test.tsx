@@ -8,6 +8,26 @@ import { AppShell } from './app-shell'
 import { ProjectLink, useProjectNavigate } from '@/shared/lib/project-navigation'
 import type { ResourceContext } from './namespace-context'
 
+const navigateToFleet = vi.hoisted(() => vi.fn())
+vi.mock('@pdlc/ui/platform', async (original) => ({
+  ...(await original<object>()),
+  platformNavigate: navigateToFleet,
+}))
+vi.mock('@pdlc/ui/ui', async (original) => ({
+  ...(await original<object>()),
+  usePlatformServices: () => ({
+    source: 'runtime',
+    services: [{ key: 'fleet-control', ui_url: 'https://fleet.test' }],
+  }),
+}))
+vi.mock('@/api/project', () => ({
+  getProject: async (key: string) => ({
+    key,
+    id:
+      key === 'A' ? '0ee31fca-2533-44bf-b54e-a7759fe80b14' : 'a93e0210-d3f6-4936-b465-90da8312f871',
+  }),
+}))
+
 vi.mock('@/shared/api/hooks', () => ({
   useCurrentUser: () => ({ data: { email: 'operator@example.test' } }),
   useLogout: () => ({ mutate: vi.fn() }),
@@ -149,11 +169,11 @@ describe('project sidebar and Namespace selection', () => {
       'aria-expanded',
       'false',
     )
-    expect(
-      within(screen.getByRole('banner')).getByRole('link', { name: 'Создать' }),
-    ).toHaveAttribute(
-      'href',
-      `/issues/create?project_key=A&registry_instance_id=${registry}&namespace_id=${refs[0]}`,
+    await user.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Создать' }))
+    await waitFor(() =>
+      expect(navigateToFleet).toHaveBeenCalledWith(
+        `https://fleet.test/chats/new?project=${refs[0]}`,
+      ),
     )
     await user.click(picker)
     await user.click(screen.getByRole('menuitemradio', { name: 'Одинаковый проект · B' }))
