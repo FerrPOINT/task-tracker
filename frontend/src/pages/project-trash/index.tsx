@@ -1,12 +1,12 @@
-import { ProjectAvatar } from '@pdlc/ui/ui'
+import {ProjectAvatar, toast, Button, ConfirmDialog, ErrorState} from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { Trash2, RotateCcw, ArrowLeft } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useCallback, useEffect, useState } from 'react'
-import { toast } from 'sonner'
-import { Button } from '@pdlc/ui/ui'
-import { ConfirmDialog, ErrorState } from '@pdlc/ui/ui'
+
+
+
 import { useTrash, useRestoreIssue, usePurgeIssue } from '@/shared/api/hooks'
 
 const TRASH_PAGE_SIZE = 50
@@ -150,7 +150,7 @@ export function ProjectTrashPage() {
                   {t('trash.restore', 'Restore')}
                 </Button>
                 <Button
-                  variant="ghost"
+                  variant="destructive-outline"
                   size="sm"
                   className="min-h-11 gap-1 px-2 text-center text-xs leading-tight whitespace-normal text-danger hover:text-danger sm:min-h-10"
                   aria-label={t('trash.purgeIssue', { key: issue.key })}

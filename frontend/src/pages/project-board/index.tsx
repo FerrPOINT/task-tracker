@@ -1,22 +1,16 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
-import { ProjectAvatar } from '@pdlc/ui/ui'
+import {ProjectAvatar, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, ErrorState, LoadingState, UserAvatar, toast} from '@pdlc/ui/ui'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { List, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@pdlc/ui/ui'
-import { ErrorState, LoadingState } from '@pdlc/ui/ui'
+
+
 import { useBoard, useMoveIssue, useTransitions } from '@/shared/api/hooks'
-import { UserAvatar } from '@pdlc/ui/ui'
+
 import type { components } from '@/api/generated'
-import { toast } from 'sonner'
+
 import { statusLabel } from '@/shared/lib/status-label'
 
 export type Issue = components['schemas']['IssueResponse']
@@ -223,7 +217,8 @@ export function ProjectBoardPage() {
             aria-label={t('board.density')}
           >
             {(['comfortable', 'compact'] as const).map((option) => (
-              <button
+              <Button
+                variant="ghost"
                 key={option}
                 type="button"
                 aria-pressed={density === option}
@@ -235,7 +230,7 @@ export function ProjectBoardPage() {
                 }`}
               >
                 {t(`board.density${option === 'compact' ? 'Compact' : 'Comfortable'}`)}
-              </button>
+              </Button>
             ))}
           </div>
           <Button
@@ -258,7 +253,8 @@ export function ProjectBoardPage() {
         aria-label="Статус задач"
       >
         {columns.map((column) => (
-          <button
+          <Button
+            variant="ghost"
             key={column.id}
             type="button"
             aria-pressed={activeColumnId === column.id}
@@ -274,7 +270,7 @@ export function ProjectBoardPage() {
             }`}
           >
             <span className="block truncate">{statusLabel(column.name, t)}</span>
-          </button>
+          </Button>
         ))}
       </div>
 

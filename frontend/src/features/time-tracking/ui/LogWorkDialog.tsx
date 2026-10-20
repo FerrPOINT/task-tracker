@@ -4,10 +4,10 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useTranslation } from 'react-i18next'
 import { Play, Square } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@pdlc/ui/ui'
-import { Button } from '@pdlc/ui/ui'
-import { Input } from '@pdlc/ui/ui'
-import { Label } from '@pdlc/ui/ui'
+import {Dialog, DialogContent, DialogHeader, DialogTitle, Button, Input, Label} from '@pdlc/ui/ui'
+
+
+
 import { parseDuration, formatDuration } from '@/shared/lib/time'
 import type { Worklog, LogWorkInput } from '@/entities/worklog/model'
 

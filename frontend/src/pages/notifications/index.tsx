@@ -14,10 +14,10 @@ import {
   useNotifications,
   useUpdateNotificationSettings,
 } from '@/shared/api/hooks'
-import { Select, Button, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
-import { ErrorState } from '@pdlc/ui/ui'
-import { Label } from '@pdlc/ui/ui'
+import {Select, Button, ResourceList, ResourceListRow, Checkbox, Switch, Card, CardContent, CardHeader, CardTitle, ErrorState, Label} from '@pdlc/ui/ui'
+
+
+
 import { Check, ChevronLeft, ChevronRight } from 'lucide-react'
 
 const PAGE_SIZE = 20
@@ -402,12 +402,11 @@ export function NotificationsPage() {
                   />
                 </div>
                 <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-10">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 shrink-0 accent-accent"
+                  <Switch
+                    className="shrink-0"
                     checked={displayedSettings.notify_own_changes}
-                    onChange={(event) =>
-                      updatePreference({ notify_own_changes: event.target.checked })
+                    onCheckedChange={(checked) =>
+                      updatePreference({ notify_own_changes: checked === true })
                     }
                     disabled={updateSettings.isPending}
                   />
@@ -420,11 +419,10 @@ export function NotificationsPage() {
                       key={eventType}
                       className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-text-secondary sm:min-h-10"
                     >
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 shrink-0 accent-accent"
+                      <Checkbox
+                        className="shrink-0"
                         checked={!displayedSettings.disabled_event_types.includes(eventType)}
-                        onChange={(event) => toggleEvent(eventType, event.target.checked)}
+                        onCheckedChange={(checked) => toggleEvent(eventType, checked === true)}
                         disabled={updateSettings.isPending}
                       />
                       <span>{t(`notifications.events.${eventType}`)}</span>

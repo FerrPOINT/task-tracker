@@ -1,17 +1,9 @@
+import {Disclosure, Button, DescriptionItem, EmptyState, ErrorState, Label, LoadingState, ResourceList, ResourceListRow, Checkbox} from '@pdlc/ui/ui'
 import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight, Check, RefreshCw } from 'lucide-react'
-import {
-  Button,
-  DescriptionItem,
-  EmptyState,
-  ErrorState,
-  Label,
-  LoadingState,
-  ResourceList,
-  ResourceListRow,
-} from '@pdlc/ui/ui'
+
 import {
   confirmRequirements,
   routingRoles,
@@ -297,12 +289,13 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
               {context.permissions.can_confirm ? (
                 <>
                   <Label className="mb-3 flex min-h-10 items-start gap-2">
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-4 w-4 shrink-0 accent-accent"
+                    <Checkbox
+                      className="mt-1 shrink-0"
                       checked={acknowledgedPin === pin}
                       disabled={!canConfirm}
-                      onChange={(event) => setAcknowledgedPin(event.target.checked ? pin : null)}
+                      onCheckedChange={(checked) =>
+                        setAcknowledgedPin(checked === true ? pin : null)
+                      }
                     />
                     <span>{t('sdlc.acknowledge', { revision: requirements.revision })}</span>
                   </Label>
@@ -333,8 +326,10 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                 {displayedPolicy.version}
                               </DescriptionItem>
                             </dl>
-                            <details className="mb-3 min-w-0">
-                              <summary>{t('sdlc.publication.references')}</summary>
+                            <Disclosure
+                              className="mb-3 min-w-0"
+                              summary={<>{t('sdlc.publication.references')}</>}
+                            >
                               <dl>
                                 <DescriptionItem layout="inline" label="SHA-256">
                                   {displayedPolicy.routing_hash}
@@ -394,16 +389,15 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                                   </section>
                                 )
                               })}
-                            </details>
+                            </Disclosure>
                             <Label className="flex min-h-10 items-start gap-2">
-                              <input
-                                type="checkbox"
-                                className="mt-1 h-4 w-4 shrink-0 accent-accent"
+                              <Checkbox
+                                className="mt-1 shrink-0"
                                 checked={Boolean(selected)}
                                 disabled={!canConfirm || (!selected && !policyReady)}
-                                onChange={(event) => {
+                                onCheckedChange={(checked) => {
                                   setPublication(
-                                    event.target.checked && pin && policyReady
+                                    checked === true && pin && policyReady
                                       ? { pin, policy: routingPolicy.data! }
                                       : null,
                                   )
@@ -492,8 +486,10 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                             </DescriptionItem>
                           </dl>
                         )}
-                        <details className="min-w-0 text-text-muted">
-                          <summary>{t('sdlc.eventPin')}</summary>
+                        <Disclosure
+                          className="min-w-0 text-text-muted"
+                          summary={<>{t('sdlc.eventPin')}</>}
+                        >
                           <dl>
                             <DescriptionItem layout="inline" label={t('sdlc.eventRef')}>
                               {event.event_id}
@@ -502,7 +498,7 @@ export function SdlcPanel({ issueId }: { issueId: string }) {
                               {event.metadata_sha256}
                             </DescriptionItem>
                           </dl>
-                        </details>
+                        </Disclosure>
                       </li>
                     </ResourceListRow>
                   ))}

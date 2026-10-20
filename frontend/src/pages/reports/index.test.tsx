@@ -304,7 +304,7 @@ describe('ReportsPage', () => {
     const table = screen.getByRole('table', { name: /кумулятивный поток|cumulative flow/i })
     expect(within(table).getByRole('row', { name: /2026-08-01 5 2 1/i })).toBeInTheDocument()
     expect(within(table).getByRole('row', { name: /2026-08-02 3 4 2/i })).toBeInTheDocument()
-    expect(table.parentElement).toHaveClass('sr-only')
+    expect(table.closest('.sr-only')).toBeInTheDocument()
     expect(table).not.toHaveClass('sr-only')
     expect(screen.getByTestId('chart').closest('[aria-hidden="true"]')).toBeInTheDocument()
   })

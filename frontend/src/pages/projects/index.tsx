@@ -1,30 +1,17 @@
 import { ProjectCardActionItems, ProjectCardLink } from '@/widgets/project-actions'
-import { ProjectAvatar, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
+import {ProjectAvatar, ResourceList, ResourceListRow, Button, ErrorState, LoadingState, Input, AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '@pdlc/ui/ui'
 
 import { Plus, Search, Trash2, MoreHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
-import { Button } from '@pdlc/ui/ui'
-import { ErrorState, LoadingState } from '@pdlc/ui/ui'
-import { Input } from '@pdlc/ui/ui'
+
+
+
 import { useProjects, useCreateProject, useDeleteProject } from '@/shared/api/hooks'
 import { ProjectFormDialog } from '@/features/projects/ui/ProjectFormDialog'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@pdlc/ui/ui'
+
 import type { Project } from '@/api/project'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@pdlc/ui/ui'
+
 
 export function ProjectsPage() {
   const { t } = useTranslation()

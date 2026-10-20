@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router'
-import { toast } from 'sonner'
+import { toast } from '@pdlc/ui/ui'
 
 import { ProjectCustomFieldsPage } from './'
 import { ThemeProvider } from '@pdlc/ui/lib'
@@ -14,7 +14,7 @@ const mockFields = vi.hoisted(() => vi.fn())
 const mockCreateState = vi.hoisted(() => vi.fn())
 const mockDeleteState = vi.hoisted(() => vi.fn())
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('@pdlc/ui/ui', async (importOriginal) => ({...(await importOriginal<typeof import('@pdlc/ui/ui')>()),...await (() => ({ toast: { success: vi.fn(), error: vi.fn() } }))()}))
 
 vi.mock('@/shared/api/hooks', () => ({
   useProjectCustomFields: (...args: unknown[]) => mockFields(...args),

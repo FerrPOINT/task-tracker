@@ -1,19 +1,13 @@
 import { PriorityBadge } from '@/features/issues/ui/PriorityBadge'
-import { ProjectAvatar } from '@pdlc/ui/ui'
+import {ProjectAvatar, Button, ErrorState, LoadingState, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, UserAvatar} from '@pdlc/ui/ui'
 import { useEffect, useState } from 'react'
 import { ProjectLink as Link } from '@/shared/lib/project-navigation'
 import { useParams, useSearchParams } from 'react-router'
 import { Plus, MoreHorizontal, Play, CheckCircle2, Pencil, ArrowRightLeft, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@pdlc/ui/ui'
-import { ErrorState, LoadingState } from '@pdlc/ui/ui'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@pdlc/ui/ui'
+
+
+
 import {
   useBacklog,
   useSprints,
@@ -25,7 +19,7 @@ import {
   useRemoveIssueFromSprint,
 } from '@/shared/api/hooks'
 import { SprintFormDialog } from '@/features/sprints/ui/SprintFormDialog'
-import { UserAvatar } from '@pdlc/ui/ui'
+
 import type { components } from '@/api/generated'
 import type { Sprint, CreateSprintRequest, UpdateSprintRequest } from '@/api/sprint'
 

@@ -1,18 +1,10 @@
 import { useState } from 'react'
 import { useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
+import {toast, Input, Select, Button, ConfirmDialog, ErrorState, ResourceList, ResourceListRow, Checkbox, Card, CardContent, CardHeader, CardTitle} from '@pdlc/ui/ui'
 import { Trash2 } from 'lucide-react'
-import {
-  Input,
-  Select,
-  Button,
-  ConfirmDialog,
-  ErrorState,
-  ResourceList,
-  ResourceListRow,
-} from '@pdlc/ui/ui'
-import { Card, CardContent, CardHeader, CardTitle } from '@pdlc/ui/ui'
+
+
 import {
   useCreateCustomField,
   useDeleteCustomField,
@@ -111,13 +103,11 @@ export function ProjectCustomFieldsPage() {
                   />
                 )}
                 <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-10">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4"
+                  <Checkbox
                     checked={draft.is_required}
-                    onChange={(e) => {
+                    onCheckedChange={(checked) => {
                       create.reset()
-                      setDraft({ ...draft, is_required: e.target.checked })
+                      setDraft({ ...draft, is_required: checked === true })
                     }}
                   />
                   {t('customFields.required')}
@@ -184,7 +174,7 @@ export function ProjectCustomFieldsPage() {
                           </p>
                         </div>
                         <Button
-                          variant="ghost"
+                          variant="destructive-outline"
                           size="icon"
                           className="min-h-11 min-w-11 shrink-0 text-danger hover:text-danger sm:min-h-10 sm:min-w-10"
                           aria-label={t('customFields.deleteField', { name: field.name })}

@@ -1,5 +1,5 @@
-import { MultiSelect } from '@pdlc/ui/ui'
-import { Input, Select } from '@pdlc/ui/ui'
+import {MultiSelect, Input, Select, toast} from '@pdlc/ui/ui'
+
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,7 +8,7 @@ import {
   useSetIssueCustomFieldValue,
 } from '@/shared/api/hooks'
 import type { CustomField } from '@/api/custom-fields'
-import { toast } from 'sonner'
+
 
 export function customFieldDateInputValue(value: unknown) {
   if (typeof value !== 'string') return ''

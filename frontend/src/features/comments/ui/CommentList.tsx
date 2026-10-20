@@ -4,19 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  Button,
-  ErrorState,
-} from '@pdlc/ui/ui'
-import { Textarea } from '@pdlc/ui/ui'
-import { Label } from '@pdlc/ui/ui'
+import {AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle, Button, ErrorState, Textarea, Label} from '@pdlc/ui/ui'
+
+
 import {
   useComments,
   useCreateComment,
@@ -129,7 +119,7 @@ export const CommentItem = memo(function CommentItem({
               {t('common.edit')}
             </Button>
             <Button
-              variant="ghost"
+              variant="destructive-outline"
               size="sm"
               className="text-danger"
               onClick={() => onDelete(comment.id)}

@@ -1,3 +1,4 @@
+import {Input, Button, Textarea} from '@pdlc/ui/ui'
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useForm } from 'react-hook-form'
@@ -5,8 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Pencil, Check, X } from 'lucide-react'
 import type { Issue } from '@/api/issue'
-import { Button } from '@pdlc/ui/ui'
-import { Textarea } from '@pdlc/ui/ui'
+
+
 
 const schema = z.object({
   summary: z.string().min(1),
@@ -128,8 +129,9 @@ export function IssueDescriptionEditor({ issue, onSubmit, disabled }: IssueDescr
   return (
     <form onSubmit={submit} className="space-y-3">
       <div>
-        <input
+        <Input
           {...register('summary')}
+          variant="heading"
           aria-label={t('issueCreate.summary')}
           className="w-full rounded-md border border-border bg-surface px-3 py-2 text-2xl font-semibold text-text-primary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
         />

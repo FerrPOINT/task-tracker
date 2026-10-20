@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Paperclip, Download, Trash2, FileText, File as FileIcon } from 'lucide-react'
 import { useAttachments, useUploadAttachment, useDeleteAttachment } from '@/shared/api/hooks'
 import { downloadAttachment } from '@/api/attachment'
-import { Button, ConfirmDialog, ResourceList, ResourceListRow } from '@pdlc/ui/ui'
-import { toast } from 'sonner'
+import {Button, ConfirmDialog, ResourceList, ResourceListRow, toast} from '@pdlc/ui/ui'
+
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
